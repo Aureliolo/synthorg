@@ -48,7 +48,9 @@ def _seed_label_snapshot() -> Iterator[None]:
                 {"wf_onboarding_v1", "wf_a", "wf_long"},
             ),
             departments=frozenset({"sales"}),
-            seeded=True,
+            agent_ids_seeded=True,
+            workflow_definition_ids_seeded=True,
+            departments_seeded=True,
         ),
     )
     yield

@@ -108,7 +108,7 @@ def test_is_known_agent_id_rejects_after_seed() -> None:
     update_label_snapshot(
         _LabelSnapshot(
             agent_ids=frozenset({"agent-1"}),
-            seeded=True,
+            agent_ids_seeded=True,
         ),
     )
     assert is_known_agent_id("agent-1") is True

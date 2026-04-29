@@ -177,7 +177,7 @@
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-              "expr": "topk(25, sum by (agent, status) (synthorg_tasks_total{agent=~\"$agent\"}))",
+              "expr": "topk(25, sum by (agent, status) (synthorg_tasks_total{agent=~\"$agent\",agent!=\"\"}))",
               "instant": true,
               "format": "table",
               "refId": "A"
@@ -539,7 +539,7 @@
           "type": "timeseries",
           "id": 701,
           "title": "Client disconnects (by transport + reason)",
-          "description": "synthorg_client_disconnects_total partitioned by bounded transport (sse / websocket / mcp_stdio) and reason (client_initiated / transport_error / cancelled / timeout).",
+          "description": "synthorg_client_disconnects_total partitioned by bounded transport (sse / websocket / mcp_stdio / mcp_http) and reason (client_initiated / transport_error / cancelled / timeout).",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},

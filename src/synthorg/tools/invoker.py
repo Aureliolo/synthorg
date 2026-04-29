@@ -431,12 +431,31 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
     ) -> ToolResult:
         """Inner body of ``_invoke_single`` -- guarded by the span.
 
-        Every exit path -- happy or error -- routes through the same
-        recording call so success / error / timeout outcomes all land
-        in ``synthorg_tool_invocations_total`` and the activity DB.
+        Every exit path -- happy, error, or deadline-driven
+        cancellation -- routes through the same recording call so
+        success / error / timeout outcomes all land in
+        ``synthorg_tool_invocations_total`` and the activity DB. The
+        ``CancelledError`` branch synthesizes a sentinel ``ToolResult``
+        before re-raising so the engine deadline that cancelled this
+        coroutine is captured as ``outcome="timeout"``.
         """
         started_at = datetime.now(UTC)
-        result = await self._build_invocation_result(tool_call)
+        try:
+            result = await self._build_invocation_result(tool_call)
+        except asyncio.CancelledError:
+            cancelled_result = ToolResult(
+                tool_call_id=tool_call.id,
+                content="Tool invocation cancelled before completion.",
+                is_error=True,
+                is_timeout=True,
+            )
+            await record_tool_invocation(
+                self,
+                tool_call,
+                cancelled_result,
+                started_at=started_at,
+            )
+            raise
         await record_tool_invocation(self, tool_call, result, started_at=started_at)
         return result
 

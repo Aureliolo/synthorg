@@ -14,6 +14,7 @@ crashing the business path.
 """
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 import structlog.testing
@@ -55,7 +56,7 @@ def test_validate_agent_id_rejects_unknown_after_seed() -> None:
     update_label_snapshot(
         _LabelSnapshot(
             agent_ids=frozenset({"agent-1", "agent-2"}),
-            seeded=True,
+            agent_ids_seeded=True,
         ),
     )
     with (
@@ -75,7 +76,7 @@ def test_validate_agent_id_accepts_known_after_seed() -> None:
     update_label_snapshot(
         _LabelSnapshot(
             agent_ids=frozenset({"agent-1"}),
-            seeded=True,
+            agent_ids_seeded=True,
         ),
     )
     validate_agent_id("agent-1")
@@ -86,7 +87,7 @@ def test_update_label_snapshot_replaces_atomically() -> None:
     update_label_snapshot(
         _LabelSnapshot(
             agent_ids=frozenset({"agent-1"}),
-            seeded=True,
+            agent_ids_seeded=True,
         ),
     )
     validate_agent_id("agent-1")
@@ -94,7 +95,7 @@ def test_update_label_snapshot_replaces_atomically() -> None:
     update_label_snapshot(
         _LabelSnapshot(
             agent_ids=frozenset({"agent-2"}),
-            seeded=True,
+            agent_ids_seeded=True,
         ),
     )
     with pytest.raises(ValueError, match="agent_id"):
@@ -103,29 +104,44 @@ def test_update_label_snapshot_replaces_atomically() -> None:
 
 
 @pytest.mark.unit
-def test_validate_workflow_definition_id_rejects_unknown_after_seed() -> None:
-    update_label_snapshot(
-        _LabelSnapshot(
-            workflow_definition_ids=frozenset({"wf-onboarding"}),
-            seeded=True,
+@pytest.mark.parametrize(
+    ("validator", "snapshot_kwargs", "label_substring", "unknown", "known"),
+    [
+        pytest.param(
+            validate_workflow_definition_id,
+            {
+                "workflow_definition_ids": frozenset({"wf-onboarding"}),
+                "workflow_definition_ids_seeded": True,
+            },
+            "workflow_definition_id",
+            "wf-unknown",
+            "wf-onboarding",
+            id="workflow_definition_id",
         ),
-    )
-    with pytest.raises(ValueError, match="workflow_definition_id"):
-        validate_workflow_definition_id("wf-unknown")
-    validate_workflow_definition_id("wf-onboarding")
-
-
-@pytest.mark.unit
-def test_validate_department_rejects_unknown_after_seed() -> None:
-    update_label_snapshot(
-        _LabelSnapshot(
-            departments=frozenset({"engineering"}),
-            seeded=True,
+        pytest.param(
+            validate_department,
+            {
+                "departments": frozenset({"engineering"}),
+                "departments_seeded": True,
+            },
+            "department",
+            "ops",
+            "engineering",
+            id="department",
         ),
-    )
-    with pytest.raises(ValueError, match="department"):
-        validate_department("ops")
-    validate_department("engineering")
+    ],
+)
+def test_per_source_validator_rejects_unknown_accepts_known(
+    validator: Any,
+    snapshot_kwargs: dict[str, Any],
+    label_substring: str,
+    unknown: str,
+    known: str,
+) -> None:
+    update_label_snapshot(_LabelSnapshot(**snapshot_kwargs))
+    with pytest.raises(ValueError, match=label_substring):
+        validator(unknown)
+    validator(known)
 
 
 @pytest.mark.unit
@@ -133,7 +149,7 @@ def test_seeded_snapshot_with_empty_set_rejects_everything() -> None:
     # Genuinely-empty registry (no agents) is the same fail-closed
     # behaviour as bootstrap mode: every incoming agent_id is
     # unknown by construction.
-    update_label_snapshot(_LabelSnapshot(seeded=True))
+    update_label_snapshot(_LabelSnapshot(agent_ids_seeded=True))
     with pytest.raises(ValueError, match="agent_id"):
         validate_agent_id("agent-1")
 
@@ -148,7 +164,10 @@ def test_is_known_agent_id_returns_false_in_bootstrap() -> None:
 @pytest.mark.unit
 def test_is_known_agent_id_after_seed() -> None:
     update_label_snapshot(
-        _LabelSnapshot(agent_ids=frozenset({"agent-1"}), seeded=True),
+        _LabelSnapshot(
+            agent_ids=frozenset({"agent-1"}),
+            agent_ids_seeded=True,
+        ),
     )
     assert is_known_agent_id("agent-1") is True
     assert is_known_agent_id("agent-2") is False

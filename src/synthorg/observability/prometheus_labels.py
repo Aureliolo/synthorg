@@ -183,7 +183,7 @@ VALID_DISCONNECT_REASONS: Final[frozenset[str]] = frozenset(
 # ``validate_<label>`` helpers below.
 #
 # Validators fail closed in every state. The initial snapshot is
-# empty + ``seeded=False``; ``validate_*`` calls reach
+# empty (every ``*_seeded`` flag ``False``); ``validate_*`` calls reach
 # :func:`require_label` against an empty frozenset and raise
 # ``ValueError`` (logged WARN by :func:`require_label`). Push-time
 # callers go through ``metrics_hub._safe_record``, which swallows the
@@ -214,12 +214,19 @@ class _LabelSnapshot:
     acceptable: a brand-new agent's first metric may be dropped with a
     WARN, but the next scrape rotates the snapshot and the sample
     lands.
+
+    Per-source readiness is tracked with one boolean per registry
+    so a transient workflow-repository or department-service outage
+    does not suppress the unrelated agent-id allowlist (or vice
+    versa).
     """
 
     agent_ids: frozenset[str] = frozenset()
     workflow_definition_ids: frozenset[str] = frozenset()
     departments: frozenset[str] = frozenset()
-    seeded: bool = False
+    agent_ids_seeded: bool = False
+    workflow_definition_ids_seeded: bool = False
+    departments_seeded: bool = False
 
 
 _INITIAL_SNAPSHOT: Final[_LabelSnapshot] = _LabelSnapshot()

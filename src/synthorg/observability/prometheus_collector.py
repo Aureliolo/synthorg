@@ -253,10 +253,10 @@ class PrometheusCollector(RecordingMixin):
         fetch helper (including the agent fetch upstream) returns a
         sentinel ``None`` on failure (logged WARN), and the merge
         step keeps the previously-seeded value for any failed source
-        rather than blanking it. The snapshot only flips
-        ``seeded=True`` once every source has produced at least one
-        successful build, so a transient cold-start registry outage
-        doesn't drop the validators out of bootstrap with empty
+        rather than blanking it. Each source's ``*_seeded`` flag
+        flips ``True`` the first time *its own* source produces a
+        usable result and stays ``True`` thereafter, so a transient
+        outage in one registry no longer suppresses the unrelated
         allowlists.
         """
         previous = _snapshot_for_collector()
@@ -317,20 +317,24 @@ class PrometheusCollector(RecordingMixin):
             wf_ids if wf_ids is not None else previous.workflow_definition_ids
         )
         merged_departments = dept_ids if dept_ids is not None else previous.departments
-        # Seed only if every source has at least one successful read
-        # (this round OR a prior round). The first round where any
-        # source raises keeps ``seeded=False``; the next successful
-        # round flips it on.
-        seeded = previous.seeded or (
-            agent_ids is not None and wf_ids is not None and dept_ids is not None
+        # Per-source readiness: each flag flips True the first time
+        # *its own* source produces a usable result and stays True
+        # thereafter. A transient outage on one source no longer
+        # suppresses the unrelated allowlists.
+        agent_ids_seeded = previous.agent_ids_seeded or (agent_ids is not None)
+        workflow_definition_ids_seeded = previous.workflow_definition_ids_seeded or (
+            wf_ids is not None
         )
+        departments_seeded = previous.departments_seeded or (dept_ids is not None)
 
         update_label_snapshot(
             _LabelSnapshot(
                 agent_ids=merged_agent_ids,
                 workflow_definition_ids=merged_workflow_ids,
                 departments=merged_departments,
-                seeded=seeded,
+                agent_ids_seeded=agent_ids_seeded,
+                workflow_definition_ids_seeded=workflow_definition_ids_seeded,
+                departments_seeded=departments_seeded,
             ),
         )
 
@@ -590,6 +594,18 @@ class PrometheusCollector(RecordingMixin):
                 status = str(task.status)
                 agent = str(task.assigned_to) if task.assigned_to else ""
                 if agent and not is_known_agent_id(agent):
+                    # Surface dropped samples so an operator can spot
+                    # an orphan ``task.assigned_to`` reference instead
+                    # of seeing a silently lower-than-expected
+                    # ``synthorg_tasks_total`` for that status.
+                    logger.warning(
+                        METRICS_SCRAPE_FAILED,
+                        component="task_metrics",
+                        reason="unknown_agent_id",
+                        rejected_value=agent,
+                        task_id=str(task.id),
+                        task_status=status,
+                    )
                     continue
                 counts[(status, agent)] += 1
             for (status, agent), count in counts.items():
