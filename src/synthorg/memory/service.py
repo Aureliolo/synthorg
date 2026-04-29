@@ -195,6 +195,11 @@ class MemoryService:
                 "active persistence backend; checkpoint lifecycle "
                 "operations are unavailable"
             )
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                repo="checkpoints",
+                reason="repository_not_wired",
+            )
             raise BackendUnsupportedError(msg)
         return self._checkpoints
 
@@ -205,6 +210,11 @@ class MemoryService:
                 "fine-tune run repository is not wired on the active "
                 "persistence backend; run-history operations are "
                 "unavailable"
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                repo="runs",
+                reason="repository_not_wired",
             )
             raise BackendUnsupportedError(msg)
         return self._runs
@@ -242,12 +252,31 @@ class MemoryService:
                 reason="backend_unsupported",
             )
             raise BackendUnsupportedError(msg)
-        deleted = await self._memory_backend.delete(agent_id, memory_id)
+        try:
+            deleted = await self._memory_backend.delete(agent_id, memory_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                MEMORY_ENTRY_DELETE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                reason="backend_exception",
+                error_type=type(exc).__name__,
+            )
+            raise
         if deleted:
             logger.info(
                 MEMORY_ENTRY_DELETED,
                 agent_id=agent_id,
                 memory_id=memory_id,
+            )
+        else:
+            logger.warning(
+                MEMORY_ENTRY_DELETE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                reason="not_found",
             )
         return deleted
 

@@ -39,7 +39,6 @@ from synthorg.memory.service import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
-    MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
@@ -490,17 +489,10 @@ class MemoryAdminController(Controller):
                 status_code=HTTP_501_NOT_IMPLEMENTED,
             ) from exc
         if not deleted:
-            # The service intentionally does not log on the not-found
-            # path (an absent row is not a failure mode at the backend
-            # layer); the controller records it because the operator
-            # request did fail and the audit trail needs to reflect
-            # that.
-            logger.warning(
-                MEMORY_ENTRY_DELETE_FAILED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                reason="not_found",
-            )
+            # ``MemoryService.delete_memory_entry`` emits
+            # ``MEMORY_ENTRY_DELETE_FAILED`` with ``reason="not_found"``
+            # for this branch, so the controller stays in the layering
+            # role of HTTP translation only.
             raise NotFoundException(detail=f"memory entry {memory_id!r} not found")
         return ApiResponse(data=None)
 

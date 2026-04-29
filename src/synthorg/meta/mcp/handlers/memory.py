@@ -1,6 +1,6 @@
-"""Memory domain MCP handlers (fine-tune checkpoints + runs).
+"""Memory domain MCP handlers (fine-tune checkpoints + runs + entries).
 
-Wires 11 tools through :class:`MemoryService`. The service is
+Wires 12 tools through :class:`MemoryService`. The service is
 injected via ``app_state.memory_service`` by the application
 bootstrap; handlers route through that facade exclusively and never
 reach into ``app_state.persistence.*`` directly (CLAUDE.md
@@ -526,7 +526,7 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
     return ok()
 
 
-async def _memory_delete_entry(  # noqa: PLR0911
+async def _memory_delete_entry(
     *,
     app_state: Any,
     arguments: dict[str, Any],
@@ -546,33 +546,19 @@ async def _memory_delete_entry(  # noqa: PLR0911
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        reason, resolved_actor = require_destructive_guardrails(
-            arguments,
-            actor,
-        )
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
-
     try:
-        service = _service(app_state)
-    except BackendUnsupportedError as exc:
-        return not_supported(tool, str(exc))
-    try:
-        deleted = await service.delete_memory_entry(agent_id, memory_id)
+        deleted = await _service(app_state).delete_memory_entry(agent_id, memory_id)
     except BackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        log_handler_invoke_failed(
-            tool,
-            exc,
-            agent_id=agent_id,
-            memory_id=memory_id,
-        )
+        log_handler_invoke_failed(tool, exc, agent_id=agent_id, memory_id=memory_id)
         return err(exc)
-
     if not deleted:
         not_found_exc = ValueError(f"memory entry {memory_id!r} not found")
         log_handler_invoke_failed(
@@ -582,7 +568,6 @@ async def _memory_delete_entry(  # noqa: PLR0911
             memory_id=memory_id,
         )
         return err(not_found_exc, domain_code="not_found")
-
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,

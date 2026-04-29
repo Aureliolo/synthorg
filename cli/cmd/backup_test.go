@@ -305,6 +305,18 @@ func runBackupCmd(t *testing.T, dir string, args ...string) (string, error) {
 	// Clear Changed so MarkFlagRequired still fires when the test omits --confirm.
 	confirmFlag.Changed = false
 
+	// Reset --sort to its default; otherwise a prior TestBackupList_InvalidSort
+	// run leaves the flag value sticky and downstream order-sensitive tests
+	// inherit garbage state.
+	sortFlag := backupListCmd.Flags().Lookup("sort")
+	if sortFlag == nil {
+		t.Fatal("--sort flag not found on backup list command")
+	}
+	if err := backupListCmd.Flags().Set("sort", "newest"); err != nil {
+		t.Fatalf("resetting --sort flag: %v", err)
+	}
+	sortFlag.Changed = false
+
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)

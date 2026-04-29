@@ -18,6 +18,7 @@ from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
@@ -669,7 +670,7 @@ class PostgresMessageRepository:
         )
         return messages
 
-    async def delete(self, message_id: str) -> bool:
+    async def delete(self, message_id: NotBlankStr) -> bool:
         """Delete a single message by id.
 
         Returns ``True`` when a row was removed, ``False`` when the id

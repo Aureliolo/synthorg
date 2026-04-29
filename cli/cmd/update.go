@@ -46,7 +46,9 @@ var updateCmd = &cobra.Command{
 
 func init() {
 	updateCmd.Flags().Bool("skip-cli-update", false, "skip CLI self-update check (used internally after re-exec)")
-	_ = updateCmd.Flags().MarkHidden("skip-cli-update")
+	if err := updateCmd.Flags().MarkHidden("skip-cli-update"); err != nil {
+		panic(err)
+	}
 	updateCmd.Flags().BoolVar(&updateDryRun, "dry-run", false, "show what would happen without executing")
 	updateCmd.Flags().BoolVar(&updateNoRestart, "no-restart", false, "pull images but do not restart running containers")
 	updateCmd.Flags().StringVar(&updateTimeout, "timeout", "90s", "health check and verification timeout")

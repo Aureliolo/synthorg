@@ -50,7 +50,7 @@ class TestMessageControllerDelete:
         assert body["success"] is True
         assert body["data"] is None
 
-    def test_delete_returns_404_when_id_missing(
+    def test_delete_returns_404_for_unknown_id(
         self,
         test_client: TestClient[Any],
     ) -> None:

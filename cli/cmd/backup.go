@@ -102,17 +102,21 @@ func init() {
 	// backup list flags
 	backupListCmd.Flags().IntVarP(&backupListLimit, "limit", "n", 0, "show N most recent backups (0=all)")
 	backupListCmd.Flags().StringVar(&backupListSort, "sort", "newest", "sort order (newest|oldest|size)")
-	_ = backupListCmd.RegisterFlagCompletionFunc(
+	if err := backupListCmd.RegisterFlagCompletionFunc(
 		"sort",
 		cobra.FixedCompletions(
 			[]string{"newest", "oldest", "size"},
 			cobra.ShellCompDirectiveNoFileComp,
 		),
-	)
+	); err != nil {
+		panic(err)
+	}
 
 	// backup restore flags
 	backupRestoreCmd.Flags().Bool("confirm", false, "confirm the restore operation (required)")
-	_ = backupRestoreCmd.MarkFlagRequired("confirm")
+	if err := backupRestoreCmd.MarkFlagRequired("confirm"); err != nil {
+		panic(err)
+	}
 	backupRestoreCmd.Flags().BoolVar(&backupRestoreDryRun, "dry-run", false, "preview what would be restored without executing")
 	backupRestoreCmd.Flags().BoolVar(&backupRestoreNoRestart, "no-restart", false, "restore without stopping containers")
 	backupRestoreCmd.Flags().StringVar(&backupRestoreTimeout, "timeout", "30s", "API request timeout")

@@ -275,7 +275,10 @@ class TestDeleteMemoryEntryEndpoint:
             memory_module._build_memory_service = original_build
 
         assert response.data is None
-        fake_service.delete_memory_entry.assert_awaited_once()
+        fake_service.delete_memory_entry.assert_awaited_once_with(
+            "agent-1",
+            "mem-1",
+        )
 
     async def test_raises_404_when_backend_returns_false(self) -> None:
         from types import SimpleNamespace
@@ -305,6 +308,10 @@ class TestDeleteMemoryEntryEndpoint:
                     agent_id="agent-1",
                     memory_id="missing",
                 )
+            fake_service.delete_memory_entry.assert_awaited_once_with(
+                "agent-1",
+                "missing",
+            )
         finally:
             memory_module._build_memory_service = original_build
 
@@ -339,6 +346,10 @@ class TestDeleteMemoryEntryEndpoint:
                     agent_id="agent-1",
                     memory_id="mem-1",
                 )
+            fake_service.delete_memory_entry.assert_awaited_once_with(
+                "agent-1",
+                "mem-1",
+            )
         finally:
             memory_module._build_memory_service = original_build
         assert exc_info.value.status_code == 501

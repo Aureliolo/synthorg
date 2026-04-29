@@ -279,7 +279,7 @@ class TestMeetingController:
         assert body["data"] is None
         mock_orchestrator.delete_record.assert_called_once_with("mtg-001")
 
-    def test_delete_meeting_returns_404_when_id_missing(
+    def test_delete_meeting_returns_404_for_unknown_id(
         self,
         meeting_client: TestClient[Any],
         mock_orchestrator: MagicMock,
