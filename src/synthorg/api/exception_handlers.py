@@ -817,10 +817,10 @@ def handle_http_exception(
 # UniqueViolation, NotNullViolation, ...) to the validation 400 path.
 _PSYCOPG_INTEGRITY_HANDLER: tuple[type[Exception], object] | None = None
 try:
-    from psycopg.errors import IntegrityError as _PsycopgIntegrityError
+    import psycopg.errors as _psycopg_errors  # lint-allow: persistence-boundary -- HTTP 400 backstop for #1666 B-1  # noqa: E501
 
     _PSYCOPG_INTEGRITY_HANDLER = (
-        _PsycopgIntegrityError,
+        _psycopg_errors.IntegrityError,
         handle_persistence_integrity_error,
     )
 except ImportError:
