@@ -20,7 +20,7 @@ from synthorg.communication.handler import (
 from synthorg.communication.message import (
     Message,  # noqa: TC001 -- required at runtime by Pydantic
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_DISPATCH_COMPLETE,
     COMM_DISPATCH_HANDLER_ERROR,
@@ -243,13 +243,14 @@ class MessageDispatcher:
             await registration.handler.handle(message)
         except Exception as exc:
             errors[index] = str(exc)
-            logger.exception(
+            logger.warning(
                 COMM_DISPATCH_HANDLER_ERROR,
                 agent_id=self._agent_id,
                 message_id=str(message.id),
                 handler_id=registration.handler_id,
                 handler_name=registration.name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @staticmethod

@@ -26,7 +26,7 @@ from synthorg.backup.models import (
 from synthorg.backup.retention import RetentionManager
 from synthorg.backup.scheduler import BackupScheduler
 from synthorg.backup.service_archive import BackupServiceArchiveMixin
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_COMPLETED,
     BACKUP_FAILED,
@@ -375,11 +375,12 @@ class BackupService(BackupServiceArchiveMixin):
                     raise RestoreError(msg)  # noqa: TRY301
                 await handler.restore(backup_dir)
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 BACKUP_RESTORE_ROLLBACK,
                 backup_id=backup_id,
                 safety_backup_id=safety_backup_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Restore failed for {backup_id}: {exc}"
             raise RestoreError(msg) from exc
