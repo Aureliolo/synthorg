@@ -5,6 +5,16 @@ Covers analytics, metrics, and reports controllers.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._simple_args import (
+    AnalyticsGetForecastArgs,
+    AnalyticsGetOverviewArgs,
+    AnalyticsGetTrendsArgs,
+    MetricsGetCurrentArgs,
+    MetricsGetHistoryArgs,
+    ReportsGenerateArgs,
+    ReportsGetArgs,
+    ReportsListArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     PAGINATION_PROPERTIES,
     read_tool,
@@ -16,7 +26,12 @@ if TYPE_CHECKING:
 
 ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Analytics ---
-    read_tool("analytics", "get_overview", "Get analytics overview dashboard data."),
+    read_tool(
+        "analytics",
+        "get_overview",
+        "Get analytics overview dashboard data.",
+        args_model=AnalyticsGetOverviewArgs,
+    ),
     read_tool(
         "analytics",
         "get_trends",
@@ -28,6 +43,7 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
             },
             "metric": {"type": "string", "description": "Metric to analyze"},
         },
+        args_model=AnalyticsGetTrendsArgs,
     ),
     read_tool(
         "analytics",
@@ -42,9 +58,15 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
                 "maximum": 90,
             },
         },
+        args_model=AnalyticsGetForecastArgs,
     ),
     # --- Metrics ---
-    read_tool("metrics", "get_current", "Get current system metrics."),
+    read_tool(
+        "metrics",
+        "get_current",
+        "Get current system metrics.",
+        args_model=MetricsGetCurrentArgs,
+    ),
     read_tool(
         "metrics",
         "get_history",
@@ -62,9 +84,16 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
                 "format": "date-time",
             },
         },
+        args_model=MetricsGetHistoryArgs,
     ),
     # --- Reports ---
-    read_tool("reports", "list", "List generated reports.", PAGINATION_PROPERTIES),
+    read_tool(
+        "reports",
+        "list",
+        "List generated reports.",
+        PAGINATION_PROPERTIES,
+        args_model=ReportsListArgs,
+    ),
     read_tool(
         "reports",
         "get",
@@ -73,6 +102,7 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
             "report_id": {"type": "string", "description": "Report UUID"},
         },
         required=("report_id",),
+        args_model=ReportsGetArgs,
     ),
     write_tool(
         "reports",
@@ -86,5 +116,6 @@ ANALYTICS_TOOLS: tuple[MCPToolDef, ...] = (
             "parameters": {"type": "object", "description": "Report parameters"},
         },
         required=("report_type",),
+        args_model=ReportsGenerateArgs,
     ),
 )

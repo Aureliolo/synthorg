@@ -5,6 +5,17 @@ Covers coordination, coordination metrics, and scaling.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._simple_args import (
+    CeremonyPolicyGetActiveStrategyArgs,
+    CeremonyPolicyGetArgs,
+    CeremonyPolicyGetResolvedArgs,
+    CoordinationGetTaskMetricsArgs,
+    CoordinationMetricsListArgs,
+    ScalingGetConfigArgs,
+    ScalingGetDecisionArgs,
+    ScalingListDecisionsArgs,
+    ScalingTriggerArgs,
+)
 from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, read_tool, write_tool
 
 if TYPE_CHECKING:
@@ -25,6 +36,7 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
             "task_id": {"type": "string", "description": "Task UUID"},
         },
         required=("task_id",),
+        args_model=CoordinationGetTaskMetricsArgs,
     ),
     # --- Coordination metrics ---
     read_tool(
@@ -46,10 +58,15 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
             },
             **PAGINATION_PROPERTIES,
         },
+        args_model=CoordinationMetricsListArgs,
     ),
     # --- Scaling ---
     read_tool(
-        "scaling", "list_decisions", "List scaling decisions.", PAGINATION_PROPERTIES
+        "scaling",
+        "list_decisions",
+        "List scaling decisions.",
+        PAGINATION_PROPERTIES,
+        args_model=ScalingListDecisionsArgs,
     ),
     read_tool(
         "scaling",
@@ -59,8 +76,14 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
             "decision_id": {"type": "string", "description": "Decision UUID"},
         },
         required=("decision_id",),
+        args_model=ScalingGetDecisionArgs,
     ),
-    read_tool("scaling", "get_config", "Get the current scaling configuration."),
+    read_tool(
+        "scaling",
+        "get_config",
+        "Get the current scaling configuration.",
+        args_model=ScalingGetConfigArgs,
+    ),
     write_tool(
         "scaling",
         "trigger",
@@ -72,9 +95,15 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
             },
         },
         required=("reason",),
+        args_model=ScalingTriggerArgs,
     ),
     # --- Ceremony policy ---
-    read_tool("ceremony_policy", "get", "Get the project-level ceremony policy."),
+    read_tool(
+        "ceremony_policy",
+        "get",
+        "Get the project-level ceremony policy.",
+        args_model=CeremonyPolicyGetArgs,
+    ),
     read_tool(
         "ceremony_policy",
         "get_resolved",
@@ -85,8 +114,12 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
                 "description": "Department name (optional)",
             },
         },
+        args_model=CeremonyPolicyGetResolvedArgs,
     ),
     read_tool(
-        "ceremony_policy", "get_active_strategy", "Get the active ceremony strategy."
+        "ceremony_policy",
+        "get_active_strategy",
+        "Get the active ceremony strategy.",
+        args_model=CeremonyPolicyGetActiveStrategyArgs,
     ),
 )

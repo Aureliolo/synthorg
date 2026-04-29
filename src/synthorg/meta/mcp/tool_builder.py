@@ -7,6 +7,8 @@ type, enforcing the ``synthorg_{domain}_{action}`` naming convention.
 
 from typing import Any
 
+from pydantic import BaseModel  # noqa: TC002 -- Pydantic field type at runtime
+
 from synthorg.meta.mcp.registry import MCPToolDef
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_TOOL_BUILDER_INVALID_REQUIRED
@@ -103,6 +105,7 @@ def tool_def(  # noqa: PLR0913
     *,
     required: tuple[str, ...] = (),
     capability_action: str = "read",
+    args_model: type[BaseModel] | None = None,
 ) -> MCPToolDef:
     """Build an MCP tool definition with naming convention enforcement.
 
@@ -114,6 +117,10 @@ def tool_def(  # noqa: PLR0913
         required: Required parameter names.
         capability_action: Capability action tag (``"read"``, ``"write"``,
             or ``"admin"``).
+        args_model: Optional Pydantic args model for typed validation at
+            the invoker boundary; the JSON-Schema parameters are still
+            built from ``properties``/``required`` for the
+            ``tools/list`` wire surface.
 
     Returns:
         Frozen ``MCPToolDef`` instance.
@@ -127,16 +134,18 @@ def tool_def(  # noqa: PLR0913
         parameters=_make_parameters(properties, required=required),
         capability=capability,
         handler_key=handler_key,
+        args_model=args_model,
     )
 
 
-def read_tool(
+def read_tool(  # noqa: PLR0913
     domain: str,
     action: str,
     description: str,
     properties: dict[str, Any] | None = None,
     *,
     required: tuple[str, ...] = (),
+    args_model: type[BaseModel] | None = None,
 ) -> MCPToolDef:
     """Build a read-only MCP tool definition.
 
@@ -148,6 +157,7 @@ def read_tool(
         description: Human-readable description.
         properties: JSON Schema properties.
         required: Required parameter names.
+        args_model: Optional Pydantic args model for typed validation.
 
     Returns:
         Frozen ``MCPToolDef`` with ``read`` capability.
@@ -159,16 +169,18 @@ def read_tool(
         properties,
         required=required,
         capability_action="read",
+        args_model=args_model,
     )
 
 
-def write_tool(
+def write_tool(  # noqa: PLR0913
     domain: str,
     action: str,
     description: str,
     properties: dict[str, Any] | None = None,
     *,
     required: tuple[str, ...] = (),
+    args_model: type[BaseModel] | None = None,
 ) -> MCPToolDef:
     """Build a write MCP tool definition.
 
@@ -180,6 +192,7 @@ def write_tool(
         description: Human-readable description.
         properties: JSON Schema properties.
         required: Required parameter names.
+        args_model: Optional Pydantic args model for typed validation.
 
     Returns:
         Frozen ``MCPToolDef`` with ``write`` capability.
@@ -191,16 +204,18 @@ def write_tool(
         properties,
         required=required,
         capability_action="write",
+        args_model=args_model,
     )
 
 
-def admin_tool(
+def admin_tool(  # noqa: PLR0913
     domain: str,
     action: str,
     description: str,
     properties: dict[str, Any] | None = None,
     *,
     required: tuple[str, ...] = (),
+    args_model: type[BaseModel] | None = None,
 ) -> MCPToolDef:
     """Build an admin MCP tool definition.
 
@@ -212,6 +227,7 @@ def admin_tool(
         description: Human-readable description.
         properties: JSON Schema properties.
         required: Required parameter names.
+        args_model: Optional Pydantic args model for typed validation.
 
     Returns:
         Frozen ``MCPToolDef`` with ``admin`` capability.
@@ -223,4 +239,5 @@ def admin_tool(
         properties,
         required=required,
         capability_action="admin",
+        args_model=args_model,
     )

@@ -8,6 +8,13 @@ handler.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._simple_args import (
+    ApprovalsApproveArgs,
+    ApprovalsCreateArgs,
+    ApprovalsGetArgs,
+    ApprovalsListArgs,
+    ApprovalsRejectArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
@@ -41,6 +48,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             "action_type": {"type": "string", "description": "Filter by action type"},
             **PAGINATION_PROPERTIES,
         },
+        args_model=ApprovalsListArgs,
     ),
     read_tool(
         "approvals",
@@ -50,6 +58,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             "approval_id": {"type": "string", "description": "Approval UUID"},
         },
         required=("approval_id",),
+        args_model=ApprovalsGetArgs,
     ),
     write_tool(
         "approvals",
@@ -80,6 +89,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             },
         },
         required=("action_type", "description"),
+        args_model=ApprovalsCreateArgs,
     ),
     write_tool(
         "approvals",
@@ -90,6 +100,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             "comment": {"type": "string", "description": "Approval comment"},
         },
         required=("approval_id",),
+        args_model=ApprovalsApproveArgs,
     ),
     admin_tool(
         "approvals",
@@ -100,5 +111,6 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("approval_id", "reason", "confirm"),
+        args_model=ApprovalsRejectArgs,
     ),
 )
