@@ -258,7 +258,11 @@ class TestDeleteMemoryEntryEndpoint:
         # Stub MemoryService to avoid the full _build_memory_service path.
         fake_service = SimpleNamespace(delete_memory_entry=AsyncMock(return_value=True))
 
-        def _fake_build(_app_state: object) -> SimpleNamespace:
+        def _fake_build(
+            _app_state: object,
+            *,
+            require_fine_tune: bool = True,
+        ) -> SimpleNamespace:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
@@ -294,7 +298,11 @@ class TestDeleteMemoryEntryEndpoint:
             delete_memory_entry=AsyncMock(return_value=False),
         )
 
-        def _fake_build(_app_state: object) -> SimpleNamespace:
+        def _fake_build(
+            _app_state: object,
+            *,
+            require_fine_tune: bool = True,
+        ) -> SimpleNamespace:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
@@ -332,7 +340,11 @@ class TestDeleteMemoryEntryEndpoint:
             ),
         )
 
-        def _fake_build(_app_state: object) -> SimpleNamespace:
+        def _fake_build(
+            _app_state: object,
+            *,
+            require_fine_tune: bool = True,
+        ) -> SimpleNamespace:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]

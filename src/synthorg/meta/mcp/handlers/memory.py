@@ -180,6 +180,50 @@ def _service(app_state: Any) -> MemoryService:
     )
 
 
+def _delete_entry_service(app_state: Any) -> MemoryService:
+    """Return a :class:`MemoryService` suitable for memory-entry deletion.
+
+    Sibling of :func:`_service` that does **not** require fine-tune
+    repositories. The GDPR ``delete_memory_entry`` path only needs a
+    :class:`MemoryBackend`; treating missing fine-tune repos as fatal
+    here would route every memory-only deployment through
+    ``not_supported`` and silently disable user data deletion.
+
+    Resolution order:
+
+    1. The wired :class:`MemoryService` facade
+       (``app_state.has_memory_service``).
+    2. A cached ``MemoryService`` attached as a plain attribute
+       (stripped-down test app-states).
+    3. A freshly-built ``MemoryService`` constructed from a wired
+       ``MemoryBackend`` (with optional ``settings_service``); fine-tune
+       repos are intentionally left as ``None``.
+
+    Raises:
+        BackendUnsupportedError: When no service or backend is wired at
+            all -- the only case where deletion truly cannot proceed.
+    """
+    if getattr(app_state, "has_memory_service", False):
+        attached: MemoryService = app_state.memory_service
+        return attached
+    raw_cached = (
+        vars(app_state).get("memory_service")
+        if hasattr(app_state, "__dict__")
+        else None
+    )
+    if isinstance(raw_cached, MemoryService):
+        return raw_cached
+    if not getattr(app_state, "has_memory_backend", False):
+        raise BackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
+    has_settings = getattr(app_state, "has_settings_service", False)
+    return MemoryService(
+        memory_backend=getattr(app_state, "memory_backend", None),
+        settings_service=(
+            getattr(app_state, "settings_service", None) if has_settings else None
+        ),
+    )
+
+
 # --- handlers -------------------------------------------------------------
 
 
@@ -551,7 +595,10 @@ async def _memory_delete_entry(
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
     try:
-        deleted = await _service(app_state).delete_memory_entry(agent_id, memory_id)
+        deleted = await _delete_entry_service(app_state).delete_memory_entry(
+            agent_id,
+            memory_id,
+        )
     except BackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:

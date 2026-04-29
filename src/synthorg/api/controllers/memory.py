@@ -43,6 +43,10 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
 )
+from synthorg.persistence.fine_tune_protocol import (
+    FineTuneCheckpointRepository,  # noqa: TC001
+    FineTuneRunRepository,  # noqa: TC001
+)
 
 logger = get_logger(__name__)
 
@@ -52,35 +56,57 @@ logger = get_logger(__name__)
 _DEFAULT_BATCH_SIZE: Final[int] = 16
 
 
-def _build_memory_service(app_state: AppState) -> MemoryService:
+def _build_memory_service(
+    app_state: AppState,
+    *,
+    require_fine_tune: bool = True,
+) -> MemoryService:
     """Construct a :class:`MemoryService` from the current AppState.
 
     Kept on the controller module rather than :class:`AppState` so the
     service layer depends on AppState (and not vice-versa) and the
     AppState slot inventory stays stable. Resolves the fine-tune
     repositories through :class:`PersistenceBackend` so the controller
-    does not hard-wire the SQLite implementation; backends that do not
-    support fine-tuning raise ``NotImplementedError`` at accessor-call
-    time, which we translate to HTTP 501 here so operators get a clean
-    "unsupported backend" response instead of a 500 traceback.
+    does not hard-wire the SQLite implementation.
+
+    The ``require_fine_tune`` flag separates the fine-tune-admin
+    endpoints (which need both checkpoint + run repos and translate a
+    missing backend implementation into HTTP 501) from memory-only
+    endpoints such as the GDPR ``DELETE /memory/entries/...`` path,
+    which only need the ``MemoryBackend``. Without this carve-out a
+    Postgres deployment that wires a memory backend without fine-tune
+    support would 501 on every entry deletion even though
+    :class:`MemoryService.delete_memory_entry` can run without the
+    fine-tune repos.
+
+    Args:
+        app_state: Active application state.
+        require_fine_tune: When ``True`` (default), eagerly resolve
+            ``fine_tune_checkpoints`` / ``fine_tune_runs`` and raise
+            :class:`ClientException` (HTTP 501) when they are absent.
+            When ``False``, leave the repos as ``None`` so the service
+            constructs cleanly for memory-only endpoints.
 
     Raises:
-        ClientException: When the backend does not implement the
-            fine-tune repositories (HTTP 501). The only such backend
-            today is Postgres; SQLite always exposes both repos.
+        ClientException: When ``require_fine_tune`` is ``True`` and the
+            backend does not implement the fine-tune repositories
+            (HTTP 501).
     """
     backend = app_state.persistence
-    try:
-        checkpoint_repo = backend.fine_tune_checkpoints
-        run_repo = backend.fine_tune_runs
-    except NotImplementedError as exc:
-        raise ClientException(
-            detail=(
-                "Fine-tune admin endpoints are not supported by the "
-                "active persistence backend."
-            ),
-            status_code=HTTP_501_NOT_IMPLEMENTED,
-        ) from exc
+    checkpoint_repo: FineTuneCheckpointRepository | None = None
+    run_repo: FineTuneRunRepository | None = None
+    if require_fine_tune:
+        try:
+            checkpoint_repo = backend.fine_tune_checkpoints
+            run_repo = backend.fine_tune_runs
+        except NotImplementedError as exc:
+            raise ClientException(
+                detail=(
+                    "Fine-tune admin endpoints are not supported by the "
+                    "active persistence backend."
+                ),
+                status_code=HTTP_501_NOT_IMPLEMENTED,
+            ) from exc
     return MemoryService(
         checkpoint_repo=checkpoint_repo,
         run_repo=run_repo,
@@ -473,7 +499,11 @@ class MemoryAdminController(Controller):
         that id). Returns ``501 Not Implemented`` when no memory
         backend is wired on the active app state.
         """
-        service = _build_memory_service(state.app_state)
+        # ``require_fine_tune=False`` -- entry deletion only needs the
+        # ``MemoryBackend``; eagerly resolving the fine-tune repos
+        # would 501 every memory-only deployment, which the GDPR delete
+        # path must support.
+        service = _build_memory_service(state.app_state, require_fine_tune=False)
         try:
             deleted = await service.delete_memory_entry(
                 NotBlankStr(agent_id),

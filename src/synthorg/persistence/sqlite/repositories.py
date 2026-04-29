@@ -568,10 +568,11 @@ INSERT INTO messages (
                     raise DuplicateRecordError(err_msg) from exc
                 # Other integrity errors (NOT NULL, different UNIQUE).
                 msg = f"Failed to save message {msg_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_MESSAGE_SAVE_FAILED,
                     message_id=msg_id,
-                    error=error_text,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
