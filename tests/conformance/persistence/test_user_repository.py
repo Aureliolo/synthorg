@@ -6,8 +6,8 @@ import pytest
 
 from synthorg.api.auth.models import ApiKey, User
 from synthorg.api.guards import HumanRole
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.errors import QueryError
 from synthorg.persistence.protocol import PersistenceBackend
 
 

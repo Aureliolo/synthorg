@@ -18,6 +18,11 @@ from synthorg.core.enums import (
     ProjectStatus,
     TaskStatus,
 )
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    QueryError,
+    RecordNotFoundError,
+)
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -28,11 +33,6 @@ from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
-)
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    QueryError,
-    RecordNotFoundError,
 )
 from synthorg.persistence.preset_repository import PresetListRow, PresetRow
 from synthorg.security.models import AuditEntry, AuditVerdictStr
@@ -519,12 +519,16 @@ class FakeArtifactStorage:
 
     async def store(self, artifact_id: str, content: bytes) -> int:
         if self.raise_too_large:
-            from synthorg.persistence.errors import ArtifactTooLargeError
+            from synthorg.core.persistence_errors import (
+                ArtifactTooLargeError,
+            )
 
             msg = "too large"
             raise ArtifactTooLargeError(msg)
         if self.raise_storage_full:
-            from synthorg.persistence.errors import ArtifactStorageFullError
+            from synthorg.core.persistence_errors import (
+                ArtifactStorageFullError,
+            )
 
             msg = "storage full"
             raise ArtifactStorageFullError(msg)
@@ -533,7 +537,9 @@ class FakeArtifactStorage:
 
     async def retrieve(self, artifact_id: str) -> bytes:
         if artifact_id not in self._store:
-            from synthorg.persistence.errors import RecordNotFoundError
+            from synthorg.core.persistence_errors import (
+                RecordNotFoundError,
+            )
 
             msg = f"Artifact content not found: {artifact_id!r}"
             raise RecordNotFoundError(msg)

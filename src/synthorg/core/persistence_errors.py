@@ -1,14 +1,19 @@
 """Persistence error hierarchy.
 
-All persistence-related errors inherit from ``PersistenceError`` so
+All persistence-related errors inherit from :class:`PersistenceError` so
 callers can catch the entire family with a single except clause.
 
 Each concrete exception carries an ``is_retryable`` class attribute
-mirroring the provider-layer convention in ``synthorg.providers.errors``.
-Callers that implement bounded retry/backoff (e.g. a repository
-middleware) can branch on this flag without string-matching the driver
-exception.  Default: ``False``.  Transient I/O failures override to
-``True``.
+mirroring the provider-layer convention in
+:mod:`synthorg.providers.errors`.  Callers that implement bounded
+retry/backoff (e.g. a repository middleware) can branch on this flag
+without string-matching the driver exception.  Default: ``False``.
+Transient I/O failures override to ``True``.
+
+This module is dependency-free apart from stdlib so the persistence
+implementation (SQLite/Postgres repositories) and any consumer
+(controllers, services, engine) can import it without pulling in the
+HTTP layer.
 """
 
 
@@ -78,13 +83,23 @@ class ConstraintViolationError(QueryError):
 
     Non-retryable: constraint violations are deterministic for a
     given input and will not succeed on a bare retry.
+
+    Blank ``constraint`` (empty / whitespace-only) is normalised to the
+    sentinel ``"<unknown>"`` rather than raising.  Raising
+    :class:`ValueError` from ``__init__`` would bypass downstream
+    ``except PersistenceError`` handlers; the sentinel keeps the
+    construction inside the persistence-error family so callers that
+    branch on ``constraint`` see a known token they can detect.
     """
+
+    UNKNOWN_CONSTRAINT: str = "<unknown>"
 
     is_retryable: bool = False
 
     def __init__(self, message: str, *, constraint: str) -> None:
         super().__init__(message)
-        self.constraint: str = constraint
+        stripped = constraint.strip()
+        self.constraint: str = stripped or self.UNKNOWN_CONSTRAINT
 
 
 class VersionConflictError(QueryError):

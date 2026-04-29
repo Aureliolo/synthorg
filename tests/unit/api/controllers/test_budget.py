@@ -342,7 +342,10 @@ class TestCostRecordListResponseValidator:
             PeriodSummary,
         )
         from synthorg.api.dto import ErrorDetail, PaginationMeta
-        from synthorg.api.errors import ErrorCategory, ErrorCode
+        from synthorg.core.error_taxonomy import (
+            ErrorCategory,
+            ErrorCode,
+        )
 
         detail = ErrorDetail(
             detail="test detail",
@@ -375,7 +378,10 @@ class TestCostRecordListResponseValidator:
             PeriodSummary,
         )
         from synthorg.api.dto import ErrorDetail, PaginationMeta
-        from synthorg.api.errors import ErrorCategory, ErrorCode
+        from synthorg.core.error_taxonomy import (
+            ErrorCategory,
+            ErrorCode,
+        )
 
         resp = CostRecordListResponse(
             error="bad request",

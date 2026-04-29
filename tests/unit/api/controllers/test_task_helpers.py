@@ -3,11 +3,11 @@
 import pytest
 
 from synthorg.api.controllers.tasks import _extract_requester, _map_task_engine_errors
-from synthorg.api.errors import (
-    ApiValidationError,
+from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
     ServiceUnavailableError,
+    ValidationError,
 )
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
@@ -102,7 +102,7 @@ class TestMapTaskEngineErrors:
     def test_mutation_error_maps_to_validation_error(self) -> None:
         exc = TaskMutationError("bad input")
         result = _map_task_engine_errors(exc)
-        assert isinstance(result, ApiValidationError)
+        assert isinstance(result, ValidationError)
 
     def test_unknown_error_wraps_as_service_unavailable(self) -> None:
         exc = RuntimeError("unexpected")

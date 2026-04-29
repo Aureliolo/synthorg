@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING, NamedTuple, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import AgentStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger

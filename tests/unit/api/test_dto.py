@@ -16,13 +16,13 @@ from synthorg.api.dto import (
     PaginatedResponse,
     PaginationMeta,
 )
-from synthorg.api.errors import (
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.core.error_taxonomy import (
     ErrorCategory,
     ErrorCode,
     category_title,
     category_type_uri,
 )
-from synthorg.core.enums import ApprovalRiskLevel
 
 pytestmark = pytest.mark.unit
 

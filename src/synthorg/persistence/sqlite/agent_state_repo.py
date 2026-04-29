@@ -8,6 +8,7 @@ import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.enums import ExecutionStatus
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.observability import get_logger, safe_error_description
@@ -21,7 +22,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AGENT_STATE_NOT_FOUND,
     PERSISTENCE_AGENT_STATE_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 

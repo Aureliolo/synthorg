@@ -12,13 +12,13 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_CUSTOM_RULE_LIST_FAILED
-from synthorg.persistence.errors import QueryError
 
 
 class ChatRequest(BaseModel):

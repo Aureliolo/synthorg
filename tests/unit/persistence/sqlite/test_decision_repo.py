@@ -7,9 +7,9 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.enums import DecisionOutcome
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.persistence.decision_protocol import DecisionRepository
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.persistence.sqlite.decision_repo import SQLiteDecisionRepository
 
 if TYPE_CHECKING:

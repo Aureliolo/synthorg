@@ -16,16 +16,12 @@ from synthorg.api.dto_training import (
     TrainingResultResponse,
     UpdateTrainingOverridesRequest,
 )
-from synthorg.api.errors import (
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-)
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     ContentType,
@@ -33,7 +29,7 @@ from synthorg.hr.training.models import (
     TrainingPlanStatus,
     TrainingResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_RESOURCE_NOT_FOUND,
@@ -108,8 +104,12 @@ def _coerce_override_sources(
         stripped = raw_id.strip()
         if not stripped:
             msg = "override_sources entries must be non-blank"
-            logger.warning(API_REQUEST_ERROR, error=msg)
-            raise ApiValidationError(msg)
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type=ValidationError.__name__,
+                error=msg,
+            )
+            raise ValidationError(msg)
         coerced.append(NotBlankStr(stripped))
     return tuple(coerced)
 
@@ -178,7 +178,7 @@ class TrainingController(Controller):
             ``ApiResponse`` wrapping the created plan response DTO.
 
         Raises:
-            ApiValidationError: If the request contains invalid
+            ValidationError: If the request contains invalid
                 content types, caps, or override sources.
             NotFoundError: If the agent name does not resolve.
         """
@@ -276,16 +276,20 @@ class TrainingController(Controller):
                     failed_plan,
                 )
             except Exception as save_exc:
-                logger.exception(
+                logger.warning(
                     HR_TRAINING_PLAN_FAILED,
                     plan_id=str(plan.id),
                     error="Failed to persist FAILED status",
-                    persistence_error=str(save_exc),
+                    error_type=type(save_exc).__name__,
+                    persistence_error=safe_error_description(save_exc),
+                    exc_info=True,
                 )
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PLAN_FAILED,
                 plan_id=str(plan.id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                exc_info=True,
             )
             raise
 
@@ -449,7 +453,7 @@ class TrainingController(Controller):
 
         Raises:
             NotFoundError: If the plan or agent cannot be resolved.
-            ApiValidationError: If the request contains invalid caps
+            ValidationError: If the request contains invalid caps
                 or override source ids.
         """
         identity = await _resolve_agent(app_state, agent_name)

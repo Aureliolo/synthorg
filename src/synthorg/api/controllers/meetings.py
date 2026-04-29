@@ -9,7 +9,6 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -17,6 +16,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -269,7 +269,7 @@ class MeetingController(Controller):
                 actual_length=len(meeting_type),
                 max_length=QUERY_MAX_LENGTH,
             )
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         orchestrator = state.app_state.meeting_orchestrator
         records = orchestrator.get_records()
@@ -343,7 +343,7 @@ class MeetingController(Controller):
             Tuple of meeting responses for all triggered meetings.
 
         Raises:
-            ApiValidationError: If ``data.context`` exceeds the
+            ValidationError: If ``data.context`` exceeds the
                 operator-configured key cap
                 (``api.max_meeting_context_keys``).
             ServiceUnavailableError: Raised by the
@@ -369,7 +369,7 @@ class MeetingController(Controller):
                 actual_keys=len(data.context),
                 max_keys=max_keys,
             )
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         records = await scheduler.trigger_event(
             data.event_name,
             context=data.context,

@@ -397,7 +397,7 @@ class PrometheusCollector:
 
         ``category`` tracks the RFC 9457 taxonomy
         (:data:`VALID_API_ERROR_CATEGORIES`, mirroring
-        :class:`synthorg.api.errors.ErrorCategory`); 2xx/3xx status
+        :class:`synthorg.core.error_taxonomy.ErrorCategory`); 2xx/3xx status
         codes are rejected so the counter only covers real failures.
         """
         require_label("api error category", category, VALID_API_ERROR_CATEGORIES)

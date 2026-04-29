@@ -2,13 +2,13 @@
 
 import pytest
 
-from synthorg.api.errors import ErrorCategory, ErrorCode
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
     MixedCurrencyAggregationError,
     QuotaExhaustedError,
 )
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
 @pytest.mark.unit

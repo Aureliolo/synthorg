@@ -10,7 +10,7 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 import math
 from typing import Final, get_args
 
-from synthorg.api.errors import ErrorCategory
+from synthorg.core.error_taxonomy import ErrorCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.providers.errors import ProviderErrorLabel
@@ -130,7 +130,7 @@ VALID_PROVIDER_ERROR_CLASSES: Final[frozenset[str]] = frozenset(
 # Expanding this set requires adding a new cache + its record call.
 VALID_CACHE_NAMES: Final[frozenset[str]] = frozenset({"mcp_result", "reranker"})
 VALID_CACHE_OUTCOMES: Final[frozenset[str]] = frozenset({"hit", "miss", "evict"})
-# API error classification: derived from ``synthorg.api.errors.ErrorCategory``
+# API error classification: derived from ``synthorg.core.error_taxonomy.ErrorCategory``
 # so the metric partitions structured 4xx/5xx responses by their RFC 9457
 # category without hand-maintaining a parallel allowlist.
 VALID_API_ERROR_CATEGORIES: Final[frozenset[str]] = frozenset(

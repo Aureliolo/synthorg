@@ -36,7 +36,7 @@ class InflightStore(Protocol):
         On ``__aenter__``: if the current count for ``key`` is less
         than ``max_inflight``, increments the counter and returns.
         Otherwise raises
-        :class:`synthorg.api.errors.ConcurrencyLimitExceededError`
+        :class:`synthorg.core.domain_errors.ConcurrencyLimitExceededError`
         **before** yielding control, so the request never executes the
         handler.
 

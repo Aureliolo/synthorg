@@ -23,8 +23,8 @@ from synthorg.core.enums import (
     TaskStructure,
     TaskType,
 )
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
     SQLiteMessageRepository,
@@ -499,7 +499,7 @@ class TestSQLiteMessageRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Negative or zero limit raises QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteMessageRepository(migrated_db)
         with pytest.raises(QueryError, match="positive integer"):
@@ -547,7 +547,7 @@ class TestDeserializationFailures:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Corrupt JSON in a tuple field raises QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         await migrated_db.execute(
             """\
@@ -569,7 +569,7 @@ INSERT INTO tasks (
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Corrupt JSON in content (parts) column raises QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         await migrated_db.execute(
             """\

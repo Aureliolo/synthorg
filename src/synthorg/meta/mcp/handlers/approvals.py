@@ -22,8 +22,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from synthorg.api.errors import ConflictError
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,

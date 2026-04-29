@@ -14,10 +14,10 @@ from unittest.mock import patch
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.errors import ConflictError
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
-from synthorg.persistence.errors import ConstraintViolationError
+from synthorg.core.persistence_errors import ConstraintViolationError
 
 
 def _now() -> datetime:

@@ -11,7 +11,7 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.api.errors import VersionConflictError
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingNamespace, SettingType

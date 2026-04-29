@@ -32,6 +32,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ValidationError
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.versioning import (
@@ -42,7 +43,6 @@ from synthorg.observability.events.versioning import (
     VERSION_LISTED,
     VERSION_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.versioning.models import VersionSnapshot
 
 if TYPE_CHECKING:

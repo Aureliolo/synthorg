@@ -11,10 +11,10 @@ from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.errors import ConnectionNotFoundError

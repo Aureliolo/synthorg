@@ -16,10 +16,10 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import AwareDatetime
 
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
-from synthorg.persistence.errors import ConstraintViolationError
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration

@@ -15,7 +15,6 @@ from synthorg.api.dto_org import (  # noqa: TC001
     CreateAgentOrgRequest,
     UpdateAgentOrgRequest,
 )
-from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import (
     require_org_mutation,
     require_read_access,
@@ -28,6 +27,7 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.enums import AgentStatus, ToolAccessLevel  # noqa: TC001
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001

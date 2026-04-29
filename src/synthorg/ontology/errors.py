@@ -2,7 +2,7 @@
 
 from typing import ClassVar
 
-from synthorg.api.errors import ErrorCategory, ErrorCode
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
 class OntologyError(Exception):

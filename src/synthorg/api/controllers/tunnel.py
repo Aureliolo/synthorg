@@ -8,6 +8,7 @@ from litestar.datastructures import State  # noqa: TC002
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
@@ -35,10 +36,6 @@ class TunnelController(Controller):
         state: State,
     ) -> ApiResponse[dict[str, str]]:
         """Start the ngrok tunnel and return the public URL."""
-        from synthorg.api.errors import (  # noqa: PLC0415
-            ServiceUnavailableError,
-        )
-
         tunnel = state["app_state"].tunnel_provider
         try:
             url = await tunnel.start()
@@ -65,10 +62,6 @@ class TunnelController(Controller):
         state: State,
     ) -> ApiResponse[None]:
         """Stop the ngrok tunnel."""
-        from synthorg.api.errors import (  # noqa: PLC0415
-            ServiceUnavailableError,
-        )
-
         tunnel = state["app_state"].tunnel_provider
         try:
             await tunnel.stop()

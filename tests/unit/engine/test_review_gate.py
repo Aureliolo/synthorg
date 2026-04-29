@@ -444,7 +444,7 @@ class TestReviewGateServiceDecisionRecording:
         non-fatal.  Programming errors (ValidationError, TypeError)
         still propagate so schema drift surfaces loudly.
         """
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         task = _make_task()
         mock_te = _make_mock_task_engine(task=task)

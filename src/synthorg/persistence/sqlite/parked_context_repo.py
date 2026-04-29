@@ -8,6 +8,7 @@ import sqlite3
 import aiosqlite
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_DELETE_FAILED,
@@ -17,7 +18,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.security.timeout.parked_context import ParkedContext
 
 logger = get_logger(__name__)

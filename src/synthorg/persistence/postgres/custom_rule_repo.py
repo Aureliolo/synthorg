@@ -16,6 +16,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
@@ -30,7 +31,6 @@ from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
 )
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

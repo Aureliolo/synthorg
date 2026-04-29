@@ -31,6 +31,7 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.persistence_errors import PersistenceConnectionError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
 from synthorg.memory.fine_tune_plan import (
@@ -76,7 +77,6 @@ from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-from synthorg.persistence.errors import PersistenceConnectionError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -124,7 +124,7 @@ def _service(app_state: Any) -> MemoryService:
       (legacy / partial backend).
     * The backend is not yet connected and the property's
       ``_require_connected`` guard raises
-      :class:`~synthorg.persistence.errors.PersistenceConnectionError`.
+      :class:`~synthorg.core.persistence_errors.PersistenceConnectionError`.
 
     Raises:
         BackendUnsupportedError: In any of the above cases.

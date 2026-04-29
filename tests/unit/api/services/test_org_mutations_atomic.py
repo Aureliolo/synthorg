@@ -22,9 +22,9 @@ from synthorg.api.dto_org import (
     UpdateCompanyRequest,
     UpdateDepartmentRequest,
 )
-from synthorg.api.errors import ConflictError, VersionConflictError
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.enums import SeniorityLevel
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService

@@ -85,7 +85,7 @@ class WinnerSelectProcessor:
             # Raised as ValueError (rather than TypeError) because the
             # caller is the REST layer validating payload shapes; the
             # escalations controller translates this into a 422
-            # ApiValidationError.
+            # ValidationError.
             msg = (
                 "WinnerSelectProcessor only accepts 'winner' decisions. "
                 "Configure decision_strategy='hybrid' to allow "

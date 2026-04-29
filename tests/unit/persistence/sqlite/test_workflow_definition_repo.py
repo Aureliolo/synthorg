@@ -10,12 +10,12 @@ from synthorg.core.enums import (
     WorkflowNodeType,
     WorkflowType,
 )
+from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
 )
-from synthorg.persistence.errors import VersionConflictError
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )

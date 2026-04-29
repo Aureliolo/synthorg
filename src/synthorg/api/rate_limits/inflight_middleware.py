@@ -19,7 +19,6 @@ from litestar.enums import ScopeType
 from litestar.middleware import ASGIMiddleware
 from litestar.types import ASGIApp, Receive, Scope, Send  # noqa: TC002
 
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.rate_limits._subject import (
     STATE_KEY_INFLIGHT_CONFIG,
     STATE_KEY_INFLIGHT_STORE,
@@ -29,6 +28,7 @@ from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
 )
 from synthorg.api.rate_limits.inflight_protocol import InflightStore  # noqa: TC001
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 

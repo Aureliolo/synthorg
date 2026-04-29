@@ -16,6 +16,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -29,7 +30,6 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
-from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

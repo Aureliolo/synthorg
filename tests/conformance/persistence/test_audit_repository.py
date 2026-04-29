@@ -18,7 +18,7 @@ from typing import Literal
 import pytest
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.models import (
     AuditEntry,

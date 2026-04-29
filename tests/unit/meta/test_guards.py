@@ -261,8 +261,8 @@ class TestApprovalGateGuard:
         """ConflictError from replay is treated as idempotent PASSED."""
         from unittest.mock import AsyncMock
 
-        from synthorg.api.errors import ConflictError
         from synthorg.approval.protocol import ApprovalStoreProtocol
+        from synthorg.core.domain_errors import ConflictError
 
         store = AsyncMock(spec=ApprovalStoreProtocol)
         store.add.side_effect = ConflictError("already exists")

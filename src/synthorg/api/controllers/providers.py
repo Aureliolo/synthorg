@@ -57,17 +57,17 @@ from synthorg.api.dto_providers import (
     UpdateModelConfigRequest,
     to_provider_model_response,
 )
-from synthorg.api.errors import (
-    ApiError,
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-)
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import (
+    ConflictError,
+    DomainError,
+    NotFoundError,
+    ValidationError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_MODEL_OPERATION_FAILED,
@@ -346,7 +346,7 @@ class ProviderController(Controller):
 
         Raises:
             ConflictError: If a provider with this name already exists.
-            ApiValidationError: If the provider configuration fails
+            ValidationError: If the provider configuration fails
                 validation.
         """
         app_state: AppState = state.app_state
@@ -371,7 +371,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @post(
@@ -400,7 +400,7 @@ class ProviderController(Controller):
 
         Raises:
             ConflictError: If a provider with this name already exists.
-            ApiValidationError: If the preset is unknown or config
+            ValidationError: If the preset is unknown or config
                 validation fails.
         """
         app_state: AppState = state.app_state
@@ -422,7 +422,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @put(
@@ -450,7 +450,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider does not exist.
-            ApiValidationError: If the update fails validation.
+            ValidationError: If the update fails validation.
         """
         app_state: AppState = state.app_state
         try:
@@ -472,7 +472,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @delete(
@@ -828,7 +828,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         except ValueError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -847,7 +847,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiError(str(exc)) from exc
+            raise DomainError(str(exc)) from exc
 
     @put(
         "/{name:str}/models/{model_id:path}/config",
@@ -909,7 +909,7 @@ class ProviderController(Controller):
                 model=model_id,
                 error=exc_msg,
             )
-            raise ApiValidationError(exc_msg) from exc
+            raise ValidationError(exc_msg) from exc
         model = next(
             (m for m in updated.models if m.id == model_id),
             None,
@@ -924,7 +924,7 @@ class ProviderController(Controller):
                 provider=name,
                 error=msg,
             )
-            raise ApiError(msg)
+            raise DomainError(msg)
         return ApiResponse(data=to_provider_model_response(model))
 
     # ── Manual model add + bulk sync ────────────────────────────
@@ -1042,7 +1042,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(data=result)
 
     # ── Credentials rotation ────────────────────────────────────
@@ -1078,7 +1078,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider does not exist.
-            ApiValidationError: If the rotation payload's ``auth_type``
+            ValidationError: If the rotation payload's ``auth_type``
                 does not match the provider's persisted ``auth_type``.
         """
         app_state: AppState = state.app_state
@@ -1105,7 +1105,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(updated))
 
     # ── Preset overrides ────────────────────────────────────────
@@ -1175,7 +1175,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the preset name is unknown.
-            ApiValidationError: If the override shape conflicts with
+            ValidationError: If the override shape conflicts with
                 the preset's kind (cloud vs local).
         """
         app_state: AppState = state.app_state
@@ -1209,7 +1209,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(data=saved)
 
     @delete(
@@ -1325,7 +1325,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider does not exist.
-            ApiValidationError: If the merged config fails validation.
+            ValidationError: If the merged config fails validation.
         """
         app_state: AppState = state.app_state
         actor = request_audit_actor(request)
@@ -1351,7 +1351,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(data=updated)
 
     # ── Audit log (read access) ─────────────────────────────────

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     import aiosqlite
 
 from synthorg.core.enums import WorkflowNodeType, WorkflowType
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -36,7 +37,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_LISTED,
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.persistence.subworkflow_repo import (
     ParentReference,
     SubworkflowSummary,

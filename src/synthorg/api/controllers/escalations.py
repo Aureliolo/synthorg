@@ -18,12 +18,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
-from synthorg.api.errors import (
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-    UnauthorizedError,
-)
 from synthorg.api.guards import require_approval_roles, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -33,6 +27,12 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
     EscalationDecision,
     EscalationStatus,
+)
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -221,7 +221,7 @@ class EscalationsController(Controller):
             NotFoundError: ``escalation_id`` does not exist.
             ConflictError: the escalation is already decided, expired,
                 or cancelled.
-            ApiValidationError: the decision shape is not accepted by
+            ValidationError: the decision shape is not accepted by
                 the server's configured decision strategy.
         """
         app_state: AppState = state.app_state
@@ -278,7 +278,7 @@ class EscalationsController(Controller):
                 error_type="invalid_decision_shape",
                 error=str(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
 
         try:
             updated = await store.apply_decision(

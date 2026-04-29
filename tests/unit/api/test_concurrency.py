@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.api.concurrency import check_if_match, compute_etag
-from synthorg.api.errors import VersionConflictError
+from synthorg.core.domain_errors import VersionConflictError
 
 pytestmark = pytest.mark.unit
 

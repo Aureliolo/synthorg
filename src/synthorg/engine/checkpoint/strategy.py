@@ -8,6 +8,7 @@ After ``max_resume_attempts`` resume attempts, falls back to the
 import asyncio
 from typing import Final
 
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.checkpoint.models import (
     Checkpoint,  # noqa: TC001
@@ -35,7 +36,6 @@ from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,  # noqa: TC001
     HeartbeatRepository,  # noqa: TC001
 )
-from synthorg.persistence.errors import PersistenceError
 
 logger = get_logger(__name__)
 

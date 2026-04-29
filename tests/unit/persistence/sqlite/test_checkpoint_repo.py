@@ -243,7 +243,7 @@ class TestSQLiteCheckpointRepositoryErrors:
         self, memory_db: aiosqlite.Connection
     ) -> None:
         """save() wraps sqlite errors into QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         # No migrations → table doesn't exist → sqlite error
         repo = SQLiteCheckpointRepository(memory_db)
@@ -255,7 +255,7 @@ class TestSQLiteCheckpointRepositoryErrors:
         self, memory_db: aiosqlite.Connection
     ) -> None:
         """get_latest() wraps sqlite errors into QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteCheckpointRepository(memory_db)
         with pytest.raises(QueryError, match="Failed to query"):
@@ -265,7 +265,7 @@ class TestSQLiteCheckpointRepositoryErrors:
         self, memory_db: aiosqlite.Connection
     ) -> None:
         """delete_by_execution() wraps sqlite errors into QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteCheckpointRepository(memory_db)
         with pytest.raises(QueryError, match="Failed to delete"):
@@ -275,7 +275,7 @@ class TestSQLiteCheckpointRepositoryErrors:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """_row_to_model() wraps ValidationError into QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteCheckpointRepository(migrated_db)
         # Manually insert a row with invalid data (missing required fields)

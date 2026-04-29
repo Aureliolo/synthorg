@@ -11,15 +11,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.controllers.setup_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.company import Team
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
     API_TEAM_CREATED,
     API_TEAM_DELETED,
     API_TEAM_REORDERED,
@@ -106,7 +108,7 @@ def _persisted_name(record: dict[str, Any], record_type: str) -> str:
         The ``name`` field as a ``str``.
 
     Raises:
-        ApiValidationError: If ``name`` is missing or not a string.
+        ValidationError: If ``name`` is missing or not a string.
     """
     value = record.get("name")
     if not isinstance(value, str):
@@ -120,7 +122,7 @@ def _persisted_name(record: dict[str, Any], record_type: str) -> str:
             f"Persisted {record_type.lower()} record has a non-string "
             f"name (got {type(value).__name__})"
         )
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
     return value
 
 
@@ -139,13 +141,18 @@ def _find_department(
 
     Raises:
         NotFoundError: If not found.
-        ApiValidationError: If a persisted record has a non-string name.
+        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(name)
     for idx, dept in enumerate(depts):
         if normalize_identifier(_persisted_name(dept, "Department")) == target:
             return idx, dept
     msg = f"Department {name!r} not found"
+    logger.warning(
+        API_RESOURCE_NOT_FOUND,
+        resource="department",
+        name=name,
+    )
     raise NotFoundError(msg)
 
 
@@ -164,13 +171,18 @@ def _find_team(
 
     Raises:
         NotFoundError: If not found.
-        ApiValidationError: If a persisted record has a non-string name.
+        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(team_name)
     for idx, team in enumerate(teams):
         if normalize_identifier(_persisted_name(team, "Team")) == target:
             return idx, team
     msg = f"Team {team_name!r} not found"
+    logger.warning(
+        API_RESOURCE_NOT_FOUND,
+        resource="team",
+        name=team_name,
+    )
     raise NotFoundError(msg)
 
 
@@ -189,7 +201,7 @@ def _check_team_name_unique(
 
     Raises:
         ConflictError: If a name collision is detected.
-        ApiValidationError: If a persisted record has a non-string name.
+        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(name)
     for idx, team in enumerate(teams):
@@ -197,6 +209,12 @@ def _check_team_name_unique(
             continue
         if normalize_identifier(_persisted_name(team, "Team")) == target:
             msg = f"Team {name!r} already exists in this department"
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                resource="team",
+                name=name,
+                reason="duplicate_team_name",
+            )
             raise ConflictError(msg)
 
 
@@ -210,13 +228,20 @@ def _validate_team_model(team_dict: dict[str, Any]) -> Team:
         Validated Team instance.
 
     Raises:
-        ApiValidationError: If validation fails.
+        ValidationError: If validation fails.
     """
     try:
         return Team(**team_dict)
     except (ValueError, TypeError) as exc:
         msg = f"Team validation failed: {exc}"
-        raise ApiValidationError(msg) from exc
+        logger.warning(
+            API_VALIDATION_FAILED,
+            reason="team_model_validation_failed",
+            team_name=team_dict.get("name"),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise ValidationError(msg) from exc
 
 
 def _team_to_response(team_dict: dict[str, Any]) -> TeamResponse:
@@ -274,7 +299,7 @@ class TeamController(Controller):
         Raises:
             NotFoundError: If the department does not exist.
             ConflictError: If a team with this name already exists.
-            ApiValidationError: If team data is invalid.
+            ValidationError: If team data is invalid.
         """
         app_state: AppState = state.app_state
 
@@ -330,7 +355,7 @@ class TeamController(Controller):
 
         Raises:
             NotFoundError: If the department does not exist.
-            ApiValidationError: If names set does not match.
+            ValidationError: If names set does not match.
         """
         app_state: AppState = state.app_state
 
@@ -373,7 +398,7 @@ class TeamController(Controller):
                     stored_names=stored_names,
                     colliding=colliding,
                 )
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
             current_names = set(team_map)
             requested_order = [normalize_identifier(n) for n in data.team_names]
             requested_names = set(requested_order)
@@ -390,7 +415,7 @@ class TeamController(Controller):
                     requested=list(data.team_names),
                     duplicates=sorted(set(duplicates)),
                 )
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
 
             if current_names != requested_names:
                 msg = (
@@ -406,7 +431,7 @@ class TeamController(Controller):
                     missing=sorted(current_names - requested_names),
                     extra=sorted(requested_names - current_names),
                 )
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
 
             reordered = [team_map[name] for name in requested_order]
 
@@ -452,7 +477,7 @@ class TeamController(Controller):
         Raises:
             NotFoundError: If department or team not found.
             ConflictError: If rename conflicts with existing name.
-            ApiValidationError: If updated team data is invalid.
+            ValidationError: If updated team data is invalid.
         """
         app_state: AppState = state.app_state
 
@@ -501,7 +526,7 @@ class TeamController(Controller):
         state: State,
         dept_name: PathName,
         team_name: PathName,
-        reassign_to: str | None = None,
+        reassign_to: NotBlankStr | None = None,
     ) -> None:
         """Delete a team from a department.
 
@@ -517,7 +542,7 @@ class TeamController(Controller):
         Raises:
             NotFoundError: If department, team, or reassignment target
                 not found.
-            ApiValidationError: If reassignment produces invalid data.
+            ValidationError: If reassignment produces invalid data.
         """
         app_state: AppState = state.app_state
 
@@ -538,7 +563,7 @@ class TeamController(Controller):
                         team_name=team_name,
                         reassign_to=reassign_to,
                     )
-                    raise ApiValidationError(msg)
+                    raise ValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
                 existing_members = list(target.get("members", []))

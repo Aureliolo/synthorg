@@ -25,11 +25,11 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.cursor import CursorSecret
-from synthorg.api.errors import (
-    ApiValidationError,
+from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
     UnauthorizedError,
+    ValidationError,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
@@ -85,7 +85,7 @@ class TestConnectionsController:
         state = {"app_state": MagicMock(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with pytest.raises(ApiValidationError):
+        with pytest.raises(ValidationError):
             await ctrl.create_connection.fn(
                 ctrl,
                 state=state,
@@ -99,7 +99,7 @@ class TestConnectionsController:
         state = {"app_state": MagicMock(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with pytest.raises(ApiValidationError):
+        with pytest.raises(ValidationError):
             await ctrl.create_connection.fn(
                 ctrl,
                 state=state,
@@ -294,7 +294,7 @@ class TestWebhooksController:
         }
 
         ctrl = WebhooksController(owner=WebhooksController)  # type: ignore[arg-type]
-        with pytest.raises(ApiValidationError):
+        with pytest.raises(ValidationError):
             await ctrl.receive_webhook.fn(
                 ctrl,
                 state=state,
@@ -571,7 +571,7 @@ class TestMCPCatalogController:
             ),
         }
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
-        with pytest.raises(ApiValidationError):
+        with pytest.raises(ValidationError):
             await ctrl.install_entry.fn(
                 ctrl,
                 state=state,
@@ -666,7 +666,7 @@ class TestOAuthController:
 
         ctrl = OAuthController(owner=OAuthController)  # type: ignore[arg-type]
         state = {"app_state": MagicMock()}
-        with pytest.raises(ApiValidationError):
+        with pytest.raises(ValidationError):
             await ctrl.initiate_flow.fn(ctrl, state=state, data={})
 
     async def test_status_returns_false_when_no_token(self) -> None:

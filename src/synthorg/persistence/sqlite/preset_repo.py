@@ -6,6 +6,7 @@ import sqlite3
 
 import aiosqlite
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.preset import (
@@ -17,7 +18,6 @@ from synthorg.observability.events.preset import (
     PRESET_CUSTOM_LISTED,
     PRESET_CUSTOM_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.persistence.preset_repository import PresetListRow, PresetRow
 
 logger = get_logger(__name__)

@@ -6,8 +6,8 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.persistence.config import SQLiteConfig
-from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.persistence.sqlite.repositories import (

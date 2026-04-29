@@ -14,12 +14,13 @@ from synthorg.api.auth.models import AuthenticatedUser, OrgRole, User
 from synthorg.api.auth.user_service import UserService
 from synthorg.api.cursor import decode_keyset_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_ceo
 from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -34,7 +35,6 @@ from synthorg.persistence.constraint_tokens import (
     LAST_OWNER_TRIGGER,
     USERS_USERNAME_UNIQUE,
 )
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 logger = get_logger(__name__)
 
@@ -131,7 +131,7 @@ def _validate_assignable_role(role: HumanRole) -> None:
     if role in _FORBIDDEN_ROLES:
         msg = f"Cannot assign role: {role.value}"
         logger.warning(API_VALIDATION_FAILED, reason=msg)
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
 
 
 async def _get_user_or_404(
@@ -181,7 +181,7 @@ class UserController(Controller):
             Created user response.
 
         Raises:
-            ApiValidationError: If the role is SYSTEM or password
+            ValidationError: If the role is SYSTEM or password
                 is too short.
             ConflictError: If username is taken or a second CEO is
                 requested.
@@ -193,7 +193,7 @@ class UserController(Controller):
         if len(data.password) < _MIN_PASSWORD_LENGTH:
             msg = f"Password must be at least {_MIN_PASSWORD_LENGTH} characters"
             logger.warning(API_VALIDATION_FAILED, reason=msg)
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         now = datetime.now(UTC)
         password_hash = await app_state.auth_service.hash_password_async(
@@ -334,7 +334,7 @@ class UserController(Controller):
 
         Raises:
             NotFoundError: If the user is not found.
-            ApiValidationError: If the target role is SYSTEM.
+            ValidationError: If the target role is SYSTEM.
             ConflictError: If the target user is the system user,
                 changing the only CEO's role, or assigning a
                 second CEO.
@@ -494,7 +494,7 @@ class UserController(Controller):
         Raises:
             NotFoundError: If the user is not found.
             ConflictError: If the user already has the role.
-            ApiValidationError: If department_admin without departments.
+            ValidationError: If department_admin without departments.
         """
         service = _service(state)
         user = await _get_user_or_404(service, user_id)
@@ -502,7 +502,7 @@ class UserController(Controller):
         if user.role == HumanRole.SYSTEM:
             msg = "Cannot assign org roles to the system user"
             logger.warning(API_VALIDATION_FAILED, reason=msg)
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         existing_roles = set(user.org_roles)
         if data.role in existing_roles:
@@ -513,11 +513,11 @@ class UserController(Controller):
         if data.role == OrgRole.DEPARTMENT_ADMIN and not data.scoped_departments:
             msg = "department_admin role requires scoped_departments"
             logger.warning(API_VALIDATION_FAILED, reason=msg)
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         if data.role != OrgRole.DEPARTMENT_ADMIN and data.scoped_departments:
             msg = "scoped_departments can only be set for department_admin"
             logger.warning(API_VALIDATION_FAILED, reason=msg)
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         new_roles = (*user.org_roles, data.role)
         new_scoped = (
@@ -590,7 +590,7 @@ class UserController(Controller):
 
         Raises:
             NotFoundError: If the user is not found.
-            ApiValidationError: If the role value is invalid.
+            ValidationError: If the role value is invalid.
             ConflictError: If revoking the last owner.
         """
         service = _service(state)
@@ -599,7 +599,7 @@ class UserController(Controller):
         except ValueError:
             msg = f"Invalid org role: {role}"
             logger.warning(API_VALIDATION_FAILED, reason=msg)
-            raise ApiValidationError(msg) from None
+            raise ValidationError(msg) from None
 
         user = await _get_user_or_404(service, user_id)
 

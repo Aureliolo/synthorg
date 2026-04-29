@@ -38,12 +38,13 @@ from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.api.errors import ConflictError
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -53,7 +54,6 @@ from synthorg.observability.events.api import (
     API_APPROVAL_STORE_CLEARED,
     API_RESOURCE_NOT_FOUND,
 )
-from synthorg.persistence.errors import ConstraintViolationError
 
 if TYPE_CHECKING:
     from synthorg.persistence.approval_protocol import ApprovalRepository

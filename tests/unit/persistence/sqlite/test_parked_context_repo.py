@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.persistence.errors import QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )

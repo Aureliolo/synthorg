@@ -747,7 +747,7 @@ class SettingsService:
             expected_updated_at=expected_updated_at,
         )
         if not written:
-            from synthorg.api.errors import (  # noqa: PLC0415
+            from synthorg.core.domain_errors import (  # noqa: PLC0415
                 VersionConflictError,
             )
 
@@ -805,7 +805,7 @@ class SettingsService:
             expected_updated_at_map=expected_updated_at_map,
         )
         if not written:
-            from synthorg.api.errors import (  # noqa: PLC0415
+            from synthorg.core.domain_errors import (  # noqa: PLC0415
                 VersionConflictError,
             )
 

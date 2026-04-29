@@ -10,7 +10,7 @@ from synthorg.api.controllers.setup_agents import (
     expand_template_agents,
     match_and_assign_models,
 )
-from synthorg.api.errors import ApiValidationError
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.enums import CompanyType, SeniorityLevel
 from synthorg.templates.schema import (
     CompanyTemplate,
@@ -192,7 +192,7 @@ class TestBuildAgentConfigCustomPresets:
 
     def test_unknown_preset_raises_validation_error(self) -> None:
         data = self._make_request("nonexistent")
-        with pytest.raises(ApiValidationError, match="Unknown personality preset"):
+        with pytest.raises(ValidationError, match="Unknown personality preset"):
             build_agent_config(data)
 
 

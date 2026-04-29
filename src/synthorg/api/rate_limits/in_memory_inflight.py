@@ -19,8 +19,8 @@ from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Final
 
-from synthorg.api.errors import ConcurrencyLimitExceededError
 from synthorg.api.rate_limits.inflight_protocol import InflightStore
+from synthorg.core.domain_errors import ConcurrencyLimitExceededError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,

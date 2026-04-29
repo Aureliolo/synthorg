@@ -21,6 +21,7 @@ from pydantic import ValidationError
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -29,7 +30,6 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_LISTED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

@@ -19,6 +19,7 @@ import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
@@ -28,7 +29,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
 from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr

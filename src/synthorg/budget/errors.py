@@ -8,7 +8,7 @@ engine layer.
 
 from typing import TYPE_CHECKING, ClassVar
 
-from synthorg.api.errors import ErrorCategory, ErrorCode
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 
 from synthorg.api.dto_provider_capabilities import PresetOverride
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
@@ -16,7 +17,6 @@ from synthorg.persistence._shared.datetime_marshaller import (
     format_iso_utc,
     parse_iso_utc,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.providers.enums import AuthType
 
 if TYPE_CHECKING:

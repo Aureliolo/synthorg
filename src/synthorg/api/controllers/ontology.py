@@ -21,7 +21,6 @@ from synthorg.api.dto_ontology import (
     EntityVersionResponse,
     UpdateEntityRequest,
 )
-from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import (
     require_read_access,
     require_write_access,
@@ -35,6 +34,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
@@ -147,7 +147,7 @@ class OntologyController(Controller):
                     reason="invalid_tier",
                     tier=tier,
                 )
-                raise ApiValidationError(msg)  # noqa: B904
+                raise ValidationError(msg)  # noqa: B904
         entities = await svc.list_entities(tier=tier_filter)
 
         responses = tuple(_entity_to_response(e) for e in entities)
@@ -228,12 +228,12 @@ class OntologyController(Controller):
             await app_state.ontology_service.register(entity)
         except OntologyDuplicateError:
             msg = "Entity already exists"
-            logger.info(
+            logger.warning(
                 API_REQUEST_ERROR,
                 reason="duplicate_entity",
                 name=data.name,
             )
-            raise ApiValidationError(msg)  # noqa: B904
+            raise ValidationError(msg)  # noqa: B904
 
         return ApiResponse(data=_entity_to_response(entity))
 
@@ -276,7 +276,7 @@ class OntologyController(Controller):
                 reason="core_entity_modification",
                 name=name,
             )
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         updates: dict[str, object] = {}
         if data.definition is not None:
@@ -338,7 +338,13 @@ class OntologyController(Controller):
 
         if entity.tier == EntityTier.CORE:
             msg = "CORE entities cannot be deleted via API"
-            raise ApiValidationError(msg)
+            logger.warning(
+                API_REQUEST_ERROR,
+                reason="core_entity_delete_rejected",
+                name=name,
+                tier=entity.tier.value,
+            )
+            raise ValidationError(msg)
 
         await svc.delete(name)
 

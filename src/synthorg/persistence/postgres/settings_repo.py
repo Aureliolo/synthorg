@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from psycopg_pool import AsyncConnectionPool
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_DELETE_FAILED,
@@ -26,7 +27,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 

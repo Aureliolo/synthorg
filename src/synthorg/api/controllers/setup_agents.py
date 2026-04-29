@@ -7,7 +7,7 @@ operations that were previously inline in ``setup.py``.
 import json
 from typing import TYPE_CHECKING, Any
 
-from synthorg.api.errors import ApiValidationError, NotFoundError
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_SUMMARY_MISSING_FIELDS,
@@ -192,7 +192,7 @@ def _validate_provider_model_pair(
 
     Raises:
         NotFoundError: If the provider does not exist.
-        ApiValidationError: If the model is not in the provider.
+        ValidationError: If the model is not in the provider.
     """
     if provider_name not in providers:
         msg = f"Provider {provider_name!r} not found"
@@ -208,7 +208,7 @@ def _validate_provider_model_pair(
             provider=provider_name,
             model=model_id,
         )
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
 
 
 def validate_model_assignment(
@@ -223,7 +223,7 @@ def validate_model_assignment(
 
     Raises:
         NotFoundError: If the provider does not exist.
-        ApiValidationError: If the model is not in the provider.
+        ValidationError: If the model is not in the provider.
     """
     _validate_provider_model_pair(providers, data.model_provider, data.model_id)
 
@@ -240,7 +240,7 @@ def validate_provider_and_model(
 
     Raises:
         NotFoundError: If the provider does not exist.
-        ApiValidationError: If the model is not in the provider.
+        ValidationError: If the model is not in the provider.
     """
     _validate_provider_model_pair(providers, data.model_provider, data.model_id)
 
@@ -260,7 +260,7 @@ def build_agent_config(
         Agent configuration dict suitable for JSON serialization.
 
     Raises:
-        ApiValidationError: If the personality preset name is not
+        ValidationError: If the personality preset name is not
             found in either custom or builtin presets.
     """
     from synthorg.templates.presets import get_personality_preset  # noqa: PLC0415
@@ -276,7 +276,7 @@ def build_agent_config(
             preset=data.personality_preset,
         )
         msg = f"Unknown personality preset {data.personality_preset!r}"
-        raise ApiValidationError(msg) from None
+        raise ValidationError(msg) from None
     agent_config: dict[str, Any] = {
         "name": data.name,
         "role": data.role,
@@ -310,7 +310,7 @@ async def get_existing_agents(
         List of agent config dicts (empty if entry is absent or None).
 
     Raises:
-        ApiValidationError: If the stored value is not valid JSON or
+        ValidationError: If the stored value is not valid JSON or
             not a JSON array.
     """
     try:
@@ -338,7 +338,7 @@ async def get_existing_agents(
             exc_info=True,
         )
         msg = "Stored agents list is not valid JSON"
-        raise ApiValidationError(msg) from exc
+        raise ValidationError(msg) from exc
 
     if not isinstance(parsed, list):
         logger.warning(
@@ -347,7 +347,7 @@ async def get_existing_agents(
             raw_type=type(parsed).__name__,
         )
         msg = f"Stored agents list is {type(parsed).__name__}, expected list"
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
 
     _validate_agent_elements(parsed)
     return parsed
@@ -357,7 +357,7 @@ def _validate_agent_elements(parsed: list[Any]) -> None:
     """Validate each element in a parsed agents list.
 
     Raises:
-        ApiValidationError: If any element is not a dict with valid
+        ValidationError: If any element is not a dict with valid
             string values for required keys.
     """
     for idx, element in enumerate(parsed):
@@ -369,7 +369,7 @@ def _validate_agent_elements(parsed: list[Any]) -> None:
                 element_type=type(element).__name__,
             )
             msg = f"Agent at index {idx} is {type(element).__name__}, expected dict"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         if not _REQUIRED_AGENT_KEYS.issubset(element.keys()):
             logger.warning(
                 SETUP_AGENTS_CORRUPTED,
@@ -378,7 +378,7 @@ def _validate_agent_elements(parsed: list[Any]) -> None:
                 present_keys=sorted(element.keys()),
             )
             msg = f"Agent at index {idx} missing required keys (need 'name' and 'role')"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         for key in _REQUIRED_AGENT_KEYS:
             val = element[key]
             if not isinstance(val, str) or not val.strip():
@@ -390,13 +390,13 @@ def _validate_agent_elements(parsed: list[Any]) -> None:
                     value_type=type(val).__name__,
                 )
                 msg = f"Agent at index {idx}: '{key}' must be a non-empty string"
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
 
 
 def validate_agents_value(raw: str, *, strict: bool) -> bool:
     """Parse *raw* as JSON and return True if it is a non-empty list.
 
-    When *strict* is True, raises ``ApiValidationError`` on corrupted
+    When *strict* is True, raises ``ValidationError`` on corrupted
     data instead of returning False.
 
     Args:
@@ -416,7 +416,7 @@ def validate_agents_value(raw: str, *, strict: bool) -> bool:
         )
         if strict:
             msg = "Stored agents list is not valid JSON"
-            raise ApiValidationError(msg) from exc
+            raise ValidationError(msg) from exc
         return False
 
     if not isinstance(parsed, list):
@@ -427,7 +427,7 @@ def validate_agents_value(raw: str, *, strict: bool) -> bool:
         )
         if strict:
             msg = f"Stored agents list is {type(parsed).__name__}, expected list"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         return False
 
     return bool(parsed)

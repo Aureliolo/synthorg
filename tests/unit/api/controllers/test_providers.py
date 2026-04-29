@@ -204,7 +204,7 @@ class TestDiscoverModelsEndpoint:
 
     async def test_discover_models_not_found(self) -> None:
         """Non-existent provider raises NotFoundError."""
-        from synthorg.api.errors import NotFoundError
+        from synthorg.core.domain_errors import NotFoundError
 
         state, mgmt = _make_provider_state_and_mgmt()
         mgmt.discover_models_for_provider = AsyncMock(

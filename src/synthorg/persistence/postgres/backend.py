@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.company import Company
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
@@ -32,7 +33,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
 )
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
-from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001

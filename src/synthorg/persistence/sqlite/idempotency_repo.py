@@ -16,13 +16,13 @@ from datetime import datetime  # noqa: TC003
 import aiosqlite
 from pydantic import AwareDatetime  # noqa: TC002
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_PERSISTENCE_ERROR,
 )
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
-from synthorg.persistence.errors import QueryError
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
     IdempotencyOutcome,

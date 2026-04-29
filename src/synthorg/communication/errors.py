@@ -8,7 +8,7 @@ import copy
 from types import MappingProxyType
 from typing import Any, ClassVar
 
-from synthorg.api.errors import ErrorCategory, ErrorCode
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
 class CommunicationError(Exception):

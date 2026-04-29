@@ -50,7 +50,7 @@ Clients should dispatch on `error_code` (most specific) and fall back to `error_
 
 ## Not Found (3xxx)
 
-The NotFound hierarchy is driven by a single `NotFoundError` class with domain-specific `ErrorCode` members. Callers use :func:`synthorg.api.errors.resource_not_found` to pick the right code without constructing an error subclass by hand.
+The NotFound hierarchy is driven by a single `NotFoundError` class with domain-specific `ErrorCode` members. Callers use :func:`synthorg.core.domain_errors.resource_not_found` to pick the right code without constructing an error subclass by hand.
 
 | Code | Name | Resource |
 |------|------|----------|
@@ -153,7 +153,7 @@ Each handler:
    9457 envelope (or bare `application/problem+json` body when the
    client asks for it).
 3. Scrubs the upstream message on 5xx.  4xx behavior varies: domain
-   handlers like `handle_backup_error` and `handle_api_error` pass a
+   handlers like `handle_backup_error` and `handle_domain_error` pass a
    user-safe exception message through, while several Litestar-side
    handlers intentionally return fixed public messages
    (`handle_record_not_found` -> `"Resource not found"`,
@@ -179,4 +179,6 @@ When introducing a new domain error family:
 
 - [Design: security](../design/security.md): the SEC-1 rules behind the categories
 - [REST API reference](../openapi/index.md): per-route examples plus a worked content-negotiation walkthrough
-- `src/synthorg/api/errors.py`: the authoritative enum and error classes
+- `src/synthorg/core/error_taxonomy.py`: the authoritative `ErrorCategory` / `ErrorCode` enums + RFC 9457 helpers
+- `src/synthorg/core/domain_errors.py`: the `DomainError` base + concrete subclasses (`NotFoundError`, `ConflictError`, `ValidationError`, ...)
+- `src/synthorg/core/persistence_errors.py`: the `PersistenceError` hierarchy

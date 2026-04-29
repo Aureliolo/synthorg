@@ -5,6 +5,16 @@ and error hierarchy so consumers can import from ``synthorg.persistence``
 directly.
 """
 
+from synthorg.core.persistence_errors import (
+    ArtifactStorageFullError,
+    ArtifactTooLargeError,
+    DuplicateRecordError,
+    MigrationError,
+    PersistenceConnectionError,
+    PersistenceError,
+    QueryError,
+    RecordNotFoundError,
+)
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
 from synthorg.persistence.artifact_protocol import ArtifactRepository
 from synthorg.persistence.audit_protocol import AuditRepository
@@ -23,16 +33,6 @@ from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import (
     DecisionRepository,
     DecisionRole,
-)
-from synthorg.persistence.errors import (
-    ArtifactStorageFullError,
-    ArtifactTooLargeError,
-    DuplicateRecordError,
-    MigrationError,
-    PersistenceConnectionError,
-    PersistenceError,
-    QueryError,
-    RecordNotFoundError,
 )
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.message_protocol import MessageRepository

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from synthorg.api import exception_handlers
-from synthorg.api.errors import ErrorCategory, ErrorCode
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 pytestmark = pytest.mark.unit
 

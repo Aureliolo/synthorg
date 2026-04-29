@@ -16,19 +16,6 @@ from litestar.exceptions import (
 from litestar.testing import TestClient
 
 from synthorg.api.dto import ProblemDetail
-from synthorg.api.errors import (
-    ApiError,
-    ApiValidationError,
-    ConflictError,
-    ErrorCategory,
-    ErrorCode,
-    ForbiddenError,
-    NotFoundError,
-    ServiceUnavailableError,
-    UnauthorizedError,
-    category_title,
-    category_type_uri,
-)
 from synthorg.api.exception_handlers import (
     _build_error_response,
     _build_response,
@@ -46,7 +33,22 @@ from synthorg.backup.errors import (
     RestoreError,
     RetentionError,
 )
-from synthorg.persistence.errors import (
+from synthorg.core.domain_errors import (
+    ConflictError,
+    DomainError,
+    ForbiddenError,
+    NotFoundError,
+    ServiceUnavailableError,
+    UnauthorizedError,
+    ValidationError,
+)
+from synthorg.core.error_taxonomy import (
+    ErrorCategory,
+    ErrorCode,
+    category_title,
+    category_type_uri,
+)
+from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceError,
     RecordNotFoundError,
@@ -444,7 +446,7 @@ class TestExceptionHandlers:
         @get("/test")
         async def handler() -> None:
             msg = "Bad field"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
@@ -989,8 +991,8 @@ class TestCategoryForStatus:
         assert retryable is False
 
 
-class TestApiErrorInstantiation:
-    """Tests for ApiError and subclass instantiation behavior."""
+class TestDomainErrorInstantiation:
+    """Tests for DomainError subclass instantiation behavior."""
 
     @pytest.mark.parametrize(
         ("cls", "expected_status", "expected_default"),
@@ -1004,7 +1006,7 @@ class TestApiErrorInstantiation:
     )
     def test_default_message_and_status(
         self,
-        cls: type[ApiError],
+        cls: type[DomainError],
         expected_status: int,
         expected_default: str,
     ) -> None:
@@ -1444,11 +1446,13 @@ class TestBareResponseFixes:
 
     def test_artifact_too_large_produces_rfc_9457_413(self) -> None:
         """Artifact upload over the size limit returns 413 + error_detail."""
-        from synthorg.api.errors import ArtifactTooLargeApiError
+        from synthorg.core.domain_errors import (
+            ArtifactRejectedTooLargeError,
+        )
 
         @post("/upload")
         async def handler() -> None:
-            raise ArtifactTooLargeApiError
+            raise ArtifactRejectedTooLargeError
 
         with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.post("/upload")
@@ -1489,12 +1493,12 @@ class TestBareResponseFixes:
             )
 
     def test_invalid_project_status_produces_rfc_9457_422(self) -> None:
-        """Invalid project status filter raises ApiValidationError (422)."""
+        """Invalid project status filter raises ValidationError (422)."""
 
         @get("/projects")
         async def handler() -> None:
             msg = "Invalid project status: 'bogus'. Valid values: active"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/projects")

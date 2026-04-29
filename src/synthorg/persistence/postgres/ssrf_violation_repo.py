@@ -10,6 +10,7 @@ import psycopg
 from psycopg.rows import dict_row
 from pydantic import AwareDatetime, ValidationError
 
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -17,7 +18,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:

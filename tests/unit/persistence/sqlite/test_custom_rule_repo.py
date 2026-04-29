@@ -6,9 +6,9 @@ from uuid import uuid4
 import aiosqlite
 import pytest
 
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
-from synthorg.persistence.errors import ConstraintViolationError
 from synthorg.persistence.sqlite.custom_rule_repo import (
     SQLiteCustomRuleRepository,
 )

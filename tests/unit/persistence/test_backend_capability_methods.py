@@ -62,7 +62,9 @@ class TestBuildOntologyVersioning:
 
     async def test_sqlite_factory_not_connected_raises(self) -> None:
         """Calling the factory without ``connect()`` first raises cleanly."""
-        from synthorg.persistence.errors import PersistenceConnectionError
+        from synthorg.core.persistence_errors import (
+            PersistenceConnectionError,
+        )
 
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
         with pytest.raises(PersistenceConnectionError):

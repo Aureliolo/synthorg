@@ -9,7 +9,7 @@ import math
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, Literal
 
-from synthorg.api.errors import ErrorCategory, ErrorCode
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 ProviderErrorLabel = Literal[
     "rate_limit",

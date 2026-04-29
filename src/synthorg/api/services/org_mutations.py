@@ -16,14 +16,12 @@ from synthorg.api.dto_org import (  # noqa: TC001
     UpdateCompanyRequest,
     UpdateDepartmentRequest,
 )
-from synthorg.api.errors import (
-    ApiValidationError,
-    VersionConflictError,
-)
 from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
 from synthorg.api.services._org_department_mutations import OrgDepartmentMutationsMixin
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Company, Department
+from synthorg.core.domain_errors import ValidationError, VersionConflictError
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_COMPANY_UPDATED,
@@ -31,7 +29,6 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
-from synthorg.persistence.errors import PersistenceError
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
 from synthorg.settings.service import SettingsService  # noqa: TC001
@@ -245,7 +242,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
                 current_names=list(current_names),
                 requested_names=list(requested_names),
             )
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
     def _check_budget_sum(
         self,

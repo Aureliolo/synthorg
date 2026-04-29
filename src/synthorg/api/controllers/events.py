@@ -19,7 +19,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.auth.config import SSE_REVALIDATE_INTERVAL_SECONDS
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiValidationError, NotFoundError, UnauthorizedError
 from synthorg.api.guards import _READ_ROLES, require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
@@ -32,8 +31,14 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import StreamEvent  # noqa: TC001
+from synthorg.core.domain_errors import (
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_CLIENT_CONNECTED,
     EVENT_STREAM_CLIENT_DISCONNECTED,
@@ -211,14 +216,26 @@ def _validate_resume_payload(
         data: The client's resume payload.
 
     Raises:
-        ApiValidationError: If required fields are missing.
+        ValidationError: If required fields are missing.
     """
     if interrupt.type == InterruptType.TOOL_APPROVAL and data.decision is None:
         msg = "TOOL_APPROVAL interrupts require a decision"
-        raise ApiValidationError(msg)
+        logger.warning(
+            API_VALIDATION_FAILED,
+            reason="resume_payload_missing_field",
+            interrupt_type=interrupt.type.value,
+            missing_field="decision",
+        )
+        raise ValidationError(msg)
     if interrupt.type == InterruptType.INFO_REQUEST and data.response is None:
         msg = "INFO_REQUEST interrupts require a response"
-        raise ApiValidationError(msg)
+        logger.warning(
+            API_VALIDATION_FAILED,
+            reason="resume_payload_missing_field",
+            interrupt_type=interrupt.type.value,
+            missing_field="response",
+        )
+        raise ValidationError(msg)
 
 
 async def _resolve_interrupt(
@@ -240,7 +257,7 @@ async def _resolve_interrupt(
 
     Raises:
         NotFoundError: If interrupt doesn't exist or is no longer pending.
-        ApiValidationError: If payload doesn't match interrupt type.
+        ValidationError: If payload doesn't match interrupt type.
     """
     interrupt = await store.get(interrupt_id)
     if interrupt is None:

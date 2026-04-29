@@ -28,6 +28,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.errors import (
     SubworkflowIOError,
@@ -48,7 +49,6 @@ from synthorg.observability.events.api import API_CURSOR_INVALID
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_INVALID_REQUEST,
 )
-from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.subworkflow_repo import (
     ParentReference,
     SubworkflowSummary,

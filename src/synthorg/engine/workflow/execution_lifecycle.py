@@ -13,6 +13,7 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
+from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
@@ -32,7 +33,6 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_NODE_TASK_FAILED,
     WORKFLOW_EXEC_NOT_FOUND,
 )
-from synthorg.persistence.errors import VersionConflictError
 from synthorg.persistence.workflow_execution_repo import (  # noqa: TC001
     WorkflowExecutionRepository,
 )

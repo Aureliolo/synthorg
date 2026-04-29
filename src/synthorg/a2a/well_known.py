@@ -204,7 +204,7 @@ class WellKnownAgentCardController(Controller):
         agent_id: str,
     ) -> Response[dict[str, Any]]:
         """Serve a per-agent Agent Card."""
-        from synthorg.api.errors import NotFoundError  # noqa: PLC0415
+        from synthorg.core.domain_errors import NotFoundError  # noqa: PLC0415
 
         app_state = state["app_state"]
         a2a_config = app_state.config.a2a

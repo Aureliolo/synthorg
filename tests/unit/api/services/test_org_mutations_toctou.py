@@ -14,9 +14,9 @@ import pytest
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.dto_org import CreateDepartmentRequest
-from synthorg.api.errors import VersionConflictError
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import FakePersistenceBackend

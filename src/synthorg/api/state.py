@@ -12,7 +12,6 @@ from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.cursor import CursorSecret  # noqa: TC001
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
@@ -53,6 +52,7 @@ from synthorg.communication.meeting.orchestrator import (
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig  # noqa: TC001
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001

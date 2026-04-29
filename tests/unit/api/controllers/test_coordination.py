@@ -405,10 +405,10 @@ class TestResolveAgentsBatchLookup:
         assert [a.name for a in result] == ["alice", "bob", "carol"]
 
     async def test_raises_validation_error_on_missing_agent(self) -> None:
-        """A None entry in the batch result surfaces as ApiValidationError."""
+        """A None entry in the batch result surfaces as ValidationError."""
         from synthorg.api.controllers.coordination import CoordinationController
         from synthorg.api.dto import CoordinateTaskRequest
-        from synthorg.api.errors import ApiValidationError
+        from synthorg.core.domain_errors import ValidationError
 
         alice = _make_agent("alice")
         mock_registry = AsyncMock(spec=AgentRegistryService)
@@ -418,7 +418,7 @@ class TestResolveAgentsBatchLookup:
         controller = CoordinationController(owner=None)  # type: ignore[arg-type]
         data = CoordinateTaskRequest(agent_names=("alice", "missing"))
 
-        with pytest.raises(ApiValidationError, match="missing"):
+        with pytest.raises(ValidationError, match="missing"):
             await controller._resolve_agents(
                 app_state,  # type: ignore[arg-type]
                 data,

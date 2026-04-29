@@ -11,6 +11,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+from synthorg.core.persistence_errors import (
+    ArtifactStorageFullError,
+    ArtifactTooLargeError,
+    RecordNotFoundError,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
@@ -19,11 +24,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_STORAGE_DELETED,
     PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
-)
-from synthorg.persistence.errors import (
-    ArtifactStorageFullError,
-    ArtifactTooLargeError,
-    RecordNotFoundError,
 )
 
 logger = get_logger(__name__)

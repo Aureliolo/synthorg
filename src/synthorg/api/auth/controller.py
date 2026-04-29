@@ -34,19 +34,20 @@ from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.system_user import SYSTEM_USERNAME, is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import (
+from synthorg.api.guards import HumanRole
+from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.core.domain_errors import (
     AccountLockedError,
-    ApiValidationError,
     ConflictError,
     NotFoundError,
     UnauthorizedError,
+    ValidationError,
 )
-from synthorg.api.guards import HumanRole
-from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SESSION_LISTED,
     API_SESSION_REVOKE_FAILED,
+    API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.security import (
     SECURITY_AUTH_ACCOUNT_LOCKED,
@@ -618,7 +619,13 @@ class AuthController(Controller):
 
         if scope not in _VALID_SCOPES:
             msg = f"Invalid scope: {scope!r}. Valid: own, all"
-            raise ApiValidationError(msg)
+            logger.warning(
+                API_VALIDATION_FAILED,
+                reason="invalid_session_scope",
+                scope=scope,
+                valid_scopes=sorted(_VALID_SCOPES),
+            )
+            raise ValidationError(msg)
 
         app_state = request.app.state["app_state"]
         store = app_state.session_store

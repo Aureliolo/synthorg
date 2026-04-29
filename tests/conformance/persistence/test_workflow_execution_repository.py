@@ -15,6 +15,7 @@ from synthorg.core.enums import (
     WorkflowNodeType,
     WorkflowType,
 )
+from synthorg.core.persistence_errors import DuplicateRecordError, VersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -23,10 +24,6 @@ from synthorg.engine.workflow.definition import (
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
-)
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    VersionConflictError,
 )
 from synthorg.persistence.protocol import PersistenceBackend
 

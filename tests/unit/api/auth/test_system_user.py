@@ -11,7 +11,7 @@ from synthorg.api.auth.system_user import (
     is_system_user,
 )
 from synthorg.api.guards import HumanRole
-from synthorg.persistence.errors import QueryError
+from synthorg.core.persistence_errors import QueryError
 from tests.unit.api.conftest import _TEST_JWT_SECRET
 from tests.unit.api.fakes import FakePersistenceBackend
 

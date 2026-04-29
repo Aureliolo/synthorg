@@ -13,15 +13,15 @@ from synthorg.api.dto import (
     CoordinationPhaseResponse,
     CoordinationResultResponse,
 )
-from synthorg.api.errors import (
-    ApiValidationError,
-    NotFoundError,
-    ServiceUnavailableError,
-)
 from synthorg.api.guards import require_write_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.domain_errors import (
+    NotFoundError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationResult,
@@ -137,7 +137,7 @@ class CoordinationController(Controller):
 
         Raises:
             NotFoundError: If the task is not found.
-            ApiValidationError: If agent resolution fails.
+            ValidationError: If agent resolution fails.
             ServiceUnavailableError: If coordinator not configured.
         """
         app_state: AppState = state.app_state
@@ -265,7 +265,7 @@ class CoordinationController(Controller):
                     "error": client_msg,
                 },
             )
-            raise ApiValidationError(client_msg) from exc
+            raise ValidationError(client_msg) from exc
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -329,7 +329,7 @@ class CoordinationController(Controller):
             Tuple of agent identities.
 
         Raises:
-            ApiValidationError: If agents cannot be resolved.
+            ValidationError: If agents cannot be resolved.
         """
         registry = app_state.agent_registry
 
@@ -345,7 +345,7 @@ class CoordinationController(Controller):
                         agent_name=name,
                     )
                     msg = f"Agent {name!r} not found"
-                    raise ApiValidationError(msg)
+                    raise ValidationError(msg)
                 agents.append(agent)
             return tuple(agents)
 
@@ -357,5 +357,5 @@ class CoordinationController(Controller):
                 error="No active agents available",
             )
             msg = "No active agents available for coordination"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         return active_agents

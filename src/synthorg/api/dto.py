@@ -17,7 +17,6 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.api.errors import ErrorCategory, ErrorCode  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.enums import (
     ApprovalRiskLevel,
@@ -27,6 +26,7 @@ from synthorg.core.enums import (
     TaskStatus,
     TaskType,
 )
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.core.validation import is_valid_action_type
 

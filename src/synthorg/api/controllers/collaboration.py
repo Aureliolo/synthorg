@@ -10,14 +10,14 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import (
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import (
     NotFoundError,
     ServiceUnavailableError,
     UnauthorizedError,
 )
-from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.collaboration_override_store import (
     CollaborationOverrideStore,  # noqa: TC001

@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from tests.unit.api.fakes import (
     FakeMessageBus,
     FakePersistenceBackend,

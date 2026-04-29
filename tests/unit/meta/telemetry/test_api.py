@@ -9,7 +9,7 @@ from synthorg.api.controllers.meta_analytics import (
     _require_collector,
     configure_analytics_controller,
 )
-from synthorg.api.errors import ServiceUnavailableError
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.telemetry.collector import InMemoryAnalyticsCollector
 from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent, EventBatch

@@ -21,17 +21,17 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    MalformedRowError,
-    QueryError,
-)
 from synthorg.security.models import AuditEntry
 
 logger = get_logger(__name__)

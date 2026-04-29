@@ -9,17 +9,14 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict
+from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.dto_personalities import PresetSource
-from synthorg.api.errors import (
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-)
 from synthorg.core.agent import PersonalityConfig
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.preset import (
     PRESET_CONFLICT,
     PRESET_CREATED,
@@ -80,7 +77,7 @@ def _normalize_preset_name(raw: str) -> str:
         Normalized lowercase name.
 
     Raises:
-        ApiValidationError: If the name is empty or has invalid format.
+        ValidationError: If the name is empty or has invalid format.
     """
     name = raw.strip().lower()
     if not name:
@@ -90,7 +87,7 @@ def _normalize_preset_name(raw: str) -> str:
             reason="blank",
         )
         msg = "Preset name must not be blank"
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
     if not _NAME_PATTERN.match(name):
         logger.warning(
             PRESET_VALIDATION_FAILED,
@@ -102,7 +99,7 @@ def _normalize_preset_name(raw: str) -> str:
             f"Invalid preset name {name!r}. "
             "Must match [a-z][a-z0-9_]* (lowercase, underscores only)."
         )
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
     return name
 
 
@@ -118,18 +115,19 @@ def _validate_personality_config(
         Validated PersonalityConfig instance.
 
     Raises:
-        ApiValidationError: If validation fails.
+        ValidationError: If validation fails.
     """
     try:
         return PersonalityConfig(**config)
-    except ValidationError as exc:
+    except PydanticValidationError as exc:
         logger.warning(
             PRESET_VALIDATION_FAILED,
             reason="invalid_config",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = "Invalid personality configuration: one or more fields failed validation"
-        raise ApiValidationError(msg) from exc
+        raise ValidationError(msg) from exc
 
 
 def _parse_config_json(config_json: str, preset_name: str) -> dict[str, Any]:
@@ -148,11 +146,13 @@ def _parse_config_json(config_json: str, preset_name: str) -> dict[str, Any]:
     try:
         parsed: dict[str, Any] = json.loads(config_json)
     except json.JSONDecodeError as exc:
-        logger.exception(
+        logger.warning(
             PRESET_VALIDATION_FAILED,
             preset_name=preset_name,
             reason="corrupt_json",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            exc_info=True,
         )
         msg = f"Personality preset {preset_name!r} has corrupt configuration"
         raise NotFoundError(msg) from exc
@@ -266,7 +266,7 @@ class PersonalityPresetService:
         Raises:
             ConflictError: If name shadows a builtin preset or a
                 custom preset with the same name already exists.
-            ApiValidationError: If name format or config is invalid.
+            ValidationError: If name format or config is invalid.
         """
         key = _normalize_preset_name(name)
         _check_not_builtin(key, "create")
@@ -329,7 +329,7 @@ class PersonalityPresetService:
         Raises:
             ConflictError: If name is a builtin preset.
             NotFoundError: If no custom preset with this name exists.
-            ApiValidationError: If name or config is invalid.
+            ValidationError: If name or config is invalid.
         """
         key = _normalize_preset_name(name)
         _check_not_builtin(key, "update")
@@ -382,7 +382,7 @@ class PersonalityPresetService:
         Raises:
             ConflictError: If name is a builtin preset.
             NotFoundError: If no custom preset with this name exists.
-            ApiValidationError: If name format is invalid.
+            ValidationError: If name format is invalid.
         """
         key = _normalize_preset_name(name)
         _check_not_builtin(key, "delete")

@@ -30,13 +30,6 @@ from litestar.exceptions import (
 
 from synthorg.api.cursor import InvalidCursorError
 from synthorg.api.dto import ApiResponse, ErrorDetail, ProblemDetail
-from synthorg.api.errors import (
-    ApiError,
-    ErrorCategory,
-    ErrorCode,
-    category_title,
-    category_type_uri,
-)
 from synthorg.backup.errors import (
     BackupError,
     BackupInProgressError,
@@ -47,6 +40,18 @@ from synthorg.budget.errors import (
     MixedCurrencyAggregationError,
 )
 from synthorg.communication.errors import CommunicationError
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import (
+    ErrorCategory,
+    ErrorCode,
+    category_title,
+    category_type_uri,
+)
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    PersistenceError,
+    RecordNotFoundError,
+)
 from synthorg.engine.errors import EngineError
 from synthorg.integrations.errors import IntegrationError
 from synthorg.observability import get_logger, safe_error_description
@@ -60,11 +65,6 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.metrics_hub import record_api_error
 from synthorg.ontology.errors import OntologyError
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    PersistenceError,
-    RecordNotFoundError,
-)
 from synthorg.providers.errors import ProviderError, RateLimitError
 from synthorg.tools.errors import ToolError
 
@@ -462,43 +462,6 @@ def handle_backup_error(
     )
 
 
-def handle_api_error(
-    request: Request[Any, Any, Any],
-    exc: ApiError,
-) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``ApiError`` subclasses to their declared status code."""
-    _log_error(request, exc, status=exc.status_code)
-    # For 5xx errors return the generic class-level default to avoid
-    # leaking internals.  For 4xx client errors return the actual
-    # exception message -- it was set by the controller and is user-safe.
-    if exc.status_code >= _SERVER_ERROR_THRESHOLD:
-        msg = type(exc).default_message
-    else:
-        msg = str(exc)
-    retry_after_raw = getattr(exc, "retry_after", None)
-    retry_after_val: int | None = None
-    if (
-        retry_after_raw is not None
-        and not isinstance(retry_after_raw, bool)
-        and isinstance(retry_after_raw, int)
-        and retry_after_raw >= 0
-    ):
-        retry_after_val = retry_after_raw
-    headers: dict[str, str] | None = None
-    if retry_after_val is not None:
-        headers = {"Retry-After": str(retry_after_val)}
-    return _build_response(
-        request,
-        detail=msg,
-        error_code=exc.error_code,
-        error_category=exc.error_category,
-        retryable=exc.retryable,
-        retry_after=retry_after_val,
-        status_code=exc.status_code,
-        headers=headers,
-    )
-
-
 def _normalize_status_code(raw: object) -> int:
     """Coerce a raw ``status_code`` attribute to a valid HTTP error code.
 
@@ -562,8 +525,10 @@ def _determine_retryable(exc: Exception) -> bool:
     in the MRO would otherwise mask the more specific signal.
     ``retryable`` is consulted only when ``is_retryable`` is not set.
     """
-    if hasattr(exc, "is_retryable"):
-        return bool(exc.is_retryable)
+    sentinel = object()
+    is_retryable = getattr(exc, "is_retryable", sentinel)
+    if is_retryable is not sentinel:
+        return bool(is_retryable)
     return bool(getattr(exc, "retryable", False))
 
 
@@ -830,11 +795,13 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         InvalidCursorError: handle_invalid_cursor,
         NotFoundException: handle_not_found,
         HTTPException: handle_http_exception,
-        ApiError: handle_api_error,
         # Domain error hierarchies -- MRO dispatch covers every subclass.
         # RateLimitError is listed explicitly so its narrower 429 status
         # takes precedence over the ProviderError (502) default when
-        # Litestar walks the raised exception's MRO.
+        # Litestar walks the raised exception's MRO.  ``DomainError`` is
+        # the universal RFC-9457 base for what was previously the
+        # ``ApiError`` family plus the generic NotFoundError /
+        # ConflictError / ValidationError relocated to ``core``.
         RateLimitError: handle_domain_error,
         EngineError: handle_domain_error,
         BudgetExhaustedError: handle_domain_error,
@@ -844,6 +811,7 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         CommunicationError: handle_domain_error,
         IntegrationError: handle_domain_error,
         ToolError: handle_domain_error,
+        DomainError: handle_domain_error,
         BackupError: handle_backup_error,
         Exception: handle_unexpected,
     }

@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -53,7 +54,6 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_REQUESTED,
     MEMORY_FINE_TUNE_STARTED,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001

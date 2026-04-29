@@ -14,17 +14,20 @@ from synthorg.api.dto import (
     CreateProjectRequest,
     PaginatedResponse,
 )
-from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.observability.events.api import (
+    API_RESOURCE_NOT_FOUND,
+    API_VALIDATION_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -81,7 +84,7 @@ class ProjectController(Controller):
             Paginated list of projects.
 
         Raises:
-            ApiValidationError: ``status`` is not a valid
+            ValidationError: ``status`` is not a valid
                 :class:`ProjectStatus` value.
         """
         parsed_status: ProjectStatus | None = None
@@ -91,7 +94,13 @@ class ProjectController(Controller):
             except ValueError as exc:
                 valid = ", ".join(e.value for e in ProjectStatus)
                 msg = f"Invalid project status: {status!r}. Valid values: {valid}"
-                raise ApiValidationError(msg) from exc
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    reason="invalid_project_status",
+                    status=status,
+                    valid=valid,
+                )
+                raise ValidationError(msg) from exc
 
         projects = await _service(state).list_projects(
             status=parsed_status,

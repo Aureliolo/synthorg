@@ -15,17 +15,17 @@ from synthorg.api.dto import (
     TransitionTaskRequest,
     UpdateTaskRequest,
 )
-from synthorg.api.errors import (
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-    ServiceUnavailableError,
-)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.engine.errors import (
@@ -87,7 +87,7 @@ def _map_task_engine_errors(
         TaskEngineQueueFullError    -> 503 ServiceUnavailableError
         TaskInternalError           -> 503 ServiceUnavailableError
         TaskVersionConflictError    -> 409 ConflictError
-        TaskMutationError           -> 422 ApiValidationError
+        TaskMutationError           -> 422 ValidationError
         Other                       -> 503 ServiceUnavailableError
 
     Args:
@@ -140,7 +140,7 @@ def _map_task_engine_errors(
             error=str(exc),
             error_type="TaskMutationError",
         )
-        return ApiValidationError(str(exc))
+        return ValidationError(str(exc))
     # Unknown error type -- log and wrap to prevent leaking internals
     logger.error(
         API_TASK_MUTATION_FAILED,

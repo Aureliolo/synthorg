@@ -8,6 +8,11 @@ import pytest
 import structlog
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.observability import safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
@@ -18,11 +23,6 @@ from synthorg.persistence._shared.audit import (
     audit_entry_to_payload,
     classify_audit_save_error,
     row_to_audit_entry,
-)
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    MalformedRowError,
-    QueryError,
 )
 from synthorg.security.models import AuditEntry
 

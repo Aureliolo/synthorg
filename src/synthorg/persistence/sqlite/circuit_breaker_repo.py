@@ -6,6 +6,7 @@ import sqlite3
 import aiosqlite
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED,
@@ -16,7 +17,6 @@ from synthorg.observability.events.persistence import (
 from synthorg.persistence.circuit_breaker_repo import (
     CircuitBreakerStateRecord,
 )
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
