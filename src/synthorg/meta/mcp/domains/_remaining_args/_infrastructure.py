@@ -36,8 +36,12 @@ class SettingsUpdateArgs(_ArgsBase):
     value: str = Field(description="New value")
 
 
-class SettingsDeleteArgs(_ArgsBase):
-    """Args for ``settings.delete``."""
+class SettingsDeleteArgs(DestructiveGuardrailFields):
+    """Args for ``settings.delete``.
+
+    Destructive admin op: callers must supply ``confirm=True`` and a
+    non-blank ``reason`` (mixin), in addition to the setting key.
+    """
 
     key: NotBlankStr = Field(description="Setting key")
 

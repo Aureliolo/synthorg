@@ -100,11 +100,12 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "settings",
         "delete",
-        "Delete a setting.",
+        "Delete a setting (destructive; requires confirm).",
         {
             "key": {"type": "string", "description": "Setting key"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("key",),
+        required=("key", "reason", "confirm"),
         args_model=SettingsDeleteArgs,
     ),
     # --- Providers ---
