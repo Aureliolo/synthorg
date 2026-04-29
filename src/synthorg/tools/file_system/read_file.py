@@ -5,7 +5,9 @@ file-size guard to prevent loading excessively large files into memory.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -16,6 +18,7 @@ from synthorg.observability.events.tool import (
     TOOL_FS_SIZE_EXCEEDED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.file_system._args import ReadFileArgs
 from synthorg.tools.file_system._base_fs_tool import (
     BaseFileSystemTool,
     _map_os_error,
@@ -84,12 +87,10 @@ class ReadFileTool(BaseFileSystemTool):
             result = await tool.execute(arguments={"path": "src/main.py"})
     """
 
-    def __init__(self, *, workspace_root: Path) -> None:
-        """Initialize the read-file tool.
+    args_model: ClassVar[type[BaseModel] | None] = ReadFileArgs
 
-        Args:
-            workspace_root: Root directory bounding file access.
-        """
+    def __init__(self, *, workspace_root: Path) -> None:
+        """Initialize the read-file tool, deriving its schema from ReadFileArgs."""
         super().__init__(
             workspace_root=workspace_root,
             name="read_file",
@@ -98,27 +99,7 @@ class ReadFileTool(BaseFileSystemTool):
                 "line-range selection via start_line and end_line."
             ),
             action_type=ActionType.CODE_READ,
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "File path relative to workspace",
-                    },
-                    "start_line": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "description": "First line to read (1-based inclusive)",
-                    },
-                    "end_line": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "description": "Last line to read (1-based inclusive)",
-                    },
-                },
-                "required": ["path"],
-                "additionalProperties": False,
-            },
+            parameters_schema=ReadFileArgs.model_json_schema(),
         )
 
     @staticmethod

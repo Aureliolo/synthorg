@@ -4,7 +4,9 @@ import asyncio
 import itertools
 import re
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -15,6 +17,7 @@ from synthorg.observability.events.tool import (
     TOOL_FS_STAT_FAILED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.file_system._args import ListDirectoryArgs
 from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool
 
 if TYPE_CHECKING:
@@ -130,12 +133,10 @@ class ListDirectoryTool(BaseFileSystemTool):
             result = await tool.execute(arguments={})
     """
 
-    def __init__(self, *, workspace_root: Path) -> None:
-        """Initialize the list-directory tool.
+    args_model: ClassVar[type[BaseModel] | None] = ListDirectoryArgs
 
-        Args:
-            workspace_root: Root directory bounding file access.
-        """
+    def __init__(self, *, workspace_root: Path) -> None:
+        """Initialize the list-directory tool with the typed args schema."""
         super().__init__(
             workspace_root=workspace_root,
             name="list_directory",
@@ -144,28 +145,7 @@ class ListDirectoryTool(BaseFileSystemTool):
                 "List files and directories. Supports glob filtering "
                 "and recursive listing."
             ),
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": (
-                            'Directory path relative to workspace (default ".")'
-                        ),
-                        "default": ".",
-                    },
-                    "pattern": {
-                        "type": "string",
-                        "description": 'Glob filter (e.g. "*.py")',
-                    },
-                    "recursive": {
-                        "type": "boolean",
-                        "description": "Recursive listing (default false)",
-                        "default": False,
-                    },
-                },
-                "additionalProperties": False,
-            },
+            parameters_schema=ListDirectoryArgs.model_json_schema(),
         )
 
     def _validate_list_args(

@@ -4,7 +4,9 @@ import asyncio
 import os
 import pathlib
 import tempfile
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -14,6 +16,7 @@ from synthorg.observability.events.tool import (
     TOOL_FS_WRITE,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.file_system._args import WriteFileArgs
 from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool
 
 if TYPE_CHECKING:
@@ -80,12 +83,10 @@ class WriteFileTool(BaseFileSystemTool):
             )
     """
 
-    def __init__(self, *, workspace_root: Path) -> None:
-        """Initialize the write-file tool.
+    args_model: ClassVar[type[BaseModel] | None] = WriteFileArgs
 
-        Args:
-            workspace_root: Root directory bounding file access.
-        """
+    def __init__(self, *, workspace_root: Path) -> None:
+        """Initialize the write-file tool, deriving its schema from WriteFileArgs."""
         super().__init__(
             workspace_root=workspace_root,
             name="write_file",
@@ -94,28 +95,7 @@ class WriteFileTool(BaseFileSystemTool):
                 "Write content to a file, creating or overwriting it. "
                 "Set create_directories to true to create parent dirs."
             ),
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "File path relative to workspace",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "Content to write",
-                    },
-                    "create_directories": {
-                        "type": "boolean",
-                        "description": (
-                            "Create parent directories if missing (default false)"
-                        ),
-                        "default": False,
-                    },
-                },
-                "required": ["path", "content"],
-                "additionalProperties": False,
-            },
+            parameters_schema=WriteFileArgs.model_json_schema(),
         )
 
     def _validate_write_args(
