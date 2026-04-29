@@ -8,6 +8,8 @@ import json
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError as PydanticValidationError
+
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -111,6 +113,37 @@ class MCPToolInvoker:
                 content=json.dumps({"error": f"No handler for tool: {tool_name}"}),
                 is_error=True,
             )
+
+        # Optional typed-args validation (Phase 4 of #1611): when the
+        # tool's ``MCPToolDef.args_model`` is set, validate the raw
+        # arguments dict against the Pydantic model before dispatch.
+        # ``ValidationError`` surfaces as an ``invalid_argument`` error
+        # envelope without ever reaching the handler.  Unmigrated tools
+        # (``args_model is None``) keep their legacy ``common_args``
+        # validation inside the handler body.
+        if tool_def.args_model is not None:
+            try:
+                tool_def.args_model.model_validate(dict(arguments))
+            except PydanticValidationError as exc:
+                first = exc.errors(include_input=False, include_url=False)
+                detail = first[0]["msg"] if first else str(exc)
+                logger.warning(
+                    MCP_SERVER_INVOKE_FAILED,
+                    tool_name=tool_name,
+                    error_type="ArgumentValidationError",
+                    error=detail,
+                )
+                return ToolExecutionResult(
+                    content=json.dumps(
+                        {
+                            "status": "error",
+                            "error_type": "ArgumentValidationError",
+                            "message": detail,
+                            "domain_code": "invalid_argument",
+                        },
+                    ),
+                    is_error=True,
+                )
 
         # Invoke handler.  Re-raise MemoryError/RecursionError
         # (system-critical) and let application exceptions map to
