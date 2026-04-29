@@ -34,7 +34,7 @@ from pydantic import BaseModel, ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.versioning import (
     VERSION_COUNT_FAILED,
     VERSION_DELETE_FAILED,
@@ -143,22 +143,24 @@ class PostgresVersionRepository[T: BaseModel]:
         except ValidationError as exc:
             context = f"{row.get('entity_id', '?')}@v{row.get('version', '?')}"
             msg = f"Schema mismatch in version snapshot {context!r}: {exc}"
-            logger.exception(
+            logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
                 context=context,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="schema_drift",
             )
             raise QueryError(msg) from exc
         except (ValueError, KeyError) as exc:
             context = f"{row.get('entity_id', '?')}@v{row.get('version', '?')}"
             msg = f"Failed to deserialize version snapshot {context!r}: {exc}"
-            logger.exception(
+            logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
                 context=context,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="unexpected",
             )
             raise QueryError(msg) from exc
@@ -168,11 +170,12 @@ class PostgresVersionRepository[T: BaseModel]:
             # Catch-all for unconstrained deserialize_snapshot callbacks
             context = f"{row.get('entity_id', '?')}@v{row.get('version', '?')}"
             msg = f"Failed to deserialize version snapshot {context!r}: {exc}"
-            logger.exception(
+            logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
                 context=context,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="callback_error",
             )
             raise QueryError(msg) from exc
@@ -198,12 +201,13 @@ class PostgresVersionRepository[T: BaseModel]:
                 f"{version.version} of {version.entity_id!r} "
                 f"in {self._table}"
             )
-            logger.exception(
+            logger.warning(
                 VERSION_SAVE_FAILED,
                 table=self._table,
                 entity_id=version.entity_id,
                 version=version.version,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         try:
@@ -226,12 +230,13 @@ class PostgresVersionRepository[T: BaseModel]:
                 f"Failed to save version {version.version} "
                 f"for {version.entity_id!r} in {self._table}"
             )
-            logger.exception(
+            logger.warning(
                 VERSION_SAVE_FAILED,
                 table=self._table,
                 entity_id=version.entity_id,
                 version=version.version,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return inserted
@@ -254,12 +259,13 @@ class PostgresVersionRepository[T: BaseModel]:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch version {version} for {entity_id!r}"
-            logger.exception(
+            logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
                 entity_id=entity_id,
                 version=version,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -283,11 +289,12 @@ class PostgresVersionRepository[T: BaseModel]:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch latest version for {entity_id!r}"
-            logger.exception(
+            logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
                 entity_id=entity_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -312,12 +319,13 @@ class PostgresVersionRepository[T: BaseModel]:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch version by hash for {entity_id!r}"
-            logger.exception(
+            logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
                 entity_id=entity_id,
                 content_hash=content_hash,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -350,11 +358,12 @@ class PostgresVersionRepository[T: BaseModel]:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to list versions for {entity_id!r}"
-            logger.exception(
+            logger.warning(
                 VERSION_LIST_FAILED,
                 table=self._table,
                 entity_id=entity_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(
@@ -376,11 +385,12 @@ class PostgresVersionRepository[T: BaseModel]:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to count versions for {entity_id!r}"
-            logger.exception(
+            logger.warning(
                 VERSION_COUNT_FAILED,
                 table=self._table,
                 entity_id=entity_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return int(row["count"]) if row else 0
@@ -394,11 +404,12 @@ class PostgresVersionRepository[T: BaseModel]:
                 count = cur.rowcount
         except psycopg.Error as exc:
             msg = f"Failed to delete versions for {entity_id!r}"
-            logger.exception(
+            logger.warning(
                 VERSION_DELETE_FAILED,
                 table=self._table,
                 entity_id=entity_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return count

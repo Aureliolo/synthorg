@@ -140,10 +140,11 @@ def _row_to_plan(row: aiosqlite.Row) -> TrainingPlan:
     ) as exc:
         plan_id = data.get("id", "<unknown>")
         msg = f"Failed to deserialize training plan {plan_id!r}"
-        logger.exception(
+        logger.warning(
             HR_TRAINING_PERSISTENCE_ERROR,
             plan_id=str(plan_id),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 
@@ -217,10 +218,11 @@ class SQLiteTrainingPlanRepository:
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch training plan {plan_id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 plan_id=str(plan_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -251,10 +253,11 @@ LIMIT 1""",
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch latest pending plan for {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 agent_id=str(agent_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -292,10 +295,11 @@ LIMIT 1""",
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch latest plan for {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 agent_id=str(agent_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -325,10 +329,11 @@ ORDER BY created_at DESC""",
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list plans for {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 agent_id=str(agent_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return tuple(_row_to_plan(row) for row in rows)

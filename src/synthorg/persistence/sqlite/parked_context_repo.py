@@ -84,10 +84,11 @@ INSERT OR REPLACE INTO parked_contexts (
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query parked context {parked_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
                 parked_id=parked_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -112,10 +113,11 @@ INSERT OR REPLACE INTO parked_contexts (
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query parked context by approval {approval_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
                 approval_id=approval_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -137,10 +139,11 @@ INSERT OR REPLACE INTO parked_contexts (
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query parked contexts for agent {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -191,9 +194,10 @@ INSERT OR REPLACE INTO parked_contexts (
             return ParkedContext.model_validate(row)
         except (ValidationError, json.JSONDecodeError) as exc:
             msg = f"Failed to deserialize parked context {row.get('id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
                 parked_id=row.get("id"),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

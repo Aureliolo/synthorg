@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.checkpoint.models import Checkpoint
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CHECKPOINT_DELETE_FAILED,
     PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED,
@@ -76,18 +76,20 @@ ON CONFLICT(id) DO UPDATE SET
                 await conn.commit()
         except json.JSONDecodeError as exc:
             msg = f"Invalid JSON in context_json for checkpoint {checkpoint.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_CHECKPOINT_SAVE_FAILED,
                 checkpoint_id=checkpoint.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save checkpoint {checkpoint.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_CHECKPOINT_SAVE_FAILED,
                 checkpoint_id=checkpoint.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -144,11 +146,12 @@ ON CONFLICT(id) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to query latest checkpoint"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_CHECKPOINT_QUERY_FAILED,
                 execution_id=execution_id,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -180,10 +183,11 @@ ON CONFLICT(id) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete checkpoints for execution {execution_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_CHECKPOINT_DELETE_FAILED,
                 execution_id=execution_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -207,9 +211,10 @@ ON CONFLICT(id) DO UPDATE SET
             return Checkpoint.model_validate(row)
         except ValidationError as exc:
             msg = f"Failed to deserialize checkpoint {row.get('id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED,
                 checkpoint_id=row.get("id"),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

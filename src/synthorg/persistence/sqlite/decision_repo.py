@@ -21,7 +21,7 @@ from pydantic import AwareDatetime, ValidationError
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionRecord
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
     PERSISTENCE_DECISION_RECORD_QUERIED,
@@ -373,29 +373,32 @@ class SQLiteDecisionRepository:
                 # callers see the structural failure rather than a
                 # generic QueryError that could be mistaken for a
                 # transient persistence hiccup.
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                     record_id=record_id,
-                    error=str(exc),
-                    sqlite_errorname=exc.sqlite_errorname,
                     error_type="StructuralConstraintViolation",
+                    exc_class=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    sqlite_errorname=exc.sqlite_errorname,
                 )
                 raise
             msg = f"Failed to save decision record {record_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                 record_id=record_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 sqlite_errorname=exc.sqlite_errorname,
             )
             raise QueryError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
             msg = f"Failed to save decision record {record_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                 record_id=record_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -426,10 +429,11 @@ class SQLiteDecisionRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
             msg = f"Failed to commit decision record {record_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                 record_id=record_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return int(row["version"])
@@ -466,10 +470,11 @@ class SQLiteDecisionRepository:
                 row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch decision record {record_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
                 record_id=record_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -493,10 +498,11 @@ class SQLiteDecisionRepository:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list decision records for task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         results = tuple(self._row_to_record(dict(row)) for row in rows)
@@ -574,11 +580,12 @@ class SQLiteDecisionRepository:
             msg = (
                 f"Failed to list decision records for agent {agent_id!r} (role={role})"
             )
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
                 agent_id=agent_id,
                 role=role,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         results = tuple(self._row_to_record(dict(row)) for row in rows)
@@ -660,10 +667,10 @@ class SQLiteDecisionRepository:
                 f"Failed to deserialize decision record {row.get('id')!r}: "
                 f"{type(exc).__name__}"
             )
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
                 record_id=row.get("id"),
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

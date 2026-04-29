@@ -26,7 +26,7 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
@@ -116,10 +116,11 @@ def _deserialize_row(
         KeyError,
     ) as exc:
         msg = f"Failed to deserialize workflow execution {context_id!r}"
-        logger.exception(
+        logger.warning(
             PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
             execution_id=context_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 
@@ -245,10 +246,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             except sqlite3.Error as exc:
                 await self._db.rollback()
                 msg = f"Failed to save workflow execution {execution.id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                     execution_id=execution.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -288,10 +290,11 @@ WHERE id = ? AND version = ?""",
             except sqlite3.Error as exc:
                 await self._db.rollback()
                 msg = f"Failed to save workflow execution {execution.id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                     execution_id=execution.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -318,10 +321,11 @@ WHERE id = ? AND version = ?""",
             row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch workflow execution {execution_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_FETCH_FAILED,
                 execution_id=execution_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -366,10 +370,11 @@ WHERE id = ? AND version = ?""",
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = f"Failed to list executions for definition {definition_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
                 definition_id=definition_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -408,10 +413,11 @@ WHERE id = ? AND version = ?""",
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = f"Failed to list executions with status {status.value!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
                 status=status.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -458,10 +464,11 @@ WHERE id = ? AND version = ?""",
             row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to find execution by task_id {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_FIND_BY_TASK_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -504,10 +511,11 @@ WHERE id = ? AND version = ?""",
             except sqlite3.Error as exc:
                 await self._db.rollback()
                 msg = f"Failed to delete workflow execution {execution_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
                     execution_id=execution_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 

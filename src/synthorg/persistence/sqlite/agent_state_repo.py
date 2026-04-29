@@ -88,10 +88,11 @@ INSERT OR REPLACE INTO agent_states (
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch agent state for {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AGENT_STATE_FETCH_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -124,9 +125,10 @@ INSERT OR REPLACE INTO agent_states (
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query active agent states"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -175,9 +177,10 @@ INSERT OR REPLACE INTO agent_states (
             return AgentRuntimeState.model_validate(row)
         except ValidationError as exc:
             msg = f"Failed to deserialize agent state {row.get('agent_id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AGENT_STATE_DESERIALIZE_FAILED,
                 agent_id=row.get("agent_id"),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

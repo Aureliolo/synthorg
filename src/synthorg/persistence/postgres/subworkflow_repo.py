@@ -23,7 +23,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
     PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
@@ -93,10 +93,11 @@ def _deserialize_row(
         )
     except (ValueError, ValidationError, KeyError, TypeError) as exc:
         msg = f"Failed to deserialize subworkflow {context_id!r}"
-        logger.exception(
+        logger.warning(
             PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
             subworkflow_id=context_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 
@@ -233,11 +234,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 f"Failed to save subworkflow {definition.id!r} version "
                 f"{definition.version!r}"
             )
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
                 subworkflow_id=definition.id,
                 version=definition.version,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -260,11 +262,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch subworkflow {subworkflow_id!r}@{version!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_FETCH_FAILED,
                 subworkflow_id=subworkflow_id,
                 version=version,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -294,10 +297,11 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to list versions for {subworkflow_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                 subworkflow_id=subworkflow_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -318,9 +322,10 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list subworkflow summaries"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -346,10 +351,11 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to search subworkflows for {query!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                 query=query,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -370,11 +376,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 )
         except psycopg.Error as exc:
             msg = f"Failed to delete subworkflow {subworkflow_id!r}@{version!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
                 subworkflow_id=subworkflow_id,
                 version=version,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -423,11 +430,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 )
         except psycopg.Error as exc:
             msg = f"Failed to delete_if_unreferenced {subworkflow_id!r}@{version!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
                 subworkflow_id=subworkflow_id,
                 version=version,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -452,10 +460,11 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 )
         except psycopg.Error as exc:
             msg = f"Failed to find parents for subworkflow {subworkflow_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                 subworkflow_id=subworkflow_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 

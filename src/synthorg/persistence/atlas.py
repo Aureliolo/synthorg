@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
 
 from synthorg.core.persistence_errors import MigrationError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_MIGRATION_COMPLETED,
     PERSISTENCE_MIGRATION_FAILED,
@@ -208,7 +208,11 @@ def copy_revisions(dest: Path, *, backend: BackendName = "sqlite") -> str:
         shutil.copytree(str(src_ref), str(dest))
     except (OSError, shutil.Error) as exc:
         msg = f"Failed to copy migration revisions to {dest}: {exc}"
-        logger.exception(PERSISTENCE_MIGRATION_FAILED, error=str(exc))
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise MigrationError(msg) from exc
     return _path_to_file_url(str(dest))
 
@@ -234,7 +238,11 @@ def _revisions_dir_for(backend: BackendName) -> str:
         path = str(ref)
     except (ModuleNotFoundError, TypeError) as exc:
         msg = f"Cannot locate migration revisions package: {pkg}"
-        logger.exception(PERSISTENCE_MIGRATION_FAILED, error=str(exc))
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise MigrationError(msg) from exc
     return _path_to_file_url(path)
 

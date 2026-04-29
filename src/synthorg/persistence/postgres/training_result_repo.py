@@ -18,7 +18,7 @@ from synthorg.hr.training.models import (
     TrainingApprovalHandle,
     TrainingResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
@@ -109,10 +109,11 @@ def _row_to_result(row: dict[str, Any]) -> TrainingResult:
     except (ValueError, TypeError, KeyError, ValidationError) as exc:
         result_id = data.get("id", "<unknown>")
         msg = f"Failed to deserialize training result {result_id!r}"
-        logger.exception(
+        logger.warning(
             HR_TRAINING_PERSISTENCE_ERROR,
             result_id=str(result_id),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 
@@ -177,11 +178,12 @@ class PostgresTrainingResultRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save training result {result.id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 result_id=str(result.id),
                 plan_id=str(result.plan_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -213,10 +215,11 @@ LIMIT 1""",
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch result for plan {plan_id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 plan_id=str(plan_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -251,10 +254,11 @@ LIMIT 1""",
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch latest result for {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PERSISTENCE_ERROR,
                 agent_id=str(agent_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:

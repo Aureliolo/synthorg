@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
     PERSISTENCE_BACKEND_NOT_CONNECTED,
@@ -137,10 +137,10 @@ class PostgresMigrationMixin:
                 )
                 await conn.commit()
         except psycopg.Error as exc:
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TIMESCALEDB_SETUP_FAILED,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

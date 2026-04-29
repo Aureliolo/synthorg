@@ -57,11 +57,12 @@ class SQLiteSettingsRepository:
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get setting {namespace}/{key}"
-            logger.exception(
+            logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace=namespace,
                 key=key,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -82,10 +83,11 @@ class SQLiteSettingsRepository:
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get settings for namespace {namespace}"
-            logger.exception(
+            logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace=namespace,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return tuple((str(r[0]), str(r[1]), str(r[2])) for r in rows)
@@ -100,9 +102,10 @@ class SQLiteSettingsRepository:
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to get all settings"
-            logger.exception(
+            logger.warning(
                 SETTINGS_FETCH_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return tuple((str(r[0]), str(r[1]), str(r[2]), str(r[3])) for r in rows)
@@ -166,11 +169,12 @@ class SQLiteSettingsRepository:
                     await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to set setting {namespace}/{key}"
-                logger.exception(
+                logger.warning(
                     SETTINGS_SET_FAILED,
                     namespace=namespace,
                     key=key,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
         logger.debug(
@@ -211,9 +215,10 @@ class SQLiteSettingsRepository:
                     raise
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = "Failed to set_many settings"
-                logger.exception(
+                logger.warning(
                     SETTINGS_SET_FAILED,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     item_count=len(items),
                 )
                 raise QueryError(msg) from exc
