@@ -141,7 +141,7 @@ class TestFakeClock:
         with pytest.raises(ValueError, match="timezone-aware"):
             # The naive datetime here is intentional: the assertion is
             # that ``FakeClock`` rejects it.
-            FakeClock(start=datetime(2026, 1, 1))  # type: ignore[arg-type]  # noqa: DTZ001
+            FakeClock(start=datetime(2026, 1, 1))  # noqa: DTZ001
 
     async def test_custom_start_normalises_to_utc(self) -> None:
         offset = timedelta(hours=5)
