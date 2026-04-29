@@ -84,7 +84,7 @@ No corresponding flag, settable via env var or `config set`:
 | `SYNTHORG_AUTO_UPDATE_CLI` | Auto-accept CLI self-updates |
 | `SYNTHORG_AUTO_PULL` | Auto-accept container image pulls |
 | `SYNTHORG_AUTO_RESTART` | Auto-restart containers after update |
-| `SYNTHORG_TELEMETRY` | Enable anonymous project telemetry (true/false) |
+| `SYNTHORG_TELEMETRY_ENABLED` | Enable anonymous project telemetry (true/false) |
 | `SYNTHORG_FINE_TUNE_IMAGE` | Fine-tune container image ref read by the backend. Set by the CLI in the generated compose.yml to the variant-specific verified image (`synthorg-fine-tune-gpu` or `synthorg-fine-tune-cpu`), chosen via `synthorg init` and persisted as `fine_tuning_variant` in config.json. Not read by the CLI; manual operator overrides bypass CLI signature/provenance verification and are not supported. |
 | `SYNTHORG_REGISTRY_HOST` | Override default container registry hostname (disables verification when set) |
 | `SYNTHORG_IMAGE_REPO_PREFIX` | Override default image repository prefix (disables verification when set) |

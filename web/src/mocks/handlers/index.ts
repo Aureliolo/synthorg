@@ -64,6 +64,7 @@ import { artifactsHandlers } from './artifacts'
 import { authHandlers } from './auth'
 import { backupHandlers } from './backup'
 import { budgetHandlers } from './budget'
+import { capabilitiesHandlers } from './capabilities'
 import { ceremonyPolicyHandlers } from './ceremony-policy'
 import { clientsHandlers } from './clients'
 import { collaborationHandlers } from './collaboration'
@@ -110,6 +111,7 @@ export const defaultHandlers = [
   ...authHandlers,
   ...backupHandlers,
   ...budgetHandlers,
+  ...capabilitiesHandlers,
   ...ceremonyPolicyHandlers,
   ...clientsHandlers,
   ...collaborationHandlers,
@@ -153,6 +155,7 @@ export {
   authHandlers,
   backupHandlers,
   budgetHandlers,
+  capabilitiesHandlers,
   ceremonyPolicyHandlers,
   clientsHandlers,
   collaborationHandlers,

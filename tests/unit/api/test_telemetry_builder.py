@@ -2,8 +2,8 @@
 
 ``_build_telemetry_collector`` builds a :class:`TelemetryCollector`
 wired against the memory-dir env var. The collector respects
-``SYNTHORG_TELEMETRY`` internally; this module verifies the path
-derivation, env-var handling, and memory-dir validation around
+``SYNTHORG_TELEMETRY_ENABLED`` internally; this module verifies the
+path derivation, env-var handling, and memory-dir validation around
 construction.
 """
 
@@ -24,7 +24,7 @@ class TestBuildTelemetryCollector:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv("SYNTHORG_MEMORY_DIR", raising=False)
-        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
         collector = _build_telemetry_collector()
         assert isinstance(collector, TelemetryCollector)
         assert collector._data_dir == Path("/data/telemetry")
@@ -37,7 +37,7 @@ class TestBuildTelemetryCollector:
     ) -> None:
         memory_dir = tmp_path / "memory"
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", str(memory_dir))
-        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
         collector = _build_telemetry_collector()
         assert collector._data_dir == tmp_path / "telemetry"
 
@@ -46,9 +46,21 @@ class TestBuildTelemetryCollector:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
+        from synthorg.telemetry.config import (
+            TelemetryBackend,
+            TelemetryConfig,
+        )
+
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", str(tmp_path / "memory"))
-        monkeypatch.setenv("SYNTHORG_TELEMETRY", "true")
-        collector = _build_telemetry_collector()
+        monkeypatch.setenv("SYNTHORG_TELEMETRY_ENABLED", "true")
+        # Use the NOOP backend so this test exercises the
+        # enable-flag plumbing + deployment-id directory creation
+        # without crossing the LOGFIRE token-embedded gate. The
+        # token-missing ERROR path has its own dedicated coverage
+        # in tests/unit/telemetry/test_collector.py.
+        collector = _build_telemetry_collector(
+            TelemetryConfig(backend=TelemetryBackend.NOOP),
+        )
         try:
             assert collector.enabled is True
             # ``start()`` performs the deployment-id load via
@@ -90,7 +102,7 @@ class TestMemoryDirValidation:
         bad_value: str,
     ) -> None:
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", bad_value)
-        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
         collector = _build_telemetry_collector()
         # Falls back to ``/data/memory`` -> ``/data/telemetry``.
         assert collector._data_dir == Path("/data/telemetry")
@@ -104,7 +116,7 @@ class TestMemoryDirValidation:
             "SYNTHORG_MEMORY_DIR",
             f"  {tmp_path / 'memory'}  ",
         )
-        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
         collector = _build_telemetry_collector()
         # Surrounding whitespace is stripped before the prefix check.
         assert collector._data_dir == tmp_path / "telemetry"
@@ -122,7 +134,7 @@ class TestMemoryDirValidation:
         writes outside the intended surface.
         """
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", "/etc/synthorg")
-        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
         collector = _build_telemetry_collector()
         assert collector._data_dir == Path("/data/telemetry")
 
@@ -137,7 +149,7 @@ class TestMemoryDirValidation:
         past the allow-list by starting with ``/data``.
         """
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", "/data/../etc/memory")
-        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
         collector = _build_telemetry_collector()
         assert collector._data_dir == Path("/data/telemetry")
 
@@ -155,6 +167,6 @@ class TestMemoryDirValidation:
         *strict* descendant of a root.
         """
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", "/data")
-        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
         collector = _build_telemetry_collector()
         assert collector._data_dir == Path("/data/telemetry")

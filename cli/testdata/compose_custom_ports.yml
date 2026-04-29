@@ -41,7 +41,7 @@ services:
       SYNTHORG_BUS_BACKEND: "internal"
       SYNTHORG_LOG_DIR: "/data/logs"
       MEM0_TELEMETRY: "false"
-      SYNTHORG_TELEMETRY: "false"
+      SYNTHORG_TELEMETRY_ENABLED: "false"
       SYNTHORG_LOG_LEVEL: "debug"
       SYNTHORG_JWT_SECRET: "test-secret-value"
       SYNTHORG_SETTINGS_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

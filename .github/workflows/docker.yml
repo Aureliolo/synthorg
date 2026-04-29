@@ -507,8 +507,18 @@ jobs:
           base-image-digest: ${{ needs.build-backend-base-publish.outputs.digest }}
           base-image-artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
           base-image-tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
+          # ``LOGFIRE_PROJECT_TOKEN`` is the GHA repo secret; the
+          # Dockerfile's ``embed_logfire_token.py`` step writes it
+          # into ``_embedded_token.py`` before ``uv sync`` packages
+          # the venv, so published images carry the token while PR
+          # / non-secret-bearing builds (e.g. forks) keep the
+          # sentinel and run telemetry disabled-by-build.
+          # Pull-request events deliberately receive an empty token:
+          # unreviewed PR code paths must not have access to the
+          # write-only project secret.
           extra-build-args: |
             DEPLOYMENT_ENV=${{ needs.version.outputs.deployment_env }}
+            LOGFIRE_PROJECT_TOKEN=${{ github.event_name != 'pull_request' && secrets.LOGFIRE_PROJECT_TOKEN || '' }}
 
       # Smoke-test the just-built backend image. Runs on EVERY event
       # that builds the image (PR, push to main, v* tag pushes,

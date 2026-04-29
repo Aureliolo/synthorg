@@ -41,7 +41,7 @@ USER build
 # image must carry psycopg and nats-py whether or not the user has
 # chosen them yet. `telemetry` ships the logfire SDK so the opt-in
 # project telemetry signal actually reaches Logfire when operators flip
-# `SYNTHORG_TELEMETRY=true` -- shipping the image without it would make
+# `SYNTHORG_TELEMETRY_ENABLED=true` -- shipping the image without it would make
 # the opt-in a silent noop. `fine-tune` lives in the dedicated
 # synthorg-fine-tune-gpu / -cpu images (large, torch inside).
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
@@ -49,6 +49,24 @@ RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
 
 RUN touch README.md
 COPY --chown=65532:65532 src/ src/
+COPY --chown=65532:65532 scripts/embed_logfire_token.py scripts/embed_logfire_token.py
+
+# Embed the write-only Logfire project token into source. The
+# secret is supplied at build time via ``--build-arg
+# LOGFIRE_PROJECT_TOKEN=...`` (CI sets it from the GHA repo secret;
+# operators building locally leave it unset). When unset the
+# script is skipped and ``_embedded_token.py`` keeps its sentinel
+# value, so the resulting image has telemetry disabled-by-build.
+# The embed runs *before* ``uv sync`` packages the venv so the
+# rewritten module is what gets cached in the wheel cache and
+# copied into the runtime stage.
+ARG LOGFIRE_PROJECT_TOKEN=""
+RUN if [ -n "$LOGFIRE_PROJECT_TOKEN" ]; then \
+        python scripts/embed_logfire_token.py "$LOGFIRE_PROJECT_TOKEN"; \
+    else \
+        echo "LOGFIRE_PROJECT_TOKEN unset; shipping sentinel (telemetry disabled-by-build)"; \
+    fi
+
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
     uv sync --frozen --no-dev --extra postgres --extra distributed --extra telemetry
 
@@ -100,12 +118,13 @@ FROM ${BASE_IMAGE}
 # synthorg.telemetry.collector._resolve_environment for the full
 # priority chain.
 #
-# The Logfire write token is intentionally **not** a build-arg -- baking
-# it would persist the secret in image layers and registry history
-# (readable via ``docker history`` / registry APIs). Supply it only at
-# runtime via ``SYNTHORG_LOGFIRE_PROJECT_TOKEN`` in compose env or
-# deployment secrets. An empty token downgrades the reporter to noop
-# cleanly.
+# The write-only telemetry-backend token is embedded into source at
+# build time by the builder stage's ``embed_logfire_token.py`` step
+# (gated on the optional ``LOGFIRE_PROJECT_TOKEN`` build-arg). When
+# the build-arg is unset, the sentinel stays in place and the image
+# is telemetry-disabled-by-build. Operators do NOT supply a runtime
+# env var for the token; the only operator-facing knob is
+# ``SYNTHORG_TELEMETRY_ENABLED`` which gates the opt-in itself.
 ARG DEPLOYMENT_ENV="dev"
 
 LABEL org.opencontainers.image.title="synthorg-backend" \

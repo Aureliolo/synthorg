@@ -203,19 +203,68 @@ def _resolve_memory_dir() -> Path:
     return path
 
 
+_TELEMETRY_ENV_VAR = "SYNTHORG_TELEMETRY_ENABLED"
+_TELEMETRY_ENV_TRUE = frozenset({"true", "1", "yes"})
+_TELEMETRY_ENV_FALSE = frozenset({"false", "0", "no"})
+
+
+def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
+    """Apply env-layer precedence for the registered ``telemetry.enabled`` setting.
+
+    Single source of "env wins over YAML / default" for the boot
+    path. ``SYNTHORG_TELEMETRY_ENABLED`` matches the env name registered
+    on the ``telemetry.enabled`` setting (see
+    ``synthorg.settings.definitions.telemetry``); when the value is
+    set, it overrides the parsed ``TelemetryConfig.enabled`` field.
+    The DB layer is consulted by ``SettingsService`` /
+    ``ConfigResolver`` for runtime ``/settings`` reads and edits;
+    those changes apply on the next process restart per the
+    setting's ``restart_required`` semantics. The collector itself
+    no longer re-applies this precedence so the audit trail stays
+    single-sourced.
+
+    Validates the env value at this system boundary -- a typo such as
+    ``SYNTHORG_TELEMETRY_ENABLED=falsee`` would otherwise silently fall
+    through to the parsed value and mask operator intent.
+
+    Returns the (possibly updated) config.
+
+    Raises:
+        ValueError: When the env var is set to a value that is neither
+            a truthy nor falsy token from the recognised vocabulary.
+    """
+    raw = os.environ.get(_TELEMETRY_ENV_VAR, "").strip().lower()
+    if not raw:
+        return parsed
+    if raw in _TELEMETRY_ENV_TRUE:
+        return parsed.model_copy(update={"enabled": True})
+    if raw in _TELEMETRY_ENV_FALSE:
+        return parsed.model_copy(update={"enabled": False})
+    accepted = sorted(_TELEMETRY_ENV_TRUE | _TELEMETRY_ENV_FALSE)
+    msg = (
+        f"{_TELEMETRY_ENV_VAR} must be one of {accepted!r}; "
+        f"got {raw!r}. Refusing to silently fall back to the parsed value."
+    )
+    raise ValueError(msg)
+
+
 def _build_telemetry_collector(
     telemetry_cfg: TelemetryConfig | None = None,
 ) -> TelemetryCollector:
     """Build the project telemetry collector.
 
     Passing ``None`` for ``telemetry_cfg`` falls back to defaults
-    (``enabled=False``). :class:`TelemetryCollector` reads
-    ``SYNTHORG_TELEMETRY`` inside its own ``__init__`` and overrides
-    the config's ``enabled`` flag, so the env var still wins.
+    (``enabled=False``). The env-layer override
+    (``SYNTHORG_TELEMETRY_ENABLED``) is applied here via
+    :func:`_resolve_telemetry_enabled` -- the collector itself takes
+    the resolved boolean as-given. The same env name is registered as
+    the ``telemetry.enabled`` setting's ``env_var_override`` so the
+    /settings API and the boot path agree on a single source.
     """
     memory_dir = _resolve_memory_dir()
     telemetry_dir = memory_dir.parent / "telemetry"
-    config = telemetry_cfg if telemetry_cfg is not None else TelemetryConfig()
+    parsed = telemetry_cfg if telemetry_cfg is not None else TelemetryConfig()
+    config = _resolve_telemetry_enabled(parsed)
     return TelemetryCollector(config=config, data_dir=telemetry_dir)
 
 

@@ -1,10 +1,18 @@
-"""Tests for sink routing (logger name filters)."""
+"""Tests for sink routing (logger name + event name + exact level filters)."""
 
 import logging
+from typing import Any
 
 import pytest
 
-from synthorg.observability.sinks import SINK_ROUTING, _LoggerNameFilter
+from synthorg.observability.sinks import (
+    SINK_EVENT_EXCLUDES,
+    SINK_EXACT_LEVELS,
+    SINK_ROUTING,
+    _EventNameFilter,
+    _ExactLevelFilter,
+    _LoggerNameFilter,
+)
 
 
 def _make_record(name: str) -> logging.LogRecord:
@@ -12,6 +20,48 @@ def _make_record(name: str) -> logging.LogRecord:
     return logging.LogRecord(
         name=name,
         level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="test",
+        args=(),
+        exc_info=None,
+    )
+
+
+def _make_structlog_record(
+    event: str,
+    *,
+    name: str = "synthorg.api.middleware",
+    level: int = logging.INFO,
+) -> logging.LogRecord:
+    """Create a LogRecord shaped like structlog's wrap_for_formatter output.
+
+    structlog's stdlib bridge stores the processed event_dict as
+    ``record.msg`` (a dict carrying the ``event`` key plus all
+    structured kwargs).  This helper builds that exact shape so
+    filter tests exercise the production record layout.
+    """
+    msg: dict[str, Any] = {"event": event, "level": logging.getLevelName(level).lower()}
+    return logging.LogRecord(
+        name=name,
+        level=level,
+        pathname="",
+        lineno=0,
+        msg=msg,
+        args=(),
+        exc_info=None,
+    )
+
+
+def _make_level_record(
+    level: int,
+    *,
+    name: str = "synthorg.core",
+) -> logging.LogRecord:
+    """Create a LogRecord with the given level."""
+    return logging.LogRecord(
+        name=name,
+        level=level,
         pathname="",
         lineno=0,
         msg="test",
@@ -128,3 +178,74 @@ class TestSinkRoutingTable:
     def test_catchall_sinks_not_in_routing(self) -> None:
         for name in ("synthorg.log", "errors.log", "debug.log"):
             assert name not in SINK_ROUTING
+
+
+@pytest.mark.unit
+class TestEventNameFilter:
+    """Tests for the structlog-aware event-name exclusion filter."""
+
+    def test_no_excludes_accepts_all(self) -> None:
+        f = _EventNameFilter(exclude_events=())
+        assert f.filter(_make_structlog_record("api.request.started"))
+        assert f.filter(_make_structlog_record("metrics.record.failed"))
+
+    def test_excludes_match_dropped(self) -> None:
+        f = _EventNameFilter(
+            exclude_events=("api.request.started", "api.request.completed"),
+        )
+        assert not f.filter(_make_structlog_record("api.request.started"))
+        assert not f.filter(_make_structlog_record("api.request.completed"))
+
+    def test_unrelated_events_pass_through(self) -> None:
+        f = _EventNameFilter(
+            exclude_events=("api.request.started", "api.request.completed"),
+        )
+        assert f.filter(_make_structlog_record("metrics.record.failed"))
+        assert f.filter(_make_structlog_record("api.asgi.missing_status"))
+
+    def test_non_dict_msg_falls_back_to_string(self) -> None:
+        """Records from foreign loggers carry record.msg as a string."""
+        f = _EventNameFilter(exclude_events=("api.request.started",))
+        record = _make_record("third.party")
+        record.msg = "api.request.started"
+        assert not f.filter(record)
+        record.msg = "api.request.completed"
+        assert f.filter(record)
+
+    def test_blank_event_string_rejected_in_constructor(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            _EventNameFilter(exclude_events=("", "api.request.started"))
+
+
+@pytest.mark.unit
+class TestExactLevelFilter:
+    """Tests for the strict level-equality filter."""
+
+    def test_only_matching_level_passes(self) -> None:
+        f = _ExactLevelFilter(levelno=logging.DEBUG)
+        assert f.filter(_make_level_record(logging.DEBUG))
+        assert not f.filter(_make_level_record(logging.INFO))
+        assert not f.filter(_make_level_record(logging.WARNING))
+        assert not f.filter(_make_level_record(logging.ERROR))
+
+    def test_info_level_filter(self) -> None:
+        f = _ExactLevelFilter(levelno=logging.INFO)
+        assert f.filter(_make_level_record(logging.INFO))
+        assert not f.filter(_make_level_record(logging.DEBUG))
+        assert not f.filter(_make_level_record(logging.WARNING))
+
+
+@pytest.mark.unit
+class TestSinkEventExcludesTable:
+    def test_synthorg_log_excludes_lifecycle(self) -> None:
+        assert "synthorg.log" in SINK_EVENT_EXCLUDES
+        excludes = SINK_EVENT_EXCLUDES["synthorg.log"]
+        assert "api.request.started" in excludes
+        assert "api.request.completed" in excludes
+
+
+@pytest.mark.unit
+class TestSinkExactLevelsTable:
+    def test_debug_log_pinned_to_debug(self) -> None:
+        assert "debug.log" in SINK_EXACT_LEVELS
+        assert SINK_EXACT_LEVELS["debug.log"] == logging.DEBUG

@@ -1,11 +1,19 @@
 """ngrok tunnel adapter for local webhook development.
 
-Wraps the ``pyngrok`` library (or ngrok binary) to expose the
-local API server on a public URL for receiving webhooks.
+Wraps the ``pyngrok`` library to expose the local API server on a
+public URL for receiving webhooks.
+
+``pyngrok`` is a required runtime dependency (declared in
+``pyproject.toml`` ``[project.dependencies]``); a missing import
+here would be a build / install bug, not a runtime configuration
+issue, so the import is unconditional. Operators who do not need
+the tunnel feature simply do not call the start endpoint.
 """
 
 import asyncio
 import os
+
+from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
 from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger, safe_error_description
@@ -21,8 +29,9 @@ logger = get_logger(__name__)
 class NgrokAdapter:
     """ngrok tunnel provider.
 
-    Exposes the local API port on a public ngrok URL.
-    Requires ``pyngrok`` to be installed (optional dependency).
+    Exposes the local API port on a public ngrok URL. ``pyngrok``
+    is a required runtime dependency; the import is unconditional
+    at module level (#1666 B-4).
 
     All ngrok calls are blocking, so they are offloaded to a
     worker thread via ``asyncio.to_thread`` to keep the event
@@ -53,25 +62,11 @@ class NgrokAdapter:
             The public URL.
 
         Raises:
-            TunnelError: If ngrok is not installed or fails to start.
+            TunnelError: If the tunnel fails to start (auth rejected,
+                ngrok service down, etc.). ``pyngrok`` itself is a
+                required runtime dependency so an ImportError here is
+                a build / install bug rather than a runtime concern.
         """
-        try:
-            from pyngrok import (  # type: ignore[import-not-found]  # noqa: PLC0415
-                conf,
-                ngrok,
-            )
-        except ImportError as exc:
-            logger.warning(
-                TUNNEL_ERROR,
-                error="pyngrok not installed",
-                exc_info=True,
-            )
-            msg = (
-                "pyngrok is not installed. Install it with "
-                "'pip install pyngrok' to use the tunnel feature."
-            )
-            raise TunnelError(msg) from exc
-
         auth_token = os.environ.get(self._auth_token_env, "").strip()
         if auth_token:
             conf.get_default().auth_token = auth_token
@@ -113,8 +108,6 @@ class NgrokAdapter:
         if self._tunnel is None:
             return
         try:
-            from pyngrok import ngrok  # noqa: PLC0415
-
             await asyncio.to_thread(ngrok.disconnect, self._public_url)
         except Exception as exc:
             logger.warning(

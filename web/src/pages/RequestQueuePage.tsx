@@ -10,11 +10,12 @@ import {
   type ClientRequest,
   type RequestStatus,
 } from '@/api/endpoints/clients'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
+import { RequestCard } from '@/components/ui/request-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('RequestQueuePage')
@@ -45,6 +46,11 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
  * → TASK_CREATED | CANCELLED) at a glance.
  */
 export default function RequestQueuePage() {
+  const {
+    capabilities,
+    loading: capLoading,
+    error: capError,
+  } = useCapabilities()
   const [requests, setRequests] = useState<readonly ClientRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -62,10 +68,6 @@ export default function RequestQueuePage() {
       setLoading(false)
     }
   }, [])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
 
   const handleScope = useCallback(
     async (requestId: string) => {
@@ -118,7 +120,63 @@ export default function RequestQueuePage() {
     [refresh, pending],
   )
 
-  if (loading && requests.length === 0) {
+  // Capability-gated effect: skip the network call entirely when the
+  // requests subsystem is not configured. Backend route is also not
+  // registered (returns 404). The early-return path that renders the
+  // EmptyState lives below all hooks so React's hook-order rules
+  // stay satisfied across renders. While ``capLoading`` is true we
+  // do nothing -- the skeleton branch below covers the in-flight
+  // window so the page never flashes "No requests yet" against an
+  // unconfigured deployment.
+  useEffect(() => {
+    if (capLoading) {
+      return
+    }
+    if (!capabilities.requests) {
+      // Defer the loading flip out of the same synchronous render
+      // frame so eslint-react's set-state-in-effect rule stays
+      // satisfied and React batches one render instead of two.
+      queueMicrotask(() => setLoading(false))
+      return
+    }
+    void refresh()
+  }, [refresh, capLoading, capabilities.requests])
+
+  if (!capLoading && capError !== null) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Request Queue" />
+        <ErrorBanner
+          severity="error"
+          title="Could not determine available features"
+          description={capError}
+        />
+      </div>
+    )
+  }
+
+  if (!capLoading && !capabilities.requests) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Requests" />
+        <EmptyState
+          icon={Inbox}
+          title="Requests not configured"
+          description={
+            'This deployment did not enable the client request facade. ' +
+            'Configure it in your backend setup to start tracking ' +
+            'incoming requests.'
+          }
+        />
+      </div>
+    )
+  }
+
+  // Hold the skeleton until capabilities resolve AND the first refresh
+  // either lands data or sets loading=false. This prevents a one-frame
+  // "No requests yet" flash on an unconfigured-but-not-yet-resolved
+  // deployment.
+  if (capLoading || (loading && requests.length === 0)) {
     return (
       <div className="space-y-section-gap">
         <ListHeader title="Request Queue" />
@@ -159,49 +217,14 @@ export default function RequestQueuePage() {
               ) : (
                 <ul className="space-y-2">
                   {entries.map((request) => (
-                    <li
+                    <RequestCard
                       key={request.request_id}
-                      className="space-y-2 rounded-md border border-border bg-card-hover p-card text-sm"
-                    >
-                      <div className="font-medium text-foreground">
-                        {request.requirement.title}
-                      </div>
-                      <div className="text-xs text-text-secondary">
-                        {request.client_id} · {request.request_id.slice(0, 8)}
-                      </div>
-                      {(request.status === 'submitted' ||
-                        request.status === 'triaging' ||
-                        request.status === 'scoping') && (
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {(request.status === 'submitted' ||
-                            request.status === 'triaging') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!!pending[request.request_id]}
-                              onClick={() => void handleScope(request.request_id)}
-                            >
-                              Scope
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            disabled={!!pending[request.request_id]}
-                            onClick={() => void handleApprove(request.request_id)}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={!!pending[request.request_id]}
-                            onClick={() => void handleReject(request.request_id)}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      )}
-                    </li>
+                      request={request}
+                      pending={pending}
+                      onScope={(id) => void handleScope(id)}
+                      onApprove={(id) => void handleApprove(id)}
+                      onReject={(id) => void handleReject(id)}
+                    />
                   ))}
                 </ul>
               )}

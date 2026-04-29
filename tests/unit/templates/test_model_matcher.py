@@ -258,6 +258,75 @@ class TestMatchAllAgents:
         assert results[0].provider_name == "test-provider"
         assert results[0].score == 0.0
 
+    def test_fallback_emits_debug_event_not_warning(self) -> None:
+        """Issue #1666 B-5: tier-fallback path logs at DEBUG, not WARNING.
+
+        Per the design contract, falling back to ``all_models[0]`` when
+        the requested tier has no candidate is the documented happy-path
+        and should not pollute WARNING. The dedicated event is
+        ``template.model_match.fallback`` (DEBUG); only the
+        ``no_models_available`` branch keeps WARNING (which the wizard
+        provider gate now prevents from firing in practice).
+        """
+        import structlog.testing
+
+        agents = [
+            {
+                "tier": "large",
+                "personality_preset": "visionary_leader",
+            },
+        ]
+        providers = {
+            "test-provider": _FakeProviderConfig(
+                models=(_make_model("small-ctx", max_context=50_000),),
+            ),
+        }
+        with structlog.testing.capture_logs() as logs:
+            results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        fallback_events = [
+            log for log in logs if log.get("event") == "template.model_match.fallback"
+        ]
+        warning_events = [
+            log
+            for log in logs
+            if log.get("event") == "template.model_match.failed"
+            and log.get("log_level") == "warning"
+        ]
+        # Fallback succeeded -- DEBUG event present, WARNING absent.
+        assert len(fallback_events) == 1
+        assert fallback_events[0]["log_level"] == "debug"
+        assert fallback_events[0]["fallback_provider"] == "test-provider"
+        assert fallback_events[0]["fallback_model"] == "small-ctx"
+        assert warning_events == []
+
+    def test_no_models_available_still_logs_warning(self) -> None:
+        """Issue #1666 B-5: the truly-empty case keeps WARNING severity.
+
+        When ``all_models`` is empty (no providers OR all providers have
+        zero models), the matcher cannot assign anything -- this is the
+        operator-actionable case the wizard's tier-coverage gate now
+        catches before it gets here, but the WARNING should still fire
+        if the gate is bypassed (e.g. in a non-wizard call site).
+        """
+        import structlog.testing
+
+        agents = [{"tier": "large", "personality_preset": None}]
+        providers = {
+            "empty-provider": _FakeProviderConfig(models=()),
+        }
+        with structlog.testing.capture_logs() as logs:
+            results = match_all_agents(agents, providers)
+        assert results == []
+        no_models_events = [
+            log
+            for log in logs
+            if log.get("event") == "template.model_match.failed"
+            and log.get("reason") == "no_models_available"
+        ]
+        assert len(no_models_events) == 1
+        assert no_models_events[0]["log_level"] == "warning"
+
     def test_agent_index_preserved(self) -> None:
         agents = [
             {"tier": "small"},

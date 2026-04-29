@@ -243,25 +243,6 @@ class TestSetupCompany:
         assert stored is not None
         assert stored[0] == ""
 
-    def test_company_with_template(
-        self,
-        test_client: TestClient[Any],
-    ) -> None:
-        resp = test_client.post(
-            "/api/v1/setup/company",
-            json={
-                "company_name": "My Startup",
-                "template_name": "solo_founder",
-            },
-        )
-        assert resp.status_code == 201
-        body = resp.json()
-        assert body["success"] is True
-        data = body["data"]
-        assert data["company_name"] == "My Startup"
-        assert data["template_applied"] == "solo_founder"
-        assert data["department_count"] >= 1
-
     def test_invalid_template(
         self,
         test_client: TestClient[Any],

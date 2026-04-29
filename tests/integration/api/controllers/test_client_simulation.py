@@ -11,7 +11,6 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
-from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.adapters import DirectAdapter
 from synthorg.client.pool import RoundRobinStrategy
@@ -68,14 +67,12 @@ async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
     await bus.stop()
 
 
-def _install_sim_state(app_state: AppState) -> ClientSimulationState:
-    """Attach a minimal simulation state to the running app."""
-    state = ClientSimulationState(
+def _build_sim_state() -> ClientSimulationState:
+    """Construct a minimal client-simulation state for the test app."""
+    return ClientSimulationState(
         intake_engine=IntakeEngine(strategy=_AcceptingStrategy()),
         review_pipeline=ReviewPipeline(stages=(InternalReviewStage(),)),
     )
-    app_state.set_client_simulation_state(state)
-    return state
 
 
 def _build_client(
@@ -85,15 +82,19 @@ def _build_client(
     config = RootConfig(company_name="test")
     auth_service = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
+    # Pass ``client_simulation_state`` directly so ``create_app`` wires
+    # it onto AppState before the OPTIONAL_CONTROLLERS predicate check;
+    # post-construction ``set_client_simulation_state`` would land
+    # AFTER the controller list is frozen and the routes would be
+    # absent (issue #1666 B-3 conditional registration).
     app = create_app(
         config=config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,
         cost_tracker=CostTracker(),
         auth_service=auth_service,
+        client_simulation_state=_build_sim_state(),
     )
-    app_state: AppState = app.state.app_state
-    _install_sim_state(app_state)
     return TestClient(app)
 
 

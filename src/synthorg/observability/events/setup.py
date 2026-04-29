@@ -40,6 +40,23 @@ SETUP_PROVIDER_NOT_FOUND: Final[str] = "setup.agent.provider_not_found"
 # Model not found in provider during agent creation
 SETUP_MODEL_NOT_FOUND: Final[str] = "setup.agent.model_not_found"
 
+# Tier matcher could not assign a per-tier model and fell back to the
+# first available model. Logged at DEBUG because fallback IS the
+# documented contract for tier-mismatch and the wizard provider gate
+# now blocks the "no models at all" case where this would actually
+# matter. See issue #1666 B-5.
+SETUP_MODEL_FALLBACK_USED: Final[str] = "setup.agent.model_fallback_used"
+
+# Wizard rejected a provider that could not surface a tier-classifiable
+# model set. The matcher's _MIN_TIER_SIZE = 3 floor requires at least
+# three models with a cost signal so the small/medium/large bucketing
+# is meaningful; below that the operator sees a 422 with this event
+# logged once instead of per-agent matcher warnings during agent
+# creation.
+SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT: Final[str] = (
+    "setup.provider.tier_coverage_insufficient"
+)
+
 # No providers configured when attempting to complete setup
 SETUP_NO_PROVIDERS: Final[str] = "setup.flow.no_providers"
 

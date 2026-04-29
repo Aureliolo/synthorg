@@ -80,8 +80,7 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 | `WEB_PORT` | `3000` | Host port for the web dashboard |
 | `MEM0_TELEMETRY` | `false` | Mem0 telemetry (disable to reduce overhead) |
 | `DOCKER_HOST` | *(unset)* | Docker socket for agent code execution sandbox (optional) |
-| `SYNTHORG_TELEMETRY` | `false` | Enable opt-in anonymous product telemetry. Set to `true` / `1` / `yes` to enable; values like `false` / `0` / `no` keep it off. |
-| `SYNTHORG_LOGFIRE_PROJECT_TOKEN` | *(unset)* | Logfire write token for product telemetry delivery. Empty disables delivery (collector falls back to noop). Only consulted when `SYNTHORG_TELEMETRY=true`. **Runtime-only**: supply via compose env or deployment secrets; it is deliberately **not** a Dockerfile build-arg, to keep the secret out of image layers and registry history. |
+| `SYNTHORG_TELEMETRY_ENABLED` | `false` | Enable opt-in anonymous product telemetry. Set to `true` / `1` / `yes` to enable; values like `false` / `0` / `no` keep it off. The Logfire project token is **embedded in the release wheel** at build time -- operators do not configure it. |
 | `SYNTHORG_TELEMETRY_ENV` | *(unset)* | Explicit deployment-environment tag (`dev` / `pre-release` / `prod` / `ci` / `staging-east` / ...). Always wins the resolution chain if set. |
 | `SYNTHORG_TELEMETRY_ENV_BAKED` | set by image | Image-baked fallback tag for the deployment environment. Release-tag CI builds bake `prod`; every pre-release tag form (`-dev.N`, `-rc.*`, `-alpha.*`, `-beta.*`) bakes `pre-release`; everything else bakes `dev`. Consulted only when `SYNTHORG_TELEMETRY_ENV` is unset *and* no CI markers are present; operators normally override via `SYNTHORG_TELEMETRY_ENV`. |
 

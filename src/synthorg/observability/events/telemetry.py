@@ -20,6 +20,12 @@ TELEMETRY_PRIVACY_VIOLATION: Final[str] = "telemetry.privacy.violation"
 TELEMETRY_ENABLED: Final[str] = "telemetry.enabled"
 TELEMETRY_DISABLED: Final[str] = "telemetry.disabled"
 TELEMETRY_REPORTER_INITIALIZED: Final[str] = "telemetry.reporter.initialized"
+# Emitted ONCE at startup when telemetry is enabled but the build artifact
+# ships a sentinel token instead of the embedded write-only project token.
+# This is a build-time misconfiguration, not a runtime issue; surfacing it
+# loudly at boot lets operators escalate to the build pipeline rather than
+# silently degrading to a noop reporter.
+TELEMETRY_TOKEN_MISSING: Final[str] = "telemetry.token.missing"  # noqa: S105
 TELEMETRY_ENVIRONMENT_RESOLVED: Final[str] = "telemetry.environment.resolved"
 # Emitted when an existing deployment ID is read from disk during start().
 TELEMETRY_DEPLOYMENT_ID_LOADED: Final[str] = "telemetry.deployment_id.loaded"

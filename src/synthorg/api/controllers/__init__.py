@@ -18,6 +18,7 @@ from synthorg.api.controllers.budget import BudgetController
 from synthorg.api.controllers.budget_config_versions import (
     BudgetConfigVersionController,
 )
+from synthorg.api.controllers.capabilities import CapabilitiesController
 from synthorg.api.controllers.ceremony_policy import (
     CeremonyPolicyController,
 )
@@ -102,6 +103,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     LivenessController,
     ReadinessController,
     MetricsController,
+    CapabilitiesController,
     CompanyController,
     AgentController,
     AgentIdentityVersionController,
@@ -147,14 +149,27 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     WorkflowExecutionController,
     OntologyController,
     ClientController,
-    RequestController,
-    SimulationController,
     ReviewController,
     ScalingController,
     TrainingController,
     MetaController,
     MetaAnalyticsController,
     CustomRuleController,
+)
+
+# Controllers gated by their collaborator service.  These do NOT live
+# in ``BASE_CONTROLLERS`` -- they are registered only when their
+# dependency is wired so an unconfigured install returns 404 (route
+# does not exist) instead of 503 on every dashboard poll.  The web
+# dashboard reads ``GET /api/v1/capabilities`` once per session and
+# skips polling whichever subsystem reports ``False``.
+#
+# Each tuple is ``(controller_class, predicate_attribute_on_appstate)``;
+# ``app.py`` includes the controller in ``route_handlers`` only when
+# the predicate evaluates truthy at controller-list assembly time.
+OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = (
+    (SimulationController, "has_client_simulation_state"),
+    (RequestController, "has_client_simulation_state"),
 )
 
 # Integration subsystem controllers. Registered only when
@@ -173,12 +188,14 @@ INTEGRATION_CONTROLLERS: tuple[type[Controller], ...] = (
 ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     *BASE_CONTROLLERS,
     *INTEGRATION_CONTROLLERS,
+    *(controller for controller, _ in OPTIONAL_CONTROLLERS),
 )
 
 __all__ = [
     "ALL_CONTROLLERS",
     "BASE_CONTROLLERS",
     "INTEGRATION_CONTROLLERS",
+    "OPTIONAL_CONTROLLERS",
     "ActivityController",
     "AgentController",
     "AgentIdentityVersionController",

@@ -42,7 +42,7 @@ from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
     create_channels_plugin,
 )
-from synthorg.api.controllers import BASE_CONTROLLERS
+from synthorg.api.controllers import BASE_CONTROLLERS, OPTIONAL_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.cursor_config import CursorConfig
@@ -118,6 +118,7 @@ from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC0
 if TYPE_CHECKING:
     from litestar.channels import ChannelsPlugin
 
+    from synthorg.client.simulation_state import ClientSimulationState
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -155,6 +156,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     training_service: TrainingService | None = None,
     event_stream_hub: EventStreamHub | None = None,
     interrupt_store: InterruptStore | None = None,
+    client_simulation_state: ClientSimulationState | None = None,
     _skip_lifecycle_shutdown: bool = False,
 ) -> Litestar:
     """Create and configure the Litestar application.
@@ -192,6 +194,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             if None).
         interrupt_store: Pre-built interrupt store (auto-created
             if None).
+        client_simulation_state: Pre-built client simulation state.
+            Wired before the optional-controller predicate check so
+            the Simulation / Request controllers register correctly
+            on a test app boot (#1666 B-3 regression coverage).
         _skip_lifecycle_shutdown: Test-only flag.  When ``True``, the
             Litestar app is built with an empty ``on_shutdown`` list so
             the lifespan exit is a no-op.  Used by the session-scoped
@@ -739,12 +745,44 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 exc_info=True,
             )
 
+    # Wire the optional client-simulation runtime onto AppState BEFORE the
+    # optional-controllers tuple is built so the predicate check below
+    # sees its presence at controller-list-assembly time. Production
+    # callers that need the surface pass it as a kwarg; tests that
+    # exercise the simulation/request endpoints do the same instead of
+    # post-construction ``set_client_simulation_state``.
+    if client_simulation_state is not None:
+        app_state.set_client_simulation_state(client_simulation_state)
+
+    # Optional controllers gated on their primary collaborator service.
+    # Routes for unconfigured subsystems are not registered at all so
+    # the dashboard receives 404 (route does not exist) instead of the
+    # 503 it used to get for every poll cycle.  /capabilities reports
+    # which subsystems are wired so the dashboard can skip the polling
+    # loops at the source. Fail loudly when a registered predicate name
+    # is missing from AppState (typo / rename) -- silently disabling
+    # routes via ``getattr(..., False)`` would turn a wiring bug into
+    # an unnoticed 404 surface regression.
+    _optional: list[type[Controller]] = []
+    for controller_cls, predicate_attr in OPTIONAL_CONTROLLERS:
+        if not hasattr(app_state, predicate_attr):
+            msg = (
+                f"Optional controller predicate {predicate_attr!r} is "
+                f"missing on AppState (controller={controller_cls.__name__})."
+            )
+            logger.error(API_APP_STARTUP, note=msg, controller=controller_cls.__name__)
+            raise RuntimeError(msg)
+        if bool(getattr(app_state, predicate_attr)):
+            _optional.append(controller_cls)
+    optional_controllers: tuple[type[Controller], ...] = tuple(_optional)
+
     api_router = Router(
         path=api_config.api_prefix,
         route_handlers=[
             *BASE_CONTROLLERS,
             *integration_controllers,
             *a2a_controllers,
+            *optional_controllers,
             ws_handler,
         ],
         guards=[require_password_changed],
@@ -789,7 +827,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         effective_config=effective_config,
     )
 
-    # Project telemetry: build collector (reads SYNTHORG_TELEMETRY env for
+    # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for
     # opt-in, defaults to disabled). Attach to app_state so the health
     # endpoint can report the state, and hook start()/shutdown() into the
     # Litestar lifespan. Telemetry is SynthOrg-owned and silent on
@@ -806,6 +844,34 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     app_state.set_telemetry_collector(telemetry_collector)
     startup = [*startup, telemetry_collector.start]
     shutdown = [*shutdown, telemetry_collector.shutdown]
+
+    # Automated report service: wired from the cost tracker + budget config
+    # so the ``POST /api/v1/reports/generate`` endpoint can serve the
+    # documented inputs instead of returning 503 unconfigured. Risk and
+    # performance trackers are optional; the service degrades to empty
+    # per-tracker reports when either is absent (see
+    # ``AutomatedReportService.generate_*_report`` for the None-tolerant
+    # paths). When ``cost_tracker`` is itself absent (degenerate test
+    # configurations) we skip the wire and the controller falls back to
+    # 503 ServiceUnavailableError -- which is the honest status code for
+    # "feature unavailable", not the AttributeError it used to surface.
+    if cost_tracker is not None:
+        from synthorg.budget.automated_reports import (  # noqa: PLC0415
+            AutomatedReportService,
+        )
+        from synthorg.budget.reports import ReportGenerator  # noqa: PLC0415
+
+        report_generator = ReportGenerator(
+            cost_tracker=cost_tracker,
+            budget_config=effective_config.budget,
+        )
+        report_service = AutomatedReportService(
+            report_generator=report_generator,
+            cost_tracker=cost_tracker,
+            risk_tracker=None,
+            performance_tracker=performance_tracker,
+        )
+        app_state.set_report_service(report_service)
 
     # Bring up the notification dispatcher's HTTP-bearing sinks
     # (slack/ntfy ``httpx.AsyncClient``) lazily under their lifecycle

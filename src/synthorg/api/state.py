@@ -21,6 +21,9 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.state_services import AppStateServicesMixin
 from synthorg.approval.protocol import ApprovalStoreProtocol  # noqa: TC001
 from synthorg.backup.service import BackupService  # noqa: TC001
+from synthorg.budget.automated_reports import (
+    AutomatedReportService,  # noqa: TC001
+)
 from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,  # noqa: TC001
 )
@@ -219,6 +222,7 @@ class AppState(AppStateServicesMixin):
         "_provider_registry",
         "_quality_facade_service",
         "_refresh_store",
+        "_report_service",
         "_reports_service",
         "_requests_facade_service",
         "_review_facade_service",
@@ -329,6 +333,7 @@ class AppState(AppStateServicesMixin):
         self._performance_tracker = performance_tracker
         self._trust_service = trust_service
         self._telemetry_collector: TelemetryCollector | None = None
+        self._report_service: AutomatedReportService | None = None
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
         self._ceremony_scheduler = ceremony_scheduler
@@ -874,6 +879,20 @@ class AppState(AppStateServicesMixin):
     def set_telemetry_collector(self, collector: TelemetryCollector) -> None:
         """Attach the project telemetry collector (once-only)."""
         self._set_once("_telemetry_collector", collector, "telemetry collector")
+
+    @property
+    def has_report_service(self) -> bool:
+        """Check whether the automated report service is configured."""
+        return self._report_service is not None
+
+    @property
+    def report_service(self) -> AutomatedReportService:
+        """Return the automated report service or raise 503."""
+        return self._require_service(self._report_service, "report_service")
+
+    def set_report_service(self, service: AutomatedReportService) -> None:
+        """Attach the automated report service (once-only)."""
+        self._set_once("_report_service", service, "report service")
 
     @property
     def coordination_metrics_store(self) -> CoordinationMetricsStore:

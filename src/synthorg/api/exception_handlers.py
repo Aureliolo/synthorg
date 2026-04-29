@@ -48,6 +48,7 @@ from synthorg.core.error_taxonomy import (
     category_type_uri,
 )
 from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
     DuplicateRecordError,
     PersistenceError,
     RecordNotFoundError,
@@ -416,6 +417,34 @@ def handle_persistence_error(
     )
 
 
+def handle_persistence_integrity_error(
+    request: Request[Any, Any, Any],
+    exc: Exception,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Map ``psycopg.errors.IntegrityError`` (and subclasses) to 400.
+
+    Foreign-key, unique, and not-null violations raised by the
+    underlying driver indicate that the request body referenced a
+    row that does not exist (or violates a uniqueness constraint).
+    These are caller errors, not server errors -- 400 with a
+    structured body is the honest mapping.
+
+    Domain code is expected to validate-first and raise typed
+    domain errors (``ConnectionNotFoundError`` / ``ValidationError``)
+    so this handler is a backstop, not the primary path. Logging
+    via the standard helper keeps any embedded SQL fragments out
+    of the audit trail.
+    """
+    _log_error(request, exc, status=400)
+    return _build_response(
+        request,
+        detail="persistence integrity violation",
+        error_code=ErrorCode.VALIDATION_ERROR,
+        error_category=ErrorCategory.VALIDATION,
+        status_code=400,
+    )
+
+
 def handle_backup_error(
     request: Request[Any, Any, Any],
     exc: BackupError,
@@ -779,40 +808,61 @@ def handle_http_exception(
     )
 
 
+# Persistence-layer integrity violations (FK / unique / not-null /
+# generic constraint failures) translate into ``ConstraintViolationError``
+# inside the repository modules; the api layer catches that domain
+# class instead of importing the psycopg driver directly so the HTTP
+# layer stays decoupled from the persistence backend choice. Per the
+# project persistence-boundary rule, ``psycopg`` may only be imported
+# from ``src/synthorg/persistence/``; the previous direct import here
+# was a sanctioned exception kept while the driver-translation path
+# was incomplete -- now that ``ConstraintViolationError`` is the
+# established domain mapping (see
+# ``synthorg.persistence.postgres.approval_repo`` for the canonical
+# translation pattern), the api layer registers the domain class and
+# the driver import is no longer needed.
+_HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
+    (RecordNotFoundError, handle_record_not_found),
+    (DuplicateRecordError, handle_duplicate_record),
+    (ConstraintViolationError, handle_persistence_integrity_error),
+    (PersistenceError, handle_persistence_error),
+    (NotAuthorizedException, handle_not_authorized),
+    (PermissionDeniedException, handle_permission_denied),
+    (ValidationException, handle_validation_error),
+    (InvalidCursorError, handle_invalid_cursor),
+    (NotFoundException, handle_not_found),
+    (HTTPException, handle_http_exception),
+    # Domain error hierarchies -- MRO dispatch covers every subclass.
+    # ``RateLimitError`` is listed explicitly so its narrower 429
+    # status takes precedence over the ``ProviderError`` (502) default
+    # when Litestar walks the raised exception's MRO.
+    (RateLimitError, handle_domain_error),
+    (EngineError, handle_domain_error),
+    (BudgetExhaustedError, handle_domain_error),
+    (MixedCurrencyAggregationError, handle_domain_error),
+    (ProviderError, handle_domain_error),
+    (OntologyError, handle_domain_error),
+    (CommunicationError, handle_domain_error),
+    (IntegrationError, handle_domain_error),
+    (ToolError, handle_domain_error),
+    (DomainError, handle_domain_error),
+    (BackupError, handle_backup_error),
+    (Exception, handle_unexpected),
+)
+
+
 # Litestar resolves exception handlers by walking the raised exception's
-# MRO -- the first matching type found in this dict wins.  Dict insertion
-# order does NOT affect resolution priority.  (For HTTPException subclasses,
-# Litestar also checks integer status-code keys first, but this dict uses
-# only type keys.)
+# MRO and picks the first matching type, so dict insertion order does
+# not affect resolution priority. ``HTTPException`` integer status-code
+# keys are resolved separately by Litestar; this table uses only type
+# keys. ``ConstraintViolationError`` is registered above
+# ``PersistenceError`` (its parent via ``QueryError``) so the
+# narrower 400 mapping wins for FK / unique violations -- if it were
+# below, MRO would still pick the first match.
 EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType(
     {
-        RecordNotFoundError: handle_record_not_found,
-        DuplicateRecordError: handle_duplicate_record,
-        PersistenceError: handle_persistence_error,
-        NotAuthorizedException: handle_not_authorized,
-        PermissionDeniedException: handle_permission_denied,
-        ValidationException: handle_validation_error,
-        InvalidCursorError: handle_invalid_cursor,
-        NotFoundException: handle_not_found,
-        HTTPException: handle_http_exception,
-        # Domain error hierarchies -- MRO dispatch covers every subclass.
-        # RateLimitError is listed explicitly so its narrower 429 status
-        # takes precedence over the ProviderError (502) default when
-        # Litestar walks the raised exception's MRO.  ``DomainError`` is
-        # the universal RFC-9457 base for what was previously the
-        # ``ApiError`` family plus the generic NotFoundError /
-        # ConflictError / ValidationError relocated to ``core``.
-        RateLimitError: handle_domain_error,
-        EngineError: handle_domain_error,
-        BudgetExhaustedError: handle_domain_error,
-        MixedCurrencyAggregationError: handle_domain_error,
-        ProviderError: handle_domain_error,
-        OntologyError: handle_domain_error,
-        CommunicationError: handle_domain_error,
-        IntegrationError: handle_domain_error,
-        ToolError: handle_domain_error,
-        DomainError: handle_domain_error,
-        BackupError: handle_backup_error,
-        Exception: handle_unexpected,
+        exc_type: handler
+        for exc_type, handler in _HANDLER_ENTRIES
+        if exc_type is not None
     }
 )
