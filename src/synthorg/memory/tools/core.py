@@ -1,14 +1,18 @@
 """Core memory tools (read/write) for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.memory.self_editing import (
-    _CORE_MEMORY_READ_SCHEMA,
-    _CORE_MEMORY_WRITE_SCHEMA,
     CORE_MEMORY_READ_TOOL,
     CORE_MEMORY_WRITE_TOOL,
     SelfEditingMemoryStrategy,
+)
+from synthorg.memory.self_editing_args import (
+    CoreMemoryReadArgs,
+    CoreMemoryWriteArgs,
 )
 from synthorg.memory.tools._shared import _is_error_response
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -25,6 +29,8 @@ class CoreMemoryReadTool(BaseTool):
         agent_id: Agent ID bound to this tool instance.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = CoreMemoryReadArgs
+
     def __init__(
         self,
         *,
@@ -37,7 +43,7 @@ class CoreMemoryReadTool(BaseTool):
                 "Read the current core memory block (persona, goals, "
                 "key knowledge stored as SEMANTIC memories)."
             ),
-            parameters_schema=dict(_CORE_MEMORY_READ_SCHEMA),
+            parameters_schema=CoreMemoryReadArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy
@@ -66,6 +72,8 @@ class CoreMemoryWriteTool(BaseTool):
         agent_id: Agent ID bound to this tool instance.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = CoreMemoryWriteArgs
+
     def __init__(
         self,
         *,
@@ -78,7 +86,7 @@ class CoreMemoryWriteTool(BaseTool):
                 "Append an entry to core memory.  Core memory persists "
                 "across sessions and is always injected into context."
             ),
-            parameters_schema=dict(_CORE_MEMORY_WRITE_SCHEMA),
+            parameters_schema=CoreMemoryWriteArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy

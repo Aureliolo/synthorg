@@ -1,13 +1,15 @@
 """``SearchMemoryTool`` for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.memory.tool_retriever import (
-    SEARCH_MEMORY_SCHEMA,
     SEARCH_MEMORY_TOOL_NAME,
     ToolBasedInjectionStrategy,
 )
+from synthorg.memory.tools._args import SearchMemoryArgs
 from synthorg.memory.tools._shared import _is_error_response
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
@@ -27,6 +29,8 @@ class SearchMemoryTool(BaseTool):
         agent_id: Agent ID bound to this tool instance.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = SearchMemoryArgs
+
     def __init__(
         self,
         *,
@@ -39,7 +43,7 @@ class SearchMemoryTool(BaseTool):
                 "Search agent memory for relevant past context, "
                 "decisions, or learned information."
             ),
-            parameters_schema=dict(SEARCH_MEMORY_SCHEMA),
+            parameters_schema=SearchMemoryArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy

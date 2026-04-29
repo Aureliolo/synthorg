@@ -1,14 +1,18 @@
 """Archival memory tools (search/write) for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.memory.self_editing import (
-    _ARCHIVAL_MEMORY_SEARCH_SCHEMA,
-    _ARCHIVAL_MEMORY_WRITE_SCHEMA,
     ARCHIVAL_MEMORY_SEARCH_TOOL,
     ARCHIVAL_MEMORY_WRITE_TOOL,
     SelfEditingMemoryStrategy,
+)
+from synthorg.memory.self_editing_args import (
+    ArchivalMemorySearchArgs,
+    ArchivalMemoryWriteArgs,
 )
 from synthorg.memory.tools._shared import _is_error_response
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -25,6 +29,8 @@ class ArchivalMemorySearchTool(BaseTool):
         agent_id: Agent ID bound to this tool instance.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = ArchivalMemorySearchArgs
+
     def __init__(
         self,
         *,
@@ -38,7 +44,7 @@ class ArchivalMemorySearchTool(BaseTool):
                 "Archival memory is never auto-injected; use this tool "
                 "to retrieve relevant past context on demand."
             ),
-            parameters_schema=dict(_ARCHIVAL_MEMORY_SEARCH_SCHEMA),
+            parameters_schema=ArchivalMemorySearchArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy
@@ -67,6 +73,8 @@ class ArchivalMemoryWriteTool(BaseTool):
         agent_id: Agent ID bound to this tool instance.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = ArchivalMemoryWriteArgs
+
     def __init__(
         self,
         *,
@@ -79,7 +87,7 @@ class ArchivalMemoryWriteTool(BaseTool):
                 "Store a new entry in archival memory.  Use for facts, "
                 "decisions, or events to retain for future retrieval."
             ),
-            parameters_schema=dict(_ARCHIVAL_MEMORY_WRITE_SCHEMA),
+            parameters_schema=ArchivalMemoryWriteArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy

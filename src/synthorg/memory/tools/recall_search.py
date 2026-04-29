@@ -1,13 +1,15 @@
 """``RecallMemoryTool`` for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.memory.tool_retriever import (
-    RECALL_MEMORY_SCHEMA,
     RECALL_MEMORY_TOOL_NAME,
     ToolBasedInjectionStrategy,
 )
+from synthorg.memory.tools._args import RecallMemoryArgs
 from synthorg.memory.tools._shared import _is_error_response
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
@@ -27,6 +29,8 @@ class RecallMemoryTool(BaseTool):
         agent_id: Agent ID bound to this tool instance.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = RecallMemoryArgs
+
     def __init__(
         self,
         *,
@@ -36,7 +40,7 @@ class RecallMemoryTool(BaseTool):
         super().__init__(
             name=RECALL_MEMORY_TOOL_NAME,
             description="Recall a specific memory entry by its ID.",
-            parameters_schema=dict(RECALL_MEMORY_SCHEMA),
+            parameters_schema=RecallMemoryArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy
