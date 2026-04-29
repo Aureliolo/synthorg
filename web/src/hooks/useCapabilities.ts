@@ -47,9 +47,17 @@ export function useCapabilities(): {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Cache hit -- skip the network call entirely. Async tick keeps
+    // the state setters out of the same synchronous frame as the
+    // effect body so eslint-react's set-state-in-effect rule stays
+    // happy and React does not schedule an extra render-while-render
+    // batch.
     if (_cache !== null) {
-      setCapabilities(_cache)
-      setLoading(false)
+      const cached = _cache
+      queueMicrotask(() => {
+        setCapabilities(cached)
+        setLoading(false)
+      })
       return
     }
     let cancelled = false

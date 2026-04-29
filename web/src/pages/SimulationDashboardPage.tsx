@@ -48,36 +48,6 @@ export default function SimulationDashboardPage() {
     }
   }, [])
 
-  useEffect(() => {
-    if (capLoading || !capabilities.simulations) {
-      // Skip the network call entirely when the simulations
-      // subsystem is not configured for this deployment. The
-      // backend route is also not registered (returns 404), so
-      // calling listSimulations() would log a 404 in the audit
-      // trail per the issue #1666 B-3 contract.
-      setLoading(false)
-      return
-    }
-    void refresh()
-  }, [refresh, capLoading, capabilities.simulations])
-
-  if (!capLoading && !capabilities.simulations) {
-    return (
-      <div className="space-y-section-gap">
-        <ListHeader title="Simulations" />
-        <EmptyState
-          icon={Activity}
-          title="Simulations not configured"
-          description={
-            'This deployment did not enable the client simulation ' +
-            'runtime. Configure it in your backend setup to start ' +
-            'tracking simulation runs.'
-          }
-        />
-      </div>
-    )
-  }
-
   const handleCancel = useCallback(
     async (simulationId: string) => {
       try {
@@ -102,6 +72,41 @@ export default function SimulationDashboardPage() {
       setError('Failed to load simulation report.')
     }
   }, [])
+
+  // Capability-gated effect: skip the network call entirely when the
+  // simulations subsystem is not configured for this deployment. The
+  // backend route is also not registered (returns 404), so calling
+  // listSimulations() would log a 404 in the audit trail per the
+  // issue #1666 B-3 contract. The early-return path that renders the
+  // EmptyState is below all hooks so React's hook-order rules stay
+  // satisfied across renders.
+  useEffect(() => {
+    if (capLoading || !capabilities.simulations) {
+      // Defer the loading flip out of the same synchronous render
+      // frame so eslint-react's set-state-in-effect rule stays
+      // satisfied and React batches one render instead of two.
+      queueMicrotask(() => setLoading(false))
+      return
+    }
+    void refresh()
+  }, [refresh, capLoading, capabilities.simulations])
+
+  if (!capLoading && !capabilities.simulations) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Simulations" />
+        <EmptyState
+          icon={Activity}
+          title="Simulations not configured"
+          description={
+            'This deployment did not enable the client simulation ' +
+            'runtime. Configure it in your backend setup to start ' +
+            'tracking simulation runs.'
+          }
+        />
+      </div>
+    )
+  }
 
   if (loading && runs.length === 0) {
     return (

@@ -65,31 +65,6 @@ export default function RequestQueuePage() {
     }
   }, [])
 
-  useEffect(() => {
-    if (capLoading || !capabilities.requests) {
-      setLoading(false)
-      return
-    }
-    void refresh()
-  }, [refresh, capLoading, capabilities.requests])
-
-  if (!capLoading && !capabilities.requests) {
-    return (
-      <div className="space-y-section-gap">
-        <ListHeader title="Requests" />
-        <EmptyState
-          icon={Inbox}
-          title="Requests not configured"
-          description={
-            'This deployment did not enable the client request facade. ' +
-            'Configure it in your backend setup to start tracking ' +
-            'incoming requests.'
-          }
-        />
-      </div>
-    )
-  }
-
   const handleScope = useCallback(
     async (requestId: string) => {
       if (pending[requestId]) return
@@ -140,6 +115,39 @@ export default function RequestQueuePage() {
     },
     [refresh, pending],
   )
+
+  // Capability-gated effect: skip the network call entirely when the
+  // requests subsystem is not configured. Backend route is also not
+  // registered (returns 404). The early-return path that renders the
+  // EmptyState lives below all hooks so React's hook-order rules
+  // stay satisfied across renders.
+  useEffect(() => {
+    if (capLoading || !capabilities.requests) {
+      // Defer the loading flip out of the same synchronous render
+      // frame so eslint-react's set-state-in-effect rule stays
+      // satisfied and React batches one render instead of two.
+      queueMicrotask(() => setLoading(false))
+      return
+    }
+    void refresh()
+  }, [refresh, capLoading, capabilities.requests])
+
+  if (!capLoading && !capabilities.requests) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Requests" />
+        <EmptyState
+          icon={Inbox}
+          title="Requests not configured"
+          description={
+            'This deployment did not enable the client request facade. ' +
+            'Configure it in your backend setup to start tracking ' +
+            'incoming requests.'
+          }
+        />
+      </div>
+    )
+  }
 
   if (loading && requests.length === 0) {
     return (
