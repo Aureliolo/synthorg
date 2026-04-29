@@ -18,6 +18,14 @@
   "liveNow": false,
   "panels": [
     {
+      "type": "row",
+      "id": 100,
+      "title": "Health & SLO",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "panels": []
+    },
+    {
       "type": "gauge",
       "id": 1,
       "title": "Coordination efficiency",
@@ -32,7 +40,7 @@
       "fieldConfig": {
         "defaults": {"min": 0, "max": 1, "unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": 0}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.8}]}}
       },
-      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0}
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 1}
     },
     {
       "type": "gauge",
@@ -49,12 +57,12 @@
       "fieldConfig": {
         "defaults": {"min": 0, "max": 100, "unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 25}, {"color": "red", "value": 40}]}}
       },
-      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0}
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 1}
     },
     {
       "type": "gauge",
       "id": 3,
-      "title": "Budget utilisation",
+      "title": "Budget utilization",
       "description": "Accumulated cost as % of monthly budget. Alert over 80%.",
       "targets": [
         {
@@ -66,143 +74,571 @@
       "fieldConfig": {
         "defaults": {"min": 0, "max": 100, "unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 70}, {"color": "red", "value": 80}]}}
       },
-      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0}
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 1}
+    },
+    {
+      "type": "stat",
+      "id": 12,
+      "title": "Active agents",
+      "description": "Active agent count from the registry, broken down by status (the underlying metric also carries a trust_level label, but this panel sums across it).",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "expr": "sum by (status) (synthorg_active_agents_total)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 1}
     },
     {
       "type": "stat",
       "id": 4,
       "title": "Escalation queue depth",
-      "description": "Pending escalations by department. Sustained values > 5 indicate a backlog.",
+      "description": "Pending escalations by department. Sustained values > 5 indicate a backlog. Filter via $department.",
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum(synthorg_escalation_queue_depth) by (department)",
+          "expr": "sum(synthorg_escalation_queue_depth{department=~\"$department\"}) by (department)",
           "legendFormat": "{{department}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {"defaults": {"unit": "short"}},
-      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0}
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 7}
     },
     {
-      "type": "timeseries",
-      "id": 5,
-      "title": "Agent identity changes (rate / 5m)",
-      "description": "Per-agent identity version changes: created / updated / rolled_back / archived.",
-      "targets": [
+      "type": "row",
+      "id": 200,
+      "title": "Tasks",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 13},
+      "panels": [
         {
-          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum by (change_type) (rate(synthorg_agent_identity_version_changes_total[5m]))",
-          "legendFormat": "{{change_type}}",
-          "refId": "A"
+          "type": "timeseries",
+          "id": 201,
+          "title": "Task completion rate (per 5m, by outcome)",
+          "description": "synthorg_task_runs_total partitioned by bounded outcome (succeeded / failed / cancelled).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (outcome) (rate(synthorg_task_runs_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14}
+        },
+        {
+          "type": "timeseries",
+          "id": 202,
+          "title": "Task duration p50 / p95 (by outcome)",
+          "description": "Quantiles over synthorg_task_duration_seconds_bucket.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.5, sum by (le, outcome) (rate(synthorg_task_duration_seconds_bucket[5m])))",
+              "legendFormat": "p50 {{outcome}}",
+              "refId": "A"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.95, sum by (le, outcome) (rate(synthorg_task_duration_seconds_bucket[5m])))",
+              "legendFormat": "p95 {{outcome}}",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14}
+        },
+        {
+          "type": "timeseries",
+          "id": 203,
+          "title": "Tasks by status (current count)",
+          "description": "synthorg_tasks_total summed across agents.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (status) (synthorg_tasks_total)",
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22}
+        },
+        {
+          "type": "table",
+          "id": 204,
+          "title": "Top tasks per agent ($agent)",
+          "description": "Per-agent task count, filterable via $agent (sourced from synthorg_tasks_total's agent label, distinct from $agent_id which is sourced from synthorg_agent_cost_total).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "topk(25, sum by (agent, status) (synthorg_tasks_total{agent=~\"$agent\",agent!=\"\"}))",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22}
         }
-      ],
-      "fieldConfig": {"defaults": {"unit": "ops"}},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}
+      ]
     },
     {
-      "type": "timeseries",
-      "id": 6,
-      "title": "Workflow execution duration p95",
-      "description": "Workflow run latency quantile, labelled by terminal status.",
-      "targets": [
+      "type": "row",
+      "id": 300,
+      "title": "Workflows",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 14},
+      "panels": [
         {
-          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "histogram_quantile(0.95, sum by (le, status) (rate(synthorg_workflow_execution_seconds_bucket[5m])))",
-          "legendFormat": "{{status}}",
-          "refId": "A"
+          "type": "timeseries",
+          "id": 301,
+          "title": "Workflow duration p50 / p95 (by status)",
+          "description": "Quantiles over synthorg_workflow_execution_seconds_bucket. Filter to a definition via $workflow_definition_id.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.5, sum by (le, status) (rate(synthorg_workflow_execution_seconds_bucket{workflow_definition_id=~\"$workflow_definition_id\"}[5m])))",
+              "legendFormat": "p50 {{status}}",
+              "refId": "A"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.95, sum by (le, status) (rate(synthorg_workflow_execution_seconds_bucket{workflow_definition_id=~\"$workflow_definition_id\"}[5m])))",
+              "legendFormat": "p95 {{status}}",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15}
+        },
+        {
+          "type": "timeseries",
+          "id": 302,
+          "title": "Workflow execution rate by status",
+          "description": "synthorg_workflow_execution_seconds_count incremented on every terminal transition.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (status) (rate(synthorg_workflow_execution_seconds_count{workflow_definition_id=~\"$workflow_definition_id\"}[5m]))",
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15}
+        },
+        {
+          "type": "table",
+          "id": 303,
+          "title": "Top workflow definitions (count over 1h)",
+          "description": "Most-active definitions by terminal-state count.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "topk(15, sum by (workflow_definition_id) (increase(synthorg_workflow_execution_seconds_count[1h])))",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 23}
         }
-      ],
-      "fieldConfig": {"defaults": {"unit": "s"}},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}
+      ]
     },
     {
-      "type": "table",
-      "id": 7,
-      "title": "Per-agent cost (current period)",
-      "description": "Accumulated cost per agent in the configured currency.",
-      "targets": [
+      "type": "row",
+      "id": 400,
+      "title": "Tools & Providers",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 15},
+      "panels": [
         {
-          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "topk(25, synthorg_agent_cost_total)",
-          "instant": true,
-          "format": "table",
-          "refId": "A"
+          "type": "timeseries",
+          "id": 401,
+          "title": "Tool invocation rate (by outcome)",
+          "description": "synthorg_tool_invocations_total partitioned by bounded outcome (success / error / timeout).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (outcome) (rate(synthorg_tool_invocations_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+        },
+        {
+          "type": "timeseries",
+          "id": 402,
+          "title": "Tool duration p95 (top tools)",
+          "description": "Quantile over synthorg_tool_duration_seconds_bucket, top 10 tools by call rate.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "topk(10, histogram_quantile(0.95, sum by (le, tool_name) (rate(synthorg_tool_duration_seconds_bucket[5m]))))",
+              "legendFormat": "{{tool_name}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+        },
+        {
+          "type": "timeseries",
+          "id": 403,
+          "title": "Provider tokens (by direction)",
+          "description": "synthorg_provider_tokens_total partitioned by direction (input / output).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (direction) (rate(synthorg_provider_tokens_total[5m]))",
+              "legendFormat": "{{direction}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 24}
+        },
+        {
+          "type": "timeseries",
+          "id": 404,
+          "title": "Provider cost rate",
+          "description": "synthorg_provider_cost_total per provider, in the configured currency.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (provider) (rate(synthorg_provider_cost_total[5m]))",
+              "legendFormat": "{{provider}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 24}
+        },
+        {
+          "type": "timeseries",
+          "id": 9,
+          "title": "Provider errors by class",
+          "description": "Provider-call failures (synthorg_provider_errors_total) grouped by bounded error_class.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (error_class) (rate(synthorg_provider_errors_total[5m]))",
+              "legendFormat": "{{error_class}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 24}
         }
-      ],
-      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 14}
+      ]
     },
     {
-      "type": "timeseries",
-      "id": 8,
-      "title": "API request rate by status class",
-      "description": "Request rate per minute split into 1xx / 2xx / 3xx / 4xx / 5xx. Sourced from the auto-emitted _count series of the synthorg_api_request_duration_seconds histogram.",
-      "targets": [
+      "type": "row",
+      "id": 500,
+      "title": "Cost & Budget",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+      "panels": [
         {
-          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum by (status_class) (rate(synthorg_api_request_duration_seconds_count[1m]))",
-          "legendFormat": "{{status_class}}",
-          "refId": "A"
+          "type": "stat",
+          "id": 501,
+          "title": "Total accumulated cost",
+          "description": "synthorg_cost_total in the configured currency.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_cost_total",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 17}
+        },
+        {
+          "type": "stat",
+          "id": 502,
+          "title": "Monthly budget",
+          "description": "synthorg_budget_monthly_cost (configured monthly cap).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_budget_monthly_cost",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 6, "w": 8, "x": 8, "y": 17}
+        },
+        {
+          "type": "gauge",
+          "id": 503,
+          "title": "Daily budget utilization",
+          "description": "synthorg_budget_daily_used_percent (prorated daily share of the monthly cap).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_budget_daily_used_percent",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"min": 0, "max": 100, "unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 70}, {"color": "red", "value": 95}]}}},
+          "gridPos": {"h": 6, "w": 8, "x": 16, "y": 17}
+        },
+        {
+          "type": "table",
+          "id": 7,
+          "title": "Per-agent cost (top 25, $agent_id)",
+          "description": "Accumulated cost per agent in the configured currency. Filter via $agent_id.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "topk(25, synthorg_agent_cost_total{agent_id=~\"$agent_id\"})",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 10, "w": 12, "x": 0, "y": 23}
+        },
+        {
+          "type": "timeseries",
+          "id": 504,
+          "title": "Per-agent budget utilization %",
+          "description": "synthorg_agent_budget_used_percent over time, per agent ($agent_id).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_agent_budget_used_percent{agent_id=~\"$agent_id\"}",
+              "legendFormat": "{{agent_id}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}},
+          "gridPos": {"h": 10, "w": 12, "x": 12, "y": 23}
         }
-      ],
-      "fieldConfig": {"defaults": {"unit": "reqps"}},
-      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 14}
+      ]
     },
     {
-      "type": "timeseries",
-      "id": 9,
-      "title": "Provider errors by class",
-      "description": "Provider-call failures (synthorg_provider_errors_total) grouped by bounded error_class: rate_limit / timeout / connection / internal / invalid_request / auth / content_filter / not_found / other.",
-      "targets": [
+      "type": "row",
+      "id": 600,
+      "title": "Audit & Security",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17},
+      "panels": [
         {
-          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum by (error_class) (rate(synthorg_provider_errors_total[5m]))",
-          "legendFormat": "{{error_class}}",
-          "refId": "A"
+          "type": "timeseries",
+          "id": 601,
+          "title": "Audit chain append rate (by status)",
+          "description": "synthorg_audit_chain_appends_total partitioned by status (signed / fallback / error).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (status) (rate(synthorg_audit_chain_appends_total[5m]))",
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 18}
+        },
+        {
+          "type": "stat",
+          "id": 602,
+          "title": "Audit chain depth",
+          "description": "synthorg_audit_chain_depth (current hash chain length).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_audit_chain_depth",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 18}
+        },
+        {
+          "type": "stat",
+          "id": 603,
+          "title": "Time since last append",
+          "description": "Seconds since the most recent audit chain append.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "time() - synthorg_audit_chain_last_append_timestamp_seconds",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 60}, {"color": "red", "value": 300}]}}},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 18}
+        },
+        {
+          "type": "timeseries",
+          "id": 604,
+          "title": "Security verdicts (rate)",
+          "description": "synthorg_security_evaluations_total partitioned by verdict.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (verdict) (rate(synthorg_security_evaluations_total[5m]))",
+              "legendFormat": "{{verdict}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 26}
+        },
+        {
+          "type": "timeseries",
+          "id": 5,
+          "title": "Agent identity changes (rate / 5m)",
+          "description": "Per-agent identity version changes: created / updated / rolled_back / archived.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (change_type) (rate(synthorg_agent_identity_version_changes_total{agent_id=~\"$agent_id\"}[5m]))",
+              "legendFormat": "{{change_type}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 26}
+        },
+        {
+          "type": "timeseries",
+          "id": 11,
+          "title": "API error classification",
+          "description": "4xx/5xx response rate partitioned by RFC 9457 category.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (category) (rate(synthorg_api_error_classification_total[5m]))",
+              "legendFormat": "{{category}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "reqps"}},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 26}
         }
-      ],
-      "fieldConfig": {"defaults": {"unit": "ops"}},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      ]
     },
     {
-      "type": "timeseries",
-      "id": 10,
-      "title": "Cache hit rate",
-      "description": "Hit rate for in-process caches (mcp_result, reranker). Drops below ~0.8 indicate undersized or misconfigured caches.",
-      "targets": [
+      "type": "row",
+      "id": 700,
+      "title": "Client Health",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 18},
+      "panels": [
         {
-          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum by (cache_name) (rate(synthorg_cache_operations_total{outcome=\"hit\"}[5m])) / clamp_min(sum by (cache_name) (rate(synthorg_cache_operations_total[5m])), 1)",
-          "legendFormat": "{{cache_name}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {"unit": "percentunit", "min": 0, "max": 1}
-      },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
-    },
-    {
-      "type": "timeseries",
-      "id": 11,
-      "title": "API error classification",
-      "description": "4xx/5xx response rate partitioned by RFC 9457 category (auth, validation, not_found, conflict, rate_limit, budget_exhausted, provider_error, internal).",
-      "targets": [
+          "type": "timeseries",
+          "id": 701,
+          "title": "Client disconnects (by transport + reason)",
+          "description": "synthorg_client_disconnects_total partitioned by bounded transport (sse / websocket / mcp_stdio / mcp_http) and reason (client_initiated / transport_error / cancelled / timeout).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (transport, reason) (rate(synthorg_client_disconnects_total[5m]))",
+              "legendFormat": "{{transport}} / {{reason}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 19}
+        },
         {
-          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum by (category) (rate(synthorg_api_error_classification_total[5m]))",
-          "legendFormat": "{{category}}",
-          "refId": "A"
+          "type": "timeseries",
+          "id": 8,
+          "title": "API request rate by status class",
+          "description": "Request rate per second split into 1xx / 2xx / 3xx / 4xx / 5xx. Sourced from the auto-emitted _count series of synthorg_api_request_duration_seconds via rate(...[1m]) (per-second over a 1-minute window, matching the reqps unit).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (status_class) (rate(synthorg_api_request_duration_seconds_count[1m]))",
+              "legendFormat": "{{status_class}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "reqps"}},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 19}
+        },
+        {
+          "type": "timeseries",
+          "id": 702,
+          "title": "OTLP export batches (by kind + outcome)",
+          "description": "synthorg_otlp_export_batches_total partitioned by kind (logs / traces) and outcome (success / failure).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (kind, outcome) (rate(synthorg_otlp_export_batches_total[5m]))",
+              "legendFormat": "{{kind}} / {{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 27}
+        },
+        {
+          "type": "timeseries",
+          "id": 703,
+          "title": "OTLP dropped records",
+          "description": "synthorg_otlp_export_dropped_records_total per kind (queue overflow or retries exhausted).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (kind) (rate(synthorg_otlp_export_dropped_records_total[5m]))",
+              "legendFormat": "{{kind}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 27}
+        },
+        {
+          "type": "timeseries",
+          "id": 10,
+          "title": "Cache hit rate",
+          "description": "Hit rate for in-process caches (mcp_result, reranker). Drops below ~0.8 indicate undersized caches.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (cache_name) (rate(synthorg_cache_operations_total{outcome=\"hit\"}[5m])) / clamp_min(sum by (cache_name) (rate(synthorg_cache_operations_total[5m])), 1)",
+              "legendFormat": "{{cache_name}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 27}
+        },
+        {
+          "type": "stat",
+          "id": 704,
+          "title": "App build info",
+          "description": "synthorg_app version label.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_app",
+              "instant": true,
+              "format": "table",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 35}
         }
-      ],
-      "fieldConfig": {"defaults": {"unit": "reqps"}},
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32}
+      ]
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
   "style": "dark",
-  "tags": ["synthorg", "hyg-1"],
+  "tags": ["synthorg", "observability"],
   "templating": {
     "list": [
       {
@@ -210,6 +646,58 @@
         "type": "datasource",
         "query": "prometheus",
         "current": {"selected": true, "text": "Prometheus", "value": "${DS_PROMETHEUS}"},
+        "hide": 0
+      },
+      {
+        "name": "agent_id",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(synthorg_agent_cost_total, agent_id)", "refId": "Prometheus-agent-id-Variable-Query"},
+        "regex": "",
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
+        "hide": 0
+      },
+      {
+        "name": "agent",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(synthorg_tasks_total, agent)", "refId": "Prometheus-agent-Variable-Query"},
+        "regex": "",
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
+        "hide": 0
+      },
+      {
+        "name": "workflow_definition_id",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(synthorg_workflow_execution_seconds_count, workflow_definition_id)", "refId": "Prometheus-workflow-Variable-Query"},
+        "regex": "",
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
+        "hide": 0
+      },
+      {
+        "name": "department",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(synthorg_escalation_queue_depth, department)", "refId": "Prometheus-department-Variable-Query"},
+        "regex": "",
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
         "hide": 0
       }
     ]
@@ -219,6 +707,6 @@
   "timezone": "browser",
   "title": "SynthOrg / Overview",
   "uid": "synthorg-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

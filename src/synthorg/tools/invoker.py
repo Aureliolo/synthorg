@@ -10,6 +10,7 @@ re-raised.  ``BaseException`` subclasses (``KeyboardInterrupt``,
 import asyncio
 import copy
 from contextlib import nullcontext
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.approval.models import EscalationInfo
@@ -404,11 +405,15 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             try:
                 result = await self._invoke_single_inner(tool_call)
             except asyncio.CancelledError:
-                # Map cancellation into the documented tool_span
-                # taxonomy (success / error / timeout); cancellations
-                # are nearly always driven by the execution-engine
-                # deadline, which callers reason about as "timeout".
-                span.set_attribute("tool.outcome", "timeout")
+                # Map generic cancellation to ``error`` (not
+                # ``timeout``): only an explicit deadline expiry is
+                # a real timeout, and that path stamps
+                # ``metadata["timed_out"]`` which the happy-path
+                # branch above promotes to
+                # ``span.outcome="timeout"`` via ``result.is_timeout``.
+                # Treating every cancellation as a timeout would
+                # over-report the timeout outcome.
+                span.set_attribute("tool.outcome", "error")
                 raise
             except MemoryError, RecursionError:
                 span.set_attribute("tool.outcome", "error")
@@ -416,17 +421,70 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             except Exception:
                 span.set_attribute("tool.outcome", "error")
                 raise
-            span.set_attribute(
-                "tool.outcome",
-                "error" if result.is_error else "success",
-            )
+            if result.is_timeout:
+                span.set_attribute("tool.outcome", "timeout")
+            elif result.is_error:
+                span.set_attribute("tool.outcome", "error")
+            else:
+                span.set_attribute("tool.outcome", "success")
             return result
 
-    async def _invoke_single_inner(  # noqa: PLR0911
+    async def _invoke_single_inner(
         self,
         tool_call: ToolCall,
     ) -> ToolResult:
-        """Inner body of ``_invoke_single`` -- guarded by the span."""
+        """Inner body of ``_invoke_single`` -- guarded by the span.
+
+        Every exit path -- happy, error, or deadline-driven
+        cancellation -- routes through the same recording call so
+        success / error / timeout outcomes all land in
+        ``synthorg_tool_invocations_total`` and the activity DB. The
+        ``CancelledError`` branch synthesizes a sentinel ``ToolResult``
+        before re-raising so the engine deadline that cancelled this
+        coroutine is captured as ``outcome="timeout"``.
+        """
+        started_at = datetime.now(UTC)
+        try:
+            result = await self._build_invocation_result(tool_call)
+        except asyncio.CancelledError:
+            # Generic cancellation is recorded as ``outcome="error"``,
+            # not ``"timeout"``: a cancellation reaches us for many
+            # reasons (engine shutdown, parent-task cancel, request
+            # abort) and only deadline expiry is a real timeout. The
+            # explicit-deadline path sets ``metadata["timed_out"]``
+            # before cancelling, which the happy-path branch
+            # promotes via ``_build_result``; if that metadata never
+            # landed (because the inner coroutine was cancelled
+            # before it could mark itself), classifying the failure
+            # as a timeout would over-report the timeout outcome.
+            cancelled_result = ToolResult(
+                tool_call_id=tool_call.id,
+                content="Tool invocation cancelled before completion.",
+                is_error=True,
+                is_timeout=False,
+            )
+            await record_tool_invocation(
+                self,
+                tool_call,
+                cancelled_result,
+                started_at=started_at,
+            )
+            raise
+        await record_tool_invocation(self, tool_call, result, started_at=started_at)
+        return result
+
+    async def _build_invocation_result(  # noqa: PLR0911
+        self,
+        tool_call: ToolCall,
+    ) -> ToolResult:
+        """Run the lookup -> permission -> exec -> scan pipeline.
+
+        Returns a ``ToolResult`` for every outcome (lookup miss,
+        permission denial, sub-constraint violation, param error,
+        security block, execution failure, parking error, success).
+        Caller is responsible for recording metrics around this
+        function so all exit paths are observable.
+        """
         tool_or_error = self._lookup_tool(tool_call)
         if isinstance(tool_or_error, ToolResult):
             return tool_or_error
@@ -478,9 +536,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 security_context,
             )
 
-        result = self._build_result(tool_call, exec_result)
-        await record_tool_invocation(self, tool_call, result)
-        return result
+        return self._build_result(tool_call, exec_result)
 
     def _lookup_tool(self, tool_call: ToolCall) -> BaseTool | ToolResult:
         """Look up a tool in the registry, returning an error on miss."""
@@ -605,8 +661,22 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         tool_call: ToolCall,
         result: ToolExecutionResult,
     ) -> ToolResult:
-        """Map a successful execution result to a ``ToolResult``."""
-        if result.is_error:
+        """Map a successful execution result to a ``ToolResult``.
+
+        ``is_error`` is normalized BEFORE logging so a timed-out
+        execution is not mis-logged as ``TOOL_INVOKE_SUCCESS``: the
+        ``ToolResult`` validator enforces ``is_timeout => is_error``,
+        so the returned result is always marked errored when the
+        underlying execution flagged a timeout, even if the inner
+        ``result.is_error`` was left at its default ``False``.
+        """
+        # Strict identity check (``is True``) so a tool that
+        # accidentally stamped a string like ``"false"`` or a 1
+        # into ``metadata["timed_out"]`` does not get reclassified
+        # as a timeout by ``bool(...)`` truthiness rules.
+        is_timeout = result.metadata.get("timed_out") is True
+        is_error = result.is_error or is_timeout
+        if is_error:
             logger.warning(
                 TOOL_INVOKE_TOOL_ERROR,
                 tool_call_id=tool_call.id,
@@ -622,7 +692,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         return ToolResult(
             tool_call_id=tool_call.id,
             content=result.content,
-            is_error=result.is_error,
+            is_error=is_error,
+            is_timeout=is_timeout,
         )
 
     def _apply_html_guard(

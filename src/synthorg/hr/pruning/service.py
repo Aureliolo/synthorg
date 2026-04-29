@@ -43,6 +43,7 @@ from synthorg.observability.events.hr import (
     HR_PRUNING_REJECTED,
     HR_PRUNING_SCHEDULER_STARTED,
     HR_PRUNING_SCHEDULER_STOPPED,
+    PRUNING_REQUEST_STATUS_TRANSITIONED,
 )
 
 if TYPE_CHECKING:
@@ -97,6 +98,16 @@ class PruningService:
         self._pending_requests: dict[str, PruningRequest] = {}
         self._completed: list[PruningRecord] = []
         self._processed_approval_ids: set[str] = set()
+        # Approval ids whose ``PRUNING_REQUEST_STATUS_TRANSITIONED``
+        # log has already been emitted. Distinct from
+        # ``_processed_approval_ids``: that set only adds ids on
+        # successful offboarding, so a failed/retried approval would
+        # log the transition on every sweep. This set advances the
+        # moment the log fires (which itself happens after the
+        # approval-store persistence) and is the canonical "this hop
+        # has been observed" idempotency anchor for the transition
+        # log.
+        self._logged_transition_approval_ids: set[str] = set()
         # Approval ids currently being handled by a cycle.  Two
         # concurrent ``_process_decided_approvals`` cycles MUST NOT
         # both enter ``_handle_approved`` / ``_handle_rejected`` for
@@ -350,6 +361,18 @@ class PruningService:
         self._pending_requests[agent_id] = request
         pending_agent_ids.add(agent_id)
 
+        # State-transition log fires AFTER the request is built and
+        # registered. ``model_validator`` raises (deep-copy,
+        # type narrowing) skip these logs so the audit trail only
+        # records transitions that actually landed.
+        logger.info(
+            PRUNING_REQUEST_STATUS_TRANSITIONED,
+            request_id=request_id,
+            agent_id=agent_id,
+            approval_id=str(approval_id),
+            from_status=None,
+            to_status=ApprovalStatus.PENDING.value,
+        )
         logger.info(
             HR_PRUNING_APPROVAL_SUBMITTED,
             agent_id=agent_id,
@@ -464,11 +487,34 @@ class PruningService:
             self._processed_approval_ids.add(str(item.id))
             return
 
-        logger.info(
-            HR_PRUNING_APPROVED,
-            agent_id=agent_id,
-            approval_id=str(item.id),
-        )
+        # State-transition log for the pruning request itself; the
+        # underlying ApprovalItem flipped to APPROVED in the
+        # controller, but this is the first hop the pruning service
+        # observes for the linked PruningRequest's status (mirrors
+        # the ApprovalItem). Logged once per approval id, gated by
+        # ``_logged_transition_approval_ids`` so a retry after a
+        # failed offboarding does not re-emit the transition.
+        approval_id_str = str(item.id)
+        request = self._pending_requests.get(agent_id)
+        if approval_id_str not in self._logged_transition_approval_ids:
+            logger.info(
+                PRUNING_REQUEST_STATUS_TRANSITIONED,
+                request_id=request.id if request is not None else None,
+                agent_id=agent_id,
+                approval_id=approval_id_str,
+                from_status=ApprovalStatus.PENDING.value,
+                to_status=ApprovalStatus.APPROVED.value,
+            )
+            if request is not None:
+                self._pending_requests[agent_id] = request.model_copy(
+                    update={"status": ApprovalStatus.APPROVED},
+                )
+            self._logged_transition_approval_ids.add(approval_id_str)
+            logger.info(
+                HR_PRUNING_APPROVED,
+                agent_id=agent_id,
+                approval_id=approval_id_str,
+            )
 
         result = await self._execute_offboarding(item, agent)
         if result is None:
@@ -581,8 +627,16 @@ class PruningService:
             self._processed_approval_ids.add(str(item.id))
             return
 
-        self._pending_requests.pop(agent_id, None)
+        request = self._pending_requests.pop(agent_id, None)
         self._processed_approval_ids.add(str(item.id))
+        logger.info(
+            PRUNING_REQUEST_STATUS_TRANSITIONED,
+            request_id=request.id if request is not None else None,
+            agent_id=agent_id,
+            approval_id=str(item.id),
+            from_status=ApprovalStatus.PENDING.value,
+            to_status=ApprovalStatus.REJECTED.value,
+        )
         logger.info(
             HR_PRUNING_REJECTED,
             agent_id=agent_id,

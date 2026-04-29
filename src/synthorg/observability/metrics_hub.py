@@ -24,7 +24,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_ACTIVATED,
     METRICS_COLLECTOR_DEACTIVATED,
-    METRICS_SCRAPE_FAILED,
+    METRICS_RECORD_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -98,6 +98,18 @@ def _safe_record(
                 # so the caller sees the wiring mistake.
                 raise
             except Exception as exc:
+                # ValueError lives under this branch on purpose: it
+                # surfaces both genuine programming bugs (caller
+                # passed an unknown label) AND transient validation
+                # misses caused by the ~15s lag in the registry
+                # snapshot (a brand-new agent / workflow / department
+                # whose first metric arrives before the next
+                # ``refresh()`` seeds the snapshot). Crashing the
+                # business path here would punish callers for
+                # operator-introduced delays they cannot avoid;
+                # tests catch programming bugs by calling
+                # ``validate_*`` / ``record_*`` directly, where
+                # ValueError still propagates.
                 logger.warning(
                     event,
                     hub_method=method,
@@ -111,7 +123,7 @@ def _safe_record(
     return _wrap
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_provider_usage")
+@_safe_record(METRICS_RECORD_FAILED, "record_provider_usage")
 def record_provider_usage(
     *,
     provider: str,
@@ -137,16 +149,21 @@ def record_provider_usage(
     )
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_task_run")
-def record_task_run(*, outcome: str, duration_sec: float) -> None:
-    """Forward to :meth:`PrometheusCollector.record_task_run`."""
+@_safe_record(METRICS_RECORD_FAILED, "record_task_run")
+def record_task_run(*, outcome: str, duration_sec: float | None) -> None:
+    """Forward to :meth:`PrometheusCollector.record_task_run`.
+
+    ``duration_sec=None`` skips the duration-histogram observation
+    while still incrementing the outcome counter; see
+    :meth:`PrometheusCollector.record_task_run` for the rationale.
+    """
     collector = _active()
     if collector is None:
         return
     collector.record_task_run(outcome=outcome, duration_sec=duration_sec)
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_security_verdict")
+@_safe_record(METRICS_RECORD_FAILED, "record_security_verdict")
 def record_security_verdict(verdict: str) -> None:
     """Forward to :meth:`PrometheusCollector.record_security_verdict`."""
     collector = _active()
@@ -155,7 +172,7 @@ def record_security_verdict(verdict: str) -> None:
     collector.record_security_verdict(verdict)
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_provider_error")
+@_safe_record(METRICS_RECORD_FAILED, "record_provider_error")
 def record_provider_error(
     *,
     provider: str,
@@ -173,7 +190,7 @@ def record_provider_error(
     )
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_cache_operation")
+@_safe_record(METRICS_RECORD_FAILED, "record_cache_operation")
 def record_cache_operation(*, cache_name: str, outcome: str) -> None:
     """Forward to :meth:`PrometheusCollector.record_cache_operation`."""
     collector = _active()
@@ -182,10 +199,55 @@ def record_cache_operation(*, cache_name: str, outcome: str) -> None:
     collector.record_cache_operation(cache_name=cache_name, outcome=outcome)
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_api_error")
+@_safe_record(METRICS_RECORD_FAILED, "record_api_error")
 def record_api_error(*, category: str, status_code: int) -> None:
     """Forward to :meth:`PrometheusCollector.record_api_error`."""
     collector = _active()
     if collector is None:
         return
     collector.record_api_error(category=category, status_code=status_code)
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_workflow_execution")
+def record_workflow_execution(
+    *,
+    workflow_definition_id: str,
+    status: str,
+    duration_seconds: float,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_workflow_execution`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_workflow_execution(
+        workflow_definition_id=workflow_definition_id,
+        status=status,
+        duration_seconds=duration_seconds,
+    )
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_tool_invocation")
+def record_tool_invocation(
+    *,
+    tool_name: str,
+    outcome: str,
+    duration_sec: float,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_tool_invocation`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_tool_invocation(
+        tool_name=tool_name,
+        outcome=outcome,
+        duration_sec=duration_sec,
+    )
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_client_disconnect")
+def record_client_disconnect(*, transport: str, reason: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_client_disconnect`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_client_disconnect(transport=transport, reason=reason)

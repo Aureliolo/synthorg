@@ -6,6 +6,7 @@ In-memory only -- presence is inherently ephemeral.
 """
 
 from synthorg.observability import get_logger
+from synthorg.observability.metrics_hub import record_client_disconnect
 
 logger = get_logger(__name__)
 
@@ -43,7 +44,14 @@ class UserPresence:
         Args:
             user_id: The disconnecting user's ID.
         """
-        count = self._counts.get(user_id, 0) - 1
+        current = self._counts.get(user_id, 0)
+        if current <= 0:
+            # No active connection to drop -- this is a no-op (e.g.
+            # second teardown for the same socket, or a dangling
+            # disconnect after presence reset). Skip the metric so
+            # we don't overcount disconnects.
+            return
+        count = current - 1
         if count <= 0:
             self._counts.pop(user_id, None)
             logger.debug(
@@ -58,6 +66,10 @@ class UserPresence:
                 user_id=user_id,
                 count=count,
             )
+        record_client_disconnect(
+            transport="websocket",
+            reason="client_initiated",
+        )
 
     def is_online(self, user_id: str) -> bool:
         """Check whether a user has at least one open connection.

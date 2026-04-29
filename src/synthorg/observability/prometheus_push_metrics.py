@@ -193,3 +193,17 @@ class PushMetrics:
             ["category", "status_class"],
             registry=registry,
         )
+
+        # -- Client disconnect counter --------------------------------
+        # Single counter with two bounded labels (cardinality is
+        # ``len(VALID_DISCONNECT_TRANSPORTS) * len(VALID_DISCONNECT_REASONS)``
+        # ; currently 4 transports x 4 reasons = 16 series) so one
+        # alert rule covers SSE / WebSocket / MCP-stdio / MCP-HTTP.
+        # Labels are validated via :data:`VALID_DISCONNECT_TRANSPORTS`
+        # and :data:`VALID_DISCONNECT_REASONS`.
+        self.client_disconnects = PromCounter(
+            f"{prefix}_client_disconnects_total",
+            "Client transport disconnections by transport and reason",
+            ["transport", "reason"],
+            registry=registry,
+        )

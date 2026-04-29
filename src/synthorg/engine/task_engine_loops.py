@@ -39,7 +39,10 @@ if TYPE_CHECKING:
 
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.engine.task_engine_config import TaskEngineConfig
-    from synthorg.engine.task_engine_version import VersionTracker
+    from synthorg.engine.task_engine_version import (
+        TaskTimingTracker,
+        VersionTracker,
+    )
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
@@ -71,6 +74,7 @@ class TaskEngineLoopsMixin:
     _observer_task: asyncio.Task[None] | None
     _persistence: PersistenceBackend
     _versions: VersionTracker
+    _timings: TaskTimingTracker
     _message_bus: MessageBus | None
     _config: TaskEngineConfig
 
@@ -234,6 +238,7 @@ class TaskEngineLoopsMixin:
                 mutation,
                 self._persistence,
                 self._versions,
+                self._timings,
             )
             if not envelope.future.done():
                 envelope.future.set_result(result)

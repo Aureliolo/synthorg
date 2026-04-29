@@ -156,6 +156,11 @@ class ToolResult(BaseModel):
         tool_call_id: The ``ToolCall.id`` this result corresponds to.
         content: String content returned by the tool.
         is_error: Whether the tool execution failed.
+        is_timeout: Whether the tool execution timed out specifically
+            (a stricter form of ``is_error``). Lets the metric layer
+            distinguish a tool that hit its time budget from one
+            that returned a deterministic error so dashboards
+            don't conflate the two.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -163,6 +168,27 @@ class ToolResult(BaseModel):
     tool_call_id: NotBlankStr = Field(description="Matching tool call ID")
     content: str = Field(description="Tool output content")
     is_error: bool = Field(default=False, description="Whether tool errored")
+    is_timeout: bool = Field(
+        default=False,
+        description="Whether tool errored due to timeout specifically",
+    )
+
+    @model_validator(mode="after")
+    def _validate_timeout_implies_error(self) -> Self:
+        """Reject ``is_timeout=True`` paired with ``is_error=False``.
+
+        Timeout is a stricter form of error; the metric layer maps
+        timeout to a distinct outcome label, but a non-error timeout
+        is contradictory and would split outcome semantics across
+        observability consumers.
+        """
+        if self.is_timeout and not self.is_error:
+            msg = (
+                "ToolResult.is_timeout requires is_error=True;"
+                " timeout is a stricter form of error"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ChatMessage(BaseModel):

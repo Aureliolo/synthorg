@@ -37,7 +37,7 @@ from synthorg.engine.task_engine_models import (
     TransitionTaskMutation,
     UpdateTaskMutation,
 )
-from synthorg.engine.task_engine_version import VersionTracker
+from synthorg.engine.task_engine_version import TaskTimingTracker, VersionTracker
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
@@ -95,6 +95,7 @@ class TaskEngine(TaskEngineLoopsMixin):
             maxsize=self._config.max_queue_size,
         )
         self._versions = VersionTracker()
+        self._timings = TaskTimingTracker()
         self._processing_task: asyncio.Task[None] | None = None
         self._in_flight: _MutationEnvelope | None = None
         self._running = False

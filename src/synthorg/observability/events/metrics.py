@@ -29,3 +29,16 @@ METRICS_COLLECTOR_DEACTIVATED: Final[str] = "metrics.collector.deactivated"
 # Prometheus recording / validation failures (distinct from scrape failures)
 METRICS_RECORD_FAILED: Final[str] = "metrics.record.failed"
 API_REQUEST_VALIDATION_FAILED: Final[str] = "metrics.api_request.validation_failed"
+
+# Client transport disconnect (SSE / WebSocket / MCP stdio); recorded only
+# after the corresponding ``synthorg_client_disconnects_total`` increment
+# succeeds so the metric and the log stay in lockstep.
+CLIENT_DISCONNECTED: Final[str] = "metrics.client_disconnected"
+
+# Clock-skew clamp on a duration computation; emitted when ``now`` precedes
+# ``created_at`` (clock jump, NTP misconfig, multi-node clock drift). The
+# duration is clamped to 0.0 and the histogram WILL record a zero-second
+# sample for that observation; the WARN exists so an operator can search
+# for the underlying clock issue and explain the otherwise-mysterious
+# zero-bucket spike, NOT to suppress the sample.
+METRICS_CLOCK_SKEW_DETECTED: Final[str] = "metrics.clock_skew_detected"

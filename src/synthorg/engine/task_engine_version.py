@@ -1,9 +1,14 @@
-"""Version tracking for TaskEngine optimistic concurrency.
+"""Version + timing tracking for TaskEngine bookkeeping.
 
-Wraps a plain ``dict[str, int]`` with seed, bump, check, and remove
-operations.  Extracted from ``task_engine.py`` to keep the main module
-focused on lifecycle and queue management.
+Wraps two plain dicts -- per-task version counters and per-task
+creation timestamps -- with seed, bump, check, and remove operations.
+Extracted from ``task_engine.py`` to keep the main module focused on
+lifecycle and queue management.
 """
+
+from datetime import (
+    datetime,  # noqa: TC003 -- runtime import: see record_creation tzinfo handling
+)
 
 from synthorg.engine.errors import TaskVersionConflictError
 from synthorg.observability import get_logger
@@ -96,3 +101,70 @@ class VersionTracker:
                 current_version=current,
             )
             raise TaskVersionConflictError(msg)
+
+
+class TaskTimingTracker:
+    """In-memory per-task creation timestamps for duration metrics.
+
+    Mirrors :class:`VersionTracker` semantics: the engine seeds an
+    entry on ``apply_create`` and reads it on ``apply_transition`` /
+    ``apply_cancel`` to compute duration for
+    ``synthorg_task_runs_total`` and ``synthorg_task_duration_seconds``.
+
+    **Immutability exemption (CLAUDE.md ``# lint-allow: immutability``):**
+    the underlying dict is mutated in place rather than wrapped in
+    ``MappingProxyType``. The tracker is volatile single-writer state
+    owned by the TaskEngine processing loop; it is never exposed to
+    callers and resets on every process restart, so the read-only
+    enforcement that ``MappingProxyType`` exists to provide is moot.
+    Read accessors (:meth:`get_creation`) return immutable
+    ``datetime`` values, not internal references, so callers cannot
+    mutate the dict via the public API.
+
+    **Volatility limitation:** like version tracking, timing state
+    resets on process restart. A task created before the restart
+    that transitions to a terminal state after the restart will have
+    no recorded creation time; the engine emits a duration of 0.0
+    plus a WARN log so the gap is searchable. Persisting creation
+    timestamps alongside the task is a future enhancement that
+    requires a schema migration.
+
+    Single-writer, not thread-safe.
+    """
+
+    def __init__(self) -> None:
+        self._created_at: dict[str, datetime] = {}
+
+    def record_creation(self, task_id: str, created_at: datetime) -> None:
+        """Stamp *task_id* with its creation time (overwrites).
+
+        Args:
+            task_id: Task identifier.
+            created_at: Creation timestamp; must be timezone-aware
+                and in UTC. Naive datetimes (or anything other than
+                UTC) raise ``ValueError`` to prevent silent metric
+                corruption from a caller that forgot ``tzinfo=UTC``.
+
+        Raises:
+            ValueError: If *created_at* is naive or not in UTC.
+        """
+        offset = (
+            created_at.tzinfo.utcoffset(created_at)
+            if created_at.tzinfo is not None
+            else None
+        )
+        if offset is None or offset.total_seconds() != 0:
+            msg = (
+                f"TaskTimingTracker.record_creation requires a UTC datetime;"
+                f" got {created_at!r} (tzinfo={created_at.tzinfo!r})"
+            )
+            raise ValueError(msg)
+        self._created_at[task_id] = created_at
+
+    def get_creation(self, task_id: str) -> datetime | None:
+        """Return the recorded creation time, or ``None`` if absent."""
+        return self._created_at.get(task_id)
+
+    def remove(self, task_id: str) -> None:
+        """Drop the creation timestamp for a deleted task."""
+        self._created_at.pop(task_id, None)

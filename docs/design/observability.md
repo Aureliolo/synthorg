@@ -324,6 +324,12 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 - `synthorg_agent_identity_version_changes_total{agent_id, change_type}`: counter; emitted on each agent identity change. `change_type` is one of `created`, `updated`, `rolled_back`, `archived`.
 - `synthorg_workflow_execution_seconds{workflow_definition_id, status}`: histogram; wall-clock duration of completed workflow executions. `workflow_definition_id` is the stable workflow **definition** id (bounded by defined workflows); passing an execution id would explode cardinality.
 
+**Client transport**
+
+- `synthorg_client_disconnects_total{transport, reason}`: counter; emitted from SSE / WebSocket / MCP disconnect handlers. `transport` ∈ {`sse`, `websocket`, `mcp_stdio`, `mcp_http`} (the two `mcp_*` values are emitted by `synthorg.tools.mcp.client` for stdio and streamable-HTTP MCP transports respectively); `reason` ∈ {`client_initiated`, `transport_error`, `cancelled`, `timeout`}. Bounded labels keep cardinality at 16 series (4 transports × 4 reasons), matching `VALID_DISCONNECT_TRANSPORTS` / `VALID_DISCONNECT_REASONS` in `prometheus_labels.py`.
+
+**Snapshot-backed registry-bound labels.** Four push-time label names (`agent_id`, `agent`, `department`, `workflow_definition_id`) are validated against a process-global `_LabelSnapshot` rebuilt on every async pre-scrape `PrometheusCollector.refresh()`. Sync `record_*` callers consult the snapshot via `validate_<label>` / `is_known_agent_id`; unknown values drop the sample with a `metrics.scrape.failed` WARN log (and `metrics.record.failed` at the metrics-hub wrapper level). Concurrency is guaranteed by atomic module-global rebinding (single bytecode op under the GIL) plus a capture-before-read pattern in every validator: the validator reads the module global once into a local before consulting the per-source `*_seeded` flags and the frozenset, so a concurrent `update_label_snapshot()` either swaps in the new snapshot before the local capture or after it -- never producing a torn `(*_seeded, frozenset)` pair. The collector additionally serializes the read/merge/write critical section in `_rebuild_label_snapshot` with a per-instance `asyncio.Lock` so two overlapping `refresh()` calls cannot clobber a partial-failure carry-forward. See `src/synthorg/observability/prometheus_labels.py`.
+
 **Cost + tokens**
 
 - `synthorg_provider_tokens_total{provider, model, direction}`: counter; input/output token consumption.

@@ -11,10 +11,8 @@ import pytest
 from prometheus_client import generate_latest
 from prometheus_client.parser import text_string_to_metric_families
 
-from synthorg.observability.prometheus_collector import (
-    PrometheusCollector,
-    _status_class,
-)
+from synthorg.observability.prometheus_collector import PrometheusCollector
+from synthorg.observability.prometheus_labels import status_class
 
 pytestmark = pytest.mark.unit
 
@@ -118,14 +116,20 @@ def test_record_api_request_rejects_invalid_status_code() -> None:
         )
 
 
-def test_status_class_boundaries() -> None:
-    assert _status_class(100) == "1xx"
-    assert _status_class(200) == "2xx"
-    assert _status_class(399) == "3xx"
-    assert _status_class(404) == "4xx"
-    assert _status_class(599) == "5xx"
-    assert _status_class(99) == "invalid"
-    assert _status_class(600) == "invalid"
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (100, "1xx"),
+        (200, "2xx"),
+        (399, "3xx"),
+        (404, "4xx"),
+        (599, "5xx"),
+        (99, "invalid"),
+        (600, "invalid"),
+    ],
+)
+def test_status_class_boundaries(code: int, expected: str) -> None:
+    assert status_class(code) == expected
 
 
 # -- Task metrics ------------------------------------------------------------

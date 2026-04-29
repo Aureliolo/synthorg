@@ -55,6 +55,10 @@ class ToolResultFactory(ModelFactory[ToolResult]):
     tool_call_id = "call_001"
     content = "Sunny, 22°C"
     is_error = False
+    # ToolResult enforces ``is_timeout => is_error``; pin the default
+    # to a happy-path success so polyfactory can't synthesize the
+    # forbidden ``is_timeout=True, is_error=False`` combination.
+    is_timeout = False
 
 
 class ChatMessageFactory(ModelFactory[ChatMessage]):

@@ -6,13 +6,55 @@ label-value validation, and cardinality guards that matter for
 production dashboards.
 """
 
+from collections.abc import Iterator
+
 import pytest
 import structlog
 
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.observability.prometheus_collector import PrometheusCollector
+from synthorg.observability.prometheus_labels import (
+    _LabelSnapshot,
+    _reset_label_snapshot_for_tests,
+    update_label_snapshot,
+)
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _seed_label_snapshot() -> Iterator[None]:
+    """Seed the registry-bound snapshot for the labels exercised below.
+
+    The validators in ``prometheus_labels`` fail closed on every
+    state (no bootstrap pass-through), so the test fixtures must
+    seed every ``agent_id`` / ``workflow_definition_id`` /
+    ``department`` value the tests record. This fixture covers all
+    of them for the file in one place.
+    """
+    update_label_snapshot(
+        _LabelSnapshot(
+            agent_ids=frozenset(
+                {
+                    "agent-1",
+                    "agent-2",
+                    "agent-created",
+                    "agent-updated",
+                    "agent-rolled_back",
+                    "agent-archived",
+                },
+            ),
+            workflow_definition_ids=frozenset(
+                {"wf_onboarding_v1", "wf_a", "wf_long"},
+            ),
+            departments=frozenset({"sales"}),
+            agent_ids_seeded=True,
+            workflow_definition_ids_seeded=True,
+            departments_seeded=True,
+        ),
+    )
+    yield
+    _reset_label_snapshot_for_tests()
 
 
 @pytest.fixture

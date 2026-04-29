@@ -58,6 +58,9 @@ from synthorg.observability.events.api import (
     API_SETTINGS_BACKEND_RECOVERED,
     API_VALIDATION_FAILED,
 )
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_STATUS_TRANSITIONED,
+)
 from synthorg.observability.events.security import (
     SECURITY_APPROVAL_APPROVED,
     SECURITY_APPROVAL_REJECTED,
@@ -412,6 +415,8 @@ async def _save_decision_and_notify(  # noqa: PLR0913
     *,
     approved: bool,
     decided_by: str,
+    decided_by_user_id: str,
+    previous_status: ApprovalStatus,
     decision_reason: str | None,
     ws_event: WsEventType,
 ) -> ApprovalItem:
@@ -423,7 +428,14 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         approval_id: Approval identifier.
         updated: The updated approval item to persist.
         approved: Whether the action was approved.
-        decided_by: Who made the decision.
+        decided_by: Who made the decision (username -- recorded in
+            the persisted approval row for the operator audit trail).
+        decided_by_user_id: Immutable user id for the
+            ``APPROVAL_STATUS_TRANSITIONED`` observability log so the
+            log stream stays free of human-readable identifiers.
+        previous_status: Status the approval was in BEFORE this
+            decision; carried into the state-transition log's
+            ``from_status`` kwarg.
         decision_reason: Optional reason for the decision.
         ws_event: WebSocket event type to publish.
 
@@ -457,6 +469,22 @@ async def _save_decision_and_notify(  # noqa: PLR0913
             note=msg,
         )
         raise ConflictError(msg)
+
+    # State-transition log fires immediately after the persistence
+    # write succeeds; downstream notification or resume-signaling
+    # failures cannot strand the approval row in a decided state
+    # without a corresponding transition entry in the audit stream.
+    logger.info(
+        APPROVAL_STATUS_TRANSITIONED,
+        approval_id=approval_id,
+        from_status=previous_status.value,
+        to_status=saved.status.value,
+        # Distinct field name from the audit-trail
+        # ``decided_by=<username>`` so downstream consumers can
+        # disambiguate the PII-free user-id channel from the
+        # operator-facing display channel without re-parsing.
+        decided_by_user_id=decided_by_user_id,
+    )
 
     _publish_approval_event(request, ws_event, saved)
     _log_approval_decision(
@@ -697,6 +725,7 @@ class ApprovalsController(Controller):
 
         auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
+        previous_status = item.status
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.APPROVED,
@@ -710,6 +739,13 @@ class ApprovalsController(Controller):
         # decision behind a blocked response (which would prompt the
         # client to retry against an already-decided approval).
         critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        # ``_save_decision_and_notify`` emits the
+        # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
+        # persistence write succeeds, so a downstream notification or
+        # resume-signal failure cannot strand the row in a decided
+        # state without a corresponding transition entry. The log
+        # uses ``decided_by_user_id`` (not username) to keep the
+        # observability stream free of human-readable identifiers.
         saved = await _save_decision_and_notify(
             app_state,
             request,
@@ -717,6 +753,8 @@ class ApprovalsController(Controller):
             updated,
             approved=True,
             decided_by=auth_user.username,
+            decided_by_user_id=auth_user.user_id,
+            previous_status=previous_status,
             decision_reason=data.comment,
             ws_event=WsEventType.APPROVAL_APPROVED,
         )
@@ -768,6 +806,7 @@ class ApprovalsController(Controller):
 
         auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
+        previous_status = item.status
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.REJECTED,
@@ -781,6 +820,10 @@ class ApprovalsController(Controller):
         # decision behind a blocked response (which would prompt the
         # client to retry against an already-decided approval).
         critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        # ``_save_decision_and_notify`` emits the
+        # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
+        # persistence write succeeds (see the approve branch above
+        # for the rationale).
         saved = await _save_decision_and_notify(
             app_state,
             request,
@@ -788,6 +831,8 @@ class ApprovalsController(Controller):
             updated,
             approved=False,
             decided_by=auth_user.username,
+            decided_by_user_id=auth_user.user_id,
+            previous_status=previous_status,
             decision_reason=data.reason,
             ws_event=WsEventType.APPROVAL_REJECTED,
         )

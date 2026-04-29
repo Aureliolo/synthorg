@@ -81,6 +81,13 @@ HR_PRUNING_POLICY_ERROR: Final[str] = "hr.pruning.policy_error"
 HR_PRUNING_SCHEDULER_STARTED: Final[str] = "hr.pruning.scheduler_started"
 HR_PRUNING_SCHEDULER_STOPPED: Final[str] = "hr.pruning.scheduler_stopped"
 
+# Status-machine event for PruningRequest. Mirrors ApprovalStatus hops on
+# the underlying ApprovalItem; emitted at construction (from_status=None)
+# and at every status sync site.
+PRUNING_REQUEST_STATUS_TRANSITIONED: Final[str] = (
+    "hr.pruning_request.status_transitioned"
+)
+
 # -- Scaling -----------------------------------------------------------------
 
 HR_SCALING_TRIGGER_REQUESTED: Final[str] = "hr.scaling.trigger_requested"

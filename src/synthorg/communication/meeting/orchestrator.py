@@ -183,15 +183,6 @@ class MeetingOrchestrator:
             fallback=True,
         )
         if not meetings_enabled:
-            # ``MEETING_CANCELLED`` (not ``MEETING_FAILED``): operator
-            # cancellations should not skew failure metrics or trip
-            # alerts wired to ``meeting.lifecycle.failed``.
-            logger.info(
-                MEETING_CANCELLED,
-                meeting_id=meeting_id,
-                meeting_type=meeting_type_name,
-                reason="meetings_disabled_by_setting",
-            )
             cancelled_record = MeetingRecord(
                 meeting_id=meeting_id,
                 meeting_type_name=meeting_type_name,
@@ -205,6 +196,17 @@ class MeetingOrchestrator:
             # kill-switch cancellations would mislead operators
             # reconstructing what happened during a paused window.
             self._records.append(cancelled_record)
+            # ``MEETING_CANCELLED`` (not ``MEETING_FAILED``): operator
+            # cancellations should not skew failure metrics or trip
+            # alerts wired to ``meeting.lifecycle.failed``. Logged
+            # AFTER the record append per the post-persist contract
+            # (CLAUDE.md state-transition rule).
+            logger.info(
+                MEETING_CANCELLED,
+                meeting_id=meeting_id,
+                meeting_type=meeting_type_name,
+                reason="meetings_disabled_by_setting",
+            )
             return cancelled_record
 
         protocol = self._resolve_protocol(meeting_id, protocol_type)
@@ -336,7 +338,18 @@ class MeetingOrchestrator:
         status: MeetingStatus,
         exc: BaseException,
     ) -> MeetingRecord:
-        """Build, store, and log a failure record."""
+        """Build, store, and log a failure record.
+
+        The terminal-state log (``MEETING_BUDGET_EXHAUSTED`` /
+        ``MEETING_FAILED``) fires AFTER the record is appended so
+        the audit trail only records transitions that actually
+        landed. ``MeetingRecord`` construction or ``self._records``
+        append could in principle raise (model_validator, memory
+        pressure); if they do, the log is skipped. This handler does
+        not emit a separate ``*_STATUS_TRANSITIONED`` event today --
+        the terminal events above are the canonical hop log for the
+        meeting subsystem.
+        """
         error_msg = _format_exception(exc)
         record = MeetingRecord(
             meeting_id=meeting_id,
@@ -347,7 +360,6 @@ class MeetingOrchestrator:
             token_budget=token_budget,
         )
         self._records.append(record)
-
         if status == MeetingStatus.BUDGET_EXHAUSTED:
             logger.warning(
                 MEETING_BUDGET_EXHAUSTED,
@@ -374,7 +386,15 @@ class MeetingOrchestrator:
         minutes: MeetingMinutes,
         token_budget: int,
     ) -> MeetingRecord:
-        """Build, store, and log a success record."""
+        """Build, store, and log a success record.
+
+        The terminal-state log (``MEETING_COMPLETED``) fires AFTER
+        the record is appended so the audit trail only records
+        transitions that actually landed. This handler does not
+        emit a separate ``*_STATUS_TRANSITIONED`` event today --
+        ``MEETING_COMPLETED`` is the canonical hop log for the
+        meeting subsystem.
+        """
         record = MeetingRecord(
             meeting_id=meeting_id,
             meeting_type_name=meeting_type_name,
