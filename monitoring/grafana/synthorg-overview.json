@@ -80,7 +80,7 @@
       "type": "stat",
       "id": 12,
       "title": "Active agents",
-      "description": "Active agent count from the registry, broken down by status and trust level.",
+      "description": "Active agent count from the registry, broken down by status (the underlying metric also carries a trust_level label, but this panel sums across it).",
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},

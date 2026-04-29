@@ -481,21 +481,30 @@ class PruningService:
         # underlying ApprovalItem flipped to APPROVED in the
         # controller, but this is the first hop the pruning service
         # observes for the linked PruningRequest's status (mirrors
-        # the ApprovalItem).
+        # the ApprovalItem). Logged only once per request even if
+        # offboarding fails and the next sweep re-enters this
+        # handler -- the in-memory PruningRequest is advanced to
+        # APPROVED here so subsequent claims observe the transition
+        # has already happened.
         request = self._pending_requests.get(agent_id)
-        logger.info(
-            PRUNING_REQUEST_STATUS_TRANSITIONED,
-            request_id=request.id if request is not None else None,
-            agent_id=agent_id,
-            approval_id=str(item.id),
-            from_status=ApprovalStatus.PENDING.value,
-            to_status=ApprovalStatus.APPROVED.value,
-        )
-        logger.info(
-            HR_PRUNING_APPROVED,
-            agent_id=agent_id,
-            approval_id=str(item.id),
-        )
+        if request is None or request.status is ApprovalStatus.PENDING:
+            logger.info(
+                PRUNING_REQUEST_STATUS_TRANSITIONED,
+                request_id=request.id if request is not None else None,
+                agent_id=agent_id,
+                approval_id=str(item.id),
+                from_status=ApprovalStatus.PENDING.value,
+                to_status=ApprovalStatus.APPROVED.value,
+            )
+            if request is not None:
+                self._pending_requests[agent_id] = request.model_copy(
+                    update={"status": ApprovalStatus.APPROVED},
+                )
+            logger.info(
+                HR_PRUNING_APPROVED,
+                agent_id=agent_id,
+                approval_id=str(item.id),
+            )
 
         result = await self._execute_offboarding(item, agent)
         if result is None:

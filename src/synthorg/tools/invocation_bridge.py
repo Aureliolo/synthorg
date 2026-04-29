@@ -7,7 +7,7 @@ Separates activity-tracking concerns from tool execution logic in
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import TOOL_INVOCATION_RECORD_FAILED
 from synthorg.observability.metrics_hub import (
     record_tool_invocation as record_tool_invocation_metric,
@@ -84,8 +84,28 @@ async def record_tool_invocation(
         outcome = "error"
     else:
         outcome = "success"
-    record_tool_invocation_metric(
-        tool_name=tool_call.name,
-        outcome=outcome,
-        duration_sec=duration_sec,
-    )
+    # Best-effort: the activity-DB record above is the durable
+    # source of truth, and the tool's caller has already received
+    # the ``result``. A label-validation TypeError or transient
+    # collector exception in the metric path must NOT bubble up and
+    # mask the completed invocation. ``record_tool_invocation_metric``
+    # already routes through ``_safe_record`` for most exceptions,
+    # but TypeError propagates by design; this guard makes the
+    # bridge level fully best-effort.
+    try:
+        record_tool_invocation_metric(
+            tool_name=tool_call.name,
+            outcome=outcome,
+            duration_sec=duration_sec,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            TOOL_INVOCATION_RECORD_FAILED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            stage="prometheus_metric",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )

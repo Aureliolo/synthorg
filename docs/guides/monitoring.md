@@ -113,7 +113,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
-| `synthorg_client_disconnects_total` | Counter | `transport`, `reason` | Client transport disconnections (`transport` bounded to `sse` / `websocket` / `mcp_stdio`; `reason` bounded to `client_initiated` / `transport_error` / `cancelled` / `timeout`). | `Client Health` |
+| `synthorg_client_disconnects_total` | Counter | `transport`, `reason` | Client transport disconnections (`transport` bounded to `sse` / `websocket` / `mcp_stdio` / `mcp_http`; `reason` bounded to `client_initiated` / `transport_error` / `cancelled` / `timeout`). | `Client Health` |
 
 ### Escalation + identity + workflow
 

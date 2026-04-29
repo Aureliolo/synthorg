@@ -467,31 +467,40 @@ class PrometheusCollector(RecordingMixin):
             (matching the behaviour of the workflow / department
             fetchers in :meth:`_rebuild_label_snapshot`).
         """
-        self._agents_total.clear()
         if not app_state.has_agent_registry:
+            # No registry means there are no agents to report; clear
+            # so a previously-populated gauge family doesn't keep
+            # phantom labels alive after the registry is removed.
+            self._agents_total.clear()
             return ()
         try:
             agents = await app_state.agent_registry.list_active()
-            counts: Counter[tuple[str, str]] = Counter()
-            for agent in agents:
-                status = str(agent.status)
-                trust = str(agent.tools.access_level)
-                counts[(status, trust)] += 1
-            for (status, trust), count in counts.items():
-                self._agents_total.labels(
-                    status=status,
-                    trust_level=trust,
-                ).set(count)
-            return tuple(agents)
         except MemoryError, RecursionError:
             raise
         except Exception:
+            # Keep the prior gauge values intact so the dashboard
+            # doesn't drop to "0 active agents" on a transient
+            # registry-fetch failure. The snapshot path also
+            # carries the previous agent_ids forward in this case.
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="agent_registry",
                 exc_info=True,
             )
             return None
+        # Successful fetch: clear stale labels first, then re-set.
+        self._agents_total.clear()
+        counts: Counter[tuple[str, str]] = Counter()
+        for agent in agents:
+            status = str(agent.status)
+            trust = str(agent.tools.access_level)
+            counts[(status, trust)] += 1
+        for (status, trust), count in counts.items():
+            self._agents_total.labels(
+                status=status,
+                trust_level=trust,
+            ).set(count)
+        return tuple(agents)
 
     async def _refresh_agent_cost_metrics(
         self,

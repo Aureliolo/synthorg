@@ -478,7 +478,7 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         APPROVAL_STATUS_TRANSITIONED,
         approval_id=approval_id,
         from_status=previous_status.value,
-        to_status=updated.status.value,
+        to_status=saved.status.value,
         decided_by=decided_by_user_id,
     )
 

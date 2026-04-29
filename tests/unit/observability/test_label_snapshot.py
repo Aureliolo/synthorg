@@ -5,10 +5,12 @@ The snapshot pattern lets sync ``record_*`` call sites validate
 process-global ``frozenset`` that the async pre-scrape ``refresh()``
 seeds from the live runtime registries. The validators fail closed in
 every state (including bootstrap, before any ``update_label_snapshot``
-call). Push-time callers go through ``metrics_hub._safe_record`` which
-swallows the resulting ``ValueError`` and emits one
-``METRICS_RECORD_FAILED`` WARN, so a rejected sample drops cleanly
-without crashing the business path.
+call). ``require_label`` (called by every ``validate_*`` helper) emits
+one ``METRICS_SCRAPE_FAILED`` WARN per rejected sample before raising
+``ValueError``. Push-time callers go through ``metrics_hub._safe_record``
+which swallows that ``ValueError`` (and itself logs ``METRICS_RECORD_FAILED``
+at the wrapper level), so the rejected sample drops cleanly without
+crashing the business path.
 """
 
 from collections.abc import Iterator

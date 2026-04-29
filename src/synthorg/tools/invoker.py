@@ -628,8 +628,18 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         tool_call: ToolCall,
         result: ToolExecutionResult,
     ) -> ToolResult:
-        """Map a successful execution result to a ``ToolResult``."""
-        if result.is_error:
+        """Map a successful execution result to a ``ToolResult``.
+
+        ``is_error`` is normalized BEFORE logging so a timed-out
+        execution is not mis-logged as ``TOOL_INVOKE_SUCCESS``: the
+        ``ToolResult`` validator enforces ``is_timeout => is_error``,
+        so the returned result is always marked errored when the
+        underlying execution flagged a timeout, even if the inner
+        ``result.is_error`` was left at its default ``False``.
+        """
+        is_timeout = bool(result.metadata.get("timed_out", False))
+        is_error = result.is_error or is_timeout
+        if is_error:
             logger.warning(
                 TOOL_INVOKE_TOOL_ERROR,
                 tool_call_id=tool_call.id,
@@ -642,15 +652,6 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
             )
-        # Surface timeout metadata so the metrics layer can record
-        # ``outcome="timeout"`` for tools that hit their time budget,
-        # distinguishing them from generic errors in dashboards.
-        # ``ToolResult`` enforces ``is_timeout => is_error``; if the
-        # underlying execution flagged a timeout but didn't already
-        # mark itself errored, force the error flag so the model-side
-        # validator doesn't reject the result.
-        is_timeout = bool(result.metadata.get("timed_out", False))
-        is_error = result.is_error or is_timeout
         return ToolResult(
             tool_call_id=tool_call.id,
             content=result.content,

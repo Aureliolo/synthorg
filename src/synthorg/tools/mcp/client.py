@@ -135,10 +135,15 @@ class MCPClient:
                 raise
             except Exception as exc:
                 await stack.aclose()
-                # ERROR (not WARNING) so log aggregators retain the
-                # event for ops triage; secrets are scrubbed via
-                # safe_error_description per SEC-1 (#1601).
-                logger.error(  # noqa: TRY400 -- exc_info would re-bind str(exc), bypassing SEC-1 scrubbing
+                # WARNING (not ERROR/EXCEPTION) per CLAUDE.md SEC-1:
+                # the policy prescribes ``logger.warning`` on
+                # credential-bearing paths so ``exc_info`` cannot
+                # re-bind ``str(exc)`` and bypass the
+                # ``safe_error_description`` scrub. The raise below
+                # propagates the failure for ops alerting on
+                # ``MCPConnectionError`` rather than relying on log
+                # severity to gate ops triage.
+                logger.warning(
                     MCP_CLIENT_CONNECTION_FAILED,
                     server=self._config.name,
                     error_type=type(exc).__name__,
@@ -234,7 +239,7 @@ class MCPClient:
             try:
                 result = await session.list_tools()
             except Exception as exc:
-                logger.error(  # noqa: TRY400 -- exc_info would re-bind str(exc), bypassing SEC-1 scrubbing
+                logger.warning(
                     MCP_DISCOVERY_FAILED,
                     server=self._config.name,
                     error_type=type(exc).__name__,

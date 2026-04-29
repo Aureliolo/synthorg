@@ -1,5 +1,6 @@
 """Unit tests for task_engine_apply dispatch and apply functions."""
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -608,7 +609,13 @@ class TestRecordTaskRunWiring:
         versions: VersionTracker,
         timings: TaskTimingTracker,
     ) -> None:
-        """FAILED transition from IN_PROGRESS emits ``record_task_run``."""
+        """FAILED transition from IN_PROGRESS emits ``record_task_run``.
+
+        Pins the creation timestamp 12.5 s before a frozen ``now`` so
+        the test asserts a concrete ``duration_sec`` value rather than
+        the trivial ``>= 0.0`` bound -- a regression that always
+        emits ``0.0`` would pass the looser assertion silently.
+        """
         task_id = await self._create_and_assign(persistence, versions, timings)
         # ASSIGNED -> IN_PROGRESS, then IN_PROGRESS -> FAILED
         # (IN_PROGRESS -> COMPLETED is not a valid transition;
@@ -625,9 +632,15 @@ class TestRecordTaskRunWiring:
             versions,
             timings,
         )
-        with patch(
-            "synthorg.engine.task_engine_apply.record_task_run",
-        ) as mock_record:
+        frozen_now = datetime(2026, 4, 29, 0, 0, 0, tzinfo=UTC)
+        timings.record_creation(task_id, frozen_now - timedelta(seconds=12.5))
+        with (
+            patch(
+                "synthorg.engine.task_engine_apply.record_task_run",
+            ) as mock_record,
+            patch("synthorg.engine.task_engine_apply.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value = frozen_now
             await apply_transition(
                 TransitionTaskMutation(
                     request_id="req-f",
@@ -643,7 +656,7 @@ class TestRecordTaskRunWiring:
         mock_record.assert_called_once()
         kwargs = mock_record.call_args.kwargs
         assert kwargs["outcome"] == "failed"
-        assert kwargs["duration_sec"] >= 0.0
+        assert kwargs["duration_sec"] == pytest.approx(12.5)
 
     async def test_non_terminal_transition_does_not_record_task_run(
         self,
@@ -687,11 +700,23 @@ class TestRecordTaskRunWiring:
         versions: VersionTracker,
         timings: TaskTimingTracker,
     ) -> None:
-        """``apply_cancel`` emits ``record_task_run`` with outcome 'cancelled'."""
+        """``apply_cancel`` emits ``record_task_run`` with outcome 'cancelled'.
+
+        Same frozen-clock pattern as
+        :meth:`test_terminal_transition_records_task_run`: pins
+        creation 7.25 s before a deterministic ``now`` so the
+        recorded ``duration_sec`` is asserted to an exact value.
+        """
         task_id = await self._create_and_assign(persistence, versions, timings)
-        with patch(
-            "synthorg.engine.task_engine_apply.record_task_run",
-        ) as mock_record:
+        frozen_now = datetime(2026, 4, 29, 0, 0, 0, tzinfo=UTC)
+        timings.record_creation(task_id, frozen_now - timedelta(seconds=7.25))
+        with (
+            patch(
+                "synthorg.engine.task_engine_apply.record_task_run",
+            ) as mock_record,
+            patch("synthorg.engine.task_engine_apply.datetime") as mock_dt,
+        ):
+            mock_dt.now.return_value = frozen_now
             await apply_cancel(
                 CancelTaskMutation(
                     request_id="req-x",
@@ -704,4 +729,6 @@ class TestRecordTaskRunWiring:
                 timings,
             )
         mock_record.assert_called_once()
-        assert mock_record.call_args.kwargs["outcome"] == "cancelled"
+        kwargs = mock_record.call_args.kwargs
+        assert kwargs["outcome"] == "cancelled"
+        assert kwargs["duration_sec"] == pytest.approx(7.25)

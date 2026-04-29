@@ -374,7 +374,7 @@ async def _run_revalidation_tick(
     return _RevalidationVerdict(consecutive_failures=0)
 
 
-async def _sse_event_stream(
+async def _sse_event_stream(  # noqa: PLR0915
     hub: EventStreamHub,
     session_id: str,
     *,
@@ -458,8 +458,20 @@ async def _sse_event_stream(
     except asyncio.CancelledError:
         disconnect_reason = "cancelled"
         raise
-    except Exception:
+    except Exception as exc:
         disconnect_reason = "transport_error"
+        # Surface the underlying transport failure so an operator can
+        # tell broken-pipe / TLS-reset / generator-misuse apart from
+        # the routine ``cancelled`` path before the final disconnect
+        # log fires in the ``finally`` block. SEC-1: never embed
+        # ``str(exc)`` directly.
+        logger.warning(
+            EVENT_STREAM_CLIENT_DISCONNECTED,
+            session_id=session_id,
+            reason="transport_error",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise
     finally:
         # Unsubscribe must run before the disconnect log: a raise here
