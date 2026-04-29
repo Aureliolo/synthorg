@@ -118,12 +118,13 @@ FROM ${BASE_IMAGE}
 # synthorg.telemetry.collector._resolve_environment for the full
 # priority chain.
 #
-# The Logfire write token is intentionally **not** a build-arg -- baking
-# it would persist the secret in image layers and registry history
-# (readable via ``docker history`` / registry APIs). Supply it only at
-# runtime via ``SYNTHORG_LOGFIRE_PROJECT_TOKEN`` in compose env or
-# deployment secrets. An empty token downgrades the reporter to noop
-# cleanly.
+# The write-only telemetry-backend token is embedded into source at
+# build time by the builder stage's ``embed_logfire_token.py`` step
+# (gated on the optional ``LOGFIRE_PROJECT_TOKEN`` build-arg). When
+# the build-arg is unset, the sentinel stays in place and the image
+# is telemetry-disabled-by-build. Operators do NOT supply a runtime
+# env var for the token; the only operator-facing knob is
+# ``SYNTHORG_TELEMETRY_ENABLED`` which gates the opt-in itself.
 ARG DEPLOYMENT_ENV="dev"
 
 LABEL org.opencontainers.image.title="synthorg-backend" \

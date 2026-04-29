@@ -405,10 +405,17 @@ class TelemetryCollector:
                 TelemetryBackend,
             )
 
+            if self._token_missing_at_start:
+                # Re-entry after a prior bail-out; the ERROR has
+                # already been logged once. Stay quiet to honour the
+                # "exactly one startup signal" contract and never
+                # start the heartbeat task on this branch.
+                return
             if (
                 self._config.backend == TelemetryBackend.LOGFIRE
                 and not is_token_embedded()
             ):
+                self._token_missing_at_start = True
                 logger.error(
                     TELEMETRY_TOKEN_MISSING,
                     detail=(
@@ -417,7 +424,6 @@ class TelemetryCollector:
                     ),
                     backend=self._config.backend.value,
                 )
-                self._token_missing_at_start = True
                 return
             if self._heartbeat_task is not None and not self._heartbeat_task.done():
                 return

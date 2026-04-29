@@ -46,7 +46,11 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
  * → TASK_CREATED | CANCELLED) at a glance.
  */
 export default function RequestQueuePage() {
-  const { capabilities, loading: capLoading } = useCapabilities()
+  const {
+    capabilities,
+    loading: capLoading,
+    error: capError,
+  } = useCapabilities()
   const [requests, setRequests] = useState<readonly ClientRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -137,6 +141,19 @@ export default function RequestQueuePage() {
     }
     void refresh()
   }, [refresh, capLoading, capabilities.requests])
+
+  if (!capLoading && capError !== null) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Request Queue" />
+        <ErrorBanner
+          severity="error"
+          title="Could not determine available features"
+          description={capError}
+        />
+      </div>
+    )
+  }
 
   if (!capLoading && !capabilities.requests) {
     return (

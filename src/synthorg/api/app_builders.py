@@ -223,14 +223,29 @@ def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
     no longer re-applies this precedence so the audit trail stays
     single-sourced.
 
+    Validates the env value at this system boundary -- a typo such as
+    ``SYNTHORG_TELEMETRY_ENABLED=falsee`` would otherwise silently fall
+    through to the parsed value and mask operator intent.
+
     Returns the (possibly updated) config.
+
+    Raises:
+        ValueError: When the env var is set to a value that is neither
+            a truthy nor falsy token from the recognised vocabulary.
     """
     raw = os.environ.get(_TELEMETRY_ENV_VAR, "").strip().lower()
+    if not raw:
+        return parsed
     if raw in _TELEMETRY_ENV_TRUE:
         return parsed.model_copy(update={"enabled": True})
     if raw in _TELEMETRY_ENV_FALSE:
         return parsed.model_copy(update={"enabled": False})
-    return parsed
+    accepted = sorted(_TELEMETRY_ENV_TRUE | _TELEMETRY_ENV_FALSE)
+    msg = (
+        f"{_TELEMETRY_ENV_VAR} must be one of {accepted!r}; "
+        f"got {raw!r}. Refusing to silently fall back to the parsed value."
+    )
+    raise ValueError(msg)
 
 
 def _build_telemetry_collector(

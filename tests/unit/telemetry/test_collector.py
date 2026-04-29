@@ -82,6 +82,7 @@ class TestTelemetryCollector:
     async def test_enabled_logfire_with_sentinel_token_emits_error_no_heartbeat(
         self,
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Issue #1666 A-3: enabled + sentinel token -> ONE ERROR, no heartbeat.
 
@@ -90,10 +91,18 @@ class TestTelemetryCollector:
         ``telemetry.token.missing`` ERROR at startup and skip the
         heartbeat scheduling so the per-cycle warning spam is
         eliminated.
+
+        Pin ``is_token_embedded()`` to ``False`` so the missing-token
+        branch is exercised deterministically. Without the patch, a
+        future build artifact carrying a real token would flip the
+        branch and silently stop testing the regression we're locking
+        down.
         """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.LOGFIRE)
-        # Default sentinel is_token_embedded() == False in source-tree
-        # installs (and in this CI environment); no monkeypatch needed.
+        monkeypatch.setattr(
+            "synthorg.telemetry.collector.is_token_embedded",
+            lambda: False,
+        )
         with structlog.testing.capture_logs() as logs:
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
             try:

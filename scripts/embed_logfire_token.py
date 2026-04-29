@@ -26,7 +26,7 @@ wheel build picks up the new value automatically.
 import sys
 from pathlib import Path
 
-_TOKEN_SENTINEL = "__SYNTHORG_LOGFIRE_TOKEN_NOT_EMBEDDED__"  # noqa: S105
+_TOKEN_SENTINEL = "__SYNTHORG_TELEMETRY_TOKEN_NOT_EMBEDDED__"  # noqa: S105
 _TARGET_RELATIVE = Path("src/synthorg/telemetry/reporters/_embedded_token.py")
 _EXPECTED_ARGV_LEN = 2  # script name + token positional arg
 

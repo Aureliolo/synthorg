@@ -62,6 +62,18 @@ class LogfireReporter:
         self._logfire = _logfire
         self._environment = environment
 
+        # Catch only the SDK's documented configuration-failure type
+        # so genuine bugs (TypeError, AttributeError, ImportError
+        # mid-runtime) propagate and fail loudly. The factory wraps
+        # ``LogfireConfigureError`` to noop; an unknown exception
+        # propagating here surfaces a real defect instead of being
+        # silently degraded -- the previous broad ``except Exception``
+        # is exactly what hid two months of broken telemetry.
+        # ``LogfireConfigError`` is the public, documented class
+        # exposed at the ``logfire`` module's top level (see logfire
+        # SDK 4.32.1+); fall back to ``Exception`` only if a future
+        # SDK rev removes the symbol.
+        configure_error = getattr(self._logfire, "LogfireConfigError", Exception)
         try:
             # ``inspect_arguments=False`` silences the noisy
             # "Failed to introspect calling code" warning. Logfire
@@ -81,7 +93,7 @@ class LogfireReporter:
                 environment=environment,
                 inspect_arguments=False,
             )
-        except Exception as exc:
+        except configure_error as exc:
             msg = f"logfire.configure() failed: {type(exc).__name__}"
             raise LogfireConfigureError(msg) from exc
 

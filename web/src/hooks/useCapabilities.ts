@@ -34,6 +34,13 @@ const ALL_FALSE: Capabilities = {
  * that gate polling on a flag default to "feature unavailable"
  * during the brief loading window. Pages that need to distinguish
  * loading from "feature off" should read ``loading`` directly.
+ *
+ * On fetch failure the hook surfaces a non-null ``error`` string and
+ * leaves ``capabilities`` at its prior value. Callers MUST check
+ * ``error`` before treating ``capabilities.<flag> === false`` as
+ * "feature not configured" -- a transient 401/500/network error
+ * would otherwise be indistinguishable from a deliberately-disabled
+ * subsystem and the dashboard would silently hide working features.
  */
 export function useCapabilities(): {
   capabilities: Capabilities
@@ -76,6 +83,9 @@ export function useCapabilities(): {
       .catch((err: unknown) => {
         log.error('capabilities_fetch_failed', err)
         if (!cancelled) {
+          // Deliberately do NOT call setCapabilities here: ``error``
+          // is the distinct signal callers consume to render an error
+          // banner instead of the disabled-capability empty state.
           setError('Failed to load capability matrix.')
           setLoading(false)
         }

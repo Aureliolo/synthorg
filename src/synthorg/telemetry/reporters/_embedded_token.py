@@ -21,17 +21,17 @@ from typing import Final
 # Sentinel string is detectable at runtime via ``is_token_embedded()``.
 # DO NOT change the sentinel without also updating the embedder script
 # AND the comparison in ``is_token_embedded``.
-_TOKEN_SENTINEL: Final[str] = "__SYNTHORG_LOGFIRE_TOKEN_NOT_EMBEDDED__"  # noqa: S105
+_TOKEN_SENTINEL: Final[str] = "__SYNTHORG_TELEMETRY_TOKEN_NOT_EMBEDDED__"  # noqa: S105
 
-EMBEDDED_LOGFIRE_TOKEN: Final[str] = _TOKEN_SENTINEL
+EMBEDDED_TELEMETRY_TOKEN: Final[str] = _TOKEN_SENTINEL
 
 
 def is_token_embedded() -> bool:
     """Return True when the build pipeline embedded a real token.
 
-    A bare ``EMBEDDED_LOGFIRE_TOKEN != _TOKEN_SENTINEL`` check would
+    A bare ``EMBEDDED_TELEMETRY_TOKEN != _TOKEN_SENTINEL`` check would
     work equally well, but routing through this helper gives the
     collector and the factory a single import and keeps the
     sentinel comparison logic in one place.
     """
-    return EMBEDDED_LOGFIRE_TOKEN != _TOKEN_SENTINEL
+    return EMBEDDED_TELEMETRY_TOKEN != _TOKEN_SENTINEL

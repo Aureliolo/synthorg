@@ -158,7 +158,7 @@ class TestCreateReporter:
                 return_value=True,
             ),
             patch(
-                "synthorg.telemetry.reporters.EMBEDDED_LOGFIRE_TOKEN",
+                "synthorg.telemetry.reporters.EMBEDDED_TELEMETRY_TOKEN",
                 "pylf_v1_test_000000000000000000000000000000000000000000",
             ),
             patch(

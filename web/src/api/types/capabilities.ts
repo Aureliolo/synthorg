@@ -14,7 +14,7 @@ export interface Capabilities {
   requests: boolean
   /** Ontology service is configured. */
   ontology: boolean
-  /** Tunnel provider (pyngrok + auth token) is configured. */
+  /** External tunnel provider with authentication token is configured. */
   tunnel: boolean
   /** Webhook event bridge is configured. */
   webhooks: boolean

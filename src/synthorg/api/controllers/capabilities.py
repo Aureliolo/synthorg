@@ -36,10 +36,14 @@ class CapabilitiesResponse(BaseModel):
         requests: Request facade (depends on client simulation state)
             is configured.
         ontology: Ontology service is configured.
-        tunnel: Tunnel provider is configured (pyngrok + auth token).
-        webhooks: Webhook event bridge is configured.
+        tunnel: External tunnel provider is configured.
+        webhooks: WebhooksController is registered. Mirrors the
+            create_app() readiness predicate
+            (``integrations.enabled`` AND ``connection_catalog`` AND
+            ``message_bus``) so the flag reports the route, not a
+            sibling auto-wired bridge that follows a different gate.
         a2a: A2A peer registry / client are configured.
-        telemetry: Anonymous Logfire telemetry is enabled and
+        telemetry: Anonymous product telemetry is enabled and
             functional (an enabled-but-degraded reporter still
             reports False; the dashboard only surfaces telemetry UI
             when the reporter actually delivers).
@@ -90,16 +94,24 @@ class CapabilitiesController(Controller):
         # ``config.a2a.enabled``; if auto-wire silently failed (e.g.
         # missing ``connection_catalog``), the config flag would still
         # be ``True`` while the subsystem is unavailable, breaking the
-        # capability-gating contract. ``webhooks`` uses the nullable
-        # accessor directly. ``a2a_peer_registry`` raises 503 when
-        # unset, so we read the private slot via ``getattr`` with a
-        # safe default to avoid the exception inside the response
-        # path.
+        # capability-gating contract. ``webhooks`` mirrors the
+        # WebhooksController readiness predicate in ``create_app()``
+        # (``integrations.enabled`` AND ``connection_catalog`` AND
+        # ``message_bus``); reading the bridge accessor instead would
+        # diverge because the bridge requires ``ceremony_scheduler``
+        # while the controller does not. ``a2a_peer_registry`` raises
+        # 503 when unset, so we read the private slot via ``getattr``
+        # with a safe default to avoid the exception inside the
+        # response path.
         telemetry_functional = (
             app_state.has_telemetry_collector
             and app_state.telemetry_collector.is_functional
         )
-        webhook_bridge = app_state.webhook_event_bridge
+        webhooks_wired = (
+            app_state.config.integrations.enabled
+            and app_state.has_connection_catalog
+            and app_state.has_message_bus
+        )
         a2a_wired = getattr(app_state, "_a2a_peer_registry", None) is not None
         return ApiResponse(
             data=CapabilitiesResponse(
@@ -107,7 +119,7 @@ class CapabilitiesController(Controller):
                 requests=app_state.has_client_simulation_state,
                 ontology=app_state.has_ontology_service,
                 tunnel=app_state.has_tunnel_provider,
-                webhooks=webhook_bridge is not None,
+                webhooks=webhooks_wired,
                 a2a=a2a_wired,
                 telemetry=telemetry_functional,
                 integrations=app_state.config.integrations.enabled,

@@ -22,13 +22,19 @@ _r.register(
         type=SettingType.BOOLEAN,
         default="false",
         description=(
-            "Send anonymous product telemetry to the SynthOrg-owned"
-            " telemetry backend. Token is embedded at build time;"
-            " operators only toggle this flag."
+            "Send anonymous product telemetry to the project's telemetry"
+            " backend. Token is embedded at build time; operators only"
+            " toggle this flag."
         ),
         group="General",
         level=SettingLevel.BASIC,
         env_var_override="SYNTHORG_TELEMETRY_ENABLED",
         yaml_path="telemetry.enabled",
+        # The collector is constructed during Phase 1 of app build
+        # (before SettingsService exists), so a DB edit cannot reach
+        # it without a process restart. Mark this explicitly so the
+        # /settings UI surfaces the restart-required affordance and
+        # operators don't expect runtime hot-flips.
+        restart_required=True,
     )
 )

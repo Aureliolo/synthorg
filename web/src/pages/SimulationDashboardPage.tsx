@@ -29,7 +29,11 @@ const log = createLogger('SimulationDashboardPage')
  * per run.
  */
 export default function SimulationDashboardPage() {
-  const { capabilities, loading: capLoading } = useCapabilities()
+  const {
+    capabilities,
+    loading: capLoading,
+    error: capError,
+  } = useCapabilities()
   const [runs, setRuns] = useState<readonly SimulationStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -96,6 +100,19 @@ export default function SimulationDashboardPage() {
     }
     void refresh()
   }, [refresh, capLoading, capabilities.simulations])
+
+  if (!capLoading && capError !== null) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Simulations" />
+        <ErrorBanner
+          severity="error"
+          title="Could not determine available features"
+          description={capError}
+        />
+      </div>
+    )
+  }
 
   if (!capLoading && !capabilities.simulations) {
     return (

@@ -33,7 +33,7 @@ def fake_target(tmp_path: Path) -> Path:
     """Create a target file containing the sentinel."""
     target = tmp_path / "_embedded_token.py"
     target.write_text(
-        'EMBEDDED_LOGFIRE_TOKEN = "__SYNTHORG_LOGFIRE_TOKEN_NOT_EMBEDDED__"\n',
+        'EMBEDDED_TELEMETRY_TOKEN = "__SYNTHORG_TELEMETRY_TOKEN_NOT_EMBEDDED__"\n',
         encoding="utf-8",
     )
     return target
@@ -50,7 +50,7 @@ class TestEmbed:
     ) -> None:
         embed_module.embed("pylf_v1_real_secret", fake_target)
         new = fake_target.read_text(encoding="utf-8")
-        assert "__SYNTHORG_LOGFIRE_TOKEN_NOT_EMBEDDED__" not in new
+        assert "__SYNTHORG_TELEMETRY_TOKEN_NOT_EMBEDDED__" not in new
         assert "pylf_v1_real_secret" in new
 
     def test_rejects_empty_token(
@@ -71,7 +71,7 @@ class TestEmbed:
         """Re-embedding must fail loudly to prevent silently overwriting tokens."""
         target = tmp_path / "_embedded_token.py"
         target.write_text(
-            'EMBEDDED_LOGFIRE_TOKEN = "real_token_already_baked"\n',
+            'EMBEDDED_TELEMETRY_TOKEN = "real_token_already_baked"\n',
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="sentinel"):
@@ -85,11 +85,11 @@ class TestEmbed:
         """Defensive: even if a docstring contains the sentinel string,
         only the constant assignment is rewritten."""
         target = tmp_path / "_embedded_token.py"
-        sentinel = "__SYNTHORG_LOGFIRE_TOKEN_NOT_EMBEDDED__"
+        sentinel = "__SYNTHORG_TELEMETRY_TOKEN_NOT_EMBEDDED__"
         target.write_text(
             (
                 f'"""docstring with sentinel: {sentinel}"""\n'
-                f'EMBEDDED_LOGFIRE_TOKEN = "{sentinel}"\n'
+                f'EMBEDDED_TELEMETRY_TOKEN = "{sentinel}"\n'
             ),
             encoding="utf-8",
         )
@@ -98,7 +98,7 @@ class TestEmbed:
         # Exactly one replacement; the docstring still carries the
         # sentinel literal so future operators can search for the
         # rotation marker without confusing it for the runtime token.
-        assert new.count("__SYNTHORG_LOGFIRE_TOKEN_NOT_EMBEDDED__") == 1
+        assert new.count("__SYNTHORG_TELEMETRY_TOKEN_NOT_EMBEDDED__") == 1
         assert "real_token" in new
 
 
@@ -140,7 +140,7 @@ class TestMain:
     ) -> None:
         target = tmp_path / "_embedded_token.py"
         target.write_text(
-            'EMBEDDED_LOGFIRE_TOKEN = "already_embedded"\n',
+            'EMBEDDED_TELEMETRY_TOKEN = "already_embedded"\n',
             encoding="utf-8",
         )
         monkeypatch.setattr(embed_module, "_resolve_target", lambda: target)
