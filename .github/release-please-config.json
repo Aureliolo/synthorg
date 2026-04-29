@@ -41,8 +41,14 @@
           "jsonpath": "$.version"
         },
         {
-          "type": "package-lock-json",
-          "path": "web/package-lock.json"
+          "type": "json",
+          "path": "web/package-lock.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "web/package-lock.json",
+          "jsonpath": "$.packages[''].version"
         }
       ]
     }
