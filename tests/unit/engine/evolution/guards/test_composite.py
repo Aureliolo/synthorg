@@ -12,6 +12,7 @@ from synthorg.engine.evolution.models import (
     AdaptationProposal,
     AdaptationSource,
 )
+from synthorg.engine.evolution.protocols import AdaptationGuard
 
 
 @pytest.mark.unit
@@ -20,8 +21,8 @@ class TestCompositeGuard:
 
     @pytest.fixture
     def mock_guard_approve(self) -> AsyncMock:
-        """Create a mock guard that always approves."""
-        guard = AsyncMock()
+        """Create a mock AdaptationGuard that always approves."""
+        guard = AsyncMock(spec=AdaptationGuard)
         guard.name = "MockGuardApprove"
 
         async def evaluate(proposal: AdaptationProposal) -> AdaptationDecision:
@@ -37,8 +38,8 @@ class TestCompositeGuard:
 
     @pytest.fixture
     def mock_guard_reject(self) -> AsyncMock:
-        """Create a mock guard that always rejects."""
-        guard = AsyncMock()
+        """Create a mock AdaptationGuard that always rejects."""
+        guard = AsyncMock(spec=AdaptationGuard)
         guard.name = "MockGuardReject"
 
         async def evaluate(proposal: AdaptationProposal) -> AdaptationDecision:
@@ -77,7 +78,7 @@ class TestCompositeGuard:
         self, mock_guard_approve: AsyncMock, proposal: AdaptationProposal
     ) -> None:
         """Test that composite approves when all guards approve."""
-        guard1 = AsyncMock()
+        guard1 = AsyncMock(spec=AdaptationGuard)
 
         async def evaluate1(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
@@ -89,7 +90,7 @@ class TestCompositeGuard:
 
         guard1.evaluate = evaluate1
 
-        guard2 = AsyncMock()
+        guard2 = AsyncMock(spec=AdaptationGuard)
 
         async def evaluate2(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
@@ -131,7 +132,7 @@ class TestCompositeGuard:
         self, proposal: AdaptationProposal
     ) -> None:
         """Test that composite short-circuits on first rejection."""
-        guard1 = AsyncMock()
+        guard1 = AsyncMock(spec=AdaptationGuard)
 
         async def evaluate1(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
@@ -143,7 +144,7 @@ class TestCompositeGuard:
 
         guard1.evaluate = evaluate1
 
-        guard2 = AsyncMock()
+        guard2 = AsyncMock(spec=AdaptationGuard)
 
         async def evaluate2(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(
@@ -155,7 +156,7 @@ class TestCompositeGuard:
 
         guard2.evaluate = evaluate2
 
-        guard3 = AsyncMock()
+        guard3 = AsyncMock(spec=AdaptationGuard)
 
         async def evaluate3(p: AdaptationProposal) -> None:
             msg = "Should not be called"
@@ -184,7 +185,7 @@ class TestCompositeGuard:
         """Test composite with many guards that all approve."""
         guards: list[AsyncMock] = []
         for i in range(5):
-            guard = AsyncMock()
+            guard = AsyncMock(spec=AdaptationGuard)
 
             async def evaluate(
                 p: AdaptationProposal, guard_id: int = i
@@ -219,7 +220,7 @@ class TestCompositeGuard:
         proposal: AdaptationProposal,
     ) -> None:
         """Test that rejection reason is preserved."""
-        guard_reject = AsyncMock()
+        guard_reject = AsyncMock(spec=AdaptationGuard)
 
         async def evaluate(p: AdaptationProposal) -> AdaptationDecision:
             return AdaptationDecision(

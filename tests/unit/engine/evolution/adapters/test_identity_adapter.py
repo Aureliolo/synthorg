@@ -17,6 +17,7 @@ from synthorg.engine.evolution.models import (
     AdaptationProposal,
     AdaptationSource,
 )
+from synthorg.engine.identity.store.protocol import IdentityVersionStore
 
 
 @pytest.mark.unit
@@ -25,11 +26,8 @@ class TestIdentityAdapter:
 
     @pytest.fixture
     def mock_identity_store(self) -> AsyncMock:
-        """Create a mock IdentityVersionStore."""
-        store = AsyncMock()
-        store.get_current = AsyncMock()
-        store.put = AsyncMock()
-        return store
+        """Create a mock IdentityVersionStore spec'd against the Protocol."""
+        return AsyncMock(spec=IdentityVersionStore)
 
     @pytest.fixture
     def sample_identity(self) -> AgentIdentity:

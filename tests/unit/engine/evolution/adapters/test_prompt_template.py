@@ -13,6 +13,7 @@ from synthorg.engine.evolution.models import (
     AdaptationSource,
 )
 from synthorg.memory.models import MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 
 
 @pytest.mark.unit
@@ -21,8 +22,8 @@ class TestPromptTemplateAdapter:
 
     @pytest.fixture
     def mock_memory_backend(self) -> AsyncMock:
-        """Create a mock MemoryBackend."""
-        backend = AsyncMock()
+        """Create a mock MemoryBackend spec'd against the Protocol."""
+        backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="memory-id-001")
         return backend
 
