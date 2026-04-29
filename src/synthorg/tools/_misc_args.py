@@ -179,16 +179,31 @@ class MCPBridgeArgs(BaseModel):
 # ── Context compactor ───────────────────────────────────────────────
 
 
+CompactContextStrategy = Literal["summarize"]
+
+
 class CompactContextArgs(BaseModel):
-    """Args for ``compact_context``: no fields needed."""
+    """Args for ``compact_context``."""
 
     model_config = _ARGS_CONFIG
+
+    strategy: CompactContextStrategy = Field(description="Compaction strategy")
+    reason: NotBlankStr = Field(
+        min_length=10,
+        max_length=256,
+        description="Brief explanation for why compaction is needed",
+    )
+    preserve_markers: bool = Field(
+        default=True,
+        description="Preserve epistemic markers in the compaction summary",
+    )
 
 
 __all__ = [
     "CodeRunnerArgs",
     "CodeRunnerLanguage",
     "CompactContextArgs",
+    "CompactContextStrategy",
     "EchoArgs",
     "ListToolsArgs",
     "LoadToolArgs",

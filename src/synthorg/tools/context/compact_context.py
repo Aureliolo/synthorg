@@ -7,9 +7,9 @@ directly.  The execution loop detects the directive and invokes
 compaction at the turn boundary.
 """
 
-from copy import deepcopy
-from types import MappingProxyType
-from typing import Any
+from typing import Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.sanitization import sanitize_message
@@ -17,45 +17,10 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
 )
+from synthorg.tools._misc_args import CompactContextArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
-
-# Raw dict kept private for deepcopy at construction (MappingProxyType
-# is not picklable).  Public read-only view below.
-_RAW_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "strategy": {
-            "type": "string",
-            "enum": ["summarize"],
-            "description": (
-                "Compaction strategy. Currently only 'summarize' is supported."
-            ),
-        },
-        "preserve_markers": {
-            "type": "boolean",
-            "default": True,
-            "description": (
-                "Whether to preserve epistemic markers (wait, hmm, "
-                "actually, etc.) in the compaction summary."
-            ),
-        },
-        "reason": {
-            "type": "string",
-            "minLength": 10,
-            "maxLength": 256,
-            "description": (
-                "Brief explanation for why compaction is needed "
-                "now (e.g., 'context fill at 92 percent, need to "
-                "preserve reasoning clarity')."
-            ),
-        },
-    },
-    "required": ["strategy", "reason"],
-    "additionalProperties": False,
-}
-_COMPACT_CONTEXT_SCHEMA: MappingProxyType[str, Any] = MappingProxyType(_RAW_SCHEMA)
 
 
 class CompactContextTool(BaseTool):
@@ -70,6 +35,8 @@ class CompactContextTool(BaseTool):
     is enabled in the engine configuration.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = CompactContextArgs
+
     def __init__(self) -> None:
         super().__init__(
             name="compact_context",
@@ -80,7 +47,7 @@ class CompactContextTool(BaseTool):
                 "is high and accuracy on complex reasoning is "
                 "critical."
             ),
-            parameters_schema=deepcopy(_RAW_SCHEMA),
+            parameters_schema=CompactContextArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
 

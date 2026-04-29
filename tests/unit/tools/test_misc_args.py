@@ -117,9 +117,18 @@ class TestMiscArgs:
         assert args.message == "hi"
 
     @pytest.mark.unit
-    def test_compact_context_no_fields(self) -> None:
-        args = CompactContextArgs()
-        assert args.model_dump() == {}
+    def test_compact_context_construction(self) -> None:
+        args = CompactContextArgs(
+            strategy="summarize",
+            reason="context fill is high and accuracy is critical",
+        )
+        assert args.strategy == "summarize"
+        assert args.preserve_markers is True
+
+    @pytest.mark.unit
+    def test_compact_context_blank_reason_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            CompactContextArgs(strategy="summarize", reason="   ")
 
     @pytest.mark.unit
     def test_mcp_bridge_default_arguments(self) -> None:
