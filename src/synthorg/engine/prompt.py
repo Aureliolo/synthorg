@@ -63,7 +63,7 @@ from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
     PromptTokenEstimator,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_ERROR,
     PROMPT_BUILD_START,
@@ -292,11 +292,12 @@ def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
         )
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             PROMPT_BUILD_ERROR,
             agent_id=str(agent.id),
             agent_name=agent.name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         detail = sanitize_message(str(exc))
         msg = f"Unexpected error building prompt for agent '{agent.name}': {detail}"
@@ -314,11 +315,12 @@ def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             PROMPT_BUILD_ERROR,
             agent_id=str(agent.id),
             agent_name=agent.name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         detail = sanitize_message(str(exc))
         msg = f"Error injecting async task state for agent '{agent.name}': {detail}"

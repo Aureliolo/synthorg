@@ -18,7 +18,7 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_COLLAB_METRIC_DESERIALIZE_FAILED,
     PERSISTENCE_COLLAB_METRIC_QUERIED,
@@ -79,10 +79,11 @@ INSERT INTO lifecycle_events (
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to save lifecycle event {event.id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_LIFECYCLE_EVENT_SAVE_FAILED,
                     event_id=str(event.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -95,10 +96,11 @@ INSERT INTO lifecycle_events (
         except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
             event_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize lifecycle event {event_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_LIFECYCLE_EVENT_DESERIALIZE_FAILED,
                 event_id=event_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -139,9 +141,10 @@ FROM lifecycle_events"""
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list lifecycle events"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         events = tuple(self._row_to_event(row) for row in rows)
@@ -190,10 +193,11 @@ INSERT INTO task_metrics (
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to save task metric {record.id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_TASK_METRIC_SAVE_FAILED,
                     metric_id=str(record.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -205,10 +209,11 @@ INSERT INTO task_metrics (
         except (ValidationError, KeyError, TypeError) as exc:
             metric_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize task metric {metric_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_METRIC_DESERIALIZE_FAILED,
                 metric_id=metric_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -246,9 +251,10 @@ FROM task_metrics"""
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query task metrics"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_METRIC_QUERY_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         records = tuple(self._row_to_record(row) for row in rows)
@@ -297,10 +303,11 @@ INSERT INTO collaboration_metrics (
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to save collaboration metric {record.id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_COLLAB_METRIC_SAVE_FAILED,
                     metric_id=str(record.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -316,10 +323,11 @@ INSERT INTO collaboration_metrics (
         except (ValidationError, KeyError, TypeError) as exc:
             metric_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize collaboration metric {metric_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_COLLAB_METRIC_DESERIALIZE_FAILED,
                 metric_id=metric_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -353,9 +361,10 @@ FROM collaboration_metrics"""
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query collaboration metrics"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_COLLAB_METRIC_QUERY_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         records = tuple(self._row_to_record(row) for row in rows)

@@ -16,7 +16,7 @@ from synthorg.core.persistence_errors import (
     ArtifactTooLargeError,
     RecordNotFoundError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_RETRIEVED,
@@ -174,10 +174,11 @@ class FileSystemArtifactStorage:
             await asyncio.to_thread(self._write_file_atomic, file_path, content)
         except OSError as exc:
             msg = f"Failed to store artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_STORE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         # Update cached total incrementally.
@@ -209,10 +210,11 @@ class FileSystemArtifactStorage:
             raise RecordNotFoundError(msg) from None
         except OSError as exc:
             msg = f"Failed to retrieve artifact {artifact_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.debug(
@@ -241,10 +243,11 @@ class FileSystemArtifactStorage:
                 file_path,
             )
         except OSError as exc:
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         if deleted and self._cached_total is not None:

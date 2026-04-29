@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from synthorg.core.enums import AutonomyLevel
+from synthorg.observability.events.template import TEMPLATE_BUILTIN_DEFECT
 from synthorg.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
@@ -350,7 +351,13 @@ class TestListTemplatesEdgeCases:
             templates = list_templates()
             # All builtins failed, so only user templates (none) remain.
             assert templates == ()
-            assert mock_logger.exception.call_count == len(BUILTIN_TEMPLATES)
+            assert mock_logger.warning.call_count == len(BUILTIN_TEMPLATES)
+            for call in mock_logger.warning.call_args_list:
+                event_arg = call.args[0] if call.args else None
+                assert event_arg == TEMPLATE_BUILTIN_DEFECT
+                assert "error_type" in call.kwargs
+                assert "error" in call.kwargs
+                assert "template_name" in call.kwargs
 
 
 # ── load_template path traversal ─────────────────────────────────

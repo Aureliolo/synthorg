@@ -1,7 +1,7 @@
 """Tests for Mem0 adapter -- shared knowledge store (publish, search, retract)."""
 
 import builtins
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -90,6 +90,38 @@ class TestPublish:
         mock_client.add.side_effect = exc_type("system failure")
         with pytest.raises(exc_type):
             await backend.publish("test-agent-001", make_store_request())
+
+    @pytest.mark.parametrize(
+        "exc_type",
+        [builtins.MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_publish_system_error_logs_error_with_exc_info(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+        exc_type: type[BaseException],
+    ) -> None:
+        """SEC-1 contract: catastrophic publish errors log via
+        ``logger.error(..., exc_info=True, error=safe_error_description(exc))``
+        and never via ``logger.exception`` or ``logger.warning``.
+        """
+        mock_client.add.side_effect = exc_type("system failure")
+        with (
+            patch(
+                "synthorg.memory.backends.mem0.shared.logger",
+            ) as mock_logger,
+            pytest.raises(exc_type),
+        ):
+            await backend.publish("test-agent-001", make_store_request())
+        mock_logger.error.assert_called_once()
+        call = mock_logger.error.call_args
+        assert call.kwargs.get("exc_info") is True
+        assert call.kwargs.get("error_type") == exc_type.__name__
+        assert "error" in call.kwargs
+        assert call.kwargs["error"].startswith(f"{exc_type.__name__}:")
+        mock_logger.exception.assert_not_called()
+        mock_logger.warning.assert_not_called()
 
     async def test_publish_rejects_shared_namespace_agent_id(
         self,

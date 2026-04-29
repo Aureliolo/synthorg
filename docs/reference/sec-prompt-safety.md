@@ -75,19 +75,30 @@ Never call `lxml.html.fromstring` directly on attacker-controlled input. Use `HT
 
 ## Secret-log redaction
 
-On credential-bearing paths (OAuth flows, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), NEVER use:
+NEVER use this pattern, anywhere in the codebase:
 
 ```python
 logger.exception(EVENT, error=str(exc))
 ```
 
-That attaches a traceback whose serialized frame-locals can leak `client_secret` / `refresh_token` / Fernet ciphertext, and `str(exc)` on httpx errors often embeds the POST body.
+The rule is unconditional. The risk is most acute on credential-bearing paths (OAuth flows, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), but the pattern is forbidden globally because:
+
+- `logger.exception` attaches a traceback whose serialized frame-locals can leak `client_secret` / `refresh_token` / Fernet ciphertext sitting on the stack at any call site.
+- `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / similar embeds URL or posted credential bodies into the message field.
+
+A site that "doesn't handle credentials today" can be one refactor away from carrying a request body or connection string into its frame.
 
 Use instead:
 
 ```python
 from synthorg.observability import safe_error_description
 logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))
+```
+
+Rare sites that genuinely need the traceback for catastrophic interpreter state (`MemoryError`, `RecursionError`) use:
+
+```python
+logger.error(EVENT, ..., error_type=type(exc).__name__, error=safe_error_description(exc), exc_info=True)
 ```
 
 Caller-facing detail is preserved via `raise ... from exc`.
@@ -98,4 +109,4 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
 
 ### Pre-commit gate
 
-`scripts/check_logger_exception_str_exc.py` blocks new `logger.exception(..., error=str(exc))` sites above the `scripts/_logger_exception_baseline.json` baseline. The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions so swapping sites within a file is caught by location diff, not by a count that could tie.
+`scripts/check_logger_exception_str_exc.py` blocks every `logger.exception(..., error=str(exc))` site unconditionally (no allowlist, no baseline). The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions, so any new occurrence -- regardless of receiver shape -- is rejected.

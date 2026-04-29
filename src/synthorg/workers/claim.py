@@ -21,7 +21,7 @@ from synthorg.communication.bus.errors import (
     BusStreamError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
     WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
@@ -215,10 +215,11 @@ class JetStreamTaskQueue:
         except (TimeoutError, NoServersError, OSError) as exc:
             safe_url = redact_url(self._nats_config.url)
             msg = f"Failed to connect to NATS at {safe_url} for task queue: {exc}"
-            logger.exception(
+            logger.warning(
                 WORKERS_TASK_QUEUE_CONNECT_FAILED,
                 url=safe_url,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise BusConnectionError(
                 msg,

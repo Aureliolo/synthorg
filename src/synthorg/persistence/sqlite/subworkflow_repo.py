@@ -27,7 +27,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
     PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
@@ -102,10 +102,11 @@ def _deserialize_row(
         )
     except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
         msg = f"Failed to deserialize subworkflow {context_id!r}"
-        logger.exception(
+        logger.warning(
             PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
             subworkflow_id=context_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 
@@ -287,11 +288,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     f"Failed to save subworkflow {definition.id!r} version "
                     f"{definition.version!r}"
                 )
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
                     subworkflow_id=definition.id,
                     version=definition.version,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -310,11 +312,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch subworkflow {subworkflow_id!r}@{version!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_FETCH_FAILED,
                 subworkflow_id=subworkflow_id,
                 version=version,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -349,10 +352,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = f"Failed to list versions for subworkflow {subworkflow_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                 subworkflow_id=subworkflow_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -370,9 +374,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list subworkflows"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -400,10 +405,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = f"Failed to search subworkflows with query {query!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                 query=query,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -420,10 +426,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             full_rows = await full_cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to load full versions for search results"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                 query=query,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -445,11 +452,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             except sqlite3.Error as exc:
                 await self._db.rollback()
                 msg = f"Failed to delete subworkflow {subworkflow_id!r}@{version!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
                     subworkflow_id=subworkflow_id,
                     version=version,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -471,11 +479,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     "Failed to begin transaction for"
                     f" delete_if_unreferenced {subworkflow_id!r}@{version!r}"
                 )
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
                     subworkflow_id=subworkflow_id,
                     version=version,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -490,15 +499,27 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (subworkflow_id, version),
                 )
                 await self._db.commit()
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
+                    subworkflow_id=subworkflow_id,
+                    version=version,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 try:
                     await self._db.rollback()
-                except sqlite3.Error:
-                    logger.exception(
+                except sqlite3.Error as rollback_exc:
+                    logger.error(
                         PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
                         subworkflow_id=subworkflow_id,
                         version=version,
-                        error="Rollback failed after primary error",
+                        error_type=type(rollback_exc).__name__,
+                        error=safe_error_description(rollback_exc),
+                        primary_error_type=type(exc).__name__,
+                        primary_error=safe_error_description(exc),
+                        note="Rollback failed after primary error",
+                        exc_info=True,
                     )
                 raise
 
@@ -560,10 +581,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             return await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = f"Failed to find parents for subworkflow {subworkflow_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                 subworkflow_id=subworkflow_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -592,7 +614,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                     subworkflow_id=sub_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
             if not isinstance(inputs, list) or not isinstance(outputs, list):

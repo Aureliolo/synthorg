@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from synthorg.config.errors import ConfigLocation
 from synthorg.core.enums import AutonomyLevel, SkillPattern
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_BUILTIN_DEFECT,
     TEMPLATE_LIST_SKIP_INVALID,
@@ -162,10 +162,11 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                     "builtin",
                 )
             except (TemplateRenderError, TemplateValidationError, OSError) as exc:
-                logger.exception(
+                logger.warning(
                     TEMPLATE_BUILTIN_DEFECT,
                     template_name=name,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     return tuple(info for _, info in sorted(seen.items()))
@@ -305,7 +306,12 @@ def _load_builtin(name: str) -> LoadedTemplate:
         yaml_text = ref.read_text(encoding="utf-8")
     except (OSError, ImportError, TypeError) as exc:
         msg = f"Failed to read built-in template resource {filename!r}: {exc}"
-        logger.exception(TEMPLATE_LOAD_READ_ERROR, source=source_name, error=str(exc))
+        logger.warning(
+            TEMPLATE_LOAD_READ_ERROR,
+            source=source_name,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),

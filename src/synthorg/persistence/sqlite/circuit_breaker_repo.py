@@ -7,7 +7,7 @@ import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED,
     PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
@@ -74,11 +74,12 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                     f"Failed to save circuit breaker state for pair "
                     f"({record.pair_key_a!r}, {record.pair_key_b!r})"
                 )
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
                     pair_key_a=record.pair_key_a,
                     pair_key_b=record.pair_key_b,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -92,9 +93,10 @@ INSERT OR REPLACE INTO circuit_breaker_state (
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to load circuit breaker state"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -109,9 +111,11 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                     f"Failed to deserialize circuit breaker state row "
                     f"({row['pair_key_a'] if row else 'unknown'})"
                 )
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
                     pair_key_a=row["pair_key_a"] if row else "unknown",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     note="deserialization failed",
                 )
                 raise QueryError(msg) from exc
@@ -140,11 +144,12 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                     f"Failed to delete circuit breaker state for pair "
                     f"({pair_key_a!r}, {pair_key_b!r})"
                 )
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED,
                     pair_key_a=pair_key_a,
                     pair_key_b=pair_key_b,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
         return deleted

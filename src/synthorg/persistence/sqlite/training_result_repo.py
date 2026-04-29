@@ -175,10 +175,11 @@ def _row_to_result(row: aiosqlite.Row) -> TrainingResult:
     ) as exc:
         result_id = data.get("id", "<unknown>")
         msg = f"Failed to deserialize training result {result_id!r}"
-        logger.exception(
+        logger.warning(
             HR_TRAINING_PERSISTENCE_ERROR,
             result_id=str(result_id),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 

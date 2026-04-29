@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
@@ -61,12 +61,13 @@ class ParkService:
         try:
             context_json = context.model_dump_json()
         except (ValueError, TypeError) as exc:
-            logger.exception(
+            logger.warning(
                 TIMEOUT_CONTEXT_PARKED,
                 agent_id=agent_id,
                 task_id=task_id,
                 approval_id=approval_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="Failed to serialize agent context",
             )
             msg = f"Failed to serialize agent context for agent {agent_id!r}"
@@ -122,12 +123,13 @@ class ParkService:
         try:
             context = AgentContext.model_validate_json(parked.context_json)
         except (ValidationError, ValueError) as exc:
-            logger.exception(
+            logger.warning(
                 TIMEOUT_CONTEXT_RESUMED,
                 parked_id=parked.id,
                 agent_id=parked.agent_id,
                 approval_id=parked.approval_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="Failed to deserialize parked agent context",
             )
             msg = (

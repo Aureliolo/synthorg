@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.core.validation import is_valid_action_type
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_DETECTED,
     APPROVAL_GATE_ESCALATION_FAILED,
@@ -193,11 +193,12 @@ class RequestHumanApprovalTool(BaseTool):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 APPROVAL_GATE_ESCALATION_FAILED,
                 agent_id=self._agent_id,
                 action_type=action_type,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="Failed to create approval item",
             )
             return ToolExecutionResult(

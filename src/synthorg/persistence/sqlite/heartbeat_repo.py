@@ -11,7 +11,7 @@ from pydantic import AwareDatetime, ValidationError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.checkpoint.models import Heartbeat
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_HEARTBEAT_DELETE_FAILED,
     PERSISTENCE_HEARTBEAT_DESERIALIZE_FAILED,
@@ -70,10 +70,11 @@ INSERT OR REPLACE INTO heartbeats (
                 msg = (
                     f"Failed to save heartbeat for execution {heartbeat.execution_id!r}"
                 )
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_HEARTBEAT_SAVE_FAILED,
                     execution_id=heartbeat.execution_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -88,10 +89,11 @@ INSERT OR REPLACE INTO heartbeats (
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query heartbeat {execution_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_HEARTBEAT_QUERY_FAILED,
                 execution_id=execution_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -122,10 +124,11 @@ INSERT OR REPLACE INTO heartbeats (
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query stale heartbeats"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_HEARTBEAT_QUERY_FAILED,
                 threshold=threshold,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -151,10 +154,11 @@ INSERT OR REPLACE INTO heartbeats (
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
                 msg = f"Failed to delete heartbeat {execution_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_HEARTBEAT_DELETE_FAILED,
                     execution_id=execution_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
         return deleted
@@ -169,9 +173,10 @@ INSERT OR REPLACE INTO heartbeats (
             return Heartbeat.model_validate(row)
         except ValidationError as exc:
             msg = f"Failed to deserialize heartbeat {row.get('execution_id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_HEARTBEAT_DESERIALIZE_FAILED,
                 execution_id=row.get("execution_id"),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

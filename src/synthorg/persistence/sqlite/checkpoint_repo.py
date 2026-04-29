@@ -176,9 +176,10 @@ INSERT OR REPLACE INTO checkpoints (
             return Checkpoint.model_validate(row)
         except ValidationError as exc:
             msg = f"Failed to deserialize checkpoint {row.get('id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED,
                 checkpoint_id=row.get("id"),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

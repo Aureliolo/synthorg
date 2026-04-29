@@ -33,7 +33,7 @@ from pydantic import AwareDatetime, ValidationError
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionRecord
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
     PERSISTENCE_DECISION_RECORD_QUERIED,
@@ -325,7 +325,8 @@ class PostgresDecisionRepository:
                     logger.warning(
                         PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                         record_id=record_id,
-                        error=str(exc),
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                         sqlstate=exc.sqlstate,
                         constraint=constraint,
                     )
@@ -349,20 +350,22 @@ class PostgresDecisionRepository:
                 # CHECK / FOREIGN KEY / NOT NULL violations are
                 # schema-level programming errors -- re-raise the
                 # original error so callers see the structural failure.
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                     record_id=record_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    violation_category="StructuralConstraintViolation",
+                    error=safe_error_description(exc),
                     sqlstate=exc.sqlstate,
-                    error_type="StructuralConstraintViolation",
                 )
                 raise
             except psycopg.Error as exc:
                 msg = f"Failed to save decision record {record_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                     record_id=record_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
             if row is None:
@@ -410,10 +413,11 @@ class PostgresDecisionRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch decision record {record_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
                 record_id=record_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -435,10 +439,11 @@ class PostgresDecisionRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to list decision records for task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         results = tuple(self._row_to_record(row) for row in rows)
@@ -497,11 +502,12 @@ class PostgresDecisionRepository:
             msg = (
                 f"Failed to list decision records for agent {agent_id!r} (role={role})"
             )
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
                 agent_id=agent_id,
                 role=role,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         results = tuple(self._row_to_record(row) for row in rows)
@@ -576,16 +582,16 @@ class PostgresDecisionRepository:
             )
             return DecisionRecord.model_validate(parsed)
         except (KeyError, ValidationError, TypeError, json.JSONDecodeError) as exc:
-            missing = str(exc).strip("'\"") if isinstance(exc, KeyError) else None
+            missing = exc.args[0] if isinstance(exc, KeyError) and exc.args else None
             msg = (
                 f"Failed to deserialize decision record {record_id!r}: "
                 f"{type(exc).__name__}"
             )
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
                 record_id=record_id,
                 missing_column=missing,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

@@ -20,7 +20,7 @@ from synthorg.engine.quality.verification import VerificationVerdict
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.engine.workflow.condition_eval import evaluate_condition
 from synthorg.engine.workflow.execution_models import WorkflowNodeExecution
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.verification import (
     VERIFICATION_VERDICT_ROUTED,
 )
@@ -211,12 +211,13 @@ def process_conditional_node(  # noqa: PLR0913
     try:
         result = evaluate_condition(expr, ctx)
     except (ValueError, TypeError, KeyError) as exc:
-        logger.exception(
+        logger.warning(
             WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
             execution_id=execution_id,
             node_id=nid,
             expression=expr,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Failed to evaluate condition on node {nid!r}: {exc}"
         raise WorkflowConditionEvalError(msg) from exc

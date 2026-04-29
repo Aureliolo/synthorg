@@ -7,7 +7,7 @@ quality score from the performance tracker.
 import asyncio
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
     HR_TRAINING_SELECTION_SKIPPED,
@@ -126,11 +126,12 @@ class RoleTopPerformers:
             try:
                 return await self._tracker.get_snapshot(str(agent.id))
             except Exception as exc:
-                logger.exception(
+                logger.warning(
                     HR_TRAINING_SELECTION_SKIPPED,
                     selector="role_top_performers",
                     agent_id=str(agent.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 

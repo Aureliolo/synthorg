@@ -20,7 +20,7 @@ from synthorg.communication.handler import (
 from synthorg.communication.message import (
     Message,  # noqa: TC001 -- required at runtime by Pydantic
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_DISPATCH_COMPLETE,
     COMM_DISPATCH_HANDLER_ERROR,
@@ -155,11 +155,16 @@ class MessageDispatcher:
     async def dispatch(self, message: Message) -> DispatchResult:
         """Route a message to all matching handlers concurrently.
 
-        Handlers that raise ``Exception`` subclasses are isolated;
-        their errors are captured without affecting other handlers.
-        ``BaseException`` subclasses (e.g. ``KeyboardInterrupt``,
-        ``CancelledError``) propagate through the ``TaskGroup``,
-        cancelling all remaining handlers.
+        Most handler ``Exception`` subclasses are isolated; their
+        errors are captured into the per-handler ``errors`` slot
+        without affecting siblings. ``MemoryError`` and
+        ``RecursionError`` are deliberate carve-outs: the interpreter
+        is in catastrophic state, so they re-raise to abort the
+        ``TaskGroup`` and cancel all remaining handlers rather than
+        being absorbed silently. ``BaseException`` subclasses (e.g.
+        ``KeyboardInterrupt``, ``asyncio.CancelledError``) likewise
+        propagate through the ``TaskGroup``, cancelling all remaining
+        handlers.
 
         Args:
             message: The message to dispatch.
@@ -241,15 +246,36 @@ class MessageDispatcher:
         """
         try:
             await registration.handler.handle(message)
-        except Exception as exc:
-            errors[index] = str(exc)
-            logger.exception(
+        except (MemoryError, RecursionError) as exc:
+            # Catastrophic interpreter state: do NOT absorb these into
+            # errors[index] -- they must propagate through the wrapping
+            # TaskGroup so sibling handlers cancel and the process can
+            # surface the failure rather than silently degrading. Log
+            # at ERROR with exc_info=True before re-raising so the
+            # traceback is captured for diagnostics, per the SEC-1
+            # carve-out for catastrophic interpreter state.
+            logger.error(
                 COMM_DISPATCH_HANDLER_ERROR,
                 agent_id=self._agent_id,
                 message_id=str(message.id),
                 handler_id=registration.handler_id,
                 handler_name=registration.name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                exc_info=True,
+            )
+            raise
+        except Exception as exc:
+            safe_error = safe_error_description(exc)
+            errors[index] = safe_error
+            logger.warning(
+                COMM_DISPATCH_HANDLER_ERROR,
+                agent_id=self._agent_id,
+                message_id=str(message.id),
+                handler_id=registration.handler_id,
+                handler_name=registration.name,
+                error_type=type(exc).__name__,
+                error=safe_error,
             )
 
     @staticmethod

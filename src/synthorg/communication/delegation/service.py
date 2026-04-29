@@ -30,7 +30,7 @@ from synthorg.communication.loop_prevention.guard import (  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.delegation import (
     DELEGATION_CREATED,
     DELEGATION_LOOP_ESCALATED,
@@ -308,12 +308,13 @@ class DelegationService:
                 acceptance_criteria=original.acceptance_criteria,
             )
         except ValidationError as exc:
-            logger.exception(
+            logger.warning(
                 DELEGATION_SUB_TASK_FAILED,
                 delegator=request.delegator_id,
                 delegatee=request.delegatee_id,
                 original_task_id=original.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = (
                 f"Failed to create sub-task for delegation "

@@ -150,8 +150,11 @@ class PostgresUserRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save user {user.id!r}"
-            logger.exception(
-                PERSISTENCE_USER_SAVE_FAILED, user_id=user.id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_USER_SAVE_FAILED,
+                user_id=user.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             constraint = _classify_postgres_user_error(exc)
             if constraint is not None:
@@ -172,8 +175,11 @@ class PostgresUserRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch user {user_id!r}"
-            logger.exception(
-                PERSISTENCE_USER_FETCH_FAILED, user_id=user_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_USER_FETCH_FAILED,
+                user_id=user_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -183,8 +189,11 @@ class PostgresUserRepository:
             user = _row_to_user(row)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize user {user_id!r}"
-            logger.exception(
-                PERSISTENCE_USER_FETCH_FAILED, user_id=user_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_USER_FETCH_FAILED,
+                user_id=user_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_USER_FETCHED, user_id=user_id, found=True)
@@ -203,8 +212,11 @@ class PostgresUserRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch user by username {username!r}"
-            logger.exception(
-                PERSISTENCE_USER_FETCH_FAILED, username=username, error=str(exc)
+            logger.warning(
+                PERSISTENCE_USER_FETCH_FAILED,
+                username=username,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -213,8 +225,11 @@ class PostgresUserRepository:
             return _row_to_user(row)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize user {username!r}"
-            logger.exception(
-                PERSISTENCE_USER_FETCH_FAILED, username=username, error=str(exc)
+            logger.warning(
+                PERSISTENCE_USER_FETCH_FAILED,
+                username=username,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -232,13 +247,21 @@ class PostgresUserRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list users"
-            logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = "Failed to deserialize users"
-            logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users
@@ -299,7 +322,11 @@ class PostgresUserRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to count users"
-            logger.exception(PERSISTENCE_USER_COUNT_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_USER_COUNT_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         result = int(row[0]) if row else 0
         logger.debug(PERSISTENCE_USER_COUNTED, count=result)
@@ -316,10 +343,11 @@ class PostgresUserRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to count users by role"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_USER_COUNT_BY_ROLE_FAILED,
                 role=role.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         result = int(row[0]) if row else 0
@@ -352,8 +380,11 @@ class PostgresUserRepository:
                     constraint=constraint,
                 ) from exc
             msg = f"Failed to delete user {user_id!r}"
-            logger.exception(
-                PERSISTENCE_USER_DELETE_FAILED, user_id=user_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_USER_DELETE_FAILED,
+                user_id=user_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return deleted
@@ -400,8 +431,11 @@ class PostgresApiKeyRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save API key {key.id!r}"
-            logger.exception(
-                PERSISTENCE_API_KEY_SAVE_FAILED, key_id=key.id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_API_KEY_SAVE_FAILED,
+                key_id=key.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -416,8 +450,11 @@ class PostgresApiKeyRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch API key {key_id!r}"
-            logger.exception(
-                PERSISTENCE_API_KEY_FETCH_FAILED, key_id=key_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_API_KEY_FETCH_FAILED,
+                key_id=key_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -427,8 +464,11 @@ class PostgresApiKeyRepository:
             key = _row_to_api_key(row)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize API key {key_id!r}"
-            logger.exception(
-                PERSISTENCE_API_KEY_FETCH_FAILED, key_id=key_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_API_KEY_FETCH_FAILED,
+                key_id=key_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_API_KEY_FETCHED, key_id=key_id, found=True)
@@ -447,7 +487,11 @@ class PostgresApiKeyRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to fetch API key by hash"
-            logger.exception(PERSISTENCE_API_KEY_FETCH_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_API_KEY_FETCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         if row is None:
             return None
@@ -455,7 +499,11 @@ class PostgresApiKeyRepository:
             return _row_to_api_key(row)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = "Failed to deserialize API key by hash"
-            logger.exception(PERSISTENCE_API_KEY_FETCH_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_API_KEY_FETCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
     async def list_by_user(

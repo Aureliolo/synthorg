@@ -29,7 +29,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneStatus,
 )
 from synthorg.memory.errors import FineTuneCancelledError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_CANCELLED,
     MEMORY_FINE_TUNE_COMPLETED,
@@ -318,23 +318,60 @@ class FineTuneOrchestrator:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            safe_error = safe_error_description(exc)
             try:
-                await self._mark_failed(self._current_run or run, str(exc))
-            except Exception:
-                self._current_run = run.model_copy(
+                await self._mark_failed(self._current_run or run, safe_error)
+            except MemoryError, RecursionError:
+                # Catastrophic interpreter state from the persistence
+                # layer must propagate; do not absorb into the FAILED
+                # fallback path.
+                raise
+            except Exception as persist_exc:
+                # Persisting the FAILED state can itself fail (DB outage,
+                # disk full, etc.). Log the persistence failure with full
+                # context, then synthesise the same fully-terminal state
+                # ``_mark_failed`` would have produced (stage, progress
+                # cleared, error, updated_at, completed_at) on top of the
+                # most recent in-memory ``self._current_run`` so
+                # ``get_status`` and the WS event don't return a FAILED
+                # run with stale progress or missing terminal timestamps.
+                now = datetime.now(UTC)
+                # The MemoryError/RecursionError carve-out above means
+                # persist_exc is guaranteed non-catastrophic at this
+                # point, so we deliberately omit ``exc_info=True``: the
+                # SEC-1 sanitised structured fields are the only thing
+                # that should land in the log record on this path.
+                # ``noqa: TRY400`` because SEC-1 forbids
+                # ``logger.exception`` (auto-attached traceback can
+                # carry credential-bearing frame locals).
+                logger.error(  # noqa: TRY400
+                    MEMORY_FINE_TUNE_FAILED,
+                    run_id=run.id,
+                    stage="persist_failed_state",
+                    error_type=type(persist_exc).__name__,
+                    error=safe_error_description(persist_exc),
+                    underlying_error_type=type(exc).__name__,
+                    underlying_error=safe_error,
+                )
+                base = self._current_run or run
+                self._current_run = base.model_copy(
                     update={
                         "stage": FineTuneStage.FAILED,
-                        "error": str(exc),
+                        "progress": None,
+                        "error": safe_error,
+                        "updated_at": now,
+                        "completed_at": now,
                     },
                 )
             self._schedule_ws(
                 "memory.fine_tune.failed",
                 self._current_run or run,
             )
-            logger.exception(
+            logger.warning(
                 MEMORY_FINE_TUNE_FAILED,
                 run_id=run.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error,
             )
 
     async def _run_stages(

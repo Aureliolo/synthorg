@@ -9,7 +9,7 @@ from collections.abc import Iterable  # noqa: TC003
 import aiosqlite
 
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
     ONTOLOGY_ENTITY_DUPLICATE,
@@ -78,10 +78,11 @@ class SQLiteOntologyEntityRepository:
             )
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             msg = f"Corrupted entity definition for '{entity_name}'"
-            logger.exception(
+            logger.warning(
                 ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
                 entity_name=entity_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise OntologyError(msg) from exc
 
@@ -128,7 +129,8 @@ class SQLiteOntologyEntityRepository:
                 logger.warning(
                     ONTOLOGY_ENTITY_DUPLICATE,
                     entity_name=entity.name,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise OntologyDuplicateError(msg) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -142,7 +144,7 @@ class SQLiteOntologyEntityRepository:
                     ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
                     entity_name=entity.name,
                     error_type=type(exc).__name__,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
                 raise OntologyError(msg) from exc
         # Mutation-audit logging belongs in the service layer, not in
