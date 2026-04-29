@@ -52,9 +52,12 @@ def create_reporter(config: TelemetryConfig) -> TelemetryReporter:
     """Create a telemetry reporter from configuration.
 
     Returns :class:`NoopReporter` when the backend is set to
-    ``noop`` or when the Logfire reporter cannot be initialised
-    for one of the three sanctioned reasons (logged once with the
-    real ``error_type``).
+    ``noop`` or when the Logfire reporter cannot be initialised.
+    ``ImportError`` and ``LogfireConfigureError`` each emit one
+    WARNING with the real ``error_type``; the missing-embedded-
+    token branch is intentionally silent here so
+    :meth:`TelemetryCollector.start` remains the single emitter
+    of the operator-facing ``TELEMETRY_TOKEN_MISSING`` ERROR.
 
     Args:
         config: Telemetry configuration (already filtered for

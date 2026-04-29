@@ -8,9 +8,11 @@ real token so the published wheel / built image carries it baked
 into source. Source-tree installs and any build that does NOT run
 this script keep the sentinel and run telemetry-disabled by build.
 
-The script filename retains the ``logfire`` token for CI-log
-clarity (it is the build-time secret name), but every operator-
-and developer-facing string in this module is vendor-neutral.
+The script filename is preserved verbatim because it has to
+match the build-time GHA secret name (referenced in the rotation
+note below) for operator clarity in CI logs. Every other prose,
+error message, and stderr line in this module uses vendor-neutral
+phrasing.
 
 Usage:
     python scripts/embed_logfire_token.py <token>
@@ -89,6 +91,19 @@ def embed(token: str, target: Path) -> None:
             "refusing to overwrite an already-embedded token"
         )
         raise ValueError(msg)
+    # The quoted sentinel must appear in exactly one place (the
+    # ``EMBEDDED_TELEMETRY_TOKEN = "..."`` constant). A repeated
+    # occurrence (e.g. someone duplicated the literal into a docstring
+    # or test fixture inside the target file itself) would let
+    # ``replace(..., 1)`` silently land on the wrong line; refuse to
+    # guess and force the operator to disambiguate.
+    occurrences = content.count(quoted_sentinel)
+    if occurrences != 1:
+        msg = (
+            f"expected exactly one {quoted_sentinel!r} occurrence in "
+            f"{target}, found {occurrences}; refusing ambiguous replacement"
+        )
+        raise ValueError(msg)
     rewritten = content.replace(quoted_sentinel, repr(token), 1)
     target.write_text(rewritten, encoding="utf-8")
 
@@ -105,10 +120,10 @@ def main(argv: list[str]) -> int:
     try:
         embed(token, target)
     except ValueError as exc:
-        sys.stderr.write(f"embed_logfire_token: {exc}\n")
+        sys.stderr.write(f"embed_telemetry_token: {exc}\n")
         return 3
     except OSError as exc:
-        sys.stderr.write(f"embed_logfire_token: {exc}\n")
+        sys.stderr.write(f"embed_telemetry_token: {exc}\n")
         return 4
     sys.stderr.write(f"Embedded telemetry token into {target}\n")
     return 0
