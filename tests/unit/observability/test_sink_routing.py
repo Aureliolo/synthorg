@@ -47,7 +47,7 @@ def _make_structlog_record(
         level=level,
         pathname="",
         lineno=0,
-        msg=msg,  # type: ignore[arg-type]
+        msg=msg,
         args=(),
         exc_info=None,
     )
