@@ -31,7 +31,7 @@ from synthorg.hr.errors import (
 )
 from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_HIRING_APPROVAL_SUBMITTED,
     HR_HIRING_CANDIDATE_GENERATED,
@@ -457,10 +457,11 @@ class HiringService:
             )
         except (ValidationError, ValueError) as exc:
             msg = f"Failed to construct AgentIdentity for candidate {candidate.id!r}"
-            logger.exception(
+            logger.warning(
                 HR_HIRING_INSTANTIATION_FAILED,
                 candidate_id=str(candidate.id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise HiringError(msg) from exc
 
@@ -482,10 +483,11 @@ class HiringService:
             await self._registry.register(identity)
         except AgentAlreadyRegisteredError as exc:
             msg = f"Agent already registered for request {request.id!r}"
-            logger.exception(
+            logger.warning(
                 HR_HIRING_INSTANTIATION_FAILED,
                 request_id=str(request.id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise HiringError(msg) from exc
 

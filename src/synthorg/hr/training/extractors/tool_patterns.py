@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.hr.training.models import ContentType, TrainingItem
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_EXTRACTION_FAILED,
     HR_TRAINING_EXTRACTOR_CONFIG_INVALID,
@@ -162,11 +162,12 @@ class ToolPatternExtractor:
                 end=end,
             )
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_EXTRACTION_FAILED,
                 content_type="tool_patterns",
                 agent_id=str(agent_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         return agent_id, tuple(records)

@@ -16,7 +16,7 @@ from synthorg.hr.training.models import (
     TrainingGuardDecision,
     TrainingItem,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_REVIEW_GATE_CREATED,
     HR_TRAINING_REVIEW_GATE_FAILED,
@@ -103,12 +103,13 @@ class ReviewGateGuard:
         try:
             await self._approval_store.add(approval_item)
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_REVIEW_GATE_FAILED,
                 plan_id=str(plan.id),
                 content_type=content_type.value,
                 approval_id=approval_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
