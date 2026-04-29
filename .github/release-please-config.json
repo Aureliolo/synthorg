@@ -14,14 +14,17 @@
       "__synthorg_rollover_at_patch": 9,
       "__synthorg_rollover_at_patch_comment": "Consumed by .github/workflows/auto-rollover.yml. Release Please itself ignores unknown fields (its JSON-schema permits additionalProperties). Change with care: a value < 9 will rollover earlier (e.g. 0.X.3 -> 0.(X+1).0) and skip the intervening patch range; a value > 9 delays rollover into the 0.X.10+ range. The companion workflow emits ::warning:: whenever this is not the default.",
       "changelog-sections": [
-        { "type": "feat", "section": "Features" },
-        { "type": "fix", "section": "Bug Fixes" },
-        { "type": "perf", "section": "Performance" },
-        { "type": "refactor", "section": "Refactoring" },
-        { "type": "docs", "section": "Documentation" },
-        { "type": "test", "section": "Tests" },
-        { "type": "ci", "section": "CI/CD" },
-        { "type": "chore", "section": "Maintenance" }
+        { "type": "feat", "section": "Features", "hidden": false },
+        { "type": "fix", "section": "Bug Fixes", "hidden": false },
+        { "type": "perf", "section": "Performance", "hidden": false },
+        { "type": "refactor", "section": "Refactoring", "hidden": false },
+        { "type": "docs", "section": "Documentation", "hidden": false },
+        { "type": "style", "section": "Styling", "hidden": false },
+        { "type": "test", "section": "Tests", "hidden": false },
+        { "type": "build", "section": "Build System", "hidden": false },
+        { "type": "ci", "section": "CI/CD", "hidden": false },
+        { "type": "chore", "section": "Maintenance", "hidden": false },
+        { "type": "revert", "section": "Reverts", "hidden": false }
       ],
       "extra-files": [
         {
@@ -31,6 +34,15 @@
         {
           "type": "generic",
           "path": "src/synthorg/__init__.py"
+        },
+        {
+          "type": "json",
+          "path": "web/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "package-lock-json",
+          "path": "web/package-lock.json"
         }
       ]
     }
