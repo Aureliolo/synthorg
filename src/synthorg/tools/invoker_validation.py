@@ -10,6 +10,8 @@ import copy
 from typing import TYPE_CHECKING
 
 import jsonschema
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 from referencing import Registry as JsonSchemaRegistry
 from referencing.exceptions import NoSuchResource
 
@@ -50,10 +52,49 @@ class ToolInvokerValidationMixin:
         tool: BaseTool,
         tool_call: ToolCall,
     ) -> ToolResult | None:
-        """Validate tool call arguments against JSON Schema.
+        """Validate tool call arguments.
 
+        Tries the typed ``args_model`` when the subclass declares one
+        (the Phase 3 typed-args path of #1611) and falls back to
+        JSON-Schema validation against ``parameters_schema`` otherwise.
         Returns ``None`` on success or a ``ToolResult`` on failure.
         """
+        args_model = tool.args_model
+        if args_model is not None:
+            return self._validate_args_model(args_model, tool_call)
+        return self._validate_json_schema(tool, tool_call)
+
+    def _validate_args_model(
+        self,
+        args_model: type[BaseModel],
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Validate ``tool_call.arguments`` against a Pydantic args model."""
+        try:
+            args_model.model_validate(dict(tool_call.arguments))
+        except PydanticValidationError as exc:
+            first = exc.errors(include_input=False, include_url=False)
+            detail = first[0]["msg"] if first else str(exc)
+            return self._param_error_result(tool_call, detail)
+        except (MemoryError, RecursionError) as exc:
+            logger.exception(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        except Exception as exc:
+            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
+            return self._unexpected_validation_result(tool_call, error_msg)
+        return None
+
+    def _validate_json_schema(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Validate ``tool_call.arguments`` against the legacy JSON Schema."""
         schema = tool.parameters_schema
         if schema is None:
             return None
