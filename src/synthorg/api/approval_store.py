@@ -54,6 +54,9 @@ from synthorg.observability.events.api import (
     API_APPROVAL_STORE_CLEARED,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_STATUS_TRANSITIONED,
+)
 
 if TYPE_CHECKING:
     from synthorg.persistence.approval_protocol import ApprovalRepository
@@ -466,6 +469,20 @@ class ApprovalStore:
             if self._repo is not None:
                 await self._repo.save(expired)
             self._items[item.id] = expired
+            # State-transition log fires AFTER persistence + cache
+            # update succeed so the audit stream only records hops
+            # that actually landed. Pairs with the
+            # APPROVAL_STATUS_TRANSITIONED emissions on PENDING ->
+            # APPROVED / REJECTED in ``api/controllers/approvals.py``;
+            # ``API_APPROVAL_EXPIRED`` below is the terminal-state
+            # summary event that subscribers can use as a single
+            # signal that an approval has expired.
+            logger.info(
+                APPROVAL_STATUS_TRANSITIONED,
+                approval_id=item.id,
+                from_status=ApprovalStatus.PENDING.value,
+                to_status=ApprovalStatus.EXPIRED.value,
+            )
             logger.info(
                 API_APPROVAL_EXPIRED,
                 approval_id=item.id,

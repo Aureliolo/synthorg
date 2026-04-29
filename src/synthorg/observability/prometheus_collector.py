@@ -601,22 +601,35 @@ class PrometheusCollector(RecordingMixin):
         try:
             tasks, _ = await app_state.task_engine.list_tasks()
             counts: Counter[tuple[str, str]] = Counter()
+            # De-duplicate the orphan-agent WARN per scrape: many
+            # tasks can share the same stale ``assigned_to``, and
+            # logging once per task (instead of once per agent id)
+            # would breach the "single WARN per unknown value per
+            # scrape" contract documented in monitoring.md.
+            warned_unknown_agents: set[str] = set()
             for task in tasks:
                 status = str(task.status)
                 agent = str(task.assigned_to) if task.assigned_to else ""
                 if agent and not is_known_agent_id(agent):
-                    # Surface dropped samples so an operator can spot
-                    # an orphan ``task.assigned_to`` reference instead
-                    # of seeing a silently lower-than-expected
-                    # ``synthorg_tasks_total`` for that status.
-                    logger.warning(
-                        METRICS_SCRAPE_FAILED,
-                        component="task_metrics",
-                        reason="unknown_agent_id",
-                        rejected_value=agent,
-                        task_id=str(task.id),
-                        task_status=status,
-                    )
+                    if agent not in warned_unknown_agents:
+                        warned_unknown_agents.add(agent)
+                        # Surface dropped samples so an operator can
+                        # spot an orphan ``task.assigned_to`` ref
+                        # instead of seeing a silently
+                        # lower-than-expected ``synthorg_tasks_total``
+                        # for that status. ``task_id`` is the FIRST
+                        # task that hit this orphan; the WARN is keyed
+                        # by ``rejected_value`` so subsequent tasks
+                        # with the same stale agent are silently
+                        # dropped.
+                        logger.warning(
+                            METRICS_SCRAPE_FAILED,
+                            component="task_metrics",
+                            reason="unknown_agent_id",
+                            rejected_value=agent,
+                            task_id=str(task.id),
+                            task_status=status,
+                        )
                     continue
                 counts[(status, agent)] += 1
             for (status, agent), count in counts.items():

@@ -385,7 +385,12 @@ async def apply_transition(
             "task.id": mutation.task_id,
             "task.status.from": previous_status.value,
             "task.status.to": mutation.target_status.value,
-            "task.transition.reason": mutation.reason or "",
+            # Don't attach the free-form ``mutation.reason`` as a span
+            # attribute: it can carry arbitrary user / model output and
+            # would inflate trace cardinality. The reason is already on
+            # the ``TASK_ENGINE_MUTATION_APPLIED`` log via the kwarg
+            # ``reason=mutation.reason`` below; trace consumers
+            # cross-reference via ``task.id``.
         },
     ):
         try:

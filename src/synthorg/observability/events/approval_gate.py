@@ -34,13 +34,17 @@ APPROVAL_GATE_TASK_NOT_FOUND: Final[str] = "approval_gate.task.not_found"
 APPROVAL_GATE_TASK_UNASSIGNED: Final[str] = "approval_gate.task.unassigned"
 APPROVAL_GATE_NOTIFICATION_FAILED: Final[str] = "approval_gate.notification.failed"
 
-# Status-machine event: emitted on the user-decided ApprovalStatus hops
-# (PENDING -> APPROVED / REJECTED). The PENDING -> EXPIRED hop is logged
-# separately via API_APPROVAL_EXPIRED in the expiry sweep path; that
-# event already carries the same approval_id + previous_status fields,
-# so the transition layer is consistent with the audit stream without
-# emitting a second event for the same hop. Distinct from the
-# audit-trail security events (SECURITY_APPROVAL_APPROVED /
-# SECURITY_APPROVAL_REJECTED) so the state-transition log layer and
-# the audit chain layer stay independent.
+# Status-machine event: emitted on every ApprovalStatus hop --
+# user-decided (PENDING -> APPROVED / REJECTED) in
+# ``api/controllers/approvals.py``, and time-driven (PENDING ->
+# EXPIRED) in the expiry sweep in ``api/approval_store.py``. Each
+# emission fires AFTER the persistence write + cache update succeed
+# so the audit stream only records hops that actually landed. The
+# expiry path additionally emits ``API_APPROVAL_EXPIRED`` as a
+# terminal-state summary event; the two are complementary
+# (transition log = cross-hop audit, terminal event = "this is the
+# final state" marker). Distinct from the audit-trail security
+# events (SECURITY_APPROVAL_APPROVED / SECURITY_APPROVAL_REJECTED)
+# so the state-transition log layer and the audit chain layer stay
+# independent.
 APPROVAL_STATUS_TRANSITIONED: Final[str] = "approval.status_transitioned"
