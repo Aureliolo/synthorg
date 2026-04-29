@@ -2,8 +2,8 @@
 
 import hashlib
 import hmac
-import time
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     WEBHOOK_SIGNATURE_INVALID,
@@ -22,7 +22,16 @@ class SlackSigningVerifier:
     using the signing secret.  The signature is sent in
     ``X-Slack-Signature`` and the timestamp in
     ``X-Slack-Request-Timestamp``.
+
+    Args:
+        clock: Time source for the freshness comparison; tests inject
+            ``FakeClock`` to drive the skew calculation deterministically.
     """
+
+    __slots__ = ("_clock",)
+
+    def __init__(self, *, clock: Clock | None = None) -> None:
+        self._clock: Clock = clock or SystemClock()
 
     @property
     def signature_header(self) -> str:
@@ -56,7 +65,7 @@ class SlackSigningVerifier:
             )
             return False
 
-        if abs(time.time() - timestamp) > _MAX_CLOCK_SKEW:
+        if abs(self._clock.now().timestamp() - timestamp) > _MAX_CLOCK_SKEW:
             logger.warning(
                 WEBHOOK_SIGNATURE_INVALID,
                 reason="timestamp too old or too far in future",

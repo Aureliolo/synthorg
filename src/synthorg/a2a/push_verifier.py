@@ -7,8 +7,8 @@ A2A-specific HMAC-SHA256 push notification verification.
 
 import hashlib
 import hmac
-import time
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
     A2A_PUSH_VERIFICATION_FAILED,
@@ -29,15 +29,20 @@ class A2APushVerifier:
     Args:
         clock_skew_seconds: Maximum allowed clock skew between
             the push sender and this receiver.
+        clock: Time source for the freshness comparison; tests inject
+            ``FakeClock`` to drive the skew calculation deterministically.
     """
 
-    __slots__ = ("_clock_skew_seconds",)
+    __slots__ = ("_clock", "_clock_skew_seconds")
 
     def __init__(
         self,
         clock_skew_seconds: int = _DEFAULT_CLOCK_SKEW_SECONDS,
+        *,
+        clock: Clock | None = None,
     ) -> None:
         self._clock_skew_seconds = clock_skew_seconds
+        self._clock: Clock = clock or SystemClock()
 
     @property
     def signature_header(self) -> str:
@@ -89,7 +94,7 @@ class A2APushVerifier:
                     reason="malformed timestamp",
                 )
                 return False
-            now = time.time()
+            now = self._clock.now().timestamp()
             if abs(now - timestamp) > self._clock_skew_seconds:
                 logger.warning(
                     A2A_PUSH_VERIFICATION_FAILED,
