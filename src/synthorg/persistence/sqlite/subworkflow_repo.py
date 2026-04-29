@@ -499,7 +499,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (subworkflow_id, version),
                 )
                 await self._db.commit()
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
+                    subworkflow_id=subworkflow_id,
+                    version=version,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 try:
                     await self._db.rollback()
                 except sqlite3.Error as rollback_exc:
@@ -509,6 +516,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         version=version,
                         error_type=type(rollback_exc).__name__,
                         error=safe_error_description(rollback_exc),
+                        primary_error_type=type(exc).__name__,
+                        primary_error=safe_error_description(exc),
                         note="Rollback failed after primary error",
                         exc_info=True,
                     )

@@ -353,8 +353,8 @@ class PostgresDecisionRepository:
                 logger.warning(
                     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                     record_id=record_id,
-                    error_type="StructuralConstraintViolation",
-                    exc_class=type(exc).__name__,
+                    error_type=type(exc).__name__,
+                    violation_category="StructuralConstraintViolation",
                     error=safe_error_description(exc),
                     sqlstate=exc.sqlstate,
                 )

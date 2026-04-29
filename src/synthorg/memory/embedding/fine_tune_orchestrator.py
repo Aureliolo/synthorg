@@ -324,10 +324,13 @@ class FineTuneOrchestrator:
             except Exception as persist_exc:
                 # Persisting the FAILED state can itself fail (DB outage,
                 # disk full, etc.). Log the persistence failure with full
-                # context, then preserve the most recent in-memory run
-                # (``self._current_run`` if it exists) when synthesising
-                # the FAILED state, so we don't regress to the stale
-                # ``run`` snapshot taken at orchestrator entry.
+                # context, then synthesise the same fully-terminal state
+                # ``_mark_failed`` would have produced (stage, progress
+                # cleared, error, updated_at, completed_at) on top of the
+                # most recent in-memory ``self._current_run`` so
+                # ``get_status`` and the WS event don't return a FAILED
+                # run with stale progress or missing terminal timestamps.
+                now = datetime.now(UTC)
                 logger.error(
                     MEMORY_FINE_TUNE_FAILED,
                     run_id=run.id,
@@ -342,7 +345,10 @@ class FineTuneOrchestrator:
                 self._current_run = base.model_copy(
                     update={
                         "stage": FineTuneStage.FAILED,
+                        "progress": None,
                         "error": safe_error,
+                        "updated_at": now,
+                        "completed_at": now,
                     },
                 )
             self._schedule_ws(
