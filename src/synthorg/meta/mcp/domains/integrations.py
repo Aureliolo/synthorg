@@ -5,6 +5,29 @@ Covers MCP catalog, OAuth, clients, artifacts, and ontology.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._remaining_args import (
+    ArtifactsCreateArgs,
+    ArtifactsDeleteArgs,
+    ArtifactsGetArgs,
+    ArtifactsListArgs,
+    ClientsCreateArgs,
+    ClientsDeactivateArgs,
+    ClientsGetArgs,
+    ClientsGetSatisfactionArgs,
+    ClientsListArgs,
+    McpCatalogGetArgs,
+    McpCatalogInstallArgs,
+    McpCatalogListArgs,
+    McpCatalogSearchArgs,
+    McpCatalogUninstallArgs,
+    OauthConfigureProviderArgs,
+    OauthListProvidersArgs,
+    OauthRemoveProviderArgs,
+    OntologyGetEntityArgs,
+    OntologyGetRelationshipsArgs,
+    OntologyListEntitiesArgs,
+    OntologySearchArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     PAGINATION_PROPERTIES,
     admin_tool,
@@ -22,6 +45,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List available MCP server catalog entries.",
         PAGINATION_PROPERTIES,
+        args_model=McpCatalogListArgs,
     ),
     read_tool(
         "mcp_catalog",
@@ -31,6 +55,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "query": {"type": "string", "description": "Search query"},
         },
         required=("query",),
+        args_model=McpCatalogSearchArgs,
     ),
     read_tool(
         "mcp_catalog",
@@ -40,6 +65,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "catalog_id": {"type": "string", "description": "Catalog entry ID"},
         },
         required=("catalog_id",),
+        args_model=McpCatalogGetArgs,
     ),
     admin_tool(
         "mcp_catalog",
@@ -49,6 +75,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "catalog_id": {"type": "string", "description": "Catalog entry to install"},
         },
         required=("catalog_id",),
+        args_model=McpCatalogInstallArgs,
     ),
     admin_tool(
         "mcp_catalog",
@@ -58,9 +85,15 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "install_id": {"type": "string", "description": "Installation ID"},
         },
         required=("install_id",),
+        args_model=McpCatalogUninstallArgs,
     ),
     # --- OAuth ---
-    read_tool("oauth", "list_providers", "List configured OAuth providers."),
+    read_tool(
+        "oauth",
+        "list_providers",
+        "List configured OAuth providers.",
+        args_model=OauthListProvidersArgs,
+    ),
     admin_tool(
         "oauth",
         "configure_provider",
@@ -70,6 +103,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "config": {"type": "object", "description": "OAuth configuration"},
         },
         required=("provider", "config"),
+        args_model=OauthConfigureProviderArgs,
     ),
     admin_tool(
         "oauth",
@@ -79,9 +113,16 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "provider": {"type": "string", "description": "Provider name"},
         },
         required=("provider",),
+        args_model=OauthRemoveProviderArgs,
     ),
     # --- Clients ---
-    read_tool("clients", "list", "List API clients.", PAGINATION_PROPERTIES),
+    read_tool(
+        "clients",
+        "list",
+        "List API clients.",
+        PAGINATION_PROPERTIES,
+        args_model=ClientsListArgs,
+    ),
     read_tool(
         "clients",
         "get",
@@ -90,6 +131,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "client_id": {"type": "string", "description": "Client UUID"},
         },
         required=("client_id",),
+        args_model=ClientsGetArgs,
     ),
     admin_tool(
         "clients",
@@ -99,6 +141,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "name": {"type": "string", "description": "Client name"},
         },
         required=("name",),
+        args_model=ClientsCreateArgs,
     ),
     admin_tool(
         "clients",
@@ -108,6 +151,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "client_id": {"type": "string", "description": "Client UUID"},
         },
         required=("client_id",),
+        args_model=ClientsDeactivateArgs,
     ),
     read_tool(
         "clients",
@@ -117,6 +161,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "client_id": {"type": "string", "description": "Client UUID"},
         },
         required=("client_id",),
+        args_model=ClientsGetSatisfactionArgs,
     ),
     # --- Artifacts ---
     read_tool(
@@ -129,6 +174,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "type": {"type": "string", "description": "Filter by artifact type"},
             **PAGINATION_PROPERTIES,
         },
+        args_model=ArtifactsListArgs,
     ),
     read_tool(
         "artifacts",
@@ -138,6 +184,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "artifact_id": {"type": "string", "description": "Artifact UUID"},
         },
         required=("artifact_id",),
+        args_model=ArtifactsGetArgs,
     ),
     write_tool(
         "artifacts",
@@ -149,6 +196,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "content": {"type": "string", "description": "Artifact content"},
         },
         required=("type", "content"),
+        args_model=ArtifactsCreateArgs,
     ),
     write_tool(
         "artifacts",
@@ -158,10 +206,15 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "artifact_id": {"type": "string", "description": "Artifact UUID"},
         },
         required=("artifact_id",),
+        args_model=ArtifactsDeleteArgs,
     ),
     # --- Ontology ---
     read_tool(
-        "ontology", "list_entities", "List ontology entities.", PAGINATION_PROPERTIES
+        "ontology",
+        "list_entities",
+        "List ontology entities.",
+        PAGINATION_PROPERTIES,
+        args_model=OntologyListEntitiesArgs,
     ),
     read_tool(
         "ontology",
@@ -171,6 +224,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "entity_name": {"type": "string", "description": "Entity name"},
         },
         required=("entity_name",),
+        args_model=OntologyGetEntityArgs,
     ),
     read_tool(
         "ontology",
@@ -180,6 +234,7 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "entity_name": {"type": "string", "description": "Entity name"},
         },
         required=("entity_name",),
+        args_model=OntologyGetRelationshipsArgs,
     ),
     read_tool(
         "ontology",
@@ -189,5 +244,6 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
             "query": {"type": "string", "description": "Search query"},
         },
         required=("query",),
+        args_model=OntologySearchArgs,
     ),
 )
