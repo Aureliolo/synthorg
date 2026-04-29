@@ -73,22 +73,40 @@ runs:
         TAG: ${{ inputs.tag }}
         ARCHITECTURES: ${{ inputs.architectures }}
       run: |
+        set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base"
         IFS=',' read -ra ARCHS <<< "${ARCHITECTURES}"
+
+        # Push each per-arch image, then resolve its registry digest
+        # immediately. Use those digests (not the mutable per-arch tags)
+        # in `docker manifest create` so the manifest list bytes are
+        # stable even if a parallel workflow run pushes a different
+        # build over the same per-arch tag between create and push.
+        # See the publish-image action for the full background.
+        #
+        # Residual race: between `docker push` and `imagetools inspect`
+        # a concurrent run could overwrite the per-arch tag and the
+        # `inspect` would return the OTHER run's digest. The
+        # `verify-signatures` job in docker.yml's cross-tag divergence
+        # check catches that case.
         MANIFEST_ARGS=()
         for arch in "${ARCHS[@]}"; do
           docker push "${REPO}:${TAG}-${arch}"
-          MANIFEST_ARGS+=("${REPO}:${TAG}-${arch}")
+          ARCH_DIGEST="$(docker buildx imagetools inspect "${REPO}:${TAG}-${arch}" --format '{{.Manifest.Digest}}')"
+          if [ -z "$ARCH_DIGEST" ]; then
+            echo "::error::Could not resolve ${arch} digest after push"
+            exit 1
+          fi
+          MANIFEST_ARGS+=("${REPO}@${ARCH_DIGEST}")
         done
         # --amend keeps re-runs on the same SHA safe: a successful push on a
         # prior run leaves the manifest list present, and a plain `create` would
         # fail with "manifest already exists" before the idempotent push below.
         docker manifest create --amend "${REPO}:${TAG}" "${MANIFEST_ARGS[@]}"
         docker manifest push "${REPO}:${TAG}"
-        # `docker manifest push` stdout is unreliable across Docker versions
-        # (some emit `sha256:<hex>`, some only `Created manifest list <ref>`).
-        # Read the canonical manifest digest back from the registry via
-        # buildx imagetools, which is deterministic.
+        # Read the canonical manifest list digest back from the
+        # registry. Stable across re-runs because the create above pins
+        # source members by digest.
         DIGEST="$(docker buildx imagetools inspect "${REPO}:${TAG}" --format '{{.Manifest.Digest}}')"
         echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
@@ -134,6 +152,50 @@ runs:
             echo "::notice::Image already signed -- skipping"
           else cat /tmp/cosign-out; exit 1; fi
         fi
+
+    # Confirm the input tag still resolves to the digest cosign just
+    # signed and that the cosign signature artifact is reachable on
+    # GHCR. Catches the "concurrent run overwrote our tag after we
+    # signed" failure mode at CI time. See publish-image/action.yml
+    # for the full rationale.
+    - name: Verify pushed tag resolves to the signed digest
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        TAG: ${{ inputs.tag }}
+        SIGNED_DIGEST: ${{ steps.push.outputs.digest }}
+        GHCR_TOKEN: ${{ inputs.ghcr-token }}
+      run: |
+        set -euo pipefail
+        REPO_PATH="aureliolo/synthorg-${IMAGE_NAME}-base"
+        REG_TOKEN="$(curl -sS -u "x-access-token:${GHCR_TOKEN}" \
+          "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_PATH}:pull" \
+          | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+        if [ -z "${REG_TOKEN}" ]; then
+          echo "::error::Failed to mint GHCR pull token for ${REPO_PATH}"
+          exit 1
+        fi
+
+        ACTUAL="$(curl -sS -I \
+          -H "Authorization: Bearer ${REG_TOKEN}" \
+          -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json" \
+          "https://ghcr.io/v2/${REPO_PATH}/manifests/${TAG}" \
+          | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}')"
+        if [ "${ACTUAL}" != "${SIGNED_DIGEST}" ]; then
+          echo "::error::Tag ${TAG} resolves to ${ACTUAL} but we signed ${SIGNED_DIGEST}"
+          exit 1
+        fi
+
+        SIG_HEX="${SIGNED_DIGEST#sha256:}"
+        SIG_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+          -H "Authorization: Bearer ${REG_TOKEN}" \
+          -H "Accept: application/vnd.oci.image.index.v1+json" \
+          "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"
+        if [ "${SIG_STATUS}" != "200" ]; then
+          echo "::error::cosign signature artifact missing (referrer tag sha256-${SIG_HEX} returned HTTP ${SIG_STATUS})"
+          exit 1
+        fi
+        echo "✓ ghcr.io/${REPO_PATH}:${TAG} -> ${ACTUAL} (signed)"
 
     - name: Attest build provenance (SLSA Level 3)
       uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
