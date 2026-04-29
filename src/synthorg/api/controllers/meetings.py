@@ -17,7 +17,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.core.domain_errors import NotFoundError, ValidationError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_MEETING_TRIGGERED,
