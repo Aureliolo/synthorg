@@ -102,8 +102,12 @@ class ConnectionsCreateArgs(_ArgsBase):
     )
 
 
-class ConnectionsDeleteArgs(_ArgsBase):
-    """Args for ``connections.delete``."""
+class ConnectionsDeleteArgs(DestructiveGuardrailFields):
+    """Args for ``connections.delete``.
+
+    Destructive admin op: callers must supply ``confirm=True`` and a
+    non-blank ``reason`` (mixin), in addition to the connection name.
+    """
 
     name: NotBlankStr = Field(description="Connection name")
 
@@ -141,8 +145,12 @@ class WebhooksUpdateArgs(_ArgsBase):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class WebhooksDeleteArgs(_ArgsBase):
-    """Args for ``webhooks.delete``."""
+class WebhooksDeleteArgs(DestructiveGuardrailFields):
+    """Args for ``webhooks.delete``.
+
+    Destructive admin op: callers must supply ``confirm=True`` and a
+    non-blank ``reason`` (mixin), in addition to the webhook UUID.
+    """
 
     webhook_id: NotBlankStr = Field(description="Webhook UUID")
 
@@ -371,8 +379,13 @@ class BackupDeleteArgs(_BackupIdArgs):
     """Args for ``backup.delete``."""
 
 
-class BackupRestoreArgs(_BackupIdArgs):
-    """Args for ``backup.restore``."""
+class BackupRestoreArgs(_BackupIdArgs, DestructiveGuardrailFields):
+    """Args for ``backup.restore``.
+
+    Restoring overwrites the current system state.  Treat as
+    destructive: callers must supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) in addition to the backup UUID.
+    """
 
 
 class AuditListArgs(PaginationFields):

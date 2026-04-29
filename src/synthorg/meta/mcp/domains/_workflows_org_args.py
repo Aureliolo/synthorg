@@ -248,7 +248,15 @@ class TeamsUpdateArgs(_ArgsBase):
 
 
 class TeamsDeleteArgs(_ArgsBase):
-    """Args for ``teams.delete``."""
+    """Args for ``teams.delete``.
+
+    Mirrors :class:`DepartmentsDeleteArgs`: this endpoint is registered
+    via ``write_tool`` (not ``admin_tool``) in ``organization.py`` to
+    preserve the legacy wire contract that did not require destructive
+    guardrails on team deletion.  Promoting it to ``admin_tool`` with
+    ``DestructiveGuardrailFields`` would be a wire-breaking change and
+    is tracked separately.
+    """
 
     team_id: NotBlankStr = Field(description="Team UUID")
 

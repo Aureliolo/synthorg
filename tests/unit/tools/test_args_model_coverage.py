@@ -15,7 +15,10 @@ A new tool merged without ``args_model`` and not on the allowlist
 fails this test, surfacing the regression at PR review time.
 """
 
+import importlib
+
 import pytest
+from pydantic import BaseModel
 
 from synthorg.tools.base import BaseTool
 
@@ -30,16 +33,70 @@ _ALLOWLIST: frozenset[str] = frozenset(
 )
 
 
+# Modules that register concrete BaseTool subclasses.  Imported in the
+# test so ``BaseTool.__subclasses__`` is fully populated.  Listed
+# here as data (instead of an import block in the test body) so the
+# test function stays under the 50-line limit.
+_CONCRETE_TOOL_MODULES: tuple[str, ...] = (
+    "synthorg.memory.tools.archival",
+    "synthorg.memory.tools.core",
+    "synthorg.memory.tools.knowledge_architect",
+    "synthorg.memory.tools.recall",
+    "synthorg.memory.tools.recall_search",
+    "synthorg.memory.tools.search",
+    "synthorg.ontology.injection.tool",
+    "synthorg.tools.analytics.data_aggregator",
+    "synthorg.tools.analytics.metric_collector",
+    "synthorg.tools.analytics.report_generator",
+    "synthorg.tools.approval_tool",
+    "synthorg.tools.code_runner",
+    "synthorg.tools.communication.async_task_tools",
+    "synthorg.tools.communication.email_sender",
+    "synthorg.tools.communication.notification_sender",
+    "synthorg.tools.communication.template_formatter",
+    "synthorg.tools.context.compact_context",
+    "synthorg.tools.database.schema_inspect",
+    "synthorg.tools.database.sql_query",
+    "synthorg.tools.design.asset_manager",
+    "synthorg.tools.design.diagram_generator",
+    "synthorg.tools.design.image_generator",
+    "synthorg.tools.discovery",
+    "synthorg.tools.examples.echo",
+    "synthorg.tools.file_system.delete_file",
+    "synthorg.tools.file_system.edit_file",
+    "synthorg.tools.file_system.list_directory",
+    "synthorg.tools.file_system.read_file",
+    "synthorg.tools.file_system.write_file",
+    "synthorg.tools.git_tools",
+    "synthorg.tools.terminal.shell_command",
+    "synthorg.tools.web.html_parser",
+    "synthorg.tools.web.http_request",
+    "synthorg.tools.web.web_search",
+)
+
+
 def _all_concrete_subclasses(cls: type) -> set[type]:
-    """Return every concrete (non-abstract) subclass of ``cls``."""
+    """Return every concrete (non-abstract) subclass of ``cls``.
+
+    Recurses through abstract intermediates so concrete tools that
+    inherit via a mixin / abstract base are discovered.  Abstract
+    bases themselves are excluded from the result set.
+    """
     found: set[type] = set()
     for sub in cls.__subclasses__():
-        # Skip mixins / abstract bases (no concrete ``execute`` method).
+        # Always recurse so concrete subclasses below an abstract
+        # intermediate are discovered.
+        found.update(_all_concrete_subclasses(sub))
+        # Skip mixins / abstract bases (no concrete ``execute``).
         if getattr(sub, "__abstractmethods__", frozenset()):
             continue
         found.add(sub)
-        found.update(_all_concrete_subclasses(sub))
     return found
+
+
+def _is_valid_args_model(value: object) -> bool:
+    """Return True iff ``value`` is a concrete ``BaseModel`` subclass."""
+    return isinstance(value, type) and issubclass(value, BaseModel)
 
 
 @pytest.mark.unit
@@ -48,44 +105,8 @@ class TestEveryToolHasArgsModel:
 
     def test_all_concrete_basetools_declare_args_model(self) -> None:
         """No concrete ``BaseTool`` subclass is missing ``args_model``."""
-        # Force-import the modules that register every concrete tool so
-        # ``BaseTool.__subclasses__`` is populated.  Imports are
-        # deliberately concentrated here rather than at module scope to
-        # keep the test discovery cost minimal.
-        import synthorg.memory.tools.archival
-        import synthorg.memory.tools.core
-        import synthorg.memory.tools.knowledge_architect
-        import synthorg.memory.tools.recall
-        import synthorg.memory.tools.recall_search
-        import synthorg.memory.tools.search
-        import synthorg.ontology.injection.tool
-        import synthorg.tools.analytics.data_aggregator
-        import synthorg.tools.analytics.metric_collector
-        import synthorg.tools.analytics.report_generator
-        import synthorg.tools.approval_tool
-        import synthorg.tools.code_runner
-        import synthorg.tools.communication.async_task_tools
-        import synthorg.tools.communication.email_sender
-        import synthorg.tools.communication.notification_sender
-        import synthorg.tools.communication.template_formatter
-        import synthorg.tools.context.compact_context
-        import synthorg.tools.database.schema_inspect
-        import synthorg.tools.database.sql_query
-        import synthorg.tools.design.asset_manager
-        import synthorg.tools.design.diagram_generator
-        import synthorg.tools.design.image_generator
-        import synthorg.tools.discovery
-        import synthorg.tools.examples.echo
-        import synthorg.tools.file_system.delete_file
-        import synthorg.tools.file_system.edit_file
-        import synthorg.tools.file_system.list_directory
-        import synthorg.tools.file_system.read_file
-        import synthorg.tools.file_system.write_file
-        import synthorg.tools.git_tools
-        import synthorg.tools.terminal.shell_command
-        import synthorg.tools.web.html_parser
-        import synthorg.tools.web.http_request
-        import synthorg.tools.web.web_search  # noqa: F401
+        for module_name in _CONCRETE_TOOL_MODULES:
+            importlib.import_module(module_name)
 
         missing: list[str] = []
         for sub in _all_concrete_subclasses(BaseTool):
@@ -94,14 +115,14 @@ class TestEveryToolHasArgsModel:
                 continue
             if sub.__name__ in _ALLOWLIST:
                 continue
-            args_model = getattr(sub, "args_model", None)
-            if args_model is None:
+            if not _is_valid_args_model(getattr(sub, "args_model", None)):
                 missing.append(sub.__name__)
 
         assert not missing, (
             "Every concrete BaseTool subclass must declare "
-            "`args_model: ClassVar[type[BaseModel] | None]` (Phase 4 of "
-            f"#1611). Missing on: {sorted(missing)}.  Allowlist: "
-            f"{sorted(_ALLOWLIST)}.  Add the tool to the allowlist with "
-            "a docstring justification, or wire its typed args model."
+            "`args_model: ClassVar[type[BaseModel] | None]` set to a "
+            f"BaseModel subclass (Phase 4 of #1611). Missing on: "
+            f"{sorted(missing)}.  Allowlist: {sorted(_ALLOWLIST)}.  "
+            "Add the tool to the allowlist with a docstring "
+            "justification, or wire its typed args model."
         )

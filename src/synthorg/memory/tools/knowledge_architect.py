@@ -33,7 +33,7 @@ from synthorg.memory.tools._args import (
     KnowledgeArchitectSearchArgs,
     KnowledgeArchitectWriteArgs,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     KNOWLEDGE_ARCHITECT_DELETE,
     KNOWLEDGE_ARCHITECT_WRITE,
@@ -409,14 +409,16 @@ class KnowledgeArchitectDeleteTool(BaseTool):
                 author=author,
             )
         except Exception as exc:
+            safe_error = safe_error_description(exc)
             logger.warning(
                 KNOWLEDGE_ARCHITECT_DELETE,
                 agent_id=self._agent_id,
                 entry_id=entry_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error,
             )
             return ToolExecutionResult(
-                content=f"Delete failed: {exc}",
+                content=f"Delete failed: {safe_error}",
                 is_error=True,
             )
         if not deleted:

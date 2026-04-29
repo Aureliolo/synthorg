@@ -57,8 +57,8 @@ class SearchMemoryTool(BaseTool):
         """Execute a memory search via the injection strategy.
 
         Args:
-            arguments: Tool arguments from the LLM, validated
-                against ``SEARCH_MEMORY_SCHEMA``.
+            arguments: Tool arguments from the LLM, validated against
+                :class:`SearchMemoryArgs` at the invoker boundary.
 
         Returns:
             ``ToolExecutionResult`` with formatted memory entries or error.

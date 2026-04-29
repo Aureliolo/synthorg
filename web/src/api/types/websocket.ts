@@ -4,11 +4,19 @@
 // Admin-only channels (#dissent, #webhooks, #ratelimit) are not exposed
 // to dashboard subscribers; the user-scoped `user:{id}` channel is
 // dynamic and is matched by prefix server-side, not by name here.
+//
+// The `scaling` channel is reserved for future hr.scaling.* events; the
+// dashboard's scaling page subscribes to it today, but no Python emitter
+// publishes to it yet. Keeping the entry on the wire avoids breaking
+// `useScalingData.ts` while the backend HR loop is wired in #1611's
+// follow-up. When that lands, the matching enum entries will appear in
+// `WsEventType` (Python) + `WS_EVENT_TYPE_VALUES` below.
 export const WS_CHANNELS = [
   'tasks', 'agents', 'budget', 'messages', 'system',
   'approvals', 'meetings', 'artifacts', 'projects',
   'company', 'departments', 'clients', 'requests',
   'simulations', 'reviews', 'events', 'interrupts',
+  'scaling',
 ] as const
 
 export type WsChannel = typeof WS_CHANNELS[number]

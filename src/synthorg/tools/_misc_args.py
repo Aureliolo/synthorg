@@ -78,9 +78,9 @@ class CodeRunnerArgs(BaseModel):
     language: CodeRunnerLanguage = Field(description="Programming language of the code")
     timeout: float | None = Field(
         default=None,
-        ge=0,
+        ge=1,
         le=600,
-        description="Optional timeout in seconds",
+        description="Optional timeout in seconds (minimum 1)",
     )
 
 

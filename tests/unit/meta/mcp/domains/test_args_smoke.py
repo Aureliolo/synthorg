@@ -124,3 +124,14 @@ class TestWorkflowsOrgArgsSmoke:
     def test_rejects_inf_nan(self, model: type[BaseModel]) -> None:
         """No model accepts NaN/Inf in numeric fields."""
         assert model.model_config.get("allow_inf_nan") is False
+
+    @pytest.mark.parametrize(
+        "model",
+        _WORKFLOWS_ORG_MODELS,
+        ids=lambda m: m.__name__,
+    )
+    def test_json_schema_round_trip(self, model: type[BaseModel]) -> None:
+        """Every model emits a JSON schema with declared object shape."""
+        schema = model.model_json_schema()
+        assert schema.get("type") == "object"
+        assert "properties" in schema or schema.get("title") is not None

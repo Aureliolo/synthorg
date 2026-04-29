@@ -67,6 +67,14 @@ class DataAggregatorArgs(BaseModel):
         ):
             msg = "period='custom' requires both start_date and end_date to be provided"
             raise ValueError(msg)
+        if self.period != "custom" and (
+            self.start_date is not None or self.end_date is not None
+        ):
+            msg = (
+                f"start_date/end_date are only allowed when period='custom'; "
+                f"got period={self.period!r}"
+            )
+            raise ValueError(msg)
         return self
 
 

@@ -247,10 +247,12 @@ class RequestHumanApprovalTool(BaseTool):
                 level = self._risk_classifier.classify(action_type)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.warning(
                     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
                     action_type=action_type,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     note="Risk classification failed -- defaulting to HIGH",
                 )
                 return ApprovalRiskLevel.HIGH

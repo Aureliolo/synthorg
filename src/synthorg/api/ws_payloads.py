@@ -292,7 +292,7 @@ class WsBudgetRecordAddedPayload(BaseModel):
     event_type: Literal[WsEventType.BUDGET_RECORD_ADDED] = (
         WsEventType.BUDGET_RECORD_ADDED
     )
-    amount: float
+    amount: float = Field(ge=0, description="Cost amount (non-negative)")
     currency: NotBlankStr
     category: NotBlankStr | None = None
     agent_id: NotBlankStr | None = None

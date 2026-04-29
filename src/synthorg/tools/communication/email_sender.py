@@ -86,7 +86,7 @@ class EmailSenderTool(BaseCommunicationTool):
             config=config,
         )
 
-    async def execute(  # noqa: PLR0911
+    async def execute(  # noqa: PLR0911, C901
         self,
         *,
         arguments: dict[str, Any],
@@ -125,8 +125,32 @@ class EmailSenderTool(BaseCommunicationTool):
                 content="'to' must be a list of email addresses.",
                 is_error=True,
             )
-        cc_addrs: list[str] = arguments.get("cc") or []
-        bcc_addrs: list[str] = arguments.get("bcc") or []
+        # Direct callers (bypassing the invoker's args_model validation)
+        # can still send non-list cc/bcc, which would raise TypeError on
+        # the recipient concatenation below.  Reject explicitly with the
+        # same envelope shape as the other validation failures.
+        cc_raw = arguments.get("cc")
+        if cc_raw is not None and not isinstance(cc_raw, list):
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="invalid_cc",
+            )
+            return ToolExecutionResult(
+                content="'cc' must be a list of email addresses.",
+                is_error=True,
+            )
+        bcc_raw = arguments.get("bcc")
+        if bcc_raw is not None and not isinstance(bcc_raw, list):
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="invalid_bcc",
+            )
+            return ToolExecutionResult(
+                content="'bcc' must be a list of email addresses.",
+                is_error=True,
+            )
+        cc_addrs: list[str] = cc_raw or []
+        bcc_addrs: list[str] = bcc_raw or []
         subject = arguments.get("subject")
         if not isinstance(subject, str):
             logger.warning(

@@ -91,6 +91,39 @@ class MCPToolDef(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_args_model_property_alignment(self) -> Self:
+        """Catch drift between ``args_model`` and the wire JSON Schema.
+
+        When the registration carries both an ``args_model`` (used by
+        the invoker for runtime validation) and a hand-crafted
+        ``parameters`` dict (the wire schema clients see in
+        ``tools/list``), they MUST advertise the same property names.
+        Otherwise the invoker rejects shapes the wire schema accepts,
+        or the wire schema documents fields the validator strips.
+        """
+        if self.args_model is None:
+            return self
+        wire_props = self.parameters.get("properties")
+        if not isinstance(wire_props, dict):
+            return self
+        wire_keys = set(wire_props)
+        model_keys = set(self.args_model.model_fields)
+        wire_only = wire_keys - model_keys
+        model_only = model_keys - wire_keys
+        if wire_only or model_only:
+            msg = (
+                f"Tool {self.name!r} has args_model / wire-schema drift; "
+                f"properties on wire but not in args_model: "
+                f"{sorted(wire_only) or 'none'}; fields in args_model "
+                f"but not on wire: {sorted(model_only) or 'none'}.  "
+                "Either drop the explicit properties so the wire schema "
+                "is derived from args_model, or update both surfaces in "
+                "lockstep."
+            )
+            raise ValueError(msg)
+        return self
+
 
 class DomainToolRegistry:
     """Central registry of all MCP tool definitions.

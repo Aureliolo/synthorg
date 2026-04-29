@@ -29,13 +29,17 @@ class TestGitLogArgs:
         assert args.paths == ()
 
     @pytest.mark.unit
-    def test_max_count_bounds(self) -> None:
-        GitLogArgs(max_count=1)
-        GitLogArgs(max_count=100)
+    @pytest.mark.parametrize("value", [1, 50, 100])
+    def test_max_count_valid(self, value: int) -> None:
+        """Boundary values inside ``[1, 100]`` are accepted."""
+        assert GitLogArgs(max_count=value).max_count == value
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("value", [0, -1, 101, 1000])
+    def test_max_count_invalid(self, value: int) -> None:
+        """Values outside ``[1, 100]`` are rejected."""
         with pytest.raises(ValidationError):
-            GitLogArgs(max_count=0)
-        with pytest.raises(ValidationError):
-            GitLogArgs(max_count=101)
+            GitLogArgs(max_count=value)
 
     @pytest.mark.unit
     def test_paths_must_be_non_blank(self) -> None:
@@ -94,12 +98,17 @@ class TestGitCloneArgs:
         assert args.depth is None
 
     @pytest.mark.unit
-    def test_depth_must_be_positive(self) -> None:
-        GitCloneArgs(url="https://x", depth=1)
+    @pytest.mark.parametrize("value", [1, 5, 100])
+    def test_depth_valid(self, value: int) -> None:
+        """Positive depth values are accepted."""
+        assert GitCloneArgs(url="https://x", depth=value).depth == value
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("value", [0, -1, -100])
+    def test_depth_invalid(self, value: int) -> None:
+        """Zero and negative depth are rejected."""
         with pytest.raises(ValidationError):
-            GitCloneArgs(url="https://x", depth=0)
-        with pytest.raises(ValidationError):
-            GitCloneArgs(url="https://x", depth=-1)
+            GitCloneArgs(url="https://x", depth=value)
 
     @pytest.mark.unit
     def test_blank_url_rejected(self) -> None:

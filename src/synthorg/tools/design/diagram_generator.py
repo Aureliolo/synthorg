@@ -40,36 +40,6 @@ _OUTPUT_FORMATS: Final[frozenset[str]] = frozenset(
     }
 )
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "diagram_type": {
-            "type": "string",
-            "enum": sorted(_DIAGRAM_TYPES),
-            "description": "Type of diagram to generate",
-        },
-        "description": {
-            "type": "string",
-            "description": (
-                "Diagram specification -- structured description "
-                "of nodes, edges, and relationships"
-            ),
-        },
-        "title": {
-            "type": "string",
-            "description": "Optional diagram title",
-        },
-        "output_format": {
-            "type": "string",
-            "enum": sorted(_OUTPUT_FORMATS),
-            "description": "Output markup format (default: mermaid)",
-            "default": "mermaid",
-        },
-    },
-    "required": ["diagram_type", "description"],
-    "additionalProperties": False,
-}
-
 
 class DiagramGeneratorTool(BaseDesignTool):
     """Generate diagram markup (Mermaid/Graphviz) from structured descriptions.

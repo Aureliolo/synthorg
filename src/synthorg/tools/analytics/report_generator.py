@@ -56,30 +56,6 @@ _REPORT_METRICS: Final[dict[str, list[str]]] = {
     ],
 }
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "report_type": {
-            "type": "string",
-            "enum": sorted(_REPORT_TYPES),
-            "description": "Type of report to generate",
-        },
-        "period": {
-            "type": "string",
-            "enum": sorted(_VALID_PERIODS),
-            "description": "Reporting period",
-        },
-        "format": {
-            "type": "string",
-            "enum": sorted(_OUTPUT_FORMATS),
-            "description": "Output format (default: markdown)",
-            "default": "markdown",
-        },
-    },
-    "required": ["report_type", "period"],
-    "additionalProperties": False,
-}
-
 
 class ReportGeneratorTool(BaseAnalyticsTool):
     """Generate formatted analytics reports.

@@ -50,6 +50,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     UsersUpdateArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -169,11 +170,12 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "backup",
         "restore",
-        "Restore from a backup.",
+        "Restore from a backup (destructive; requires confirm).",
         {
             "backup_id": {"type": "string", "description": "Backup UUID to restore"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("backup_id",),
+        required=("backup_id", "reason", "confirm"),
         args_model=BackupRestoreArgs,
     ),
     # --- Audit ---

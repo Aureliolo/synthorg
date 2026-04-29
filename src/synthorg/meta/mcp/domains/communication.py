@@ -180,11 +180,12 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "connections",
         "delete",
-        "Delete an external connection.",
+        "Delete an external connection (destructive; requires confirm).",
         {
             "name": {"type": "string", "description": "Connection name"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("name",),
+        required=("name", "reason", "confirm"),
         args_model=ConnectionsDeleteArgs,
     ),
     read_tool(
@@ -244,11 +245,12 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "webhooks",
         "delete",
-        "Delete a webhook.",
+        "Delete a webhook (destructive; requires confirm).",
         {
             "webhook_id": {"type": "string", "description": "Webhook UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("webhook_id",),
+        required=("webhook_id", "reason", "confirm"),
         args_model=WebhooksDeleteArgs,
     ),
     # --- Tunnel ---

@@ -110,12 +110,14 @@ class CheckAsyncTaskTool(BaseTool):
                 arguments["task_id"],
             )
         except LookupError as exc:
+            safe_error = safe_error_description(exc)
             logger.warning(
                 ASYNC_TASK_TOOL_CHECK_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error,
             )
             return ToolExecutionResult(
-                content=str(exc),
+                content=safe_error,
                 is_error=True,
             )
         return ToolExecutionResult(
@@ -149,12 +151,14 @@ class UpdateAsyncTaskTool(BaseTool):
                 instructions=arguments["instructions"],
             )
         except LookupError as exc:
+            safe_error = safe_error_description(exc)
             logger.warning(
                 ASYNC_TASK_TOOL_UPDATE_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error,
             )
             return ToolExecutionResult(
-                content=str(exc),
+                content=safe_error,
                 is_error=True,
             )
         return ToolExecutionResult(

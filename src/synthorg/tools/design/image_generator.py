@@ -80,44 +80,6 @@ class ImageProvider(Protocol):
         ...
 
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "prompt": {
-            "type": "string",
-            "description": "Image description",
-        },
-        "style": {
-            "type": "string",
-            "enum": ["realistic", "sketch", "diagram", "icon"],
-            "description": "Image style (default: realistic)",
-            "default": "realistic",
-        },
-        "width": {
-            "type": "integer",
-            "description": "Image width in pixels",
-            "minimum": 256,
-            "maximum": 2048,
-            "default": 1024,
-        },
-        "height": {
-            "type": "integer",
-            "description": "Image height in pixels",
-            "minimum": 256,
-            "maximum": 2048,
-            "default": 1024,
-        },
-        "quality": {
-            "type": "string",
-            "enum": ["draft", "standard", "high"],
-            "description": "Image quality preset",
-            "default": "standard",
-        },
-    },
-    "required": ["prompt"],
-    "additionalProperties": False,
-}
-
 _VALID_STYLES: Final[frozenset[str]] = frozenset(
     {"realistic", "sketch", "diagram", "icon"}
 )

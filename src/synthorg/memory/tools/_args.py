@@ -159,7 +159,7 @@ class KnowledgeArchitectWriteArgs(BaseModel):
 
     model_config = _ARGS_CONFIG
 
-    content: str = Field(max_length=100_000, description="Org memory content")
+    content: NotBlankStr = Field(max_length=100_000, description="Org memory content")
     category: NotBlankStr = Field(description="Org-fact category")
     tags: tuple[NotBlankStr, ...] = Field(
         default=(),
