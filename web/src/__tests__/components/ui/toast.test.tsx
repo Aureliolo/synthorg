@@ -4,13 +4,28 @@ import type { ToastItem } from '@/stores/toast'
 import { useToastStore } from '@/stores/toast'
 import { Toast, ToastContainer } from '@/components/ui/toast'
 
-import { motionReactMockFactory } from '@/test-utils/mock-motion'
+// Mock motion/react
 
-// Shared motion/react mock: AnimatePresence is identity, motion.div drops
-// animation props and forwards everything else (including role / aria-live).
 vi.mock('motion/react', async () => {
   const actual = await vi.importActual<typeof import('motion/react')>('motion/react')
-  return { ...actual, ...motionReactMockFactory() }
+  return {
+    ...actual,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    motion: {
+      ...actual.motion,
+      div: ({
+        children,
+        className,
+        role,
+        'aria-live': ariaLive,
+        ...rest
+      }: React.HTMLAttributes<HTMLDivElement>) => (
+        <div className={className} role={role} aria-live={ariaLive} {...rest}>
+          {children}
+        </div>
+      ),
+    },
+  }
 })
 
 
