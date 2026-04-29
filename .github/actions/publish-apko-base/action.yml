@@ -86,9 +86,16 @@ runs:
         # the tag via `docker buildx imagetools inspect`) closes the
         # TOCTOU window where a parallel run could overwrite the tag
         # between push and inspect.
+        # Wrap each `docker push` so `set -e` doesn't abort the step
+        # before we can dump the captured stderr to the build log on
+        # failure. See publish-image-loaded for the same pattern.
         MANIFEST_ARGS=()
         for arch in "${ARCHS[@]}"; do
-          PUSH_OUTPUT="$(docker push "${REPO}:${TAG}-${arch}" 2>&1)"
+          if ! PUSH_OUTPUT="$(docker push "${REPO}:${TAG}-${arch}" 2>&1)"; then
+            printf '%s\n' "${PUSH_OUTPUT}"
+            echo "::error::docker push failed for ${REPO}:${TAG}-${arch}"
+            exit 1
+          fi
           printf '%s\n' "${PUSH_OUTPUT}"
           ARCH_DIGEST="$(printf '%s\n' "${PUSH_OUTPUT}" | sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' | tail -n1)"
           if [ -z "$ARCH_DIGEST" ]; then

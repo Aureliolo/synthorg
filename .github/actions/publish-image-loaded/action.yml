@@ -113,7 +113,16 @@ runs:
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
         SHORT_SHA="${GITHUB_SHA::7}"
 
-        AMD64_PUSH_OUTPUT="$(docker push "${REPO}:sha-${SHORT_SHA}-amd64" 2>&1)"
+        # Wrap each `docker push` so `set -e` doesn't abort the step
+        # before we can dump the captured stderr to the build log on
+        # failure. Without this, a real GHCR/auth error is swallowed
+        # because the variable assignment exits before the next line
+        # runs.
+        if ! AMD64_PUSH_OUTPUT="$(docker push "${REPO}:sha-${SHORT_SHA}-amd64" 2>&1)"; then
+          printf '%s\n' "${AMD64_PUSH_OUTPUT}"
+          echo "::error::docker push failed for ${REPO}:sha-${SHORT_SHA}-amd64"
+          exit 1
+        fi
         printf '%s\n' "${AMD64_PUSH_OUTPUT}"
         AMD64_DIGEST="$(printf '%s\n' "${AMD64_PUSH_OUTPUT}" | sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' | tail -n1)"
         if [ -z "$AMD64_DIGEST" ]; then
@@ -123,7 +132,11 @@ runs:
 
         ARM64_DIGEST=""
         if [ "$ENABLE_ARM64" = "true" ]; then
-          ARM64_PUSH_OUTPUT="$(docker push "${REPO}:sha-${SHORT_SHA}-arm64" 2>&1)"
+          if ! ARM64_PUSH_OUTPUT="$(docker push "${REPO}:sha-${SHORT_SHA}-arm64" 2>&1)"; then
+            printf '%s\n' "${ARM64_PUSH_OUTPUT}"
+            echo "::error::docker push failed for ${REPO}:sha-${SHORT_SHA}-arm64"
+            exit 1
+          fi
           printf '%s\n' "${ARM64_PUSH_OUTPUT}"
           ARM64_DIGEST="$(printf '%s\n' "${ARM64_PUSH_OUTPUT}" | sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' | tail -n1)"
           if [ -z "$ARM64_DIGEST" ]; then
