@@ -17,13 +17,17 @@ class TestWebSearchArgs:
         assert args.max_results == 10
 
     @pytest.mark.unit
-    def test_max_results_bounds(self) -> None:
-        WebSearchArgs(query="x", max_results=1)
-        WebSearchArgs(query="x", max_results=100)
+    @pytest.mark.parametrize("value", [1, 50, 100])
+    def test_max_results_valid(self, value: int) -> None:
+        """Boundary values inside ``[1, 100]`` are accepted."""
+        assert WebSearchArgs(query="x", max_results=value).max_results == value
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("value", [0, -1, 101, 1000])
+    def test_max_results_invalid(self, value: int) -> None:
+        """Values outside ``[1, 100]`` are rejected."""
         with pytest.raises(ValidationError):
-            WebSearchArgs(query="x", max_results=0)
-        with pytest.raises(ValidationError):
-            WebSearchArgs(query="x", max_results=101)
+            WebSearchArgs(query="x", max_results=value)
 
     @pytest.mark.unit
     def test_blank_query_rejected(self) -> None:
@@ -79,13 +83,17 @@ class TestHttpRequestArgs:
             )
 
     @pytest.mark.unit
-    def test_timeout_bounds(self) -> None:
-        HttpRequestArgs(url="https://x", timeout=0)
-        HttpRequestArgs(url="https://x", timeout=300)
+    @pytest.mark.parametrize("value", [0, 30, 300])
+    def test_timeout_valid(self, value: int) -> None:
+        """Boundary values inside ``[0, 300]`` are accepted."""
+        assert HttpRequestArgs(url="https://x", timeout=value).timeout == value
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("value", [-1, -100, 301, 600])
+    def test_timeout_invalid(self, value: int) -> None:
+        """Values outside ``[0, 300]`` are rejected."""
         with pytest.raises(ValidationError):
-            HttpRequestArgs(url="https://x", timeout=-1)
-        with pytest.raises(ValidationError):
-            HttpRequestArgs(url="https://x", timeout=301)
+            HttpRequestArgs(url="https://x", timeout=value)
 
     @pytest.mark.unit
     def test_extra_field_rejected(self) -> None:

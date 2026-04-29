@@ -35,9 +35,13 @@ from synthorg.memory.tools._args import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
+    KNOWLEDGE_ARCHITECT_BROWSE_WIKI_FAILED,
     KNOWLEDGE_ARCHITECT_DELETE,
+    KNOWLEDGE_ARCHITECT_READ_FAILED,
+    KNOWLEDGE_ARCHITECT_SEARCH_FAILED,
     KNOWLEDGE_ARCHITECT_WRITE,
     KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+    KNOWLEDGE_ARCHITECT_WRITE_FAILED,
 )
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
@@ -127,8 +131,14 @@ class KnowledgeArchitectSearchTool(BaseTool):
             )
             facts = await self._org_backend.query(query)
         except Exception as exc:
+            safe_error = safe_error_description(exc)
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_SEARCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error,
+            )
             return ToolExecutionResult(
-                content=f"Search failed: {safe_error_description(exc)}",
+                content=f"Search failed: {safe_error}",
                 is_error=True,
             )
         if not facts:
@@ -179,8 +189,15 @@ class KnowledgeArchitectReadTool(BaseTool):
                 None,
             )
         except Exception as exc:
+            safe_error = safe_error_description(exc)
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_READ_FAILED,
+                entry_id=entry_id,
+                error_type=type(exc).__name__,
+                error=safe_error,
+            )
             return ToolExecutionResult(
-                content=f"Read failed: {safe_error_description(exc)}",
+                content=f"Read failed: {safe_error}",
                 is_error=True,
             )
         if match is None:
@@ -305,8 +322,16 @@ class KnowledgeArchitectWriteTool(BaseTool):
                 author=author,
             )
         except Exception as exc:
+            safe_error = safe_error_description(exc)
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_WRITE_FAILED,
+                agent_id=self._agent_id,
+                category=arguments.get("category"),
+                error_type=type(exc).__name__,
+                error=safe_error,
+            )
             return ToolExecutionResult(
-                content=f"Write failed: {safe_error_description(exc)}",
+                content=f"Write failed: {safe_error}",
                 is_error=True,
             )
         logger.info(
@@ -479,8 +504,15 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         try:
             result = await self._wiki_exporter.export(self._agent_id)
         except Exception as exc:
+            safe_error = safe_error_description(exc)
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_BROWSE_WIKI_FAILED,
+                agent_id=self._agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error,
+            )
             return ToolExecutionResult(
-                content=f"Wiki export failed: {safe_error_description(exc)}",
+                content=f"Wiki export failed: {safe_error}",
                 is_error=True,
             )
         lines = ["Wiki exported:"]

@@ -516,6 +516,21 @@ class SelfEditingMemoryStrategy:
             tool_name=tool_name,
             agent_id=agent_id,
         )
+        # Defensive guard: ``parse_self_editing_args`` spreads
+        # ``arguments`` into a dict before passing to ``TypeAdapter``,
+        # which raises ``TypeError`` on non-mapping inputs (None, [],
+        # scalars).  The static type says ``dict`` but the actual
+        # LLM-provider call site is dynamic; catch the bad shape
+        # upfront so the LLM-facing response stays in the
+        # ``Error: ...`` envelope instead of bubbling out as an
+        # internal failure.  Widen to ``object`` for the isinstance
+        # check so mypy doesn't flag the runtime guard as unreachable.
+        raw_arguments: object = arguments
+        if not isinstance(raw_arguments, dict):
+            return (
+                f"{ERROR_PREFIX} Invalid arguments: "
+                "<arguments>: input should be an object"
+            )
         try:
             args = parse_self_editing_args(tool_name, arguments)
         except ValidationError as exc:

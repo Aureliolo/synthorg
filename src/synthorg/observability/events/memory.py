@@ -179,10 +179,10 @@ MEMORY_SELF_EDIT_ARCHIVAL_WRITE: Final[str] = "memory.self_edit.archival.write"
 MEMORY_SELF_EDIT_RECALL_READ: Final[str] = "memory.self_edit.recall.read"
 MEMORY_SELF_EDIT_RECALL_WRITE: Final[str] = "memory.self_edit.recall.write"
 MEMORY_SELF_EDIT_WRITE_FAILED: Final[str] = "memory.self_edit.write.failed"
+# Generic dispatch failure event covering any of the six self-editing
+# tools (read, write, search, ...).  Logged at the catch-all dispatch
+# boundary so a failed core_memory_read isn't mislabeled as a write.
 MEMORY_SELF_EDIT_TOOL_FAILED: Final[str] = "memory.self_edit.tool.failed"
-"""Generic dispatch failure event covering any of the six self-editing
-tools (read, write, search, ...).  Logged at the catch-all dispatch
-boundary so a failed core_memory_read isn't mislabeled as a write."""
 
 # ── Hierarchical retrieval ──────────────────────────────────────
 
@@ -208,3 +208,12 @@ KNOWLEDGE_ARCHITECT_WRITE: Final[str] = "memory.architect.write"
 KNOWLEDGE_ARCHITECT_DELETE: Final[str] = "memory.architect.delete"
 KNOWLEDGE_ARCHITECT_APPROVAL_CREATED: Final[str] = "memory.architect.approval_created"
 KNOWLEDGE_ARCHITECT_WRITE_DENIED: Final[str] = "memory.architect.write_denied"
+# Failure events for the org-memory tool wrappers.  Logged at WARNING
+# before returning is_error=True so observability captures every
+# failure, not just successful operations.
+KNOWLEDGE_ARCHITECT_SEARCH_FAILED: Final[str] = "memory.architect.search.failed"
+KNOWLEDGE_ARCHITECT_READ_FAILED: Final[str] = "memory.architect.read.failed"
+KNOWLEDGE_ARCHITECT_WRITE_FAILED: Final[str] = "memory.architect.write.failed"
+KNOWLEDGE_ARCHITECT_BROWSE_WIKI_FAILED: Final[str] = (
+    "memory.architect.browse_wiki.failed"
+)

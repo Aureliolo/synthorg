@@ -56,25 +56,35 @@ class TestSchemaInspectArgs:
         assert args.table_name == "users"
 
     @pytest.mark.unit
-    def test_action_is_closed_literal(self) -> None:
-        with pytest.raises(ValidationError):
-            SchemaInspectArgs.model_validate({"action": "drop_table"})
-
-    @pytest.mark.unit
-    def test_blank_table_name_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            SchemaInspectArgs(action="describe_table", table_name="   ")
-
-    @pytest.mark.unit
-    def test_describe_table_requires_table_name(self) -> None:
-        """``action='describe_table'`` without ``table_name`` is rejected."""
-        with pytest.raises(ValidationError):
-            SchemaInspectArgs.model_validate({"action": "describe_table"})
-
-    @pytest.mark.unit
-    def test_list_tables_rejects_table_name(self) -> None:
-        """``action='list_tables'`` must not include ``table_name``."""
-        with pytest.raises(ValidationError):
-            SchemaInspectArgs.model_validate(
+    @pytest.mark.parametrize(
+        ("payload", "case"),
+        [
+            ({"action": "drop_table"}, "unknown action literal"),
+            ({"action": "describe_table"}, "describe_table without table_name"),
+            (
+                {"action": "describe_table", "table_name": "   "},
+                "describe_table with blank table_name",
+            ),
+            (
                 {"action": "list_tables", "table_name": "users"},
-            )
+                "list_tables with table_name",
+            ),
+        ],
+        ids=[
+            "unknown_action",
+            "missing_table_name",
+            "blank_table_name",
+            "extra_table_name",
+        ],
+    )
+    def test_invalid_shape_rejected(
+        self,
+        payload: dict[str, str],
+        case: str,
+    ) -> None:
+        """Every malformed SchemaInspectArgs shape fails validation."""
+        with pytest.raises(ValidationError):
+            SchemaInspectArgs.model_validate(payload)
+        # ``case`` is parametrize id sugar; assigning it to ``_`` keeps
+        # mypy happy without triggering ARG002.
+        assert isinstance(case, str)

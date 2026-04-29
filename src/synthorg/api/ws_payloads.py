@@ -33,6 +33,8 @@ from pydantic import (
 )
 
 from synthorg.api.ws_models import WsEventType
+from synthorg.budget.currency import CurrencyCode  # noqa: TC001 -- Pydantic field type
+from synthorg.communication.message import Part  # noqa: TC001 -- Pydantic field type
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
 # ── Base config ─────────────────────────────────────────────────────
@@ -293,7 +295,7 @@ class WsBudgetRecordAddedPayload(BaseModel):
         WsEventType.BUDGET_RECORD_ADDED
     )
     amount: float = Field(ge=0, description="Cost amount (non-negative)")
-    currency: NotBlankStr
+    currency: CurrencyCode
     category: NotBlankStr | None = None
     agent_id: NotBlankStr | None = None
 
@@ -308,7 +310,7 @@ class WsBudgetAlertPayload(BaseModel):
     message: NotBlankStr
     threshold: float | None = None
     current: float | None = None
-    currency: NotBlankStr
+    currency: CurrencyCode
 
 
 # ── Message domain ──────────────────────────────────────────────────
@@ -329,7 +331,12 @@ class WsMessageSentPayload(BaseModel):
     sender: NotBlankStr
     to: NotBlankStr
     content: str
-    parts: tuple[dict[str, object], ...]
+    parts: tuple[Part, ...] = Field(
+        default=(),
+        description=(
+            "Typed message parts (text/data/file/uri) discriminated by ``type``"
+        ),
+    )
 
 
 # ── System domain ───────────────────────────────────────────────────

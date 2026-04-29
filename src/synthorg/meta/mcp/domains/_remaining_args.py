@@ -5,9 +5,9 @@ Covers ``communication`` / ``integrations`` / ``infrastructure`` /
 headers below.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
@@ -609,6 +609,20 @@ class FineTuneExecutionConfig(_ArgsBase):
         gt=0.0,
         description="Maximum wall-clock time for a single stage",
     )
+
+    @model_validator(mode="after")
+    def _docker_requires_image(self) -> Self:
+        """Reject ``backend='docker'`` without an ``image``.
+
+        Mirrors the validator on the canonical
+        :class:`synthorg.memory.fine_tune_plan.FineTuneExecutionConfig`
+        so the wire boundary catches the bad shape at parse time
+        instead of relying on the handler-side re-validation.
+        """
+        if self.backend == "docker" and self.image is None:
+            msg = "image is required when backend='docker'"
+            raise ValueError(msg)
+        return self
 
 
 class _FineTunePlanFields(_ArgsBase):
