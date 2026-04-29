@@ -1,7 +1,7 @@
 """Per-call analytics aggregation and alerting service."""
 
 from collections import Counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_analytics_models import AnalyticsAggregation
 from synthorg.observability import get_logger
@@ -22,6 +22,14 @@ if TYPE_CHECKING:
     from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
+
+# A call is considered "retried" once it has at least one retry attempt;
+# zero-retry calls are excluded from the retry-rate numerator.
+_MIN_RETRY_COUNT: Final[int] = 1
+
+# 95th-percentile interpolation factor (NIST type-7 / linear-interpolation
+# definition): pick the value at index 0.95 * (n - 1).
+_PERCENTILE_INTERPOLATION_FACTOR: Final[float] = 0.95
 
 
 class CallAnalyticsService:
@@ -107,7 +115,9 @@ class CallAnalyticsService:
 
         total = len(records)
         retried = sum(
-            1 for r in records if r.retry_count is not None and r.retry_count >= 1
+            1
+            for r in records
+            if r.retry_count is not None and r.retry_count >= _MIN_RETRY_COUNT
         )
         retry_rate = retried / total
 
@@ -147,7 +157,9 @@ def _build_aggregation(
     failure_count = sum(1 for r in records if r.success is False)
 
     retried = sum(
-        1 for r in records if r.retry_count is not None and r.retry_count >= 1
+        1
+        for r in records
+        if r.retry_count is not None and r.retry_count >= _MIN_RETRY_COUNT
     )
     retry_rate = retried / total if total > 0 else 0.0
 
@@ -192,7 +204,7 @@ def _p95(values: list[float]) -> float:
     n = len(values)
     if n == 1:
         return values[0]
-    index = 0.95 * (n - 1)
+    index = _PERCENTILE_INTERPOLATION_FACTOR * (n - 1)
     lo = int(index)
     hi = lo + 1
     frac = index - lo

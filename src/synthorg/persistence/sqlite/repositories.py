@@ -17,6 +17,7 @@ from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
@@ -24,6 +25,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_QUERIED,
     PERSISTENCE_COST_RECORD_QUERY_FAILED,
     PERSISTENCE_COST_RECORD_SAVE_FAILED,
+    PERSISTENCE_MESSAGE_DELETE_FAILED,
     PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
     PERSISTENCE_MESSAGE_DUPLICATE,
     PERSISTENCE_MESSAGE_HISTORY_FAILED,
@@ -360,11 +362,12 @@ INSERT INTO cost_records (
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to save cost record for agent {record.agent_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_COST_RECORD_SAVE_FAILED,
                     agent_id=record.agent_id,
                     task_id=record.task_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -565,10 +568,11 @@ INSERT INTO messages (
                     raise DuplicateRecordError(err_msg) from exc
                 # Other integrity errors (NOT NULL, different UNIQUE).
                 msg = f"Failed to save message {msg_id!r}"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_MESSAGE_SAVE_FAILED,
                     message_id=msg_id,
-                    error=error_text,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -648,3 +652,31 @@ ORDER BY timestamp DESC"""
             count=len(messages),
         )
         return messages
+
+    async def delete(self, message_id: NotBlankStr) -> bool:
+        """Delete a single message by id.
+
+        Returns ``True`` when a row was removed, ``False`` when the id
+        did not exist. Concurrent writes are serialized through the
+        shared backend write lock. The audit-grade mutation log is
+        emitted by :class:`MessageService.delete_message`; the
+        repository never logs mutations itself (persistence-boundary
+        rule, see ``docs/reference/persistence-boundary.md``).
+        """
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM messages WHERE id = ?",
+                    (message_id,),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to delete message {message_id!r}"
+                logger.warning(
+                    PERSISTENCE_MESSAGE_DELETE_FAILED,
+                    message_id=message_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return cursor.rowcount > 0

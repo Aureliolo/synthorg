@@ -1,8 +1,15 @@
 """Configuration for the per-call analytics service."""
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.coordination_config import OrchestrationAlertThresholds
+
+# 10% of calls with at least one retry is the operator-default warning
+# threshold. Tuned against historical incident data; tighten via
+# ``RetryAlertConfig(warn_rate=...)`` overrides per deployment.
+_DEFAULT_RETRY_WARN_RATE: Final[float] = 0.10
 
 
 class RetryAlertConfig(BaseModel):
@@ -16,7 +23,7 @@ class RetryAlertConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     warn_rate: float = Field(
-        default=0.10,
+        default=_DEFAULT_RETRY_WARN_RATE,
         ge=0.0,
         le=1.0,
         description=(

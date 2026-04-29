@@ -81,6 +81,7 @@ See `cli/CLAUDE.md` for commands, flags, and reference. Key rule: use `go -C cli
 - [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md): SEC-1 untrusted-content fences, HTML XXE, secret-log redaction
 - [docs/reference/lifecycle-sync.md](docs/reference/lifecycle-sync.md): async start/stop lifecycle lock pattern
 - [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md): persistence exception categories + service layer rules
+- [docs/reference/conventions.md](docs/reference/conventions.md): implicit conventions (repository CRUD, lifecycle symmetry, response wrapping, validator mode default, event imports, domain error hierarchies, file structure, frozen ConfigDict)
 
 ## Web Dashboard Design System (MANDATORY)
 

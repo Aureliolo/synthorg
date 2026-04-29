@@ -21,6 +21,9 @@ lives, how long it is retained, and how it is removed.
 | Refresh token hashes | `refresh_tokens` | Until revoked or `expires_at` | `UserService.delete()` explicit revocation + FK cascade on user delete + periodic sweep of expired rows |
 | `tasks.created_by`, `artifacts.created_by` | respective tables | Indefinite; authorship preserved | Not cascaded on user delete (content outlives its author) |
 | Client profile / feedback / requests | `client_*` tables | Indefinite; authorship preserved | Not cascaded on user delete |
+| Agent memory entries (`MemoryBackend`) | backend-specific (Mem0 / Qdrant) | Indefinite while agent is active | `DELETE /api/v1/admin/memory/agents/{agent_id}/memories/{memory_id}` and the `synthorg_memory_delete_entry` MCP tool |
+| Channel messages (`Message.sender`, `.metadata`, `.channel`) | `messages` | Indefinite; operator-driven removal | `DELETE /api/v1/messages/{message_id}` and the `synthorg_messages_delete` MCP tool |
+| Meeting records (`MeetingRecord.minutes.contributions[*].agent_id`) | in-memory orchestrator audit store | Per-process; flushed on restart unless persisted | `DELETE /api/v1/meetings/{meeting_id}` and the `synthorg_meetings_delete` MCP tool |
 
 ## Cascade behavior on user deletion
 

@@ -217,15 +217,19 @@ async def _messages_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Capability gap: message store is append-only by design."""
+    """Delete a single message by id.
+
+    The destructive-op audit event fires only when a row was actually
+    removed (``removed=True``); not-found responses are returned as a
+    successful envelope with ``removed=False`` and no audit emission
+    so the audit trail stays semantically clean.
+    """
     tool = "synthorg_messages_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
-        channel = _require_str(arguments, _ARG_CHANNEL)
         message_id = _require_str(arguments, _ARG_MESSAGE_ID)
         try:
             removed = await app_state.message_service.delete_message(
-                channel=channel,
                 message_id=message_id,
                 actor_id=require_actor_id(resolved_actor),
                 reason=reason,
@@ -238,7 +242,7 @@ async def _messages_delete(
                 tool_name=tool,
                 actor=require_actor_id(resolved_actor),
                 reason=reason,
-                removed=removed,
+                target_id=message_id,
             )
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
@@ -360,21 +364,37 @@ async def _meetings_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Capability gap: meeting records are append-only by design."""
+    """Delete a single meeting record by id."""
     tool = "synthorg_meetings_delete"
     try:
-        _reason, _resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        meeting_id = _require_str(arguments, _ARG_MEETING_ID)
         try:
-            await app_state.meeting_service.delete_meeting()
+            removed = await app_state.meeting_service.delete_meeting(
+                meeting_id=meeting_id,
+                actor_id=require_actor_id(resolved_actor),
+                reason=reason,
+            )
         except CapabilityNotSupportedError as exc:
             return _map_capability_not_supported(tool, exc)
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=require_actor_id(resolved_actor),
+                reason=reason,
+                target_id=meeting_id,
+            )
+        return ok({"removed": removed})
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    return ok(None)
 
 
 # ── connections ─────────────────────────────────────────────────────

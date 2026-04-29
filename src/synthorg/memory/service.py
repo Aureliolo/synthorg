@@ -48,6 +48,8 @@ from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
     MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_ENTRY_DELETE_FAILED,
+    MEMORY_ENTRY_DELETED,
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_INVALID_REQUEST,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
@@ -63,6 +65,7 @@ if TYPE_CHECKING:
     from synthorg.memory.embedding.fine_tune_orchestrator import (
         FineTuneOrchestrator,
     )
+    from synthorg.memory.protocol import MemoryBackend
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -128,6 +131,7 @@ class MemoryService:
     __slots__ = (
         "_checkpoints",
         "_embedder_state_lock",
+        "_memory_backend",
         "_orchestrator",
         "_runs",
         "_settings",
@@ -136,28 +140,43 @@ class MemoryService:
     def __init__(
         self,
         *,
-        checkpoint_repo: FineTuneCheckpointRepository,
-        run_repo: FineTuneRunRepository,
-        settings_service: SettingsService | None,
+        checkpoint_repo: FineTuneCheckpointRepository | None = None,
+        run_repo: FineTuneRunRepository | None = None,
+        settings_service: SettingsService | None = None,
         orchestrator: FineTuneOrchestrator | None = None,
+        memory_backend: MemoryBackend | None = None,
     ) -> None:
-        """Initialize with repository + settings + orchestrator deps.
+        """Initialize with optional repository + settings + orchestrator deps.
+
+        Every dependency is independently optional so a deployment
+        that wires only a ``MemoryBackend`` (e.g. for the
+        ``DELETE /memory/entries`` GDPR path) can construct the
+        service without resolving fine-tune repositories. Each
+        lifecycle method that needs a missing dep raises
+        :class:`BackendUnsupportedError` at call time.
 
         Args:
-            checkpoint_repo: Fine-tune checkpoint persistence.
-            run_repo: Fine-tune run persistence.
-            settings_service: Runtime settings service (may be ``None``
-                if the operator has not configured one; deploy flows
-                degrade to "activate only, skip settings push").
+            checkpoint_repo: Fine-tune checkpoint persistence. ``None``
+                disables every checkpoint lifecycle method.
+            run_repo: Fine-tune run persistence. ``None`` disables
+                every run-history method.
+            settings_service: Runtime settings service. ``None``
+                degrades deploy flows to "activate only, skip
+                settings push".
             orchestrator: Fine-tune pipeline orchestrator. ``None`` on
                 backends that do not support fine-tune runs (the
                 fine-tune lifecycle methods raise
                 :class:`BackendUnsupportedError` in that case).
+            memory_backend: Shared memory backend exposed to admin
+                operations such as ``delete_memory_entry``. ``None``
+                when no backend is wired (the entry-delete method
+                raises :class:`BackendUnsupportedError` in that case).
         """
         self._checkpoints = checkpoint_repo
         self._runs = run_repo
         self._settings = settings_service
         self._orchestrator = orchestrator
+        self._memory_backend = memory_backend
         # Serializes the three-step reads in ``get_active_embedder`` and
         # the multi-repo writes in ``deploy_checkpoint`` /
         # ``rollback_checkpoint`` / ``delete_checkpoint`` so a
@@ -167,6 +186,99 @@ class MemoryService:
         # only; read-mostly endpoints (``list_checkpoints``,
         # ``list_runs``, ``get_checkpoint``) are not gated through it.
         self._embedder_state_lock = asyncio.Lock()
+
+    def _require_checkpoints(self) -> FineTuneCheckpointRepository:
+        """Return the checkpoint repo or raise ``BackendUnsupportedError``."""
+        if self._checkpoints is None:
+            msg = (
+                "fine-tune checkpoint repository is not wired on the "
+                "active persistence backend; checkpoint lifecycle "
+                "operations are unavailable"
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                repo="checkpoints",
+                reason="repository_not_wired",
+            )
+            raise BackendUnsupportedError(msg)
+        return self._checkpoints
+
+    def _require_runs(self) -> FineTuneRunRepository:
+        """Return the run repo or raise ``BackendUnsupportedError``."""
+        if self._runs is None:
+            msg = (
+                "fine-tune run repository is not wired on the active "
+                "persistence backend; run-history operations are "
+                "unavailable"
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                repo="runs",
+                reason="repository_not_wired",
+            )
+            raise BackendUnsupportedError(msg)
+        return self._runs
+
+    async def delete_memory_entry(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+    ) -> bool:
+        """Delete a single memory entry owned by *agent_id*.
+
+        Routes through the shared :class:`MemoryBackend` instance.
+        Both arguments are validated as non-blank by the caller; the
+        service trusts the contract and forwards to the backend.
+
+        Args:
+            agent_id: Owning agent identifier.
+            memory_id: Backend-assigned memory identifier.
+
+        Returns:
+            ``True`` if the entry was deleted, ``False`` if not found.
+
+        Raises:
+            BackendUnsupportedError: When no memory backend is wired.
+        """
+        if self._memory_backend is None:
+            msg = (
+                "memory backend is not wired on the active application "
+                "state; memory entry deletion is unavailable"
+            )
+            logger.warning(
+                MEMORY_ENTRY_DELETE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                reason="backend_unsupported",
+            )
+            raise BackendUnsupportedError(msg)
+        try:
+            deleted = await self._memory_backend.delete(agent_id, memory_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                MEMORY_ENTRY_DELETE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                reason="backend_exception",
+                error_type=type(exc).__name__,
+            )
+            raise
+        if deleted:
+            logger.info(
+                MEMORY_ENTRY_DELETED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+            )
+        else:
+            logger.warning(
+                MEMORY_ENTRY_DELETE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                reason="not_found",
+            )
+        return deleted
 
     async def list_checkpoints(
         self,
@@ -189,7 +301,7 @@ class MemoryService:
             unfiltered count the repository would return for an
             unpaginated query.
         """
-        return await self._checkpoints.list_checkpoints(
+        return await self._require_checkpoints().list_checkpoints(
             limit=limit,
             offset=offset,
         )
@@ -199,7 +311,7 @@ class MemoryService:
         checkpoint_id: NotBlankStr,
     ) -> CheckpointRecord | None:
         """Fetch a single checkpoint by id."""
-        return await self._checkpoints.get_checkpoint(checkpoint_id)
+        return await self._require_checkpoints().get_checkpoint(checkpoint_id)
 
     async def deploy_checkpoint(
         self,
@@ -219,8 +331,9 @@ class MemoryService:
             CheckpointNotFoundError: If the id does not exist.
             QueryError: On unrecoverable persistence faults.
         """
+        checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
-            cp = await self._checkpoints.get_checkpoint(checkpoint_id)
+            cp = await checkpoints.get_checkpoint(checkpoint_id)
             if cp is None:
                 logger.warning(
                     MEMORY_CHECKPOINT_NOT_FOUND,
@@ -230,8 +343,8 @@ class MemoryService:
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
 
-            prior = await self._checkpoints.get_active_checkpoint()
-            await self._checkpoints.set_active(checkpoint_id)
+            prior = await checkpoints.get_active_checkpoint()
+            await checkpoints.set_active(checkpoint_id)
 
             if self._settings is not None:
                 await self._apply_deploy_settings(
@@ -240,7 +353,7 @@ class MemoryService:
                     prior=prior,
                 )
 
-            updated = await self._checkpoints.get_checkpoint(checkpoint_id)
+            updated = await checkpoints.get_checkpoint(checkpoint_id)
             if updated is None:
                 logger.error(
                     MEMORY_CHECKPOINT_REREAD_FAILED,
@@ -272,8 +385,9 @@ class MemoryService:
             CheckpointRollbackCorruptError: If the backup JSON cannot
                 be parsed.
         """
+        checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
-            cp = await self._checkpoints.get_checkpoint(checkpoint_id)
+            cp = await checkpoints.get_checkpoint(checkpoint_id)
             if cp is None:
                 logger.warning(
                     MEMORY_CHECKPOINT_NOT_FOUND,
@@ -322,8 +436,8 @@ class MemoryService:
                 for key, value in backup.items():
                     await self._settings.set("memory", key, str(value))
 
-            await self._checkpoints.deactivate_all()
-            updated = await self._checkpoints.get_checkpoint(checkpoint_id)
+            await checkpoints.deactivate_all()
+            updated = await checkpoints.get_checkpoint(checkpoint_id)
             if updated is None:
                 logger.error(
                     MEMORY_CHECKPOINT_REREAD_FAILED,
@@ -358,8 +472,9 @@ class MemoryService:
             QueryError: On unrecoverable persistence faults (including
                 the domain rule "cannot delete the active checkpoint").
         """
+        checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
-            existing = await self._checkpoints.get_checkpoint(checkpoint_id)
+            existing = await checkpoints.get_checkpoint(checkpoint_id)
             if existing is None:
                 logger.warning(
                     MEMORY_CHECKPOINT_NOT_FOUND,
@@ -368,7 +483,7 @@ class MemoryService:
                 )
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
-            await self._checkpoints.delete_checkpoint(checkpoint_id)
+            await checkpoints.delete_checkpoint(checkpoint_id)
 
     async def list_runs(
         self,
@@ -405,7 +520,7 @@ class MemoryService:
             )
             msg = f"limit must be >= 1, got {limit}"
             raise ValueError(msg)
-        return await self._runs.list_runs(limit=limit, offset=offset)
+        return await self._require_runs().list_runs(limit=limit, offset=offset)
 
     # ── Fine-tune lifecycle ────────────────────────────────────────
 
@@ -486,7 +601,7 @@ class MemoryService:
         orchestrator = self._require_orchestrator()
         if run_id is None:
             return await orchestrator.get_status()
-        run = await self._runs.get_run(str(run_id))
+        run = await self._require_runs().get_run(str(run_id))
         if run is None:
             logger.warning(
                 MEMORY_FINE_TUNE_INVALID_REQUEST,
@@ -577,8 +692,9 @@ class MemoryService:
         and leave the caller observing ``checkpoint_id`` from one
         state and ``provider`` / ``model`` from another.
         """
+        checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
-            active_checkpoint = await self._checkpoints.get_active_checkpoint()
+            active_checkpoint = await checkpoints.get_active_checkpoint()
             if self._settings is None:
                 return ActiveEmbedderSnapshot(
                     checkpoint_id=(
@@ -649,19 +765,20 @@ class MemoryService:
             "embedder_provider",
         )
 
+        checkpoints = self._require_checkpoints()
         try:
             await self._settings.set("memory", "embedder_model", model_path)
             await self._settings.set("memory", "embedder_provider", "local")
         except Exception as exc:
             if prior is not None:
                 await self._rollback_step(
-                    self._checkpoints.set_active(prior.id),
+                    checkpoints.set_active(prior.id),
                     checkpoint_id=checkpoint_id,
                     step="reactivate_prior_checkpoint",
                 )
             else:
                 await self._rollback_step(
-                    self._checkpoints.deactivate_all(),
+                    checkpoints.deactivate_all(),
                     checkpoint_id=checkpoint_id,
                     step="deactivate_all_checkpoints",
                 )

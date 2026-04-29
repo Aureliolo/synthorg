@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { NavLink } from 'react-router'
+import { NavLink, useLocation } from 'react-router'
 import { cn } from '@/lib/utils'
 
 interface SidebarNavItemProps {
@@ -10,6 +10,15 @@ interface SidebarNavItemProps {
   badge?: number
   dotColor?: string
   end?: boolean
+  /**
+   * Routes that must NOT highlight this item even when NavLink's default
+   * `isActive` prefix-match would normally treat them as active. Used when
+   * a child route has its own sidebar entry and we don't want both
+   * parent and child to render in the active state simultaneously.
+   *
+   * Each entry is matched as a path prefix against the current location.
+   */
+  inactivePaths?: readonly string[]
   /** Render as a plain `<a href>` instead of a React Router NavLink. */
   external?: boolean
 }
@@ -22,8 +31,13 @@ export function SidebarNavItem({
   badge,
   dotColor,
   end,
+  inactivePaths,
   external,
 }: SidebarNavItemProps) {
+  const { pathname } = useLocation()
+  const forcedInactive =
+    inactivePaths !== undefined &&
+    inactivePaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   const baseClass = cn(
     'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
     'text-text-secondary hover:bg-card-hover hover:text-foreground',
@@ -86,7 +100,7 @@ export function SidebarNavItem({
       end={end}
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
-        cn(baseClass, isActive && 'bg-card text-accent')
+        cn(baseClass, isActive && !forcedInactive && 'bg-card text-accent')
       }
     >
       {content}

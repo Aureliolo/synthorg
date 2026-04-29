@@ -1,6 +1,6 @@
-"""Memory domain MCP handlers (fine-tune checkpoints + runs).
+"""Memory domain MCP handlers (fine-tune checkpoints + runs + entries).
 
-Wires 11 tools through :class:`MemoryService`. The service is
+Wires 12 tools through :class:`MemoryService`. The service is
 injected via ``app_state.memory_service`` by the application
 bootstrap; handlers route through that facade exclusively and never
 reach into ``app_state.persistence.*`` directly (CLAUDE.md
@@ -87,6 +87,8 @@ logger = get_logger(__name__)
 _TY_NON_BLANK = "non-blank string"
 _ARG_CHECKPOINT_ID = "checkpoint_id"
 _ARG_RUN_ID = "run_id"
+_ARG_AGENT_ID = "agent_id"
+_ARG_MEMORY_ID = "memory_id"
 
 
 _WHY_MEMORY_SERVICE_NOT_WIRED = (
@@ -165,9 +167,57 @@ def _service(app_state: Any) -> MemoryService:
         # ``not_supported`` envelope.
         raise BackendUnsupportedError(_WHY_BACKEND_NO_FINE_TUNE) from exc
     has_settings = getattr(app_state, "has_settings_service", False)
+    has_backend = getattr(app_state, "has_memory_backend", False)
     return MemoryService(
         checkpoint_repo=checkpoint_repo,
         run_repo=run_repo,
+        settings_service=(
+            getattr(app_state, "settings_service", None) if has_settings else None
+        ),
+        memory_backend=(
+            getattr(app_state, "memory_backend", None) if has_backend else None
+        ),
+    )
+
+
+def _delete_entry_service(app_state: Any) -> MemoryService:
+    """Return a :class:`MemoryService` suitable for memory-entry deletion.
+
+    Sibling of :func:`_service` that does **not** require fine-tune
+    repositories. The GDPR ``delete_memory_entry`` path only needs a
+    :class:`MemoryBackend`; treating missing fine-tune repos as fatal
+    here would route every memory-only deployment through
+    ``not_supported`` and silently disable user data deletion.
+
+    Resolution order:
+
+    1. The wired :class:`MemoryService` facade
+       (``app_state.has_memory_service``).
+    2. A cached ``MemoryService`` attached as a plain attribute
+       (stripped-down test app-states).
+    3. A freshly-built ``MemoryService`` constructed from a wired
+       ``MemoryBackend`` (with optional ``settings_service``); fine-tune
+       repos are intentionally left as ``None``.
+
+    Raises:
+        BackendUnsupportedError: When no service or backend is wired at
+            all -- the only case where deletion truly cannot proceed.
+    """
+    if getattr(app_state, "has_memory_service", False):
+        attached: MemoryService = app_state.memory_service
+        return attached
+    raw_cached = (
+        vars(app_state).get("memory_service")
+        if hasattr(app_state, "__dict__")
+        else None
+    )
+    if isinstance(raw_cached, MemoryService):
+        return raw_cached
+    if not getattr(app_state, "has_memory_backend", False):
+        raise BackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
+    has_settings = getattr(app_state, "has_settings_service", False)
+    return MemoryService(
+        memory_backend=getattr(app_state, "memory_backend", None),
         settings_service=(
             getattr(app_state, "settings_service", None) if has_settings else None
         ),
@@ -520,6 +570,63 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
     return ok()
 
 
+async def _memory_delete_entry(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    """Delete a single memory entry owned by an agent.
+
+    Required arguments: ``agent_id``, ``memory_id``, plus the
+    destructive-op guardrail triple (``confirm=True``, non-blank
+    ``reason``, identifiable actor).
+    """
+    tool = "synthorg_memory_delete_entry"
+    try:
+        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
+        memory_id = require_non_blank(arguments, _ARG_MEMORY_ID)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
+    try:
+        deleted = await _delete_entry_service(app_state).delete_memory_entry(
+            agent_id,
+            memory_id,
+        )
+    except BackendUnsupportedError as exc:
+        return not_supported(tool, str(exc))
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        log_handler_invoke_failed(tool, exc, agent_id=agent_id, memory_id=memory_id)
+        return err(exc)
+    if not deleted:
+        not_found_exc = ValueError(f"memory entry {memory_id!r} not found")
+        log_handler_invoke_failed(
+            tool,
+            not_found_exc,
+            agent_id=agent_id,
+            memory_id=memory_id,
+        )
+        return err(not_found_exc, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(
+        MCP_DESTRUCTIVE_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id(resolved_actor),
+        reason=reason,
+        target_id=memory_id,
+        agent_id=agent_id,
+    )
+    return ok()
+
+
 async def _memory_list_runs(
     *,
     app_state: Any,
@@ -683,6 +790,7 @@ MEMORY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
             "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
             "synthorg_memory_list_runs": _memory_list_runs,
             "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
+            "synthorg_memory_delete_entry": _memory_delete_entry,
         },
     ),
 )

@@ -428,7 +428,7 @@ Remove worktrees and clean up branches after PRs are merged.
 8. **Clean remaining gone branches** that are not associated with worktrees (e.g. branches created outside the worktree workflow). After worktree-specific cleanup is done, check for any additional local branches whose remote tracking branch is gone:
 
    ```bash
-   git for-each-ref --format='%(refname:short) %(upstream:track,gone)' refs/heads | grep '\[gone\]$'
+   git branch -vv | grep '\[gone\]'
    ```
 
    Delete each one individually (these are non-worktree branches, safe to delete without worktree removal):

@@ -200,3 +200,117 @@ class TestDeleteCheckpointDestructiveAudit:
         assert event["reason"] == "checkpoint superseded"
         assert event["target_id"] == checkpoint_id
         state.memory_service.delete_checkpoint.assert_awaited_once()
+
+
+def _fake_state_with_delete_entry(*, deleted: bool = True) -> SimpleNamespace:
+    """Wired-service app state that drives the happy-path entry-delete audit."""
+    memory_service = AsyncMock()
+    memory_service.delete_memory_entry.return_value = deleted
+    return SimpleNamespace(
+        memory_service=memory_service,
+        has_memory_service=True,
+    )
+
+
+class TestDeleteMemoryEntryDestructiveAudit:
+    async def test_success_emits_destructive_op_executed(
+        self,
+        actor: AgentIdentity,
+    ) -> None:
+        """Happy-path memory-entry delete emits the destructive audit event."""
+        agent_id = f"agent-{uuid4().hex}"
+        memory_id = f"mem-{uuid4().hex}"
+        state = _fake_state_with_delete_entry(deleted=True)
+        handler = MEMORY_HANDLERS["synthorg_memory_delete_entry"]
+        with structlog.testing.capture_logs() as events:
+            raw = await handler(
+                app_state=state,
+                arguments={
+                    "agent_id": agent_id,
+                    "memory_id": memory_id,
+                    "reason": "operator gdpr request",
+                    "confirm": True,
+                },
+                actor=actor,
+            )
+        body: dict[str, Any] = json.loads(raw)
+        assert body["status"] == "ok"
+        destructive = [
+            e
+            for e in events
+            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            and e.get("tool_name") == "synthorg_memory_delete_entry"
+        ]
+        assert len(destructive) == 1
+        event = destructive[0]
+        assert event["actor_agent_id"] == str(actor.id)
+        assert event["reason"] == "operator gdpr request"
+        assert event["target_id"] == memory_id
+        assert event["agent_id"] == agent_id
+        # Tighten the regression: confirm the service was called with
+        # the correct positional ordering (agent_id then memory_id) so
+        # an accidental swap would surface as a test failure rather
+        # than as a confused audit log on a real backend.
+        state.memory_service.delete_memory_entry.assert_awaited_once_with(
+            agent_id,
+            memory_id,
+        )
+
+    async def test_not_found_returns_not_found_envelope(
+        self,
+        actor: AgentIdentity,
+    ) -> None:
+        """When the backend returns False, the handler emits a not_found envelope.
+
+        Also asserts the audit log stays clean (no
+        ``MCP_DESTRUCTIVE_OP_EXECUTED`` for a delete that never
+        actually happened) and that the service call ordering matches
+        the production contract (agent_id, memory_id).
+        """
+        state = _fake_state_with_delete_entry(deleted=False)
+        handler = MEMORY_HANDLERS["synthorg_memory_delete_entry"]
+        with structlog.testing.capture_logs() as events:
+            raw = await handler(
+                app_state=state,
+                arguments={
+                    "agent_id": "agent-x",
+                    "memory_id": "missing-mem",
+                    "reason": "cleanup",
+                    "confirm": True,
+                },
+                actor=actor,
+            )
+        body: dict[str, Any] = json.loads(raw)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_found"
+        assert not [
+            e
+            for e in events
+            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            and e.get("tool_name") == "synthorg_memory_delete_entry"
+        ]
+        state.memory_service.delete_memory_entry.assert_awaited_once_with(
+            "agent-x",
+            "missing-mem",
+        )
+
+    async def test_missing_confirm_rejects_with_guardrail(
+        self,
+        actor: AgentIdentity,
+    ) -> None:
+        """Missing ``confirm=True`` is rejected before any service call."""
+        state = _fake_state_with_delete_entry(deleted=True)
+        handler = MEMORY_HANDLERS["synthorg_memory_delete_entry"]
+        raw = await handler(
+            app_state=state,
+            arguments={
+                "agent_id": "agent-x",
+                "memory_id": "mem-y",
+                "reason": "cleanup",
+                # ``confirm`` intentionally omitted
+            },
+            actor=actor,
+        )
+        body: dict[str, Any] = json.loads(raw)
+        assert body["status"] == "error"
+        state.memory_service.delete_memory_entry.assert_not_awaited()

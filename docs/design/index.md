@@ -72,7 +72,7 @@ development, business operations, creative work, or any domain.
 - Not locked to software development only (though that is a primary use case)
 - Not a wrapper around a single model or provider
 - Not a toy/demo: designed for real, production-quality output
-- Not a reasoning parallelizer. Single-agent reasoning is typically more token-efficient on isolated multi-hop questions, and SynthOrg's [auto topology selector](engine.md#task-decomposability-coordination-topology) defaults to single-agent for such tasks. SynthOrg's value is role-specialized work-stream parallelism, organizational simulation fidelity, and audit-grade decision trails, not reasoning parallelism. See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md) for the full reconciliation.
+- Not a reasoning parallelizer. Single-agent reasoning is typically more token-efficient on isolated multi-hop questions, and SynthOrg's [auto topology selector](coordination.md#task-decomposability--coordination-topology) defaults to single-agent for such tasks. SynthOrg's value is role-specialized work-stream parallelism, organizational simulation fidelity, and audit-grade decision trails, not reasoning parallelism. See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md) for the full reconciliation.
 
 !!! info "How to read the design specification"
 

@@ -313,14 +313,18 @@ class ServerConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _normalize_empty_tls(cls, data: dict[str, object]) -> dict[str, object]:
+    def _normalize_empty_tls(cls, data: Any) -> Any:
         """Normalize empty-string TLS paths to ``None``."""
-        if isinstance(data, dict):
-            for key in ("ssl_certfile", "ssl_keyfile", "ssl_ca_certs"):
-                val = data.get(key)
-                if isinstance(val, str) and not val.strip():
-                    data[key] = None
-        return data
+        if not isinstance(data, dict):
+            return data
+        overrides: dict[str, object] = {}
+        for key in ("ssl_certfile", "ssl_keyfile", "ssl_ca_certs"):
+            val = data.get(key)
+            if isinstance(val, str) and not val.strip():
+                overrides[key] = None
+        if not overrides:
+            return data
+        return {**data, **overrides}
 
     @model_validator(mode="after")
     def _validate_tls_pair(self) -> Self:

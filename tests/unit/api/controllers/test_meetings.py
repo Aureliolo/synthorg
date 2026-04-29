@@ -264,6 +264,34 @@ class TestMeetingController:
         assert body["success"] is False
         assert "error_code" in body or "type" in body or "error" in body
 
+    def test_delete_meeting_returns_200_when_record_exists(
+        self,
+        meeting_client: TestClient[Any],
+        mock_orchestrator: MagicMock,
+    ) -> None:
+        mock_orchestrator.delete_record = MagicMock(return_value=True)
+
+        resp = meeting_client.delete("/api/v1/meetings/mtg-001")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"] is None
+        mock_orchestrator.delete_record.assert_called_once_with("mtg-001")
+
+    def test_delete_meeting_returns_404_for_unknown_id(
+        self,
+        meeting_client: TestClient[Any],
+        mock_orchestrator: MagicMock,
+    ) -> None:
+        mock_orchestrator.delete_record = MagicMock(return_value=False)
+
+        resp = meeting_client.delete("/api/v1/meetings/mtg-unknown")
+
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+
     def test_trigger_endpoint_calls_mock_scheduler(
         self,
         meeting_client: TestClient[Any],

@@ -170,6 +170,7 @@ nav:
   - Reference:
       - reference/research.md
       - reference/standards.md
+      - Implicit Conventions: reference/conventions.md
       - Framework Comparison: reference/comparison.md
       - Embedding Evaluation: reference/embedding-evaluation.md
       - Error Reference: errors.md

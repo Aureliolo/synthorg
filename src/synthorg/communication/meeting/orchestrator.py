@@ -253,6 +253,20 @@ class MeetingOrchestrator:
         """
         return tuple(self._records)
 
+    def delete_record(self, meeting_id: str) -> bool:
+        """Remove the meeting record matching ``meeting_id``.
+
+        Returns ``True`` when a record was removed, ``False`` when no
+        record had the supplied id. Synchronous because the in-memory
+        store has no I/O; the surrounding service-layer wrapper is
+        async to match the rest of the persistence contract.
+        """
+        for i, record in enumerate(self._records):
+            if record.meeting_id == meeting_id:
+                self._records.pop(i)
+                return True
+        return False
+
     async def _execute_protocol(  # noqa: PLR0913
         self,
         protocol: MeetingProtocol,

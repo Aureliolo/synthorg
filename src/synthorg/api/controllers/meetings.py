@@ -1,9 +1,9 @@
 """Meeting controller -- list, get, and trigger meetings."""
 
 import asyncio
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
-from litestar import Controller, get, post
+from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -17,7 +17,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.core.domain_errors import NotFoundError, ValidationError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_MEETING_TRIGGERED,
@@ -319,6 +319,48 @@ class MeetingController(Controller):
         )
         msg = f"Meeting {meeting_id!r} not found"
         raise NotFoundError(msg)
+
+    @delete(
+        "/{meeting_id:str}",
+        status_code=200,
+        guards=[require_write_access],
+    )
+    async def delete_meeting(
+        self,
+        state: State,
+        request: Request[Any, Any, Any],
+        meeting_id: PathId,
+    ) -> ApiResponse[None]:
+        """Delete a meeting record by id.
+
+        Routes through :class:`MeetingService` so the
+        ``COMMUNICATION_MEETING_DELETED`` audit event is emitted from
+        the service layer on parity with the MCP path.
+
+        Args:
+            state: Litestar app state container.
+            request: Authenticated request; ``request.user.user_id``
+                drives the audit log's actor field.
+            meeting_id: Meeting identifier (matches
+                ``MeetingRecord.meeting_id``).
+
+        Returns:
+            ``ApiResponse[None]`` with ``data=None`` on success.
+
+        Raises:
+            NotFoundError: If no meeting exists for ``meeting_id``.
+        """
+        app_state: AppState = state.app_state
+        deleted = await app_state.meeting_service.delete_meeting(
+            meeting_id=NotBlankStr(meeting_id),
+            actor_id=NotBlankStr(str(request.user.user_id)),
+            reason=NotBlankStr("operator delete via REST API"),
+        )
+        if not deleted:
+            logger.warning(MEETING_NOT_FOUND, meeting_id=meeting_id)
+            msg = f"Meeting {meeting_id!r} not found"
+            raise NotFoundError(msg)
+        return ApiResponse(data=None)
 
     @post(
         "/trigger",

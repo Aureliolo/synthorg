@@ -5,7 +5,7 @@ Wraps the existing pure-function detectors from ``detectors.py`` as
 and dispatched by the pluggable classification pipeline.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_config import (
     DetectionScope,
@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 _SAME_TASK_ONLY: frozenset[DetectionScope] = frozenset(
     {DetectionScope.SAME_TASK},
 )
+
+# Default tolerance for numerical drift detection. 5% is the operator
+# baseline; tighter thresholds are typically needed for financial or
+# scientific tasks and are configured per detector instance.
+_DEFAULT_NUMERICAL_DRIFT_PERCENT: Final[float] = 5.0
 
 
 class HeuristicContradictionDetector:
@@ -71,7 +76,11 @@ class HeuristicNumericalDriftDetector:
             (default 5.0).
     """
 
-    def __init__(self, *, threshold_percent: float = 5.0) -> None:
+    def __init__(
+        self,
+        *,
+        threshold_percent: float = _DEFAULT_NUMERICAL_DRIFT_PERCENT,
+    ) -> None:
         self._threshold_percent = threshold_percent
 
     @property

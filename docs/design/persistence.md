@@ -63,7 +63,7 @@ one level up in `src/synthorg/persistence/`:
 | Protocol module                        | Concerns |
 |----------------------------------------|-----------|
 | `protocol.py` (`PersistenceBackend`)   | Backend aggregate: connect / disconnect, migrate, and accessors for every repository below |
-| `approval_protocol.py`                 | `ApprovalRepository`: human-in-the-loop decision queue |
+| `approval_protocol.py`                 | `ApprovalRepository`: human-in-the-loop approval queue |
 | `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
 | `escalation_protocol.py`               | Conflict-resolution escalation queue |
 | `fine_tune_protocol.py`                | `FineTuneRunRepository`, `FineTuneCheckpointRepository` |
@@ -252,7 +252,7 @@ sibling) mixes two write patterns:
 `custom_rules`.  Rows are updated on every state transition; row count stays
 bounded.  Concurrent updates are serialised by MVCC + application-level CAS
 (settings use `updated_at` as an etag; see `SettingsRepository.set` and
-`set_many`).  Both `approvals` (human-in-the-loop decision queue,
+`set_many`).  Both `approvals` (human-in-the-loop approval queue,
 `pending`/`approved`/`rejected`/`expired` state machine) and `custom_rules`
 (operator-defined alert thresholds) exist on both backends; previously
 they shipped only on SQLite and the Postgres parity gap was closed in the

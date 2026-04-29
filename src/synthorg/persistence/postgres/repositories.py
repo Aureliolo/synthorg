@@ -18,6 +18,7 @@ from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
@@ -25,6 +26,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_QUERIED,
     PERSISTENCE_COST_RECORD_QUERY_FAILED,
     PERSISTENCE_COST_RECORD_SAVE_FAILED,
+    PERSISTENCE_MESSAGE_DELETE_FAILED,
     PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
     PERSISTENCE_MESSAGE_DUPLICATE,
     PERSISTENCE_MESSAGE_HISTORY_FAILED,
@@ -667,3 +669,31 @@ class PostgresMessageRepository:
             count=len(messages),
         )
         return messages
+
+    async def delete(self, message_id: NotBlankStr) -> bool:
+        """Delete a single message by id.
+
+        Returns ``True`` when a row was removed, ``False`` when the id
+        did not exist. The audit-grade mutation log is emitted by
+        :class:`MessageService.delete_message`; the repository never
+        logs mutations itself (persistence-boundary rule, see
+        ``docs/reference/persistence-boundary.md``).
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM messages WHERE id = %s",
+                    (message_id,),
+                )
+                await conn.commit()
+                deleted = cur.rowcount > 0
+        except psycopg.Error as exc:
+            msg = f"Failed to delete message {message_id!r}"
+            logger.warning(
+                PERSISTENCE_MESSAGE_DELETE_FAILED,
+                message_id=message_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return deleted

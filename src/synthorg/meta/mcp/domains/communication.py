@@ -6,6 +6,7 @@ Covers messages, meetings, connections, webhooks, and tunnel.
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -47,14 +48,19 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("channel", "content"),
     ),
-    write_tool(
+    admin_tool(
         "messages",
         "delete",
-        "Delete a message.",
+        "Delete a message (destructive; requires confirm).",
         {
-            "message_id": {"type": "string", "description": "Message UUID"},
+            "message_id": {
+                "type": "string",
+                "description": "Message UUID",
+                "minLength": 1,
+            },
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("message_id",),
+        required=("message_id", "reason", "confirm"),
     ),
     # --- Meetings ---
     read_tool("meetings", "list", "List meeting records.", PAGINATION_PROPERTIES),
@@ -91,14 +97,19 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("meeting_id", "updates"),
     ),
-    write_tool(
+    admin_tool(
         "meetings",
         "delete",
-        "Delete a meeting record.",
+        "Delete a meeting record (destructive; requires confirm).",
         {
-            "meeting_id": {"type": "string", "description": "Meeting UUID"},
+            "meeting_id": {
+                "type": "string",
+                "description": "Meeting UUID",
+                "minLength": 1,
+            },
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("meeting_id",),
+        required=("meeting_id", "reason", "confirm"),
     ),
     # --- Connections ---
     read_tool("connections", "list", "List external connections."),

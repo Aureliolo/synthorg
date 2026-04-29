@@ -79,9 +79,10 @@ def fake_message_service() -> AsyncMock:
     service.list_messages = AsyncMock(return_value=((), 0))
     service.get_message = AsyncMock(return_value=None)
     service.send_message = AsyncMock(return_value=None)
-    service.delete_message = AsyncMock(
-        side_effect=CapabilityNotSupportedError("message_delete", "reason"),
-    )
+    # ``delete_message`` is now a real operation; default to True so
+    # happy-path destructive-op tests succeed. Per-test overrides set
+    # False to simulate not-found.
+    service.delete_message = AsyncMock(return_value=True)
     return service
 
 
@@ -96,9 +97,10 @@ def fake_meeting_service() -> AsyncMock:
     service.update_meeting = AsyncMock(
         side_effect=CapabilityNotSupportedError("meeting_update", "reason"),
     )
-    service.delete_meeting = AsyncMock(
-        side_effect=CapabilityNotSupportedError("meeting_delete", "reason"),
-    )
+    # ``delete_meeting`` is now a real operation; default to True so
+    # the happy-path destructive-op test succeeds. Per-test overrides
+    # set False to simulate not-found.
+    service.delete_meeting = AsyncMock(return_value=True)
     return service
 
 
@@ -197,7 +199,7 @@ class TestMessagesHandlers:
         )
         assert json.loads(response)["status"] == "error"
 
-    async def test_delete_capability_gap_surfaces_not_supported(
+    async def test_delete_happy_path_returns_removed_true(
         self,
         fake_app_state: SimpleNamespace,
     ) -> None:
@@ -205,7 +207,6 @@ class TestMessagesHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={
-                "channel": "ch",
                 "message_id": "m-1",
                 "confirm": True,
                 "reason": "cleanup",
@@ -213,8 +214,28 @@ class TestMessagesHandlers:
             actor=make_test_actor(),
         )
         payload = json.loads(response)
-        assert payload["status"] == "error"
-        assert payload["domain_code"] == "not_supported"
+        assert payload["status"] == "ok"
+        assert payload["data"]["removed"] is True
+
+    async def test_delete_returns_removed_false_when_not_found(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_message_service: AsyncMock,
+    ) -> None:
+        fake_message_service.delete_message = AsyncMock(return_value=False)
+        handler = COMMUNICATION_HANDLERS["synthorg_messages_delete"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "message_id": "missing",
+                "confirm": True,
+                "reason": "cleanup",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"]["removed"] is False
 
     async def test_delete_missing_confirm_rejected(
         self,
@@ -224,13 +245,34 @@ class TestMessagesHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={
-                "channel": "ch",
                 "message_id": "m-1",
                 "reason": "c",
             },
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "guardrail_violated"
+
+    async def test_delete_unexpected_service_exception_returns_error(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_message_service: AsyncMock,
+    ) -> None:
+        """An unexpected exception bubbles into the generic error envelope."""
+        fake_message_service.delete_message = AsyncMock(
+            side_effect=RuntimeError("connection pool exhausted"),
+        )
+        handler = COMMUNICATION_HANDLERS["synthorg_messages_delete"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "message_id": "m-1",
+                "confirm": True,
+                "reason": "cleanup",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "error"
 
 
 # ── Meetings ────────────────────────────────────────────────────────
@@ -288,6 +330,66 @@ class TestMeetingsHandlers:
         handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["domain_code"] == "guardrail_violated"
+
+    async def test_delete_happy_path_returns_removed_true(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "meeting_id": "m-1",
+                "confirm": True,
+                "reason": "operator gdpr cleanup",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"]["removed"] is True
+
+    async def test_delete_returns_removed_false_when_not_found(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_meeting_service: AsyncMock,
+    ) -> None:
+        fake_meeting_service.delete_meeting = AsyncMock(return_value=False)
+        handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "meeting_id": "missing",
+                "confirm": True,
+                "reason": "cleanup",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"]["removed"] is False
+
+    async def test_delete_unexpected_service_exception_returns_error(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_meeting_service: AsyncMock,
+    ) -> None:
+        """An unexpected exception bubbles into the generic error envelope."""
+        fake_meeting_service.delete_meeting = AsyncMock(
+            side_effect=RuntimeError("orchestrator unavailable"),
+        )
+        handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "meeting_id": "m-1",
+                "confirm": True,
+                "reason": "cleanup",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "error"
 
 
 # ── Connections ─────────────────────────────────────────────────────

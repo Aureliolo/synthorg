@@ -222,7 +222,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
 
 function SidebarNav({ collapsed }: { collapsed: boolean }) {
   return (
-    <nav className="flex-1 overflow-y-auto px-2 pt-3" aria-label="Main navigation">
+    <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="Main navigation">
       <div className="flex flex-col gap-1">
         <SidebarNavItem to={ROUTES.DASHBOARD} icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} end />
         <SidebarNavItem to={ROUTES.ORG} icon={GitBranch} label="Org Chart" collapsed={collapsed} />
@@ -269,11 +269,17 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
       <div className="mt-4 border-t border-border pt-3">
         <div className="flex flex-col gap-1">
           <SidebarNavItem to={ROUTES.DOCUMENTATION} icon={BookOpen} label="Docs" collapsed={collapsed} external />
-          <SidebarNavItem to={ROUTES.CLIENTS} icon={UserCheck} label="Clients" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.CLIENTS} icon={UserCheck} label="Clients" collapsed={collapsed} end />
           <SidebarNavItem to={ROUTES.REQUEST_QUEUE} icon={Inbox} label="Request Queue" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.SIMULATION_DASHBOARD} icon={Activity} label="Simulations" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.SETTINGS_FINE_TUNING} icon={Sparkles} label="Fine-Tuning" collapsed={collapsed} />
-          <SidebarNavItem to={ROUTES.SETTINGS} icon={Settings} label="Settings" collapsed={collapsed} />
+          <SidebarNavItem
+            to={ROUTES.SETTINGS}
+            icon={Settings}
+            label="Settings"
+            collapsed={collapsed}
+            inactivePaths={[ROUTES.SETTINGS_FINE_TUNING]}
+          />
         </div>
       </div>
     </nav>

@@ -381,3 +381,33 @@ class TestDockerSandboxConfigNetworkEnforcementSettings:
     def test_loopback_allowed_can_be_disabled(self) -> None:
         config = DockerSandboxConfig(loopback_allowed=False)
         assert config.loopback_allowed is False
+
+
+class TestDockerSandboxConfigBeforeValidatorImmutability:
+    """The network-preset before-validator must not mutate caller input."""
+
+    def test_preset_resolution_does_not_mutate_input(self) -> None:
+        import copy
+
+        original = {
+            "network": "bridge",
+            "network_presets": ("python-dev",),
+            "allowed_hosts": ("example.com:443",),
+        }
+        snapshot = copy.deepcopy(original)
+        config = DockerSandboxConfig.model_validate(original)
+
+        assert original == snapshot, "before-validator mutated caller input"
+        assert "pypi.org:443" in config.allowed_hosts
+        assert "example.com:443" in config.allowed_hosts
+
+    def test_input_dict_remains_reusable(self) -> None:
+        original = {
+            "network": "bridge",
+            "network_presets": ("git",),
+        }
+        first = DockerSandboxConfig.model_validate(original)
+        second = DockerSandboxConfig.model_validate(original)
+
+        assert first.allowed_hosts == second.allowed_hosts
+        assert "github.com:443" in first.allowed_hosts

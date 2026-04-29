@@ -401,3 +401,29 @@ class TestBlockedNetworks:
         has_v6 = any(isinstance(n, ipaddress.IPv6Network) for n in BLOCKED_NETWORKS)
         assert has_v4
         assert has_v6
+
+
+class TestNetworkPolicyBeforeValidatorImmutability:
+    """The allowlist before-validator must not mutate caller input."""
+
+    @pytest.mark.unit
+    def test_normalize_does_not_mutate_input(self) -> None:
+        import copy
+
+        original = {
+            "hostname_allowlist": ["Example.COM", "Test.IO", "example.com"],
+            "block_private_ips": True,
+        }
+        snapshot = copy.deepcopy(original)
+        policy = NetworkPolicy.model_validate(original)
+
+        assert original == snapshot, "before-validator mutated caller input"
+        assert policy.hostname_allowlist == ("example.com", "test.io")
+
+    @pytest.mark.unit
+    def test_input_dict_remains_reusable(self) -> None:
+        original = {"hostname_allowlist": ("Example.COM", "Test.IO")}
+        first = NetworkPolicy.model_validate(original)
+        second = NetworkPolicy.model_validate(original)
+        assert first.hostname_allowlist == second.hostname_allowlist
+        assert original == {"hostname_allowlist": ("Example.COM", "Test.IO")}

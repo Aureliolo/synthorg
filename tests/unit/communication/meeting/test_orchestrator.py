@@ -292,6 +292,53 @@ class TestMeetingOrchestratorRecords:
         records = orchestrator.get_records()
         assert isinstance(records, tuple)
 
+    async def test_delete_record_removes_matching_meeting(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        orchestrator = _make_orchestrator()
+        await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            token_budget=10000,
+        )
+        record = orchestrator.get_records()[0]
+
+        deleted = orchestrator.delete_record(record.meeting_id)
+
+        assert deleted is True
+        assert orchestrator.get_records() == ()
+
+    async def test_delete_record_returns_false_when_id_unknown(
+        self,
+    ) -> None:
+        orchestrator = _make_orchestrator()
+        assert orchestrator.delete_record("never-existed") is False
+
+    async def test_delete_record_is_idempotent(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        orchestrator = _make_orchestrator()
+        await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            token_budget=10000,
+        )
+        record = orchestrator.get_records()[0]
+
+        first = orchestrator.delete_record(record.meeting_id)
+        second = orchestrator.delete_record(record.meeting_id)
+
+        assert first is True
+        assert second is False
+
 
 @pytest.mark.unit
 class TestMeetingOrchestratorErrorHandling:

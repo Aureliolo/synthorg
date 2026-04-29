@@ -155,9 +155,20 @@ class SetupCompanyRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    company_name: NotBlankStr = Field(max_length=200)
-    description: str | None = Field(default=None, max_length=1000)
-    template_name: NotBlankStr | None = Field(default=None, max_length=100)
+    company_name: NotBlankStr = Field(
+        max_length=200,
+        examples=["Hooli", "Pied Piper"],
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=1000,
+        examples=["Boutique consultancy specializing in agentic ops"],
+    )
+    template_name: NotBlankStr | None = Field(
+        default=None,
+        max_length=100,
+        examples=["consulting-firm", "blank"],
+    )
 
 
 class SetupAgentSummary(BaseModel):
@@ -230,28 +241,46 @@ class SetupAgentRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    name: NotBlankStr = Field(max_length=200)
-    role: NotBlankStr = Field(max_length=100)
+    name: NotBlankStr = Field(max_length=200, examples=["Alice Lin", "Bob Chen"])
+    role: NotBlankStr = Field(max_length=100, examples=["CEO", "Engineer", "Designer"])
     level: SeniorityLevel = Field(default=SeniorityLevel.MID)
     personality_preset: NotBlankStr = Field(
         default="pragmatic_builder",
         max_length=100,
+        examples=["pragmatic_builder", "visionary_leader"],
     )
-    model_provider: NotBlankStr = Field(max_length=100)
-    model_id: NotBlankStr = Field(max_length=200)
-    department: NotBlankStr = Field(default="engineering", max_length=100)
-    budget_limit_monthly: float | None = Field(default=None, ge=0.0, le=1_000_000.0)
+    model_provider: NotBlankStr = Field(
+        max_length=100,
+        examples=["example-provider"],
+    )
+    model_id: NotBlankStr = Field(
+        max_length=200,
+        examples=["example-medium-001", "example-large-001"],
+    )
+    department: NotBlankStr = Field(
+        default="engineering",
+        max_length=100,
+        examples=["engineering", "design", "operations"],
+    )
+    budget_limit_monthly: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1_000_000.0,
+        examples=[100.0, 500.0],
+    )
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_preset_exists(cls, values: dict[str, Any]) -> dict[str, Any]:
+    def _validate_preset_exists(cls, values: Any) -> Any:
         """Normalize and validate the personality preset before construction."""
+        if not isinstance(values, dict):
+            return values
         raw = values.get("personality_preset", "pragmatic_builder")
-        values["personality_preset"] = _normalize_and_validate_preset(
+        normalized = _normalize_and_validate_preset(
             raw,
             fallback="pragmatic_builder",
         )
-        return values
+        return {**values, "personality_preset": normalized}
 
 
 class SetupAgentResponse(BaseModel):
@@ -314,11 +343,13 @@ class UpdateAgentPersonalityRequest(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_preset_exists(cls, values: dict[str, Any]) -> dict[str, Any]:
+    def _validate_preset_exists(cls, values: Any) -> Any:
         """Normalize and validate the personality preset."""
+        if not isinstance(values, dict):
+            return values
         raw = values.get("personality_preset")
-        values["personality_preset"] = _normalize_and_validate_preset(raw)
-        return values
+        normalized = _normalize_and_validate_preset(raw)
+        return {**values, "personality_preset": normalized}
 
 
 class PersonalityPresetInfoResponse(BaseModel):

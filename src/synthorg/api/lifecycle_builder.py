@@ -292,6 +292,23 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     distributed_task_queue=app_state.distributed_task_queue,
                 )
                 raise
+        # Phase 3a: when an external caller already supplied a
+        # ``TrainingService`` to ``create_app()``, we skip the
+        # auto-wire below but the injected service still owns a live
+        # ``MemoryBackend``. Pull it out and publish it on
+        # ``app_state`` so the DELETE memory controller and MCP tool
+        # path see ``has_memory_backend == True`` -- otherwise an
+        # injected-service deployment would surface as 501 / unsupported
+        # even though a connected backend is right there.
+        if app_state.has_training_service and not app_state.has_memory_backend:
+            injected_backend = getattr(
+                app_state.training_service,
+                "_memory_backend",
+                None,
+            )
+            if injected_backend is not None:
+                app_state.set_memory_backend(injected_backend)
+
         # Phase 3 auto-wire: TrainingService.
         # Needs agent_registry, tool_invocation_tracker, and
         # performance_tracker (all wired in Phase 1).  Uses
@@ -326,6 +343,12 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                             tool_tracker=app_state.tool_invocation_tracker,
                         )
                         app_state.set_training_service(_ts)
+                        # Expose the same backend to admin paths so
+                        # ``DELETE /agents/{id}/memories/{id}`` and the
+                        # ``delete_memory`` MCP tool can route through
+                        # one connected backend instance per process.
+                        if not app_state.has_memory_backend:
+                            app_state.set_memory_backend(_mem)
                     except MemoryError, RecursionError:
                         await _mem.disconnect()
                         raise
@@ -462,6 +485,14 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         nonlocal _health_prober, _training_memory_backend
         # Disconnect training memory backend if auto-wired.
         if _training_memory_backend is not None:
+            # If this backend was published to ``app_state.memory_backend``
+            # at startup, clear the slot before disconnecting so a
+            # subsequent re-entry of the lifespan can wire a fresh
+            # connected backend without ``has_memory_backend`` reporting
+            # a stale handle.
+            shared = getattr(app_state, "_memory_backend", None)
+            if shared is _training_memory_backend:
+                app_state._memory_backend = None  # noqa: SLF001
             disconnect = getattr(_training_memory_backend, "disconnect", None)
             if callable(disconnect):
                 # getattr + callable narrow statically only to ``object``

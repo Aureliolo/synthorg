@@ -8,7 +8,7 @@ This is the final acceptance test for META-MCP-1.  It asserts:
    arg set returns an envelope whose ``status`` is ``"ok"`` or
    ``"error"``, never ``"not_implemented"``.  The placeholder
    scaffold only fires for tools added after PR1 that haven't been
-   given a real handler yet; after META-MCP-1 the full 203-tool
+   given a real handler yet; after META-MCP-1 the full 205-tool
    surface is covered by real handlers, even if many of them return
    a structured ``not_supported`` error envelope because the
    underlying service layer isn't yet exposed on ``app_state``.
@@ -54,6 +54,7 @@ DESTRUCTIVE_TOOLS: tuple[str, ...] = (
     "synthorg_memory_cancel_fine_tune",
     "synthorg_memory_rollback_checkpoint",
     "synthorg_memory_delete_checkpoint",
+    "synthorg_memory_delete_entry",
     "synthorg_mcp_catalog_uninstall",
     "synthorg_oauth_remove_provider",
     "synthorg_clients_deactivate",
@@ -207,14 +208,14 @@ class TestHandlerParity:
         assert not orphans
 
     def test_total_tool_count_matches_plan(self) -> None:
-        """Registry has exactly the documented 204-tool surface.
+        """Registry has exactly the documented 205-tool surface.
 
         Pinning to the exact count catches accidental tool removal
         *and* double-registration.  Bump this number only when the
         MCP tool surface is intentionally grown or shrunk.
         """
         registry = build_full_registry()
-        assert registry.tool_count == 204
+        assert registry.tool_count == 205
 
 
 class TestNoPlaceholderInProduction:
@@ -288,6 +289,14 @@ def _baseline_args(tool_name: str) -> dict[str, Any]:
     target_key_guess = _guess_id_key(tool_name)
     if target_key_guess:
         args[target_key_guess] = "placeholder-id"
+    # ``synthorg_memory_delete_entry`` validates two non-blank ids
+    # (``agent_id`` then ``memory_id``) before the destructive guardrail
+    # check fires.  The prefix-based id-key heuristic only covers a
+    # single key per tool; seed the second one explicitly so the
+    # guardrail-branch sweeps actually reach the guardrail.
+    if tool_name == "synthorg_memory_delete_entry":
+        args["agent_id"] = "placeholder-agent"
+        args["memory_id"] = "placeholder-mem"
     return args
 
 

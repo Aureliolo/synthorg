@@ -229,3 +229,59 @@ class TestMessageRepository:
         await backend.messages.save(make_message(msg_id=uuid4(), channel="chan2"))
         assert len(await backend.messages.get_history("chan1")) == 1
         assert len(await backend.messages.get_history("chan2")) == 1
+
+    async def test_delete_removes_row_and_returns_true(
+        self, backend: PersistenceBackend
+    ) -> None:
+        msg_id = uuid4()
+        await backend.messages.save(
+            make_message(msg_id=msg_id, channel="chan1"),
+        )
+        assert len(await backend.messages.get_history("chan1")) == 1
+
+        deleted = await backend.messages.delete(str(msg_id))
+        assert deleted is True
+        assert len(await backend.messages.get_history("chan1")) == 0
+
+    async def test_delete_returns_false_when_id_not_found(
+        self, backend: PersistenceBackend
+    ) -> None:
+        deleted = await backend.messages.delete(str(uuid4()))
+        assert deleted is False
+
+    async def test_delete_is_idempotent(self, backend: PersistenceBackend) -> None:
+        msg_id = uuid4()
+        await backend.messages.save(
+            make_message(msg_id=msg_id, channel="chan1"),
+        )
+
+        first = await backend.messages.delete(str(msg_id))
+        second = await backend.messages.delete(str(msg_id))
+        assert first is True
+        assert second is False
+
+    async def test_delete_concurrent_invocations_only_one_succeeds(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Concurrent deletes of the same id race safely.
+
+        Two async tasks issue DELETE for the same row; exactly one
+        must report ``True`` and the other ``False``. Guards against
+        repos that miscount affected rows when the underlying driver
+        serializes inside a connection pool.
+        """
+        import asyncio
+
+        msg_id = uuid4()
+        await backend.messages.save(
+            make_message(msg_id=msg_id, channel="chan1"),
+        )
+
+        results = await asyncio.gather(
+            backend.messages.delete(str(msg_id)),
+            backend.messages.delete(str(msg_id)),
+        )
+
+        assert sum(1 for r in results if r) == 1
+        assert sum(1 for r in results if not r) == 1
+        assert len(await backend.messages.get_history("chan1")) == 0

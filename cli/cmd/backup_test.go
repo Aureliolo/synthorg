@@ -288,13 +288,34 @@ func writeTestConfig(t *testing.T, backendPort int) string {
 // runBackupCmd executes a backup subcommand and returns stdout+stderr output.
 // Resets the --confirm flag between runs to avoid stale state from prior tests
 // (Cobra does not reset flag values between Execute() calls on global commands).
+// Also clears the flag's `Changed` bit so MarkFlagRequired remains effective:
+// a prior Flags().Set() call would otherwise mark the flag as "supplied" and
+// short-circuit cobra's required-flag enforcement on the next invocation.
 // NOTE: If new persistent boolean flags are added to backup commands, add them here.
 func runBackupCmd(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	// Reset sticky boolean flags before each execution.
+	confirmFlag := backupRestoreCmd.Flags().Lookup("confirm")
+	if confirmFlag == nil {
+		t.Fatal("--confirm flag not found on backup restore command")
+	}
 	if err := backupRestoreCmd.Flags().Set("confirm", "false"); err != nil {
 		t.Fatalf("resetting --confirm flag: %v", err)
 	}
+	// Clear Changed so MarkFlagRequired still fires when the test omits --confirm.
+	confirmFlag.Changed = false
+
+	// Reset --sort to its default; otherwise a prior TestBackupList_InvalidSort
+	// run leaves the flag value sticky and downstream order-sensitive tests
+	// inherit garbage state.
+	sortFlag := backupListCmd.Flags().Lookup("sort")
+	if sortFlag == nil {
+		t.Fatal("--sort flag not found on backup list command")
+	}
+	if err := backupListCmd.Flags().Set("sort", "newest"); err != nil {
+		t.Fatalf("resetting --sort flag: %v", err)
+	}
+	sortFlag.Changed = false
 
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
@@ -485,6 +506,50 @@ func TestBackupList_ServerError(t *testing.T) {
 	}
 }
 
+func TestBackupList_InvalidSort(t *testing.T) {
+	// --sort is validated in validateBackupListFlags; an unknown value
+	// must be rejected before any API call.
+	dir := writeTestConfig(t, 19999)
+
+	out, err := runBackupCmd(t, dir, "list", "--sort", "alphabetical")
+	if err == nil {
+		t.Fatal("expected error for invalid --sort value")
+	}
+	if !strings.Contains(err.Error(), "invalid --sort") {
+		t.Errorf("error %q does not mention invalid --sort", err.Error())
+	}
+	_ = out
+}
+
+func TestBackupList_SortCompletionRegistered(t *testing.T) {
+	// Cobra exposes registered completions via __complete; if a fixed
+	// completion is registered the values come back on stdout. We invoke
+	// the special completion subcommand to confirm the three values are
+	// surfaced. SetOut/SetErr/SetArgs leak between Execute() calls on
+	// rootCmd, so capture and restore them around the test body.
+	prevOut := rootCmd.OutOrStdout()
+	prevErr := rootCmd.ErrOrStderr()
+	t.Cleanup(func() {
+		rootCmd.SetOut(prevOut)
+		rootCmd.SetErr(prevErr)
+		rootCmd.SetArgs(nil)
+	})
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"__complete", "backup", "list", "--sort", ""})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("__complete: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"newest", "oldest", "size"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("completion output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 // --- Integration tests: backup restore ---
 
 func TestBackupRestore_Success(t *testing.T) {
@@ -601,21 +666,20 @@ func TestBackupRestore_InvalidID(t *testing.T) {
 }
 
 func TestBackupRestore_MissingConfirm(t *testing.T) {
-	// No server needed -- --confirm flag validation happens before any
-	// API call. Use an unreachable port (not port 0, which fails
-	// config.State validation now that applyTunables surfaces load
-	// errors); --confirm is rejected before the network dial anyway.
+	// No server needed -- --confirm is gated by Cobra's MarkFlagRequired
+	// before the RunE handler is reached. rootCmd has SilenceUsage and
+	// SilenceErrors set, so cobra's auto-emitted usage block never reaches
+	// the buffer; we assert on the error value only.
 	dir := writeTestConfig(t, 19999)
 
-	out, err := runBackupCmd(t, dir, "restore", "abcdef012345")
+	_, err := runBackupCmd(t, dir, "restore", "abcdef012345")
 	if err == nil {
 		t.Fatal("expected error for missing --confirm flag")
 	}
-	if !strings.Contains(err.Error(), "--confirm") {
-		t.Errorf("error %q does not mention --confirm", err.Error())
-	}
-	if !strings.Contains(out, "--confirm") {
-		t.Errorf("output missing --confirm hint:\n%s", out)
+	// Cobra's required-flag error reads exactly: required flag(s) "confirm" not set
+	const wantErr = `required flag(s) "confirm" not set`
+	if !strings.Contains(err.Error(), wantErr) {
+		t.Errorf("error %q does not contain %q", err.Error(), wantErr)
 	}
 }
 

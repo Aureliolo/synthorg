@@ -7,6 +7,7 @@ identifiers).  Classification is deterministic -- no LLM calls.
 
 import re
 from enum import StrEnum
+from typing import Final
 
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
 from synthorg.observability import get_logger
@@ -98,8 +99,26 @@ _NUMERIC_PATTERNS = re.compile(
     r")",
 )
 
-_FALLBACK_SCORE = 0.0
-_MIN_LINES_FOR_STRUCTURE = 2
+_FALLBACK_SCORE: Final[float] = 0.0
+_MIN_LINES_FOR_STRUCTURE: Final[int] = 2
+
+# Per-signal scaling factors. Each signal raw-counts pattern hits and
+# divides by an input-size proxy (words / lines); the factor below
+# converts the resulting density into a 0.0-1.0 score, saturated at 1.0.
+# Calibrated against the corpus described in
+# `docs/design/memory.md` § "Density classification".
+_CODE_PATTERN_SCALE: Final[float] = 5.0
+_STRUCTURED_DATA_SCALE: Final[float] = 2.0
+_IDENTIFIER_DENSITY_SCALE: Final[float] = 8.0
+_NUMERIC_DENSITY_SCALE: Final[float] = 10.0
+
+# Line-structure heuristics: short average line length plus many lines
+# implies code-like layout. Tuned for typical 80-column source files.
+_SHORT_LINE_LENGTH_THRESHOLD: Final[float] = 80.0
+_MULTILINE_DENSITY_SCALE: Final[float] = 10.0
+
+# Default density threshold above which content is classified DENSE.
+_DEFAULT_DENSE_THRESHOLD: Final[float] = 0.5
 
 
 def _code_pattern_score(text: str) -> float:
@@ -107,7 +126,7 @@ def _code_pattern_score(text: str) -> float:
     matches = len(_CODE_PATTERNS.findall(text))
     words = max(len(text.split()), 1)
     ratio = matches / words
-    return min(ratio * 5.0, 1.0)
+    return min(ratio * _CODE_PATTERN_SCALE, 1.0)
 
 
 def _structured_data_score(text: str) -> float:
@@ -115,7 +134,7 @@ def _structured_data_score(text: str) -> float:
     matches = len(_STRUCTURED_PATTERNS.findall(text))
     lines = max(len(text.splitlines()), 1)
     ratio = matches / lines
-    return min(ratio * 2.0, 1.0)
+    return min(ratio * _STRUCTURED_DATA_SCALE, 1.0)
 
 
 def _identifier_density_score(text: str) -> float:
@@ -123,7 +142,7 @@ def _identifier_density_score(text: str) -> float:
     matches = len(_IDENTIFIER_PATTERNS.findall(text))
     words = max(len(text.split()), 1)
     ratio = matches / words
-    return min(ratio * 8.0, 1.0)
+    return min(ratio * _IDENTIFIER_DENSITY_SCALE, 1.0)
 
 
 def _numeric_density_score(text: str) -> float:
@@ -131,7 +150,7 @@ def _numeric_density_score(text: str) -> float:
     matches = len(_NUMERIC_PATTERNS.findall(text))
     words = max(len(text.split()), 1)
     ratio = matches / words
-    return min(ratio * 10.0, 1.0)
+    return min(ratio * _NUMERIC_DENSITY_SCALE, 1.0)
 
 
 def _line_structure_score(text: str) -> float:
@@ -140,9 +159,9 @@ def _line_structure_score(text: str) -> float:
     if len(lines) < _MIN_LINES_FOR_STRUCTURE:
         return _FALLBACK_SCORE
     avg_len = sum(len(line) for line in lines) / len(lines)
-    # Short average line length (< 60 chars) + multiple lines = code-like
-    short_line_score = max(0.0, 1.0 - avg_len / 80.0)
-    multi_line_score = min(len(lines) / 10.0, 1.0)
+    # Short average line length (below threshold) + multiple lines = code-like
+    short_line_score = max(0.0, 1.0 - avg_len / _SHORT_LINE_LENGTH_THRESHOLD)
+    multi_line_score = min(len(lines) / _MULTILINE_DENSITY_SCALE, 1.0)
     return short_line_score * multi_line_score
 
 
@@ -161,7 +180,7 @@ class DensityClassifier:
         ValueError: If ``dense_threshold`` is outside [0.0, 1.0].
     """
 
-    def __init__(self, *, dense_threshold: float = 0.5) -> None:
+    def __init__(self, *, dense_threshold: float = _DEFAULT_DENSE_THRESHOLD) -> None:
         if not 0.0 <= dense_threshold <= 1.0:
             msg = f"dense_threshold must be in [0.0, 1.0], got {dense_threshold}"
             raise ValueError(msg)

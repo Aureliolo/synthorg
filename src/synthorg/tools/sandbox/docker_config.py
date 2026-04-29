@@ -331,8 +331,7 @@ class DockerSandboxConfig(BaseModel):
                 if entry not in existing:
                     allowed.append(entry)
                     existing.add(entry)
-        data["allowed_hosts"] = tuple(allowed)
-        return data
+        return {**data, "allowed_hosts": tuple(allowed)}
 
     @model_validator(mode="after")
     def _validate_network_allow_all(self) -> Self:
