@@ -91,8 +91,10 @@ def _reset_label_snapshot() -> Iterator[None]:
     ``agent_id`` / ``workflow_definition_id`` / ``department``
     against the live registries. Without this fixture the seeded
     state from one test (e.g. ``test_prometheus_collector::*`` that
-    drives ``refresh``) leaks into the next, breaking push tests
-    that expect bootstrap (no-op) validation.
+    drives ``refresh``) leaks into the next. The reset puts every
+    test back to the empty initial snapshot, which is fail-closed:
+    every ``validate_*`` raises ``ValueError`` and the rejected
+    sample is dropped by the ``metrics_hub._safe_record`` decorator.
     """
     from synthorg.observability.prometheus_labels import (
         _reset_label_snapshot_for_tests,

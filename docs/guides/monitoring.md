@@ -23,7 +23,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 
 ## Metric inventory
 
-The **Dashboard** column maps each metric to a row in the default Grafana overview dashboard (`monitoring/grafana/synthorg-overview.json`). Rows are collapsible; the only row expanded by default is `Health & SLO`. The dashboard exposes three filter variables (`$agent_id`, `$workflow_definition_id`, `$department`) that drill panels down per-entity; default queries aggregate across the full set so the unfiltered view is always meaningful.
+The **Dashboard** column maps each metric to a row in the default Grafana overview dashboard (`monitoring/grafana/synthorg-overview.json`). Rows are collapsible; the only row expanded by default is `Health & SLO`. The dashboard exposes four filter variables (`$agent_id`, `$agent`, `$workflow_definition_id`, `$department`) that drill panels down per-entity; the two agent-named variables exist because `synthorg_tasks_total` uses `agent` while the per-agent cost metrics use `agent_id`. Default queries aggregate across the full set so the unfiltered view is always meaningful.
 
 Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data. The five formerly-unbounded labels (`agent_id`, `agent`, `department`, `workflow_definition_id` on the metrics noted below) are validated against a registry-bound snapshot rebuilt on every Prometheus scrape; unknown values drop that one sample with a `metrics.scrape.failed` WARN log per unknown label per scrape. The log repeats on the next scrape if the value is still unknown.
 

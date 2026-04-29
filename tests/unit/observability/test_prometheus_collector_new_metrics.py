@@ -116,14 +116,20 @@ def test_record_api_request_rejects_invalid_status_code() -> None:
         )
 
 
-def test_status_class_boundaries() -> None:
-    assert status_class(100) == "1xx"
-    assert status_class(200) == "2xx"
-    assert status_class(399) == "3xx"
-    assert status_class(404) == "4xx"
-    assert status_class(599) == "5xx"
-    assert status_class(99) == "invalid"
-    assert status_class(600) == "invalid"
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (100, "1xx"),
+        (200, "2xx"),
+        (399, "3xx"),
+        (404, "4xx"),
+        (599, "5xx"),
+        (99, "invalid"),
+        (600, "invalid"),
+    ],
+)
+def test_status_class_boundaries(code: int, expected: str) -> None:
+    assert status_class(code) == expected
 
 
 # -- Task metrics ------------------------------------------------------------

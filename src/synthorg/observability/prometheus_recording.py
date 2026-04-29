@@ -290,6 +290,14 @@ class RecordingMixin:
         require_label("api error category", category, VALID_API_ERROR_CATEGORIES)
         sc = status_class(status_code)
         if sc not in {"4xx", "5xx"}:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="api_error",
+                reason="non_error_status_code",
+                category=category,
+                status_code=status_code,
+                mapped_class=sc,
+            )
             msg = (
                 f"record_api_error: status_code {status_code!r} is not 4xx/5xx"
                 f" (mapped to {sc!r})"

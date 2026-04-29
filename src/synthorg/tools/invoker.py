@@ -425,12 +425,33 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 span.set_attribute("tool.outcome", "success")
             return result
 
-    async def _invoke_single_inner(  # noqa: PLR0911
+    async def _invoke_single_inner(
         self,
         tool_call: ToolCall,
     ) -> ToolResult:
-        """Inner body of ``_invoke_single`` -- guarded by the span."""
+        """Inner body of ``_invoke_single`` -- guarded by the span.
+
+        Every exit path -- happy or error -- routes through the same
+        recording call so success / error / timeout outcomes all land
+        in ``synthorg_tool_invocations_total`` and the activity DB.
+        """
         started_at = datetime.now(UTC)
+        result = await self._build_invocation_result(tool_call)
+        await record_tool_invocation(self, tool_call, result, started_at=started_at)
+        return result
+
+    async def _build_invocation_result(  # noqa: PLR0911
+        self,
+        tool_call: ToolCall,
+    ) -> ToolResult:
+        """Run the lookup -> permission -> exec -> scan pipeline.
+
+        Returns a ``ToolResult`` for every outcome (lookup miss,
+        permission denial, sub-constraint violation, param error,
+        security block, execution failure, parking error, success).
+        Caller is responsible for recording metrics around this
+        function so all exit paths are observable.
+        """
         tool_or_error = self._lookup_tool(tool_call)
         if isinstance(tool_or_error, ToolResult):
             return tool_or_error
@@ -482,9 +503,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 security_context,
             )
 
-        result = self._build_result(tool_call, exec_result)
-        await record_tool_invocation(self, tool_call, result, started_at=started_at)
-        return result
+        return self._build_result(tool_call, exec_result)
 
     def _lookup_tool(self, tool_call: ToolCall) -> BaseTool | ToolResult:
         """Look up a tool in the registry, returning an error on miss."""
@@ -626,11 +645,16 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         # Surface timeout metadata so the metrics layer can record
         # ``outcome="timeout"`` for tools that hit their time budget,
         # distinguishing them from generic errors in dashboards.
+        # ``ToolResult`` enforces ``is_timeout => is_error``; if the
+        # underlying execution flagged a timeout but didn't already
+        # mark itself errored, force the error flag so the model-side
+        # validator doesn't reject the result.
         is_timeout = bool(result.metadata.get("timed_out", False))
+        is_error = result.is_error or is_timeout
         return ToolResult(
             tool_call_id=tool_call.id,
             content=result.content,
-            is_error=result.is_error,
+            is_error=is_error,
             is_timeout=is_timeout,
         )
 

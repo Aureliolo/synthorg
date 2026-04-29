@@ -62,7 +62,7 @@
     {
       "type": "gauge",
       "id": 3,
-      "title": "Budget utilisation",
+      "title": "Budget utilization",
       "description": "Accumulated cost as % of monthly budget. Alert over 80%.",
       "targets": [
         {
@@ -379,7 +379,7 @@
         {
           "type": "gauge",
           "id": 503,
-          "title": "Daily budget utilisation",
+          "title": "Daily budget utilization",
           "description": "synthorg_budget_daily_used_percent (prorated daily share of the monthly cap).",
           "targets": [
             {
@@ -410,7 +410,7 @@
         {
           "type": "timeseries",
           "id": 504,
-          "title": "Per-agent budget utilisation %",
+          "title": "Per-agent budget utilization %",
           "description": "synthorg_agent_budget_used_percent over time, per agent ($agent_id).",
           "targets": [
             {
@@ -555,7 +555,7 @@
           "type": "timeseries",
           "id": 8,
           "title": "API request rate by status class",
-          "description": "Request rate per minute split into 1xx / 2xx / 3xx / 4xx / 5xx. Sourced from the auto-emitted _count series of synthorg_api_request_duration_seconds.",
+          "description": "Request rate per second split into 1xx / 2xx / 3xx / 4xx / 5xx. Sourced from the auto-emitted _count series of synthorg_api_request_duration_seconds via rate(...[1m]) (per-second over a 1-minute window, matching the reqps unit).",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},

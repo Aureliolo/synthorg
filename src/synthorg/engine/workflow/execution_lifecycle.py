@@ -347,6 +347,61 @@ async def handle_task_state_changed(
 # -- Private helpers -------------------------------------------------------
 
 
+def _log_node_status_transition(
+    execution_id: str,
+    workflow_definition_id: str,
+    task_id: str,
+    previous_node_status: WorkflowNodeExecutionStatus | None,
+    to_node_status: WorkflowNodeExecutionStatus,
+) -> None:
+    """Emit ``WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED`` for a node hop."""
+    logger.info(
+        WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
+        execution_id=execution_id,
+        workflow_definition_id=workflow_definition_id,
+        task_id=task_id,
+        from_status=previous_node_status.value
+        if previous_node_status is not None
+        else None,
+        to_status=to_node_status.value,
+    )
+
+
+def _emit_terminal_workflow_observability(
+    *,
+    execution: WorkflowExecution,
+    terminal_status: WorkflowExecutionStatus,
+    now: datetime,
+    event_constant: str,
+    extra_event_kwargs: dict[str, str] | None = None,
+) -> None:
+    """Emit the post-save state-transition log + terminal log + metric.
+
+    Centralizes the four-step observability tail shared by both
+    task-driven terminal handlers (``_handle_task_failed`` and the
+    completion branch of ``_handle_task_completed``) so a future
+    workflow-observability change does not need to be applied twice.
+    """
+    logger.info(
+        WORKFLOW_EXEC_STATUS_TRANSITIONED,
+        execution_id=execution.id,
+        workflow_definition_id=execution.definition_id,
+        from_status=execution.status.value,
+        to_status=terminal_status.value,
+        **(extra_event_kwargs or {}),
+    )
+    logger.info(
+        event_constant,
+        execution_id=execution.id,
+        **(extra_event_kwargs or {}),
+    )
+    record_workflow_execution(
+        workflow_definition_id=execution.definition_id,
+        status=terminal_status.value,
+        duration_seconds=_execution_duration_seconds(execution, now),
+    )
+
+
 async def _handle_task_failed(
     repo: WorkflowExecutionRepository,
     execution: WorkflowExecution,
@@ -392,38 +447,24 @@ async def _handle_task_failed(
         await repo.save(failed)
         # State-transition logs fire AFTER persistence succeeds. Save
         # raises propagate here, skipping these logs and the metric.
-        logger.info(
-            WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
+        _log_node_status_transition(
             execution_id=execution.id,
             workflow_definition_id=execution.definition_id,
             task_id=event.task_id,
-            from_status=previous_node_status.value
-            if previous_node_status is not None
-            else None,
-            to_status=WorkflowNodeExecutionStatus.TASK_FAILED.value,
-        )
-        logger.info(
-            WORKFLOW_EXEC_STATUS_TRANSITIONED,
-            execution_id=execution.id,
-            workflow_definition_id=execution.definition_id,
-            from_status=execution.status.value,
-            to_status=WorkflowExecutionStatus.FAILED.value,
-            error=error_msg,
+            previous_node_status=previous_node_status,
+            to_node_status=WorkflowNodeExecutionStatus.TASK_FAILED,
         )
         logger.info(
             WORKFLOW_EXEC_NODE_TASK_FAILED,
             execution_id=execution.id,
             task_id=event.task_id,
         )
-        logger.info(
-            WORKFLOW_EXEC_FAILED,
-            execution_id=execution.id,
-            error=error_msg,
-        )
-        record_workflow_execution(
-            workflow_definition_id=execution.definition_id,
-            status=WorkflowExecutionStatus.FAILED.value,
-            duration_seconds=_execution_duration_seconds(execution, now),
+        _emit_terminal_workflow_observability(
+            execution=execution,
+            terminal_status=WorkflowExecutionStatus.FAILED,
+            now=now,
+            event_constant=WORKFLOW_EXEC_FAILED,
+            extra_event_kwargs={"error": error_msg},
         )
 
 
@@ -447,74 +488,82 @@ async def _handle_task_completed(
         WorkflowNodeExecutionStatus.TASK_COMPLETED,
     )
     if _all_tasks_completed(updated):
-        with _tracer.start_as_current_span(
-            "workflow.execution.task_completed",
-            attributes={
-                "workflow.definition_id": execution.definition_id,
-                "workflow.execution_id": execution.id,
-                "workflow.terminal_via": "task_completed",
-                "task.id": event.task_id,
-            },
-        ):
-            now = datetime.now(UTC)
-            completed = updated.model_copy(
-                update={
-                    "status": WorkflowExecutionStatus.COMPLETED,
-                    "updated_at": now,
-                    "completed_at": now,
-                },
-            )
-            await repo.save(completed)
-            # State-transition logs fire AFTER persistence succeeds.
-            logger.info(
-                WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
-                execution_id=execution.id,
-                workflow_definition_id=execution.definition_id,
-                task_id=event.task_id,
-                from_status=previous_node_status.value
-                if previous_node_status is not None
-                else None,
-                to_status=WorkflowNodeExecutionStatus.TASK_COMPLETED.value,
-            )
-            logger.info(
-                WORKFLOW_EXEC_NODE_TASK_COMPLETED,
-                execution_id=execution.id,
-                task_id=event.task_id,
-            )
-            logger.info(
-                WORKFLOW_EXEC_STATUS_TRANSITIONED,
-                execution_id=execution.id,
-                workflow_definition_id=execution.definition_id,
-                from_status=execution.status.value,
-                to_status=WorkflowExecutionStatus.COMPLETED.value,
-            )
-            logger.info(
-                WORKFLOW_EXEC_COMPLETED,
-                execution_id=execution.id,
-            )
-            record_workflow_execution(
-                workflow_definition_id=execution.definition_id,
-                status=WorkflowExecutionStatus.COMPLETED.value,
-                duration_seconds=_execution_duration_seconds(execution, now),
-            )
+        await _finalize_task_completed_terminal(
+            repo,
+            execution,
+            updated,
+            event,
+            previous_node_status,
+        )
     else:
         await repo.save(updated)
         # Node-status log fires AFTER persistence; the workflow
         # itself stays RUNNING so no terminal log is emitted here.
-        logger.info(
-            WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
+        _log_node_status_transition(
             execution_id=execution.id,
             workflow_definition_id=execution.definition_id,
             task_id=event.task_id,
-            from_status=previous_node_status.value
-            if previous_node_status is not None
-            else None,
-            to_status=WorkflowNodeExecutionStatus.TASK_COMPLETED.value,
+            previous_node_status=previous_node_status,
+            to_node_status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
         )
         logger.info(
             WORKFLOW_EXEC_NODE_TASK_COMPLETED,
             execution_id=execution.id,
             task_id=event.task_id,
+        )
+
+
+async def _finalize_task_completed_terminal(
+    repo: WorkflowExecutionRepository,
+    execution: WorkflowExecution,
+    updated: WorkflowExecution,
+    event: TaskStateChanged,
+    previous_node_status: WorkflowNodeExecutionStatus | None,
+) -> None:
+    """Persist + log + record metric for the terminal completion path.
+
+    Split out from :func:`_handle_task_completed` so that handler
+    stays under the 50-line ceiling. Wraps the full save / state-
+    transition log / metric block in an OTLP span keyed at
+    ``workflow.execution.task_completed`` so cascading completions
+    appear in traces.
+    """
+    with _tracer.start_as_current_span(
+        "workflow.execution.task_completed",
+        attributes={
+            "workflow.definition_id": execution.definition_id,
+            "workflow.execution_id": execution.id,
+            "workflow.terminal_via": "task_completed",
+            "task.id": event.task_id,
+        },
+    ):
+        now = datetime.now(UTC)
+        completed = updated.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.COMPLETED,
+                "updated_at": now,
+                "completed_at": now,
+            },
+        )
+        await repo.save(completed)
+        # State-transition logs fire AFTER persistence succeeds.
+        _log_node_status_transition(
+            execution_id=execution.id,
+            workflow_definition_id=execution.definition_id,
+            task_id=event.task_id,
+            previous_node_status=previous_node_status,
+            to_node_status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
+        )
+        logger.info(
+            WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+            execution_id=execution.id,
+            task_id=event.task_id,
+        )
+        _emit_terminal_workflow_observability(
+            execution=execution,
+            terminal_status=WorkflowExecutionStatus.COMPLETED,
+            now=now,
+            event_constant=WORKFLOW_EXEC_COMPLETED,
         )
 
 

@@ -420,6 +420,10 @@ async def apply_transition(
                 "transition",
             ),
         )
+        # Free the timing entry once the metric is emitted; without
+        # this the ``_created_at`` map would grow unbounded across
+        # the lifetime of the process.
+        timings.remove(mutation.task_id)
 
     return TaskMutationResult(
         request_id=mutation.request_id,
@@ -536,6 +540,7 @@ async def apply_cancel(
             "cancel",
         ),
     )
+    timings.remove(mutation.task_id)
 
     return TaskMutationResult(
         request_id=mutation.request_id,

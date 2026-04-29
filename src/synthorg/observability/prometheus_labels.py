@@ -182,17 +182,26 @@ VALID_DISCONNECT_REASONS: Final[frozenset[str]] = frozenset(
 # pre-scrape coroutine. Sync record sites consult this snapshot via the
 # ``validate_<label>`` helpers below.
 #
-# Until ``refresh()`` runs for the first time, the snapshot is in
-# ``seeded=False`` bootstrap mode and every value is accepted -- this
-# keeps the very first scrape from nuking every push-time metric. Once
-# any ``update_label_snapshot()`` call swaps in a real snapshot, the
-# fail-closed semantics engage: unknown values raise ``ValueError``
-# (logged WARN once via :func:`require_label`).
+# Validators fail closed in every state. The initial snapshot is
+# empty + ``seeded=False``; ``validate_*`` calls reach
+# :func:`require_label` against an empty frozenset and raise
+# ``ValueError`` (logged WARN by :func:`require_label`). Push-time
+# callers go through ``metrics_hub._safe_record``, which swallows the
+# ``ValueError`` so a rejected sample drops cleanly without crashing
+# the business path.
 #
-# Ephemeral label values that never enter the registries (e.g. a test
-# agent created and immediately discarded between scrapes) are
-# permanently rejected after the snapshot seeds. This is intentional:
-# cardinality safety beats capturing every transient value.
+# A bootstrap pass-through was considered and rejected: it would let
+# arbitrary startup metric labels create permanent Prometheus
+# children before ``PrometheusCollector.refresh()`` lands the first
+# real snapshot, which is exactly the cardinality bomb this module
+# exists to prevent. Cold-start traffic produces WARN logs until the
+# first scrape; the next scrape rotates the snapshot and the sample
+# lands.
+#
+# Ephemeral label values that never enter the registries (e.g. a
+# test agent created and immediately discarded between scrapes) are
+# permanently rejected. This is intentional: cardinality safety
+# beats capturing every transient value.
 
 
 @dataclass(frozen=True, slots=True)

@@ -229,33 +229,40 @@ class PrometheusCollector(RecordingMixin):
         # registry data is the basis for label validation in the same
         # scrape.
         await self._rebuild_label_snapshot(app_state, agents)
-        await self._refresh_agent_cost_metrics(
-            app_state,
-            agents,
-            utc_midnight,
-        )
+        # Skip cost-metric rebuild for this scrape if the agent
+        # registry fetch failed (``agents is None``) so per-agent
+        # gauges keep their prior values rather than zeroing out.
+        if agents is not None:
+            await self._refresh_agent_cost_metrics(
+                app_state,
+                agents,
+                utc_midnight,
+            )
         await self._refresh_task_metrics(app_state)
         logger.debug(METRICS_SCRAPE_COMPLETED)
 
     async def _rebuild_label_snapshot(
         self,
         app_state: AppState,
-        agents: tuple[Any, ...],
+        agents: tuple[Any, ...] | None,
     ) -> None:
         """Refresh the snapshot consumed by sync ``validate_*`` helpers.
 
         Workflow-definition and department fan out in parallel via
         ``asyncio.TaskGroup`` since the queries are independent. Each
-        fetch helper returns a sentinel ``None`` on failure (logged
-        WARN), and the merge step keeps the previously-seeded value
-        for any failed source rather than blanking it. The snapshot
-        only flips ``seeded=True`` once at least one successful build
-        has produced an agent_ids set, so a transient cold-start
-        registry outage doesn't drop the validators out of bootstrap
-        with empty allowlists.
+        fetch helper (including the agent fetch upstream) returns a
+        sentinel ``None`` on failure (logged WARN), and the merge
+        step keeps the previously-seeded value for any failed source
+        rather than blanking it. The snapshot only flips
+        ``seeded=True`` once every source has produced at least one
+        successful build, so a transient cold-start registry outage
+        doesn't drop the validators out of bootstrap with empty
+        allowlists.
         """
-        agent_ids = frozenset(str(a.id) for a in agents)
         previous = _snapshot_for_collector()
+        agent_ids: frozenset[str] | None = (
+            frozenset(str(a.id) for a in agents) if agents is not None else None
+        )
 
         async def _fetch_workflow_definitions() -> frozenset[str] | None:
             try:
@@ -300,24 +307,27 @@ class PrometheusCollector(RecordingMixin):
         dept_ids = dept_task.result()
         # Carry the previous snapshot's value forward for any source
         # that failed; only a successful fetch overwrites. The
-        # snapshot only flips to ``seeded=True`` once both sources
-        # have produced at least one usable result during this
+        # snapshot only flips to ``seeded=True`` once every source
+        # has produced at least one usable result during this
         # process lifetime (otherwise we'd exit bootstrap with empty
         # allowlists, fail-closing every push-time metric until the
         # next refresh succeeds).
+        merged_agent_ids = agent_ids if agent_ids is not None else previous.agent_ids
         merged_workflow_ids = (
             wf_ids if wf_ids is not None else previous.workflow_definition_ids
         )
         merged_departments = dept_ids if dept_ids is not None else previous.departments
         # Seed only if every source has at least one successful read
-        # (this round OR a prior round). The first round where a
+        # (this round OR a prior round). The first round where any
         # source raises keeps ``seeded=False``; the next successful
         # round flips it on.
-        seeded = previous.seeded or (wf_ids is not None and dept_ids is not None)
+        seeded = previous.seeded or (
+            agent_ids is not None and wf_ids is not None and dept_ids is not None
+        )
 
         update_label_snapshot(
             _LabelSnapshot(
-                agent_ids=agent_ids,
+                agent_ids=merged_agent_ids,
                 workflow_definition_ids=merged_workflow_ids,
                 departments=merged_departments,
                 seeded=seeded,
@@ -437,20 +447,25 @@ class PrometheusCollector(RecordingMixin):
     async def _refresh_agent_metrics(
         self,
         app_state: AppState,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[Any, ...] | None:
         """Update agent gauges from AgentRegistryService.
 
         Always clears label series first so disappeared combinations
-        drop to zero.  Then returns early if the agent registry is
-        unavailable; otherwise queries active agents and aggregates
-        counts by ``(status, trust_level)``.
+        drop to zero.  Then returns the empty tuple if the agent
+        registry is unavailable; otherwise queries active agents and
+        aggregates counts by ``(status, trust_level)``.
 
         Args:
             app_state: The application state containing agent registry.
 
         Returns:
-            Tuple of active agent objects (empty tuple if the agent
-            registry is unavailable or a service error occurs).
+            Tuple of active agent objects on success (possibly empty
+            if the registry has no active agents and the registry
+            itself is unavailable). Returns ``None`` if the registry
+            fetch raised so the caller can keep the previous label
+            snapshot's agent_ids rather than blanking the allowlist
+            (matching the behaviour of the workflow / department
+            fetchers in :meth:`_rebuild_label_snapshot`).
         """
         self._agents_total.clear()
         if not app_state.has_agent_registry:
@@ -476,7 +491,7 @@ class PrometheusCollector(RecordingMixin):
                 component="agent_registry",
                 exc_info=True,
             )
-            return ()
+            return None
 
     async def _refresh_agent_cost_metrics(
         self,
