@@ -13,7 +13,7 @@ the tunnel feature simply do not call the start endpoint.
 import asyncio
 import os
 
-from pyngrok import conf, ngrok  # type: ignore[import-not-found]
+from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
 from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger, safe_error_description
