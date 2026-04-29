@@ -46,6 +46,74 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _agent_ids_from_agents(
+    agents: tuple[Any, ...] | None,
+) -> frozenset[str] | None:
+    """Derive the agent-id frozenset from the registry-fetch result.
+
+    Returns ``None`` when *agents* is ``None`` (the registry fetch
+    raised) so the snapshot merge can carry the previous allowlist
+    forward; returns the (possibly empty) frozenset of stringified
+    agent ids otherwise.
+    """
+    if agents is None:
+        return None
+    return frozenset(str(a.id) for a in agents)
+
+
+async def _fetch_workflow_definitions(
+    app_state: AppState,
+) -> frozenset[str] | None:
+    """Pull the active workflow-definition id set from persistence.
+
+    Returns ``frozenset()`` when the repo isn't wired up (the snapshot
+    merge treats that as a "successful fetch with zero entries"), the
+    real id set on success, or ``None`` on a registry-fetch exception
+    so the merge step keeps the previous allowlist.
+    """
+    try:
+        persistence = getattr(app_state, "persistence", None)
+        wf_repo = getattr(persistence, "workflow_definitions", None)
+        if wf_repo is None:
+            return frozenset()
+        definitions = await wf_repo.list_definitions()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            METRICS_SCRAPE_FAILED,
+            component="workflow_definition_repo",
+            exc_info=True,
+        )
+        return None
+    return frozenset(str(d.id) for d in definitions)
+
+
+async def _fetch_departments(app_state: AppState) -> frozenset[str] | None:
+    """Pull the active department-name set from the department service.
+
+    Same return contract as :func:`_fetch_workflow_definitions`:
+    empty frozenset for "service not wired", real set on success,
+    ``None`` on exception so the merge step preserves the previous
+    allowlist.
+    """
+    try:
+        dept_service = getattr(app_state, "department_service", None)
+        if dept_service is None:
+            return frozenset()
+        records, _ = await dept_service.list_departments()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            METRICS_SCRAPE_FAILED,
+            component="department_service",
+            exc_info=True,
+        )
+        return None
+    return frozenset(str(r.name) for r in records)
+
+
 class PrometheusCollector(RecordingMixin):
     """Collects business metrics from SynthOrg services for Prometheus.
 
@@ -249,76 +317,48 @@ class PrometheusCollector(RecordingMixin):
     ) -> None:
         """Refresh the snapshot consumed by sync ``validate_*`` helpers.
 
-        Workflow-definition and department fan out in parallel via
-        ``asyncio.TaskGroup`` since the queries are independent. Each
-        fetch helper (including the agent fetch upstream) returns a
-        sentinel ``None`` on failure (logged WARN), and the merge
-        step keeps the previously-seeded value for any failed source
-        rather than blanking it. Each source's ``*_seeded`` flag
-        flips ``True`` the first time *its own* source produces a
-        usable result and stays ``True`` thereafter, so a transient
-        outage in one registry no longer suppresses the unrelated
-        allowlists.
+        Orchestrates three steps that each live in their own helper so
+        this body stays under the 50-line ceiling: derive
+        ``agent_ids``, fan out the workflow + department fetches in
+        parallel, then merge under the process-global snapshot lock.
+        Each source's ``*_seeded`` flag flips ``True`` the first time
+        *its own* source produces a usable result and stays ``True``
+        thereafter, so a transient outage in one registry does not
+        suppress the unrelated allowlists.
         """
-        agent_ids: frozenset[str] | None = (
-            frozenset(str(a.id) for a in agents) if agents is not None else None
+        agent_ids = _agent_ids_from_agents(agents)
+        async with asyncio.TaskGroup() as tg:
+            wf_task = tg.create_task(_fetch_workflow_definitions(app_state))
+            dept_task = tg.create_task(_fetch_departments(app_state))
+        await self._merge_and_update_snapshot(
+            agent_ids=agent_ids,
+            wf_ids=wf_task.result(),
+            dept_ids=dept_task.result(),
         )
 
-        async def _fetch_workflow_definitions() -> frozenset[str] | None:
-            try:
-                persistence = getattr(app_state, "persistence", None)
-                wf_repo = getattr(persistence, "workflow_definitions", None)
-                if wf_repo is None:
-                    return frozenset()
-                definitions = await wf_repo.list_definitions()
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    METRICS_SCRAPE_FAILED,
-                    component="workflow_definition_repo",
-                    exc_info=True,
-                )
-                return None
-            return frozenset(str(d.id) for d in definitions)
+    @staticmethod
+    async def _merge_and_update_snapshot(
+        *,
+        agent_ids: frozenset[str] | None,
+        wf_ids: frozenset[str] | None,
+        dept_ids: frozenset[str] | None,
+    ) -> None:
+        """Merge with the previous snapshot and atomically rebind.
 
-        async def _fetch_departments() -> frozenset[str] | None:
-            try:
-                dept_service = getattr(app_state, "department_service", None)
-                if dept_service is None:
-                    return frozenset()
-                records, _ = await dept_service.list_departments()
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    METRICS_SCRAPE_FAILED,
-                    component="department_service",
-                    exc_info=True,
-                )
-                return None
-            return frozenset(str(r.name) for r in records)
-
-        async with asyncio.TaskGroup() as tg:
-            wf_task = tg.create_task(_fetch_workflow_definitions())
-            dept_task = tg.create_task(_fetch_departments())
-
-        wf_ids = wf_task.result()
-        dept_ids = dept_task.result()
-        # The read/merge/write critical section runs under the
-        # process-global ``_snapshot_lock`` (lives next to
-        # ``_snapshot`` in ``prometheus_labels``) so two overlapping
-        # refreshes -- including refreshes from distinct
-        # ``PrometheusCollector`` instances during tests -- cannot
-        # interleave their fetches with one another's update and
-        # clobber a partial-failure carry-forward. The fetches above
-        # are deliberately outside the lock so a slow registry call
-        # does not block other refresh work; only the tiny
-        # merge-and-rebind step is serialized.
+        Runs under the process-global ``_snapshot_lock`` (lives next
+        to ``_snapshot`` in ``prometheus_labels``) so two overlapping
+        refreshes -- including refreshes from distinct
+        ``PrometheusCollector`` instances during tests -- cannot
+        interleave their fetches with one another's update and
+        clobber a partial-failure carry-forward. The fetch step in
+        :meth:`_rebuild_label_snapshot` is deliberately outside the
+        lock so a slow registry call does not block other refresh
+        work; only this tiny merge-and-rebind step is serialized.
+        """
         async with _snapshot_lock:
             previous = _snapshot_for_collector()
-            # Carry the previous snapshot's value forward for any source
-            # that failed; only a successful fetch overwrites.
+            # Carry the previous snapshot's value forward for any
+            # source that failed; only a successful fetch overwrites.
             merged_agent_ids = (
                 agent_ids if agent_ids is not None else previous.agent_ids
             )
@@ -328,24 +368,18 @@ class PrometheusCollector(RecordingMixin):
             merged_departments = (
                 dept_ids if dept_ids is not None else previous.departments
             )
-            # Per-source readiness: each flag flips True the first time
-            # *its own* source produces a usable result and stays True
-            # thereafter. A transient outage on one source no longer
-            # suppresses the unrelated allowlists.
-            agent_ids_seeded = previous.agent_ids_seeded or (agent_ids is not None)
-            workflow_definition_ids_seeded = (
-                previous.workflow_definition_ids_seeded or (wf_ids is not None)
-            )
-            departments_seeded = previous.departments_seeded or (dept_ids is not None)
-
             update_label_snapshot(
                 _LabelSnapshot(
                     agent_ids=merged_agent_ids,
                     workflow_definition_ids=merged_workflow_ids,
                     departments=merged_departments,
-                    agent_ids_seeded=agent_ids_seeded,
-                    workflow_definition_ids_seeded=workflow_definition_ids_seeded,
-                    departments_seeded=departments_seeded,
+                    agent_ids_seeded=previous.agent_ids_seeded
+                    or (agent_ids is not None),
+                    workflow_definition_ids_seeded=(
+                        previous.workflow_definition_ids_seeded or (wf_ids is not None)
+                    ),
+                    departments_seeded=previous.departments_seeded
+                    or (dept_ids is not None),
                 ),
             )
 

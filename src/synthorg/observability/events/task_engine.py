@@ -31,8 +31,12 @@ TASK_ENGINE_VERSION_CONFLICT: Final[str] = "task_engine.version.conflict"
 
 TASK_ENGINE_TIMING_FALLBACK: Final[str] = "task_engine.timing.fallback"
 """Emitted when the in-memory ``TaskTimingTracker`` has no creation
-timestamp for a task that just transitioned to a terminal state
-(typically because the task was created before a process restart).
+timestamp for a task that just transitioned to one of the recorded
+outcome statuses in ``_RECORDED_STATUS_OUTCOME`` -- this includes
+the truly terminal hops (COMPLETED / CANCELLED / REJECTED) AND the
+non-terminal FAILED hop, since FAILED is recorded as an outcome
+event for ops dashboards even when the task may later be retried.
+Typically fires when the task was created before a process restart.
 The emitting site returns ``None`` from the duration helper so
 ``record_task_run`` skips the duration-histogram observation while
 still incrementing the outcome counter; the WARN keeps the gap

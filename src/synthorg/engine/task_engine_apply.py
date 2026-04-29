@@ -445,8 +445,9 @@ async def apply_transition(
             to_status=mutation.target_status.value,
         )
 
-    # Emit terminal-state metric only on actual terminal transitions
-    # so a CREATED -> ASSIGNED hop doesn't pollute the counter. The
+    # Emit the recorded-outcome metric only on hops that map to a
+    # bounded outcome (see ``_RECORDED_STATUS_OUTCOME``), so a
+    # CREATED -> ASSIGNED hop doesn't pollute the counter. The
     # duration baseline is the engine's recorded creation time;
     # tasks created before a process restart have no entry, in which
     # case ``_compute_task_duration_sec`` returns ``None`` and
