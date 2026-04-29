@@ -19,7 +19,6 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
-from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
@@ -83,19 +82,22 @@ def e2e_client(
     config = RootConfig(company_name="e2e-company")
     auth_service = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
+    state = ClientSimulationState(
+        intake_engine=IntakeEngine(strategy=_AcceptingStrategy()),
+        review_pipeline=ReviewPipeline(stages=(InternalReviewStage(),)),
+    )
+    # Pass ``client_simulation_state`` via kwarg so ``create_app`` wires
+    # it before the OPTIONAL_CONTROLLERS predicate gate -- post-build
+    # ``set_client_simulation_state`` would arrive after route
+    # registration and the simulation/request endpoints would be 404.
     app = create_app(
         config=config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,
         cost_tracker=CostTracker(),
         auth_service=auth_service,
+        client_simulation_state=state,
     )
-    app_state: AppState = app.state.app_state
-    state = ClientSimulationState(
-        intake_engine=IntakeEngine(strategy=_AcceptingStrategy()),
-        review_pipeline=ReviewPipeline(stages=(InternalReviewStage(),)),
-    )
-    app_state.set_client_simulation_state(state)
     with TestClient(app) as client:
         yield client
 

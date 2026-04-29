@@ -146,6 +146,38 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
+    def test_constraint_violation_error_maps_to_400(self) -> None:
+        """Issue #1666 B-1 backstop: persistence integrity violations -> 400.
+
+        Repository modules translate driver integrity errors (psycopg
+        ForeignKeyViolation / UniqueViolation / NotNullViolation,
+        SQLite IntegrityError) into ``ConstraintViolationError`` at
+        the persistence boundary. The api layer registers the domain
+        class so callers see "you sent a bad reference" instead of
+        "we exploded internally". Domain code is expected to
+        validate-first, so this handler exists as a defence against
+        race conditions and any path that misses pre-validation.
+        """
+        from synthorg.core.persistence_errors import ConstraintViolationError
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "fk constraint x violated"
+            raise ConstraintViolationError(msg, constraint="connections_fk")
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "persistence integrity violation"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.VALIDATION_ERROR,
+                error_category=ErrorCategory.VALIDATION,
+                retryable=False,
+            )
+
     # The five backup tests below use the explicit form (rather than
     # collapsing into one parametrize) because each exercises a distinct
     # dispatch branch (404 / 409 / 500-with-specific-subtype /

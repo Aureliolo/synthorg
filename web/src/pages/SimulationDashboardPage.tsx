@@ -15,6 +15,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('SimulationDashboardPage')
@@ -28,6 +29,11 @@ const log = createLogger('SimulationDashboardPage')
  * per run.
  */
 export default function SimulationDashboardPage() {
+  const {
+    capabilities,
+    loading: capLoading,
+    error: capError,
+  } = useCapabilities()
   const [runs, setRuns] = useState<readonly SimulationStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,10 +51,6 @@ export default function SimulationDashboardPage() {
       setLoading(false)
     }
   }, [])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
 
   const handleCancel = useCallback(
     async (simulationId: string) => {
@@ -75,7 +77,65 @@ export default function SimulationDashboardPage() {
     }
   }, [])
 
-  if (loading && runs.length === 0) {
+  // Capability-gated effect: skip the network call entirely when the
+  // simulations subsystem is not configured for this deployment. The
+  // backend route is also not registered (returns 404), so calling
+  // listSimulations() would log a 404 in the audit trail per the
+  // issue #1666 B-3 contract. The early-return path that renders the
+  // EmptyState is below all hooks so React's hook-order rules stay
+  // satisfied across renders. While ``capLoading`` is true the
+  // skeleton branch below covers the in-flight window so the page
+  // never flashes "No simulation runs yet" against an unconfigured
+  // deployment.
+  useEffect(() => {
+    if (capLoading) {
+      return
+    }
+    if (!capabilities.simulations) {
+      // Defer the loading flip out of the same synchronous render
+      // frame so eslint-react's set-state-in-effect rule stays
+      // satisfied and React batches one render instead of two.
+      queueMicrotask(() => setLoading(false))
+      return
+    }
+    void refresh()
+  }, [refresh, capLoading, capabilities.simulations])
+
+  if (!capLoading && capError !== null) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Simulations" />
+        <ErrorBanner
+          severity="error"
+          title="Could not determine available features"
+          description={capError}
+        />
+      </div>
+    )
+  }
+
+  if (!capLoading && !capabilities.simulations) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Simulations" />
+        <EmptyState
+          icon={Activity}
+          title="Simulations not configured"
+          description={
+            'This deployment did not enable the client simulation ' +
+            'runtime. Configure it in your backend setup to start ' +
+            'tracking simulation runs.'
+          }
+        />
+      </div>
+    )
+  }
+
+  // Hold the skeleton until capabilities resolve AND the first refresh
+  // either lands data or sets loading=false. This prevents a one-frame
+  // "No simulation runs yet" flash on an unconfigured-but-not-yet-
+  // resolved deployment.
+  if (capLoading || (loading && runs.length === 0)) {
     return (
       <div className="space-y-section-gap">
         <ListHeader title="Simulations" />

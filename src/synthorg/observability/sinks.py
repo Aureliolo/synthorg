@@ -22,6 +22,10 @@ from structlog.stdlib import ProcessorFormatter
 
 from synthorg.observability.config import RotationConfig, SinkConfig
 from synthorg.observability.enums import RotationStrategy, SinkType
+from synthorg.observability.events.api import (
+    API_REQUEST_COMPLETED,
+    API_REQUEST_STARTED,
+)
 
 # ── Flushing file handlers ────────────────────────────────────────
 # Standard RotatingFileHandler and WatchedFileHandler buffer writes,
@@ -185,6 +189,28 @@ SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
     }
 )
 
+# Maps sink file_path to structlog event names that must NOT land
+# in that sink even if the logger-name include filter matches.  Used
+# to keep request-lifecycle events out of ``synthorg.log`` (they
+# already have a dedicated home in ``access.log``); without this
+# 96% of main-log volume would be duplicated request records that
+# bury every other event.
+SINK_EVENT_EXCLUDES: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "synthorg.log": (API_REQUEST_STARTED, API_REQUEST_COMPLETED),
+    }
+)
+
+# Maps sink file_path to a strict level-equality filter.  ``debug.log``
+# is pinned to ``DEBUG`` exactly so it stays empty when nothing emits
+# DEBUG instead of accidentally collecting INFO+ as a duplicate of the
+# main log.
+SINK_EXACT_LEVELS: MappingProxyType[str, int] = MappingProxyType(
+    {
+        "debug.log": logging.DEBUG,
+    }
+)
+
 
 class _LoggerNameFilter(logging.Filter):
     """Filter log records by logger name prefixes.
@@ -221,6 +247,55 @@ class _LoggerNameFilter(logging.Filter):
         if self._include:
             return any(name.startswith(prefix) for prefix in self._include)
         return True
+
+
+class _EventNameFilter(logging.Filter):
+    """Filter records by structlog event name.
+
+    Records produced through ``structlog.stdlib.ProcessorFormatter.
+    wrap_for_formatter`` carry the processed event_dict as
+    ``record.msg`` (a ``dict`` with an ``event`` key plus all
+    structured kwargs).  Foreign records from third-party loggers
+    carry ``record.msg`` as a plain string -- in that case we
+    compare the string directly so the filter is robust across
+    both record shapes.
+
+    Args:
+        exclude_events: Event names to drop (empty = drop nothing).
+    """
+
+    def __init__(self, *, exclude_events: tuple[str, ...] = ()) -> None:
+        super().__init__()
+        for event in exclude_events:
+            if not event or not event.strip():
+                msg = "Excluded event names must be non-empty strings"
+                raise ValueError(msg)
+        self._exclude = frozenset(exclude_events)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return ``True`` if *record* is not in the exclude set."""
+        if not self._exclude:
+            return True
+        msg = record.msg
+        event = msg.get("event", "") if isinstance(msg, dict) else str(msg)
+        return event not in self._exclude
+
+
+class _ExactLevelFilter(logging.Filter):
+    """Accept only records whose level is *exactly* ``levelno``.
+
+    Standard ``handler.setLevel(level)`` accepts ``level`` and above;
+    this filter narrows the gate so a sink can be pinned to one
+    level (``debug.log`` to DEBUG only, for example).
+    """
+
+    def __init__(self, *, levelno: int) -> None:
+        super().__init__()
+        self._levelno = levelno
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return ``True`` only when ``record.levelno`` matches."""
+        return record.levelno == self._levelno
 
 
 def _ensure_log_dir(file_path: Path, sink_name: str) -> None:
@@ -325,14 +400,35 @@ def _attach_formatter_and_routing(
     foreign_pre_chain: list[Any],
     routing: Mapping[str, tuple[str, ...]],
 ) -> None:
-    """Set formatter and optional routing filter on a handler."""
+    """Set formatter and optional routing filters on a handler.
+
+    Three filter mechanisms are layered, each driven by its own
+    sink-keyed table:
+
+    * ``routing`` (``SINK_ROUTING``): logger-name prefix include.
+    * ``SINK_EVENT_EXCLUDES``: drop specific structlog event names
+      (e.g. request lifecycle out of the catch-all ``synthorg.log``).
+    * ``SINK_EXACT_LEVELS``: pin a sink to one level (``debug.log``
+      to DEBUG only) instead of "this level and above".
+    """
     handler.setLevel(sink.level.value)
     handler.setFormatter(_build_formatter(sink, foreign_pre_chain))
-    if sink.file_path is not None and sink.file_path in routing:
-        name_filter = _LoggerNameFilter(
-            include_prefixes=routing[sink.file_path],
+    if sink.file_path is None:
+        return
+    if sink.file_path in routing:
+        handler.addFilter(
+            _LoggerNameFilter(include_prefixes=routing[sink.file_path]),
         )
-        handler.addFilter(name_filter)
+    if sink.file_path in SINK_EVENT_EXCLUDES:
+        handler.addFilter(
+            _EventNameFilter(
+                exclude_events=SINK_EVENT_EXCLUDES[sink.file_path],
+            ),
+        )
+    if sink.file_path in SINK_EXACT_LEVELS:
+        handler.addFilter(
+            _ExactLevelFilter(levelno=SINK_EXACT_LEVELS[sink.file_path]),
+        )
 
 
 def build_handler(

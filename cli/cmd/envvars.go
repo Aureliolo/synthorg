@@ -21,7 +21,7 @@ const (
 	EnvAutoUpdateCLI = "SYNTHORG_AUTO_UPDATE_CLI"
 	EnvAutoPull      = "SYNTHORG_AUTO_PULL"
 	EnvAutoRestart   = "SYNTHORG_AUTO_RESTART"
-	EnvTelemetry     = "SYNTHORG_TELEMETRY"
+	EnvTelemetry     = "SYNTHORG_TELEMETRY_ENABLED"
 	EnvQuiet         = "SYNTHORG_QUIET"
 	EnvYes           = "SYNTHORG_YES" // suppresses ALL interactive confirmation prompts
 )

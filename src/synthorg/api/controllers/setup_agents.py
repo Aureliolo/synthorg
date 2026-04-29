@@ -13,6 +13,7 @@ from synthorg.observability.events.setup import (
     SETUP_AGENT_SUMMARY_MISSING_FIELDS,
     SETUP_AGENTS_CORRUPTED,
     SETUP_AGENTS_READ_FALLBACK,
+    SETUP_MODEL_FALLBACK_USED,
     SETUP_MODEL_NOT_FOUND,
     SETUP_PRESET_NOT_FOUND,
     SETUP_PROVIDER_NOT_FOUND,
@@ -167,8 +168,16 @@ def match_and_assign_models(
         if idx in match_map:
             result.append({**agent, "model": match_map[idx]})
         else:
-            logger.warning(
-                SETUP_MODEL_NOT_FOUND,
+            # Issue #1666 B-5: downgrade to DEBUG. The matcher's
+            # tier-fallback path is the documented contract; only
+            # the wizard's pre-flight provider gate (added in this
+            # change) escalates "no models at all" to a 422 user
+            # error. This branch fires when the matcher returned no
+            # match for an agent (rare with the gate in place);
+            # leaving a DEBUG breadcrumb still lets operators trace
+            # it without polluting WARNING-level logs.
+            logger.debug(
+                SETUP_MODEL_FALLBACK_USED,
                 agent_index=idx,
                 agent_name=agent.get("name", ""),
                 tier=agent.get("tier", ""),

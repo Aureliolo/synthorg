@@ -75,7 +75,7 @@ from the env var or YAML at first read.
 | `observability.log_directory` | env (`SYNTHORG_LOG_DIR`) > YAML > unset | **Yes** | Read-only-post-init (DB bypassed on reads).  Path-traversal still rejected at boot. |
 | `communication.nats_url` | env (`SYNTHORG_NATS_URL`) > YAML > default | **Yes** | Read-only-post-init (DB bypassed on reads). |
 | `workers.count` | env (`SYNTHORG_WORKERS`) > YAML > default | **Yes** | Read-only-post-init (DB bypassed on reads). |
-| Telemetry opt-in | env (`SYNTHORG_TELEMETRY`) > YAML (`telemetry.enabled`) > default | **Yes** | **No registry entry.**  Read once in `TelemetryCollector.__init__`; runtime mutation has no effect.  Promotion to a registry entry is tracked as follow-up. |
+| `telemetry.enabled` | env (`SYNTHORG_TELEMETRY_ENABLED`) > YAML (`telemetry.enabled`) > default (`false`) | No | Standard mutable.  Registered in `synthorg.settings.definitions.telemetry`; the `/settings` API can introspect and edit it.  The collector reads the env var at boot for the fast-path; runtime DB mutations take effect on the next process restart. |
 | SQLite path | env (`SYNTHORG_DB_PATH`) > YAML | **Yes** | **No registry entry.**  Init-time exception. |
 | Postgres URL | env (`SYNTHORG_DATABASE_URL`) > YAML | **Yes** | **No registry entry.**  Credentials; init-time exception. |
 | JWT secret | env (`SYNTHORG_JWT_SECRET`) | **Yes** | **No registry entry.**  Bootstrap secret. |

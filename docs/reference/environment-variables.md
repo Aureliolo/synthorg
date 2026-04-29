@@ -56,7 +56,7 @@ fall into three categories:
 
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
-| `SYNTHORG_TELEMETRY` | unset | `telemetry/enabled` | Master opt-in for product telemetry.  Accepts `true` / `false` / `1` / `0` / `yes` / `no`. |
+| `SYNTHORG_TELEMETRY_ENABLED` | unset | `telemetry/enabled` | Master opt-in for product telemetry.  Accepts `true` / `false` / `1` / `0` / `yes` / `no`. |
 | `SYNTHORG_TELEMETRY_ENV` | unset | n/a | Operator override for the deployment environment tag (`prod` / `dev` / `pre-release` / custom).  Wins over CI auto-detection and the Dockerfile-baked default. |
 | `SYNTHORG_TELEMETRY_ENV_BAKED` | (image-baked) | n/a | Dockerfile-baked deployment environment.  CI sets this in published images; operators normally don't touch it. |
 

@@ -37,7 +37,7 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     :func:`_resolve_environment` cannot leak shell state into the
     async-init contract assertions.
     """
-    monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+    monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
     monkeypatch.delenv("SYNTHORG_TELEMETRY_ENV", raising=False)
     monkeypatch.delenv("SYNTHORG_TELEMETRY_ENV_BAKED", raising=False)
     for marker in ("CI", "GITLAB_CI", "BUILDKITE", "JENKINS_URL"):

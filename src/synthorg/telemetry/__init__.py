@@ -16,7 +16,7 @@ Architecture:
 
 Telemetry is **disabled by default**.  Enable via:
 
-- ``SYNTHORG_TELEMETRY=true`` environment variable (containers)
+- ``SYNTHORG_TELEMETRY_ENABLED=true`` environment variable (containers)
 - ``synthorg init`` interactive prompt (CLI)
 - ``telemetry.enabled: true`` in company config
 """

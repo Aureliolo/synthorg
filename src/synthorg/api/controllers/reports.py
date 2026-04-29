@@ -85,12 +85,8 @@ def _get_report_service(
     state: State,
 ) -> AutomatedReportService:
     """Resolve the report service from app state."""
-    app_state: AppState = state._app_state  # noqa: SLF001
-    service: AutomatedReportService | None = getattr(
-        app_state,
-        "report_service",
-        None,
-    )
+    app_state: AppState = state.app_state
+    service = app_state.report_service if app_state.has_report_service else None
     if service is None:
         logger.warning(
             API_SERVICE_UNAVAILABLE,

@@ -4,8 +4,19 @@ On-demand reference for product telemetry. The short rule in `CLAUDE.md` is: tel
 
 ## Enabling
 
-- Off by default. Enable with `SYNTHORG_TELEMETRY=true` or the `telemetry.enabled` setting.
-- Delivery backend is Logfire; missing token or invalid extra config downgrades to the noop reporter silently.
+- Off by default. Enable with `SYNTHORG_TELEMETRY_ENABLED=true` or the `telemetry.enabled` setting (or via the dashboard / DB).
+- Delivery backend is Logfire. The write-only project token is **embedded in the release wheel** at build time (`src/synthorg/telemetry/reporters/_embedded_token.py` is rewritten by `.github/workflows/release.yml` before `uv build`); operators never configure or paste it. Local source installs ship the sentinel and run telemetry-disabled by build.
+
+## Lifecycle log signals
+
+The collector emits **exactly one** lifecycle log line per process boot, depending on which path applies:
+
+| State | Severity | Event | Notes |
+|-------|----------|-------|-------|
+| Disabled (default) | INFO | `telemetry.disabled` | Heartbeat task not started; zero per-cycle warnings. |
+| Enabled, embedded token present | INFO | `telemetry.reporter.initialized` | Heartbeat starts; `deployment.startup` follows. |
+| Enabled, sentinel token (build artifact missing token) | ERROR | `telemetry.token.missing` | Operator-actionable: rebuild with `LOGFIRE_PROJECT_TOKEN` CI secret. Heartbeat NOT started -- no per-cycle spam. |
+| Enabled, `logfire` import or configure failure | WARNING | `telemetry.report.failed` (factory) | `error_type` carries the actual exception class (no longer hardcoded as `ImportError`). Heartbeat NOT started. |
 
 ## Privacy by allowlist
 
