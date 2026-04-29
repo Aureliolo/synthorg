@@ -7,10 +7,10 @@ Periodically checks the health of all connections with
 import asyncio
 import contextlib
 import copy
-from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     ConnectionStatus,
@@ -87,11 +87,13 @@ class HealthProberService:
         interval_seconds: int = 300,
         unhealthy_threshold: int = 3,
         degraded_threshold: int = 1,
+        clock: Clock | None = None,
     ) -> None:
         self._catalog = catalog
         self._interval = interval_seconds
         self._unhealthy_threshold = unhealthy_threshold
         self._degraded_threshold = degraded_threshold
+        self._clock: Clock = clock or SystemClock()
         self._failure_counts: dict[str, int] = {}
         self._failure_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
@@ -128,7 +130,7 @@ class HealthProberService:
                     HEALTH_CHECK_FAILED,
                     error="unexpected error in probe loop",
                 )
-            await asyncio.sleep(self._interval)
+            await self._clock.sleep(self._interval)
 
     async def _probe_all(self) -> None:
         """Probe all connections with health checks enabled."""
@@ -194,7 +196,7 @@ class HealthProberService:
             return
 
         old_status = conn.health_status
-        now = datetime.now(UTC)
+        now = self._clock.now()
 
         async with self._failure_lock:
             if report.status == ConnectionStatus.HEALTHY:
