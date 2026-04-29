@@ -10,7 +10,7 @@ from typing import Any, Final
 from synthorg.communication.async_tasks.models import TaskSpec
 from synthorg.communication.async_tasks.service import AsyncTaskService  # noqa: TC001
 from synthorg.core.enums import ToolCategory
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
     ASYNC_TASK_TOOL_CANCEL_FAILED,
     ASYNC_TASK_TOOL_CHECK_FAILED,
@@ -126,9 +126,10 @@ class StartAsyncTaskTool(BaseTool):
                 task_spec=spec,
             )
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ASYNC_TASK_TOOL_START_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=f"Failed to start task: {exc}",
@@ -242,9 +243,10 @@ class CancelAsyncTaskTool(BaseTool):
                 supervisor_id=self._supervisor_id,
             )
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ASYNC_TASK_TOOL_CANCEL_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=f"Failed to cancel: {exc}",
