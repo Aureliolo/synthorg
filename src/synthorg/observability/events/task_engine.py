@@ -33,10 +33,23 @@ TASK_ENGINE_TIMING_FALLBACK: Final[str] = "task_engine.timing.fallback"
 """Emitted when the in-memory ``TaskTimingTracker`` has no creation
 timestamp for a task that just transitioned to a terminal state
 (typically because the task was created before a process restart).
-The emitting site falls back to ``duration_sec=0.0`` for the
-``synthorg_task_runs_total`` / ``synthorg_task_duration_seconds``
-sample; the WARN keeps the gap searchable so operators can tell
-why a task shows up with a zero duration."""
+The emitting site returns ``None`` from the duration helper so
+``record_task_run`` skips the duration-histogram observation while
+still incrementing the outcome counter; the WARN keeps the gap
+searchable so operators can tell why ``synthorg_task_runs_total``
+incremented without a matching histogram sample."""
+
+TASK_ENGINE_STATUS_TRANSITIONED: Final[str] = "task_engine.status_transitioned"
+"""Domain-scoped state-transition event for every persisted task
+status hop. Emitted at INFO AFTER ``persistence.tasks.save()`` and
+``versions.bump()`` succeed, carrying ``task_id``, ``request_id``,
+``from_status``, ``to_status``. Pairs with the existing
+``TASK_ENGINE_MUTATION_APPLIED`` event (which carries the
+mutation-shape kwargs like ``reason`` / ``overrides``) so the
+audit-stream entry is keyed by stable status fields and a
+free-form mutation-applied entry sits alongside it. Save failures
+raise before this log fires, so the audit trail only records
+hops that actually landed."""
 TASK_ENGINE_LOOP_ERROR: Final[str] = "task_engine.loop.error"
 TASK_ENGINE_READ_FAILED: Final[str] = "task_engine.read.failed"
 TASK_ENGINE_LIST_CAPPED: Final[str] = "task_engine.list.capped"

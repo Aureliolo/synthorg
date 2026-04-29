@@ -474,13 +474,18 @@ class PrometheusCollector(RecordingMixin):
             app_state: The application state containing agent registry.
 
         Returns:
-            Tuple of active agent objects on success (possibly empty
-            if the registry has no active agents and the registry
-            itself is unavailable). Returns ``None`` if the registry
-            fetch raised so the caller can keep the previous label
-            snapshot's agent_ids rather than blanking the allowlist
-            (matching the behaviour of the workflow / department
-            fetchers in :meth:`_rebuild_label_snapshot`).
+            On success: a (possibly empty) tuple of active agent
+            objects. The empty tuple is also returned when
+            ``app_state.has_agent_registry`` is ``False`` (the
+            registry was never wired up); both cases mean "no agents
+            to report" and are safe to feed into the snapshot
+            rebuild.
+
+            On registry-fetch failure: ``None``. The caller keeps
+            the previous label snapshot's agent_ids rather than
+            blanking the allowlist, matching the behaviour of the
+            workflow / department fetchers in
+            :meth:`_rebuild_label_snapshot`.
         """
         if not app_state.has_agent_registry:
             # No registry means there are no agents to report; clear

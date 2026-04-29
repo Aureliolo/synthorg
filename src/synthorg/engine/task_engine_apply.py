@@ -32,6 +32,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
+    TASK_ENGINE_STATUS_TRANSITIONED,
     TASK_ENGINE_TIMING_FALLBACK,
 )
 from synthorg.observability.metrics_hub import record_task_run
@@ -39,20 +40,25 @@ from synthorg.observability.tracing.instrumentation import get_tracer
 
 _tracer = get_tracer(__name__)
 
-# Mapping from terminal TaskStatus values to the bounded outcome
+# Mapping from recorded TaskStatus values to the bounded outcome
 # vocabulary expected by ``synthorg_task_runs_total`` /
 # ``synthorg_task_duration_seconds`` (``VALID_TASK_OUTCOMES``).
 # Wrapped in MappingProxyType so a misbehaving import-site cannot
 # mutate the registry at runtime.
 #
-# REJECTED is included even though it can only fire from CREATED
-# (per task_transitions.py) -- the REJECTED hop is still a meaningful
-# task outcome to count for ops dashboards. FAILED is also recorded
-# despite being non-terminal (a failed task can be reassigned); each
-# FAILED transition is recorded as its own task-run sample, which
-# matches operator intent (a rate-of-failures query should see every
-# failure event, not just the last).
-_TERMINAL_STATUS_OUTCOME: Mapping[TaskStatus, str] = MappingProxyType(
+# Includes both truly terminal statuses (COMPLETED / CANCELLED /
+# REJECTED) and the non-terminal FAILED hop. FAILED is recorded
+# because a failed task can be reassigned and re-run, and operator
+# dashboards want to see every failure event (a rate-of-failures
+# query should see every failure, not just the last). REJECTED can
+# only fire from CREATED (per ``task_transitions.py``) but is still
+# a meaningful outcome to count.
+#
+# Naming note: this map is "recorded outcomes for the task-run
+# metric", NOT "task statuses that mean the task is done forever".
+# Use ``_TRULY_TERMINAL_STATUSES`` below when you need the latter
+# (e.g. for deciding whether to clear the timing tracker).
+_RECORDED_STATUS_OUTCOME: Mapping[TaskStatus, str] = MappingProxyType(
     {
         TaskStatus.COMPLETED: "succeeded",
         TaskStatus.FAILED: "failed",
@@ -425,6 +431,19 @@ async def apply_transition(
             to_status=mutation.target_status.value,
             reason=mutation.reason,
         )
+        # Domain-scoped state-transition log for every persisted
+        # task status hop. Emitted alongside the mutation-applied
+        # log so the audit stream has a stable, mutation-shape-
+        # independent entry keyed by from/to status; CLAUDE.md's
+        # "every persisted hop" rule applies to the task subsystem
+        # the same way it does to workflow / approval / pruning.
+        logger.info(
+            TASK_ENGINE_STATUS_TRANSITIONED,
+            request_id=mutation.request_id,
+            task_id=mutation.task_id,
+            from_status=previous_status.value,
+            to_status=mutation.target_status.value,
+        )
 
     # Emit terminal-state metric only on actual terminal transitions
     # so a CREATED -> ASSIGNED hop doesn't pollute the counter. The
@@ -434,9 +453,9 @@ async def apply_transition(
     # ``record_task_run`` skips the duration-histogram observation
     # while still incrementing the outcome counter (the histogram
     # is therefore not skewed by spurious 0-second samples).
-    if mutation.target_status in _TERMINAL_STATUS_OUTCOME:
+    if mutation.target_status in _RECORDED_STATUS_OUTCOME:
         record_task_run(
-            outcome=_TERMINAL_STATUS_OUTCOME[mutation.target_status],
+            outcome=_RECORDED_STATUS_OUTCOME[mutation.target_status],
             duration_sec=_compute_task_duration_sec(
                 timings,
                 mutation.task_id,
@@ -555,6 +574,13 @@ async def apply_cancel(
         from_status=previous_status.value,
         to_status=TaskStatus.CANCELLED.value,
         reason=mutation.reason,
+    )
+    logger.info(
+        TASK_ENGINE_STATUS_TRANSITIONED,
+        request_id=mutation.request_id,
+        task_id=mutation.task_id,
+        from_status=previous_status.value,
+        to_status=TaskStatus.CANCELLED.value,
     )
 
     record_task_run(
