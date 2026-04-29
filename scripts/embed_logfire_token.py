@@ -43,6 +43,60 @@ def _resolve_target() -> Path:
     return repo_root / _TARGET_RELATIVE
 
 
+def _validate_token(token: str) -> str:
+    """Strip *token* and reject empty / whitespace-only values.
+
+    Raises:
+        ValueError: If *token* is empty after ``strip()``.
+    """
+    cleaned = token.strip()
+    if not cleaned:
+        msg = "token must be a non-empty string"
+        raise ValueError(msg)
+    return cleaned
+
+
+def _find_quoted_sentinel(content: str, target: Path) -> str:
+    """Return the unique ``"sentinel"`` / ``'sentinel'`` literal in *content*.
+
+    Counts occurrences across BOTH quote styles and refuses unless the
+    grand total is exactly one. This closes a subtle hole in a per-
+    style check: a file with the sentinel both single- AND double-
+    quoted (e.g. a future formatter rev plus a stale docstring copy)
+    would otherwise let the script pick whichever style we tried first
+    and silently land ``replace()`` on the wrong line.
+
+    The unquoted-sentinel pre-check stays in the caller so the
+    "already embedded" error message can be tailored.
+
+    Raises:
+        ValueError: If neither quote style appears, or if the combined
+            count across styles is anything other than one.
+    """
+    counts: dict[str, int] = {}
+    for quote in ('"', "'"):
+        candidate = f"{quote}{_TOKEN_SENTINEL}{quote}"
+        n = content.count(candidate)
+        if n:
+            counts[candidate] = n
+    total = sum(counts.values())
+    if total == 0:
+        msg = (
+            f"quoted sentinel for {_TOKEN_SENTINEL!r} not found in {target}; "
+            "refusing to overwrite an already-embedded token"
+        )
+        raise ValueError(msg)
+    if total != 1:
+        msg = (
+            f"expected exactly one quoted occurrence of {_TOKEN_SENTINEL!r} "
+            f"in {target}, found {total} across {sorted(counts)!r}; "
+            "refusing ambiguous replacement"
+        )
+        raise ValueError(msg)
+    [(quoted_sentinel, _)] = counts.items()
+    return quoted_sentinel
+
+
 def embed(token: str, target: Path) -> None:
     """Rewrite the sentinel string literal in *target* to *token* in place.
 
@@ -57,12 +111,10 @@ def embed(token: str, target: Path) -> None:
 
     Raises:
         ValueError: If the quoted sentinel is not found (already
-            embedded or wrong target file).
+            embedded or wrong target file) or appears more than once.
         OSError: If the file cannot be read or written.
     """
-    if not token or not token.strip():
-        msg = "token must be a non-empty string"
-        raise ValueError(msg)
+    cleaned_token = _validate_token(token)
     content = target.read_text(encoding="utf-8")
     if _TOKEN_SENTINEL not in content:
         msg = (
@@ -70,41 +122,8 @@ def embed(token: str, target: Path) -> None:
             "refusing to overwrite an already-embedded token"
         )
         raise ValueError(msg)
-    # Match the sentinel WITH its surrounding quote so we replace the
-    # entire string literal with a freshly-quoted ``repr(token)``.
-    # Ruff format normalises sentinel strings to double quotes today,
-    # but accept either quote style so a manual edit, a different
-    # formatter rev, or a future pre-commit reorg cannot turn this
-    # into a silent exit-3 noop. ``repr(token)`` always emits Python's
-    # canonical quoting on the way out, so the rewritten file remains
-    # syntactically valid regardless of which input quote style we
-    # matched on.
-    quoted_sentinel: str | None = None
-    for quote in ('"', "'"):
-        candidate = f"{quote}{_TOKEN_SENTINEL}{quote}"
-        if candidate in content:
-            quoted_sentinel = candidate
-            break
-    if quoted_sentinel is None:
-        msg = (
-            f"quoted sentinel for {_TOKEN_SENTINEL!r} not found in {target}; "
-            "refusing to overwrite an already-embedded token"
-        )
-        raise ValueError(msg)
-    # The quoted sentinel must appear in exactly one place (the
-    # ``EMBEDDED_TELEMETRY_TOKEN = "..."`` constant). A repeated
-    # occurrence (e.g. someone duplicated the literal into a docstring
-    # or test fixture inside the target file itself) would let
-    # ``replace(..., 1)`` silently land on the wrong line; refuse to
-    # guess and force the operator to disambiguate.
-    occurrences = content.count(quoted_sentinel)
-    if occurrences != 1:
-        msg = (
-            f"expected exactly one {quoted_sentinel!r} occurrence in "
-            f"{target}, found {occurrences}; refusing ambiguous replacement"
-        )
-        raise ValueError(msg)
-    rewritten = content.replace(quoted_sentinel, repr(token), 1)
+    quoted_sentinel = _find_quoted_sentinel(content, target)
+    rewritten = content.replace(quoted_sentinel, repr(cleaned_token), 1)
     target.write_text(rewritten, encoding="utf-8")
 
 
