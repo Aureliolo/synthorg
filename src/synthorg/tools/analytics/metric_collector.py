@@ -5,9 +5,10 @@ for recording metrics.  No concrete implementation is shipped;
 users inject a sink at construction time.
 """
 
-import copy
 import math
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, runtime_checkable
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
@@ -15,6 +16,7 @@ from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_METRIC_RECORD_FAILED,
     ANALYTICS_TOOL_METRIC_RECORDED,
 )
+from synthorg.tools.analytics._args import MetricCollectorArgs
 from synthorg.tools.analytics.base_analytics_tool import BaseAnalyticsTool
 from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
 from synthorg.tools.base import ToolExecutionResult
@@ -95,26 +97,22 @@ class MetricCollectorTool(BaseAnalyticsTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = MetricCollectorArgs
+
     def __init__(
         self,
         *,
         sink: MetricSink | None = None,
         config: AnalyticsToolsConfig | None = None,
     ) -> None:
-        """Initialize the metric collector tool.
-
-        Args:
-            sink: Metric recording sink.  ``None`` means the
-                tool will return an error on execution.
-            config: Analytics tool configuration.
-        """
+        """Initialize the metric collector tool with the typed args schema."""
         super().__init__(
             name="metric_collector",
             description=(
                 "Record custom metrics (counters, gauges, timings) "
                 "to the configured metric backend."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=MetricCollectorArgs.model_json_schema(),
             action_type="metrics:record",
             config=config,
         )

@@ -7,8 +7,7 @@ inject a provider at construction time.
 
 import asyncio
 import base64
-import copy
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +21,7 @@ from synthorg.observability.events.design import (
     DESIGN_PROVIDER_NOT_CONFIGURED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.design._args import ImageGeneratorArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
 
@@ -141,25 +141,21 @@ class ImageGeneratorTool(BaseDesignTool):
             result = await tool.execute(arguments={"prompt": "A sunset over mountains"})
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = ImageGeneratorArgs
+
     def __init__(
         self,
         *,
         provider: ImageProvider | None = None,
         config: DesignToolsConfig | None = None,
     ) -> None:
-        """Initialize the image generator tool.
-
-        Args:
-            provider: Image generation provider.  ``None`` means
-                the tool will return an error on execution.
-            config: Design tool configuration.
-        """
+        """Initialize the image generator tool with the typed args schema."""
         super().__init__(
             name="image_generator",
             description=(
                 "Generate images from text prompts. Supports style and quality presets."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=ImageGeneratorArgs.model_json_schema(),
             action_type=ActionType.DOCS_WRITE,
             config=config,
         )

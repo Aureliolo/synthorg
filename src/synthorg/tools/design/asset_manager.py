@@ -6,7 +6,9 @@ design artifacts.
 """
 
 import copy
-from typing import Any, Final
+from typing import Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -19,6 +21,7 @@ from synthorg.observability.events.design import (
     DESIGN_ASSET_VALIDATION_FAILED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.design._args import AssetManagerArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
 
@@ -80,23 +83,19 @@ class AssetManagerTool(BaseDesignTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = AssetManagerArgs
+
     def __init__(
         self,
         *,
         config: DesignToolsConfig | None = None,
         assets: dict[str, dict[str, Any]] | None = None,
     ) -> None:
-        """Initialize the asset manager tool.
-
-        Args:
-            config: Design tool configuration.
-            assets: Pre-populated asset registry.  ``None`` starts
-                with an empty registry.
-        """
+        """Initialize the asset manager tool with the typed args schema."""
         super().__init__(
             name="asset_manager",
             description=("List, retrieve, delete, and search generated design assets."),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=AssetManagerArgs.model_json_schema(),
             action_type=ActionType.DOCS_WRITE,
             config=config,
         )

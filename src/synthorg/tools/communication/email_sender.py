@@ -6,12 +6,13 @@ blocking the event loop, following the same pattern as
 """
 
 import asyncio
-import copy
 import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -22,6 +23,7 @@ from synthorg.observability.events.communication import (
     COMM_TOOL_EMAIL_VALIDATION_FAILED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.communication._args import EmailSenderArgs
 from synthorg.tools.communication.base_communication_tool import (
     BaseCommunicationTool,
 )
@@ -38,43 +40,6 @@ _CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 
 # Reject addresses with newlines/carriage returns (header injection).
 _UNSAFE_ADDR_RE: Final[re.Pattern[str]] = re.compile(r"[\r\n]")
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "to": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Recipient email addresses",
-        },
-        "cc": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "CC email addresses",
-        },
-        "bcc": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "BCC email addresses",
-        },
-        "subject": {
-            "type": "string",
-            "description": "Email subject line",
-        },
-        "body": {
-            "type": "string",
-            "description": "Email body content",
-            "default": "",
-        },
-        "body_is_html": {
-            "type": "boolean",
-            "description": "Whether body is HTML (default: plain text)",
-            "default": False,
-        },
-    },
-    "required": ["to", "subject"],
-    "additionalProperties": False,
-}
 
 
 class EmailSenderTool(BaseCommunicationTool):
@@ -97,23 +62,20 @@ class EmailSenderTool(BaseCommunicationTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = EmailSenderArgs
+
     def __init__(
         self,
         *,
         config: CommunicationToolsConfig | None = None,
     ) -> None:
-        """Initialize the email sender tool.
-
-        Args:
-            config: Communication tool configuration with email
-                settings.
-        """
+        """Initialize the email sender tool with the typed args schema."""
         super().__init__(
             name="email_sender",
             description=(
                 "Send emails via SMTP. Supports plain text and HTML body content."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=EmailSenderArgs.model_json_schema(),
             action_type=ActionType.COMMS_EXTERNAL,
             config=config,
         )

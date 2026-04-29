@@ -5,11 +5,10 @@ Delegates to the ``NotificationDispatcher`` from
 sinks (console, email, Slack, ntfy, etc.).
 """
 
-import copy
 from datetime import UTC, datetime
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from synthorg.core.enums import ActionType
 from synthorg.notifications.models import (
@@ -24,6 +23,7 @@ from synthorg.observability.events.communication import (
     COMM_TOOL_NOTIFICATION_SEND_SUCCESS,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.communication._args import NotificationSenderArgs
 from synthorg.tools.communication.base_communication_tool import (
     BaseCommunicationTool,
 )
@@ -50,39 +50,6 @@ _VALID_SEVERITIES: Final[frozenset[str]] = frozenset(
     m.value for m in NotificationSeverity
 )
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "category": {
-            "type": "string",
-            "enum": sorted(_VALID_CATEGORIES),
-            "description": "Notification category",
-        },
-        "severity": {
-            "type": "string",
-            "enum": sorted(_VALID_SEVERITIES),
-            "description": "Notification severity level",
-        },
-        "title": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Notification title",
-        },
-        "body": {
-            "type": "string",
-            "description": "Detailed notification body",
-            "default": "",
-        },
-        "source": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Source subsystem or agent name",
-        },
-    },
-    "required": ["category", "severity", "title", "source"],
-    "additionalProperties": False,
-}
-
 
 class NotificationSenderTool(BaseCommunicationTool):
     """Send notifications via the existing notification subsystem.
@@ -104,25 +71,21 @@ class NotificationSenderTool(BaseCommunicationTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = NotificationSenderArgs
+
     def __init__(
         self,
         *,
         dispatcher: NotificationDispatcherProtocol | None = None,
         config: CommunicationToolsConfig | None = None,
     ) -> None:
-        """Initialize the notification sender tool.
-
-        Args:
-            dispatcher: Notification dispatcher instance.
-                ``None`` means the tool will return an error.
-            config: Communication tool configuration.
-        """
+        """Initialize the notification sender tool with the typed args schema."""
         super().__init__(
             name="notification_sender",
             description=(
                 "Send notifications to registered sinks (console, email, Slack, ntfy)."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=NotificationSenderArgs.model_json_schema(),
             action_type=ActionType.COMMS_INTERNAL,
             config=config,
         )

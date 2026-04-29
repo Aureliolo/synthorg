@@ -5,8 +5,9 @@ by downstream tools or the web dashboard.  No external provider is
 required -- the tool outputs DSL text directly.
 """
 
-import copy
-from typing import Any, Final
+from typing import Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -16,6 +17,7 @@ from synthorg.observability.events.design import (
     DESIGN_DIAGRAM_GENERATION_SUCCESS,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.design._args import DiagramGeneratorArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
 
@@ -88,23 +90,21 @@ class DiagramGeneratorTool(BaseDesignTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = DiagramGeneratorArgs
+
     def __init__(
         self,
         *,
         config: DesignToolsConfig | None = None,
     ) -> None:
-        """Initialize the diagram generator tool.
-
-        Args:
-            config: Design tool configuration.
-        """
+        """Initialize the diagram generator tool with the typed args schema."""
         super().__init__(
             name="diagram_generator",
             description=(
                 "Generate diagram markup (Mermaid or Graphviz) "
                 "from structured descriptions."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=DiagramGeneratorArgs.model_json_schema(),
             action_type=ActionType.DOCS_WRITE,
             config=config,
         )

@@ -4,11 +4,11 @@ Uses Jinja2 ``SandboxedEnvironment`` for safe variable substitution
 with no arbitrary code execution.
 """
 
-import copy
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -19,6 +19,7 @@ from synthorg.observability.events.communication import (
     COMM_TOOL_TEMPLATE_RENDER_SUCCESS,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.communication._args import TemplateFormatterArgs
 from synthorg.tools.communication.base_communication_tool import (
     BaseCommunicationTool,
 )
@@ -29,28 +30,6 @@ from synthorg.tools.communication.config import (
 logger = get_logger(__name__)
 
 _OUTPUT_FORMATS: Final[frozenset[str]] = frozenset({"text", "html", "markdown"})
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "template": {
-            "type": "string",
-            "description": ("Inline Jinja2 template string (e.g. 'Hello {{ name }}')"),
-        },
-        "variables": {
-            "type": "object",
-            "description": "Variable bindings for template rendering",
-        },
-        "format": {
-            "type": "string",
-            "enum": sorted(_OUTPUT_FORMATS),
-            "description": "Output format (default: text)",
-            "default": "text",
-        },
-    },
-    "required": ["template", "variables"],
-    "additionalProperties": False,
-}
 
 
 class TemplateFormatterTool(BaseCommunicationTool):
@@ -75,23 +54,21 @@ class TemplateFormatterTool(BaseCommunicationTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = TemplateFormatterArgs
+
     def __init__(
         self,
         *,
         config: CommunicationToolsConfig | None = None,
     ) -> None:
-        """Initialize the template formatter tool.
-
-        Args:
-            config: Communication tool configuration.
-        """
+        """Initialize the template formatter tool with the typed args schema."""
         super().__init__(
             name="template_formatter",
             description=(
                 "Render inline message templates with safe "
                 "Jinja2 variable substitution."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=TemplateFormatterArgs.model_json_schema(),
             action_type=ActionType.CODE_READ,
             config=config,
         )
