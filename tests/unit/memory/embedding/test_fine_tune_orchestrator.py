@@ -240,14 +240,11 @@ def _mock_all_stages(
         if block:
             token = kwargs.get("cancellation")
             if token:
-                # Block in a thread until cancelled (public API only).
-                import time
-
-                def _wait() -> None:
-                    while not token.is_cancelled:
-                        time.sleep(0.01)
-
-                await asyncio.to_thread(_wait)
+                # Block in a thread until cancelled. ``token.wait``
+                # rides on a ``threading.Event`` so cancel wakes us
+                # immediately without the 0.01s polling loop the
+                # original test relied on.
+                await asyncio.to_thread(token.wait)
                 token.check()
             else:
                 await asyncio.Event().wait()
