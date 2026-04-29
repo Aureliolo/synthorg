@@ -16,6 +16,7 @@ test modules; this module covers the observability-layer
 invariants that the engine tests rely on.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -154,8 +155,13 @@ def _stub_app_state(
             side_effect=RuntimeError("dept service down"),
         )
     else:
+        # ``MagicMock(name=...)`` sets the mock's REPR name, not a
+        # ``name`` attribute on the returned object, so the
+        # collector's ``str(r.name)`` would yield a Mock repr
+        # instead of "engineering". ``SimpleNamespace`` gives a
+        # real ``name`` attribute that survives the str() coercion.
         state.department_service.list_departments = AsyncMock(
-            return_value=((MagicMock(name="engineering"),), 1),
+            return_value=((SimpleNamespace(name="engineering"),), 1),
         )
     return state
 

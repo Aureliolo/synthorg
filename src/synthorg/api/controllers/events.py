@@ -374,7 +374,7 @@ async def _run_revalidation_tick(
     return _RevalidationVerdict(consecutive_failures=0)
 
 
-async def _sse_event_stream(  # noqa: PLR0915
+async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
     hub: EventStreamHub,
     session_id: str,
     *,
@@ -391,29 +391,37 @@ async def _sse_event_stream(  # noqa: PLR0915
     transient persistence errors before escalating.
     """
     consecutive_failures = 0
-    queue = hub.subscribe(session_id)
-    logger.info(
-        EVENT_STREAM_CLIENT_CONNECTED,
-        session_id=session_id,
-    )
-    revalidation_armed = app_state is not None and user is not None
-    keepalive_seconds = await _resolve_sse_keepalive_seconds(app_state)
-    loop_now = asyncio.get_event_loop().time()
-    next_keepalive_ts = loop_now + keepalive_seconds
-    # When auth context is absent (anonymous / unit-test stream), arming
-    # the revalidation deadline at ``loop_now`` would make ``timeout``
-    # collapse to 0 on the first iteration and busy-loop the wait_for.
-    # Only arm the timer when there is something to revalidate.
-    next_revalidate_ts: float | None = (
-        loop_now + SSE_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
-    )
     # Track the disconnect reason by exit path so the
     # ``synthorg_client_disconnects_total`` metric reflects the real
     # cause: ``cancelled`` for revocation / asyncio.CancelledError,
     # ``transport_error`` for unexpected exceptions, and
     # ``client_initiated`` for clean drops (the default).
     disconnect_reason = "client_initiated"
+    queue: asyncio.Queue[StreamEvent] | None = None
     try:
+        # Subscribe inside the try block so a CancelledError /
+        # MemoryError raised during pre-loop setup
+        # (``_resolve_sse_keepalive_seconds``,
+        # ``asyncio.get_event_loop().time()``) cannot leave a dead
+        # subscriber attached to the hub: ``finally`` always runs
+        # ``hub.unsubscribe`` and tolerates ``queue is None`` when the
+        # subscribe itself raised.
+        queue = hub.subscribe(session_id)
+        logger.info(
+            EVENT_STREAM_CLIENT_CONNECTED,
+            session_id=session_id,
+        )
+        revalidation_armed = app_state is not None and user is not None
+        keepalive_seconds = await _resolve_sse_keepalive_seconds(app_state)
+        loop_now = asyncio.get_event_loop().time()
+        next_keepalive_ts = loop_now + keepalive_seconds
+        # When auth context is absent (anonymous / unit-test stream), arming
+        # the revalidation deadline at ``loop_now`` would make ``timeout``
+        # collapse to 0 on the first iteration and busy-loop the wait_for.
+        # Only arm the timer when there is something to revalidate.
+        next_revalidate_ts: float | None = (
+            loop_now + SSE_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
+        )
         while True:
             now = asyncio.get_event_loop().time()
             if next_revalidate_ts is None:
@@ -480,7 +488,10 @@ async def _sse_event_stream(  # noqa: PLR0915
         # the disconnect regardless, then re-raise so the caller (and
         # the SSE iterator harness) sees the failure.
         try:
-            hub.unsubscribe(session_id, queue)
+            # Tolerate the case where ``hub.subscribe`` itself raised:
+            # there is nothing to unsubscribe in that branch.
+            if queue is not None:
+                hub.unsubscribe(session_id, queue)
         finally:
             logger.info(
                 EVENT_STREAM_CLIENT_DISCONNECTED,

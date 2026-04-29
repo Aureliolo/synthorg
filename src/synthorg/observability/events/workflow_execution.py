@@ -57,12 +57,19 @@ WORKFLOW_EXEC_CANCELLED: Final[str] = "workflow.execution.cancelled"
 """Workflow execution cancelled by user."""
 
 WORKFLOW_EXEC_STATUS_TRANSITIONED: Final[str] = "workflow.execution.status_transitioned"
-"""Workflow execution status transitioned -- emitted on every hop with from/to.
+"""Workflow execution status transitioned -- emitted on every persisted hop.
 
 Complements terminal-state events above: the ``*_COMPLETED`` /
-``*_FAILED`` / ``*_CANCELLED`` constants stay on the terminal hop, while
-this constant fires on every transition (including non-terminal hops like
-``PENDING -> RUNNING``)."""
+``*_FAILED`` / ``*_CANCELLED`` constants stay on the terminal hop and
+remain the canonical "this is the final state" markers, while
+``WORKFLOW_EXEC_STATUS_TRANSITIONED`` is the cross-hop audit-stream
+event carrying ``from_status`` / ``to_status`` / ``execution_id`` /
+``workflow_definition_id``. Today the only persisted transitions are
+the three terminal-state hops (``RUNNING -> COMPLETED`` / ``->
+FAILED`` / ``-> CANCELLED``); the bootstrap ``PENDING -> RUNNING``
+state is set inline during initial execution creation in
+``WorkflowExecutionService`` rather than as a separate persisted
+transition, so no separate event is emitted for that hop."""
 
 WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED: Final[str] = (
     "workflow.execution.node_status_transitioned"

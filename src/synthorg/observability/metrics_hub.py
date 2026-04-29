@@ -150,8 +150,13 @@ def record_provider_usage(
 
 
 @_safe_record(METRICS_RECORD_FAILED, "record_task_run")
-def record_task_run(*, outcome: str, duration_sec: float) -> None:
-    """Forward to :meth:`PrometheusCollector.record_task_run`."""
+def record_task_run(*, outcome: str, duration_sec: float | None) -> None:
+    """Forward to :meth:`PrometheusCollector.record_task_run`.
+
+    ``duration_sec=None`` skips the duration-histogram observation
+    while still incrementing the outcome counter; see
+    :meth:`PrometheusCollector.record_task_run` for the rationale.
+    """
     collector = _active()
     if collector is None:
         return

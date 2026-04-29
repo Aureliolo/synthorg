@@ -1,6 +1,7 @@
 """Tests for workflow execution COMPLETED and FAILED transitions."""
 
 import copy
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -711,11 +712,50 @@ class TestWorkflowMetricsAndLogs:
     """Verify lifecycle terminal handlers emit metrics + transition logs."""
 
     @pytest.mark.unit
-    async def test_complete_emits_metric_and_status_transitioned_log(
+    @pytest.mark.parametrize(
+        ("terminal_op", "expected_status", "extra_log_kwargs"),
+        [
+            pytest.param(
+                lambda svc, exe: svc.complete_execution(exe.id),
+                "completed",
+                {},
+                id="complete",
+            ),
+            pytest.param(
+                lambda svc, exe: svc.fail_execution(exe.id, error="boom"),
+                "failed",
+                {"error": "boom"},
+                id="fail",
+            ),
+            pytest.param(
+                lambda svc, exe: svc.cancel_execution(exe.id, cancelled_by="alice"),
+                "cancelled",
+                {},
+                id="cancel",
+            ),
+        ],
+    )
+    async def test_terminal_emits_metric_and_status_transitioned_log(
         self,
         service: WorkflowExecutionService,
         def_repo: FakeDefinitionRepo,
+        terminal_op: Callable[
+            [WorkflowExecutionService, WorkflowExecution],
+            Awaitable[WorkflowExecution],
+        ],
+        expected_status: str,
+        extra_log_kwargs: dict[str, str],
     ) -> None:
+        """All three terminal handlers share the same observability contract.
+
+        Asserts: ``record_workflow_execution`` is called exactly once
+        with the right ``workflow_definition_id`` / ``status`` /
+        non-negative ``duration_seconds``, AND
+        ``WORKFLOW_EXEC_STATUS_TRANSITIONED`` lands with
+        ``from_status="running"`` plus the expected ``to_status`` and
+        any handler-specific kwargs (e.g. ``error="boom"`` on the
+        failure path).
+        """
         from unittest.mock import patch
 
         import structlog.testing
@@ -732,82 +772,18 @@ class TestWorkflowMetricsAndLogs:
                 ".record_workflow_execution",
             ) as mock_metric,
         ):
-            await service.complete_execution(exe.id)
+            await terminal_op(service, exe)
 
         mock_metric.assert_called_once()
         kwargs = mock_metric.call_args.kwargs
         assert kwargs["workflow_definition_id"] == exe.definition_id
-        assert kwargs["status"] == "completed"
+        assert kwargs["status"] == expected_status
         assert kwargs["duration_seconds"] >= 0.0
 
         assert any(
             rec.get("event") == WORKFLOW_EXEC_STATUS_TRANSITIONED
             and rec.get("from_status") == "running"
-            and rec.get("to_status") == "completed"
-            for rec in logs
-        )
-
-    @pytest.mark.unit
-    async def test_fail_emits_metric_and_status_transitioned_log(
-        self,
-        service: WorkflowExecutionService,
-        def_repo: FakeDefinitionRepo,
-    ) -> None:
-        from unittest.mock import patch
-
-        import structlog.testing
-
-        from synthorg.observability.events.workflow_execution import (
-            WORKFLOW_EXEC_STATUS_TRANSITIONED,
-        )
-
-        exe = await _activate_simple(service, def_repo)
-        with (
-            structlog.testing.capture_logs() as logs,
-            patch(
-                "synthorg.engine.workflow.execution_lifecycle"
-                ".record_workflow_execution",
-            ) as mock_metric,
-        ):
-            await service.fail_execution(exe.id, error="boom")
-
-        mock_metric.assert_called_once()
-        assert mock_metric.call_args.kwargs["status"] == "failed"
-        assert any(
-            rec.get("event") == WORKFLOW_EXEC_STATUS_TRANSITIONED
-            and rec.get("to_status") == "failed"
-            and rec.get("error") == "boom"
-            for rec in logs
-        )
-
-    @pytest.mark.unit
-    async def test_cancel_emits_metric_and_status_transitioned_log(
-        self,
-        service: WorkflowExecutionService,
-        def_repo: FakeDefinitionRepo,
-    ) -> None:
-        from unittest.mock import patch
-
-        import structlog.testing
-
-        from synthorg.observability.events.workflow_execution import (
-            WORKFLOW_EXEC_STATUS_TRANSITIONED,
-        )
-
-        exe = await _activate_simple(service, def_repo)
-        with (
-            structlog.testing.capture_logs() as logs,
-            patch(
-                "synthorg.engine.workflow.execution_lifecycle"
-                ".record_workflow_execution",
-            ) as mock_metric,
-        ):
-            await service.cancel_execution(exe.id, cancelled_by="alice")
-
-        mock_metric.assert_called_once()
-        assert mock_metric.call_args.kwargs["status"] == "cancelled"
-        assert any(
-            rec.get("event") == WORKFLOW_EXEC_STATUS_TRANSITIONED
-            and rec.get("to_status") == "cancelled"
+            and rec.get("to_status") == expected_status
+            and all(rec.get(k) == v for k, v in extra_log_kwargs.items())
             for rec in logs
         )

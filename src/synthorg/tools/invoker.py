@@ -405,11 +405,15 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             try:
                 result = await self._invoke_single_inner(tool_call)
             except asyncio.CancelledError:
-                # Map cancellation into the documented tool_span
-                # taxonomy (success / error / timeout); cancellations
-                # are nearly always driven by the execution-engine
-                # deadline, which callers reason about as "timeout".
-                span.set_attribute("tool.outcome", "timeout")
+                # Map generic cancellation to ``error`` (not
+                # ``timeout``): only an explicit deadline expiry is
+                # a real timeout, and that path stamps
+                # ``metadata["timed_out"]`` which the happy-path
+                # branch above promotes to
+                # ``span.outcome="timeout"`` via ``result.is_timeout``.
+                # Treating every cancellation as a timeout would
+                # over-report the timeout outcome.
+                span.set_attribute("tool.outcome", "error")
                 raise
             except MemoryError, RecursionError:
                 span.set_attribute("tool.outcome", "error")
@@ -443,11 +447,21 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         try:
             result = await self._build_invocation_result(tool_call)
         except asyncio.CancelledError:
+            # Generic cancellation is recorded as ``outcome="error"``,
+            # not ``"timeout"``: a cancellation reaches us for many
+            # reasons (engine shutdown, parent-task cancel, request
+            # abort) and only deadline expiry is a real timeout. The
+            # explicit-deadline path sets ``metadata["timed_out"]``
+            # before cancelling, which the happy-path branch
+            # promotes via ``_build_result``; if that metadata never
+            # landed (because the inner coroutine was cancelled
+            # before it could mark itself), classifying the failure
+            # as a timeout would over-report the timeout outcome.
             cancelled_result = ToolResult(
                 tool_call_id=tool_call.id,
                 content="Tool invocation cancelled before completion.",
                 is_error=True,
-                is_timeout=True,
+                is_timeout=False,
             )
             await record_tool_invocation(
                 self,

@@ -149,7 +149,17 @@ class MCPClient:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                msg = f"Failed to connect to {self._config.name!r}: {exc}"
+                # SEC-1: never embed raw ``str(exc)`` in error
+                # messages -- the same scrubbing applied to log
+                # output via ``safe_error_description`` must apply
+                # to the message text that propagates back to API
+                # surfaces. Raw exception args can leak credentials
+                # for OAuth-token / Bearer-header / connection-string
+                # paths.
+                msg = (
+                    f"Failed to connect to {self._config.name!r}: "
+                    f"{safe_error_description(exc)}"
+                )
                 raise MCPConnectionError(
                     msg,
                     context={
@@ -245,7 +255,10 @@ class MCPClient:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                msg = f"Tool discovery failed for {self._config.name!r}: {exc}"
+                msg = (
+                    f"Tool discovery failed for {self._config.name!r}: "
+                    f"{safe_error_description(exc)}"
+                )
                 raise MCPDiscoveryError(
                     msg,
                     context={"server": self._config.name},
@@ -320,14 +333,17 @@ class MCPClient:
                     },
                 ) from exc
             except Exception as exc:
-                logger.error(  # noqa: TRY400 -- exc_info would re-bind str(exc), bypassing SEC-1 scrubbing
+                logger.warning(
                     MCP_INVOKE_FAILED,
                     server=self._config.name,
                     tool=tool_name,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                msg = f"Tool {tool_name!r} failed on {self._config.name!r}: {exc}"
+                msg = (
+                    f"Tool {tool_name!r} failed on {self._config.name!r}: "
+                    f"{safe_error_description(exc)}"
+                )
                 raise MCPInvocationError(
                     msg,
                     context={

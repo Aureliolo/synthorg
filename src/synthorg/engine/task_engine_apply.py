@@ -60,20 +60,33 @@ _TERMINAL_STATUS_OUTCOME: Mapping[TaskStatus, str] = MappingProxyType(
         TaskStatus.REJECTED: "rejected",
     },
 )
+# Statuses where the creation-timestamp entry can be safely dropped
+# from ``TaskTimingTracker``. ``FAILED`` is excluded because the
+# engine may retry a failed task; the retry's duration metric should
+# still be measured from the original creation, not from "now -
+# nothing" (which would degrade to the missing-timestamp WARN
+# fallback every retry).
+_TRULY_TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
+    {TaskStatus.COMPLETED, TaskStatus.CANCELLED, TaskStatus.REJECTED},
+)
 
 
 def _compute_task_duration_sec(
     timings: TaskTimingTracker,
     task_id: str,
     mutation_type: str,
-) -> float:
+) -> float | None:
     """Look up *task_id*'s creation time and return ``now - created_at``.
 
-    Falls back to ``0.0`` when the timing tracker has no record
-    (typically a task created before the current process restart).
-    Emits a WARN with ``reason="creation_timestamp_missing"`` so the
-    0-duration sample is searchable rather than silently distorting
-    the duration histogram.
+    Returns ``None`` when the timing tracker has no record (typically
+    a task created before the current process restart). Callers must
+    skip the duration-histogram observation in that case so the
+    histogram is not skewed by spurious 0-duration samples; the
+    outcome counter still ticks so a tracked-since-restart vs.
+    inherited-from-prior-process task can be told apart in dashboards
+    via ``rate(task_runs_total) - rate(task_duration_count)``. A WARN
+    with ``reason="creation_timestamp_missing"`` makes the missing-
+    timestamp event searchable.
     """
     created_at = timings.get_creation(task_id)
     if created_at is not None:
@@ -83,9 +96,12 @@ def _compute_task_duration_sec(
         mutation_type=mutation_type,
         task_id=task_id,
         reason="creation_timestamp_missing",
-        note=("0-duration sample emitted; task likely created before process restart"),
+        note=(
+            "duration-histogram observation skipped; "
+            "task likely created before process restart"
+        ),
     )
-    return 0.0
+    return None
 
 
 if TYPE_CHECKING:
@@ -420,10 +436,12 @@ async def apply_transition(
                 "transition",
             ),
         )
-        # Free the timing entry once the metric is emitted; without
-        # this the ``_created_at`` map would grow unbounded across
-        # the lifetime of the process.
-        timings.remove(mutation.task_id)
+        # Free the timing entry only on truly terminal statuses
+        # (COMPLETED / CANCELLED / REJECTED). FAILED stays because
+        # the engine may retry the task, and the retry's duration
+        # should still measure from the original creation.
+        if mutation.target_status in _TRULY_TERMINAL_STATUSES:
+            timings.remove(mutation.task_id)
 
     return TaskMutationResult(
         request_id=mutation.request_id,

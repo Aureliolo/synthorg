@@ -57,8 +57,8 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 |--------|------|--------|-------------|-----------|
 | `synthorg_active_agents_total` | Gauge | `status`, `trust_level` | Active agent count by status. | `Health & SLO` |
 | `synthorg_tasks_total` | Gauge | `status`, `agent` (registry-bound) | Task count per status per agent. | `Tasks` |
-| `synthorg_task_runs_total` | Counter | `outcome` | Task completions by bounded outcome (`succeeded` / `failed` / `cancelled`). | `Tasks` |
-| `synthorg_task_duration_seconds` | Histogram | `outcome` | Task execution duration by outcome (buckets 0.1s-600s). | `Tasks` |
+| `synthorg_task_runs_total` | Counter | `outcome` | Emitted task outcomes by bounded `outcome` (`succeeded` / `failed` / `cancelled` / `rejected`). One increment per terminal-status hop on a task; a task that transitions through `failed` and is later retried therefore counts as one `failed` *and* one `succeeded` (or another terminal value) -- the counter records emitted outcomes, not unique task ids. | `Tasks` |
+| `synthorg_task_duration_seconds` | Histogram | `outcome` | Task execution duration in seconds, partitioned by the same `outcome` values as `synthorg_task_runs_total` (buckets 0.1s-600s). Observed only when the engine has a recorded creation timestamp; transitions where the timestamp is unavailable (e.g. a task created before a process restart) skip the histogram and emit `task_engine.timing_fallback` WARN with `synthorg_task_runs_total` still incremented so the count and histogram percentages remain comparable. | `Tasks` |
 
 ### Providers
 
