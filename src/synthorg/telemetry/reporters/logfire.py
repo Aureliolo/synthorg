@@ -71,9 +71,11 @@ class LogfireReporter:
         # is exactly what hid two months of broken telemetry.
         # ``LogfireConfigError`` is the public, documented class
         # exposed at the ``logfire`` module's top level (see logfire
-        # SDK 4.32.1+); fall back to ``Exception`` only if a future
-        # SDK rev removes the symbol.
-        configure_error = getattr(self._logfire, "LogfireConfigError", Exception)
+        # SDK 4.32.1+ ``logfire/exceptions.py``). Direct attribute
+        # access is intentional: a future SDK rev that removes the
+        # symbol must fail loudly as an unsupported version, not
+        # silently widen the catch back to ``Exception``.
+        configure_error = self._logfire.LogfireConfigError
         try:
             # ``inspect_arguments=False`` silences the noisy
             # "Failed to introspect calling code" warning. Logfire

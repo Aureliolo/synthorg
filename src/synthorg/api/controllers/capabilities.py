@@ -16,9 +16,12 @@ from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 
 class CapabilitiesResponse(BaseModel):

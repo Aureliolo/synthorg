@@ -7,17 +7,21 @@ working reporter for the configured backend or fail loudly with a
 precise reason -- never to silently fall back to the noop reporter
 on an unknown error class.
 
-Three legitimate failure modes are handled with precise except
+Two legitimate failure modes are handled here with precise except
 arms (each emits one WARNING with the real ``error_type`` and
 returns :class:`NoopReporter`):
 
 * ``ImportError`` -- ``logfire`` package not installable in this
   environment. Should not occur in practice; ``logfire`` is a
   required runtime dep.
-* ``LogfireTokenMissingError`` -- the build artifact ships the
-  sentinel token instead of a real one. Operator-actionable.
 * ``LogfireConfigureError`` -- ``logfire.configure()`` rejected
   the token (network, auth, or SDK-level config issue).
+
+A third condition -- ``is_token_embedded() == False`` -- returns
+:class:`NoopReporter` silently. The operator-facing log for that
+state lives in :meth:`TelemetryCollector.start` so the missing-
+token condition produces exactly one startup signal instead of
+duplicating across factory and collector.
 
 Anything else propagates so silent fallback never hides a
 programming bug -- which is precisely how the previous
@@ -34,10 +38,7 @@ from synthorg.telemetry.reporters._embedded_token import (
     EMBEDDED_TELEMETRY_TOKEN,
     is_token_embedded,
 )
-from synthorg.telemetry.reporters.errors import (
-    LogfireConfigureError,
-    LogfireTokenMissingError,
-)
+from synthorg.telemetry.reporters.errors import LogfireConfigureError
 from synthorg.telemetry.reporters.noop import NoopReporter
 
 if TYPE_CHECKING:
@@ -70,11 +71,11 @@ def create_reporter(config: TelemetryConfig) -> TelemetryReporter:
 
     if config.backend == TelemetryBackend.LOGFIRE:
         if not is_token_embedded():
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="logfire_token_missing",
-                error_type=LogfireTokenMissingError.__name__,
-            )
+            # Stay quiet: ``TelemetryCollector.start()`` owns the
+            # operator-facing ``TELEMETRY_TOKEN_MISSING`` ERROR. Logging
+            # here too would emit two startup records for a single
+            # missing-token condition and break the "exactly one
+            # startup signal" contract this PR is enforcing.
             return NoopReporter()
 
         try:

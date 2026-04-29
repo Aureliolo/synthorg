@@ -27,8 +27,14 @@ class TestCreateReporter:
         reporter = create_reporter(config)
         assert isinstance(reporter, NoopReporter)
 
-    def test_sentinel_token_falls_back_to_noop_with_log(self) -> None:
-        """Build artifact missing the embedded token -> NoopReporter + WARNING."""
+    def test_sentinel_token_falls_back_to_noop_silently(self) -> None:
+        """Build artifact missing the embedded token -> NoopReporter, no factory log.
+
+        ``TelemetryCollector.start()`` owns the operator-facing
+        ``TELEMETRY_TOKEN_MISSING`` ERROR for this branch; the factory
+        intentionally stays silent so the missing-token condition
+        produces exactly one startup signal instead of two.
+        """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.LOGFIRE)
         with (
             patch(
@@ -39,14 +45,9 @@ class TestCreateReporter:
         ):
             reporter = create_reporter(config)
         assert isinstance(reporter, NoopReporter)
-        warnings = [
-            log
-            for log in logs
-            if log.get("event") == "telemetry.report.failed"
-            and log.get("detail") == "logfire_token_missing"
-        ]
-        assert len(warnings) == 1
-        assert warnings[0]["error_type"] == "LogfireTokenMissingError"
+        # The factory must NOT emit telemetry.report.failed for the
+        # missing-token branch; the collector owns that signal.
+        assert all(log.get("event") != "telemetry.report.failed" for log in logs)
 
     def test_import_failure_falls_back_to_noop_with_real_error_type(self) -> None:
         """Logfire import failure logs the actual error_type, not a hardcoded string."""

@@ -259,15 +259,18 @@ class TelemetryCollector:
     ) -> None:
         """Wire the collector to its reporter and resolve runtime env.
 
-        Applies the ``SYNTHORG_TELEMETRY_ENABLED`` opt-in override
-        first, then runs the parsed ``config.environment`` through
-        the four-level resolution chain in
-        :func:`_resolve_environment`. The constructor performs
-        **zero filesystem I/O**; loading or creating the anonymous
-        ``deployment_id`` is deferred to :meth:`start`. The load
-        itself runs outside the event loop's thread via
-        ``asyncio.to_thread`` (#1600). A disabled collector still
-        leaves no on-disk trace.
+        Takes ``config.enabled`` as-given; the
+        ``SYNTHORG_TELEMETRY_ENABLED`` precedence is resolved
+        upstream by the wiring layer (see
+        :func:`synthorg.api.app_builders._build_telemetry_collector`).
+        The constructor only resolves the deployment-environment tag
+        through the four-level chain in :func:`_resolve_environment`
+        (operator override -> CI detection -> Dockerfile-baked default
+        -> parsed config). The constructor performs **zero filesystem
+        I/O**; loading or creating the anonymous ``deployment_id`` is
+        deferred to :meth:`start`. The load itself runs outside the
+        event loop's thread via ``asyncio.to_thread`` (#1600). A
+        disabled collector still leaves no on-disk trace.
 
         Args:
             config: Parsed telemetry configuration from

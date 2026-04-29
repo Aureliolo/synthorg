@@ -1,4 +1,4 @@
-"""Embed the Logfire write-only project token into the build artifact.
+"""Embed the write-only telemetry-backend project token into the build artifact.
 
 Run **once** during the build pipeline before ``uv build`` (or
 before the Docker image's ``uv sync`` step packages the source
@@ -7,6 +7,10 @@ tree). Rewrites the sentinel string in
 real token so the published wheel / built image carries it baked
 into source. Source-tree installs and any build that does NOT run
 this script keep the sentinel and run telemetry-disabled by build.
+
+The script filename retains the ``logfire`` token for CI-log
+clarity (it is the build-time secret name), but every operator-
+and developer-facing string in this module is vendor-neutral.
 
 Usage:
     python scripts/embed_logfire_token.py <token>
@@ -65,13 +69,23 @@ def embed(token: str, target: Path) -> None:
         )
         raise ValueError(msg)
     # Match the sentinel WITH its surrounding quote so we replace the
-    # entire string literal with a freshly-quoted ``repr(token)``. The
-    # constants module always quotes the sentinel with double quotes
-    # (preserved by ruff format), so the pattern is exact.
-    quoted_sentinel = f'"{_TOKEN_SENTINEL}"'
-    if quoted_sentinel not in content:
+    # entire string literal with a freshly-quoted ``repr(token)``.
+    # Ruff format normalises sentinel strings to double quotes today,
+    # but accept either quote style so a manual edit, a different
+    # formatter rev, or a future pre-commit reorg cannot turn this
+    # into a silent exit-3 noop. ``repr(token)`` always emits Python's
+    # canonical quoting on the way out, so the rewritten file remains
+    # syntactically valid regardless of which input quote style we
+    # matched on.
+    quoted_sentinel: str | None = None
+    for quote in ('"', "'"):
+        candidate = f"{quote}{_TOKEN_SENTINEL}{quote}"
+        if candidate in content:
+            quoted_sentinel = candidate
+            break
+    if quoted_sentinel is None:
         msg = (
-            f"quoted sentinel {quoted_sentinel!r} not found in {target}; "
+            f"quoted sentinel for {_TOKEN_SENTINEL!r} not found in {target}; "
             "refusing to overwrite an already-embedded token"
         )
         raise ValueError(msg)
@@ -96,7 +110,7 @@ def main(argv: list[str]) -> int:
     except OSError as exc:
         sys.stderr.write(f"embed_logfire_token: {exc}\n")
         return 4
-    sys.stderr.write(f"Embedded Logfire token into {target}\n")
+    sys.stderr.write(f"Embedded telemetry token into {target}\n")
     return 0
 
 
