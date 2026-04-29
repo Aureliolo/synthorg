@@ -251,7 +251,9 @@ runs:
         # response, but defensively check for an empty token too: a
         # silent empty REG_TOKEN would otherwise have us issue every
         # subsequent `curl` with an empty Bearer header.
-        REG_TOKEN="$(curl -sS -u "x-access-token:${GHCR_TOKEN}" \
+        # `-L` follows redirects so registry-side rewrites (rare on
+        # GHCR but possible in proxy / mirror setups) don't fail.
+        REG_TOKEN="$(curl -sSL -u "x-access-token:${GHCR_TOKEN}" \
           "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_PATH}:pull" \
           | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
         if [ -z "${REG_TOKEN}" ]; then
@@ -266,7 +268,7 @@ runs:
         FAILED=0
         while IFS= read -r t; do
           [ -z "${t}" ] && continue
-          ACTUAL="$(curl -sS -I \
+          ACTUAL="$(curl -sSL -I \
             -H "Authorization: Bearer ${REG_TOKEN}" \
             -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json" \
             "https://ghcr.io/v2/${REPO_PATH}/manifests/${t}" \
@@ -284,7 +286,7 @@ runs:
         # signatures via the OCI referrer mechanism, surfaced on GHCR
         # as the `sha256-<hex>` referrer tag.
         SIG_HEX="${SIGNED_DIGEST#sha256:}"
-        SIG_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+        SIG_STATUS="$(curl -sSL -o /dev/null -w '%{http_code}' \
           -H "Authorization: Bearer ${REG_TOKEN}" \
           -H "Accept: application/vnd.oci.image.index.v1+json" \
           "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"

@@ -168,7 +168,8 @@ runs:
       run: |
         set -euo pipefail
         REPO_PATH="aureliolo/synthorg-${IMAGE_NAME}-base"
-        REG_TOKEN="$(curl -sS -u "x-access-token:${GHCR_TOKEN}" \
+        # `-L` follows redirects defensively; matches publish-image-loaded.
+        REG_TOKEN="$(curl -sSL -u "x-access-token:${GHCR_TOKEN}" \
           "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_PATH}:pull" \
           | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
         if [ -z "${REG_TOKEN}" ]; then
@@ -176,7 +177,7 @@ runs:
           exit 1
         fi
 
-        ACTUAL="$(curl -sS -I \
+        ACTUAL="$(curl -sSL -I \
           -H "Authorization: Bearer ${REG_TOKEN}" \
           -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json" \
           "https://ghcr.io/v2/${REPO_PATH}/manifests/${TAG}" \
@@ -187,7 +188,7 @@ runs:
         fi
 
         SIG_HEX="${SIGNED_DIGEST#sha256:}"
-        SIG_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+        SIG_STATUS="$(curl -sSL -o /dev/null -w '%{http_code}' \
           -H "Authorization: Bearer ${REG_TOKEN}" \
           -H "Accept: application/vnd.oci.image.index.v1+json" \
           "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"
