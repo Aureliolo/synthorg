@@ -416,6 +416,34 @@ def handle_persistence_error(
     )
 
 
+def handle_persistence_integrity_error(
+    request: Request[Any, Any, Any],
+    exc: Exception,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Map ``psycopg.errors.IntegrityError`` (and subclasses) to 400.
+
+    Foreign-key, unique, and not-null violations raised by the
+    underlying driver indicate that the request body referenced a
+    row that does not exist (or violates a uniqueness constraint).
+    These are caller errors, not server errors -- 400 with a
+    structured body is the honest mapping.
+
+    Domain code is expected to validate-first and raise typed
+    domain errors (``ConnectionNotFoundError`` / ``ValidationError``)
+    so this handler is a backstop, not the primary path. Logging
+    via the standard helper keeps any embedded SQL fragments out
+    of the audit trail.
+    """
+    _log_error(request, exc, status=400)
+    return _build_response(
+        request,
+        detail="persistence integrity violation",
+        error_code=ErrorCode.VALIDATION_ERROR,
+        error_category=ErrorCategory.VALIDATION,
+        status_code=400,
+    )
+
+
 def handle_backup_error(
     request: Request[Any, Any, Any],
     exc: BackupError,
@@ -779,13 +807,29 @@ def handle_http_exception(
     )
 
 
-# Litestar resolves exception handlers by walking the raised exception's
-# MRO -- the first matching type found in this dict wins.  Dict insertion
-# order does NOT affect resolution priority.  (For HTTPException subclasses,
-# Litestar also checks integer status-code keys first, but this dict uses
-# only type keys.)
-EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType(
-    {
+# Lazy-import psycopg.errors so SQLite-only test runs and dev installs
+# without psycopg are unaffected.  When psycopg is not importable, the
+# IntegrityError handler entry is omitted from the table and any leak
+# of an actual ``psycopg.errors.IntegrityError`` falls through to the
+# generic ``Exception -> handle_unexpected`` (500) path -- which is the
+# same behaviour as before this fix.  When psycopg IS importable, the
+# entry maps every IntegrityError subclass (ForeignKeyViolation,
+# UniqueViolation, NotNullViolation, ...) to the validation 400 path.
+_PSYCOPG_INTEGRITY_HANDLER: tuple[type[Exception], object] | None = None
+try:
+    from psycopg.errors import IntegrityError as _PsycopgIntegrityError
+
+    _PSYCOPG_INTEGRITY_HANDLER = (
+        _PsycopgIntegrityError,
+        handle_persistence_integrity_error,
+    )
+except ImportError:
+    _PSYCOPG_INTEGRITY_HANDLER = None
+
+
+def _build_exception_handlers() -> MappingProxyType[type[Exception], object]:
+    """Build the EXCEPTION_HANDLERS table, splicing in psycopg if present."""
+    table: dict[type[Exception], object] = {
         RecordNotFoundError: handle_record_not_found,
         DuplicateRecordError: handle_duplicate_record,
         PersistenceError: handle_persistence_error,
@@ -795,24 +839,33 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         InvalidCursorError: handle_invalid_cursor,
         NotFoundException: handle_not_found,
         HTTPException: handle_http_exception,
-        # Domain error hierarchies -- MRO dispatch covers every subclass.
-        # RateLimitError is listed explicitly so its narrower 429 status
-        # takes precedence over the ProviderError (502) default when
-        # Litestar walks the raised exception's MRO.  ``DomainError`` is
-        # the universal RFC-9457 base for what was previously the
-        # ``ApiError`` family plus the generic NotFoundError /
-        # ConflictError / ValidationError relocated to ``core``.
-        RateLimitError: handle_domain_error,
-        EngineError: handle_domain_error,
-        BudgetExhaustedError: handle_domain_error,
-        MixedCurrencyAggregationError: handle_domain_error,
-        ProviderError: handle_domain_error,
-        OntologyError: handle_domain_error,
-        CommunicationError: handle_domain_error,
-        IntegrationError: handle_domain_error,
-        ToolError: handle_domain_error,
-        DomainError: handle_domain_error,
-        BackupError: handle_backup_error,
-        Exception: handle_unexpected,
     }
+    if _PSYCOPG_INTEGRITY_HANDLER is not None:
+        table[_PSYCOPG_INTEGRITY_HANDLER[0]] = _PSYCOPG_INTEGRITY_HANDLER[1]
+    table.update(
+        {
+            RateLimitError: handle_domain_error,
+            EngineError: handle_domain_error,
+            BudgetExhaustedError: handle_domain_error,
+            MixedCurrencyAggregationError: handle_domain_error,
+            ProviderError: handle_domain_error,
+            OntologyError: handle_domain_error,
+            CommunicationError: handle_domain_error,
+            IntegrationError: handle_domain_error,
+            ToolError: handle_domain_error,
+            DomainError: handle_domain_error,
+            BackupError: handle_backup_error,
+            Exception: handle_unexpected,
+        }
+    )
+    return MappingProxyType(table)
+
+
+# Litestar resolves exception handlers by walking the raised exception's
+# MRO -- the first matching type found in this dict wins.  Dict insertion
+# order does NOT affect resolution priority.  (For HTTPException subclasses,
+# Litestar also checks integer status-code keys first, but this dict uses
+# only type keys.)
+EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = (
+    _build_exception_handlers()
 )

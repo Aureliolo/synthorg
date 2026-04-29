@@ -167,6 +167,42 @@ class MCPCatalogController(Controller):
             app_state.connection_catalog if app_state.has_connection_catalog else None
         )
 
+        # Validate-first: when the caller supplied a ``connection_name``
+        # we look it up in the catalog *before* any INSERT so the
+        # foreign-key column on ``mcp_installations`` cannot trigger a
+        # ``psycopg.errors.ForeignKeyViolation`` and slip out of the
+        # service's typed ``ConnectionNotFoundError`` arm. The service's
+        # post-call check still catches this case on the
+        # ``required_connection_type`` branch -- pre-validation closes
+        # the gap when the entry does not require a connection but the
+        # caller still supplies an unknown ``connection_name``. The
+        # exception handler at api/exception_handlers.py registers a
+        # backstop for ``IntegrityError`` so even the racy "connection
+        # deleted between validate and INSERT" path lands at 400.
+        if connection_name is not None:
+            if connection_catalog is None:
+                msg = (
+                    "Integrations subsystem is not configured; "
+                    "cannot bind connection_name."
+                )
+                logger.warning(
+                    MCP_SERVER_INSTALL_FAILED,
+                    entry_id=entry_id,
+                    connection_name=connection_name,
+                    reason="connection_catalog_unavailable",
+                )
+                raise ValidationError(msg)
+            existing = await connection_catalog.get(connection_name)
+            if existing is None:
+                msg = f"unknown connection {connection_name!r}"
+                logger.warning(
+                    MCP_SERVER_INSTALL_FAILED,
+                    entry_id=entry_id,
+                    connection_name=connection_name,
+                    reason="connection_not_found_pre_install",
+                )
+                raise ValidationError(msg)
+
         try:
             result = await service.install(
                 entry_id,

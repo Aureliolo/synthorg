@@ -807,6 +807,34 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     startup = [*startup, telemetry_collector.start]
     shutdown = [*shutdown, telemetry_collector.shutdown]
 
+    # Automated report service: wired from the cost tracker + budget config
+    # so the ``POST /api/v1/reports/generate`` endpoint can serve the
+    # documented inputs instead of returning 503 unconfigured. Risk and
+    # performance trackers are optional; the service degrades to empty
+    # per-tracker reports when either is absent (see
+    # ``AutomatedReportService.generate_*_report`` for the None-tolerant
+    # paths). When ``cost_tracker`` is itself absent (degenerate test
+    # configurations) we skip the wire and the controller falls back to
+    # 503 ServiceUnavailableError -- which is the honest status code for
+    # "feature unavailable", not the AttributeError it used to surface.
+    if cost_tracker is not None:
+        from synthorg.budget.automated_reports import (  # noqa: PLC0415
+            AutomatedReportService,
+        )
+        from synthorg.budget.reports import ReportGenerator  # noqa: PLC0415
+
+        report_generator = ReportGenerator(
+            cost_tracker=cost_tracker,
+            budget_config=effective_config.budget,
+        )
+        report_service = AutomatedReportService(
+            report_generator=report_generator,
+            cost_tracker=cost_tracker,
+            risk_tracker=None,
+            performance_tracker=performance_tracker,
+        )
+        app_state.set_report_service(report_service)
+
     # Bring up the notification dispatcher's HTTP-bearing sinks
     # (slack/ntfy ``httpx.AsyncClient``) lazily under their lifecycle
     # locks. Stateless sinks (console/email) implement no-op

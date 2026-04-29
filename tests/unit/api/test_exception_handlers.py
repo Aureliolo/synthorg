@@ -146,6 +146,38 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
+    def test_psycopg_integrity_error_maps_to_400(self) -> None:
+        """Issue #1666 B-1 backstop: FK / unique / not-null violations -> 400.
+
+        psycopg's IntegrityError hierarchy lands at 400 with a
+        structured body so callers see "you sent a bad reference"
+        instead of "we exploded internally". Domain code is expected
+        to validate-first, so this handler exists as a defence
+        against race conditions and any path that misses pre-validation.
+        """
+        psycopg_errors = pytest.importorskip(
+            "psycopg.errors",
+            reason="psycopg not installed in this environment",
+        )
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "fk constraint x violated"
+            raise psycopg_errors.ForeignKeyViolation(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "persistence integrity violation"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.VALIDATION_ERROR,
+                error_category=ErrorCategory.VALIDATION,
+                retryable=False,
+            )
+
     # The five backup tests below use the explicit form (rather than
     # collapsing into one parametrize) because each exercises a distinct
     # dispatch branch (404 / 409 / 500-with-specific-subtype /
