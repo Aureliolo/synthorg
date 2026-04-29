@@ -6,8 +6,7 @@ a provider at construction time (e.g. via MCP bridge or a custom
 implementation).
 """
 
-import copy
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -20,6 +19,7 @@ from synthorg.observability.events.web import (
 )
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import NetworkPolicy  # noqa: TC001
+from synthorg.tools.web._args import WebSearchArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
 
 logger = get_logger(__name__)
@@ -66,26 +66,6 @@ class WebSearchProvider(Protocol):
         ...
 
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "query": {
-            "type": "string",
-            "description": "Search query string",
-        },
-        "max_results": {
-            "type": "integer",
-            "description": "Maximum results to return (default: 10)",
-            "minimum": 1,
-            "maximum": 100,
-            "default": 10,
-        },
-    },
-    "required": ["query"],
-    "additionalProperties": False,
-}
-
-
 class WebSearchTool(BaseWebTool):
     """Search the web using an injected provider.
 
@@ -99,25 +79,22 @@ class WebSearchTool(BaseWebTool):
             result = await tool.execute(arguments={"query": "Python async patterns"})
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = WebSearchArgs
+
     def __init__(
         self,
         *,
         provider: WebSearchProvider,
         network_policy: NetworkPolicy | None = None,
     ) -> None:
-        """Initialize the web search tool.
-
-        Args:
-            provider: Web search provider implementation.
-            network_policy: Network policy (for base class).
-        """
+        """Initialize the web search tool with the typed args schema."""
         super().__init__(
             name="web_search",
             description=(
                 "Search the web for information. Returns titles, "
                 "URLs, and snippets for matching results."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=WebSearchArgs.model_json_schema(),
             action_type=ActionType.COMMS_EXTERNAL,
             network_policy=network_policy,
         )

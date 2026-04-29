@@ -5,9 +5,10 @@ text extraction, link extraction, and metadata extraction using the
 stdlib ``html.parser`` module.
 """
 
-import copy
 from html.parser import HTMLParser
-from typing import Any, Final
+from typing import Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -17,29 +18,12 @@ from synthorg.observability.events.web import (
     WEB_PARSE_SUCCESS,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.web._args import HtmlParserArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
 
 logger = get_logger(__name__)
 
 _EXTRACT_MODES: Final[tuple[str, ...]] = ("text", "links", "metadata")
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "html_content": {
-            "type": "string",
-            "description": "HTML content to parse",
-        },
-        "extract_mode": {
-            "type": "string",
-            "enum": list(_EXTRACT_MODES),
-            "description": "What to extract: text, links, or metadata",
-            "default": "text",
-        },
-    },
-    "required": ["html_content"],
-    "additionalProperties": False,
-}
 
 
 # ── Extraction helpers ─────────────────────────────────────────
@@ -167,15 +151,17 @@ class HtmlParserTool(BaseWebTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = HtmlParserArgs
+
     def __init__(self) -> None:
-        """Initialize the HTML parser tool."""
+        """Initialize the HTML parser tool with the typed args schema."""
         super().__init__(
             name="html_parser",
             description=(
                 "Parse HTML content and extract text, links, "
                 "or metadata (title, meta tags)."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=HtmlParserArgs.model_json_schema(),
             action_type=ActionType.CODE_READ,
         )
 
