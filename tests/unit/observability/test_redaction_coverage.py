@@ -47,8 +47,9 @@ def test_no_logger_exception_str_exc_sites() -> None:
         cwd=str(_REPO_ROOT),
     )
     assert result.returncode == 0, (
-        "New logger.exception(..., error=str(exc)) site(s) introduced "
-        "since the SEC-1 baseline. See test docstring for the fix.\n\n"
+        "logger.exception(..., error=str(exc)) site(s) detected. This "
+        "pattern is forbidden unconditionally (no allowlist, no baseline). "
+        "See test docstring for the fix.\n\n"
         f"Violations:\n{result.stdout}\n"
         f"Details:\n{result.stderr}"
     )

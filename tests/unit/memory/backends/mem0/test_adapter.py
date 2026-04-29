@@ -274,6 +274,56 @@ class TestLifecycle:
             await b.connect()
 
 
+# ── SEC-1 logger contract for catastrophic interpreter state ─────
+
+
+@pytest.mark.unit
+class TestSystemErrorLogging:
+    """Pin the SEC-1 logger contract for ``MemoryError`` / ``RecursionError``.
+
+    The mem0 adapter is the rare site where traceback exposure is
+    justified for catastrophic interpreter state. The contract is:
+    log at ERROR level via ``logger.error(EVENT, ..., exc_info=True,
+    error_type=type(exc).__name__, error=safe_error_description(exc))``,
+    then re-raise. Regressing this back to ``logger.exception`` (which
+    serialises frame-locals) or to ``logger.warning`` (which loses the
+    traceback) is a SEC-1 violation; this test catches both directions.
+    """
+
+    @pytest.mark.parametrize(
+        "exc_type",
+        [builtins.MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_health_check_logs_error_with_exc_info(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+        exc_type: type[BaseException],
+    ) -> None:
+        """health_check on system error logs at ERROR with exc_info=True."""
+        mock_client.get_all.side_effect = exc_type("system failure")
+        with (
+            patch(
+                "synthorg.memory.backends.mem0.adapter.logger",
+            ) as mock_logger,
+            pytest.raises(exc_type),
+        ):
+            await backend.health_check()
+        mock_logger.error.assert_called_once()
+        call = mock_logger.error.call_args
+        assert call.kwargs.get("exc_info") is True
+        assert call.kwargs.get("error_type") == exc_type.__name__
+        assert "error" in call.kwargs
+        # Crucially: the value must be safe_error_description(exc) output,
+        # not str(exc); the helper prefixes the type name.
+        assert call.kwargs["error"].startswith(f"{exc_type.__name__}:")
+        # And logger.exception / logger.warning must NOT be called for
+        # this path (regressions to either are SEC-1 violations).
+        mock_logger.exception.assert_not_called()
+        mock_logger.warning.assert_not_called()
+
+
 # ── Connection guard ──────────────────────────────────────────────
 
 

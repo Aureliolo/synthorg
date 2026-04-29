@@ -1,12 +1,14 @@
 """Tests for SQLiteUserRepository and SQLiteApiKeyRepository."""
 
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 import aiosqlite
 import pytest
 
 from synthorg.api.auth.models import ApiKey, User
 from synthorg.api.guards import HumanRole
+from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -237,3 +239,86 @@ class TestSQLiteApiKeyRepository:
         await api_key_repo.save(key)
         assert await api_key_repo.delete("key-del") is True
         assert await api_key_repo.get("key-del") is None
+
+
+# ── SEC-1 logger contract on persistence error paths ─────────────
+
+
+@pytest.mark.unit
+class TestSec1LoggerContract:
+    """Pin the SEC-1 logger contract for persistence error paths.
+
+    Persistence repos catch ``aiosqlite.Error`` / ``sqlite3.Error`` and
+    log at WARNING with ``error_type=type(exc).__name__`` plus
+    ``error=safe_error_description(exc)``. A regression to
+    ``logger.exception(EVENT, error=str(exc))`` would re-introduce the
+    SEC-1 leak (postgres/sqlite connection strings, SQL fragments) the
+    pre-commit gate already blocks at the AST level. This test pins
+    the runtime contract so a CI-only mistake (e.g., a flag flip on
+    the gate) cannot mask it.
+    """
+
+    async def test_get_db_error_logs_warning(
+        self,
+        user_repo: SQLiteUserRepository,
+    ) -> None:
+        """A DB error during ``get`` logs at WARNING with redacted error."""
+        with (
+            patch.object(
+                user_repo._db,
+                "execute",
+                side_effect=aiosqlite.Error("connection lost"),
+            ),
+            patch(
+                "synthorg.persistence.sqlite.user_repo.logger",
+            ) as mock_logger,
+            pytest.raises(QueryError),
+        ):
+            await user_repo.get("user-001")
+        mock_logger.warning.assert_called_once()
+        call = mock_logger.warning.call_args
+        # Positional EVENT constant is preserved.
+        assert call.args, "expected EVENT constant as first positional arg"
+        # Structured kwargs follow the SEC-1 shape.
+        assert call.kwargs.get("error_type") == "Error"
+        assert "error" in call.kwargs
+        # Crucially: the error value must be the safe_error_description
+        # output (prefixed with the type name), not raw str(exc).
+        assert call.kwargs["error"].startswith("Error:")
+        # And logger.exception must NOT have been called.
+        mock_logger.exception.assert_not_called()
+
+    async def test_get_db_error_scrubs_connection_string(
+        self,
+        user_repo: SQLiteUserRepository,
+    ) -> None:
+        """Postgres-style URI userinfo in a DB error message is scrubbed.
+
+        End-to-end check: a credential-bearing exception message flows
+        through the SEC-1 conversion (``logger.warning`` +
+        ``safe_error_description``) and the captured log value has the
+        password masked. This pins the helper's scrub contract at the
+        persistence boundary, covering the scenario the original
+        ``logger.exception(EVENT, error=str(exc))`` pattern leaked.
+        """
+        leaky_message = (
+            "could not connect: postgres://app_user:hunter2@db.internal:5432/app"
+        )
+        with (
+            patch.object(
+                user_repo._db,
+                "execute",
+                side_effect=aiosqlite.Error(leaky_message),
+            ),
+            patch(
+                "synthorg.persistence.sqlite.user_repo.logger",
+            ) as mock_logger,
+            pytest.raises(QueryError),
+        ):
+            await user_repo.get("user-001")
+        call = mock_logger.warning.call_args
+        logged_error = call.kwargs["error"]
+        # Password is masked, but scheme + host survive for triage.
+        assert "hunter2" not in logged_error
+        assert "***@db.internal" in logged_error
+        assert "postgres://" in logged_error
