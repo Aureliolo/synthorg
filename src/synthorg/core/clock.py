@@ -20,6 +20,24 @@ genuinely needs all three:
 
 ``SystemClock`` is the production implementation; tests inject the
 ``FakeClock`` from ``tests/_shared/fake_clock.py``.
+
+Legacy seam (deliberate)
+------------------------
+
+A handful of communication-side modules still take a ``clock:
+Callable[[], float] = time.monotonic`` parameter instead of the
+``Clock`` protocol:
+
+- ``src/synthorg/communication/loop_prevention/circuit_breaker.py``
+- ``src/synthorg/communication/loop_prevention/dedup.py``
+- ``src/synthorg/communication/loop_prevention/rate_limit.py``
+- ``src/synthorg/communication/meeting/scheduler.py``
+
+Migrating those would force ~30+ test sites that pass plain callables
+to switch to ``FakeClock``, which is mechanical churn without a
+testability gain (each site already injects a deterministic clock).
+New code uses the ``Clock`` protocol; the legacy callables stay until
+they need updating for some other reason.
 """
 
 import asyncio

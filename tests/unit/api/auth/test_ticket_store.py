@@ -135,21 +135,32 @@ class TestWsTicketStoreValidateAndConsume:
         assert len(winners) == 1
         assert winners[0].user_id == user.user_id
 
-    def test_validate_and_consume_expired(self) -> None:
+    @pytest.mark.parametrize(
+        ("ttl", "advance_by", "expect_consumable"),
+        [
+            pytest.param(10.0, 9.9, True, id="just_before_expiry"),
+            pytest.param(10.0, 11.0, False, id="just_after_expiry"),
+            pytest.param(5.0, 4.0, True, id="custom_ttl_within"),
+            pytest.param(5.0, 6.0, False, id="custom_ttl_past"),
+        ],
+    )
+    def test_validate_and_consume_ttl_boundary(
+        self,
+        ttl: float,
+        advance_by: float,
+        *,
+        expect_consumable: bool,
+    ) -> None:
         clock = FakeClock()
-        store = WsTicketStore(ttl_seconds=10.0, clock=clock)
+        store = WsTicketStore(ttl_seconds=ttl, clock=clock)
         user = _make_user()
         ticket = store.create(user)
-        clock.advance(11.0)
-        assert store.validate_and_consume(ticket) is None
-
-    def test_validate_and_consume_just_before_expiry(self) -> None:
-        clock = FakeClock()
-        store = WsTicketStore(ttl_seconds=10.0, clock=clock)
-        user = _make_user()
-        ticket = store.create(user)
-        clock.advance(9.9)
-        assert store.validate_and_consume(ticket) is not None
+        clock.advance(advance_by)
+        result = store.validate_and_consume(ticket)
+        if expect_consumable:
+            assert result is not None
+        else:
+            assert result is None
 
     def test_validate_and_consume_unknown_ticket(self) -> None:
         store = WsTicketStore()
@@ -160,22 +171,6 @@ class TestWsTicketStoreValidateAndConsume:
         store = WsTicketStore()
         result = store.validate_and_consume("")
         assert result is None
-
-    def test_custom_ttl(self) -> None:
-        clock = FakeClock()
-        store = WsTicketStore(ttl_seconds=5.0, clock=clock)
-        user = _make_user()
-        ticket = store.create(user)
-        clock.advance(4.0)
-        assert store.validate_and_consume(ticket) is not None
-
-    def test_custom_ttl_expired(self) -> None:
-        clock = FakeClock()
-        store = WsTicketStore(ttl_seconds=5.0, clock=clock)
-        user = _make_user()
-        ticket = store.create(user)
-        clock.advance(6.0)
-        assert store.validate_and_consume(ticket) is None
 
 
 @pytest.mark.unit

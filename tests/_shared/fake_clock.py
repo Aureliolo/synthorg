@@ -48,7 +48,13 @@ class FakeClock:
         """Advance the virtual clock by ``seconds`` without waiting.
 
         Records the requested duration in ``sleep_calls`` so tests can
-        assert how long the code under test asked to sleep.
+        assert how long the code under test asked to sleep, then yields
+        control to the event loop once so cancellation on the awaiting
+        task surfaces the same way it would under ``SystemClock.sleep``.
+        Without that single ``asyncio.sleep(0)`` a cancelled timer
+        task could exit FakeClock.sleep "synchronously" and a test
+        using FakeClock-driven timers would silently miss cancellation
+        propagation that the production code relies on.
 
         Args:
             seconds: Non-negative duration.
@@ -61,6 +67,9 @@ class FakeClock:
             raise ValueError(msg)
         self._sleep_calls.append(seconds)
         self._now = self._now + timedelta(seconds=seconds)
+        # Yield once so a CancelledError pending on the awaiting task
+        # is delivered here, matching SystemClock.sleep semantics.
+        await asyncio.sleep(0)
 
     def now(self) -> AwareDatetime:
         """Return the current virtual time."""

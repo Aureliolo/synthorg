@@ -7,6 +7,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.resilience_config import RateLimiterConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
+    PROVIDER_RATE_LIMITER_CANCELLED,
     PROVIDER_RATE_LIMITER_PAUSED,
     PROVIDER_RATE_LIMITER_THROTTLED,
 )
@@ -77,7 +78,20 @@ class RateLimiter:
                 wait_seconds=round(remaining, 2),
                 reason="pause_active",
             )
-            await self._clock.sleep(remaining)
+            try:
+                await self._clock.sleep(remaining)
+            except asyncio.CancelledError:
+                # Surface pause-interrupted cancellation in the audit
+                # trail before re-raising so an oncall debugging a
+                # truncated request can see the rate limiter was the
+                # site that absorbed the cancel signal.
+                logger.info(
+                    PROVIDER_RATE_LIMITER_CANCELLED,
+                    provider=self._provider_name,
+                    wait_seconds=round(remaining, 2),
+                    reason="pause_active",
+                )
+                raise
 
         # RPM sliding window
         if self._config.max_requests_per_minute > 0:
@@ -144,12 +158,29 @@ class RateLimiter:
                 oldest = self._request_timestamps[0]
                 wait = oldest - cutoff
 
+            # ``oldest > cutoff`` is the loop entry condition (no slot
+            # available means the deque is full of in-window
+            # timestamps), so ``wait`` is strictly positive here. The
+            # assert guards against a future refactor that loses that
+            # invariant -- silently sleeping zero or negative would
+            # bypass the rate limit entirely.
+            assert wait > 0, (  # noqa: S101 -- defensive invariant
+                f"RPM wait must be > 0; got {wait}, oldest={oldest}, cutoff={cutoff}"
+            )
             # Sleep outside the lock so other coroutines can proceed.
-            if wait > 0:
-                logger.debug(
-                    PROVIDER_RATE_LIMITER_THROTTLED,
+            logger.debug(
+                PROVIDER_RATE_LIMITER_THROTTLED,
+                provider=self._provider_name,
+                wait_seconds=round(wait, 2),
+                reason="rpm_limit",
+            )
+            try:
+                await self._clock.sleep(wait)
+            except asyncio.CancelledError:
+                logger.info(
+                    PROVIDER_RATE_LIMITER_CANCELLED,
                     provider=self._provider_name,
                     wait_seconds=round(wait, 2),
                     reason="rpm_limit",
                 )
-                await self._clock.sleep(wait)
+                raise

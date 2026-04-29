@@ -47,6 +47,34 @@ web/src/
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
 ```
 
+```text
+web/e2e/
+  factories/      # Typed mock-data builders mirroring API response shapes:
+                  # agents, approvals, budget, memory, providers, setup,
+                  # tasks, workflows. Each factory accepts an overrides
+                  # object so tests vary single fields without rebuilding
+                  # the whole payload (#1604 / W5a).
+  fixtures/       # mock-api.ts (route stubs + freezeTime) and
+                  # websocket-harness.ts (#1604 / W5a) -- the harness
+                  # swaps the global WebSocket constructor for a
+                  # controllable stub via page.addInitScript and exposes
+                  # `injectEvent(page, event)` so flow specs can push
+                  # synthetic server-pushed frames (task transitions,
+                  # approval decisions, provider health) through the
+                  # same handler the SPA processes for real connections.
+  flows/          # Playwright flow specs. Every Tier-1 spec installs
+                  # the WebSocket harness, builds deterministic API
+                  # responses through the factories, and asserts both
+                  # form interaction AND WS-driven state transitions.
+                  # task-lifecycle.spec.ts walks the full create -> approval
+                  # gate -> reviewer-approves -> status transition path.
+  helpers/        # interactions.ts -- dragTo / fillForm / clickButton /
+                  # clickAndAwait / selectOption wrappers that always
+                  # wait on a selector or network response, never on a
+                  # wall-clock timeout.
+  visual/         # Playwright visual-regression specs.
+```
+
 ## Logging
 
 - **Always** use `createLogger` from `@/lib/logger`; never bare `console.warn`/`console.error`/`console.debug` in application code
