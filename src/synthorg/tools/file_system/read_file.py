@@ -107,7 +107,14 @@ class ReadFileTool(BaseFileSystemTool):
         start_line: int | None,
         end_line: int | None,
     ) -> ToolExecutionResult | None:
-        """Return an error if the line range is invalid."""
+        """Return an error if the line range is invalid.
+
+        ``ReadFileArgs._check_line_range`` raises at validation time
+        when this tool is invoked via :class:`ToolInvoker`; this body
+        guard is the defensive backstop for direct callers that
+        bypass the invoker (tests, internal utilities) and pass an
+        unvalidated dict.
+        """
         if start_line is not None and end_line is not None and start_line > end_line:
             return ToolExecutionResult(
                 content=(

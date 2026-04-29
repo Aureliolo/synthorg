@@ -13,6 +13,34 @@ Both are *mixin* base classes.  Domain args modules subclass one or
 both and add their per-tool fields.  The discriminator policy is the
 tool registration name (the existing handler-key lookup), so unlike
 the WS event union we don't need a per-variant ``Literal`` tag.
+
+Polymorphic ``dict[str, object]`` fields
+----------------------------------------
+
+A handful of domain args models declare polymorphic fields with a
+``dict[str, object]`` type:
+
+* ``updates`` (CRUD update endpoints) -- the partial-update bag whose
+  keys depend on the entity type and which keys are settable per
+  domain.  Service layers are the source of truth for the allowed
+  shape.
+* ``parameters`` (workflow / report / simulation start / generate
+  endpoints) -- caller-supplied execution parameters whose schema is
+  published per workflow / report / scenario, not per tool.
+* ``config`` / ``credentials`` (OAuth / connection setup endpoints) --
+  per-provider freeform config; the surface is a one-of of dozens of
+  provider schemas with no closed union and is enforced by the
+  service layer when the provider is selected.
+* ``steps`` (workflow create endpoints) -- a tuple of per-step
+  dictionaries whose shape is the workflow-step union owned by
+  ``synthorg.workflows.models``.
+
+These are intentionally typed as ``dict[str, object]`` (not
+``dict[str, Any]``) so callers cannot smuggle non-JSON values
+(functions, modules) past validation; the inner schema is enforced
+at the service layer where the polymorphic dispatch happens.  When a
+new ``dict[str, object]`` field is added it MUST live in this
+allowlist; reach for a typed nested model first.
 """
 
 from typing import Any, Literal
