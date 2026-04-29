@@ -14,10 +14,19 @@ SynthOrg exposes 200+ tools across the 15 domain modules under `src/synthorg/met
 
 Each builder accepts an optional `args_model: type[BaseModel]` kwarg that flows through to `MCPToolDef.args_model`. When set, the invoker validates the raw `arguments` dict against the Pydantic model **before** dispatching to the handler:
 
-- Validation success: `arguments` reaches the handler as a dict that is structurally guaranteed to match the model (every required field present with the declared types, no extra keys).
+- Validation success: the invoker takes the validated model's `model_dump(mode="python")` and passes that dict to the handler. Every key matches the model's declared fields with no extras (because args models use `extra="forbid"`); enum/datetime/etc. values are already coerced.
 - Validation failure: the invoker short-circuits with a `{"status": "error", "error_type": "ArgumentValidationError", "domain_code": "invalid_argument", "message": "...", "tool": ...}` envelope. The handler is never invoked.
 
-For tools that have an `args_model`, handlers may safely access `arguments["x"]` for declared fields (Pydantic guaranteed presence) or call `args_model.model_validate(arguments)` locally for compile-time-typed access.
+The handler's signature stays at `arguments: dict[str, Any]` (the protocol contract) so existing handlers don't need to migrate; the dict is just structurally sound after validation. Handlers that want compile-time typed access can call `args_model.model_validate(arguments)` locally (a no-op re-validate that returns the typed model with full mypy-strict field access):
+
+```python
+async def list_tasks_handler(*, app_state, arguments: dict[str, Any], actor=None) -> str:
+    args = TasksListArgs.model_validate(arguments)  # typed access from here on
+    page = await app_state.task_service.list(
+        status=args.status, offset=args.offset, limit=args.limit,
+    )
+    return ok(data=...)
+```
 
 Tools without an `args_model` (legacy / dynamically-shaped tools such as `MCPBridgeTool`) keep the manual `common_args` validation path described below.
 

@@ -125,16 +125,17 @@ class MCPToolInvoker:
                 is_error=True,
             )
 
-        # Optional typed-args validation (Phase 4 of #1611): when the
-        # tool's ``MCPToolDef.args_model`` is set, validate the raw
-        # arguments dict against the Pydantic model before dispatch.
-        # ``ValidationError`` surfaces as an ``invalid_argument`` error
-        # envelope without ever reaching the handler.  Unmigrated tools
-        # (``args_model is None``) keep their legacy ``common_args``
-        # validation inside the handler body.
+        # Phase 4 of #1611: when the tool registration carries an
+        # ``args_model``, validate the raw dict against it and pass the
+        # validated ``model_dump()`` to the handler.  Validation
+        # failure surfaces as an ``invalid_argument`` error envelope
+        # without ever reaching the handler.  Legacy tools
+        # (``args_model is None``) keep receiving the deepcopied raw
+        # dict, validated by the handler's own ``common_args`` calls.
+        handler_arguments: dict[str, Any]
         if tool_def.args_model is not None:
             try:
-                tool_def.args_model.model_validate(dict(arguments))
+                validated = tool_def.args_model.model_validate(dict(arguments))
             except PydanticValidationError as exc:
                 errors = exc.errors(include_input=False, include_url=False)
                 detail = (
@@ -160,6 +161,9 @@ class MCPToolInvoker:
                     ),
                     is_error=True,
                 )
+            handler_arguments = validated.model_dump(mode="python")
+        else:
+            handler_arguments = deepcopy(arguments)
 
         # Invoke handler.  Re-raise MemoryError/RecursionError
         # (system-critical) and let application exceptions map to
@@ -167,7 +171,7 @@ class MCPToolInvoker:
         try:
             result = await handler(
                 app_state=app_state,
-                arguments=deepcopy(arguments),
+                arguments=handler_arguments,
                 actor=actor,
             )
         except MemoryError, RecursionError:
