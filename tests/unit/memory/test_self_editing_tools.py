@@ -12,8 +12,6 @@ from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.self_editing import (
-    _MAX_CONTENT_LEN,
-    _MAX_MEMORY_ID_LEN,
     ARCHIVAL_MEMORY_SEARCH_TOOL,
     ARCHIVAL_MEMORY_WRITE_TOOL,
     CORE_MEMORY_READ_TOOL,
@@ -22,6 +20,10 @@ from synthorg.memory.self_editing import (
     RECALL_MEMORY_WRITE_TOOL,
     SelfEditingMemoryConfig,
     SelfEditingMemoryStrategy,
+)
+from synthorg.memory.self_editing_args import (
+    _MAX_CONTENT_LEN,
+    _MAX_MEMORY_ID_LEN,
 )
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tools import (
@@ -280,25 +282,42 @@ class TestArchivalMemorySearchTool:
 
     @pytest.mark.parametrize(
         "limit_value",
-        ["not_a_number", 3.14, None, [], {}],
+        ["not_a_number", 3.14, [], {}],
     )
-    async def test_execute_non_integer_limit_defaults_to_config(
+    async def test_execute_non_integer_limit_returns_error(
         self,
         limit_value: object,
     ) -> None:
-        """Non-integer limit values must silently default to config limit."""
-        config = _make_config(archival_search_limit=7)
-        backend = _make_backend(entries=())
-        strategy = _make_strategy(backend=backend, config=config)
+        """Non-integer limit values are rejected at the typed-args boundary.
+
+        The Phase 2 typed-args refactor (#1611) replaced the old silent
+        fallback with a Pydantic ``ValidationError`` that surfaces as an
+        ``ERROR_PREFIX`` envelope so the LLM gets a clear signal about
+        the malformed argument instead of silently truncating to the
+        config cap.  ``None`` is the valid "use the config default"
+        signal and is covered by ``test_execute_uses_config_default_limit``.
+        """
+        strategy = _make_strategy(backend=_make_backend(entries=()))
         tool = ArchivalMemorySearchTool(strategy=strategy, agent_id="agent-1")
 
         result = await tool.execute(
             arguments={"query": "anything", "limit": limit_value},
         )
 
+        assert result.is_error
+
+    async def test_execute_uses_config_default_limit(self) -> None:
+        """Omitting ``limit`` uses ``config.archival_search_limit``."""
+        config = _make_config(archival_search_limit=7)
+        backend = _make_backend(entries=())
+        strategy = _make_strategy(backend=backend, config=config)
+        tool = ArchivalMemorySearchTool(strategy=strategy, agent_id="agent-1")
+
+        result = await tool.execute(arguments={"query": "anything"})
+
         assert not result.is_error
         query = backend.retrieve.call_args.args[1]
-        assert query.limit <= 7
+        assert query.limit == 7
 
 
 # ---------------------------------------------------------------------------

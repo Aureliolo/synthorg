@@ -20,7 +20,6 @@ from synthorg.memory.self_editing import (
     RECALL_MEMORY_WRITE_TOOL,
     SelfEditingMemoryConfig,
     SelfEditingMemoryStrategy,
-    _extract_str,
 )
 
 # ---------------------------------------------------------------------------
@@ -353,34 +352,7 @@ class TestHandleToolCallDispatch:
         assert "UNIQUE constraint" not in result
 
 
-# ---------------------------------------------------------------------------
-# TestExtractStr
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestExtractStr:
-    @pytest.mark.parametrize(
-        "value",
-        [42, None, {}, [], 3.14, True],
-    )
-    def test_non_string_value_returns_none(self, value: object) -> None:
-        """_extract_str must return None for any non-string value."""
-        result = _extract_str({"key": value}, "key")
-        assert result is None
-
-    def test_blank_string_returns_none(self) -> None:
-        result = _extract_str({"key": "   "}, "key")
-        assert result is None
-
-    def test_missing_key_returns_none(self) -> None:
-        result = _extract_str({}, "key")
-        assert result is None
-
-    def test_valid_string_is_stripped(self) -> None:
-        result = _extract_str({"key": "  hello world  "}, "key")
-        assert result == "hello world"
-
-    def test_non_blank_string_returned_as_is_after_strip(self) -> None:
-        result = _extract_str({"key": "no whitespace"}, "key")
-        assert result == "no whitespace"
+# NOTE: ``_extract_str`` was deleted along with its tests in the Phase 2
+# typed-args refactor (#1611) -- the same behaviours are now enforced by
+# the ``NotBlankStr`` field type in ``self_editing_args.py`` and exercised
+# by ``tests/unit/memory/test_self_editing_args.py``.
