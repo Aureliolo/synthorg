@@ -8,7 +8,10 @@ import pytest
 from synthorg.tools.invocation_bridge import record_tool_invocation
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
-_TEST_STARTED_AT = datetime.now(UTC)
+# Deterministic timezone-aware constant; using ``datetime.now(UTC)`` here
+# would tie the test to worker startup time and make duration assertions
+# flaky between xdist workers.
+_TEST_STARTED_AT = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
 
 
 def _make_invoker(

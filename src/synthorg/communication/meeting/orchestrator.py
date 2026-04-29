@@ -340,11 +340,15 @@ class MeetingOrchestrator:
     ) -> MeetingRecord:
         """Build, store, and log a failure record.
 
-        State-transition log fires AFTER the record is appended so
+        The terminal-state log (``MEETING_BUDGET_EXHAUSTED`` /
+        ``MEETING_FAILED``) fires AFTER the record is appended so
         the audit trail only records transitions that actually
         landed. ``MeetingRecord`` construction or ``self._records``
-        append could in principle raise (model_validator,
-        memory pressure); if they do, the log is skipped.
+        append could in principle raise (model_validator, memory
+        pressure); if they do, the log is skipped. This handler does
+        not emit a separate ``*_STATUS_TRANSITIONED`` event today --
+        the terminal events above are the canonical hop log for the
+        meeting subsystem.
         """
         error_msg = _format_exception(exc)
         record = MeetingRecord(
@@ -384,9 +388,12 @@ class MeetingOrchestrator:
     ) -> MeetingRecord:
         """Build, store, and log a success record.
 
-        State-transition log fires AFTER the record is appended so
-        the audit trail only records transitions that actually
-        landed.
+        The terminal-state log (``MEETING_COMPLETED``) fires AFTER
+        the record is appended so the audit trail only records
+        transitions that actually landed. This handler does not
+        emit a separate ``*_STATUS_TRANSITIONED`` event today --
+        ``MEETING_COMPLETED`` is the canonical hop log for the
+        meeting subsystem.
         """
         record = MeetingRecord(
             meeting_id=meeting_id,

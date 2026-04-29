@@ -238,7 +238,13 @@ async def fail_execution(
         attributes={
             "workflow.definition_id": execution.definition_id,
             "workflow.execution_id": execution.id,
-            "workflow.error": error,
+            # Don't attach the raw ``error`` string as a span
+            # attribute: error messages are unbounded user / model
+            # output and would inflate the trace cardinality and
+            # storage cost. The full message is already on the
+            # post-save ``WORKFLOW_EXEC_FAILED`` log payload via
+            # ``_emit_terminal_workflow_observability``; trace
+            # consumers cross-reference via ``workflow.execution_id``.
         },
     ):
         now = datetime.now(UTC)

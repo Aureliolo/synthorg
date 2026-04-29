@@ -36,6 +36,9 @@ API_REQUEST_VALIDATION_FAILED: Final[str] = "metrics.api_request.validation_fail
 CLIENT_DISCONNECTED: Final[str] = "metrics.client_disconnected"
 
 # Clock-skew clamp on a duration computation; emitted when ``now`` precedes
-# ``created_at`` and the metric value is forced to 0 to keep the histogram
-# bucket from absorbing a phantom 0-second sample.
+# ``created_at`` (clock jump, NTP misconfig, multi-node clock drift). The
+# duration is clamped to 0.0 and the histogram WILL record a zero-second
+# sample for that observation; the WARN exists so an operator can search
+# for the underlying clock issue and explain the otherwise-mysterious
+# zero-bucket spike, NOT to suppress the sample.
 METRICS_CLOCK_SKEW_DETECTED: Final[str] = "metrics.clock_skew_detected"

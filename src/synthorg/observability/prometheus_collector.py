@@ -33,6 +33,7 @@ from synthorg.observability.events.metrics import (
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
     _snapshot_for_collector,
+    _snapshot_lock,
     is_known_agent_id,
     update_label_snapshot,
 )
@@ -64,15 +65,6 @@ class PrometheusCollector(RecordingMixin):
     def __init__(self, *, prefix: str = "synthorg") -> None:
         self._prefix = prefix
         self.registry = CollectorRegistry()
-        # Serializes the read/merge/write critical section in
-        # :meth:`_rebuild_label_snapshot` so two overlapping
-        # ``refresh()`` calls cannot interleave their fetches and
-        # produce a torn snapshot (e.g. one rebuilder reading the
-        # previous snapshot before the other's update lands, then
-        # writing back its now-stale merge). One lock per collector
-        # instance is enough because the collector is a singleton
-        # owned by AppState.
-        self._snapshot_lock = asyncio.Lock()
 
         # -- Info --------------------------------------------------------
         self._info = Info(
@@ -314,13 +306,16 @@ class PrometheusCollector(RecordingMixin):
         wf_ids = wf_task.result()
         dept_ids = dept_task.result()
         # The read/merge/write critical section runs under the
-        # collector's snapshot lock so two overlapping refreshes
-        # cannot interleave their fetches with one another's update
-        # and clobber a partial-failure carry-forward. The fetches
-        # above are deliberately outside the lock so a slow
-        # registry call doesn't block other refresh work; only the
-        # tiny merge-and-rebind step is serialized.
-        async with self._snapshot_lock:
+        # process-global ``_snapshot_lock`` (lives next to
+        # ``_snapshot`` in ``prometheus_labels``) so two overlapping
+        # refreshes -- including refreshes from distinct
+        # ``PrometheusCollector`` instances during tests -- cannot
+        # interleave their fetches with one another's update and
+        # clobber a partial-failure carry-forward. The fetches above
+        # are deliberately outside the lock so a slow registry call
+        # does not block other refresh work; only the tiny
+        # merge-and-rebind step is serialized.
+        async with _snapshot_lock:
             previous = _snapshot_for_collector()
             # Carry the previous snapshot's value forward for any source
             # that failed; only a successful fetch overwrites.

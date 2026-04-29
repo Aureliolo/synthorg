@@ -7,6 +7,7 @@ helper live in their own module so :mod:`synthorg.observability.prometheus_colle
 stays below the 800-line limit mandated by ``CLAUDE.md``.
 """
 
+import asyncio
 import math
 from dataclasses import dataclass
 from typing import Final, get_args
@@ -35,6 +36,7 @@ __all__ = [
     "VALID_WORKFLOW_EXECUTION_STATUSES",
     "_LabelSnapshot",
     "_reset_label_snapshot_for_tests",
+    "_snapshot_lock",
     "is_known_agent_id",
     "require_finite",
     "require_label",
@@ -269,6 +271,18 @@ class _LabelSnapshot:
 
 _INITIAL_SNAPSHOT: Final[_LabelSnapshot] = _LabelSnapshot()
 _snapshot: _LabelSnapshot = _INITIAL_SNAPSHOT
+
+# Process-global lock guarding the read/merge/write critical section
+# in ``PrometheusCollector._rebuild_label_snapshot``. The lock lives
+# next to the ``_snapshot`` it protects (rather than as a per-collector
+# attribute) so that two distinct ``PrometheusCollector`` instances --
+# which can coexist during tests or in a misconfigured AppState --
+# still cannot interleave their fetches with one another's update and
+# clobber a partial-failure carry-forward. Validators do NOT take this
+# lock: they read the module global once into a local before consulting
+# its fields, so a concurrent ``update_label_snapshot()`` either lands
+# before or after the local capture, never producing a torn read.
+_snapshot_lock: Final[asyncio.Lock] = asyncio.Lock()
 
 
 def update_label_snapshot(snapshot: _LabelSnapshot) -> None:

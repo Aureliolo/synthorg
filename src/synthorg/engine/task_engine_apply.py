@@ -425,8 +425,10 @@ async def apply_transition(
     # so a CREATED -> ASSIGNED hop doesn't pollute the counter. The
     # duration baseline is the engine's recorded creation time;
     # tasks created before a process restart have no entry, in which
-    # case duration falls back to 0.0 (logged + counted, but no
-    # spurious "instant" sample skews the histogram materially).
+    # case ``_compute_task_duration_sec`` returns ``None`` and
+    # ``record_task_run`` skips the duration-histogram observation
+    # while still incrementing the outcome counter (the histogram
+    # is therefore not skewed by spurious 0-second samples).
     if mutation.target_status in _TERMINAL_STATUS_OUTCOME:
         record_task_run(
             outcome=_TERMINAL_STATUS_OUTCOME[mutation.target_status],

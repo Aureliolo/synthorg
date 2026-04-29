@@ -479,7 +479,11 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         approval_id=approval_id,
         from_status=previous_status.value,
         to_status=saved.status.value,
-        decided_by=decided_by_user_id,
+        # Distinct field name from the audit-trail
+        # ``decided_by=<username>`` so downstream consumers can
+        # disambiguate the PII-free user-id channel from the
+        # operator-facing display channel without re-parsing.
+        decided_by_user_id=decided_by_user_id,
     )
 
     _publish_approval_event(request, ws_event, saved)
