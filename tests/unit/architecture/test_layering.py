@@ -23,6 +23,7 @@ in a non-imported module still fails the suite.
 """
 
 import ast
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -65,9 +66,17 @@ _FORBIDDEN_MODULES: frozenset[str] = frozenset(
 )
 
 
-def _python_files(root: Path) -> list[Path]:
-    """Return every ``.py`` file under ``root`` with ``__pycache__`` excluded."""
-    return [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
+@cache
+def _python_files(root: Path) -> tuple[Path, ...]:
+    """Return every ``.py`` file under ``root`` with ``__pycache__`` excluded.
+
+    Cached because each test reuses the same result and the ``rglob``
+    walk over ``src/synthorg`` is non-trivial -- with five tests
+    collecting ~1800 files each, naive recomputation noticeably slows
+    the suite.  Returns an immutable tuple so the cached value is
+    safe to share across callers.
+    """
+    return tuple(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
 
 
 def _module_path_from_file(path: Path) -> tuple[str, ...]:
@@ -114,7 +123,8 @@ def _resolve_relative_import(
     return ".".join(parent) if parent else None
 
 
-def _imported_modules(path: Path) -> set[str]:
+@cache
+def _imported_modules(path: Path) -> frozenset[str]:
     """Return every module referenced by an import statement.
 
     Walks ``from MODULE import ...`` (``ast.ImportFrom``) and bare
@@ -154,7 +164,7 @@ def _imported_modules(path: Path) -> set[str]:
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 out.add(alias.name)
-    return out
+    return frozenset(out)
 
 
 def _is_forbidden(module: str) -> bool:
@@ -241,7 +251,8 @@ def test_controllers_use_core_persistence_errors() -> None:
     persistence_legacy = "synthorg.persistence.errors"
     offenders = [
         (path, module)
-        for path in controllers.glob("*.py")
+        for path in controllers.rglob("*.py")
+        if "__pycache__" not in path.parts
         for module in _imported_modules(path)
         if module == persistence_legacy or module.startswith(persistence_legacy + ".")
     ]
