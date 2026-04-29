@@ -55,3 +55,19 @@ class TestIsoDatetimeStr:
         """Naive ISO 8601 strings (no offset / no Z) are rejected."""
         with pytest.raises(ValidationError):
             _TimeWindowArgs(since="2026-04-29T22:50:23")
+
+    def test_rejected_input_not_echoed_in_error_message(self) -> None:
+        """Validator ``msg`` MUST NOT splice the rejected raw input.
+
+        ``MCPToolInvoker`` formats ``ValidationError`` with
+        ``include_input=False`` -- only the per-error ``msg`` strings
+        flow into logs and the ``invalid_argument`` envelope.  If the
+        validator splices the input into ``msg``, that masking is
+        defeated; this regression guard checks the ``msg`` field on
+        each error directly.
+        """
+        secret = "tomorrow-ish-leak-token-987654321"
+        with pytest.raises(ValidationError) as exc_info:
+            _TimeWindowArgs(since=secret)
+        for error in exc_info.value.errors(include_input=False):
+            assert secret not in error["msg"]

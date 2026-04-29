@@ -64,10 +64,10 @@ def _validate_iso_8601_aware_datetime(value: str) -> str:
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError as exc:
-        msg = f"value is not a valid ISO 8601 datetime: {value!r}"
+        msg = "value is not a valid ISO 8601 datetime"
         raise ValueError(msg) from exc
     if parsed.tzinfo is None:
-        msg = f"value must include a timezone (e.g. ``+00:00`` or ``Z``): {value!r}"
+        msg = "value must include a timezone (e.g. ``+00:00`` or ``Z``)"
         raise ValueError(msg)
     return value
 
