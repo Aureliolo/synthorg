@@ -10,8 +10,8 @@ hits -- stale tuples never leak back.
 """
 
 import asyncio
-import time
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_RERANK_CACHE_HIT,
@@ -49,6 +49,7 @@ class RerankerCache:
         *,
         ttl_seconds: int = _DEFAULT_TTL_SECONDS,
         max_size: int = _DEFAULT_MAX_SIZE,
+        clock: Clock | None = None,
     ) -> None:
         if ttl_seconds <= 0:
             msg = "ttl_seconds must be positive"
@@ -58,6 +59,7 @@ class RerankerCache:
             raise ValueError(msg)
         self._ttl = ttl_seconds
         self._max_size = max_size
+        self._clock: Clock = clock or SystemClock()
         self._store: dict[
             str,
             tuple[tuple[str, ...], float, float],
@@ -86,7 +88,7 @@ class RerankerCache:
                 record_cache_operation(cache_name=_CACHE_NAME, outcome="miss")
                 return None
             id_order, created_at, _ = entry
-            if time.monotonic() - created_at > self._ttl:
+            if self._clock.monotonic() - created_at > self._ttl:
                 del self._store[key]
                 logger.debug(
                     MEMORY_RERANK_CACHE_MISS,
@@ -96,7 +98,7 @@ class RerankerCache:
                 record_cache_operation(cache_name=_CACHE_NAME, outcome="miss")
                 return None
             # Update last access time
-            self._store[key] = (id_order, created_at, time.monotonic())
+            self._store[key] = (id_order, created_at, self._clock.monotonic())
             logger.debug(
                 MEMORY_RERANK_CACHE_HIT,
                 key=key[:16],
@@ -121,7 +123,7 @@ class RerankerCache:
             id_order: Ordered sequence of candidate entry IDs.
         """
         async with self._lock:
-            now = time.monotonic()
+            now = self._clock.monotonic()
             # Purge expired entries first so they don't protect
             # themselves from eviction by occupying slots.
             expired_keys = [

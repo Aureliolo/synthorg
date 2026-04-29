@@ -10,10 +10,10 @@ Individual poll failures are logged and do not propagate.
 
 import asyncio
 import contextlib
-import time
 from typing import TYPE_CHECKING
 
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.quota import (
     QUOTA_ALERT_COOLDOWN_ACTIVE,
@@ -51,10 +51,12 @@ class QuotaPoller:
         quota_tracker: QuotaTracker,
         config: QuotaPollerConfig,
         notification_dispatcher: NotificationDispatcher | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._tracker = quota_tracker
         self._config = config
         self._dispatcher = notification_dispatcher
+        self._clock: Clock = clock or SystemClock()
         self._task: asyncio.Task[None] | None = None
         self._cooldown: dict[_CooldownKey, float] = {}
 
@@ -130,7 +132,7 @@ class QuotaPoller:
                     QUOTA_POLL_FAILED,
                     error=type(exc).__name__,
                 )
-            await asyncio.sleep(self._config.poll_interval_seconds)
+            await self._clock.sleep(self._config.poll_interval_seconds)
 
     async def _check_snapshot(self, snap: QuotaSnapshot) -> None:
         """Evaluate a single snapshot and dispatch an alert if needed."""
@@ -147,7 +149,7 @@ class QuotaPoller:
             return
 
         key: _CooldownKey = (snap.provider_name, snap.window, level)
-        now = time.monotonic()
+        now = self._clock.monotonic()
         last = self._cooldown.get(key)
         if last is not None:
             elapsed = now - last
@@ -168,7 +170,7 @@ class QuotaPoller:
             level=level,
             usage_pct=usage_pct,
         )
-        self._cooldown[key] = time.monotonic()
+        self._cooldown[key] = self._clock.monotonic()
 
         if self._dispatcher is not None:
             try:
