@@ -1,28 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
+import { motionReactMockFactory } from '@/test-utils/mock-motion'
 
-// Mock motion/react to avoid animation timing issues in tests
-
+// Shared motion/react mock: AnimatePresence is identity, motion.div drops
+// animation props and forwards everything else.
 vi.mock('motion/react', async () => {
   const actual = await vi.importActual<typeof import('motion/react')>('motion/react')
-  return {
-    ...actual,
-    useReducedMotion: () => false,
-    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    motion: {
-      ...actual.motion,
-      div: ({
-        children,
-        className,
-        'data-testid': testId,
-        ...rest
-      }: React.HTMLAttributes<HTMLDivElement> & { 'data-testid'?: string }) => (
-        <div className={className} data-testid={testId} {...rest}>
-          {children}
-        </div>
-      ),
-    },
-  }
+  return { ...actual, ...motionReactMockFactory() }
 })
 
 
