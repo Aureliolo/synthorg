@@ -77,24 +77,22 @@ runs:
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base"
         IFS=',' read -ra ARCHS <<< "${ARCHITECTURES}"
 
-        # Push each per-arch image, then resolve its registry digest
-        # immediately. Use those digests (not the mutable per-arch tags)
-        # in `docker manifest create` so the manifest list bytes are
-        # stable even if a parallel workflow run pushes a different
-        # build over the same per-arch tag between create and push.
-        # See the publish-image action for the full background.
-        #
-        # Residual race: between `docker push` and `imagetools inspect`
-        # a concurrent run could overwrite the per-arch tag and the
-        # `inspect` would return the OTHER run's digest. The
-        # `verify-signatures` job in docker.yml's cross-tag divergence
-        # check catches that case.
+        # Push each per-arch image, capturing its manifest digest
+        # directly from `docker push` stdout (`<tag>: digest:
+        # sha256:<hex> size: <bytes>` per the Docker CLI reference).
+        # Reference manifest list members by `@sha256:digest` rather
+        # than the mutable per-arch tags so the manifest list bytes
+        # are stable. Parsing the push output (instead of re-reading
+        # the tag via `docker buildx imagetools inspect`) closes the
+        # TOCTOU window where a parallel run could overwrite the tag
+        # between push and inspect.
         MANIFEST_ARGS=()
         for arch in "${ARCHS[@]}"; do
-          docker push "${REPO}:${TAG}-${arch}"
-          ARCH_DIGEST="$(docker buildx imagetools inspect "${REPO}:${TAG}-${arch}" --format '{{.Manifest.Digest}}')"
+          PUSH_OUTPUT="$(docker push "${REPO}:${TAG}-${arch}" 2>&1)"
+          printf '%s\n' "${PUSH_OUTPUT}"
+          ARCH_DIGEST="$(printf '%s\n' "${PUSH_OUTPUT}" | sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' | tail -n1)"
           if [ -z "$ARCH_DIGEST" ]; then
-            echo "::error::Could not resolve ${arch} digest after push"
+            echo "::error::Could not parse ${arch} digest from docker push output"
             exit 1
           fi
           MANIFEST_ARGS+=("${REPO}@${ARCH_DIGEST}")

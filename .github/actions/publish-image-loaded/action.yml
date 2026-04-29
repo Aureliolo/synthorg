@@ -80,20 +80,27 @@ runs:
           type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
           type=sha,prefix=sha-
 
-    # Push the loaded per-arch images to GHCR, capture each per-arch
-    # manifest digest from the registry IMMEDIATELY after push, then
-    # assemble multi-arch manifest lists that reference those digests by
+    # Push the loaded per-arch images to GHCR, capturing each per-arch
+    # manifest digest directly from `docker push` stdout (Docker emits
+    # `<tag>: digest: sha256:<hex> size: <bytes>` per the docker.io
+    # CLI reference). This closes the TOCTOU window that existed when
+    # we re-read the tag via `docker buildx imagetools inspect` after
+    # push: a parallel workflow run could overwrite our per-arch tag
+    # in the registry between push and inspect, making `inspect`
+    # return the OTHER run's digest. Parsing the push output gives us
+    # the digest of the bytes WE just pushed, regardless of any later
+    # tag mutations.
+    #
+    # The manifest list assembled below references members by
     # `@sha256:...` rather than the mutable per-arch tags. This makes
     # the manifest list bytes byte-identical across every iteration of
     # the loop and immune to concurrent registry mutations.
     #
-    # Residual race: between `docker push` and `imagetools inspect` for
-    # the same per-arch tag, a concurrent workflow run could overwrite
-    # the tag in the registry, in which case `inspect` returns the
-    # OTHER run's digest. The downstream `verify-signatures` job
-    # (in docker.yml) catches that case via its cross-tag divergence
-    # check; the window here is too small to mitigate cleanly without
-    # a digest-pinned push API.
+    # Note: the manifest-list digest below is still read via
+    # `docker buildx imagetools inspect` because `docker manifest
+    # push` stdout is unreliable across Docker versions (PR #1650
+    # documented this: some versions emit the digest, some only
+    # print `Created manifest list`).
     - name: Push per-arch images and assemble manifest list
       id: push
       shell: bash
@@ -106,19 +113,21 @@ runs:
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
         SHORT_SHA="${GITHUB_SHA::7}"
 
-        docker push "${REPO}:sha-${SHORT_SHA}-amd64"
-        AMD64_DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}-amd64" --format '{{.Manifest.Digest}}')"
+        AMD64_PUSH_OUTPUT="$(docker push "${REPO}:sha-${SHORT_SHA}-amd64" 2>&1)"
+        printf '%s\n' "${AMD64_PUSH_OUTPUT}"
+        AMD64_DIGEST="$(printf '%s\n' "${AMD64_PUSH_OUTPUT}" | sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' | tail -n1)"
         if [ -z "$AMD64_DIGEST" ]; then
-          echo "::error::Could not resolve amd64 digest after push"
+          echo "::error::Could not parse amd64 digest from docker push output"
           exit 1
         fi
 
         ARM64_DIGEST=""
         if [ "$ENABLE_ARM64" = "true" ]; then
-          docker push "${REPO}:sha-${SHORT_SHA}-arm64"
-          ARM64_DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}-arm64" --format '{{.Manifest.Digest}}')"
+          ARM64_PUSH_OUTPUT="$(docker push "${REPO}:sha-${SHORT_SHA}-arm64" 2>&1)"
+          printf '%s\n' "${ARM64_PUSH_OUTPUT}"
+          ARM64_DIGEST="$(printf '%s\n' "${ARM64_PUSH_OUTPUT}" | sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' | tail -n1)"
           if [ -z "$ARM64_DIGEST" ]; then
-            echo "::error::Could not resolve arm64 digest after push"
+            echo "::error::Could not parse arm64 digest from docker push output"
             exit 1
           fi
         fi
