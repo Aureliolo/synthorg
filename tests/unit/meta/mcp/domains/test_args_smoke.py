@@ -21,9 +21,17 @@ from synthorg.meta.mcp.domains import _remaining_args, _workflows_org_args
 
 
 def _models_in(module: object) -> list[type[BaseModel]]:
-    """Return every concrete public Pydantic model defined in ``module``."""
+    """Return every concrete public Pydantic model defined in ``module``.
+
+    When ``module`` is a package, models defined in any direct submodule
+    are accepted.  This keeps the smoke test working after splitting
+    ``_remaining_args.py`` (1k+ lines) into the
+    ``_communication`` / ``_integrations`` / ``_infrastructure`` /
+    ``_memory_finetune`` submodules.
+    """
     found: list[type[BaseModel]] = []
     module_name = getattr(module, "__name__", None)
+    submodule_prefix = f"{module_name}." if module_name else ""
     for _name, obj in inspect.getmembers(module, inspect.isclass):
         if not issubclass(obj, BaseModel):
             continue
@@ -32,8 +40,9 @@ def _models_in(module: object) -> list[type[BaseModel]]:
         # Skip private intermediates (e.g. ``_AgentNameArgs`` mixins).
         if obj.__name__.startswith("_"):
             continue
-        # Only models defined in this module, not re-exports.
-        if obj.__module__ != module_name:
+        # Accept models defined in this module or any direct submodule.
+        owner = obj.__module__
+        if owner != module_name and not owner.startswith(submodule_prefix):
             continue
         found.append(obj)
     return found

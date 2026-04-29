@@ -214,6 +214,7 @@ KNOWLEDGE_ARCHITECT_WRITE_DENIED: Final[str] = "memory.architect.write_denied"
 KNOWLEDGE_ARCHITECT_SEARCH_FAILED: Final[str] = "memory.architect.search.failed"
 KNOWLEDGE_ARCHITECT_READ_FAILED: Final[str] = "memory.architect.read.failed"
 KNOWLEDGE_ARCHITECT_WRITE_FAILED: Final[str] = "memory.architect.write.failed"
+KNOWLEDGE_ARCHITECT_DELETE_FAILED: Final[str] = "memory.architect.delete.failed"
 KNOWLEDGE_ARCHITECT_BROWSE_WIKI_FAILED: Final[str] = (
     "memory.architect.browse_wiki.failed"
 )

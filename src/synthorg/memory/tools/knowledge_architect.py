@@ -37,6 +37,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     KNOWLEDGE_ARCHITECT_BROWSE_WIKI_FAILED,
     KNOWLEDGE_ARCHITECT_DELETE,
+    KNOWLEDGE_ARCHITECT_DELETE_FAILED,
     KNOWLEDGE_ARCHITECT_READ_FAILED,
     KNOWLEDGE_ARCHITECT_SEARCH_FAILED,
     KNOWLEDGE_ARCHITECT_WRITE,
@@ -436,7 +437,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         except Exception as exc:
             safe_error = safe_error_description(exc)
             logger.warning(
-                KNOWLEDGE_ARCHITECT_DELETE,
+                KNOWLEDGE_ARCHITECT_DELETE_FAILED,
                 agent_id=self._agent_id,
                 entry_id=entry_id,
                 error_type=type(exc).__name__,

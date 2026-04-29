@@ -25,7 +25,7 @@ class TestSqlQueryArgs:
 
     @pytest.mark.unit
     def test_bytes_parameter_supported(self) -> None:
-        """SQLite's bind protocol accepts bytes for BLOB columns."""
+        """Database bind protocols accept bytes for binary columns."""
         args = SqlQueryArgs(query="x", parameters=(b"binary",))
         assert args.parameters == (b"binary",)
 
