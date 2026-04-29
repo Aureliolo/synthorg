@@ -325,10 +325,21 @@ class SignalsSubmitProposalArgs(_ArgsBase):
 
 
 # ── approvals ───────────────────────────────────────────────────────
-
+#
+# ``ApprovalStatus`` and ``RiskLevel`` are the canonical closed-enum
+# surfaces for the approval domain.  ``approvals.py`` derives its wire
+# schema ``enum`` lists from these via :func:`typing.get_args` so the
+# args model and the JSON Schema cannot drift.
 
 ApprovalStatus = Literal["pending", "approved", "rejected", "expired"]
 RiskLevel = Literal["low", "medium", "high", "critical"]
+
+RISK_LEVEL_DEFAULT: RiskLevel = "medium"
+"""Canonical default for ``approvals.create.risk_level``.
+
+Mirrored into the wire schema in ``approvals.py`` so the args-model
+default and the JSON Schema ``default`` stay in lockstep.
+"""
 
 
 class ApprovalsListArgs(PaginationFields):
@@ -357,7 +368,10 @@ class ApprovalsCreateArgs(_ArgsBase):
     action_type: NotBlankStr = Field(description="Type of action requiring approval")
     title: NotBlankStr = Field(description="Short summary of the approval")
     description: NotBlankStr = Field(description="Description of the proposed action")
-    risk_level: RiskLevel = Field(default="medium", description="Risk level assessment")
+    risk_level: RiskLevel = Field(
+        default=RISK_LEVEL_DEFAULT,
+        description="Risk level assessment",
+    )
 
 
 class ApprovalsApproveArgs(_ArgsBase):

@@ -131,7 +131,6 @@ class DestructiveGuardrailFields(_ArgsBase):
         description="Must be True to confirm the destructive operation",
     )
     reason: NotBlankStr = Field(
-        min_length=1,
         description="Operator-supplied reason for audit trail",
     )
 
