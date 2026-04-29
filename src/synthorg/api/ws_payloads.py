@@ -699,7 +699,11 @@ class _ClientEventBase(BaseModel):
 
     client_id: NotBlankStr
     name: NotBlankStr
-    strictness_level: float = Field(ge=0.0)
+    strictness_level: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Review strictness (0.0=lenient, 1.0=strict)",
+    )
 
 
 class WsClientCreatedPayload(_ClientEventBase):

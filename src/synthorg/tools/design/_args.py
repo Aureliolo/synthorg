@@ -10,9 +10,9 @@ Tools wired to consume these models:
   -> :class:`AssetManagerArgs`
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
@@ -72,10 +72,14 @@ class DiagramGeneratorArgs(BaseModel):
 class AssetManagerArgs(BaseModel):
     """Args for ``asset_manager``.
 
-    The action-specific argument requirements (``asset_id`` for
-    get/delete; ``query``/``tags`` for search/list) stay in the tool
-    body so the LLM-facing message references the action that
-    triggered the failure.
+    Cross-field invariants enforced at the boundary:
+
+    * ``action='get'`` and ``action='delete'`` require ``asset_id``.
+
+    The remaining action-specific runtime checks (``query`` /
+    ``tags`` shape for search/list) stay in the tool body so the
+    LLM-facing message references the action that triggered the
+    failure.
     """
 
     model_config = _ARGS_CONFIG
@@ -93,6 +97,14 @@ class AssetManagerArgs(BaseModel):
         default=None,
         description="Search query for asset metadata",
     )
+
+    @model_validator(mode="after")
+    def _validate_asset_id_required(self) -> Self:
+        """Reject ``get`` / ``delete`` without ``asset_id``."""
+        if self.action in {"get", "delete"} and self.asset_id is None:
+            msg = f"asset_id is required when action={self.action!r} (get / delete)"
+            raise ValueError(msg)
+        return self
 
 
 __all__ = [

@@ -138,3 +138,12 @@ class TestAssetManagerArgs:
     def test_get_with_asset_id(self) -> None:
         args = AssetManagerArgs(action="get", asset_id="img-1")
         assert args.asset_id == "img-1"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("action", ["get", "delete"])
+    def test_get_or_delete_requires_asset_id(self, action: str) -> None:
+        """``get`` and ``delete`` require ``asset_id`` at the boundary."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AssetManagerArgs.model_validate({"action": action})

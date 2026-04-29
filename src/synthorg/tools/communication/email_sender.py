@@ -116,7 +116,9 @@ class EmailSenderTool(BaseCommunicationTool):
             )
 
         to_addrs = arguments.get("to")
-        if not isinstance(to_addrs, list):
+        if not isinstance(to_addrs, list) or any(
+            not isinstance(addr, str) for addr in to_addrs
+        ):
             logger.warning(
                 COMM_TOOL_EMAIL_VALIDATION_FAILED,
                 reason="invalid_to",
@@ -127,10 +129,15 @@ class EmailSenderTool(BaseCommunicationTool):
             )
         # Direct callers (bypassing the invoker's args_model validation)
         # can still send non-list cc/bcc, which would raise TypeError on
-        # the recipient concatenation below.  Reject explicitly with the
-        # same envelope shape as the other validation failures.
+        # the recipient concatenation below.  Reject the container shape
+        # AND the element types here; otherwise the
+        # ``_UNSAFE_ADDR_RE.search(addr)`` call later would raise
+        # ``TypeError`` and bypass the structured envelope.
         cc_raw = arguments.get("cc")
-        if cc_raw is not None and not isinstance(cc_raw, list):
+        if cc_raw is not None and (
+            not isinstance(cc_raw, list)
+            or any(not isinstance(addr, str) for addr in cc_raw)
+        ):
             logger.warning(
                 COMM_TOOL_EMAIL_VALIDATION_FAILED,
                 reason="invalid_cc",
@@ -140,7 +147,10 @@ class EmailSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
         bcc_raw = arguments.get("bcc")
-        if bcc_raw is not None and not isinstance(bcc_raw, list):
+        if bcc_raw is not None and (
+            not isinstance(bcc_raw, list)
+            or any(not isinstance(addr, str) for addr in bcc_raw)
+        ):
             logger.warning(
                 COMM_TOOL_EMAIL_VALIDATION_FAILED,
                 reason="invalid_bcc",

@@ -84,9 +84,14 @@ class TestActivitiesListArgs:
         assert args.last_n_hours is None
 
     @pytest.mark.unit
-    def test_lookback_is_closed_set(self) -> None:
-        for hours in (24, 48, 168):
-            args = ActivitiesListArgs.model_validate({"last_n_hours": hours})
-            assert args.last_n_hours == hours
+    @pytest.mark.parametrize("hours", [24, 48, 168])
+    def test_lookback_valid(self, hours: int) -> None:
+        """The closed set of accepted lookback hours."""
+        args = ActivitiesListArgs.model_validate({"last_n_hours": hours})
+        assert args.last_n_hours == hours
+
+    @pytest.mark.unit
+    def test_lookback_invalid_rejected(self) -> None:
+        """Values outside the closed set are rejected."""
         with pytest.raises(ValidationError):
             ActivitiesListArgs.model_validate({"last_n_hours": 12})

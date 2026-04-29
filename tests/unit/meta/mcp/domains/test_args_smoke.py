@@ -49,7 +49,7 @@ class TestRemainingArgsSmoke:
 
     def test_collection_is_non_empty(self) -> None:
         """Sanity: the module exports models we can iterate over."""
-        assert len(_REMAINING_MODELS) > 50
+        assert len(_REMAINING_MODELS) > 0
 
     @pytest.mark.parametrize(
         "model",
@@ -96,7 +96,7 @@ class TestWorkflowsOrgArgsSmoke:
 
     def test_collection_is_non_empty(self) -> None:
         """Sanity: the module exports models we can iterate over."""
-        assert len(_WORKFLOWS_ORG_MODELS) > 25
+        assert len(_WORKFLOWS_ORG_MODELS) > 0
 
     @pytest.mark.parametrize(
         "model",

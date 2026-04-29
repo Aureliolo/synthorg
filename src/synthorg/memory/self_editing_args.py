@@ -25,8 +25,21 @@ from pydantic import (
     TypeAdapter,
 )
 
-from synthorg.core.enums import MemoryCategory  # noqa: TC001 -- Pydantic field type
+from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+
+# Persistent (non-volatile) subset of MemoryCategory.  Archival memory
+# only stores content that survives the session; WORKING is the
+# session-scoped tier and must not reach archival handlers.  Narrowing
+# at the args boundary blocks the invalid value at parse time so
+# ``_handle_archival_memory_search`` and ``_handle_archival_memory_write``
+# never receive WORKING.
+PersistentArchivalCategory = Literal[
+    MemoryCategory.EPISODIC,
+    MemoryCategory.SEMANTIC,
+    MemoryCategory.PROCEDURAL,
+    MemoryCategory.SOCIAL,
+]
 
 _MAX_CONTENT_LEN: Final[int] = 50_000
 _MAX_MEMORY_ID_LEN: Final[int] = 256
@@ -79,9 +92,9 @@ class ArchivalMemorySearchArgs(BaseModel):
 
     tool: Literal["archival_memory_search"] = "archival_memory_search"
     query: NotBlankStr = Field(description="Natural language search query")
-    category: MemoryCategory | None = Field(
+    category: PersistentArchivalCategory | None = Field(
         default=None,
-        description="Optional category filter",
+        description="Optional category filter (excludes WORKING)",
     )
     limit: int | None = Field(
         default=None,
@@ -106,7 +119,9 @@ class ArchivalMemoryWriteArgs(BaseModel):
         max_length=_MAX_CONTENT_LEN,
         description="Text to store in archival memory",
     )
-    category: MemoryCategory = Field(description="Memory category")
+    category: PersistentArchivalCategory = Field(
+        description="Memory category (excludes WORKING)",
+    )
 
 
 class RecallMemoryReadArgs(BaseModel):

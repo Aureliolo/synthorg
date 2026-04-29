@@ -160,11 +160,12 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "backup",
         "delete",
-        "Delete a backup.",
+        "Delete a backup (destructive; requires confirm).",
         {
             "backup_id": {"type": "string", "description": "Backup UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("backup_id",),
+        required=("backup_id", "reason", "confirm"),
         args_model=BackupDeleteArgs,
     ),
     admin_tool(
@@ -248,11 +249,12 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "users",
         "delete",
-        "Delete a user.",
+        "Delete a user (destructive; requires confirm).",
         {
             "user_id": {"type": "string", "description": "User UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("user_id",),
+        required=("user_id", "reason", "confirm"),
         args_model=UsersDeleteArgs,
     ),
     # --- Projects ---
@@ -295,14 +297,15 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         required=("project_id", "updates"),
         args_model=ProjectsUpdateArgs,
     ),
-    write_tool(
+    admin_tool(
         "projects",
         "delete",
-        "Delete a project.",
+        "Delete a project (destructive; requires confirm).",
         {
             "project_id": {"type": "string", "description": "Project UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("project_id",),
+        required=("project_id", "reason", "confirm"),
         args_model=ProjectsDeleteArgs,
     ),
     # --- Requests ---

@@ -29,6 +29,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     OntologySearchArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -198,14 +199,15 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         required=("type", "content"),
         args_model=ArtifactsCreateArgs,
     ),
-    write_tool(
+    admin_tool(
         "artifacts",
         "delete",
-        "Delete an artifact.",
+        "Delete an artifact (destructive; requires confirm).",
         {
             "artifact_id": {"type": "string", "description": "Artifact UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("artifact_id",),
+        required=("artifact_id", "reason", "confirm"),
         args_model=ArtifactsDeleteArgs,
     ),
     # --- Ontology ---

@@ -271,8 +271,12 @@ class ArtifactsCreateArgs(_ArgsBase):
     task_id: NotBlankStr | None = Field(default=None, description="Associated task")
 
 
-class ArtifactsDeleteArgs(_ArgsBase):
-    """Args for ``artifacts.delete``."""
+class ArtifactsDeleteArgs(DestructiveGuardrailFields):
+    """Args for ``artifacts.delete``.
+
+    Destructive admin op: callers must supply ``confirm=True`` and a
+    non-blank ``reason`` (mixin), in addition to the artifact UUID.
+    """
 
     artifact_id: NotBlankStr = Field(description="Artifact UUID")
 
@@ -375,8 +379,12 @@ class BackupGetArgs(_BackupIdArgs):
     """Args for ``backup.get``."""
 
 
-class BackupDeleteArgs(_BackupIdArgs):
-    """Args for ``backup.delete``."""
+class BackupDeleteArgs(_BackupIdArgs, DestructiveGuardrailFields):
+    """Args for ``backup.delete``.
+
+    Destructive admin op: callers must supply ``confirm=True`` and a
+    non-blank ``reason`` (mixin), in addition to the backup UUID.
+    """
 
 
 class BackupRestoreArgs(_BackupIdArgs, DestructiveGuardrailFields):
@@ -438,8 +446,12 @@ class UsersUpdateArgs(_UserIdArgs):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class UsersDeleteArgs(_UserIdArgs):
-    """Args for ``users.delete``."""
+class UsersDeleteArgs(_UserIdArgs, DestructiveGuardrailFields):
+    """Args for ``users.delete``.
+
+    Destructive admin op: callers must supply ``confirm=True`` and a
+    non-blank ``reason`` (mixin), in addition to the user UUID.
+    """
 
 
 class ProjectsListArgs(PaginationFields):
@@ -469,8 +481,12 @@ class ProjectsUpdateArgs(_ProjectIdArgs):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class ProjectsDeleteArgs(_ProjectIdArgs):
-    """Args for ``projects.delete``."""
+class ProjectsDeleteArgs(_ProjectIdArgs, DestructiveGuardrailFields):
+    """Args for ``projects.delete``.
+
+    Destructive admin op: callers must supply ``confirm=True`` and a
+    non-blank ``reason`` (mixin), in addition to the project UUID.
+    """
 
 
 class RequestsListArgs(PaginationFields):

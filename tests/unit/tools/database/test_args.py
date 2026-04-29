@@ -64,3 +64,17 @@ class TestSchemaInspectArgs:
     def test_blank_table_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             SchemaInspectArgs(action="describe_table", table_name="   ")
+
+    @pytest.mark.unit
+    def test_describe_table_requires_table_name(self) -> None:
+        """``action='describe_table'`` without ``table_name`` is rejected."""
+        with pytest.raises(ValidationError):
+            SchemaInspectArgs.model_validate({"action": "describe_table"})
+
+    @pytest.mark.unit
+    def test_list_tables_rejects_table_name(self) -> None:
+        """``action='list_tables'`` must not include ``table_name``."""
+        with pytest.raises(ValidationError):
+            SchemaInspectArgs.model_validate(
+                {"action": "list_tables", "table_name": "users"},
+            )

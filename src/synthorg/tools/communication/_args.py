@@ -115,6 +115,7 @@ class TemplateFormatterArgs(BaseModel):
 
     template: NotBlankStr = Field(description="Inline Jinja2 template string")
     variables: dict[str, object] = Field(
+        default_factory=dict,
         description="Variable bindings for template rendering",
     )
     format: TemplateOutputFormat = Field(

@@ -65,10 +65,14 @@ class TestGitBranchArgs:
         assert args.action == "list"
 
     @pytest.mark.unit
-    def test_action_is_closed_literal(self) -> None:
-        for action in ("list", "create", "switch", "delete"):
-            args = GitBranchArgs.model_validate({"action": action})
-            assert args.action == action
+    @pytest.mark.parametrize("action", ["list", "create", "switch", "delete"])
+    def test_action_valid(self, action: str) -> None:
+        """Valid GitBranchAction literals are accepted."""
+        assert GitBranchArgs.model_validate({"action": action}).action == action
+
+    @pytest.mark.unit
+    def test_action_invalid_rejected(self) -> None:
+        """Unknown actions are rejected."""
         with pytest.raises(ValidationError):
             GitBranchArgs.model_validate({"action": "rename"})
 

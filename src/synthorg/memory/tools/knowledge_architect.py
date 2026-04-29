@@ -128,7 +128,7 @@ class KnowledgeArchitectSearchTool(BaseTool):
             facts = await self._org_backend.query(query)
         except Exception as exc:
             return ToolExecutionResult(
-                content=f"Search failed: {exc}",
+                content=f"Search failed: {safe_error_description(exc)}",
                 is_error=True,
             )
         if not facts:
@@ -180,7 +180,7 @@ class KnowledgeArchitectReadTool(BaseTool):
             )
         except Exception as exc:
             return ToolExecutionResult(
-                content=f"Read failed: {exc}",
+                content=f"Read failed: {safe_error_description(exc)}",
                 is_error=True,
             )
         if match is None:
@@ -306,7 +306,7 @@ class KnowledgeArchitectWriteTool(BaseTool):
             )
         except Exception as exc:
             return ToolExecutionResult(
-                content=f"Write failed: {exc}",
+                content=f"Write failed: {safe_error_description(exc)}",
                 is_error=True,
             )
         logger.info(
@@ -480,7 +480,7 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
             result = await self._wiki_exporter.export(self._agent_id)
         except Exception as exc:
             return ToolExecutionResult(
-                content=f"Wiki export failed: {exc}",
+                content=f"Wiki export failed: {safe_error_description(exc)}",
                 is_error=True,
             )
         lines = ["Wiki exported:"]

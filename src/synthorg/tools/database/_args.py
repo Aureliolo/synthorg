@@ -7,9 +7,9 @@ Tools wired to consume these models:
   -> :class:`SchemaInspectArgs`
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
@@ -52,9 +52,11 @@ class SqlQueryArgs(BaseModel):
 class SchemaInspectArgs(BaseModel):
     """Args for ``schema_inspect``.
 
-    The ``table_name is required for describe_table`` cross-field
-    constraint stays in the tool body so the LLM-facing message
-    references the action that triggered it.
+    Cross-field invariants enforced at the boundary:
+
+    * ``action='describe_table'`` requires ``table_name``.
+    * ``action='list_tables'`` rejects ``table_name`` (callers must
+      not smuggle a value the action would silently ignore).
     """
 
     model_config = _ARGS_CONFIG
@@ -64,6 +66,17 @@ class SchemaInspectArgs(BaseModel):
         default=None,
         description="Table name (required for describe_table)",
     )
+
+    @model_validator(mode="after")
+    def _validate_action_table_name(self) -> Self:
+        """Reject malformed action / table_name combinations."""
+        if self.action == "describe_table" and self.table_name is None:
+            msg = "table_name is required when action='describe_table'"
+            raise ValueError(msg)
+        if self.action == "list_tables" and self.table_name is not None:
+            msg = "table_name must be omitted when action='list_tables'"
+            raise ValueError(msg)
+        return self
 
 
 __all__ = [

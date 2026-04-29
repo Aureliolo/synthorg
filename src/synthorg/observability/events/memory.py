@@ -179,6 +179,10 @@ MEMORY_SELF_EDIT_ARCHIVAL_WRITE: Final[str] = "memory.self_edit.archival.write"
 MEMORY_SELF_EDIT_RECALL_READ: Final[str] = "memory.self_edit.recall.read"
 MEMORY_SELF_EDIT_RECALL_WRITE: Final[str] = "memory.self_edit.recall.write"
 MEMORY_SELF_EDIT_WRITE_FAILED: Final[str] = "memory.self_edit.write.failed"
+MEMORY_SELF_EDIT_TOOL_FAILED: Final[str] = "memory.self_edit.tool.failed"
+"""Generic dispatch failure event covering any of the six self-editing
+tools (read, write, search, ...).  Logged at the catch-all dispatch
+boundary so a failed core_memory_read isn't mislabeled as a write."""
 
 # ── Hierarchical retrieval ──────────────────────────────────────
 

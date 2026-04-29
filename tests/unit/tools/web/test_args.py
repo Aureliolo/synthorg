@@ -41,12 +41,17 @@ class TestHttpRequestArgs:
         assert args.timeout is None
 
     @pytest.mark.unit
-    def test_method_is_closed_literal(self) -> None:
-        for method in ("GET", "POST", "PUT", "DELETE"):
-            args = HttpRequestArgs.model_validate(
-                {"url": "https://x", "method": method},
-            )
-            assert args.method == method
+    @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE"])
+    def test_method_valid(self, method: str) -> None:
+        """All HttpMethod literals round-trip through validation."""
+        args = HttpRequestArgs.model_validate(
+            {"url": "https://x", "method": method},
+        )
+        assert args.method == method
+
+    @pytest.mark.unit
+    def test_method_invalid_rejected(self) -> None:
+        """Methods outside the closed set are rejected."""
         with pytest.raises(ValidationError):
             HttpRequestArgs.model_validate(
                 {"url": "https://x", "method": "PATCH"},
@@ -97,12 +102,17 @@ class TestHtmlParserArgs:
         assert args.extract_mode == "text"
 
     @pytest.mark.unit
-    def test_extract_mode_is_closed_literal(self) -> None:
-        for mode in ("text", "links", "metadata"):
-            args = HtmlParserArgs.model_validate(
-                {"html_content": "<p>x</p>", "extract_mode": mode},
-            )
-            assert args.extract_mode == mode
+    @pytest.mark.parametrize("mode", ["text", "links", "metadata"])
+    def test_extract_mode_valid(self, mode: str) -> None:
+        """All HtmlExtractMode literals round-trip through validation."""
+        args = HtmlParserArgs.model_validate(
+            {"html_content": "<p>x</p>", "extract_mode": mode},
+        )
+        assert args.extract_mode == mode
+
+    @pytest.mark.unit
+    def test_extract_mode_invalid_rejected(self) -> None:
+        """Modes outside the closed set are rejected."""
         with pytest.raises(ValidationError):
             HtmlParserArgs.model_validate(
                 {"html_content": "<p>x</p>", "extract_mode": "raw"},

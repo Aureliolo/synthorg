@@ -59,7 +59,7 @@ from synthorg.observability.events.memory import (
     MEMORY_SELF_EDIT_RECALL_READ,
     MEMORY_SELF_EDIT_RECALL_WRITE,
     MEMORY_SELF_EDIT_TOOL_EXECUTE,
-    MEMORY_SELF_EDIT_WRITE_FAILED,
+    MEMORY_SELF_EDIT_TOOL_FAILED,
 )
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
@@ -533,8 +533,12 @@ class SelfEditingMemoryStrategy:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            # Generic dispatch failure event: covers every self-editing
+            # tool (read / write / search / recall) so a failed
+            # core_memory_read is not recorded under the write-specific
+            # MEMORY_SELF_EDIT_WRITE_FAILED constant.
             logger.warning(
-                MEMORY_SELF_EDIT_WRITE_FAILED,
+                MEMORY_SELF_EDIT_TOOL_FAILED,
                 tool_name=tool_name,
                 agent_id=agent_id,
                 error_type=type(exc).__name__,
