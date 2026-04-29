@@ -30,12 +30,14 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_REPORT_FAILED,
     TELEMETRY_SESSION_SUMMARY_SENT,
     TELEMETRY_SHUTDOWN_WITHOUT_START,
+    TELEMETRY_TOKEN_MISSING,
 )
 from synthorg.telemetry.config import DEFAULT_ENVIRONMENT, MAX_STRING_LENGTH
 from synthorg.telemetry.host_info import DockerHostInfo, fetch_docker_info
 from synthorg.telemetry.privacy import PrivacyScrubber, PrivacyViolationError
 from synthorg.telemetry.protocol import TelemetryEvent, TelemetryReporter
 from synthorg.telemetry.reporters import create_reporter
+from synthorg.telemetry.reporters._embedded_token import is_token_embedded
 from synthorg.telemetry.reporters.noop import NoopReporter
 
 _ENV_OVERRIDE_VAR = "SYNTHORG_TELEMETRY_ENV"
@@ -257,14 +259,15 @@ class TelemetryCollector:
     ) -> None:
         """Wire the collector to its reporter and resolve runtime env.
 
-        Applies the ``SYNTHORG_TELEMETRY`` opt-in override first, then
-        runs the parsed ``config.environment`` through the four-level
-        resolution chain in :func:`_resolve_environment`. The
-        constructor performs **zero filesystem I/O**; loading or
-        creating the anonymous ``deployment_id`` is deferred to
-        :meth:`start`. The load itself runs outside the event loop's
-        thread via ``asyncio.to_thread`` (#1600). A disabled collector
-        still leaves no on-disk trace.
+        Applies the ``SYNTHORG_TELEMETRY_ENABLED`` opt-in override
+        first, then runs the parsed ``config.environment`` through
+        the four-level resolution chain in
+        :func:`_resolve_environment`. The constructor performs
+        **zero filesystem I/O**; loading or creating the anonymous
+        ``deployment_id`` is deferred to :meth:`start`. The load
+        itself runs outside the event loop's thread via
+        ``asyncio.to_thread`` (#1600). A disabled collector still
+        leaves no on-disk trace.
 
         Args:
             config: Parsed telemetry configuration from
@@ -281,7 +284,11 @@ class TelemetryCollector:
                 session summary.
         """
         # Env var overrides config file (documented priority).
-        env_val = os.environ.get("SYNTHORG_TELEMETRY", "").strip().lower()
+        # ``SYNTHORG_TELEMETRY_ENABLED`` is the env-layer surface for
+        # the registered ``telemetry.enabled`` setting; the registry
+        # entry's ``env_var_override`` mirrors this name so the
+        # /settings API and the boot path see the same source.
+        env_val = os.environ.get("SYNTHORG_TELEMETRY_ENABLED", "").strip().lower()
         if env_val in ("true", "1", "yes"):
             config = config.model_copy(update={"enabled": True})
         elif env_val in ("false", "0", "no"):
@@ -290,7 +297,7 @@ class TelemetryCollector:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="invalid_env_value",
-                error_code="SYNTHORG_TELEMETRY_INVALID",
+                error_code="SYNTHORG_TELEMETRY_ENABLED_INVALID",
             )
 
         # Resolve the effective deployment-environment tag through
@@ -326,7 +333,13 @@ class TelemetryCollector:
         self._closed: bool = False
 
         if not config.enabled:
-            logger.debug(TELEMETRY_DISABLED)
+            # Operator-visible signal that the collector booted in the
+            # disabled path. INFO (not DEBUG) so a single line lands in
+            # the main log on every boot -- the issue's acceptance
+            # criterion is "exactly one INFO at startup, zero per-cycle
+            # warnings". The heartbeat task is also skipped in start()
+            # so no reporter cycles run while disabled.
+            logger.info(TELEMETRY_DISABLED)
 
     @property
     def deployment_id(self) -> str | None:
@@ -377,6 +390,34 @@ class TelemetryCollector:
                 msg = "TelemetryCollector.start() called after shutdown()"
                 raise RuntimeError(msg)
             if not self._config.enabled:
+                return
+            # Build artifact ships the sentinel token. Operator opted in
+            # to LOGFIRE, but the wheel was published without the
+            # LOGFIRE_PROJECT_TOKEN CI secret -- log ONCE at ERROR
+            # severity so operators can escalate to the build pipeline,
+            # then return without starting the heartbeat loop. This is
+            # the fix for the "every reporter cycle" warning spam: with
+            # no loop, no cycles, no spam. The factory has already
+            # returned a NoopReporter for this state. The check is
+            # scoped to ``TelemetryBackend.LOGFIRE`` so the noop
+            # backend (used by tests and operators who explicitly
+            # opt out of Logfire) is unaffected.
+            from synthorg.telemetry.config import (  # noqa: PLC0415
+                TelemetryBackend,
+            )
+
+            if (
+                self._config.backend == TelemetryBackend.LOGFIRE
+                and not is_token_embedded()
+            ):
+                logger.error(
+                    TELEMETRY_TOKEN_MISSING,
+                    detail=(
+                        "build artifact missing embedded token; rebuild "
+                        "release wheel with LOGFIRE_PROJECT_TOKEN CI secret"
+                    ),
+                    backend=self._config.backend.value,
+                )
                 return
             if self._heartbeat_task is not None and not self._heartbeat_task.done():
                 return

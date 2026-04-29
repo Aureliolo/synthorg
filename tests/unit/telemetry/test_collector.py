@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import structlog.testing
 
 from synthorg.telemetry.collector import (
     TelemetryCollector,
@@ -25,7 +26,7 @@ def clear_synthorg_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
     runs in. Scrub the whole set so each test specifies exactly the
     inputs it exercises.
     """
-    monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+    monkeypatch.delenv("SYNTHORG_TELEMETRY_ENABLED", raising=False)
     monkeypatch.delenv("SYNTHORG_TELEMETRY_ENV", raising=False)
     monkeypatch.delenv("SYNTHORG_TELEMETRY_ENV_BAKED", raising=False)
     for marker in ("CI", "GITLAB_CI", "BUILDKITE", "JENKINS_URL"):
@@ -45,6 +46,93 @@ class TestTelemetryCollector:
         assert collector.enabled is False
         assert collector.is_functional is False
         assert collector.deployment_id is None
+
+    async def test_disabled_emits_one_info_at_startup_no_heartbeat(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Issue #1666 A-3: disabled state -> one INFO, zero report_failed.
+
+        Nothing should ever fire ``telemetry.report.failed`` on the
+        disabled path -- the heartbeat task isn't scheduled, so no
+        per-cycle warnings can ever land in the main log.
+        """
+        config = TelemetryConfig(enabled=False)
+        with structlog.testing.capture_logs() as logs:
+            collector = TelemetryCollector(config=config, data_dir=tmp_path)
+            try:
+                await collector.start()
+            finally:
+                await collector.shutdown()
+
+        info_lines = [
+            log
+            for log in logs
+            if log.get("event") == "telemetry.disabled"
+            and log.get("log_level") == "info"
+        ]
+        assert len(info_lines) == 1
+        report_failed = [
+            log for log in logs if log.get("event") == "telemetry.report.failed"
+        ]
+        assert report_failed == []
+        # Heartbeat task never scheduled when disabled.
+        assert collector._heartbeat_task is None
+
+    async def test_enabled_logfire_with_sentinel_token_emits_error_no_heartbeat(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Issue #1666 A-3: enabled + sentinel token -> ONE ERROR, no heartbeat.
+
+        With telemetry enabled but the build artifact shipping the
+        sentinel token, the collector must log a single
+        ``telemetry.token.missing`` ERROR at startup and skip the
+        heartbeat scheduling so the per-cycle warning spam is
+        eliminated.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.LOGFIRE)
+        # Default sentinel is_token_embedded() == False in source-tree
+        # installs (and in this CI environment); no monkeypatch needed.
+        with structlog.testing.capture_logs() as logs:
+            collector = TelemetryCollector(config=config, data_dir=tmp_path)
+            try:
+                await collector.start()
+            finally:
+                await collector.shutdown()
+
+        token_missing = [
+            log
+            for log in logs
+            if log.get("event") == "telemetry.token.missing"
+            and log.get("log_level") == "error"
+        ]
+        assert len(token_missing) == 1
+        # Heartbeat task never scheduled when token is sentinel.
+        assert collector._heartbeat_task is None
+
+    async def test_enabled_noop_backend_skips_token_check(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """NOOP backend bypasses the LOGFIRE-only token-embedded gate.
+
+        Operators who explicitly opt out of Logfire (or tests using
+        the noop reporter) must not see ``telemetry.token.missing``
+        -- the check is scoped to ``TelemetryBackend.LOGFIRE``.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        with structlog.testing.capture_logs() as logs:
+            collector = TelemetryCollector(config=config, data_dir=tmp_path)
+            try:
+                await collector.start()
+            finally:
+                await collector.shutdown()
+
+        token_missing = [
+            log for log in logs if log.get("event") == "telemetry.token.missing"
+        ]
+        assert token_missing == []
 
     def test_is_functional_false_when_reporter_is_noop(
         self,

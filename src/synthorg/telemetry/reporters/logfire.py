@@ -1,12 +1,18 @@
 """Logfire telemetry reporter.
 
 Sends curated, privacy-validated telemetry events to the
-SynthOrg project on Logfire via the Logfire SDK (OpenTelemetry
-compatible). The ``logfire`` package is an optional dependency.
+SynthOrg-owned project on Logfire via the Logfire SDK
+(OpenTelemetry compatible). The ``logfire`` package is a required
+runtime dependency.
+
+The write-only project token is **embedded** at wheel build time
+via ``synthorg.telemetry.reporters._embedded_token``; operators
+never configure it. Token resolution happens in
+:func:`synthorg.telemetry.reporters.create_reporter` -- this class
+just accepts whatever token its caller passes.
 """
 
 import asyncio
-import os
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -15,58 +21,43 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_REPORTER_INITIALIZED,
 )
 from synthorg.telemetry.config import DEFAULT_ENVIRONMENT
+from synthorg.telemetry.reporters.errors import LogfireConfigureError
 
 if TYPE_CHECKING:
     from synthorg.telemetry.protocol import TelemetryEvent
 
 logger = get_logger(__name__)
 
-_PROJECT_TOKEN_ENV = "SYNTHORG_LOGFIRE_PROJECT_TOKEN"  # noqa: S105
-
 
 class LogfireReporter:
     """Logfire SDK-based telemetry reporter.
 
-    Events are sent as Logfire log records with structured
-    properties. A missing or empty project token disables
-    delivery by raising :class:`ImportError` so the reporter
-    factory falls back to :class:`NoopReporter`.
-
     Args:
+        token: Write-only Logfire project token (resolved by the
+            factory from the embedded build constant).
         environment: Deployment-environment tag (``dev`` /
             ``pre-release`` / ``prod`` / ``ci`` / ...). Passed to
             :func:`logfire.configure` so the OTel
-            ``deployment.environment`` resource attribute is set
-            on every span and also included as a kwarg on every
-            log record -- giving dashboards two ways to filter
-            without joining on a startup event.
+            ``deployment.environment`` resource attribute is set on
+            every span and also included as a kwarg on every log
+            record -- giving dashboards two ways to filter without
+            joining on a startup event.
+
+    Raises:
+        ImportError: If the ``logfire`` package is not importable.
+            Should not happen in practice -- ``logfire`` is a
+            required dependency -- but propagated explicitly so the
+            factory can log the real class name.
+        LogfireConfigureError: If ``logfire.configure()`` fails.
     """
 
-    def __init__(self, environment: str = DEFAULT_ENVIRONMENT) -> None:
-        try:
-            import logfire as _logfire  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
-        except ImportError as exc:
-            msg = (
-                "logfire package not installed. "
-                'Install with: pip install "synthorg[telemetry]"'
-            )
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="logfire_import_failed",
-                error_type="ImportError",
-            )
-            raise ImportError(msg) from exc
-
-        token = os.environ.get(_PROJECT_TOKEN_ENV, "").strip()
-        if not token:
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="logfire_token_missing",
-                error_type="ValueError",
-                env_var=_PROJECT_TOKEN_ENV,
-            )
-            msg = f"{_PROJECT_TOKEN_ENV} is not set; telemetry disabled."
-            raise ImportError(msg)
+    def __init__(
+        self,
+        *,
+        token: str,
+        environment: str = DEFAULT_ENVIRONMENT,
+    ) -> None:
+        import logfire as _logfire  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
 
         self._logfire = _logfire
         self._environment = environment
@@ -74,10 +65,10 @@ class LogfireReporter:
         try:
             # ``inspect_arguments=False`` silences the noisy
             # "Failed to introspect calling code" warning. Logfire
-            # would otherwise try to introspect the source line
-            # for every ``.info(event.event_type, ...)`` call to
-            # treat the first positional as an f-string template.
-            # Our call site passes a variable, not a literal, so
+            # would otherwise try to introspect the source line for
+            # every ``.info(event.event_type, ...)`` call to treat
+            # the first positional as an f-string template. Our
+            # call site passes a variable, not a literal, so
             # introspection fails on every event -- disabling it
             # is the explicit suppression the warning itself
             # suggests. ``environment=`` maps to the OTel
@@ -91,13 +82,8 @@ class LogfireReporter:
                 inspect_arguments=False,
             )
         except Exception as exc:
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="logfire_configure_failed",
-                error_type=type(exc).__name__,
-                exc_info=True,
-            )
-            raise
+            msg = f"logfire.configure() failed: {type(exc).__name__}"
+            raise LogfireConfigureError(msg) from exc
 
         logger.info(
             TELEMETRY_REPORTER_INITIALIZED,

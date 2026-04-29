@@ -118,7 +118,7 @@ services:
 {{- end}}
       SYNTHORG_LOG_DIR: "/data/logs"
       MEM0_TELEMETRY: "false"
-      SYNTHORG_TELEMETRY: "{{if .TelemetryOptIn}}true{{else}}false{{end}}"
+      SYNTHORG_TELEMETRY_ENABLED: "{{if .TelemetryOptIn}}true{{else}}false{{end}}"
       SYNTHORG_LOG_LEVEL: {{yamlStr .LogLevel}}
 {{- if .Sandbox}}
       SYNTHORG_SANDBOX_IMAGE: {{yamlStr (sandboxImageRef .ImageTag)}}

@@ -210,8 +210,11 @@ def _build_telemetry_collector(
 
     Passing ``None`` for ``telemetry_cfg`` falls back to defaults
     (``enabled=False``). :class:`TelemetryCollector` reads
-    ``SYNTHORG_TELEMETRY`` inside its own ``__init__`` and overrides
-    the config's ``enabled`` flag, so the env var still wins.
+    ``SYNTHORG_TELEMETRY_ENABLED`` inside its own ``__init__`` and
+    overrides the config's ``enabled`` flag, so the env var still
+    wins. The same env name is registered as the
+    ``telemetry.enabled`` setting's ``env_var_override`` so the
+    /settings API and the boot path agree on a single source.
     """
     memory_dir = _resolve_memory_dir()
     telemetry_dir = memory_dir.parent / "telemetry"

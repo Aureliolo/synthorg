@@ -23,6 +23,7 @@ from synthorg.settings.definitions import (
     providers,
     security,
     settings_ns,
+    telemetry,
     tools,
     workers,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "providers",
     "security",
     "settings_ns",
+    "telemetry",
     "tools",
     "workers",
 ]

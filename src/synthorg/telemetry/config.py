@@ -65,7 +65,7 @@ class TelemetryConfig(BaseModel):
 
     Attributes:
         enabled: Master switch (default ``False``). Can be
-            overridden by the ``SYNTHORG_TELEMETRY`` env var.
+            overridden by the ``SYNTHORG_TELEMETRY_ENABLED`` env var.
         backend: Reporter backend to use.
         heartbeat_interval_hours: Hours between periodic heartbeat
             events.
