@@ -173,6 +173,23 @@ class ToolResult(BaseModel):
         description="Whether tool errored due to timeout specifically",
     )
 
+    @model_validator(mode="after")
+    def _validate_timeout_implies_error(self) -> Self:
+        """Reject ``is_timeout=True`` paired with ``is_error=False``.
+
+        Timeout is a stricter form of error; the metric layer maps
+        timeout to a distinct outcome label, but a non-error timeout
+        is contradictory and would split outcome semantics across
+        observability consumers.
+        """
+        if self.is_timeout and not self.is_error:
+            msg = (
+                "ToolResult.is_timeout requires is_error=True;"
+                " timeout is a stricter form of error"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class ChatMessage(BaseModel):
     """A single message in a chat completion conversation.

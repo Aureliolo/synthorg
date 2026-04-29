@@ -477,6 +477,20 @@ class PruningService:
             self._processed_approval_ids.add(str(item.id))
             return
 
+        # State-transition log for the pruning request itself; the
+        # underlying ApprovalItem flipped to APPROVED in the
+        # controller, but this is the first hop the pruning service
+        # observes for the linked PruningRequest's status (mirrors
+        # the ApprovalItem).
+        request = self._pending_requests.get(agent_id)
+        logger.info(
+            PRUNING_REQUEST_STATUS_TRANSITIONED,
+            request_id=request.id if request is not None else None,
+            agent_id=agent_id,
+            approval_id=str(item.id),
+            from_status=ApprovalStatus.PENDING.value,
+            to_status=ApprovalStatus.APPROVED.value,
+        )
         logger.info(
             HR_PRUNING_APPROVED,
             agent_id=agent_id,
@@ -594,8 +608,16 @@ class PruningService:
             self._processed_approval_ids.add(str(item.id))
             return
 
-        self._pending_requests.pop(agent_id, None)
+        request = self._pending_requests.pop(agent_id, None)
         self._processed_approval_ids.add(str(item.id))
+        logger.info(
+            PRUNING_REQUEST_STATUS_TRANSITIONED,
+            request_id=request.id if request is not None else None,
+            agent_id=agent_id,
+            approval_id=str(item.id),
+            from_status=ApprovalStatus.PENDING.value,
+            to_status=ApprovalStatus.REJECTED.value,
+        )
         logger.info(
             HR_PRUNING_REJECTED,
             agent_id=agent_id,

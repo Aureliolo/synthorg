@@ -193,7 +193,8 @@ class MCPClient:
                     logger.warning(
                         MCP_CLIENT_DISCONNECT_FAILED,
                         server=self._config.name,
-                        error=str(exc),
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                     record_client_disconnect(
                         transport=metric_transport,

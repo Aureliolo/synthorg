@@ -111,7 +111,7 @@ VALID_VERDICTS: Final[frozenset[str]] = frozenset(
 )
 VALID_TOKEN_DIRECTIONS: Final[frozenset[str]] = frozenset({"input", "output"})
 VALID_TASK_OUTCOMES: Final[frozenset[str]] = frozenset(
-    {"succeeded", "failed", "cancelled"}
+    {"succeeded", "failed", "cancelled", "rejected"}
 )
 VALID_TOOL_OUTCOMES: Final[frozenset[str]] = frozenset({"success", "error", "timeout"})
 VALID_STATUS_CLASSES: Final[frozenset[str]] = frozenset(
@@ -240,44 +240,62 @@ def _reset_label_snapshot_for_tests() -> None:
     _snapshot = _INITIAL_SNAPSHOT
 
 
+def _snapshot_for_collector() -> _LabelSnapshot:
+    """Return the current snapshot reference for use by ``PrometheusCollector``.
+
+    Wrapper kept private (underscore prefix) to make the access path
+    auditable: only the collector's ``_rebuild_label_snapshot`` should
+    read the existing snapshot when computing a partial-failure
+    fallback. All other consumers go through the public
+    ``validate_*`` / ``is_known_agent_id`` helpers.
+    """
+    return _snapshot
+
+
 def validate_agent_id(value: str) -> None:
     """Raise ``ValueError`` if *value* is not a known agent id.
 
-    No-op while the snapshot is in bootstrap mode (no
-    :func:`update_label_snapshot` call yet) so the very first scrape
-    doesn't suppress every push-time metric.
+    Fails closed in every state, including bootstrap mode (no
+    :func:`update_label_snapshot` call yet). A bootstrap pass-through
+    would let arbitrary startup metric labels create permanent
+    Prometheus children before the registry snapshot lands, which is
+    exactly the cardinality bomb this module exists to prevent.
+    Push-time callers go through ``metrics_hub._safe_record``, which
+    swallows the ValueError and emits a WARN, so a rejected sample
+    drops cleanly without crashing the business path.
     """
     snapshot = _snapshot
-    if not snapshot.seeded:
-        return
     require_label("agent_id", value, snapshot.agent_ids)
 
 
 def validate_workflow_definition_id(value: str) -> None:
-    """Raise ``ValueError`` if *value* is not a known workflow definition."""
+    """Raise ``ValueError`` if *value* is not a known workflow definition.
+
+    Fails closed in every state (see :func:`validate_agent_id` for
+    the bootstrap rationale).
+    """
     snapshot = _snapshot
-    if not snapshot.seeded:
-        return
     require_label("workflow_definition_id", value, snapshot.workflow_definition_ids)
 
 
 def validate_department(value: str) -> None:
-    """Raise ``ValueError`` if *value* is not a known department."""
+    """Raise ``ValueError`` if *value* is not a known department.
+
+    Fails closed in every state (see :func:`validate_agent_id` for
+    the bootstrap rationale).
+    """
     snapshot = _snapshot
-    if not snapshot.seeded:
-        return
     require_label("department", value, snapshot.departments)
 
 
 def is_known_agent_id(value: str) -> bool:
-    """Return ``True`` if *value* is a known agent id or snapshot is unseeded.
+    """Return ``True`` if *value* is a known agent id.
 
     Non-raising counterpart to :func:`validate_agent_id`. Used by the
     async ``refresh()`` path's task-metric loop to drop gauge updates
     for orphan ``task.assigned_to`` references without aborting the
-    full refresh.
+    full refresh. Returns ``False`` during bootstrap (no snapshot
+    seeded yet), which makes the task-metric loop emit no per-agent
+    labels until ``refresh()`` lands the first snapshot.
     """
-    snapshot = _snapshot
-    if not snapshot.seeded:
-        return True
-    return value in snapshot.agent_ids
+    return value in _snapshot.agent_ids

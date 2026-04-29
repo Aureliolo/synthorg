@@ -417,10 +417,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             except Exception:
                 span.set_attribute("tool.outcome", "error")
                 raise
-            span.set_attribute(
-                "tool.outcome",
-                "error" if result.is_error else "success",
-            )
+            if result.is_timeout:
+                span.set_attribute("tool.outcome", "timeout")
+            elif result.is_error:
+                span.set_attribute("tool.outcome", "error")
+            else:
+                span.set_attribute("tool.outcome", "success")
             return result
 
     async def _invoke_single_inner(  # noqa: PLR0911

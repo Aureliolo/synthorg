@@ -32,6 +32,7 @@ from synthorg.observability.events.metrics import (
 )
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
+    _snapshot_for_collector,
     is_known_agent_id,
     update_label_snapshot,
 )
@@ -245,15 +246,18 @@ class PrometheusCollector(RecordingMixin):
 
         Workflow-definition and department fan out in parallel via
         ``asyncio.TaskGroup`` since the queries are independent. Each
-        task wraps its own exception handler so a failure in one
-        registry yields a partial snapshot rather than blanking
-        everything; callers in bootstrap mode see no-op validation,
-        callers in the previous seeded state briefly fall back to
-        that older snapshot until the next refresh succeeds.
+        fetch helper returns a sentinel ``None`` on failure (logged
+        WARN), and the merge step keeps the previously-seeded value
+        for any failed source rather than blanking it. The snapshot
+        only flips ``seeded=True`` once at least one successful build
+        has produced an agent_ids set, so a transient cold-start
+        registry outage doesn't drop the validators out of bootstrap
+        with empty allowlists.
         """
         agent_ids = frozenset(str(a.id) for a in agents)
+        previous = _snapshot_for_collector()
 
-        async def _fetch_workflow_definitions() -> frozenset[str]:
+        async def _fetch_workflow_definitions() -> frozenset[str] | None:
             try:
                 persistence = getattr(app_state, "persistence", None)
                 wf_repo = getattr(persistence, "workflow_definitions", None)
@@ -268,10 +272,10 @@ class PrometheusCollector(RecordingMixin):
                     component="workflow_definition_repo",
                     exc_info=True,
                 )
-                return frozenset()
+                return None
             return frozenset(str(d.id) for d in definitions)
 
-        async def _fetch_departments() -> frozenset[str]:
+        async def _fetch_departments() -> frozenset[str] | None:
             try:
                 dept_service = getattr(app_state, "department_service", None)
                 if dept_service is None:
@@ -285,19 +289,38 @@ class PrometheusCollector(RecordingMixin):
                     component="department_service",
                     exc_info=True,
                 )
-                return frozenset()
+                return None
             return frozenset(str(r.name) for r in records)
 
         async with asyncio.TaskGroup() as tg:
             wf_task = tg.create_task(_fetch_workflow_definitions())
             dept_task = tg.create_task(_fetch_departments())
 
+        wf_ids = wf_task.result()
+        dept_ids = dept_task.result()
+        # Carry the previous snapshot's value forward for any source
+        # that failed; only a successful fetch overwrites. The
+        # snapshot only flips to ``seeded=True`` once both sources
+        # have produced at least one usable result during this
+        # process lifetime (otherwise we'd exit bootstrap with empty
+        # allowlists, fail-closing every push-time metric until the
+        # next refresh succeeds).
+        merged_workflow_ids = (
+            wf_ids if wf_ids is not None else previous.workflow_definition_ids
+        )
+        merged_departments = dept_ids if dept_ids is not None else previous.departments
+        # Seed only if every source has at least one successful read
+        # (this round OR a prior round). The first round where a
+        # source raises keeps ``seeded=False``; the next successful
+        # round flips it on.
+        seeded = previous.seeded or (wf_ids is not None and dept_ids is not None)
+
         update_label_snapshot(
             _LabelSnapshot(
                 agent_ids=agent_ids,
-                workflow_definition_ids=wf_task.result(),
-                departments=dept_task.result(),
-                seeded=True,
+                workflow_definition_ids=merged_workflow_ids,
+                departments=merged_departments,
+                seeded=seeded,
             ),
         )
 

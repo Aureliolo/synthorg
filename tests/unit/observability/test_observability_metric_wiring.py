@@ -98,10 +98,10 @@ def test_record_client_disconnect_rejects_unknown_label(
 # -- is_known_agent_id helper ------------------------------------------------
 
 
-def test_is_known_agent_id_passes_in_bootstrap_mode() -> None:
-    # Bootstrap (unseeded) snapshot accepts any value so the very
-    # first scrape doesn't drop every push-time metric.
-    assert is_known_agent_id("anything") is True
+def test_is_known_agent_id_rejects_in_bootstrap_mode() -> None:
+    # Bootstrap (unseeded) snapshot fails closed -- pre-first-scrape
+    # values aren't allowed to leak into the metric labelset.
+    assert is_known_agent_id("anything") is False
 
 
 def test_is_known_agent_id_rejects_after_seed() -> None:

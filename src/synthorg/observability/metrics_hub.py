@@ -24,7 +24,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_ACTIVATED,
     METRICS_COLLECTOR_DEACTIVATED,
-    METRICS_SCRAPE_FAILED,
+    METRICS_RECORD_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -123,7 +123,7 @@ def _safe_record(
     return _wrap
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_provider_usage")
+@_safe_record(METRICS_RECORD_FAILED, "record_provider_usage")
 def record_provider_usage(
     *,
     provider: str,
@@ -149,7 +149,7 @@ def record_provider_usage(
     )
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_task_run")
+@_safe_record(METRICS_RECORD_FAILED, "record_task_run")
 def record_task_run(*, outcome: str, duration_sec: float) -> None:
     """Forward to :meth:`PrometheusCollector.record_task_run`."""
     collector = _active()
@@ -158,7 +158,7 @@ def record_task_run(*, outcome: str, duration_sec: float) -> None:
     collector.record_task_run(outcome=outcome, duration_sec=duration_sec)
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_security_verdict")
+@_safe_record(METRICS_RECORD_FAILED, "record_security_verdict")
 def record_security_verdict(verdict: str) -> None:
     """Forward to :meth:`PrometheusCollector.record_security_verdict`."""
     collector = _active()
@@ -167,7 +167,7 @@ def record_security_verdict(verdict: str) -> None:
     collector.record_security_verdict(verdict)
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_provider_error")
+@_safe_record(METRICS_RECORD_FAILED, "record_provider_error")
 def record_provider_error(
     *,
     provider: str,
@@ -185,7 +185,7 @@ def record_provider_error(
     )
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_cache_operation")
+@_safe_record(METRICS_RECORD_FAILED, "record_cache_operation")
 def record_cache_operation(*, cache_name: str, outcome: str) -> None:
     """Forward to :meth:`PrometheusCollector.record_cache_operation`."""
     collector = _active()
@@ -194,7 +194,7 @@ def record_cache_operation(*, cache_name: str, outcome: str) -> None:
     collector.record_cache_operation(cache_name=cache_name, outcome=outcome)
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_api_error")
+@_safe_record(METRICS_RECORD_FAILED, "record_api_error")
 def record_api_error(*, category: str, status_code: int) -> None:
     """Forward to :meth:`PrometheusCollector.record_api_error`."""
     collector = _active()
@@ -203,7 +203,7 @@ def record_api_error(*, category: str, status_code: int) -> None:
     collector.record_api_error(category=category, status_code=status_code)
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_workflow_execution")
+@_safe_record(METRICS_RECORD_FAILED, "record_workflow_execution")
 def record_workflow_execution(
     *,
     workflow_definition_id: str,
@@ -221,7 +221,7 @@ def record_workflow_execution(
     )
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_tool_invocation")
+@_safe_record(METRICS_RECORD_FAILED, "record_tool_invocation")
 def record_tool_invocation(
     *,
     tool_name: str,
@@ -239,7 +239,7 @@ def record_tool_invocation(
     )
 
 
-@_safe_record(METRICS_SCRAPE_FAILED, "record_client_disconnect")
+@_safe_record(METRICS_RECORD_FAILED, "record_client_disconnect")
 def record_client_disconnect(*, transport: str, reason: str) -> None:
     """Forward to :meth:`PrometheusCollector.record_client_disconnect`."""
     collector = _active()

@@ -44,13 +44,49 @@ _tracer = get_tracer(__name__)
 # ``synthorg_task_duration_seconds`` (``VALID_TASK_OUTCOMES``).
 # Wrapped in MappingProxyType so a misbehaving import-site cannot
 # mutate the registry at runtime.
+#
+# REJECTED is included even though it can only fire from CREATED
+# (per task_transitions.py) -- the REJECTED hop is still a meaningful
+# task outcome to count for ops dashboards. FAILED is also recorded
+# despite being non-terminal (a failed task can be reassigned); each
+# FAILED transition is recorded as its own task-run sample, which
+# matches operator intent (a rate-of-failures query should see every
+# failure event, not just the last).
 _TERMINAL_STATUS_OUTCOME: Mapping[TaskStatus, str] = MappingProxyType(
     {
         TaskStatus.COMPLETED: "succeeded",
         TaskStatus.FAILED: "failed",
         TaskStatus.CANCELLED: "cancelled",
+        TaskStatus.REJECTED: "rejected",
     },
 )
+
+
+def _compute_task_duration_sec(
+    timings: TaskTimingTracker,
+    task_id: str,
+    mutation_type: str,
+) -> float:
+    """Look up *task_id*'s creation time and return ``now - created_at``.
+
+    Falls back to ``0.0`` when the timing tracker has no record
+    (typically a task created before the current process restart).
+    Emits a WARN with ``reason="creation_timestamp_missing"`` so the
+    0-duration sample is searchable rather than silently distorting
+    the duration histogram.
+    """
+    created_at = timings.get_creation(task_id)
+    if created_at is not None:
+        return max(0.0, (datetime.now(UTC) - created_at).total_seconds())
+    logger.warning(
+        TASK_ENGINE_TIMING_FALLBACK,
+        mutation_type=mutation_type,
+        task_id=task_id,
+        reason="creation_timestamp_missing",
+        note=("0-duration sample emitted; task likely created before process restart"),
+    )
+    return 0.0
+
 
 if TYPE_CHECKING:
     from synthorg.engine.task_engine_version import (
@@ -376,32 +412,13 @@ async def apply_transition(
     # case duration falls back to 0.0 (logged + counted, but no
     # spurious "instant" sample skews the histogram materially).
     if mutation.target_status in _TERMINAL_STATUS_OUTCOME:
-        created_at = timings.get_creation(mutation.task_id)
-        if created_at is not None:
-            duration_sec = max(
-                0.0,
-                (datetime.now(UTC) - created_at).total_seconds(),
-            )
-        else:
-            # In-memory timing tracker resets on process restart, so
-            # tasks that straddled a restart have no creation entry.
-            # Emit a dedicated WARN so the 0.0-duration histogram
-            # sample is searchable rather than silently distorting
-            # p50/p95.
-            logger.warning(
-                TASK_ENGINE_TIMING_FALLBACK,
-                mutation_type="transition",
-                task_id=mutation.task_id,
-                reason="creation_timestamp_missing",
-                note=(
-                    "0-duration sample emitted; task likely created"
-                    " before process restart"
-                ),
-            )
-            duration_sec = 0.0
         record_task_run(
             outcome=_TERMINAL_STATUS_OUTCOME[mutation.target_status],
-            duration_sec=duration_sec,
+            duration_sec=_compute_task_duration_sec(
+                timings,
+                mutation.task_id,
+                "transition",
+            ),
         )
 
     return TaskMutationResult(
@@ -511,28 +528,14 @@ async def apply_cancel(
         reason=mutation.reason,
     )
 
-    created_at = timings.get_creation(mutation.task_id)
-    if created_at is not None:
-        duration_sec = max(
-            0.0,
-            (datetime.now(UTC) - created_at).total_seconds(),
-        )
-    else:
-        # In-memory timing tracker resets on process restart; task
-        # straddled the restart. Emit a dedicated WARN so the
-        # 0-duration sample is searchable rather than silently
-        # distorting p95.
-        logger.warning(
-            TASK_ENGINE_TIMING_FALLBACK,
-            mutation_type="cancel",
-            task_id=mutation.task_id,
-            reason="creation_timestamp_missing",
-            note=(
-                "0-duration sample emitted; task likely created before process restart"
-            ),
-        )
-        duration_sec = 0.0
-    record_task_run(outcome="cancelled", duration_sec=duration_sec)
+    record_task_run(
+        outcome="cancelled",
+        duration_sec=_compute_task_duration_sec(
+            timings,
+            mutation.task_id,
+            "cancel",
+        ),
+    )
 
     return TaskMutationResult(
         request_id=mutation.request_id,

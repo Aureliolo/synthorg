@@ -367,9 +367,23 @@ class RecordingMixin:
             overhead_percent: Coordination overhead percentage.
 
         Raises:
-            ValueError: If either input is NaN, Inf, or negative.
+            ValueError: If either input is NaN, Inf, or negative, or
+                if ``efficiency`` exceeds 1.0 (the documented upper
+                bound for the ratio).
         """
         require_non_negative("record_coordination_metrics: efficiency", efficiency)
+        if efficiency > 1.0:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="coordination_metrics",
+                reason="efficiency_out_of_range",
+                efficiency=efficiency,
+            )
+            msg = (
+                f"record_coordination_metrics: efficiency must be <= 1.0;"
+                f" got {efficiency!r}"
+            )
+            raise ValueError(msg)
         require_non_negative(
             "record_coordination_metrics: overhead_percent",
             overhead_percent,
