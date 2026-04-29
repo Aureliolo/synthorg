@@ -802,7 +802,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         effective_config=effective_config,
     )
 
-    # Project telemetry: build collector (reads SYNTHORG_TELEMETRY env for
+    # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for
     # opt-in, defaults to disabled). Attach to app_state so the health
     # endpoint can report the state, and hook start()/shutdown() into the
     # Litestar lifespan. Telemetry is SynthOrg-owned and silent on

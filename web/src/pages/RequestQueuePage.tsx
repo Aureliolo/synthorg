@@ -10,9 +10,9 @@ import {
   type ClientRequest,
   type RequestStatus,
 } from '@/api/endpoints/clients'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
+import { RequestCard } from '@/components/ui/request-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useCapabilities } from '@/hooks/useCapabilities'
@@ -190,49 +190,14 @@ export default function RequestQueuePage() {
               ) : (
                 <ul className="space-y-2">
                   {entries.map((request) => (
-                    <li
+                    <RequestCard
                       key={request.request_id}
-                      className="space-y-2 rounded-md border border-border bg-card-hover p-card text-sm"
-                    >
-                      <div className="font-medium text-foreground">
-                        {request.requirement.title}
-                      </div>
-                      <div className="text-xs text-text-secondary">
-                        {request.client_id} · {request.request_id.slice(0, 8)}
-                      </div>
-                      {(request.status === 'submitted' ||
-                        request.status === 'triaging' ||
-                        request.status === 'scoping') && (
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {(request.status === 'submitted' ||
-                            request.status === 'triaging') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!!pending[request.request_id]}
-                              onClick={() => void handleScope(request.request_id)}
-                            >
-                              Scope
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            disabled={!!pending[request.request_id]}
-                            onClick={() => void handleApprove(request.request_id)}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={!!pending[request.request_id]}
-                            onClick={() => void handleReject(request.request_id)}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      )}
-                    </li>
+                      request={request}
+                      pending={pending}
+                      onScope={(id) => void handleScope(id)}
+                      onApprove={(id) => void handleApprove(id)}
+                      onReject={(id) => void handleReject(id)}
+                    />
                   ))}
                 </ul>
               )}

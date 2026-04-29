@@ -251,12 +251,9 @@ class TestSetupCompany:
         # tier-coverage gate added for issue #1666 B-5 passes; the
         # gate rejects setups that would otherwise produce per-agent
         # ``no_models_available`` warnings during template expansion.
-        from tests.unit.api.controllers.conftest import (
-            setup_mock_providers,
-        )
+        from tests.unit.api.controllers.conftest import mock_providers
 
-        app_state, original = setup_mock_providers(test_client)
-        try:
+        with mock_providers(test_client):
             resp = test_client.post(
                 "/api/v1/setup/company",
                 json={
@@ -271,8 +268,6 @@ class TestSetupCompany:
             assert data["company_name"] == "My Startup"
             assert data["template_applied"] == "solo_founder"
             assert data["department_count"] >= 1
-        finally:
-            app_state._provider_management = original
 
     def test_company_with_template_rejects_empty_provider_set(
         self,

@@ -69,3 +69,46 @@ class TestReportsController:
         )
         # Pydantic enum validation fails before the service runs.
         assert resp.status_code == 400
+
+    def test_generate_returns_503_when_service_not_wired(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Issue #1666 B-2 regression guard: missing wiring -> 503, not AttributeError.
+
+        Pre-#1666 the controller dereferenced ``state._app_state``
+        (private underscore attr) and surfaced a bare ``AttributeError``
+        as a 500 Internal Server Error to clients. The fix routes
+        through ``app_state.has_report_service`` -- when the service
+        is not wired the controller now raises
+        ``ServiceUnavailableError`` (HTTP 503), the honest status code
+        for "feature unavailable in this deployment". Force the not-
+        wired state by clearing the private slot directly.
+        """
+        app_state = test_client.app.state.app_state
+        original = app_state._report_service
+        app_state._report_service = None
+        try:
+            resp = test_client.post(
+                "/api/v1/reports/generate",
+                headers=_HEADERS,
+                json={"period": "daily"},
+            )
+            # 503 (NOT 500 AttributeError) when service is absent.
+            assert resp.status_code == 503, resp.text
+            body = resp.json()
+            assert body["success"] is False
+            # ``ServiceUnavailableError.error_code`` is the
+            # ``ErrorCode.SERVICE_UNAVAILABLE`` enum value (an int).
+            # Verifying both the HTTP 503 and the structured error code
+            # locks down the contract; see ``core.error_taxonomy``.
+            from synthorg.core.error_taxonomy import (
+                ErrorCode,
+            )
+
+            assert (
+                body.get("error_detail", {}).get("error_code")
+                == ErrorCode.SERVICE_UNAVAILABLE
+            )
+        finally:
+            app_state._report_service = original
