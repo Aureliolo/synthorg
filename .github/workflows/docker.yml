@@ -19,6 +19,7 @@ on:
       - ".github/actions/cis-scan/**"
       - ".github/actions/publish-apko-base/**"
       - ".github/actions/publish-image/**"
+      - ".github/actions/publish-image-loaded/**"
       - ".github/actions/setup-apko/**"
       - ".github/actions/setup-python-uv/**"
       - "scripts/cis-scan.sh"
@@ -77,6 +78,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             sandbox:
@@ -88,6 +90,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             sidecar:
@@ -99,6 +102,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             fine-tune:
@@ -113,6 +117,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             web:
@@ -125,6 +130,7 @@ jobs:
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - '.github/actions/setup-python-uv/**'
               - 'scripts/cis-scan.sh'
@@ -792,218 +798,40 @@ jobs:
       id-token: write
       attestations: write
     outputs:
-      digest: ${{ steps.push.outputs.digest }}
+      digest: ${{ steps.publish.outputs.digest }}
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
       - name: Download web image tarball
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: web-image-tarball
           path: .
 
+      # The apko-built `web.tar` is a multi-arch tarball whose internal
+      # tags are `ghcr.io/aureliolo/synthorg-web:sha-<short>-amd64` and
+      # `:sha-<short>-arm64` (set by the `apko build` invocation in
+      # `build-web`). After `docker load` those are exactly the local
+      # tags `publish-image-loaded` expects, so we can hand off
+      # directly without any re-tagging.
       - name: Load image
         run: |
           docker load -i web.tar
 
-      - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      # Hand off to the shared publish path. Identical signing and
+      # post-sign verification logic as the backend / sandbox / sidecar
+      # / fine-tune images, so a future fix lands in one place instead
+      # of two.
+      - name: Publish image
+        id: publish
+        uses: ./.github/actions/publish-image-loaded
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push web image (multi-arch manifest)
-        id: push
-        env:
-          APP_VERSION: ${{ needs.version.outputs.app_version }}
-        run: |
-          set -euo pipefail
-          SHA_TAG="sha-${GITHUB_SHA::7}"
-          REPO="ghcr.io/aureliolo/synthorg-web"
-
-          # Push per-arch images and capture their registry digests
-          # immediately. The manifest list below references members by
-          # `@sha256:digest` so it is byte-identical for every tag
-          # iteration -- a parallel workflow run pushing different
-          # bytes over our per-arch tags cannot cause the manifest
-          # lists for different destination tags to diverge. See
-          # .github/actions/publish-image/action.yml for the full
-          # rationale.
-          #
-          # Residual race: between `docker push` and `imagetools inspect`
-          # for the same per-arch tag, a concurrent run could overwrite
-          # the tag and `inspect` would return the OTHER digest. The
-          # downstream `verify-signatures` job catches this via its
-          # cross-tag divergence check.
-          docker push "${REPO}:${SHA_TAG}-amd64"
-          AMD64_DIGEST="$(docker buildx imagetools inspect "${REPO}:${SHA_TAG}-amd64" --format '{{.Manifest.Digest}}')"
-          if [ -z "$AMD64_DIGEST" ]; then
-            echo "::error::Could not resolve amd64 digest after push"
-            exit 1
-          fi
-
-          docker push "${REPO}:${SHA_TAG}-arm64"
-          ARM64_DIGEST="$(docker buildx imagetools inspect "${REPO}:${SHA_TAG}-arm64" --format '{{.Manifest.Digest}}')"
-          if [ -z "$ARM64_DIGEST" ]; then
-            echo "::error::Could not resolve arm64 digest after push"
-            exit 1
-          fi
-
-          # Collect manifest tags (deduplicated -- TAG and APP_VERSION can match)
-          declare -A SEEN_TAGS
-          MANIFEST_TAGS=()
-          for candidate in "${SHA_TAG}" $(
-            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-              TAG="${GITHUB_REF_NAME#v}"
-              echo "${TAG}"
-              if [[ "$TAG" != *-dev.* ]]; then
-                echo "${TAG%.*}"
-                echo "${APP_VERSION}"
-              else
-                echo "dev"
-              fi
-            fi
-          ); do
-            if [ -z "${SEEN_TAGS[$candidate]+x}" ]; then
-              SEEN_TAGS[$candidate]=1
-              MANIFEST_TAGS+=("$candidate")
-            fi
-          done
-
-          # Create and push multi-arch manifest for each tag. --amend
-          # keeps re-runs on the same SHA safe; @sha256: refs keep the
-          # manifest list bytes stable across iterations and across
-          # concurrent runs.
-          DIGEST=""
-          PUSHED_TAGS=()
-          for t in "${MANIFEST_TAGS[@]}"; do
-            docker manifest create --amend "${REPO}:${t}" \
-              "${REPO}@${AMD64_DIGEST}" \
-              "${REPO}@${ARM64_DIGEST}"
-            docker manifest push "${REPO}:${t}"
-            PUSHED_TAGS+=("${t}")
-            if [ "$t" = "${SHA_TAG}" ]; then
-              DIGEST="$(docker buildx imagetools inspect "${REPO}:${t}" --format '{{.Manifest.Digest}}')"
-            fi
-          done
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-          # Newline-separated; consumer iterates with `while IFS= read -r`
-          # so tags are immune to word-splitting / glob expansion.
-          {
-            printf 'pushed_tags<<__SYNTHORG_TAG_EOF__\n'
-            printf '%s\n' "${PUSHED_TAGS[@]}"
-            printf '__SYNTHORG_TAG_EOF__\n'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      - name: Sign image
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
-          set -euo pipefail
-          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
-            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed -- skipping"
-            else exit 1; fi
-          fi
-
-      # Confirm every tag pushed for this image still resolves to the
-      # signed digest and that the cosign signature artifact is
-      # reachable on GHCR. Catches the "concurrent run overwrote our
-      # tag after signing" failure mode at CI time. See
-      # .github/actions/publish-image/action.yml for the full
-      # rationale.
-      - name: Verify every pushed tag resolves to the signed digest
-        env:
-          SIGNED_DIGEST: ${{ steps.push.outputs.digest }}
-          PUSHED_TAGS: ${{ steps.push.outputs.pushed_tags }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          REPO_PATH="aureliolo/synthorg-web"
-          REG_TOKEN="$(curl -sS -u "x-access-token:${GHCR_TOKEN}" \
-            "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_PATH}:pull" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
-          if [ -z "${REG_TOKEN}" ]; then
-            echo "::error::Failed to mint GHCR pull token for ${REPO_PATH}"
-            exit 1
-          fi
-
-          FAILED=0
-          while IFS= read -r t; do
-            [ -z "${t}" ] && continue
-            ACTUAL="$(curl -sS -I \
-              -H "Authorization: Bearer ${REG_TOKEN}" \
-              -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json" \
-              "https://ghcr.io/v2/${REPO_PATH}/manifests/${t}" \
-              | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}')"
-            if [ "${ACTUAL}" != "${SIGNED_DIGEST}" ]; then
-              echo "::error::Tag ${t} resolves to ${ACTUAL} but we signed ${SIGNED_DIGEST}"
-              FAILED=1
-            else
-              echo "✓ ghcr.io/${REPO_PATH}:${t} -> ${ACTUAL} (signed)"
-            fi
-          done <<< "${PUSHED_TAGS}"
-
-          SIG_HEX="${SIGNED_DIGEST#sha256:}"
-          SIG_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
-            -H "Authorization: Bearer ${REG_TOKEN}" \
-            -H "Accept: application/vnd.oci.image.index.v1+json" \
-            "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"
-          if [ "${SIG_STATUS}" != "200" ]; then
-            echo "::error::cosign signature artifact missing (referrer tag sha256-${SIG_HEX} returned HTTP ${SIG_STATUS})"
-            FAILED=1
-          fi
-
-          if [ "$FAILED" -ne 0 ]; then
-            exit 1
-          fi
-
-      - name: Attest build provenance (SLSA Level 3)
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ghcr.io/aureliolo/synthorg-web
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
-      - name: Generate SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: ghcr.io/aureliolo/synthorg-web@${{ steps.push.outputs.digest }}
-          format: cyclonedx-json
-          output-file: sbom-web.cdx.json
-
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom-web
-          path: sbom-web.cdx.json
-          retention-days: 30
-
-      # Emit canonical (image, tag) inventory for `verify-signatures` to
-      # aggregate. Mirrors the publish-image / publish-apko-base pattern.
-      - name: Write pushed-tag inventory
-        env:
-          PUSHED_TAGS: ${{ steps.push.outputs.pushed_tags }}
-        run: |
-          set -euo pipefail
-          OUT="pushed-tags-web.txt"
-          : > "$OUT"
-          while IFS= read -r t; do
-            [ -z "${t}" ] && continue
-            printf 'web:%s\n' "${t}" >> "$OUT"
-          done <<< "${PUSHED_TAGS}"
-          echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
-
-      - name: Upload pushed-tag inventory
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: pushed-tags-web
-          path: pushed-tags-web.txt
-          # Match the publish-image action; see its rationale.
-          retention-days: 7
+          image-name: web
+          app-version: ${{ needs.version.outputs.app_version }}
+          enable-arm64: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sandbox:
     name: Build Sandbox
