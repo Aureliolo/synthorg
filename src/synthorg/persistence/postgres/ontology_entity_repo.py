@@ -151,7 +151,8 @@ class PostgresOntologyEntityRepository:
             logger.warning(
                 ONTOLOGY_ENTITY_DUPLICATE,
                 entity_name=entity.name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise OntologyDuplicateError(msg) from exc
         logger.info(

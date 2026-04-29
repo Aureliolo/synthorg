@@ -84,7 +84,7 @@ logger.exception(EVENT, error=str(exc))
 The rule is unconditional. The risk is most acute on credential-bearing paths (OAuth flows, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), but the pattern is forbidden globally because:
 
 - `logger.exception` attaches a traceback whose serialized frame-locals can leak `client_secret` / `refresh_token` / Fernet ciphertext sitting on the stack at any call site.
-- `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / similar embeds URL or POSTed credential bodies into the message field.
+- `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / similar embeds URL or posted credential bodies into the message field.
 
 A site that "doesn't handle credentials today" can be one refactor away from carrying a request body or connection string into its frame.
 

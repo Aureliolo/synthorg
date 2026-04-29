@@ -502,12 +502,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             except Exception:
                 try:
                     await self._db.rollback()
-                except sqlite3.Error:
-                    logger.exception(
+                except sqlite3.Error as rollback_exc:
+                    logger.error(
                         PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
                         subworkflow_id=subworkflow_id,
                         version=version,
-                        error="Rollback failed after primary error",
+                        error_type=type(rollback_exc).__name__,
+                        error=safe_error_description(rollback_exc),
+                        note="Rollback failed after primary error",
+                        exc_info=True,
                     )
                 raise
 

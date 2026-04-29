@@ -242,7 +242,7 @@ class MessageDispatcher:
         try:
             await registration.handler.handle(message)
         except Exception as exc:
-            errors[index] = str(exc)
+            errors[index] = safe_error_description(exc)
             logger.warning(
                 COMM_DISPATCH_HANDLER_ERROR,
                 agent_id=self._agent_id,

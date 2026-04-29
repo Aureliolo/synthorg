@@ -111,9 +111,11 @@ INSERT OR REPLACE INTO circuit_breaker_state (
                     f"Failed to deserialize circuit breaker state row "
                     f"({row['pair_key_a'] if row else 'unknown'})"
                 )
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
                     pair_key_a=row["pair_key_a"] if row else "unknown",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     note="deserialization failed",
                 )
                 raise QueryError(msg) from exc

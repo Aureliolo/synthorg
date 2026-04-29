@@ -120,7 +120,8 @@ def list_packs() -> tuple[PackInfo, ...]:
                     TEMPLATE_PACK_LIST,
                     pack_name=name,
                     action="skip_invalid",
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     return tuple(info for _, info in sorted(seen.items()))
@@ -181,7 +182,8 @@ def load_pack(name: str) -> LoadedTemplate:
                         TEMPLATE_PACK_LOAD_NOT_FOUND,
                         pack_name=name_clean,
                         action="user_pack_failed_fallback_builtin",
-                        error=str(exc),
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                 else:
                     raise
@@ -271,7 +273,8 @@ def _collect_user_packs() -> dict[str, PackInfo]:
                 TEMPLATE_PACK_LIST,
                 pack_path=str(path),
                 action="skip_invalid",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
     return seen
 
@@ -330,7 +333,8 @@ def _load_from_file(path: Path) -> LoadedTemplate:
         logger.warning(
             TEMPLATE_PACK_LOAD_NOT_FOUND,
             path=str(path),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise TemplateRenderError(
             msg,
@@ -341,7 +345,8 @@ def _load_from_file(path: Path) -> LoadedTemplate:
         logger.warning(
             TEMPLATE_PACK_LOAD_NOT_FOUND,
             path=str(path),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise TemplateRenderError(
             msg,

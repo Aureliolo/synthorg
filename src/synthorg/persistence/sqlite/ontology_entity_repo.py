@@ -129,7 +129,8 @@ class SQLiteOntologyEntityRepository:
                 logger.warning(
                     ONTOLOGY_ENTITY_DUPLICATE,
                     entity_name=entity.name,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise OntologyDuplicateError(msg) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -143,7 +144,7 @@ class SQLiteOntologyEntityRepository:
                     ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
                     entity_name=entity.name,
                     error_type=type(exc).__name__,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
                 raise OntologyError(msg) from exc
         # Mutation-audit logging belongs in the service layer, not in

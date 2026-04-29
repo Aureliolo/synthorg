@@ -103,9 +103,11 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
                     f"Failed to deserialize circuit breaker state row "
                     f"({row.get('pair_key_a') if row else 'unknown'})"
                 )
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
                     pair_key_a=row.get("pair_key_a") if row else "unknown",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     note="deserialization failed",
                 )
                 raise QueryError(msg) from exc

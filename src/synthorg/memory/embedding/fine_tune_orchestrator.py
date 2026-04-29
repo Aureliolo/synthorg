@@ -318,13 +318,14 @@ class FineTuneOrchestrator:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            safe_error = safe_error_description(exc)
             try:
-                await self._mark_failed(self._current_run or run, str(exc))
+                await self._mark_failed(self._current_run or run, safe_error)
             except Exception:
                 self._current_run = run.model_copy(
                     update={
                         "stage": FineTuneStage.FAILED,
-                        "error": str(exc),
+                        "error": safe_error,
                     },
                 )
             self._schedule_ws(
@@ -335,7 +336,7 @@ class FineTuneOrchestrator:
                 MEMORY_FINE_TUNE_FAILED,
                 run_id=run.id,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=safe_error,
             )
 
     async def _run_stages(

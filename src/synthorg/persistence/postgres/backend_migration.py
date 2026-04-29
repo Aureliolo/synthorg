@@ -78,8 +78,8 @@ class PostgresMigrationMixin:
                         logger.warning(
                             PERSISTENCE_BACKEND_DISCONNECT_ERROR,
                             host=self._config.host,
-                            error=str(cleanup_exc),
                             error_type=type(cleanup_exc).__name__,
+                            error=safe_error_description(cleanup_exc),
                             context="cleanup_after_migration_failure",
                         )
                 self._clear_state()

@@ -234,13 +234,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         error=msg,
                     )
                     raise DuplicateRecordError(msg) from exc
-                msg = (
-                    f"Integrity error saving workflow execution {execution.id!r}: {exc}"
-                )
+                msg = f"Integrity error saving workflow execution {execution.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                     execution_id=execution.id,
-                    error=msg,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
             except sqlite3.Error as exc:
