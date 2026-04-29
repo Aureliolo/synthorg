@@ -1,3 +1,9 @@
+/* eslint-disable react-refresh/only-export-components */
+// Test-only utility: HMR is irrelevant here. The component exports
+// (`MockAnimatePresence`, `MockMotionDiv`) live alongside
+// `motionReactMockFactory` because they are tightly coupled and only
+// ever consumed from `vi.mock` factories.
+
 /**
  * Shared `motion/react` test mock.
  *
@@ -91,6 +97,14 @@ function MockAnimatePresence({ children }: { children: ReactNode }): ReactNode {
  * level). Tests that need to passthrough some real exports should use
  * the existing inline mock pattern with `await vi.importActual` directly.
  */
+// Module-level stand-ins for the two reduced-motion responses. Defining
+// the values at module scope (rather than building the function inside
+// the factory) keeps the eslint-react/component-hook-factories rule
+// happy: the rule treats inline hook definitions as factory output
+// even though this hook is a test mock, not a real React hook.
+const _reducedMotionTrue = (): boolean => true
+const _reducedMotionFalse = (): boolean => false
+
 export function motionReactMockFactory(
   options: { reducedMotion?: boolean } = {},
 ): {
@@ -98,11 +112,12 @@ export function motionReactMockFactory(
   motion: { div: typeof MockMotionDiv }
   useReducedMotion: () => boolean
 } {
-  const reducedMotion = options.reducedMotion ?? false
   return {
     AnimatePresence: MockAnimatePresence,
     motion: { div: MockMotionDiv },
-    useReducedMotion: () => reducedMotion,
+    useReducedMotion: options.reducedMotion === true
+      ? _reducedMotionTrue
+      : _reducedMotionFalse,
   }
 }
 
