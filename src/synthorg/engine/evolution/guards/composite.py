@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
+    EVOLUTION_GUARD_DECISION,
     EVOLUTION_GUARDS_PASSED,
     EVOLUTION_GUARDS_REJECTED,
 )
@@ -60,7 +61,7 @@ class CompositeGuard:
         for guard in self._guards:
             decision = await guard.evaluate(proposal)
             logger.debug(
-                "evolution.guard.decision",
+                EVOLUTION_GUARD_DECISION,
                 guard_name=guard.name,
                 approved=decision.approved,
                 reason=decision.reason,

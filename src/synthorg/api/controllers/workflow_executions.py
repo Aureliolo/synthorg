@@ -35,6 +35,7 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NOT_FOUND,
     WORKFLOW_EXEC_PERSISTENCE_FAILED,
+    WORKFLOW_EXECUTION_USERNAME_FALLBACK,
 )
 
 logger = get_logger(__name__)
@@ -46,7 +47,7 @@ def _extract_username(request: Request[Any, Any, Any]) -> str:
     if user and hasattr(user, "username"):
         return str(user.username)
     logger.warning(
-        "workflow.execution.username_fallback",
+        WORKFLOW_EXECUTION_USERNAME_FALLBACK,
         note="request has no user or username attribute, using 'api'",
         path=str(request.url),
     )

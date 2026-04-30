@@ -7,6 +7,9 @@ strategy implementations.
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.ontology import (
+    ONTOLOGY_INJECTION_UNKNOWN_STRATEGY,
+)
 from synthorg.ontology.config import InjectionStrategy, OntologyInjectionConfig
 from synthorg.ontology.injection.hybrid import HybridInjectionStrategy
 from synthorg.ontology.injection.memory import MemoryBasedInjectionStrategy
@@ -68,7 +71,7 @@ def create_injection_strategy(
 
     msg = f"Unknown injection strategy: {strategy!r}"  # type: ignore[unreachable]
     logger.error(
-        "ontology.injection.unknown_strategy",
+        ONTOLOGY_INJECTION_UNKNOWN_STRATEGY,
         strategy=str(strategy),
     )
     raise ValueError(msg)

@@ -6,6 +6,10 @@ In-memory only -- presence is inherently ephemeral.
 """
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    USER_PRESENCE_CONNECT,
+    USER_PRESENCE_DISCONNECT,
+)
 from synthorg.observability.metrics_hub import record_client_disconnect
 
 logger = get_logger(__name__)
@@ -33,7 +37,7 @@ class UserPresence:
         """
         self._counts[user_id] = self._counts.get(user_id, 0) + 1
         logger.debug(
-            "user.presence.connect",
+            USER_PRESENCE_CONNECT,
             user_id=user_id,
             count=self._counts[user_id],
         )
@@ -55,14 +59,14 @@ class UserPresence:
         if count <= 0:
             self._counts.pop(user_id, None)
             logger.debug(
-                "user.presence.disconnect",
+                USER_PRESENCE_DISCONNECT,
                 user_id=user_id,
                 count=0,
             )
         else:
             self._counts[user_id] = count
             logger.debug(
-                "user.presence.disconnect",
+                USER_PRESENCE_DISCONNECT,
                 user_id=user_id,
                 count=count,
             )

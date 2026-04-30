@@ -6,7 +6,10 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_STARTED,
+    ONTOLOGY_DRIFT_DETECT_FAILED,
     ONTOLOGY_DRIFT_DETECTED,
+    ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
+    ONTOLOGY_DRIFT_STORE_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -73,7 +76,7 @@ class DriftDetectionService:
             report = await self._strategy.detect(entity_name, agent_ids)
         except Exception:
             logger.error(
-                "ontology.drift.detect_failed",
+                ONTOLOGY_DRIFT_DETECT_FAILED,
                 entity_name=entity_name,
                 agent_count=len(agent_ids),
                 exc_info=True,
@@ -99,7 +102,7 @@ class DriftDetectionService:
                 await self._store.store_report(report)
             except Exception:
                 logger.error(
-                    "ontology.drift.store_failed",
+                    ONTOLOGY_DRIFT_STORE_FAILED,
                     entity_name=entity_name,
                     divergence_score=report.divergence_score,
                     exc_info=True,
@@ -133,7 +136,7 @@ class DriftDetectionService:
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
                 logger.error(
-                    "ontology.drift.entity_check_failed",
+                    ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
                     entity_name=entities[i].name,
                     error=str(result),
                 )

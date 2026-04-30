@@ -24,6 +24,9 @@ from synthorg.engine.middleware.models import (
 )
 from synthorg.engine.prompt_safety import TAG_TASK_FACT, wrap_untrusted
 from synthorg.observability import get_logger
+from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_EMPTY_PLAN_TEXT,
+)
 from synthorg.observability.events.middleware import (
     COORDINATION_REPLAN,
     COORDINATION_REPLAN_BUDGET_BLOCKED,
@@ -68,7 +71,7 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
         plan_text = str(decomp).strip()
         if not plan_text:
             logger.warning(
-                "decomposition_empty_plan_text",
+                DECOMPOSITION_EMPTY_PLAN_TEXT,
                 task_id=task.id,
             )
             return ctx
