@@ -32,13 +32,23 @@ class LookupEntityArgs(BaseModel):
         allow_inf_nan=False,
         extra="forbid",
         # ``oneOf`` enforces "exactly one" at the schema level: the
-        # caller must supply one branch and not both.  Combined with
-        # ``required`` on each branch this matches the runtime
-        # ``_exactly_one_mode`` validator below.
+        # caller must supply one branch and not both.  Each branch
+        # additionally constrains the matched field to ``type: string``
+        # so JSON Schema validators reject ``{"name": null, ...}`` --
+        # otherwise ``required: ["name"]`` would accept a present-but-
+        # null value, the published schema would lie about the
+        # contract, and the smuggling would only fail at the runtime
+        # ``_exactly_one_mode`` check below.
         json_schema_extra={
             "oneOf": [
-                {"required": ["name"]},
-                {"required": ["query"]},
+                {
+                    "required": ["name"],
+                    "properties": {"name": {"type": "string"}},
+                },
+                {
+                    "required": ["query"],
+                    "properties": {"query": {"type": "string"}},
+                },
             ],
         },
     )
