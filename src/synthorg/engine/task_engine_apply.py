@@ -28,7 +28,7 @@ from synthorg.engine.task_engine_models import (
     TransitionTaskMutation,
     UpdateTaskMutation,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
@@ -410,7 +410,8 @@ async def apply_transition(
                 mutation_type="transition",
                 request_id=mutation.request_id,
                 task_id=mutation.task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return TaskMutationResult(
                 request_id=mutation.request_id,
@@ -555,7 +556,8 @@ async def apply_cancel(
             mutation_type="cancel",
             request_id=mutation.request_id,
             task_id=mutation.task_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return TaskMutationResult(
             request_id=mutation.request_id,

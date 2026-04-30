@@ -198,7 +198,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
             approval_id=approval_id,
             task_id=task_id,
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         # Generic message: do not echo task UUIDs to clients via 404.
         not_found_msg = "Associated task could not be found"
@@ -209,7 +209,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
             approval_id=approval_id,
             task_id=task_id,
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         # Generic message: do not echo task UUIDs to clients via 409.
         conflict_msg = "A concurrent modification was detected; retry the request"

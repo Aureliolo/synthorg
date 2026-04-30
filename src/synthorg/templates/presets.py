@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 from pydantic import ValidationError
 
 from synthorg.core.agent import PersonalityConfig
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PERSONALITY_PRESET_INVALID,
     TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
@@ -455,7 +455,8 @@ def _validate_presets() -> None:
             logger.warning(
                 TEMPLATE_PERSONALITY_PRESET_INVALID,
                 preset_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Invalid personality preset {name!r}: {exc}"
             raise ValueError(msg) from exc

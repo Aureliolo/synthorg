@@ -25,7 +25,7 @@ from synthorg.memory.models import (
     MemoryQuery,  # noqa: TC001
     MemoryStoreRequest,  # noqa: TC001
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_CONNECTED,
     MEMORY_BACKEND_CONNECTING,
@@ -403,7 +403,8 @@ class CompositeBackend:
                             MEMORY_COMPOSITE_FANOUT_PARTIAL,
                             operation="retrieve",
                             backend=name,
-                            error=str(exc),
+                            error_type=type(exc).__name__,
+                            error=safe_error_description(exc),
                         )
 
                 tg.create_task(_fetch())

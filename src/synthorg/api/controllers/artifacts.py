@@ -29,7 +29,7 @@ from synthorg.core.persistence_errors import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_FETCH_FAILED,
@@ -122,7 +122,8 @@ async def _save_metadata_with_rollback(
         logger.warning(
             PERSISTENCE_ARTIFACT_SAVE_FAILED,
             artifact_id=artifact_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             note="metadata save failed, rolling back content",
         )
         try:
@@ -131,7 +132,8 @@ async def _save_metadata_with_rollback(
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
                 artifact_id=artifact_id,
-                error=str(cleanup_exc),
+                error_type=type(cleanup_exc).__name__,
+                error=safe_error_description(cleanup_exc),
             )
         raise
 
@@ -303,7 +305,8 @@ class ArtifactController(Controller):
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
                 artifact_id=artifact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         await service.delete(artifact_id)
         publish_ws_event(
@@ -368,7 +371,7 @@ class ArtifactController(Controller):
                 PERSISTENCE_ARTIFACT_STORE_FAILED,
                 artifact_id=artifact_id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="artifact_too_large",
             )
             raise ArtifactRejectedTooLargeError from exc
@@ -377,7 +380,7 @@ class ArtifactController(Controller):
                 PERSISTENCE_ARTIFACT_STORE_FAILED,
                 artifact_id=artifact_id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="artifact_storage_full",
             )
             raise ArtifactStorageRejectedFullError from exc

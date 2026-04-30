@@ -383,9 +383,9 @@ tests/unit/api/controllers/test_memory_admin.py:196:21
 tests/unit/api/controllers/test_memory_admin.py:198:16
 tests/unit/api/controllers/test_memory_admin.py:224:21
 tests/unit/api/controllers/test_memory_admin.py:231:23
-tests/unit/api/controllers/test_memory_admin.py:259:59
-tests/unit/api/controllers/test_memory_admin.py:298:32
-tests/unit/api/controllers/test_memory_admin.py:338:32
+tests/unit/api/controllers/test_memory_admin.py:263:59
+tests/unit/api/controllers/test_memory_admin.py:302:32
+tests/unit/api/controllers/test_memory_admin.py:342:32
 tests/unit/api/controllers/test_metrics.py:16:17
 tests/unit/api/controllers/test_metrics.py:39:16
 tests/unit/api/controllers/test_metrics.py:41:24

@@ -17,7 +17,7 @@ from synthorg.communication.bus.errors import (
     BusConnectionError,
     BusStreamError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_CONNECTED,
     COMM_BUS_DISCONNECTED,
@@ -42,7 +42,11 @@ async def connect(state: _NatsState) -> None:
         logger.info(COMM_BUS_CONNECTED, reconnect=True)
 
     async def on_error(exc: Exception) -> None:
-        logger.warning(COMM_BUS_RECONNECTING, error=str(exc))
+        logger.warning(
+            COMM_BUS_RECONNECTING,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
     try:
         state.client = await nats.connect(
@@ -84,7 +88,8 @@ async def drain_partial_client(state: _NatsState) -> None:
         logger.warning(
             COMM_BUS_DISCONNECTED,
             phase="drain_partial",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
     finally:
         state.client = None
@@ -131,7 +136,8 @@ async def ensure_stream(state: _NatsState) -> None:
         logger.warning(
             COMM_BUS_STREAM_SCAN_FAILED,
             stream=state.stream_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             phase="ensure_stream",
         )
         raise BusStreamError(
@@ -161,7 +167,8 @@ async def ensure_kv_bucket(state: _NatsState) -> None:
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel="*",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             phase="ensure_kv_bucket",
         )
         raise BusStreamError(

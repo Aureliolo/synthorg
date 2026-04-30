@@ -18,7 +18,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_GROUP_SETUP_COMPLETE,
     WORKSPACE_GROUP_SETUP_FAILED,
@@ -105,7 +105,8 @@ class WorkspaceIsolationService:
                 WORKSPACE_GROUP_SETUP_FAILED,
                 count=len(requests),
                 created=len(workspaces),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             await self._rollback_workspaces(workspaces)
             raise
@@ -201,7 +202,8 @@ class WorkspaceIsolationService:
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,
                     workspace_id=workspace.workspace_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         logger.info(

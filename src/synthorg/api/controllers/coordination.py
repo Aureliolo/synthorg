@@ -27,7 +27,7 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
 )
 from synthorg.engine.errors import CoordinationPhaseError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_COORDINATION_AGENT_RESOLVE_FAILED,
     API_COORDINATION_COMPLETED,
@@ -253,7 +253,8 @@ class CoordinationController(Controller):
                 API_COORDINATION_FAILED,
                 task_id=task_id,
                 phase=exc.phase,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             client_msg = f"Coordination failed at phase {exc.phase!r}"
             _publish_ws_event(

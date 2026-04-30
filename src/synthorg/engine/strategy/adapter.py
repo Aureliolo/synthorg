@@ -15,7 +15,7 @@ from synthorg.engine.strategy.prompt_injection import (
     build_strategic_prompt_sections,
     should_inject_strategy,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import STRATEGY_PRINCIPLES_LOAD_FAILED
 
 if TYPE_CHECKING:
@@ -66,8 +66,7 @@ def inject_strategy_context(
             STRATEGY_PRINCIPLES_LOAD_FAILED,
             agent_id=str(agent.id),
             error_type=type(exc).__name__,
-            error=str(exc),
-            exc_info=True,
+            error=safe_error_description(exc),
         )
 
     sections = build_strategic_prompt_sections(

@@ -11,7 +11,7 @@ import contextlib
 import sqlite3
 from pathlib import Path
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import BACKUP_COMPONENT_FAILED
 
 logger = get_logger(__name__)
@@ -78,7 +78,7 @@ def integrity_check(db_path: str) -> bool:
             component="sqlite_integrity_check",
             db_path=db_path,
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         raise IntegrityCheckError(msg) from exc
     return result is not None and result[0] == "ok"

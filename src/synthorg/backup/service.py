@@ -156,11 +156,11 @@ class BackupService(BackupServiceArchiveMixin):
                 backup_dir=backup_dir,
             )
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_FAILED,
                 backup_id=backup_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             if backup_dir.exists():
                 await asyncio.to_thread(shutil.rmtree, backup_dir)

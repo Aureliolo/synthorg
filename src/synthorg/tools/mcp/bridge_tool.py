@@ -8,7 +8,7 @@ tool system.
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import ToolCategory
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CACHE_HIT,
     MCP_CACHE_MISS,
@@ -149,7 +149,8 @@ class MCPBridgeTool(BaseTool):
                 MCP_INVOKE_FAILED,
                 tool=self._tool_info.name,
                 server=self._tool_info.server_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=str(exc),

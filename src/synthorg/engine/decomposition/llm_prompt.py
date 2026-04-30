@@ -23,7 +23,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_LLM_PARSE_ERROR,
 )
@@ -389,14 +389,16 @@ def parse_tool_call_response(
                 # Re-raise without wrapping to preserve the original error
                 logger.warning(
                     DECOMPOSITION_LLM_PARSE_ERROR,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     parent_task_id=parent_task_id,
                 )
                 raise
             except Exception as exc:
                 logger.warning(
                     DECOMPOSITION_LLM_PARSE_ERROR,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     exc_type=type(exc).__name__,
                 )
                 msg = f"Failed to parse tool call arguments: {exc}"
@@ -463,14 +465,16 @@ def parse_content_response(
         # Re-raise without wrapping to preserve the original error
         logger.warning(
             DECOMPOSITION_LLM_PARSE_ERROR,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             parent_task_id=parent_task_id,
         )
         raise
     except Exception as exc:
         logger.warning(
             DECOMPOSITION_LLM_PARSE_ERROR,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             exc_type=type(exc).__name__,
         )
         msg = f"Failed to parse plan from content JSON: {exc}"

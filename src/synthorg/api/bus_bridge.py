@@ -15,7 +15,7 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
@@ -502,7 +502,8 @@ class MessageBusBridge:
                         logger.warning(
                             API_APP_SHUTDOWN,
                             component="bus_bridge",
-                            error=str(result),
+                            error_type=type(result).__name__,
+                            error=safe_error_description(result),
                             exc_info=result,
                         )
             self._tasks.clear()

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_INJECTION_PREPARED,
     ONTOLOGY_TOOL_LOOKUP,
@@ -119,7 +119,8 @@ class LookupEntityTool(BaseTool):
             logger.warning(
                 ONTOLOGY_TOOL_LOOKUP,
                 name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content="Entity lookup failed. Try again later.",
@@ -151,7 +152,8 @@ class LookupEntityTool(BaseTool):
             logger.warning(
                 ONTOLOGY_TOOL_LOOKUP,
                 query=query,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content="Entity search failed. Try again later.",

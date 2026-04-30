@@ -14,7 +14,7 @@ immutability after construction.
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
     ROUTING_MODEL_RESOLVED,
@@ -203,7 +203,8 @@ class ModelResolver:
                 ref=ref,
                 candidate_count=len(candidates),
                 selector=type(self._selector).__name__,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         except MemoryError, RecursionError:
@@ -267,9 +268,9 @@ class ModelResolver:
                 ref=ref,
                 candidate_count=len(candidates),
                 selector=type(self._selector).__name__,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="unexpected_selector_error",
-                exc_info=True,
             )
             return None
 

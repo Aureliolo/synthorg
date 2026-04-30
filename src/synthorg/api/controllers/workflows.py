@@ -53,7 +53,7 @@ from synthorg.engine.workflow.validation import (
     validate_workflow as run_workflow_validation,
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.blueprint import (
     BLUEPRINT_INSTANTIATE_START,
     BLUEPRINT_INSTANTIATE_SUCCESS,
@@ -210,7 +210,8 @@ class WorkflowController(Controller):
                 WORKFLOW_DEF_INVALID_REQUEST,
                 definition_id=definition.id,
                 reason="duplicate_id",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
@@ -295,7 +296,8 @@ class WorkflowController(Controller):
         except (ValueError, ValidationError) as exc:
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
@@ -328,7 +330,8 @@ class WorkflowController(Controller):
                 WORKFLOW_DEF_INVALID_REQUEST,
                 definition_id=definition.id,
                 reason="duplicate_id",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
@@ -432,7 +435,8 @@ class WorkflowController(Controller):
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
                 definition_id=updated.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
@@ -501,7 +505,8 @@ class WorkflowController(Controller):
         except (ValueError, ValidationError) as exc:
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[WorkflowValidationResult](
@@ -579,7 +584,8 @@ class WorkflowController(Controller):
         except ValueError as exc:
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[None](

@@ -671,7 +671,8 @@ class FineTuneOrchestrator:
         if exc is not None:
             logger.error(
                 MEMORY_FINE_TUNE_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="unhandled exception in pipeline task",
             )
 

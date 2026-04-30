@@ -195,7 +195,8 @@ class MemoryAdminController(Controller):
         except RuntimeError as exc:
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ClientException(
                 detail="A fine-tuning run is already active",
@@ -240,7 +241,8 @@ class MemoryAdminController(Controller):
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,
                 run_id=run_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ClientException(
                 detail="A fine-tuning run is already active",
@@ -250,7 +252,8 @@ class MemoryAdminController(Controller):
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,
                 run_id=run_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ClientException(
                 detail="Run not found or not resumable",
@@ -738,9 +741,8 @@ def _recommend_batch_size() -> int | None:
     except Exception as exc:
         logger.warning(
             MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
-            exc_info=True,
         )
         return None
 

@@ -18,7 +18,7 @@ from synthorg.engine.workspace.models import (
     WorkspaceGroupResult,
     WorkspaceRequest,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_CLEANUP_COMPLETED,
     COORDINATION_CLEANUP_FAILED,
@@ -110,8 +110,8 @@ async def setup_workspaces(
         logger.warning(
             COORDINATION_PHASE_FAILED,
             phase=phase_name,
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return (), phase
     else:
@@ -157,8 +157,8 @@ async def merge_workspaces(
         logger.warning(
             COORDINATION_PHASE_FAILED,
             phase=phase_name,
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None, phase
     else:
@@ -193,8 +193,8 @@ async def teardown_workspaces(
         logger.warning(
             COORDINATION_CLEANUP_FAILED,
             workspace_count=len(workspaces),
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
     else:
         logger.info(
@@ -278,8 +278,8 @@ async def execute_waves(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
                 wave_index=wave_idx,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             wave = CoordinationWave(
                 wave_index=wave_idx,

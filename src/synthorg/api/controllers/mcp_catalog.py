@@ -25,7 +25,7 @@ from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     InvalidConnectionAuthError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     MCP_CATALOG_ENTRY_NOT_FOUND,
     MCP_SERVER_INSTALL_FAILED,
@@ -160,7 +160,10 @@ class MCPCatalogController(Controller):
     async def search_catalog(
         self,
         state: State,
-        q: str = Parameter(description="Search query"),
+        q: str = Parameter(
+            description="Search query",
+            max_length=512,
+        ),
         limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> PaginatedResponse[CatalogEntry]:
@@ -193,7 +196,8 @@ class MCPCatalogController(Controller):
             logger.warning(
                 MCP_CATALOG_ENTRY_NOT_FOUND,
                 entry_id=entry_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=entry)
@@ -242,7 +246,8 @@ class MCPCatalogController(Controller):
             logger.warning(
                 MCP_CATALOG_ENTRY_NOT_FOUND,
                 entry_id=entry_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise NotFoundError(str(exc)) from exc
         except ConnectionNotFoundError as exc:
@@ -251,7 +256,8 @@ class MCPCatalogController(Controller):
                 entry_id=entry_id,
                 connection_name=connection_name,
                 reason="connection_not_found",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise NotFoundError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
@@ -260,7 +266,8 @@ class MCPCatalogController(Controller):
                 entry_id=entry_id,
                 connection_name=connection_name,
                 reason="connection_type_mismatch",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ValidationError(str(exc)) from exc
 

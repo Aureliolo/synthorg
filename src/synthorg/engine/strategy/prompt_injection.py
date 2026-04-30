@@ -14,7 +14,7 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.engine.strategy.lenses import get_lens_definitions
 from synthorg.engine.strategy.output import build_output_instructions
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import (
     STRATEGY_LENS_LOOKUP_FAILED,
     STRATEGY_PROMPT_INJECTED,
@@ -148,7 +148,8 @@ def build_strategic_prompt_sections(
     except KeyError as exc:
         logger.warning(
             STRATEGY_LENS_LOOKUP_FAILED,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             configured_lenses=config.default_lenses,
         )
         lens_definitions = ()

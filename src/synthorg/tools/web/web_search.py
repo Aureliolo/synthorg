@@ -11,7 +11,7 @@ from typing import Any, ClassVar, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_SEARCH_FAILED,
     WEB_SEARCH_START,
@@ -130,7 +130,12 @@ class WebSearchTool(BaseWebTool):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(WEB_SEARCH_FAILED, query=query, error=str(exc))
+            logger.warning(
+                WEB_SEARCH_FAILED,
+                query=query,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=f"Web search failed: {exc}",
                 is_error=True,

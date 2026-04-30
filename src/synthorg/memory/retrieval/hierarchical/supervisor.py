@@ -29,7 +29,7 @@ from synthorg.memory.retrieval.models import (  # noqa: TC001
     FinalRetrievalResult,
     RetrievalQuery,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_RETRY,
     MEMORY_HIERARCHICAL_ROUTING,
@@ -231,7 +231,8 @@ class SupervisorRouter:
                 MEMORY_HIERARCHICAL_ROUTING,
                 action="json_parse_failed",
                 content_length=len(response.content),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         workers = tuple(
@@ -297,7 +298,8 @@ class SupervisorRouter:
                 MEMORY_HIERARCHICAL_RETRY,
                 action="json_parse_failed",
                 content_length=len(response.content),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         if not parsed.get("retry", False):

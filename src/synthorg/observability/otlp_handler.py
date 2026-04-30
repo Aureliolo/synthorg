@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from structlog.stdlib import ProcessorFormatter
 
+from synthorg.observability import safe_error_description
 from synthorg.observability.enums import OtlpProtocol
 from synthorg.observability.events.metrics import (
     METRICS_OTLP_CALLBACK_ERROR,
@@ -323,7 +324,7 @@ class OtlpHandler(logging.Handler):
                 METRICS_OTLP_EXPORT_FAILED,
                 url=url,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 dropped_records=len(log_records),
                 total_dropped=total_dropped,
             )

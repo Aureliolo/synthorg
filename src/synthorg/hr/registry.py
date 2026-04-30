@@ -710,6 +710,6 @@ class AgentRegistryService:
             logger.warning(
                 VERSION_SNAPSHOT_FAILED,
                 agent_id=str(identity.id),
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )

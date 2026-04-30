@@ -12,7 +12,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
 logger = get_logger(__name__)
@@ -66,7 +66,8 @@ class AuthorityDeferenceConfig(BaseModel):
                     CONFIG_VALIDATION_FAILED,
                     message=msg,
                     pattern=pattern,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise ValueError(msg) from exc
         return self
@@ -109,7 +110,8 @@ class ClarificationGateConfig(BaseModel):
                     CONFIG_VALIDATION_FAILED,
                     message=msg,
                     pattern=pattern,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise ValueError(msg) from exc
         return self

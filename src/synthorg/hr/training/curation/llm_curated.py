@@ -25,7 +25,7 @@ from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
 from synthorg.hr.training.models import ContentType, TrainingItem  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_COMPLETE,
     HR_TRAINING_CURATION_FALLBACK,
@@ -166,7 +166,8 @@ class LLMCurated:
                 strategy="llm_curated",
                 fallback="relevance",
                 reason="provider_error",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return await self._fallback.curate(
                 items,
@@ -180,7 +181,8 @@ class LLMCurated:
                 strategy="llm_curated",
                 fallback="relevance",
                 reason="parse_error",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return await self._fallback.curate(
                 items,

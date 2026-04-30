@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.backup.errors import RetentionError
 from synthorg.backup.models import BackupManifest, BackupTrigger
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_MANIFEST_INVALID,
     BACKUP_RETENTION_FAILED,
@@ -54,10 +54,10 @@ class RetentionManager:
         try:
             manifests = await asyncio.to_thread(self._load_manifests)
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_RETENTION_FAILED,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to load manifests: {exc}"
             raise RetentionError(msg) from exc
@@ -136,11 +136,11 @@ class RetentionManager:
                         error="Backup not found for deletion",
                     )
             except Exception as exc:
-                logger.error(
+                logger.error(  # noqa: TRY400
                     BACKUP_RETENTION_FAILED,
                     backup_id=manifest.backup_id,
-                    error=str(exc),
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return tuple(pruned)
 

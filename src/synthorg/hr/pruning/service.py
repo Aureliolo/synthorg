@@ -30,7 +30,7 @@ from synthorg.hr.pruning.models import (
     PruningRequest,
     PruningServiceConfig,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_PRUNING_AGENT_ELIGIBLE,
     HR_PRUNING_APPROVAL_DEDUP_SKIP,
@@ -228,7 +228,8 @@ class PruningService:
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=str(agent.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return eligible
 
@@ -300,7 +301,8 @@ class PruningService:
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=str(agent.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return created
 

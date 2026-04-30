@@ -99,7 +99,8 @@ class WorkflowExecutionController(Controller):
             logger.warning(
                 WORKFLOW_EXEC_INVALID_DEFINITION,
                 workflow_id=workflow_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[WorkflowExecution](error=str(exc)),
@@ -109,7 +110,8 @@ class WorkflowExecutionController(Controller):
             logger.warning(
                 WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
                 workflow_id=workflow_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[WorkflowExecution](error=str(exc)),
@@ -239,7 +241,8 @@ class WorkflowExecutionController(Controller):
             logger.warning(
                 WORKFLOW_EXEC_CANCELLED,
                 execution_id=execution_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="cancel conflict",
             )
             return Response(

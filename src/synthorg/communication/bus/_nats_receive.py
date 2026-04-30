@@ -23,7 +23,7 @@ from synthorg.communication.bus._nats_utils import (
 )
 from synthorg.communication.enums import ChannelType
 from synthorg.communication.subscription import DeliveryEnvelope
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_MESSAGE_DESERIALIZE_FAILED,
     COMM_BUS_MESSAGE_TOO_LARGE,
@@ -339,7 +339,8 @@ async def build_envelope(
             channel=channel_name,
             subscriber=subscriber_id,
             size=len(msg.data),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         await try_ack(
             msg,

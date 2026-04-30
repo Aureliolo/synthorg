@@ -156,7 +156,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 logger.warning(
                     MEMORY_BACKEND_CONNECTION_FAILED,
                     backend="mem0",
-                    error=str(exc),
+                    error=safe_error_description(exc),
                     error_type="ImportError",
                 )
                 msg = "mem0 package is not installed"
@@ -177,7 +177,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 logger.warning(
                     MEMORY_BACKEND_CONNECTION_FAILED,
                     backend="mem0",
-                    error=str(exc),
+                    error=safe_error_description(exc),
                     error_type=type(exc).__name__,
                 )
                 msg = f"Failed to connect to Mem0: {exc}"
@@ -204,7 +204,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                         MEMORY_BACKEND_CONNECTION_FAILED,
                         backend="mem0",
                         operation="sparse_init",
-                        error=str(exc),
+                        error=safe_error_description(exc),
                         error_type=type(exc).__name__,
                         reason="sparse_init_failed_falling_back_to_dense",
                     )
@@ -271,7 +271,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 MEMORY_BACKEND_HEALTH_CHECK,
                 backend="mem0",
                 healthy=False,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             return False
@@ -430,7 +430,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             logger.warning(
                 MEMORY_ENTRY_STORE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type="MemoryStoreError",
             )
             raise
@@ -447,7 +447,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             logger.warning(
                 MEMORY_ENTRY_STORE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             msg = f"Failed to store memory: {exc}"
@@ -506,7 +506,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             logger.warning(
                 MEMORY_ENTRY_RETRIEVAL_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type="MemoryRetrievalError",
             )
             raise
@@ -523,7 +523,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             logger.warning(
                 MEMORY_ENTRY_RETRIEVAL_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             msg = f"Failed to retrieve memories: {exc}"
@@ -603,7 +603,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 MEMORY_ENTRY_FETCH_FAILED,
                 agent_id=agent_id,
                 memory_id=memory_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type="MemoryRetrievalError",
             )
             raise
@@ -621,7 +621,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 MEMORY_ENTRY_FETCH_FAILED,
                 agent_id=agent_id,
                 memory_id=memory_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             msg = f"Failed to get memory {memory_id}: {exc}"
@@ -687,7 +687,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 MEMORY_ENTRY_DELETE_FAILED,
                 agent_id=agent_id,
                 memory_id=memory_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             msg = f"Failed to delete memory {memory_id}: {exc}"
@@ -753,7 +753,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             logger.warning(
                 MEMORY_ENTRY_COUNT_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type="MemoryRetrievalError",
             )
             raise
@@ -770,7 +770,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             logger.warning(
                 MEMORY_ENTRY_COUNT_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             msg = f"Failed to count memories: {exc}"

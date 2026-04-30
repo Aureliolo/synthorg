@@ -26,7 +26,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.participant import (
     ParticipantResolver,  # noqa: TC001
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.meeting import (
     MEETING_EVENT_COOLDOWN_SKIPPED,
@@ -291,7 +291,7 @@ class MeetingScheduler:
                         logger.error(
                             MEETING_SCHEDULER_ERROR,
                             note="periodic task error during shutdown",
-                            error=str(result),
+                            error=safe_error_description(result),
                             error_type=type(result).__name__,
                             exc_info=result,
                         )

@@ -45,7 +45,7 @@ from synthorg.backup.models import (
     RestoreResponse,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_FAILED,
     BACKUP_NOT_FOUND,
@@ -117,17 +117,18 @@ class BackupController(Controller):
             except BackupInProgressError as exc:
                 logger.warning(
                     BACKUP_FAILED,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise ClientException(
                     str(exc),
                     status_code=409,
                 ) from exc
             except BackupError as exc:
-                logger.error(
+                logger.error(  # noqa: TRY400
                     BACKUP_FAILED,
-                    error=str(exc),
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = "Backup operation failed"
                 raise InternalServerException(msg) from exc
@@ -188,10 +189,10 @@ class BackupController(Controller):
                 offset=offset,
             )
         except BackupError as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_FAILED,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = "Failed to list backups"
             raise InternalServerException(msg) from exc
@@ -306,22 +307,24 @@ class BackupController(Controller):
             logger.warning(
                 BACKUP_RESTORE_FAILED,
                 backup_id=data.backup_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ClientException(str(exc), status_code=422) from exc
         except BackupInProgressError as exc:
             logger.warning(
                 BACKUP_FAILED,
                 backup_id=data.backup_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ClientException(str(exc), status_code=409) from exc
         except RestoreError as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_RESTORE_FAILED,
                 backup_id=data.backup_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = "Restore operation failed"
             raise InternalServerException(msg) from exc

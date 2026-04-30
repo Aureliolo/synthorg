@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_STARTED,
@@ -135,7 +135,8 @@ class DriftDetectionService:
                 logger.error(
                     "ontology.drift.entity_check_failed",
                     entity_name=entities[i].name,
-                    error=str(result),
+                    error_type=type(result).__name__,
+                    error=safe_error_description(result),
                 )
             else:
                 reports.append(result)

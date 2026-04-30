@@ -25,6 +25,7 @@ Task title / description, acceptance criteria, artifact payloads, tool results, 
 - `TAG_CONFIG_VALUE`
 - `TAG_CRITERIA_JSON`
 - `TAG_PEER_CONTRIBUTION`
+- `TAG_MEMORY_ENTRY`
 
 ### Fence breakout protection
 
@@ -49,6 +50,10 @@ This list is non-exhaustive; treat it as a navigational starting point for new S
 - `_BaseSemanticDetector._prompt` (four subclasses in `engine/classification/semantic_detectors.py`)
 - `LLMGenerator._build_prompt` (`client/generators/llm.py`)
 - `AgentIntake._build_prompt` (`engine/intake/strategies/agent_intake.py`)
+- `LLMConsolidationStrategy._build_user_prompt` and `._build_system_prompt` (`memory/consolidation/llm_strategy.py`): wraps each entry under `TAG_MEMORY_ENTRY`; trajectory-context entries reuse the same tag.
+- `LlmCalibrationSampler._build_prompt` (`hr/performance/llm_calibration_sampler.py`): wraps the free-form `interaction_summary` under `TAG_TASK_DATA`; bounded numeric metrics are emitted as plain text.
+- `SuccessMemoryProposer._build_user_message` and module `_SYSTEM_PROMPT` (`memory/procedural/success_proposer.py`): execution context is fenced under `TAG_TASK_DATA`.
+- `SafetyClassifier._build_messages` (`security/safety_classifier.py`): the action `description` (only attacker-controllable field) is fenced under `TAG_TASK_DATA`; bounded label fields (tool name, action type, risk level) stay `html.escape`d. The system prompt is computed lazily via `_system_prompt()` to avoid a circular import through `synthorg.engine.__init__`.
 - Meeting protocol prompt builders (peer-contribution wrapping):
     - `build_agenda_prompt` (`communication/meeting/_prompts.py`): wraps agenda title / context / items in `TAG_TASK_DATA`
     - `RoundRobinProtocol.run` and `RoundRobinProtocol._run_discussion_rounds` (`communication/meeting/round_robin.py`): both transcript-build paths wrap each turn's content via the shared `_format_transcript_entry` helper using `TAG_PEER_CONTRIBUTION`

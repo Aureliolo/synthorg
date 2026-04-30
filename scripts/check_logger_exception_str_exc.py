@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
-"""Pre-commit gate: forbid ``logger.exception(..., error=str(exc))`` sites.
+"""Pre-commit gate: forbid ``logger.<method>(..., error=str(exc))`` sites.
 
-The pattern ``logger.exception(EVENT, ..., error=str(exc))`` is a known
-secret-exfiltration vector on credential-handling code paths (SEC-1 /
-audit finding 90):
+The pattern ``logger.<method>(EVENT, ..., error=str(exc))`` -- where
+``<method>`` is one of ``exception``, ``warning``, or ``error`` -- is
+a known secret-exfiltration vector on credential-handling code paths
+(SEC-1 / audit findings 90 + #1682):
 
 * ``logger.exception`` attaches a full Python traceback; structlog
   serialises frame-local variables into the event, so any in-scope
   ``client_secret`` / ``refresh_token`` / Fernet ciphertext in the
   exception frame leaks to logs.
-* ``str(exc)`` on ``httpx.HTTPStatusError`` frequently embeds the
-  POST body or response body, which carries the credentials that
-  triggered the failure.
+* ``str(exc)`` on ``httpx.HTTPStatusError`` / ``psycopg.Error`` /
+  most third-party HTTP clients embeds the POSTed body, query
+  string, or response body in the exception message -- which carries
+  the credentials that triggered the failure.  This risk is present
+  on ``logger.warning`` and ``logger.error`` too (no traceback, but
+  the embedded URL / body still leaks); #1682 extended this gate to
+  cover all three methods.
 
 This gate walks each file's AST and refuses any match.  The cleanup
 that drained the originally-grandfathered population is complete
-(#1638), so the rule is now unconditional: there is no allowlist, no
+(#1638 for ``exception`` and #1682 for ``warning``/``error``), so the
+rule is now unconditional: there is no allowlist, no
 ``--refresh-baseline`` escape hatch, and any match is a violation.
+The script's filename is preserved (rather than renamed) so the
+pre-commit hook ID and historical CI references stay stable.
 
 What we match
 -------------
@@ -24,15 +32,16 @@ What we match
 The matcher is deliberately broader than ``logger.exception`` to cover
 every idiom seen in the tree:
 
-* ``logger.exception(..., error=str(exc))``
-* ``self._logger.exception(..., error=str(exc))``
-* ``audit_logger.exception(..., error=str(exc))``
+* ``logger.<method>(..., error=str(exc))``
+* ``self._logger.<method>(..., error=str(exc))``
+* ``audit_logger.<method>(..., error=str(exc))``
 * ``error=str(exc.args[0])`` / ``error=str(self._inner)``
 
 Specifically, we flag a call when *all* of the following hold:
 
 1. The callee is an ``Attribute`` whose terminal attribute is
-   ``exception`` (i.e. ``<anything>.exception(...)``).
+   ``exception`` / ``warning`` / ``error`` (i.e.
+   ``<anything>.<method>(...)``).
 2. The receiver is either a bare ``Name`` whose identifier contains
    ``logger``, *or* an ``Attribute`` whose terminal attribute contains
    ``logger`` (the typical ``self._logger`` / ``self.audit_logger``
@@ -44,7 +53,7 @@ Specifically, we flag a call when *all* of the following hold:
 
 To convert a flagged site, replace::
 
-    logger.exception(EVENT, ..., error=str(exc))
+    logger.<method>(EVENT, ..., error=str(exc))
 
 with::
 
@@ -75,13 +84,18 @@ if TYPE_CHECKING:
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC_ROOT = _REPO_ROOT / "src"
 
-_LOGGER_METHODS: frozenset[str] = frozenset({"exception"})
+_LOGGER_METHODS: frozenset[str] = frozenset(
+    {"exception", "warning", "error"},
+)
 """Which ``<receiver>.<method>(...)`` names are covered by this gate.
 
-We only gate ``exception`` because it is the only log method that
-attaches a Python traceback by default. ``logger.warning`` /
-``logger.error`` do not attach traceback, so ``error=str(exc)`` in
-those calls is a less severe concern handled at each callsite.
+#1682 extended the original ``exception``-only gate to also cover
+``warning`` and ``error``. The traceback attachment risk is still
+unique to ``exception``, but the ``str(exc)``-embedding risk on
+``HTTPStatusError`` / ``psycopg.Error`` / most third-party HTTP
+clients applies equally to ``warning`` and ``error``: a credential
+that ends up in the exception's message string leaks regardless of
+whether the traceback is also attached.
 """
 
 
@@ -199,7 +213,7 @@ def _scan(src_path: Path) -> list[str]:
         return [f"{_rel(src_path)}: inspection failed: {exc}"]
     key = _rel(src_path)
     return [
-        f"{key}:{lineno}:{col}: logger.exception(..., error=str(exc)) site"
+        f"{key}:{lineno}:{col}: logger.<method>(..., error=str(exc)) site"
         for lineno, col in hits
     ]
 
@@ -232,8 +246,9 @@ def _report(violations: list[str]) -> int:
     for line in violations:
         print(line)
     print(
-        "\nSEC-1: `logger.exception(..., error=str(exc))` leaks credential"
-        " material via traceback frame-locals AND str(exc) embedding."
+        "\nSEC-1: `logger.<method>(..., error=str(exc))` leaks credential"
+        " material via str(exc)-embedded URLs / form bodies (and via"
+        " traceback frame-locals on ``logger.exception``)."
         "\nReplace with:"
         "\n    logger.warning("
         "\n        EVENT_NAME,"

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import TOOL_FS_DELETE, TOOL_FS_ERROR
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.file_system._args import DeleteFileArgs
@@ -103,7 +103,12 @@ class DeleteFileTool(BaseFileSystemTool):
                 content=f"Permission denied: {user_path}",
                 is_error=True,
             )
-        logger.warning(TOOL_FS_ERROR, path=user_path, error=str(exc))
+        logger.warning(
+            TOOL_FS_ERROR,
+            path=user_path,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return ToolExecutionResult(
             content=f"OS error deleting file: {user_path}",
             is_error=True,

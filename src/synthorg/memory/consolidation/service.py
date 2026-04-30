@@ -455,7 +455,7 @@ class MemoryConsolidationService:
                 ARCHIVAL_FAILED,
                 original_id=entry.id,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             return None

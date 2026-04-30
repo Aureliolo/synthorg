@@ -143,8 +143,8 @@ async def check_needs_admin(
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             context="admin_count",
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return True
     return count == 0 if count is not None else True
@@ -653,7 +653,8 @@ def load_template_safe(template_name: str) -> LoadedTemplate:
         logger.warning(
             SETUP_TEMPLATE_INVALID,
             template=template_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise ValidationError(msg) from exc
 

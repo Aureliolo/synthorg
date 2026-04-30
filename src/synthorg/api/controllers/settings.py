@@ -30,7 +30,7 @@ from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.events.api import (
@@ -509,7 +509,8 @@ class SettingsController(Controller):
         except ValueError as exc:
             logger.warning(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 sink_overrides=overrides_json,
                 custom_sinks=custom_json,
             )
@@ -624,7 +625,8 @@ class SettingsController(Controller):
         except ValidationError as exc:
             logger.warning(
                 API_SECURITY_CONFIG_IMPORT_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Invalid security config: {exc}"
             raise ClientException(msg) from exc

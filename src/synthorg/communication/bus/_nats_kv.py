@@ -13,7 +13,7 @@ from synthorg.communication.bus._nats_utils import decode_token, encode_token
 from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.channel import Channel
 from synthorg.communication.errors import ChannelAlreadyExistsError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_KV_READ_FAILED,
     COMM_BUS_KV_WRITE_FAILED,
@@ -65,7 +65,8 @@ async def create_channel_in_kv(
         logger.warning(
             COMM_BUS_KV_WRITE_FAILED,
             channel=channel.name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"KV create failed for channel {channel.name!r}: {exc}"
         raise BusStreamError(msg, context={"channel": channel.name}) from exc
@@ -88,7 +89,8 @@ async def write_channel_to_kv(state: _NatsState, channel: Channel) -> None:
         logger.warning(
             COMM_BUS_KV_WRITE_FAILED,
             channel=channel.name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 
@@ -125,7 +127,8 @@ async def fetch_kv_entry(
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel=channel_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"KV transport error for channel {channel_name!r}: {exc}"
         raise BusStreamError(msg, context={"channel": channel_name}) from exc
@@ -151,7 +154,8 @@ def decode_kv_channel(
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel=channel_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Corrupt KV entry for channel {channel_name!r}: {exc}"
         raise BusStreamError(msg, context={"channel": channel_name}) from exc
@@ -159,7 +163,8 @@ def decode_kv_channel(
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel=channel_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Invalid KV data for channel {channel_name!r}: {exc}"
         raise BusStreamError(msg, context={"channel": channel_name}) from exc
@@ -194,7 +199,8 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel="*",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             phase="list_channels_scan",
         )
         msg = f"KV scan failed: {exc}"
@@ -208,7 +214,8 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
             logger.warning(
                 COMM_BUS_KV_READ_FAILED,
                 channel=key,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 phase="decode_token",
             )
 

@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from synthorg.config.errors import ConfigLocation
 from synthorg.config.schema import RootConfig
 from synthorg.config.utils import to_float
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_RENDER_TYPE_ERROR,
     TEMPLATE_RENDER_VALIDATION_ERROR,
@@ -44,7 +44,8 @@ def _parse_budget(dept: dict[str, Any]) -> float:
             TEMPLATE_RENDER_TYPE_ERROR,
             department=dept.get("name", ""),
             field="budget_percent",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise TemplateRenderError(msg) from exc
 

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Final
 import aiodocker
 
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CLEANUP,
     DOCKER_CONTAINER_REMOVE_FAILED,
@@ -125,7 +125,8 @@ class DockerSandboxLifecycleMixin:
             logger.warning(
                 DOCKER_CONTAINER_STOP_FAILED,
                 container_id=container_id[:12],
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @staticmethod
@@ -145,7 +146,8 @@ class DockerSandboxLifecycleMixin:
             logger.warning(
                 DOCKER_CONTAINER_REMOVE_FAILED,
                 container_id=container_id[:12],
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         return True
@@ -189,7 +191,8 @@ class DockerSandboxLifecycleMixin:
             logger.warning(
                 DOCKER_HEALTH_CHECK,
                 healthy=False,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         else:

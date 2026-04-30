@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, Protocol
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.audit_chain.tsa_client import (
     TsaError,
     TsaHashMismatchError,
@@ -195,7 +195,8 @@ class ResilientTimestampProvider:
                 SECURITY_TIMESTAMP_FALLBACK,
                 tsa_url=self._client.tsa_url,
                 reason=type(exc).__name__,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return TimestampResult(
                 timestamp=datetime.now(UTC),

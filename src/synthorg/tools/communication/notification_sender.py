@@ -16,7 +16,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_TOOL_NOTIFICATION_SEND_FAILED,
     COMM_TOOL_NOTIFICATION_SEND_START,
@@ -215,7 +215,8 @@ class NotificationSenderTool(BaseCommunicationTool):
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
                 notification_id=notification.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=f"Notification dispatch failed: {exc}",

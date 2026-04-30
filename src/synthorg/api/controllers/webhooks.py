@@ -284,8 +284,17 @@ async def _publish_webhook_event_and_log(
     connection_name: str,
     event_type: str,
     payload: Mapping[str, object],
+    dedup_source: str,
 ) -> dict[str, object]:
-    """Publish the event to the bus and emit ``WEBHOOK_ACCEPTED``."""
+    """Publish the event to the bus and emit ``WEBHOOK_ACCEPTED``.
+
+    ``dedup_source`` carries the provenance of the idempotency key
+    (``"nonce"`` for the standard ``X-Nonce`` / ``X-Request-Id`` path,
+    ``"body_sha256"`` for the nonce-less path that hashes the request
+    body). Surfacing the source on the success log lets operators
+    distinguish well-behaved providers from those without nonces and
+    spot redelivery patterns.
+    """
     await publish_webhook_event(
         bus=bus,
         connection_name=connection_name,
@@ -296,6 +305,7 @@ async def _publish_webhook_event_and_log(
         WEBHOOK_ACCEPTED,
         connection_name=connection_name,
         event_type=event_type,
+        dedup_source=dedup_source,
     )
     return {"status": "accepted", "event_type": event_type}
 
@@ -309,6 +319,7 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     connection_type: str,
     bus: Any,
     payload: Mapping[str, object],
+    dedup_source: str,
 ) -> dict[str, object]:
     """Run the publish under the durable :class:`IdempotencyService`.
 
@@ -332,6 +343,7 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
             connection_name=connection_name,
             event_type=event_type,
             payload=payload,
+            dedup_source=dedup_source,
         )
 
     cached, _fresh = await state["app_state"].idempotency_service.run_idempotent(
@@ -475,25 +487,33 @@ class WebhooksController(Controller):
         else:
             normalized_payload = {"data": payload}
 
+        # Both branches publish through the durable idempotency
+        # service so JetStream redelivery / retried POSTs cannot
+        # double-bus the same event. When the provider supplies a
+        # nonce / request-id we use that directly; otherwise we
+        # synthesize one from the body's SHA-256 so byte-identical
+        # redeliveries collapse to a single publish. The
+        # ``dedup_source`` tag on the success log lets operators
+        # distinguish the two paths.
         if nonce:
-            cached = await _publish_with_durable_idempotency(
-                state=state,
-                connection_name=connection_name,
-                event_type=event_type,
-                nonce=nonce,
-                connection_type=conn.connection_type,
-                bus=bus,
-                payload=normalized_payload,
-            )
-            return ApiResponse(data=cached)
+            idem_nonce = nonce
+            dedup_source = "nonce"
+        else:
+            body_digest = hashlib.sha256(body).hexdigest()
+            idem_nonce = f"sha256:{body_digest}"
+            dedup_source = "body_sha256"
 
-        accepted = await _publish_webhook_event_and_log(
-            bus=bus,
+        cached = await _publish_with_durable_idempotency(
+            state=state,
             connection_name=connection_name,
             event_type=event_type,
+            nonce=idem_nonce,
+            connection_type=conn.connection_type,
+            bus=bus,
             payload=normalized_payload,
+            dedup_source=dedup_source,
         )
-        return ApiResponse(data=accepted)
+        return ApiResponse(data=cached)
 
     @get(
         "/{connection_name:str}/activity",

@@ -28,7 +28,7 @@ from synthorg.engine.workspace.semantic_llm_prompt import (
     build_system_message,
     parse_tool_call_response,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -294,7 +294,8 @@ class LlmSemanticAnalyzer:
             workspace_id=workspace.workspace_id,
             analyzer="llm",
             reason="parse_exhausted",
-            error=str(error),
+            error_type=type(error).__name__,
+            error=safe_error_description(error),
         )
         return ()
 

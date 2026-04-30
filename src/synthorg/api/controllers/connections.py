@@ -4,19 +4,24 @@ CRUD endpoints for the external service connection catalog,
 including on-demand health checks.
 """
 
-from typing import Any
+from typing import Annotated
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.types import (
+    NotBlankStr,  # noqa: TC001 -- Pydantic field annotation evaluated at runtime
+)
 from synthorg.integrations.connections.catalog import _UNSET
 from synthorg.integrations.connections.models import (
+    AuthMethod,
     Connection,
     ConnectionType,
     HealthReport,
@@ -27,12 +32,79 @@ from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
     SecretRetrievalError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     CONNECTION_SECRET_REVEAL_FAILED,
     CONNECTION_SECRET_REVEALED,
     SECRET_RETRIEVAL_FAILED,
 )
+
+# Length caps applied at the API boundary to prevent unbounded
+# string allocation on attacker-controllable inputs (#1682).
+_MAX_NAME_LEN = 128
+_MAX_BASE_URL_LEN = 2048
+_MAX_CRED_VALUE_LEN = 8192
+_MAX_METADATA_VALUE_LEN = 4096
+
+
+class CreateConnectionRequest(BaseModel):
+    """Body model for ``POST /connections``.
+
+    Replaces the prior ``data: dict[str, Any]`` shape so input
+    validation runs at the boundary and unbounded strings are
+    rejected before reaching the catalog (#1682).
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
+
+    name: Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)]
+    connection_type: ConnectionType
+    auth_method: AuthMethod = AuthMethod.API_KEY
+    credentials: dict[
+        Annotated[str, Field(max_length=_MAX_NAME_LEN)],
+        Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
+    ] = Field(default_factory=dict)
+    base_url: Annotated[str, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
+    metadata: (
+        dict[
+            Annotated[str, Field(max_length=_MAX_NAME_LEN)],
+            Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
+        ]
+        | None
+    ) = None
+    health_check_enabled: bool = True
+
+
+class UpdateConnectionRequest(BaseModel):
+    """Body model for ``PATCH /connections/{name}``.
+
+    Optional fields; ``base_url`` is a discriminated three-way:
+    omitted leaves the value unchanged, ``None`` clears it, a string
+    overwrites it. Pydantic + ``extra="forbid"`` distinguishes the
+    "omitted" case from "explicitly null" via field-presence checks
+    on ``model_fields_set``.
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
+
+    base_url: Annotated[str, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
+    metadata: (
+        dict[
+            Annotated[str, Field(max_length=_MAX_NAME_LEN)],
+            Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
+        ]
+        | None
+    ) = None
+    health_check_enabled: bool | None = None
+
 
 # Unified error surfaced to clients on any reveal failure. The
 # message is deliberately opaque so callers cannot distinguish
@@ -90,7 +162,10 @@ class ConnectionsController(Controller):
     async def get_connection(
         self,
         state: State,
-        name: str = Parameter(description="Connection name"),
+        name: str = Parameter(
+            description="Connection name",
+            max_length=_MAX_NAME_LEN,
+        ),
     ) -> ApiResponse[Connection]:
         """Get a single connection by name."""
         catalog = state["app_state"].connection_catalog
@@ -111,58 +186,30 @@ class ConnectionsController(Controller):
     async def create_connection(
         self,
         state: State,
-        data: dict[str, Any],
+        data: CreateConnectionRequest,
     ) -> ApiResponse[Connection]:
         """Create a new connection.
 
-        Validates required fields and connection type before
-        delegating to the catalog so clients get a structured
-        400 instead of a 500 on malformed payloads.
+        Pydantic validates the body against
+        :class:`CreateConnectionRequest` (frozen, ``extra="forbid"``,
+        per-field length caps) so any malformed payload surfaces as a
+        structured 422 from Litestar's exception handler before this
+        method runs.
         """
-        name = data.get("name")
-        if not isinstance(name, str) or not name.strip():
-            msg = "Field 'name' is required and must be a non-empty string"
-            raise ValidationError(msg)
         # Persist the canonical trimmed form so "  github  " and
         # "github" cannot become two distinct identities and so the
         # /{name} routes consistently address the stored row.
-        name = name.strip()
-
-        connection_type_raw = data.get("connection_type")
-        if not isinstance(connection_type_raw, str) or not connection_type_raw:
-            msg = "Field 'connection_type' is required"
-            raise ValidationError(msg)
-        try:
-            connection_type = ConnectionType(connection_type_raw)
-        except ValueError as exc:
-            msg = f"Unknown connection_type '{connection_type_raw}'"
-            raise ValidationError(msg) from exc
-
-        credentials = data.get("credentials", {})
-        if not isinstance(credentials, dict):
-            msg = "Field 'credentials' must be an object"
-            raise ValidationError(msg)
-
-        metadata = data.get("metadata")
-        if metadata is not None and not isinstance(metadata, dict):
-            msg = "Field 'metadata' must be an object if provided"
-            raise ValidationError(msg)
-
-        health_check_enabled = data.get("health_check_enabled", True)
-        if not isinstance(health_check_enabled, bool):
-            msg = "Field 'health_check_enabled' must be a boolean"
-            raise ValidationError(msg)
-
+        name = data.name.strip()
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.create(
                 name=name,
-                connection_type=connection_type,
-                auth_method=data.get("auth_method", "api_key"),
-                credentials=credentials,
-                base_url=data.get("base_url"),
-                metadata=metadata,
-                health_check_enabled=health_check_enabled,
+                connection_type=data.connection_type,
+                auth_method=data.auth_method.value,
+                credentials=data.credentials,
+                base_url=data.base_url,
+                metadata=data.metadata,
+                health_check_enabled=data.health_check_enabled,
             )
         except DuplicateConnectionError as exc:
             raise ConflictError(str(exc)) from exc
@@ -182,36 +229,24 @@ class ConnectionsController(Controller):
         self,
         state: State,
         name: str,
-        data: dict[str, Any],
+        data: UpdateConnectionRequest,
     ) -> ApiResponse[Connection]:
-        """Update mutable fields of a connection."""
-        # Validate PATCH field types at the boundary so malformed
-        # payloads surface as a structured 400 instead of failing
-        # inside the catalog / Pydantic model layer.
-        if "base_url" in data:
-            base_url_value = data["base_url"]
-            if base_url_value is not None and not isinstance(base_url_value, str):
-                msg = "Field 'base_url' must be a string or null"
-                raise ValidationError(msg)
-        metadata = data.get("metadata")
-        if metadata is not None and not isinstance(metadata, dict):
-            msg = "Field 'metadata' must be an object if provided"
-            raise ValidationError(msg)
-        health_check_enabled = data.get("health_check_enabled")
-        if health_check_enabled is not None and not isinstance(
-            health_check_enabled,
-            bool,
-        ):
-            msg = "Field 'health_check_enabled' must be a boolean if provided"
-            raise ValidationError(msg)
+        """Update mutable fields of a connection.
 
+        Pydantic enforces shape and length on the request body.
+        ``base_url`` distinguishes "omitted" (leave unchanged) from
+        "explicitly null" (clear the URL): we read
+        ``data.model_fields_set`` to detect omission and forward the
+        sentinel ``_UNSET`` to the catalog.
+        """
         catalog = state["app_state"].connection_catalog
+        base_url_arg = data.base_url if "base_url" in data.model_fields_set else _UNSET
         try:
             conn = await catalog.update(
                 name,
-                base_url=data.get("base_url", _UNSET),
-                metadata=metadata,
-                health_check_enabled=health_check_enabled,
+                base_url=base_url_arg,
+                metadata=data.metadata,
+                health_check_enabled=data.health_check_enabled,
             )
         except ConnectionNotFoundError as exc:
             raise NotFoundError(str(exc)) from exc
@@ -300,12 +335,12 @@ class ConnectionsController(Controller):
             # "not found" condition -- log at ERROR level so they
             # show up on the health dashboard instead of getting lost
             # in the 404 noise.
-            logger.error(
+            logger.error(  # noqa: TRY400
                 SECRET_RETRIEVAL_FAILED,
                 connection_name=name,
                 field=field,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
 

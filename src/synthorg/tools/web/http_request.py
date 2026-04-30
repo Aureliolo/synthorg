@@ -12,7 +12,7 @@ import httpx
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_REQUEST_FAILED,
     WEB_REQUEST_START,
@@ -180,7 +180,12 @@ class HttpRequestTool(BaseWebTool):
                 is_error=True,
             )
         except httpx.HTTPError as exc:
-            logger.warning(WEB_REQUEST_FAILED, url=url, error=str(exc))
+            logger.warning(
+                WEB_REQUEST_FAILED,
+                url=url,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=f"HTTP request failed: {exc}",
                 is_error=True,

@@ -5,6 +5,7 @@ from typing import Final
 BUDGET_TRACKER_CREATED: Final[str] = "budget.tracker.created"
 BUDGET_TRACKER_CLEARED: Final[str] = "budget.tracker.cleared"
 BUDGET_RECORD_ADDED: Final[str] = "budget.record.added"
+BUDGET_RECORD_DEDUPED: Final[str] = "budget.record.deduped"
 BUDGET_SUMMARY_BUILT: Final[str] = "budget.summary.built"
 BUDGET_TOTAL_COST_QUERIED: Final[str] = "budget.total_cost.queried"
 BUDGET_AGENT_COST_QUERIED: Final[str] = "budget.agent_cost.queried"

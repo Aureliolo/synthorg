@@ -7,6 +7,7 @@ catalog credentials.
 """
 
 import asyncio
+import hmac
 import json
 from typing import Any
 
@@ -480,6 +481,32 @@ async def _dispatch_method(
         )
 
 
+def _credentials_match(stored: str, presented: str) -> bool:
+    """Constant-time comparison of two credential strings.
+
+    Wraps :func:`hmac.compare_digest` so the call sites read
+    ``_credentials_match(...)`` instead of repeated bytes-encoding +
+    HMAC plumbing. Both inputs are encoded to UTF-8 once before
+    comparison; this keeps the timing characteristic stable for
+    Unicode credentials and avoids ``compare_digest``'s
+    ``str``-vs-``bytes`` type sensitivity.
+
+    Length mismatches are tolerated: ``compare_digest`` returns
+    ``False`` in time proportional to the shorter input, which is
+    the closest constant-time behaviour available without
+    pre-padding (and pre-padding would itself leak the longer
+    input's length).
+
+    Callers MUST treat empty stored credentials as a missing-
+    credentials condition before calling here -- this helper is
+    purely byte-wise and reports two empty strings as equal.
+    """
+    return hmac.compare_digest(
+        stored.encode("utf-8"),
+        presented.encode("utf-8"),
+    )
+
+
 async def _verify_peer_credentials(  # noqa: PLR0911
     app_state: Any,
     request: Request[Any, Any, Any],
@@ -522,7 +549,7 @@ async def _verify_peer_credentials(  # noqa: PLR0911
                     reason="missing credentials in request",
                 )
                 return False
-            if stored_key and request_key != stored_key:
+            if stored_key and not _credentials_match(stored_key, request_key):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,
@@ -533,7 +560,7 @@ async def _verify_peer_credentials(  # noqa: PLR0911
             stored_token = credentials.get("access_token", "")
             auth_header = request.headers.get("authorization", "")
             request_token = auth_header.removeprefix("Bearer ").strip()
-            if stored_token and request_token != stored_token:
+            if stored_token and not _credentials_match(stored_token, request_token):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,

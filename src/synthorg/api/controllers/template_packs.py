@@ -231,7 +231,8 @@ async def _apply_pack_to_settings(
         logger.warning(
             TEMPLATE_PACK_APPLY_ERROR,
             pack_name=data.pack_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Template pack {data.pack_name!r} not found"
         raise NotFoundError(msg) from exc

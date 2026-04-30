@@ -30,7 +30,7 @@ from synthorg.engine.workflow.validation import (
     validate_subworkflow_graph,
     validate_subworkflow_io,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.blueprint import BLUEPRINT_INSTANTIATE_FAILED
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_INVALID_REQUEST,
@@ -97,7 +97,8 @@ def _validate_collection(
         logger.warning(
             WORKFLOW_DEF_INVALID_REQUEST,
             field=field_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](
@@ -216,7 +217,8 @@ def apply_update(
     except (ValueError, ValidationError) as exc:
         logger.warning(
             WORKFLOW_DEF_INVALID_REQUEST,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](
@@ -272,7 +274,8 @@ async def load_blueprint_or_error(
         logger.warning(
             BLUEPRINT_INSTANTIATE_FAILED,
             blueprint_name=blueprint_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](
@@ -284,7 +287,8 @@ async def load_blueprint_or_error(
         logger.warning(
             BLUEPRINT_INSTANTIATE_FAILED,
             blueprint_name=blueprint_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](

@@ -326,7 +326,8 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 provider=name,
                 model=model_id,
                 success=False,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return TestConnectionResponse(
                 success=False,
@@ -336,13 +337,13 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 PROVIDER_CONNECTION_TESTED,
                 provider=name,
                 model=model_id,
                 success=False,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return TestConnectionResponse(
                 success=False,
@@ -775,7 +776,8 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 PROVIDER_DISCOVERY_FAILED,
                 provider=name,
                 reason="post_delete_refresh_failed",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         await self._audit(
             provider_name=name,

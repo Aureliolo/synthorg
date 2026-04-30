@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.models import ConsolidationResult
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     EXPERIENCE_COMPRESSED,
     TWO_TIER_COMPRESSION_COMPLETE,
@@ -166,7 +166,8 @@ class TwoTierCompressionStrategy:
                     TWO_TIER_COMPRESSION_FAILED,
                     agent_id=agent_id,
                     entry_id=entry.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 return None
             else:
@@ -218,7 +219,8 @@ class TwoTierCompressionStrategy:
                 TWO_TIER_COMPRESSION_FAILED,
                 agent_id=agent_id,
                 source="context_fetch",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ()
 

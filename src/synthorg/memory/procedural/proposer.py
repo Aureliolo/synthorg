@@ -32,7 +32,7 @@ from synthorg.memory.procedural.models import (
     ProceduralMemoryConfig,
     ProceduralMemoryProposal,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_LOW_CONFIDENCE,
     PROCEDURAL_MEMORY_PROPOSED,
@@ -212,9 +212,9 @@ class ProceduralMemoryProposer:
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
                 task_id=payload.task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="retryable_provider_error",
-                exc_info=True,
             )
             return None
         except Exception as exc:
@@ -258,9 +258,9 @@ class ProceduralMemoryProposer:
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="validation_failed",
-                exc_info=True,
             )
             return None
 

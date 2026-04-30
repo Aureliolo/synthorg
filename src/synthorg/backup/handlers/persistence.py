@@ -6,7 +6,7 @@ from pathlib import Path  # noqa: TC003
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_COMPLETED,
     BACKUP_COMPONENT_FAILED,
@@ -66,11 +66,11 @@ class PersistenceComponentHandler:
                 str(target_file),
             )
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to back up persistence DB: {exc}"
             raise ComponentBackupError(msg) from exc
@@ -113,19 +113,19 @@ class PersistenceComponentHandler:
                 self._atomic_swap, self._db_path, source_file, bak_path
             )
         except ComponentBackupError as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to restore persistence DB: {exc}"
             raise ComponentBackupError(msg) from exc

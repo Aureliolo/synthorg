@@ -17,7 +17,7 @@ from synthorg.config.errors import (
 )
 from synthorg.config.schema import RootConfig
 from synthorg.config.utils import deep_merge
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.config import (
     CONFIG_DISCOVERY_FOUND,
     CONFIG_DISCOVERY_STARTED,
@@ -208,7 +208,8 @@ def _build_line_map(yaml_text: str) -> dict[str, tuple[int, int]]:
     except yaml.YAMLError as exc:
         logger.warning(
             CONFIG_LINE_MAP_COMPOSE_FAILED,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return {}
     if root is None or not isinstance(root, yaml.MappingNode):

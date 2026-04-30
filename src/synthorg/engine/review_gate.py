@@ -461,7 +461,7 @@ class ReviewGateService:
                 VERSION_FETCH_FAILED,
                 entity_id=agent_id,
                 context="charter_version_lookup",
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             return {"charter_version_lookup_failed": True}

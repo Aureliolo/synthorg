@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,  # noqa: TC001
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_EXPIRED,
     CONFLICT_ESCALATION_SWEEPER_FAILED,
@@ -119,7 +119,7 @@ class EscalationExpirationSweeper:
             logger.warning(
                 CONFLICT_ESCALATION_SWEEPER_FAILED,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="shutdown",
             )
         finally:
@@ -146,7 +146,7 @@ class EscalationExpirationSweeper:
                 logger.warning(
                     CONFLICT_ESCALATION_SWEEPER_FAILED,
                     error_type=type(exc).__name__,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
             try:
                 await asyncio.wait_for(

@@ -28,7 +28,7 @@ from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,
     EXECUTION_CONTEXT_TURN,
@@ -373,7 +373,7 @@ def _replay_from_events(
                 event_name=event.event_name,
                 reason="malformed event data",
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
         except Exception:
             logger.exception(

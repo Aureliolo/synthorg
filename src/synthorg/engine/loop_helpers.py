@@ -3,6 +3,24 @@
 Each function operates on explicit parameters (no ``self``), keeping
 loop implementations (ReAct, Plan-and-Execute, etc.) thin and focused
 on their control-flow logic.
+
+SEC-1 wrap-ownership note (#1682): this module is stateless control
+flow only. The :func:`wrap_untrusted` responsibility lives upstream
+of the loop:
+
+- Tool-result wrapping is owned by :mod:`synthorg.engine.loop_tool_execution`
+  (see ``_wrap_tool_result`` and ``_FENCE_TAGS``).
+- User-message wrapping is owned by the prompt builders that produce
+  the initial ``ChatMessage`` payload (e.g.
+  :func:`synthorg.engine.prompt_validation.format_task_instruction`,
+  :mod:`synthorg.engine.decomposition.llm_prompt`,
+  :mod:`synthorg.engine.intake.strategies.agent_intake`).
+
+Editors of this module should NOT add ``wrap_untrusted`` calls here:
+those would re-wrap already-fenced payloads and weaken the SEC-1
+contract. Per the engine audit completed under #1682, every LLM
+message build site under ``src/synthorg/engine/`` is already covered
+by the upstream wrappers.
 """
 
 import copy

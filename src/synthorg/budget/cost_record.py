@@ -5,15 +5,25 @@ every API call is tracked as an immutable cost record
 (append-only pattern).
 """
 
+import uuid
 from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.call_category import LLMCallCategory  # noqa: TC001
 from synthorg.budget.currency import CurrencyCode  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity
 from synthorg.providers.enums import FinishReason  # noqa: TC001
+
+
+def _new_claim_id() -> NotBlankStr:
+    """Generate a fresh per-record idempotency key (UUID4 string).
+
+    Module-level so it can be patched in tests if a deterministic key
+    is needed; production callers should accept the default.
+    """
+    return NotBlankStr(str(uuid.uuid4()))
 
 
 @ontology_entity
@@ -113,6 +123,16 @@ class CostRecord(BaseModel):
     success: bool | None = Field(
         default=None,
         description="Whether the call completed without error or content filter",
+    )
+    claim_id: NotBlankStr = Field(
+        default_factory=_new_claim_id,
+        description=(
+            "Idempotency key for this billing event. Generated once at "
+            "construction (UUID4 by default) so retries / JetStream "
+            "redelivery / in-process tracker double-submission cannot "
+            "double-bill: ``CostTracker.record`` keeps a bounded LRU "
+            "of seen ``claim_id`` values and treats repeats as no-ops."
+        ),
     )
 
     @model_validator(mode="after")

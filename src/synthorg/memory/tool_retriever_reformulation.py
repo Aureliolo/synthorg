@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryQuery
 from synthorg.memory.tool_retriever_helpers import _truncate_entries, merge_results
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_REFORMULATION_EXHAUSTED,
     MEMORY_REFORMULATION_FAILED,
@@ -275,9 +275,8 @@ class ToolBasedReformulationMixin:
                 MEMORY_SUFFICIENCY_CHECK_FAILED,
                 agent_id=agent_id,
                 round=round_idx,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__qualname__,
-                exc_info=True,
             )
             return None
 
@@ -316,9 +315,8 @@ class ToolBasedReformulationMixin:
                 MEMORY_REFORMULATION_FAILED,
                 agent_id=agent_id,
                 round=round_idx,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__qualname__,
-                exc_info=True,
             )
             return None
 
@@ -363,20 +361,19 @@ class ToolBasedReformulationMixin:
                 agent_id=agent_id,
                 round=round_idx + 1,
                 reason="retrieve_failed_mid_loop",
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__qualname__,
             )
             return None
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 MEMORY_RETRIEVAL_DEGRADED,
                 agent_id=agent_id,
                 round=round_idx + 1,
                 reason="unexpected_retrieve_failure_mid_loop",
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__qualname__,
-                exc_info=True,
             )
             return None

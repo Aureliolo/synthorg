@@ -11,7 +11,7 @@ persistence integration is planned.
 
 import asyncio
 import math
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -27,7 +27,7 @@ from synthorg.budget.spending_summary import (
     DepartmentSpending,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
@@ -37,6 +37,7 @@ from synthorg.observability.events.budget import (
     BUDGET_PROJECT_RECORDS_QUERIED,
     BUDGET_PROVIDER_USAGE_QUERIED,
     BUDGET_RECORD_ADDED,
+    BUDGET_RECORD_DEDUPED,
     BUDGET_RECORDS_AUTO_PRUNED,
     BUDGET_RECORDS_PRUNED,
     BUDGET_RECORDS_QUERIED,
@@ -60,6 +61,13 @@ logger = get_logger(__name__)
 
 _COST_WINDOW_HOURS = 168  # 7 days
 _AUTO_PRUNE_THRESHOLD = 100_000
+
+#: Default capacity of the per-tracker LRU set used to dedupe
+#: ``CostRecord.claim_id``.  10k entries is well above the steady-state
+#: rate of a busy synthetic org (the 7-day record window itself is
+#: bounded at ``_AUTO_PRUNE_THRESHOLD``) and bounds memory growth so
+#: a misbehaving caller cannot fill the dedup set without bound.
+_DEFAULT_CLAIM_LRU_CAPACITY = 10_000
 
 
 class ProviderUsageSummary(NamedTuple):
@@ -104,9 +112,13 @@ class CostTracker(CostTrackerSummaryMixin):
         department_resolver: Callable[[str], str | None] | None = None,
         auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
         project_cost_repo: ProjectCostAggregateRepository | None = None,
+        claim_lru_capacity: int = _DEFAULT_CLAIM_LRU_CAPACITY,
     ) -> None:
         if auto_prune_threshold < 1:
             msg = f"auto_prune_threshold must be >= 1, got {auto_prune_threshold}"
+            raise ValueError(msg)
+        if claim_lru_capacity < 1:
+            msg = f"claim_lru_capacity must be >= 1, got {claim_lru_capacity}"
             raise ValueError(msg)
         self._records: list[CostRecord] = []
         self._lock: asyncio.Lock = asyncio.Lock()
@@ -114,11 +126,18 @@ class CostTracker(CostTrackerSummaryMixin):
         self._department_resolver = department_resolver
         self._auto_prune_threshold = auto_prune_threshold
         self._project_cost_repo = project_cost_repo
+        # Bounded LRU of claim_ids the tracker has already accepted.
+        # Stored as ``OrderedDict[str, None]`` so re-submission moves
+        # the key to the tail in O(1) and the head can be popped on
+        # capacity overflow without scanning.
+        self._seen_claims: OrderedDict[str, None] = OrderedDict()
+        self._claim_lru_capacity = claim_lru_capacity
         logger.debug(
             BUDGET_TRACKER_CREATED,
             has_budget_config=budget_config is not None,
             has_department_resolver=department_resolver is not None,
             has_project_cost_repo=project_cost_repo is not None,
+            claim_lru_capacity=claim_lru_capacity,
         )
 
     @property
@@ -146,6 +165,13 @@ class CostTracker(CostTrackerSummaryMixin):
         boundary so downstream aggregators never see mixed-currency
         data in the first place.
 
+        Idempotency: a bounded LRU of accepted ``cost_record.claim_id``
+        values protects against double-bills from JetStream redelivery
+        or in-process retries. Repeat submissions are no-ops and emit
+        ``BUDGET_RECORD_DEDUPED`` at INFO. Eviction at the LRU
+        capacity is best-effort; once a claim ages out, a re-submitted
+        record with the same key is treated as fresh.
+
         Args:
             cost_record: Immutable cost record to store.
 
@@ -153,6 +179,25 @@ class CostTracker(CostTrackerSummaryMixin):
             MixedCurrencyAggregationError: If the record's currency
                 does not match the configured ``budget.currency``.
         """
+        # Idempotency fast-path. We hold the lock so a concurrent
+        # second call on the same claim_id can't race past us into the
+        # currency check + append; the lock is released for the rest
+        # of the (potentially-blocking) flow once the LRU has been
+        # consulted.
+        async with self._lock:
+            if cost_record.claim_id in self._seen_claims:
+                self._seen_claims.move_to_end(cost_record.claim_id)
+                logger.info(
+                    BUDGET_RECORD_DEDUPED,
+                    claim_id=cost_record.claim_id,
+                    agent_id=cost_record.agent_id,
+                    task_id=cost_record.task_id,
+                    provider=cost_record.provider,
+                    model=cost_record.model,
+                    cost=cost_record.cost,
+                )
+                return
+
         if (
             self._budget_config is not None
             and cost_record.currency != self._budget_config.currency
@@ -191,6 +236,14 @@ class CostTracker(CostTrackerSummaryMixin):
 
         async with self._lock:
             self._records.append(cost_record)
+            # Mark the claim as seen so a JetStream redelivery / retry
+            # of the same record cannot double-bill. Eviction keeps
+            # memory bounded; once a claim ages out, a re-submission
+            # is treated as fresh, which is the documented best-effort
+            # contract.
+            self._seen_claims[cost_record.claim_id] = None
+            while len(self._seen_claims) > self._claim_lru_capacity:
+                self._seen_claims.popitem(last=False)
             logger.info(
                 BUDGET_RECORD_ADDED,
                 agent_id=cost_record.agent_id,
@@ -653,7 +706,7 @@ class CostTracker(CostTrackerSummaryMixin):
             logger.warning(
                 BUDGET_DEPARTMENT_RESOLVE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__qualname__,
             )
             return None

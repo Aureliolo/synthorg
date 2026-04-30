@@ -13,7 +13,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.config import RetentionConfig  # noqa: TC001
 from synthorg.memory.models import MemoryQuery
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     RETENTION_AGENT_OVERRIDE_APPLIED,
     RETENTION_CLEANUP_COMPLETE,
@@ -241,7 +241,7 @@ class RetentionEnforcer:
                     RETENTION_CLEANUP_FAILED,
                     agent_id=agent_id,
                     category=category.value,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                     error_type=type(exc).__name__,
                 )
                 continue

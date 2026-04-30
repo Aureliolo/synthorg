@@ -27,7 +27,7 @@ from synthorg.client.runner import SimulationRunner
 from synthorg.client.store import SimulationRecord
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.client import (
     SIMULATION_RUN_CANCELLED,
@@ -145,7 +145,7 @@ async def _run_in_background(
             SIMULATION_RUN_FAILED,
             simulation_id=record.simulation_id,
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         with contextlib.suppress(ValueError):
             await sim_state.simulation_store.update_status(

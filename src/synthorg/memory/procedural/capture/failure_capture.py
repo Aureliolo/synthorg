@@ -13,7 +13,7 @@ from synthorg.memory.procedural.models import ProceduralMemoryConfig  # noqa: TC
 from synthorg.memory.procedural.pipeline import propose_procedural_memory
 from synthorg.memory.procedural.proposer import ProceduralMemoryProposer  # noqa: TC001
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_CAPTURE_STORE_FAILED,
 )
@@ -92,7 +92,8 @@ class FailureCaptureStrategy:
                 PROCEDURAL_CAPTURE_STORE_FAILED,
                 agent_id=str(agent_id),
                 task_id=str(task_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 strategy="failure",
             )
             return None

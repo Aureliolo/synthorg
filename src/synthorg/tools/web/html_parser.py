@@ -11,7 +11,7 @@ from typing import Any, ClassVar, Final
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_PARSE_FAILED,
     WEB_PARSE_START,
@@ -212,7 +212,12 @@ class HtmlParserTool(BaseWebTool):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(WEB_PARSE_FAILED, mode=mode, error=str(exc))
+            logger.warning(
+                WEB_PARSE_FAILED,
+                mode=mode,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=f"HTML parsing failed: {exc}",
                 is_error=True,

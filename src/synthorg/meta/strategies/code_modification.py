@@ -30,7 +30,7 @@ from synthorg.meta.models import (
     RollbackPlan,
     RuleMatch,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CODE_GEN_COMPLETED,
     META_CODE_GEN_FAILED,
@@ -468,7 +468,8 @@ def _parse_items(
                 rule=rule_name,
                 reason="invalid_change_item",
                 index=idx,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             continue
     return changes

@@ -19,7 +19,7 @@ from synthorg.hr.scaling.models import (  # noqa: TC001
     ScalingDecision,
     ScalingSignal,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_SCALING_CONTROLLER_INVALID_REQUEST,
     HR_SCALING_CONTROLLER_SERVICE_MISSING,
@@ -438,7 +438,8 @@ class ScalingController(Controller):
                 endpoint="update_priority",
                 reason="invalid_priority_order",
                 order=list(data.order),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ApiResponse(data=(), error=str(exc))
 
@@ -450,7 +451,8 @@ class ScalingController(Controller):
                 endpoint="update_priority",
                 reason="invalid_priority_order",
                 order=list(data.order),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ApiResponse(data=(), error=str(exc))
         logger.info(

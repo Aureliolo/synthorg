@@ -38,7 +38,7 @@ from rfc3161_client import tsp as _rfc_tsp
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_TIMESTAMP_GRANTED,
     SECURITY_TIMESTAMP_HASH_MISMATCH,
@@ -336,7 +336,7 @@ class TsaClient:
                 SECURITY_TIMESTAMP_TRANSPORT_ERROR,
                 tsa_url=self._tsa_url,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             msg = f"TSA transport failure: {type(exc).__name__}"
             raise TsaTransportError(msg) from exc
@@ -391,7 +391,7 @@ def _decode_response(raw: bytes) -> Any:
             reason="decode_failed",
             response_bytes=len(raw),
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         msg = f"TSA response is not a valid ASN.1 TimeStampResp: {exc}"
         raise TsaProtocolError(msg) from exc

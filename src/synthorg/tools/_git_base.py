@@ -28,7 +28,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import ToolCategory
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.git import (
     GIT_COMMAND_FAILED,
     GIT_COMMAND_START,
@@ -550,7 +550,8 @@ class _BaseGitTool(BaseTool, ABC):
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=str(exc),

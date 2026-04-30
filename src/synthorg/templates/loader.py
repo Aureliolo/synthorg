@@ -189,7 +189,8 @@ def _collect_user_templates(seen: dict[str, TemplateInfo]) -> None:
             logger.warning(
                 TEMPLATE_LIST_SKIP_INVALID,
                 template_path=str(path),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
 
@@ -337,14 +338,24 @@ def _load_from_file(path: Path) -> LoadedTemplate:
         yaml_text = path.read_text(encoding="utf-8")
     except OSError as exc:
         msg = f"Unable to read template file: {path}"
-        logger.warning(TEMPLATE_LOAD_READ_ERROR, path=str(path), error=str(exc))
+        logger.warning(
+            TEMPLATE_LOAD_READ_ERROR,
+            path=str(path),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
         ) from exc
     except UnicodeDecodeError as exc:
         msg = f"Template file is not valid UTF-8: {path}"
-        logger.warning(TEMPLATE_LOAD_READ_ERROR, path=str(path), error=str(exc))
+        logger.warning(
+            TEMPLATE_LOAD_READ_ERROR,
+            path=str(path),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -404,7 +415,12 @@ def _parse_template_yaml(
         data = yaml.safe_load(safe_text)
     except yaml.YAMLError as exc:
         msg = f"Template YAML syntax error in {source_name}: {exc}"
-        logger.warning(TEMPLATE_LOAD_PARSE_ERROR, source=source_name, error=str(exc))
+        logger.warning(
+            TEMPLATE_LOAD_PARSE_ERROR,
+            source=source_name,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -416,7 +432,12 @@ def _parse_template_yaml(
         return CompanyTemplate(**normalized)
     except (ValidationError, ValueError, TypeError) as exc:
         msg = f"Template validation failed for {source_name}: {exc}"
-        logger.warning(TEMPLATE_LOAD_PARSE_ERROR, source=source_name, error=str(exc))
+        logger.warning(
+            TEMPLATE_LOAD_PARSE_ERROR,
+            source=source_name,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise TemplateValidationError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
