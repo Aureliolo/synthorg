@@ -23,6 +23,7 @@ from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
     API_AUTH_LOCKOUT_RESTORED,
 )
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 
 logger = get_logger(__name__)
 
@@ -93,7 +94,7 @@ class SQLiteLockoutRepository:
         scan range does not inflate the threshold check.
         """
         now = self._clock.now()
-        scan_start = (now - (self._window + self._duration)).isoformat()
+        scan_start = format_iso_utc(now - (self._window + self._duration))
         cursor = await self._db.execute(
             "SELECT username, attempted_at FROM login_attempts "
             "WHERE attempted_at >= ? "
@@ -105,7 +106,7 @@ class SQLiteLockoutRepository:
         for row in rows:
             uname = row["username"].lower()
             per_user.setdefault(uname, []).append(
-                datetime.fromisoformat(row["attempted_at"]),
+                parse_iso_utc(row["attempted_at"]),
             )
 
         mono_now = self._clock.monotonic()
@@ -143,7 +144,7 @@ class SQLiteLockoutRepository:
         """Record a failed login attempt.  Return ``True`` if now locked."""
         username = username.lower()
         now = self._clock.now()
-        window_start = (now - self._window).isoformat()
+        window_start = format_iso_utc(now - self._window)
         async with self._write_lock:
             await self._db.execute("BEGIN IMMEDIATE")
             try:
@@ -151,7 +152,7 @@ class SQLiteLockoutRepository:
                     "INSERT INTO login_attempts "
                     "(username, attempted_at, ip_address) "
                     "VALUES (?, ?, ?)",
-                    (username, now.isoformat(), ip_address),
+                    (username, format_iso_utc(now), ip_address),
                 )
                 cursor = await self._db.execute(
                     "SELECT COUNT(*) AS cnt FROM login_attempts "
@@ -225,7 +226,7 @@ class SQLiteLockoutRepository:
         were pruned.
         """
         retention = self._window + self._duration
-        cutoff = (self._clock.now() - retention).isoformat()
+        cutoff = format_iso_utc(self._clock.now() - retention)
         async with self._write_lock:
             await self._db.execute("BEGIN IMMEDIATE")
             try:

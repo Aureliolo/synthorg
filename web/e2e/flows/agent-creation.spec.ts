@@ -37,5 +37,10 @@ test.describe('Agent creation critical flow', () => {
     await page.goto('/agents')
     await expect(page).toHaveURL(/\/agents/)
     await expect(page.locator('main')).toBeVisible()
+    // Assert the seeded three-agent payload actually rendered. The
+    // factory builds names from a fixed roster so 'Alice' is always
+    // present; if the list / card grid regresses to an empty state,
+    // this assertion fails loudly instead of passing silently.
+    await expect(page.getByText('Alice').first()).toBeVisible()
   })
 })

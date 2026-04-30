@@ -132,8 +132,17 @@ def _rel(path: Path) -> str:
 
 
 def _iter_test_files() -> Iterable[Path]:
-    """Walk ``tests/`` for ``.py`` files (excluding the ``_shared`` package)."""
-    yield from sorted(_TESTS_ROOT.rglob("*.py"))
+    """Walk ``tests/`` for ``.py`` files (excluding the ``_shared`` package).
+
+    ``tests/_shared/`` holds shared test utilities (``FakeClock``, etc.)
+    that are imported by tests, not collected as tests themselves; they
+    have no business being subject to the mock-spec gate.
+    """
+    shared_dir = _TESTS_ROOT / "_shared"
+    for path in sorted(_TESTS_ROOT.rglob("*.py")):
+        if shared_dir in path.parents:
+            continue
+        yield path
 
 
 def _load_baseline() -> set[str]:

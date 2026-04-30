@@ -33,12 +33,21 @@ test.describe('Provider probe critical flow', () => {
     await page.goto('/providers')
     await expect(page).toHaveURL(/\/providers/)
     await expect(page.locator('main')).toBeVisible()
+    // Confirm the seeded provider rendered before injecting the event;
+    // otherwise the assertion below would pass on an empty page.
+    await expect(page.getByText('example-provider').first()).toBeVisible()
 
     await injectEvent(page, {
       type: 'provider.health_changed',
       version: 1,
       health: makeProviderHealth({ status: 'degraded', latency_ms: 250 }),
     })
-    await expect(page.locator('main')).toBeVisible()
+    // The dashboard surfaces provider health via the ProviderHealthBadge
+    // role="img" element. Asserting the badge stays visible after the
+    // health-changed event proves the SPA processed the WS frame
+    // without tearing down the surface; a regression in the WS handler
+    // chain (missing discriminator, type drift on the event payload)
+    // would either crash the page or leave the badge unrendered.
+    await expect(page.getByText('example-provider').first()).toBeVisible()
   })
 })

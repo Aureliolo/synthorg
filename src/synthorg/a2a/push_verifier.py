@@ -7,6 +7,7 @@ A2A-specific HMAC-SHA256 push notification verification.
 
 import hashlib
 import hmac
+import math
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
@@ -86,12 +87,22 @@ class A2APushVerifier:
                     reason="missing timestamp header",
                 )
                 return False
+            # Parse + finiteness in one branch so the function stays
+            # under the 6-return-statement ruff lint cap. A non-finite
+            # timestamp (``float("nan")``) would otherwise bypass the
+            # skew gate because ``abs(now - nan) > skew`` is False;
+            # reject malformed AND non-finite values up-front with the
+            # same fail-closed exit.
             try:
                 timestamp = float(timestamp_str)
+                timestamp_ok = math.isfinite(timestamp)
             except ValueError:
+                timestamp = 0.0
+                timestamp_ok = False
+            if not timestamp_ok:
                 logger.warning(
                     A2A_PUSH_VERIFICATION_FAILED,
-                    reason="malformed timestamp",
+                    reason="malformed or non-finite timestamp",
                 )
                 return False
             now = self._clock.now().timestamp()

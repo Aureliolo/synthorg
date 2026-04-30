@@ -107,12 +107,16 @@ test.describe('Task lifecycle critical flow', () => {
         task: { ...highRiskTask, approved: true, status: 'done' },
       })
 
-      // Final assertion: the dashboard processed every event without
-      // crashing and the main region is still mounted. Asserting
-      // exact column membership requires the column DOM ids the
-      // Kanban component owns; this resilient check guards against
-      // the most common regression (any one of the four event types
-      // throwing a runtime error in the WS handler chain).
+      // The board renders task cards by title; asserting the seeded
+      // high-risk task title is visible after the four events confirms
+      // (a) the dashboard processed every event without crashing and
+      // (b) the task survived the transition chain instead of being
+      // dropped by the WS handler. Asserting exact column membership
+      // would couple the test to the Kanban component's data-testid
+      // contract; this resilient text assertion catches the most
+      // common regression (any one event throwing in the WS handler
+      // chain) without that coupling.
+      await expect(page.getByText('High-risk migration').first()).toBeVisible()
       await expect(page.locator('main')).toBeVisible()
     },
   )

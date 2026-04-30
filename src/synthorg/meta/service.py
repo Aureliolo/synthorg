@@ -6,9 +6,9 @@ and Chief of Staff confidence learning.
 """
 
 import asyncio
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import ProposalOutcome
 from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
@@ -114,7 +114,6 @@ def _redact_secrets(
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.core.clock import Clock
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.meta.appliers.architecture_applier import (
         ArchitectureApplierContext,
@@ -226,7 +225,11 @@ class SelfImprovementService:
         # build helper below; the references here are *not* a parallel
         # copy -- the same objects flow into the rollout layer.
         self._snapshot_builder = snapshot_builder
-        self._clock = clock
+        # Default to SystemClock so trigger_cycle's wall-clock reads
+        # always have a clock to call on, even when the caller didn't
+        # pass one. Tests that need deterministic timestamps inject a
+        # FakeClock here.
+        self._clock: Clock = clock or SystemClock()
         self._rule_engine = build_rule_engine(config)
         self._strategies = build_strategies(config, provider=provider)
         self._guards = build_guards(config, approval_store=approval_store)
@@ -680,7 +683,7 @@ class SelfImprovementService:
                 reason="no_snapshot_builder",
             )
             raise SelfImprovementTriggerError(msg)
-        started_at = datetime.now(UTC)
+        started_at = self._clock.now()
         try:
             snapshot = await self._snapshot_builder()
         except MemoryError, RecursionError:
@@ -712,7 +715,7 @@ class SelfImprovementService:
             )
             msg = "Self-improvement cycle execution failed"
             raise SelfImprovementTriggerError(msg) from exc
-        completed_at = datetime.now(UTC)
+        completed_at = self._clock.now()
         result = ImprovementCycleResult(
             started_at=started_at,
             completed_at=completed_at,

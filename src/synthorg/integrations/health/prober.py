@@ -89,6 +89,22 @@ class HealthProberService:
         degraded_threshold: int = 1,
         clock: Clock | None = None,
     ) -> None:
+        # Validate at the boundary so a misconfigured operator value
+        # surfaces a clear ValueError at construction instead of
+        # crashing the probe task at runtime when the negative value
+        # reaches ``self._clock.sleep`` (which rejects negatives).
+        if interval_seconds <= 0:
+            msg = f"interval_seconds must be positive; got {interval_seconds}"
+            raise ValueError(msg)
+        if degraded_threshold <= 0:
+            msg = f"degraded_threshold must be positive; got {degraded_threshold}"
+            raise ValueError(msg)
+        if unhealthy_threshold < degraded_threshold:
+            msg = (
+                f"unhealthy_threshold ({unhealthy_threshold}) must be "
+                f">= degraded_threshold ({degraded_threshold})"
+            )
+            raise ValueError(msg)
         self._catalog = catalog
         self._interval = interval_seconds
         self._unhealthy_threshold = unhealthy_threshold

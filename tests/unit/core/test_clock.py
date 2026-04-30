@@ -1,7 +1,7 @@
 """Tests for the shared ``Clock`` protocol, ``SystemClock``, and ``FakeClock``."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -144,13 +144,14 @@ class TestFakeClock:
             FakeClock(start=datetime(2026, 1, 1))  # noqa: DTZ001
 
     async def test_custom_start_normalises_to_utc(self) -> None:
-        offset = timedelta(hours=5)
-        custom_tz = UTC  # use UTC variant; FakeClock normalises any aware tz
+        # Use a non-UTC fixed-offset timezone so the assertion below
+        # actually exercises the conversion path; if FakeClock returned
+        # the input unchanged, the comparison would still pass against
+        # a UTC start, hiding a normalisation regression.
+        custom_tz = timezone(timedelta(hours=5))
         clock = FakeClock(start=datetime(2030, 6, 1, 12, 0, tzinfo=custom_tz))
-        assert clock.now() == datetime(2030, 6, 1, 12, 0, tzinfo=UTC)
-        # Sanity: epoch starts at the custom value, so monotonic = 0.
+        # 12:00 in UTC+5 is 07:00 UTC; the round-trip must produce the
+        # equivalent UTC instant, not the same wall-clock numbers.
+        assert clock.now() == datetime(2030, 6, 1, 7, 0, tzinfo=UTC)
+        # Sanity: epoch starts at the normalised value, so monotonic = 0.
         assert clock.monotonic() == pytest.approx(0.0)
-        # Unused intentionally: ensures import-time ``timedelta`` cost
-        # is paid by every test in this class, exposing accidental
-        # circular-import regressions early.
-        _ = offset
