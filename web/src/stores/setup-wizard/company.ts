@@ -1,7 +1,7 @@
 import { createCompany } from '@/api/endpoints/setup'
 import { createLogger } from '@/lib/logger'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { getErrorMessage } from '@/utils/errors'
+import { getErrorCode, getErrorMessage } from '@/utils/errors'
 import type { CompanySlice, SliceCreator } from './types'
 
 const log = createLogger('setup-wizard:company')
@@ -15,6 +15,7 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
   companyResponse: null,
   companyLoading: false,
   companyError: null,
+  companyErrorCode: null,
 
   setCompanyName(name) {
     set({ companyName: name })
@@ -37,8 +38,14 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
   },
 
   async submitCompany() {
+    // Single in-flight guard: a programmatic re-entry (or a click
+    // landing in the React render-commit window between when the
+    // button's ``disabled`` flips and when the state observer sees it)
+    // would otherwise issue a second POST /setup/company that lands
+    // 409 or duplicates the template.
+    if (get().companyLoading) return
     const { companyName, companyDescription, selectedTemplate } = get()
-    set({ companyLoading: true, companyError: null })
+    set({ companyLoading: true, companyError: null, companyErrorCode: null })
     try {
       const response = await createCompany({
         company_name: companyName.trim(),
@@ -52,7 +59,11 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
       })
     } catch (err) {
       log.error('submitCompany failed:', getErrorMessage(err))
-      set({ companyError: getErrorMessage(err), companyLoading: false })
+      set({
+        companyError: getErrorMessage(err),
+        companyErrorCode: getErrorCode(err),
+        companyLoading: false,
+      })
     }
   },
 })

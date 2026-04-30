@@ -295,6 +295,127 @@ describe('setup wizard store', () => {
       expect(state.agents).toHaveLength(1)
       expect(state.companyLoading).toBe(false)
     })
+
+    it('captures the structured error_code on tier_coverage_insufficient', async () => {
+      // Backend returns a 422 with the discriminated error_code 2004
+      // (PROVIDER_TIER_COVERAGE_INSUFFICIENT). The store stores it
+      // verbatim so the page can surface a "Go back to Providers
+      // step" affordance instead of a generic Retry button.
+      server.use(
+        http.post('/api/v1/setup/company', () =>
+          HttpResponse.json(
+            apiError(
+              'No configured provider exposes any models. Go back to '
+              + 'the Providers step, add at least one model to a provider, '
+              + 'then return here to apply the template.',
+              { error_code: 2004, error_category: 'validation' },
+            ),
+            { status: 422 },
+          ),
+        ),
+      )
+
+      useSetupWizardStore.setState({
+        companyName: 'Acme Corp',
+        selectedTemplate: 'startup',
+      })
+      await useSetupWizardStore.getState().submitCompany()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.companyResponse).toBeNull()
+      expect(state.companyError).toContain('Providers step')
+      expect(state.companyErrorCode).toBe(2004)
+      expect(state.companyLoading).toBe(false)
+    })
+
+    it('captures null error_code for non-discriminated errors', async () => {
+      server.use(
+        http.post('/api/v1/setup/company', () =>
+          HttpResponse.error(),
+        ),
+      )
+      useSetupWizardStore.setState({
+        companyName: 'Acme Corp',
+        selectedTemplate: 'startup',
+      })
+      await useSetupWizardStore.getState().submitCompany()
+      expect(useSetupWizardStore.getState().companyErrorCode).toBeNull()
+    })
+
+    it('clears companyErrorCode on the next attempt', async () => {
+      server.use(
+        http.post('/api/v1/setup/company', () =>
+          HttpResponse.json(
+            apiError('insufficient', { error_code: 2004 }),
+            { status: 422 },
+          ),
+        ),
+      )
+      useSetupWizardStore.setState({
+        companyName: 'Acme Corp',
+        selectedTemplate: 'startup',
+      })
+      await useSetupWizardStore.getState().submitCompany()
+      expect(useSetupWizardStore.getState().companyErrorCode).toBe(2004)
+
+      // Next attempt: success. Code must clear (not linger from prior).
+      server.use(
+        http.post('/api/v1/setup/company', () =>
+          HttpResponse.json(
+            apiSuccess({
+              company_name: 'Acme Corp',
+              description: null,
+              template_applied: 'startup',
+              department_count: 1,
+              agent_count: 0,
+              agents: [],
+            }),
+            { status: 201 },
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().submitCompany()
+      expect(useSetupWizardStore.getState().companyErrorCode).toBeNull()
+      expect(useSetupWizardStore.getState().companyError).toBeNull()
+    })
+
+    it('blocks a re-entrant submitCompany while one is already in flight', async () => {
+      // Concurrent calls must coalesce into a single POST so a
+      // double-click (or programmatic re-entry) cannot duplicate the
+      // company creation.
+      let inflightCount = 0
+      let observedConcurrent = 0
+      server.use(
+        http.post('/api/v1/setup/company', async () => {
+          inflightCount += 1
+          observedConcurrent = Math.max(observedConcurrent, inflightCount)
+          await new Promise((resolve) => setTimeout(resolve, 20))
+          inflightCount -= 1
+          return HttpResponse.json(
+            apiSuccess({
+              company_name: 'Acme Corp',
+              description: null,
+              template_applied: 'startup',
+              department_count: 1,
+              agent_count: 0,
+              agents: [],
+            }),
+            { status: 201 },
+          )
+        }),
+      )
+
+      useSetupWizardStore.setState({
+        companyName: 'Acme Corp',
+        selectedTemplate: 'startup',
+      })
+      await Promise.all([
+        useSetupWizardStore.getState().submitCompany(),
+        useSetupWizardStore.getState().submitCompany(),
+        useSetupWizardStore.getState().submitCompany(),
+      ])
+      expect(observedConcurrent).toBe(1)
+    })
   })
 
   describe('agent actions', () => {

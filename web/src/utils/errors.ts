@@ -2,7 +2,8 @@
 
 import axios, { type AxiosError } from 'axios'
 import { createLogger } from '@/lib/logger'
-import type { ErrorDetail } from '@/api/types/errors'
+import { ApiRequestError } from '@/api/client'
+import type { ErrorCode, ErrorDetail } from '@/api/types/errors'
 
 const log = createLogger('errors')
 
@@ -91,9 +92,27 @@ export function getErrorMessage(error: unknown): string {
  * include structured error metadata.
  */
 export function getErrorDetail(error: unknown): ErrorDetail | null {
+  if (error instanceof ApiRequestError) {
+    return error.errorDetail
+  }
   if (!isAxiosError(error)) return null
   const data = error.response?.data as
     | { error_detail?: ErrorDetail }
     | undefined
   return data?.error_detail ?? null
+}
+
+/**
+ * Convenience accessor: pull ``error_detail.error_code`` from any
+ * thrown error shape the API surface produces (Axios 4xx/5xx,
+ * ``ApiRequestError`` from ``unwrap``). Returns ``null`` when the
+ * envelope did not carry a structured code -- callers fall back to
+ * the human-readable message in that case.
+ *
+ * Use this when the UI wants to discriminate on a specific code
+ * (e.g. ``ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT``) to surface
+ * a targeted action instead of a generic Retry button.
+ */
+export function getErrorCode(error: unknown): ErrorCode | null {
+  return getErrorDetail(error)?.error_code ?? null
 }

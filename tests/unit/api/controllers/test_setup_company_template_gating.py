@@ -50,9 +50,12 @@ class TestSetupCompanyTemplateGating:
         """Issue #1666 B-5: tier-coverage gate at the provider step.
 
         With no providers configured, the setup wizard refuses the
-        company creation and returns 422 instead of producing per-agent
-        ``template.model_match.failed`` / ``setup.agent.model_not_found``
-        warnings during template expansion.
+        company creation and returns 422 with a discriminated
+        ``error_code`` (``PROVIDER_TIER_COVERAGE_INSUFFICIENT`` = 2004)
+        so the dashboard can route the operator back to the providers
+        step instead of showing a generic Retry button. The reworded
+        message points at the upstream Providers step rather than the
+        company step.
         """
         resp = test_client.post(
             "/api/v1/setup/company",
@@ -64,4 +67,10 @@ class TestSetupCompanyTemplateGating:
         assert resp.status_code == 422
         body = resp.json()
         assert body["success"] is False
-        assert "no models" in body["error"].lower()
+        # Discriminated error_code lets the dashboard match without
+        # parsing the human-readable message.
+        assert body["error_detail"]["error_code"] == 2004
+        # Message routes the user back to the Providers step.
+        message = body["error"].lower()
+        assert "providers step" in message
+        assert "model" in message
