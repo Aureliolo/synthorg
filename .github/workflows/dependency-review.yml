@@ -102,7 +102,7 @@ jobs:
           # SPDX metadata on PyPI but their upstream LICENSE files declare the
           # licenses listed; manually verified against each project's repo.
           allow-dependencies-licenses: >-
-            pkg:pypi/mem0ai@1.0.9,
+            pkg:pypi/mem0ai@2.0.1,
             pkg:pypi/numpy@2.4.4,
             pkg:pypi/qdrant-client@1.17.1,
             pkg:pypi/posthog@7.9.12,
