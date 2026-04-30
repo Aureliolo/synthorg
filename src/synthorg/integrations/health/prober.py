@@ -208,11 +208,15 @@ class HealthProberService:
         # ``TaskGroup``.
         try:
             conn = await self._catalog.get(name)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Routine catalog-load failure: redacted warning, not full
+            # traceback (SEC-1, see _probe_loop comment).
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,
-                error="catalog.get failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="catalog.get failed",
             )
             return
         if conn is None:
@@ -225,12 +229,16 @@ class HealthProberService:
 
         try:
             report = await checker.check(conn)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Routine checker failure: redacted warning, not full
+            # traceback (SEC-1, see _probe_loop comment).
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,
                 connection_type=str(connection_type),
-                error="health checker raised unexpected exception",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="health checker raised unexpected exception",
             )
             return
 

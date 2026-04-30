@@ -66,12 +66,35 @@ function assertValidCount(count: number, fnName: string): void {
   }
 }
 
-export function makeTaskList(count: number = 3): MockTask[] {
+/**
+ * Per-item override: a static partial or a function of the index.
+ *
+ * Tests can pass a partial to apply uniformly across the list, or a
+ * callback that gets the 0-based index for per-row variations
+ * (different priorities, different assignees, ...).
+ */
+export type TaskListOverrides =
+  | Partial<MockTask>
+  | ((idx: number) => Partial<MockTask>)
+
+function _resolveOverrides(
+  overrides: TaskListOverrides | undefined,
+  idx: number,
+): Partial<MockTask> {
+  if (typeof overrides === 'function') return overrides(idx)
+  return overrides ?? {}
+}
+
+export function makeTaskList(
+  count: number = 3,
+  overrides?: TaskListOverrides,
+): MockTask[] {
   assertValidCount(count, 'makeTaskList')
   return Array.from({ length: count }, (_, idx) =>
     makeTask({
       id: `task-${String(idx + 1).padStart(3, '0')}`,
       title: `Task ${idx + 1}`,
+      ..._resolveOverrides(overrides, idx),
     }),
   )
 }
@@ -79,6 +102,7 @@ export function makeTaskList(count: number = 3): MockTask[] {
 export function makeKanbanColumn(
   status: TaskStatus,
   count: number = 2,
+  overrides?: TaskListOverrides,
 ): MockTask[] {
   assertValidCount(count, 'makeKanbanColumn')
   return Array.from({ length: count }, (_, idx) =>
@@ -86,6 +110,7 @@ export function makeKanbanColumn(
       id: `task-${status}-${idx + 1}`,
       title: `${status} task ${idx + 1}`,
       status,
+      ..._resolveOverrides(overrides, idx),
     }),
   )
 }

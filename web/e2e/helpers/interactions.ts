@@ -57,6 +57,21 @@ export async function clickButton(page: Page, name: string | RegExp): Promise<vo
 }
 
 /**
+ * Click a pre-resolved Locator.
+ *
+ * Some surfaces don't expose buttons by accessible name (e.g. Kanban
+ * cards rendered as ``<div>`` with click handlers); the test still
+ * needs the wait-for-visibility-then-click pattern that the other
+ * helpers enforce. This wrapper accepts an already-located element
+ * and runs the same ``waitForVisibility -> click`` sequence so flow
+ * specs do not call ``locator.click()`` directly.
+ */
+export async function clickLocator(target: Locator): Promise<void> {
+  await target.waitFor({ state: 'visible' })
+  await target.click()
+}
+
+/**
  * Click a button and wait for a network response matching *urlPattern*.
  *
  * The dashboard often kicks off API calls on click; this helper makes

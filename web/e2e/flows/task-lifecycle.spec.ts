@@ -8,6 +8,7 @@ import {
   type MockTask,
   type TaskStatus,
 } from '../factories/tasks'
+import { clickLocator } from '../helpers/interactions'
 
 /**
  * Critical-flow E2E: Kanban board mount + WS frame intake + click.
@@ -60,9 +61,13 @@ test.describe('Task lifecycle critical flow', () => {
     in_progress: makeKanbanColumn('in_progress', 1),
     in_review: makeKanbanColumn('in_review', 0),
     blocked: makeKanbanColumn('blocked', 0),
+    auth_required: makeKanbanColumn('auth_required', 0),
     completed: makeKanbanColumn('completed', 0),
     failed: makeKanbanColumn('failed', 0),
+    interrupted: makeKanbanColumn('interrupted', 0),
     cancelled: makeKanbanColumn('cancelled', 0),
+    rejected: makeKanbanColumn('rejected', 0),
+    suspended: makeKanbanColumn('suspended', 0),
   }
   const allTasks = Object.values(columns).flat()
 
@@ -105,7 +110,12 @@ test.describe('Task lifecycle critical flow', () => {
       await expect(backlogColumn).toBeVisible()
       const todoCard = backlogColumn.getByText(seededTask.title).first()
       await expect(todoCard).toBeVisible()
-      await todoCard.click()
+      // Use the shared ``clickLocator`` helper instead of a direct
+      // ``locator.click()`` so every flow spec runs through the same
+      // wait-for-visibility-then-click sequence; Tier-1 specs avoid
+      // bare Playwright primitives in favour of the helpers in
+      // ``web/e2e/helpers/interactions.ts``.
+      await clickLocator(todoCard)
       await expect(page.locator('main')).toBeVisible()
 
       // Step 1: a high-risk task gates on approval.
@@ -160,7 +170,11 @@ test.describe('Task lifecycle critical flow', () => {
         },
       })
 
-      // Step 4: task transitions IN_PROGRESS -> DONE.
+      // Step 4: task transitions IN_PROGRESS to COMPLETED. Production
+      // TaskStatus uses ``completed`` (not ``done``); STATUS_TO_COLUMN
+      // maps ``completed`` to the ``done`` Kanban column. Sending the
+      // canonical wire value keeps the event compatible with the
+      // production ws layer if/when a handler is wired up later.
       await injectEvent(page, {
         event_type: 'task.status_changed',
         channel: 'tasks',
@@ -169,7 +183,7 @@ test.describe('Task lifecycle critical flow', () => {
           ...highRiskTask,
           task_id: highRiskTask.id,
           approved: true,
-          status: 'done',
+          status: 'completed',
         },
       })
 
