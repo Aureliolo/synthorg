@@ -17,6 +17,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useUsersStore } from '@/stores/users'
 import { formatDateTime } from '@/utils/format'
@@ -85,19 +87,38 @@ export default function UsersPage() {
     user: UserResponse
     role: OrgRole
   } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     void fetchUsers()
   }, [fetchUsers])
 
-  const sortedUsers = useMemo(
-    () => [...users].sort((a, b) => a.username.localeCompare(b.username)),
-    [users],
-  )
+  const sortedUsers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const filtered = q
+      ? users.filter(
+          (u) =>
+            u.username.toLowerCase().includes(q) ||
+            u.role.toLowerCase().includes(q),
+        )
+      : users
+    return [...filtered].sort((a, b) => a.username.localeCompare(b.username))
+  }, [users, searchQuery])
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <ListHeader title="Users" count={users.length} />
+      <ListHeader title="Users" count={sortedUsers.length} />
+
+      <SearchFilterSort
+        search={
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search users by name or role"
+            ariaLabel="Search users"
+          />
+        }
+      />
 
       {error && (
         <ErrorBanner

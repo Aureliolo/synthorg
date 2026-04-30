@@ -1,6 +1,9 @@
 import { useArtifactsData } from '@/hooks/useArtifactsData'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { formatNumber } from '@/utils/format'
 import { ArtifactsSkeleton } from './artifacts/ArtifactsSkeleton'
 import { ArtifactFilters } from './artifacts/ArtifactFilters'
@@ -15,6 +18,19 @@ export default function ArtifactsPage() {
     wsConnected,
     wsSetupError,
   } = useArtifactsData()
+
+  // URL-persisted pagination over the client-filtered list. The
+  // ``artifacts`` namespace lets future co-existing paginators on
+  // the same page (e.g. a related-artifacts panel) avoid query
+  // collisions.
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedArtifacts,
+    setPage,
+    setPageSize,
+  } = useListPagination({ items: filteredArtifacts, namespace: 'artifacts' })
 
   if (loading && totalArtifacts === 0) {
     return <ArtifactsSkeleton />
@@ -44,8 +60,17 @@ export default function ArtifactsPage() {
         />
       )}
 
-      <ArtifactFilters />
-      <ArtifactGridView artifacts={filteredArtifacts} />
+      {/* Wrap the existing filter component in SearchFilterSort so the
+          layout matches the rest of the dashboard's list pages. */}
+      <SearchFilterSort filters={<ArtifactFilters />} />
+      <ArtifactGridView artifacts={pagedArtifacts} />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </div>
   )
 }

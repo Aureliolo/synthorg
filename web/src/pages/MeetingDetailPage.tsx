@@ -1,13 +1,18 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Video } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SectionCard } from '@/components/ui/section-card'
 import { useMeetingDetailData } from '@/hooks/useMeetingDetailData'
 import { useMeetingsStore } from '@/stores/meetings'
+import {
+  useDetailNavigation,
+  useDetailNavigationCallbacks,
+} from '@/hooks/use-detail-navigation'
 import { ROUTES } from '@/router/routes'
 import { MeetingDetailHeader } from './meetings/MeetingDetailHeader'
 import { MeetingAgendaSection } from './meetings/MeetingAgendaSection'
@@ -32,6 +37,21 @@ export default function MeetingDetailPage() {
   useEffect(() => {
     if (wsConnected) wasConnectedRef.current = true
   }, [wsConnected])
+
+  // Walk the parent meeting list (uses ``meeting_id`` as the URL key).
+  const allMeetings = useMeetingsStore((s) => s.meetings)
+  const routeForMeeting = useCallback(
+    (item: { id: string }) =>
+      ROUTES.MEETING_DETAIL.replace(':meetingId', encodeURIComponent(item.id)),
+    [],
+  )
+  const navItems = allMeetings.map((m) => ({ id: m.meeting_id }))
+  const nav = useDetailNavigation({
+    items: navItems,
+    currentId: meetingId,
+    routeFor: routeForMeeting,
+  })
+  const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
 
   // Missing meetingId
   if (!meetingId) {
@@ -69,7 +89,16 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="space-y-section-gap">
-      <Breadcrumbs items={[{ label: 'Meetings', to: ROUTES.MEETINGS }, { label: meeting.meeting_type_name || meeting.meeting_id }]} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Breadcrumbs items={[{ label: 'Meetings', to: ROUTES.MEETINGS }, { label: meeting.meeting_type_name || meeting.meeting_id }]} />
+        <DetailNavBar
+          canPrev={nav.canPrev}
+          canNext={nav.canNext}
+          onPrev={goPrev}
+          onNext={goNext}
+          position={nav.position}
+        />
+      </div>
 
       {error && (
         <ErrorBanner severity="error" title="Could not load meeting" description={error} />

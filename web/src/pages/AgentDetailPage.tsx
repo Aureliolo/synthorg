@@ -1,12 +1,17 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useParams } from 'react-router'
 import { createVersionHistoryClient } from '@/api/endpoints/version-history'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import { ROUTES } from '@/router/routes'
 import { useAgentDetailData } from '@/hooks/useAgentDetailData'
+import {
+  useDetailNavigation,
+  useDetailNavigationCallbacks,
+} from '@/hooks/use-detail-navigation'
 import { useCompanyStore } from '@/stores/company'
 import { AgentDetailSkeleton } from './agents/AgentDetailSkeleton'
 import { AgentIdentityHeader } from './agents/AgentIdentityHeader'
@@ -66,6 +71,27 @@ export default function AgentDetailPage() {
     [resolvedAgentName],
   )
 
+  // Walk the company config's agent roster so prev/next on this
+  // detail page steps through the same agents the AgentsPage shows.
+  // The roster is shared state already in memory (no extra fetch),
+  // and on a deep link without it the nav bar self-hides.
+  const allAgents = useCompanyStore((s) => s.config?.agents) ?? []
+  const routeForAgent = useCallback(
+    (item: { id: string }) =>
+      ROUTES.AGENT_DETAIL.replace(':agentId', encodeURIComponent(item.id)),
+    [],
+  )
+  const navItems = useMemo(
+    () => allAgents.map((a) => ({ id: a.id ?? a.name })),
+    [allAgents],
+  )
+  const nav = useDetailNavigation({
+    items: navItems,
+    currentId: agentId,
+    routeFor: routeForAgent,
+  })
+  const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
+
   if (loading && !agent) {
     return <AgentDetailSkeleton />
   }
@@ -87,7 +113,16 @@ export default function AgentDetailPage() {
 
   return (
     <div className="space-y-section-gap">
-      <Breadcrumbs items={[{ label: 'Agents', to: ROUTES.AGENTS }, { label: agent.name }]} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Breadcrumbs items={[{ label: 'Agents', to: ROUTES.AGENTS }, { label: agent.name }]} />
+        <DetailNavBar
+          canPrev={nav.canPrev}
+          canNext={nav.canNext}
+          onPrev={goPrev}
+          onNext={goNext}
+          position={nav.position}
+        />
+      </div>
 
       {error && (
         <ErrorBanner severity="error" title="Could not load agent data" description={error} />

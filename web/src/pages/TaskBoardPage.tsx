@@ -327,6 +327,13 @@ export default function TaskBoardPage() {
         taskCount={filteredTasks.length}
       />
 
+      {/* Active filter chips: surface every applied filter as a
+          removable pill so the operator can see what's narrowing
+          the board and clear individual entries without resetting
+          everything. Click-to-remove, plus a "Clear all" affordance
+          when more than one filter is active. */}
+      <ActiveFilterChips filters={filters} onChange={handleFiltersChange} />
+
       {showDeps && (
         <ErrorBoundary level="section">
           <Suspense fallback={<div className="h-[400px] rounded-lg border border-border bg-surface animate-pulse" />}>
@@ -390,6 +397,66 @@ export default function TaskBoardPage() {
         onOpenChange={setCreateOpen}
         onCreate={handleCreateTask}
       />
+    </div>
+  )
+}
+
+/**
+ * Render the currently-applied TaskBoardFilters as removable chips.
+ * Hidden when no filters are active. Each chip's X button removes
+ * just that filter; the trailing "Clear all" appears once two or
+ * more are active so the operator can reset the whole bar in one
+ * click.
+ */
+function ActiveFilterChips({
+  filters,
+  onChange,
+}: {
+  filters: TaskBoardFilters
+  onChange: (filters: TaskBoardFilters) => void
+}) {
+  const chips: { key: keyof TaskBoardFilters; label: string }[] = []
+  if (filters.status) chips.push({ key: 'status', label: `Status: ${filters.status}` })
+  if (filters.priority) chips.push({ key: 'priority', label: `Priority: ${filters.priority}` })
+  if (filters.assignee) chips.push({ key: 'assignee', label: `Assignee: ${filters.assignee}` })
+  if (filters.taskType) chips.push({ key: 'taskType', label: `Type: ${filters.taskType}` })
+  if (filters.search) chips.push({ key: 'search', label: `Search: ${filters.search}` })
+  if (filters.dateFrom) chips.push({ key: 'dateFrom', label: `From: ${filters.dateFrom}` })
+  if (filters.dateTo) chips.push({ key: 'dateTo', label: `To: ${filters.dateTo}` })
+  if (chips.length === 0) return null
+
+  return (
+    <div
+      role="region"
+      aria-label="Active filters"
+      className="flex flex-wrap items-center gap-2"
+    >
+      <span className="text-xs text-text-secondary">
+        {formatNumber(chips.length)} active filter{chips.length === 1 ? '' : 's'}:
+      </span>
+      {chips.map((chip) => (
+        <button
+          key={chip.key}
+          type="button"
+          onClick={() => onChange({ ...filters, [chip.key]: undefined })}
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-card-hover"
+        >
+          <span>{chip.label}</span>
+          <span aria-hidden="true" className="text-text-secondary">
+            ×
+          </span>
+          <span className="sr-only">Remove {chip.label}</span>
+        </button>
+      ))}
+      {chips.length > 1 && (
+        <button
+          type="button"
+          onClick={() => onChange({})}
+          className="text-xs text-accent hover:underline"
+        >
+          Clear all
+        </button>
+      )}
     </div>
   )
 }

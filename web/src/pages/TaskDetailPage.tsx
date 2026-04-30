@@ -3,9 +3,14 @@ import { useParams } from 'react-router'
 import { Loader2 } from 'lucide-react'
 import type { TaskStatus } from '@/api/types/enums'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useTasksStore } from '@/stores/tasks'
+import {
+  useDetailNavigation,
+  useDetailNavigationCallbacks,
+} from '@/hooks/use-detail-navigation'
 import { ROUTES } from '@/router/routes'
 import { TaskCancelDialog } from './tasks/TaskCancelDialog'
 import { TaskDeleteDialog } from './tasks/TaskDeleteDialog'
@@ -38,6 +43,21 @@ export default function TaskDetailPage() {
 
   const task = selectedTask?.id === taskId ? selectedTask : undefined
   const { transitioning, transitionTo, deleteTask, cancelTask } = useTaskActionHandlers(task)
+
+  // Walk the parent task list (already in store memory from the
+  // board view). Empty on a deep link; the nav bar self-hides.
+  const allTasks = useTasksStore((s) => s.tasks)
+  const routeForTask = useCallback(
+    (item: { id: string }) =>
+      ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(item.id)),
+    [],
+  )
+  const nav = useDetailNavigation({
+    items: allTasks,
+    currentId: taskId,
+    routeFor: routeForTask,
+  })
+  const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
 
   const handleTransitionRequest = useCallback(
     (target: TaskStatus) => {
@@ -80,7 +100,16 @@ export default function TaskDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-section-gap">
-      <Breadcrumbs items={[{ label: 'Tasks', to: ROUTES.TASKS }, { label: task.title ?? task.id }]} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Breadcrumbs items={[{ label: 'Tasks', to: ROUTES.TASKS }, { label: task.title ?? task.id }]} />
+        <DetailNavBar
+          canPrev={nav.canPrev}
+          canNext={nav.canNext}
+          onPrev={goPrev}
+          onNext={goNext}
+          position={nav.position}
+        />
+      </div>
 
       {wsSetupError && (
         <ErrorBanner
