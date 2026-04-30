@@ -15,6 +15,12 @@ full bus instance).
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.communication.errors import ChannelNotFoundError
+from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    BUS_HISTORY_CHANNEL_NOT_FOUND,
+)
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from collections import deque
@@ -80,6 +86,7 @@ class DequeHistoryAccessor:
         bucket = self._histories.get(channel_name)
         if bucket is None:
             msg = f"Channel not found: {channel_name}"
+            logger.warning(BUS_HISTORY_CHANNEL_NOT_FOUND, channel=channel_name)
             raise ChannelNotFoundError(msg, context={"channel": channel_name})
         messages = list(bucket)
         return _apply_limit(messages, limit)
