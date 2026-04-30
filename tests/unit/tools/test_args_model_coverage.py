@@ -17,10 +17,15 @@ fails this test, surfacing the regression at PR review time.
 
 import importlib
 import inspect
+import pkgutil
+from types import ModuleType
 
 import pytest
 from pydantic import BaseModel
 
+import synthorg.memory.tools as _memory_tools_pkg
+import synthorg.ontology.injection as _ontology_injection_pkg
+import synthorg.tools as _tools_pkg
 from synthorg.tools.base import BaseTool
 
 # Tools that legitimately do NOT declare ``args_model`` because their
@@ -34,46 +39,35 @@ _ALLOWLIST: frozenset[str] = frozenset(
 )
 
 
-# Modules that register concrete BaseTool subclasses.  Imported in the
-# test so ``BaseTool.__subclasses__`` is fully populated.  Listed
-# here as data (instead of an import block in the test body) so the
-# test function stays under the 50-line limit.
-_CONCRETE_TOOL_MODULES: tuple[str, ...] = (
-    "synthorg.memory.tools.archival",
-    "synthorg.memory.tools.core",
-    "synthorg.memory.tools.knowledge_architect",
-    "synthorg.memory.tools.recall",
-    "synthorg.memory.tools.recall_search",
-    "synthorg.memory.tools.search",
-    "synthorg.ontology.injection.tool",
-    "synthorg.tools.analytics.data_aggregator",
-    "synthorg.tools.analytics.metric_collector",
-    "synthorg.tools.analytics.report_generator",
-    "synthorg.tools.approval_tool",
-    "synthorg.tools.code_runner",
-    "synthorg.tools.communication.async_task_tools",
-    "synthorg.tools.communication.email_sender",
-    "synthorg.tools.communication.notification_sender",
-    "synthorg.tools.communication.template_formatter",
-    "synthorg.tools.context.compact_context",
-    "synthorg.tools.database.schema_inspect",
-    "synthorg.tools.database.sql_query",
-    "synthorg.tools.design.asset_manager",
-    "synthorg.tools.design.diagram_generator",
-    "synthorg.tools.design.image_generator",
-    "synthorg.tools.discovery",
-    "synthorg.tools.examples.echo",
-    "synthorg.tools.file_system.delete_file",
-    "synthorg.tools.file_system.edit_file",
-    "synthorg.tools.file_system.list_directory",
-    "synthorg.tools.file_system.read_file",
-    "synthorg.tools.file_system.write_file",
-    "synthorg.tools.git_tools",
-    "synthorg.tools.terminal.shell_command",
-    "synthorg.tools.web.html_parser",
-    "synthorg.tools.web.http_request",
-    "synthorg.tools.web.web_search",
+# Package roots that contain concrete BaseTool subclasses.  We walk
+# them via ``pkgutil.walk_packages`` so any new tool module added under
+# these roots is auto-discovered -- a tool added without an explicit
+# entry on a curated list would otherwise slip past the regression
+# guard (the original failure mode this test now defends against).
+_TOOL_PACKAGE_ROOTS: tuple[ModuleType, ...] = (
+    _tools_pkg,
+    _memory_tools_pkg,
+    _ontology_injection_pkg,
 )
+
+
+def _import_all_modules_under(package: ModuleType) -> None:
+    """Import every module under ``package`` (recursively).
+
+    ``BaseTool.__subclasses__()`` only sees classes whose modules have
+    been imported.  Walking the package tree ensures every concrete
+    tool registered in any new submodule shows up.
+    """
+    paths = getattr(package, "__path__", None)
+    if paths is None:
+        return
+    base_name = package.__name__
+    for info in pkgutil.walk_packages(paths, prefix=f"{base_name}."):
+        # Skip test packages and known test-only modules so test-only
+        # ``BaseTool`` subclasses don't pollute the discovery set.
+        if ".tests." in info.name or info.name.endswith(".tests"):
+            continue
+        importlib.import_module(info.name)
 
 
 def _all_concrete_subclasses(cls: type) -> set[type]:
@@ -118,8 +112,8 @@ class TestEveryToolHasArgsModel:
 
     def test_all_concrete_basetools_declare_args_model(self) -> None:
         """No concrete ``BaseTool`` subclass is missing ``args_model``."""
-        for module_name in _CONCRETE_TOOL_MODULES:
-            importlib.import_module(module_name)
+        for package in _TOOL_PACKAGE_ROOTS:
+            _import_all_modules_under(package)
 
         missing: list[str] = []
         for sub in _all_concrete_subclasses(BaseTool):

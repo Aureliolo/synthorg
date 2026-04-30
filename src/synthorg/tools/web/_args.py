@@ -13,6 +13,7 @@ Tools wired to consume these models:
 * :class:`~synthorg.tools.web.html_parser.HtmlParserTool` -> :class:`HtmlParserArgs`
 """
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -30,6 +31,12 @@ _ARGS_CONFIG = ConfigDict(
 # not appear in HTTP header names or values per RFC 7230 § 3.2.6.
 _ASCII_PRINTABLE_MIN = 0x20
 _ASCII_DEL = 0x7F
+
+# RFC 7230 § 3.2.6 ``token`` charset for header-field-name validation.
+# A header name is one or more ``tchar``.  Names containing whitespace,
+# colon, separators, or non-ASCII characters are rejected.  An empty
+# string also fails.
+_RFC_TOKEN_RE = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
 
 # ``HttpMethod`` is closed: the existing tool body rejects anything
@@ -87,15 +94,29 @@ class HttpRequestArgs(BaseModel):
 
     @field_validator("headers", mode="after")
     @classmethod
-    def _reject_control_chars_in_headers(cls, value: dict[str, str]) -> dict[str, str]:
-        r"""Block header smuggling at the typed boundary.
+    def _validate_headers(cls, value: dict[str, str]) -> dict[str, str]:
+        r"""Validate header shape at the typed boundary.
 
-        Rejects ASCII control characters (``\r``, ``\n``, NUL, etc.)
-        in both header names and values so request smuggling /
-        response-splitting attempts fail before reaching the HTTP
-        client.  Mirrors the ``Validate at system boundaries`` rule.
+        Two checks run here:
+
+        1. **Names are RFC 7230 ``tchar`` tokens.**  Empty strings and
+           names containing whitespace, ``:``, separators, or non-ASCII
+           characters are rejected.  Without this guard, payloads like
+           ``{"": "x"}`` or ``{"bad header": "x"}`` would only fail
+           inside the HTTP client.
+        2. **No ASCII control characters** in either names or values.
+           Blocks header smuggling / response-splitting attempts
+           (CR/LF/NUL/DEL).
         """
         for name, val in value.items():
+            if not _RFC_TOKEN_RE.match(name):
+                msg = (
+                    f"header name {name!r} is not a valid RFC 7230 "
+                    f"``token``; names must be one or more ``tchar`` "
+                    f"characters and contain no whitespace, ``:``, "
+                    f"separators, or non-ASCII characters"
+                )
+                raise ValueError(msg)
             for label, candidate in (("name", name), ("value", val)):
                 if any(
                     ord(ch) < _ASCII_PRINTABLE_MIN or ord(ch) == _ASCII_DEL

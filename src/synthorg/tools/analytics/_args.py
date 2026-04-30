@@ -101,6 +101,19 @@ class DataAggregatorArgs(BaseModel):
                 f"got period={self.period!r}"
             )
             raise ValueError(msg)
+        # Range-ordering check: start_date must be <= end_date.  Both
+        # values have already passed the IsoDateStr validator, so
+        # ``date.fromisoformat`` cannot raise here.
+        if self.start_date is not None and self.end_date is not None:
+            start = date.fromisoformat(self.start_date)
+            end = date.fromisoformat(self.end_date)
+            if start > end:
+                msg = (
+                    f"start_date must be on or before end_date; "
+                    f"got start_date={self.start_date!r}, "
+                    f"end_date={self.end_date!r}"
+                )
+                raise ValueError(msg)
         return self
 
 

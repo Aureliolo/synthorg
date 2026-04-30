@@ -57,6 +57,19 @@ class TestGitDiffArgs:
         assert args.ref1 is None
         assert args.ref2 is None
 
+    @pytest.mark.unit
+    def test_two_ref_diff_accepted(self) -> None:
+        """Both refs supplied together is the canonical two-ref diff."""
+        args = GitDiffArgs(ref1="main", ref2="feature/x")
+        assert args.ref1 == "main"
+        assert args.ref2 == "feature/x"
+
+    @pytest.mark.unit
+    def test_ref2_without_ref1_rejected(self) -> None:
+        """Cross-field rule: ``ref2`` requires ``ref1``."""
+        with pytest.raises(ValidationError):
+            GitDiffArgs.model_validate({"ref2": "feature/x"})
+
 
 class TestGitBranchArgs:
     @pytest.mark.unit
@@ -113,7 +126,7 @@ class TestGitCommitArgs:
 class TestGitCloneArgs:
     @pytest.mark.unit
     def test_construction(self) -> None:
-        args = GitCloneArgs(url="https://github.com/example/repo.git")
+        args = GitCloneArgs(url="https://test-provider.example/repo.git")
         assert args.depth is None
 
     @pytest.mark.unit
