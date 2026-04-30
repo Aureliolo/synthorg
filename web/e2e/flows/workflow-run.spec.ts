@@ -4,13 +4,21 @@ import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harn
 import { makeWorkflow, makeWorkflowExecution } from '../factories'
 
 /**
- * Critical-flow E2E: workflow execution.
+ * Critical-flow E2E: workflows list mount + system.error notification path.
  *
- * Pushes a server-side execution-status event via the WebSocket
- * harness so the dashboard's status badge updates in real time.
+ * Mounts the workflows list with a deterministic single-workflow
+ * payload and pushes a ``system.error`` WebSocket frame whose payload
+ * carries the workflow-execution context. Asserts the notifications
+ * dispatch chain renders the "System error" entry; this exercises
+ * the full envelope-validate -> dispatch -> notification-render path
+ * end-to-end. The original ``workflow_execution.status_changed`` /
+ * ``coordination.completed`` event types have no production handler
+ * (no entry in ``WS_EVENT_TYPE_VALUES``, no notifications-store case)
+ * so they would silently no-op; the ``system.error`` substitute is
+ * the closest mapped event the dashboard already handles.
  */
 
-test.describe('Workflow run critical flow', () => {
+test.describe('Workflows list + system.error notification path', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
@@ -24,13 +32,24 @@ test.describe('Workflow run critical flow', () => {
           data: [makeWorkflow()],
           error: null,
           error_detail: null,
-          pagination: { total: 1, offset: 0, limit: 50 },
+          // PaginationMeta envelope carries cursor fields alongside
+          // limit/total/offset; matches the production contract in
+          // ``web/src/api/types`` so the client unwraps to a
+          // ``PaginatedResult`` with sensible cursor state for a
+          // single-item fixture (no further pages, null cursor).
+          pagination: {
+            total: 1,
+            offset: 0,
+            limit: 50,
+            next_cursor: null,
+            has_more: false,
+          },
         },
       }),
     )
   })
 
-  test('loads workflows and processes a WS execution-status event', async ({
+  test('loads workflows and processes a WS system.error notification', async ({
     page,
   }) => {
     await page.goto('/workflows')
