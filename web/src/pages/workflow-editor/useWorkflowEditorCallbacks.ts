@@ -10,8 +10,23 @@ import { useWorkflowsStore } from '@/stores/workflows'
 import type { WorkflowNodeType } from '@/api/types/workflows'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { isObject, isString } from '@/utils/type-guards'
 
 const log = createLogger('WorkflowEditor')
+
+/** Read ``data?.[key]`` and narrow it to ``string | undefined`` without ``as`` casts. */
+function readString(data: unknown, key: string): string | undefined {
+  if (!isObject(data)) return undefined
+  const value = data[key]
+  return isString(value) ? value : undefined
+}
+
+/** Read ``data?.[key]`` and narrow it to ``Record<string, unknown> | undefined``. */
+function readRecord(data: unknown, key: string): Record<string, unknown> | undefined {
+  if (!isObject(data)) return undefined
+  const value = data[key]
+  return isObject(value) ? value : undefined
+}
 
 export interface WorkflowEditorCallbacks {
   handleAddNode: (type: WorkflowNodeType) => void
@@ -130,20 +145,25 @@ export function useWorkflowEditorCallbacks(
   const handleSaveAsNew = useCallback(async () => {
     const state = useWorkflowEditorStore.getState()
     if (!state.definition) return
+    // Per-field guards for n.data / e.data: ReactFlow types ``data`` as
+    // ``Record<string, unknown> | undefined`` so each property is
+    // ``unknown`` until validated. Without these the previous double
+    // ``as`` casts ("as Record<string, unknown>" then "as string")
+    // silently widened typos and missing fields into runtime crashes.
     const nodeData = state.nodes.map((n) => ({
       id: n.id,
-      type: (n.data as Record<string, unknown>)?.nodeType as string ?? n.type ?? 'task',
-      label: (n.data as Record<string, unknown>)?.label as string ?? n.id,
+      type: readString(n.data, 'nodeType') ?? n.type ?? 'task',
+      label: readString(n.data, 'label') ?? n.id,
       position_x: n.position.x,
       position_y: n.position.y,
-      config: (n.data as Record<string, unknown>)?.config as Record<string, unknown> ?? {},
+      config: readRecord(n.data, 'config') ?? {},
     }))
     const edgeData = state.edges.map((e) => ({
       id: e.id,
       source_node_id: e.source,
       target_node_id: e.target,
-      type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
-      label: ((e.data as Record<string, unknown>)?.label as string) ?? null,
+      type: readString(e.data, 'edgeType') ?? 'sequential',
+      label: readString(e.data, 'label') ?? null,
     }))
     const created = await useWorkflowsStore.getState().createWorkflow({
       name: `${state.definition.name} (Copy)`,

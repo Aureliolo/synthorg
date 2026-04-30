@@ -4,6 +4,7 @@ import { sanitizeWsString } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { isObject } from '@/utils/type-guards'
 import { createLogger } from '@/lib/logger'
 import type {
   ApprovalFilters,
@@ -443,8 +444,11 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
 
   handleWsEvent: (event) => {
     const { payload } = event
-    if (payload.approval && typeof payload.approval === 'object' && !Array.isArray(payload.approval)) {
-      const candidate = payload.approval as Record<string, unknown>
+    // ``isObject`` narrows in one step instead of the inline hand-rolled
+    // ``typeof === 'object' && !== null && !Array.isArray`` chain
+    // followed by a downstream ``as`` cast.
+    if (isObject(payload.approval)) {
+      const candidate: Record<string, unknown> = payload.approval
       if (isApprovalShape(candidate)) {
         // Sanitize *before* the pendingTransitions check so a frame
         // whose id carries control/bidi chars can't bypass the

@@ -30,6 +30,7 @@ import {
 } from '@/types/notifications'
 import type { WsEvent } from '@/api/types/websocket'
 import { sanitizeForLog } from '@/utils/logging'
+import { isObject } from '@/utils/type-guards'
 
 const log = createLogger('notifications-store')
 
@@ -404,14 +405,16 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
 
     handleWsEvent(event) {
       const { enqueue } = get()
-      const payload = event.payload as Record<string, unknown> | null
-
-      if (typeof payload !== 'object' || payload === null) {
+      // Narrow ``event.payload`` (typed Record<string, unknown> on the
+      // wire but a malformed broker can still send anything) in one
+      // step instead of an unsafe ``as`` followed by a manual typeof.
+      if (!isObject(event.payload)) {
         log.warn('Notification WS event has invalid payload', {
           eventType: sanitizeForLog(String(event.event_type)),
         })
         return
       }
+      const payload = event.payload
 
       switch (event.event_type) {
         case 'approval.submitted':
