@@ -100,6 +100,14 @@ class ToolInvokerValidationMixin:
         """
         try:
             validated = args_model.model_validate(dict(tool_call.arguments))
+            # ``model_dump`` is inside the same ``try`` so a
+            # serialization failure (custom serializer raising,
+            # unbounded recursion in nested types, etc.) flows through
+            # the same failure paths as validation -- without this,
+            # serialization errors would escape ``_validate_args_model``
+            # uncaught and break the method's "always returns a
+            # ToolResult or a normalized dict" contract.
+            return validated.model_dump(mode="python")
         except PydanticValidationError as exc:
             errors = exc.errors(include_input=False, include_url=False)
             detail = (
@@ -122,7 +130,6 @@ class ToolInvokerValidationMixin:
             return self._unexpected_validation_result(
                 tool_call, safe_error_description(exc) or type(exc).__name__
             )
-        return validated.model_dump(mode="python")
 
     def _validate_json_schema(
         self,

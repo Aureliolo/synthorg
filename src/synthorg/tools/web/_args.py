@@ -110,11 +110,17 @@ class HttpRequestArgs(BaseModel):
         """
         for name, val in value.items():
             if not _RFC_TOKEN_RE.match(name):
+                # Don't echo the rejected name -- this validation runs
+                # at the typed boundary and the message body lands in
+                # logs / ``invalid_argument`` envelopes.  Pydantic
+                # already includes the offending field path in its
+                # error chain; the message just needs to explain the
+                # rule.
                 msg = (
-                    f"header name {name!r} is not a valid RFC 7230 "
-                    f"``token``; names must be one or more ``tchar`` "
-                    f"characters and contain no whitespace, ``:``, "
-                    f"separators, or non-ASCII characters"
+                    "header name is not a valid RFC 7230 ``token``; "
+                    "names must be one or more ``tchar`` characters "
+                    "and contain no whitespace, ``:``, separators, or "
+                    "non-ASCII characters"
                 )
                 raise ValueError(msg)
             for label, candidate in (("name", name), ("value", val)):

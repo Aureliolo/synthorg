@@ -19,12 +19,28 @@ class LookupEntityArgs(BaseModel):
     Exactly one of ``name`` (exact lookup) or ``query`` (free-text
     search) must be provided.  Both-or-neither cases are rejected at
     the validation boundary so the tool body never has to disambiguate.
+
+    The ``json_schema_extra`` ``oneOf`` clause projects the same
+    invariant into the published JSON Schema; without it the schema
+    would advertise both fields as independently optional, and MCP
+    clients / LLMs could happily generate both-or-neither payloads
+    that only fail at dispatch.
     """
 
     model_config = ConfigDict(
         frozen=True,
         allow_inf_nan=False,
         extra="forbid",
+        # ``oneOf`` enforces "exactly one" at the schema level: the
+        # caller must supply one branch and not both.  Combined with
+        # ``required`` on each branch this matches the runtime
+        # ``_exactly_one_mode`` validator below.
+        json_schema_extra={
+            "oneOf": [
+                {"required": ["name"]},
+                {"required": ["query"]},
+            ],
+        },
     )
 
     name: NotBlankStr | None = Field(

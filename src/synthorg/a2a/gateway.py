@@ -393,6 +393,7 @@ async def _dispatch_method(
             A2A_JSONRPC_INVALID_PARAMS,
             method=method,
             peer_name=peer_name,
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return Response(
@@ -415,10 +416,10 @@ async def _dispatch_method(
 
     try:
         # ``A2ARpcParams`` is a closed discriminated union of three
-        # variants.  ``result`` is forward-declared so Pyright sees a
-        # binding regardless of which match arm runs; mypy still
-        # checks exhaustiveness via the variant types.
-        result: dict[str, Any]
+        # variants.  Each match arm returns directly so adding a new
+        # variant without wiring it here is a hard fail (``AssertionError``
+        # from the ``case _`` arm) rather than an unbound ``result`` that
+        # silently falls through to the generic 500 path.
         match params:
             case A2AMessageSendParams():
                 result = await _handle_message_send(app_state, params, peer_name)
@@ -426,6 +427,18 @@ async def _dispatch_method(
                 result = await _handle_tasks_get(app_state, params, peer_name)
             case A2ATaskCancelParams():
                 result = await _handle_tasks_cancel(app_state, params, peer_name)
+            case _:  # pragma: no cover -- enforced exhaustive over A2ARpcParams
+                # mypy proves this branch is unreachable via the
+                # closed ``A2ARpcParams`` union; we still keep it as a
+                # runtime guard for the day someone adds a fourth
+                # variant without updating this dispatch.  The
+                # ``type: ignore`` is local and tied to that future
+                # change actually breaking the cover.
+                msg = (  # type: ignore[unreachable]
+                    f"A2ARpcParams variant {type(params).__name__!r} "
+                    f"is not wired in the dispatch ``match``"
+                )
+                raise AssertionError(msg)  # noqa: TRY301
         return Response(
             content=_success_response(request_id, result),
             media_type="application/json",

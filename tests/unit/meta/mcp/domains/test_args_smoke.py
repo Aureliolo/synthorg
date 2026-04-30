@@ -65,7 +65,13 @@ def _models_in(module: ModuleType) -> list[type[BaseModel]]:
             # Only models defined in the inspected module itself.
             if obj.__module__ != owner:
                 continue
-            found.setdefault(obj.__qualname__, obj)
+            # Key by module+qualname (not qualname alone) so two
+            # submodules with a colliding public class name both stay
+            # in the discovery set; otherwise ``setdefault`` would
+            # silently drop one and the smoke test would stop covering
+            # it.
+            key = f"{obj.__module__}.{obj.__qualname__}"
+            found.setdefault(key, obj)
     return list(found.values())
 
 

@@ -42,6 +42,16 @@ class TestReadFileArgs:
             ReadFileArgs(path="x", end_line=-1)
 
     @pytest.mark.unit
+    def test_reversed_line_range_rejected(self) -> None:
+        """Cross-field rule: ``start_line`` must be <= ``end_line``.
+
+        Without this case the per-field bounds tests above would pass
+        even if the cross-field validator regressed silently.
+        """
+        with pytest.raises(ValidationError):
+            ReadFileArgs(path="x", start_line=20, end_line=10)
+
+    @pytest.mark.unit
     def test_extra_field_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ReadFileArgs.model_validate(
