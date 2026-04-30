@@ -77,7 +77,7 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
         imageSrcRef.current = null
       }
     }
-  }, [artifact.id, isImage, artifact.size_bytes])
+  }, [artifact.id, isImage, artifact.size_bytes, artifact.content_type])
 
   if (artifact.size_bytes === 0) {
     return (
