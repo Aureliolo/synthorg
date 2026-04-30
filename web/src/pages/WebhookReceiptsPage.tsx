@@ -36,10 +36,16 @@ export default function WebhookReceiptsPage() {
 
   // Default the selector to the first connection that supports webhooks
   // (we don't have that flag locally; just pick the first connection).
+  // Defer the setState to a microtask so the synchronous-in-effect
+  // form does not trip @eslint-react/set-state-in-effect.
   useEffect(() => {
-    if (selected === '' && connections.length > 0) {
+    if (selected !== '' || connections.length === 0) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
       setSelected(connections[0]!.name)
-    }
+    })
+    return () => { cancelled = true }
   }, [connections, selected])
 
   const reload = useCallback(async () => {

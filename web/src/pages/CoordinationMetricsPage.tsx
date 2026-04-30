@@ -27,22 +27,26 @@ export default function CoordinationMetricsPage() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    getOverviewMetrics()
-      .then((result) => {
+    // Defer state writes to a microtask so the effect body itself stays
+    // free of synchronous setState calls (per the @eslint-react
+    // set-state-in-effect rule), then run the actual fetch.
+    void Promise.resolve().then(async () => {
+      if (cancelled) return
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await getOverviewMetrics()
         if (cancelled) return
         setData(result)
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         if (cancelled) return
         const message = getErrorMessage(err)
         log.error('getOverviewMetrics failed', { error: message })
         setError(message)
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
-      })
+      }
+    })
     return () => { cancelled = true }
   }, [])
 

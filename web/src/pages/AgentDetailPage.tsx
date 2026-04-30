@@ -75,15 +75,15 @@ export default function AgentDetailPage() {
   // detail page steps through the same agents the AgentsPage shows.
   // The roster is shared state already in memory (no extra fetch),
   // and on a deep link without it the nav bar self-hides.
-  const allAgents = useCompanyStore((s) => s.config?.agents) ?? []
+  const configAgents = useCompanyStore((s) => s.config?.agents)
   const routeForAgent = useCallback(
     (item: { id: string }) =>
       ROUTES.AGENT_DETAIL.replace(':agentId', encodeURIComponent(item.id)),
     [],
   )
   const navItems = useMemo(
-    () => allAgents.map((a) => ({ id: a.id ?? a.name })),
-    [allAgents],
+    () => (configAgents ?? []).map((a) => ({ id: a.id ?? a.name })),
+    [configAgents],
   )
   const nav = useDetailNavigation({
     items: navItems,

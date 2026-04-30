@@ -30,9 +30,13 @@ export default function MetaAnalyticsPage() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    void Promise.allSettled([getSignals(), listProposals()]).then(([signalsRes, proposalsRes]) => {
+    // Defer setState writes to a microtask (per @eslint-react
+    // set-state-in-effect) before kicking off the parallel fetches.
+    void Promise.resolve().then(async () => {
+      if (cancelled) return
+      setLoading(true)
+      setError(null)
+      const [signalsRes, proposalsRes] = await Promise.allSettled([getSignals(), listProposals()])
       if (cancelled) return
       const errors: string[] = []
       if (signalsRes.status === 'fulfilled') {

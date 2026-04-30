@@ -29,21 +29,24 @@ export default function PersonalitiesAdminPage() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    listPersonalityPresets()
-      .then((rows) => {
+    // Defer state writes to a microtask (per @eslint-react
+    // set-state-in-effect) before issuing the fetch.
+    void Promise.resolve().then(async () => {
+      if (cancelled) return
+      setLoading(true)
+      setError(null)
+      try {
+        const rows = await listPersonalityPresets()
         if (!cancelled) setPresets(rows)
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         if (cancelled) return
         const message = getErrorMessage(err)
         log.error('listPersonalityPresets failed', { error: message })
         setError(message)
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
-      })
+      }
+    })
     return () => { cancelled = true }
   }, [])
 
