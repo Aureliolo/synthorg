@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
@@ -25,6 +25,7 @@ export function AgentsStep() {
   const updateAgentPersonality = useSetupWizardStore((s) => s.updateAgentPersonality)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
+  const setStep = useSetupWizardStore((s) => s.setStep)
 
   // Fetch agents if not already loaded (e.g., direct URL navigation)
   useEffect(() => {
@@ -87,6 +88,39 @@ export function AgentsStep() {
     [updateAgentPersonality],
   )
 
+  const goToProvidersStep = useCallback(() => {
+    setStep('providers')
+  }, [setStep])
+
+  // Detect agents whose model_provider / model_id no longer resolves
+  // against the current providers map (the operator removed the
+  // provider, swapped the model, or the template generated an agent
+  // referencing a non-existent provider). Without this banner the
+  // operator can submit a setup whose agents will fail at runtime
+  // with no clear pointer at the upstream cause.
+  type UnresolvedReason = 'unassigned' | 'missing_provider' | 'missing_model'
+  const unresolvedAgents = useMemo(() => {
+    const out: { index: number; name: string; provider: string | null; modelId: string | null; reason: UnresolvedReason }[] = []
+    agents.forEach((agent, index) => {
+      const providerName = agent.model_provider
+      const modelId = agent.model_id
+      if (!providerName || !modelId) {
+        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'unassigned' })
+        return
+      }
+      const provider = providers[providerName]
+      if (!provider) {
+        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'missing_provider' })
+        return
+      }
+      const model = provider.models.find((m: { id: string }) => m.id === modelId)
+      if (!model) {
+        out.push({ index, name: agent.name, provider: providerName, modelId, reason: 'missing_model' })
+      }
+    })
+    return out
+  }, [agents, providers])
+
   if (agentsLoading) {
     return (
       <div className="space-y-4">
@@ -141,6 +175,33 @@ export function AgentsStep() {
           title="Could not load personality presets"
           description="Agents can still be configured without them."
           onRetry={() => void fetchPersonalityPresets()}
+        />
+      )}
+
+      {unresolvedAgents.length > 0 && (
+        <ErrorBanner
+          severity="warning"
+          title={
+            unresolvedAgents.length === 1
+              ? 'One agent references a missing provider or model'
+              : `${unresolvedAgents.length} agents reference a missing provider or model`
+          }
+          description={
+            <ul className="ml-4 list-disc space-y-1">
+              {unresolvedAgents.map(({ index, name, provider, modelId, reason }) => (
+                <li key={`${name}-${index}`}>
+                  <span className="font-medium">{name}</span>
+                  {': '}
+                  {reason === 'unassigned'
+                    ? 'no model assigned'
+                    : reason === 'missing_provider'
+                      ? `provider '${provider}' is not configured`
+                      : `provider '${provider}' has no model '${modelId}'`}
+                </li>
+              ))}
+            </ul>
+          }
+          action={{ label: 'Go back to Providers step', onClick: goToProvidersStep }}
         />
       )}
 
