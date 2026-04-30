@@ -35,13 +35,18 @@ function model(id: string, overrides: Partial<ProviderModelConfig> = {}): Provid
 }
 
 function provider(name: string, models: ProviderModelConfig[]): ProviderConfig {
+  // The full ProviderConfig type has 13 fields; tests only need the
+  // ``models`` field for the unresolved-agent detection logic, so we
+  // cast through ``unknown`` rather than synthesising every credential
+  // indicator. If a future test exercises code that reads other
+  // fields, add them here rather than expanding the cast.
   return {
     driver: 'litellm',
     litellm_provider: name,
     auth_type: 'api_key',
     base_url: null,
     models,
-  } as ProviderConfig
+  } as unknown as ProviderConfig
 }
 
 describe('AgentsStep: unresolved-agent detection', () => {
