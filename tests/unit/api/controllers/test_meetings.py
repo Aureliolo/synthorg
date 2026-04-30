@@ -156,7 +156,9 @@ def mock_orchestrator() -> MagicMock:
         _make_record("mtg-001", "standup", MeetingStatus.COMPLETED),
         _make_record("mtg-002", "retro", MeetingStatus.FAILED),
     )
+    by_id = {r.meeting_id: r for r in records}
     orch.get_records = MagicMock(return_value=records)
+    orch.get_record = MagicMock(side_effect=by_id.get)
     return orch
 
 
@@ -173,7 +175,9 @@ def mock_orchestrator_with_contributions() -> MagicMock:
         minutes=_make_minutes("mtg-rich", with_contributions=True),
     )
     failed = _make_record("mtg-fail", "retro", MeetingStatus.FAILED)
+    by_id = {r.meeting_id: r for r in (completed, failed)}
     orch.get_records = MagicMock(return_value=(completed, failed))
+    orch.get_record = MagicMock(side_effect=by_id.get)
     return orch
 
 

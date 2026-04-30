@@ -92,12 +92,24 @@ class SQLiteSettingsRepository:
             raise QueryError(msg) from exc
         return tuple((str(r[0]), str(r[1]), str(r[2])) for r in rows)
 
-    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
-        """Return all (namespace, key, value, updated_at)."""
+    async def get_all(
+        self,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> tuple[tuple[str, str, str, str], ...]:
+        """Return all (namespace, key, value, updated_at) (paginated)."""
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise QueryError(msg)
         try:
             cursor = await self._db.execute(
                 "SELECT namespace, key, value, updated_at FROM settings "
-                "ORDER BY namespace, key",
+                "ORDER BY namespace, key LIMIT ? OFFSET ?",
+                (limit, offset),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

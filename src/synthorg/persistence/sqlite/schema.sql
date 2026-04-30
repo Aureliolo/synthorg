@@ -197,6 +197,12 @@ CREATE TABLE parked_contexts (
 
 CREATE INDEX idx_pc_agent_id ON parked_contexts(agent_id);
 CREATE INDEX idx_pc_approval_id ON parked_contexts(approval_id);
+-- Composite index for "list parked contexts for agent X newest-first"
+-- (issue #1683). The ``parked_at DESC`` clause sustains keyset
+-- pagination without a sort, and the leading ``agent_id`` predicate
+-- is the usual filter at the controller layer.
+CREATE INDEX idx_parked_contexts_agent_parked_at
+    ON parked_contexts(agent_id, parked_at DESC);
 
 -- ── Audit entries ─────────────────────────────────────────────
 CREATE TABLE audit_entries (
@@ -303,6 +309,11 @@ CREATE TABLE api_keys (
 );
 
 CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
+-- Composite index for "list api_keys for user X with stable ordering"
+-- (issue #1683). The ``id`` tiebreaker keeps cursor pagination stable
+-- when two rows share a ``created_at`` timestamp.
+CREATE INDEX idx_api_keys_user_created_id
+    ON api_keys(user_id, created_at, id);
 
 -- ── Sessions ─────────────────────────────────────────────────
 CREATE TABLE sessions (
@@ -1253,15 +1264,16 @@ CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
 -- ``ProviderAuditService.record(...)`` from every mutation entry point
 -- on ``ProviderManagementService``.  ``id`` is monotonically assigned
 -- (AUTOINCREMENT) so it doubles as the keyset pagination cursor.
--- ``payload_json`` is JSON-stringified event metadata; credentials
+-- ``payload`` is JSON-stringified event metadata; credentials
 -- inside payload MUST be masked (``"prefix***last4"``) per SEC-1.
+-- Column name aligned with Postgres (issue #1683 schema parity).
 CREATE TABLE provider_audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     provider_name TEXT NOT NULL CHECK(length(trim(provider_name)) > 0),
     event_type TEXT NOT NULL CHECK(length(trim(event_type)) > 0),
     actor_id TEXT NOT NULL CHECK(length(trim(actor_id)) > 0),
     actor_label TEXT NOT NULL CHECK(length(trim(actor_label)) > 0),
-    payload_json TEXT NOT NULL DEFAULT '{}',
+    payload TEXT NOT NULL DEFAULT '{}',
     -- Timestamp format is enforced by the Python layer via
     -- ``parse_iso_utc`` / ``format_iso_utc`` (see
     -- ``persistence/_shared/datetime_marshaller.py``); the DB only
@@ -1282,9 +1294,10 @@ CREATE INDEX idx_provider_audit_events_occurred
 CREATE TABLE preset_overrides (
     preset_name TEXT NOT NULL PRIMARY KEY
         CHECK(length(trim(preset_name)) > 0),
-    default_models_json TEXT,
-    supported_auth_types_json TEXT,
-    candidate_urls_json TEXT,
+    -- Column names aligned with Postgres (issue #1683 schema parity).
+    default_models TEXT,
+    supported_auth_types TEXT,
+    candidate_urls TEXT,
     base_url TEXT,
     updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0),
     updated_by TEXT NOT NULL CHECK(length(trim(updated_by)) > 0)

@@ -54,11 +54,24 @@ class ApprovalRepository(Protocol):
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters.
 
+        Results are ordered by ``(created_at DESC, id DESC)`` so cursor
+        pagination remains stable under concurrent inserts.
+
+        Args:
+            status: Filter by approval status.
+            risk_level: Filter by risk level.
+            action_type: Filter by action type.
+            limit: Maximum rows to return (must be >= 1).
+            offset: Number of rows to skip (must be >= 0).
+
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If the database query fails or
+                ``limit < 1`` / ``offset < 0``.
         """
         ...
 

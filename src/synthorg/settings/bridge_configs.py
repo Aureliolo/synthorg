@@ -156,6 +156,9 @@ class ApiBridgeConfig(BaseModel):
         ge=WS_AUTH_TIMEOUT_MIN_SECONDS,
         le=WS_AUTH_TIMEOUT_MAX_SECONDS,
     )
+    ws_frame_timeout_seconds: int = Field(default=30, ge=1, le=600)
+    ws_revalidation_window_seconds: int = Field(default=60, ge=1, le=3_600)
+    ws_revalidation_max_failures: int = Field(default=5, ge=1, le=100)
     max_rpm_default: int = Field(default=60, ge=1, le=100_000)
     compression_minimum_size_bytes: int = Field(default=1000, ge=100, le=10_000)
     request_max_body_size_bytes: int = Field(

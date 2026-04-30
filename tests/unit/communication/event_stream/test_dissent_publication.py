@@ -82,7 +82,7 @@ class TestDissentEventPublication:
 
     async def test_dissent_event_via_hub(self) -> None:
         hub = EventStreamHub()
-        queue = hub.subscribe("session-abc")
+        queue = await hub.subscribe("session-abc")
 
         record = self._make_dissent_record()
 

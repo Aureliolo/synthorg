@@ -3,7 +3,7 @@
 Buffers anonymized events and flushes them in batches to the
 configured collector endpoint. Flush triggers: batch size
 threshold, time interval (periodic background task), or
-explicit ``flush()``/``close()`` call. Retries on 5xx with
+explicit ``flush()``/``aclose()`` call. Retries on 5xx with
 exponential backoff, drops on 4xx. 3xx redirects are treated
 as failures (POST may not have been stored).
 """
@@ -11,7 +11,7 @@ as failures (POST may not have been stored).
 import asyncio
 import contextlib
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import httpx
 
@@ -31,6 +31,7 @@ from synthorg.observability.events.cross_deployment import (
 
 if TYPE_CHECKING:
     from collections.abc import Collection
+    from types import TracebackType
 
     from synthorg.meta.chief_of_staff.models import ProposalOutcome
     from synthorg.meta.config import SelfImprovementConfig
@@ -53,9 +54,17 @@ class HttpAnalyticsEmitter:
 
     Events are buffered in memory and flushed when the batch size
     threshold is reached, the flush interval has elapsed, or
-    ``flush()``/``close()`` is called explicitly. A background
+    ``flush()``/``aclose()`` is called explicitly. A background
     periodic task ensures buffered events are flushed even when
     no new events arrive.
+
+    Supports the async-context-manager protocol for guaranteed
+    cleanup::
+
+        async with HttpAnalyticsEmitter(...) as emitter:
+            await emitter.emit_decision(...)
+        # ``aclose()`` runs on exit; the httpx client and any
+        # buffered events are flushed.
 
     Lock invariants: ``_buffer`` and ``_last_flush_at`` are
     protected by ``_lock``. ``_analytics_config``,
@@ -164,7 +173,7 @@ class HttpAnalyticsEmitter:
             self._last_flush_at = time.monotonic()
         await self._send_batch(batch)
 
-    async def close(self) -> None:
+    async def aclose(self) -> None:
         """Flush remaining events and close the HTTP client."""
         self._closed = True
         if self._flush_task is not None:
@@ -174,6 +183,19 @@ class HttpAnalyticsEmitter:
         await self.flush()
         await self._client.aclose()
         logger.info(XDEPLOY_EMITTER_CLOSED)
+
+    async def __aenter__(self) -> Self:
+        """Enter the async context manager."""
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        """Flush + close on context manager exit."""
+        await self.aclose()
 
     async def _ensure_flush_task(self) -> None:
         """Start the periodic flush background task if not running."""

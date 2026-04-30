@@ -241,19 +241,24 @@ class SQLiteApprovalRepository:
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
-        """List approval items with optional filters.
+        """List approval items with optional filters (paginated, newest-first).
 
-        Args:
-            status: Filter by approval status.
-            risk_level: Filter by risk level.
-            action_type: Filter by action type.
-
-        Returns:
-            Tuple of matching approval items.
+        ``ORDER BY created_at DESC, id DESC`` keeps cursor pagination
+        stable when two approvals share a ``created_at`` timestamp;
+        the ``id`` tiebreaker prevents duplicates / gaps under
+        concurrent inserts.
         """
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise QueryError(msg)
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if status is not None:
             clauses.append("status = ?")
             params.append(status.value)
@@ -264,13 +269,15 @@ class SQLiteApprovalRepository:
             clauses.append("action_type = ?")
             params.append(action_type)
         where = " AND ".join(clauses) if clauses else "1=1"
+        params.extend([limit, offset])
         sql = f"""
             SELECT id, action_type, title, description, requested_by,
                    risk_level, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
                    task_id, evidence_package, metadata
             FROM approvals WHERE {where}
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id DESC
+            LIMIT ? OFFSET ?
         """  # noqa: S608
         try:
             cursor = await self._db.execute(sql, params)

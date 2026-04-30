@@ -41,6 +41,8 @@ class _FakeArtifactRepo:
         task_id: NotBlankStr | None = None,
         created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Artifact, ...]:
         rows = sorted(self._rows.values(), key=lambda a: a.id)
         if task_id is not None:
@@ -49,7 +51,7 @@ class _FakeArtifactRepo:
             rows = [a for a in rows if a.created_by == created_by]
         if artifact_type is not None:
             rows = [a for a in rows if a.type == artifact_type]
-        return tuple(rows)
+        return tuple(rows[offset : offset + limit])
 
     async def delete(self, artifact_id: NotBlankStr) -> bool:
         return self._rows.pop(artifact_id, None) is not None

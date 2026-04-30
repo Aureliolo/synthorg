@@ -259,6 +259,9 @@ class AppState(AppStateServicesMixin):
         "_workflow_service",
         "_workflow_version_service",
         "_ws_auth_timeout_seconds",
+        "_ws_frame_timeout_seconds",
+        "_ws_revalidation_max_failures",
+        "_ws_revalidation_window_seconds",
         "approval_store",
         "config",
         "startup_time",
@@ -410,6 +413,14 @@ class AppState(AppStateServicesMixin):
         # every connection.  Retains the built-in default when the
         # bridge cannot be resolved.
         self._ws_auth_timeout_seconds: float = 10.0
+        # WebSocket DoS-prevention settings (issue #1683): per-frame
+        # idle timeout + sliding-window revalidation tracking. Baked
+        # (read-only post-init) at startup by ``_apply_bridge_config``;
+        # the handler reads these on every connection but never writes
+        # them. Sane built-in defaults so the handler never fails open.
+        self._ws_frame_timeout_seconds: int = 30
+        self._ws_revalidation_window_seconds: int = 60
+        self._ws_revalidation_max_failures: int = 5
         self._provider_audit_service = None
         self._preset_override_service = None
         self._init_derived_services(

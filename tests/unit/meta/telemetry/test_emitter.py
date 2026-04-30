@@ -153,8 +153,32 @@ class TestEmitterFlush:
                 sample_outcome,
                 proposal=sample_proposal,
             )
-            await emitter.close()
+            await emitter.aclose()
             mock_send.assert_awaited_once()
+
+    async def test_async_context_manager_calls_aclose(
+        self,
+        analytics_config: CrossDeploymentAnalyticsConfig,
+        self_improvement_config: SelfImprovementConfig,
+        sample_outcome: ProposalOutcome,
+        sample_proposal: ImprovementProposal,
+    ) -> None:
+        """``async with`` invokes ``aclose()`` on exit."""
+        em = HttpAnalyticsEmitter(
+            analytics_config=analytics_config,
+            self_improvement_config=self_improvement_config,
+            builtin_rule_names=BUILTIN_RULE_NAMES,
+        )
+        with patch.object(em, "_send_batch", new_callable=AsyncMock) as mock_send:
+            async with em as emitter:
+                await emitter.emit_decision(
+                    sample_outcome,
+                    proposal=sample_proposal,
+                )
+            # After the ``async with`` exits, ``aclose()`` ran which
+            # flushes the buffered event via ``_send_batch``.
+        mock_send.assert_awaited_once()
+        assert em._closed is True
 
 
 class TestEmitterHttpBehavior:

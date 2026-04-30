@@ -4,6 +4,7 @@ Implements ``ClassificationSink`` for wiring classification
 results into the performance tracker and notification dispatcher.
 """
 
+import asyncio
 import copy
 import time
 from datetime import UTC, datetime
@@ -165,45 +166,52 @@ class _SlidingWindowRateLimiter:
         self._window_seconds = window_seconds
         self._clock: Callable[[], float] = clock or time.monotonic
         self._events: dict[str, list[float]] = {}
+        self._lock = asyncio.Lock()
 
-    def take(self, key: str) -> bool:
+    async def take(self, key: str) -> bool:
         """Attempt to consume one admission for ``key``.
 
         Returns ``True`` when the admission was granted (the caller
         may proceed) and ``False`` when the window is saturated.
         Prunes stale entries for idle keys on each call to prevent
         unbounded growth of ``_events`` from one-off agent IDs.
-        """
-        now = self._clock()
-        cutoff = now - self._window_seconds
-        # Prune idle keys whose latest timestamp is outside the window.
-        stale_keys = [
-            k
-            for k, timestamps in self._events.items()
-            if k != key and (not timestamps or timestamps[-1] <= cutoff)
-        ]
-        for k in stale_keys:
-            del self._events[k]
-        events = [ts for ts in self._events.get(key, []) if ts > cutoff]
-        if len(events) >= self._max_events:
-            self._events[key] = events
-            return False
-        events.append(now)
-        self._events[key] = events
-        return True
 
-    def release(self, key: str) -> None:
+        The dict reads / writes execute under ``self._lock`` so two
+        concurrent ``take()`` calls cannot both observe ``len(events)
+        < max_events`` and admit beyond the configured budget.
+        """
+        async with self._lock:
+            now = self._clock()
+            cutoff = now - self._window_seconds
+            # Prune idle keys whose latest timestamp is outside the window.
+            stale_keys = [
+                k
+                for k, timestamps in self._events.items()
+                if k != key and (not timestamps or timestamps[-1] <= cutoff)
+            ]
+            for k in stale_keys:
+                del self._events[k]
+            events = [ts for ts in self._events.get(key, []) if ts > cutoff]
+            if len(events) >= self._max_events:
+                self._events[key] = events
+                return False
+            events.append(now)
+            self._events[key] = events
+            return True
+
+    async def release(self, key: str) -> None:
         """Refund the most recent admission for ``key``.
 
         Call this when a ``take`` succeeded but the downstream
         action failed, so the slot can be reused by the next
         attempt.  Removes the latest timestamp for the key.
         """
-        events = self._events.get(key)
-        if events:
-            events.pop()
-            if not events:
-                del self._events[key]
+        async with self._lock:
+            events = self._events.get(key)
+            if events:
+                events.pop()
+                if not events:
+                    del self._events[key]
 
 
 class NotificationDispatcherSink:
@@ -268,7 +276,7 @@ class NotificationDispatcherSink:
             if _SEVERITY_ORDER[finding.severity] < self._min_rank:
                 continue
 
-            if not self._rate_limiter.take(result.agent_id):
+            if not await self._rate_limiter.take(result.agent_id):
                 logger.info(
                     NOTIFICATION_RATE_LIMITED,
                     agent_id=result.agent_id,
@@ -302,7 +310,7 @@ class NotificationDispatcherSink:
             except MemoryError, RecursionError:
                 raise
             except Exception:
-                self._rate_limiter.release(result.agent_id)
+                await self._rate_limiter.release(result.agent_id)
                 logger.exception(
                     CLASSIFICATION_SINK_ERROR,
                     agent_id=result.agent_id,

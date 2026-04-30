@@ -37,13 +37,13 @@ logger = get_logger(__name__)
 _INSERT_SQL = """
 INSERT INTO provider_audit_events (
     provider_name, event_type, actor_id, actor_label,
-    payload_json, occurred_at
+    payload, occurred_at
 ) VALUES (?, ?, ?, ?, ?, ?)
 """
 
 _LIST_BASE_SQL = """
 SELECT id, provider_name, event_type, actor_id, actor_label,
-       payload_json, occurred_at
+       payload, occurred_at
 FROM provider_audit_events
 WHERE provider_name = ?
 """
@@ -197,18 +197,18 @@ class SQLiteProviderAuditRepo:
 
     def _row_to_event(self, row: dict[str, object]) -> ProviderAuditEvent:
         """Deserialise a row dict into a ``ProviderAuditEvent``."""
-        raw_payload = row["payload_json"]
+        raw_payload = row["payload"]
         try:
             payload = json.loads(str(raw_payload)) if raw_payload else {}
         except json.JSONDecodeError as exc:
-            msg = f"corrupt payload_json on row id={row.get('id')!r}"
+            msg = f"corrupt payload on row id={row.get('id')!r}"
             raise QueryError(msg) from exc
         if not isinstance(payload, dict):
             # Audit payloads must be JSON objects.  A persisted scalar /
             # array / null is corruption -- silently coercing would hide
             # the schema violation and let bad rows slip downstream.
             msg = (
-                f"provider_audit_events.payload_json on row "
+                f"provider_audit_events.payload on row "
                 f"id={row.get('id')!r} is not a JSON object "
                 f"(got {type(payload).__name__})"
             )

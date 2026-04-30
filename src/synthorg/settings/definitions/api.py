@@ -622,6 +622,73 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="ws_frame_timeout_seconds",
+        type=SettingType.INTEGER,
+        default="30",
+        description=(
+            "Per-frame receive timeout for established WebSocket"
+            " connections. A connection that goes idle (no inbound"
+            " frame) for longer than this is closed with policy code"
+            " 1008. Bounds the number of slots a silent client can"
+            " hold (DoS prevention). Resolved at controller"
+            " construction; runtime mutation requires a restart."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=600,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ws_revalidation_window_seconds",
+        type=SettingType.INTEGER,
+        default="60",
+        description=(
+            "Sliding-window length (seconds) for WebSocket session"
+            " revalidation failures. Persistence backend errors are"
+            " admitted into a per-connection sliding window of this"
+            " length; once the window saturates the connection is"
+            " closed. Replaces the legacy reset-on-success counter"
+            " so a flaky persistence layer cannot indefinitely keep"
+            " a connection alive by interleaving successes."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=3_600,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ws_revalidation_max_failures",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Maximum number of revalidation failures admitted in the"
+            " ws_revalidation_window_seconds window before the"
+            " WebSocket is closed with policy code 1008."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="ticket_cleanup_mode",
         type=SettingType.ENUM,
         default="async",

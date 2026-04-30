@@ -256,14 +256,18 @@ class PostgresApprovalRepository:
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
-        """List approval items with optional filters.
-
-        Raises:
-            QueryError: If the database query fails.
-        """
+        """List approval items with optional filters (paginated)."""
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise QueryError(msg)
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if status is not None:
             clauses.append("status = %s")
             params.append(status.value)
@@ -274,6 +278,7 @@ class PostgresApprovalRepository:
             clauses.append("action_type = %s")
             params.append(action_type)
         where_sql = " AND ".join(clauses) if clauses else "TRUE"
+        params.extend([limit, offset])
         try:
             async with (
                 self._pool.connection() as conn,
@@ -281,7 +286,8 @@ class PostgresApprovalRepository:
             ):
                 await cur.execute(
                     f"SELECT {_SELECT_COLS} FROM approvals "  # noqa: S608
-                    f"WHERE {where_sql} ORDER BY created_at DESC",
+                    f"WHERE {where_sql} ORDER BY created_at DESC, id DESC "
+                    f"LIMIT %s OFFSET %s",
                     params,
                 )
                 rows = await cur.fetchall()

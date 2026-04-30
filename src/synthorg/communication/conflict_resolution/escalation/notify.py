@@ -146,7 +146,13 @@ class PostgresEscalationNotifySubscriber:
         self._start_lock: asyncio.Lock | None = None
 
     async def start(self) -> None:
-        """Schedule the background subscriber loop."""
+        """Schedule the background subscriber loop.
+
+        Per the canonical lifecycle pattern
+        (``docs/reference/lifecycle-sync.md``), the lock is held
+        across the full body including the success log so concurrent
+        ``start()`` / ``stop()`` calls cannot interleave.
+        """
         if self._start_lock is None:
             self._start_lock = asyncio.Lock()
         if self._stop_event is None:
@@ -159,35 +165,46 @@ class PostgresEscalationNotifySubscriber:
                 self._run(),
                 name="escalation-notify-subscriber",
             )
-        logger.info(
-            CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
-            channel=self._channel,
-        )
+            logger.info(
+                CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
+                channel=self._channel,
+            )
 
     async def stop(self) -> None:
-        """Signal the loop to exit and await its completion."""
-        if self._stop_event is not None:
-            self._stop_event.set()
-        task = self._task
-        if task is None:
-            return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            logger.warning(
-                CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="shutdown",
-            )
-        finally:
-            self._task = None
-            self._stop_event = None
-            self._start_lock = None
-        logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
+        """Signal the loop to exit and await its completion.
+
+        Acquires ``_start_lock`` so a concurrent ``start()`` cannot
+        recreate the task mid-stop. Per
+        ``docs/reference/lifecycle-sync.md``, lifecycle locks must be
+        held across the full body of both ``start`` and ``stop``.
+        """
+        if self._start_lock is None:
+            self._start_lock = asyncio.Lock()
+        async with self._start_lock:
+            if self._stop_event is not None:
+                self._stop_event.set()
+            task = self._task
+            if task is None:
+                return
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.warning(
+                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="shutdown",
+                )
+            finally:
+                self._task = None
+                self._stop_event = None
+            logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
+        # Release-and-clear last so a racing ``start()`` observes the
+        # cleared task before recreating the lock primitive.
+        self._start_lock = None
 
     async def _run(self) -> None:
         """Main loop: (re)open a listen connection and dispatch notifies."""

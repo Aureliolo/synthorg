@@ -199,22 +199,19 @@ RETURNING (xmax = 0) AS created""",
         task_id: NotBlankStr | None = None,
         created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Artifact, ...]:
-        """List artifacts with optional filters.
-
-        Args:
-            task_id: Filter by originating task ID.
-            created_by: Filter by creator agent ID.
-            artifact_type: Filter by artifact type.
-
-        Returns:
-            Matching artifacts as a tuple.
-
-        Raises:
-            QueryError: If the database query or deserialization fails.
-        """
+        """List artifacts with optional filters (paginated)."""
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise QueryError(msg)
+        effective_limit = min(limit, _MAX_LIST_ROWS)
         conditions: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
 
         if task_id is not None:
             conditions.append("task_id = %s")
@@ -234,7 +231,8 @@ RETURNING (xmax = 0) AS created""",
         )
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        query += f" ORDER BY id LIMIT {_MAX_LIST_ROWS}"
+        query += " ORDER BY id LIMIT %s OFFSET %s"
+        params.extend([effective_limit, offset])
 
         try:
             async with (

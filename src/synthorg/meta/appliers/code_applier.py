@@ -8,6 +8,7 @@ No local ``git`` or ``gh`` CLI is required -- all remote operations
 use the GitHub API, making this safe to run inside containers.
 """
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -120,7 +121,8 @@ class CodeApplier:
                 altitude="code_modification",
                 proposal_id=str(proposal.id),
             )
-            self._revert_local_changes(
+            await asyncio.to_thread(
+                self._revert_local_changes,
                 proposal.code_changes,
                 project_root,
                 defensive=True,
@@ -164,7 +166,12 @@ class CodeApplier:
             Result indicating success or failure.
         """
         # -- Local CI gate ------------------------------------------------
-        changed_files, applied = self._write_changes(
+        # Filesystem mutations run on a worker thread (``asyncio.to_thread``)
+        # so the per-change ``Path.read_text`` / ``Path.write_text`` /
+        # ``Path.unlink`` calls don't block the event loop while CI gates
+        # for other proposals progress concurrently.
+        changed_files, applied = await asyncio.to_thread(
+            self._write_changes,
             proposal.code_changes,
             project_root,
         )
@@ -176,7 +183,11 @@ class CodeApplier:
             )
         finally:
             # Revert only the changes that were actually written.
-            self._revert_local_changes(applied, project_root)
+            await asyncio.to_thread(
+                self._revert_local_changes,
+                applied,
+                project_root,
+            )
         if not ci_result.passed:
             return ApplyResult(
                 success=False,

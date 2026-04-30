@@ -38,7 +38,7 @@ class EventStreamHub:
             publisher).
     """
 
-    __slots__ = ("_max_queue_size", "_subscribers")
+    __slots__ = ("_lock", "_max_queue_size", "_subscribers")
 
     def __init__(
         self,
@@ -46,8 +46,9 @@ class EventStreamHub:
     ) -> None:
         self._max_queue_size = max_queue_size
         self._subscribers: dict[str, list[asyncio.Queue[StreamEvent]]] = {}
+        self._lock = asyncio.Lock()
 
-    def subscribe(
+    async def subscribe(
         self,
         session_id: str,
     ) -> asyncio.Queue[StreamEvent]:
@@ -62,10 +63,11 @@ class EventStreamHub:
         queue: asyncio.Queue[StreamEvent] = asyncio.Queue(
             maxsize=self._max_queue_size,
         )
-        self._subscribers.setdefault(session_id, []).append(queue)
+        async with self._lock:
+            self._subscribers.setdefault(session_id, []).append(queue)
         return queue
 
-    def unsubscribe(
+    async def unsubscribe(
         self,
         session_id: str,
         queue: asyncio.Queue[StreamEvent],
@@ -76,13 +78,14 @@ class EventStreamHub:
             session_id: Session the queue belongs to.
             queue: The queue to remove.
         """
-        queues = self._subscribers.get(session_id)
-        if queues is None:
-            return
-        with contextlib.suppress(ValueError):
-            queues.remove(queue)
-        if not queues:
-            del self._subscribers[session_id]
+        async with self._lock:
+            queues = self._subscribers.get(session_id)
+            if queues is None:
+                return
+            with contextlib.suppress(ValueError):
+                queues.remove(queue)
+            if not queues:
+                del self._subscribers[session_id]
 
     async def publish(self, event: StreamEvent) -> None:
         """Fan out an event to all subscribers for its session.
@@ -90,13 +93,19 @@ class EventStreamHub:
         Best-effort: if a subscriber queue is full, the event is
         dropped for that subscriber (never blocks the publisher).
 
+        The subscriber list is snapshotted under the lock and
+        ``put_nowait`` is invoked outside the lock so a slow consumer's
+        ``QueueFull`` warning cannot serialize other publishers behind
+        the dispatch.
+
         Args:
             event: The stream event to publish.
         """
-        queues = self._subscribers.get(event.session_id)
-        if not queues:
+        async with self._lock:
+            queues_snapshot = list(self._subscribers.get(event.session_id, ()))
+        if not queues_snapshot:
             return
-        for queue in list(queues):
+        for queue in queues_snapshot:
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:

@@ -129,3 +129,69 @@ class TestInterruptStore:
         store = InterruptStore()
         result = await store.wait_for_resolution("nonexistent", timeout=0.01)
         assert result is None
+
+
+@pytest.mark.unit
+class TestInterruptStoreRaceConditions:
+    """Regression tests for issue #1683.
+
+    Concurrent ``create()`` / ``resolve()`` / ``wait_for_resolution()``
+    must not corrupt the pending / events / results dicts.
+    """
+
+    async def test_concurrent_create_same_id_one_succeeds(self) -> None:
+        store = InterruptStore()
+        n_creators = 20
+        barrier = asyncio.Barrier(n_creators)
+
+        async def attempt_create() -> bool:
+            await barrier.wait()
+            try:
+                await store.create(_make_interrupt())
+            except ValueError:
+                return False
+            return True
+
+        results = await asyncio.gather(
+            *(attempt_create() for _ in range(n_creators)),
+        )
+        # Exactly one creator wins; the others see "already exists".
+        assert sum(results) == 1
+
+    async def test_resolve_during_wait_timeout_no_double_pop(self) -> None:
+        store = InterruptStore()
+        await store.create(_make_interrupt())
+
+        async def slow_resolve() -> None:
+            # Yield once so the waiter starts ``event.wait()`` first.
+            await asyncio.sleep(0)
+            await store.resolve(_make_resolution())
+
+        async def waiter() -> InterruptResolution | None:
+            return await store.wait_for_resolution("int-001", timeout=1.0)
+
+        # Run resolver and waiter concurrently; the waiter should
+        # observe the resolution and the dicts should end up empty.
+        resolution, _ = await asyncio.gather(waiter(), slow_resolve())
+        assert resolution is not None
+        # Waiting again returns None (interrupt already cleaned up).
+        again = await store.wait_for_resolution("int-001", timeout=0.01)
+        assert again is None
+
+    async def test_concurrent_resolve_only_one_succeeds(self) -> None:
+        store = InterruptStore()
+        await store.create(_make_interrupt())
+        n_resolvers = 20
+        barrier = asyncio.Barrier(n_resolvers)
+
+        async def attempt_resolve() -> Interrupt | None:
+            await barrier.wait()
+            return await store.resolve(_make_resolution())
+
+        results = await asyncio.gather(
+            *(attempt_resolve() for _ in range(n_resolvers)),
+        )
+        # First resolver returns the interrupt; subsequent ones see it
+        # gone (returns None and logs INTERRUPT_NOT_FOUND).
+        non_none = [r for r in results if r is not None]
+        assert len(non_none) == 1

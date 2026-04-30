@@ -26,7 +26,7 @@ class TestApprovalGateEventStream:
         park_service.park.return_value = parked
 
         hub = EventStreamHub()
-        queue = hub.subscribe("session-abc")
+        queue = await hub.subscribe("session-abc")
         interrupt_store = InterruptStore()
 
         gate = ApprovalGate(
@@ -117,7 +117,7 @@ class TestApprovalGateEventStream:
         repo.delete.return_value = True
 
         hub = EventStreamHub()
-        queue = hub.subscribe("session-abc")
+        queue = await hub.subscribe("session-abc")
 
         gate = ApprovalGate(
             park_service=park_service,

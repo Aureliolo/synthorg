@@ -424,8 +424,20 @@ class PostgresDecisionRepository:
             return None
         return self._row_to_record(row)
 
-    async def list_by_task(self, task_id: NotBlankStr) -> tuple[DecisionRecord, ...]:
-        """List decision records for a task, ordered by version ascending."""
+    async def list_by_task(
+        self,
+        task_id: NotBlankStr,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DecisionRecord, ...]:
+        """List decision records for a task (paginated, oldest first)."""
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise QueryError(msg)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -433,8 +445,8 @@ class PostgresDecisionRepository:
             ):
                 await cur.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                    "WHERE task_id = %s ORDER BY version ASC",
-                    (task_id,),
+                    "WHERE task_id = %s ORDER BY version ASC LIMIT %s OFFSET %s",
+                    (task_id, limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -459,6 +471,8 @@ class PostgresDecisionRepository:
         agent_id: NotBlankStr,
         *,
         role: DecisionRole,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records where the agent acted in the given role."""
         # Runtime defense: validate role is in the closed set
@@ -486,17 +500,26 @@ class PostgresDecisionRepository:
                 error=msg,
             )
             raise ValueError(msg) from exc
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise QueryError(msg)
         try:
-            # column is a closed-set value from _ROLE_TO_COLUMN
+            # column is a closed-set value from _ROLE_TO_COLUMN.
+            # ``id DESC`` tiebreaker keeps cursor pagination stable
+            # when records share a recorded_at timestamp.
             query = (
                 f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                f"WHERE {column} = %s ORDER BY recorded_at DESC"
+                f"WHERE {column} = %s ORDER BY recorded_at DESC, id DESC "
+                f"LIMIT %s OFFSET %s"
             )
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(query, (agent_id,))
+                await cur.execute(query, (agent_id, limit, offset))
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = (

@@ -1,5 +1,6 @@
 """Workflow version history controller -- list, get, diff, rollback."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -213,12 +214,19 @@ class WorkflowVersionController(Controller):
         secret = state.app_state.cursor_secret
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         version_repo = state.app_state.persistence.workflow_versions
-        versions = await version_repo.list_versions(
-            workflow_id,
-            limit=limit,
-            offset=offset,
-        )
-        total = await version_repo.count_versions(workflow_id)
+        async with asyncio.TaskGroup() as tg:
+            list_task = tg.create_task(
+                version_repo.list_versions(
+                    workflow_id,
+                    limit=limit,
+                    offset=offset,
+                ),
+            )
+            count_task = tg.create_task(
+                version_repo.count_versions(workflow_id),
+            )
+        versions = list_task.result()
+        total = count_task.result()
         logger.debug(
             WORKFLOW_DEF_VERSION_LISTED,
             definition_id=workflow_id,

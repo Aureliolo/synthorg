@@ -36,6 +36,7 @@ from synthorg.api.controllers.ws_protocol import (
     parse_event_payload,
 )
 from synthorg.api.guards import _READ_ROLES, HumanRole
+from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_AUTH_OK,
@@ -44,6 +45,8 @@ from synthorg.observability.events.api import (
     API_WS_CONNECTED,
     API_WS_DISCONNECTED,
     API_WS_EVENT_DROPPED,
+    API_WS_FRAME_TIMEOUT,
+    API_WS_REVALIDATION_BUDGET_EXHAUSTED,
     API_WS_SEND_FAILED,
     API_WS_TICKET_INVALID,
     API_WS_TRANSPORT_ERROR,
@@ -75,10 +78,10 @@ _WS_CLOSE_AUTH_FAILED: int = 4001
 _WS_CLOSE_FORBIDDEN: int = 4003
 _WS_CLOSE_SERVER_ERROR: int = 4011
 
-# Maximum consecutive revalidation failures (transient persistence
-# blips) before the connection is closed with a server-error code so
-# the client can reconnect rather than receive stale-auth events.
-_WS_REVALIDATE_MAX_FAILURES: int = 3
+# Sliding-window key for revalidation failure tracking. Per-connection
+# limiter is keyed on a constant since each connection has its own
+# limiter instance; using the user_id keeps the log line readable when
+# the budget is exhausted.
 
 
 async def _close_socket_safely(
@@ -113,6 +116,8 @@ async def _periodic_revalidate(
     user: AuthenticatedUser,
     *,
     interval_seconds: int = WS_REVALIDATE_INTERVAL_SECONDS,
+    failure_window_seconds: int | None = None,
+    failure_max: int | None = None,
 ) -> None:
     """Re-load the user every *interval_seconds* and close on revocation.
 
@@ -121,32 +126,67 @@ async def _periodic_revalidate(
     revokes the session sees the WS close within ``interval_seconds``
     rather than at next disconnect.
 
-    Tolerates ``_WS_REVALIDATE_MAX_FAILURES`` consecutive transient
-    persistence failures before escalating -- one DB blip should not
-    flap every WS client, but a sustained outage should surface so
-    clients can reconnect against a healthy replica.
+    Persistence failures are tracked through a sliding window
+    (``failure_window_seconds`` / ``failure_max``) rather than a
+    streak counter that resets on success: a flaky persistence
+    layer that returns one good response between every failure
+    cluster could otherwise hold a stale-auth WS open indefinitely.
+    Once ``failure_max`` failures are admitted within the window,
+    the connection is closed with the server-error code so the
+    client can reconnect against a healthy replica.
+
+    The defaults track the registered settings:
+    ``api.ws_revalidation_window_seconds`` (60s) and
+    ``api.ws_revalidation_max_failures`` (5).  At construction time
+    the parent passes the values resolved from ``AppState`` so the
+    limiter window matches operator config.
     """
-    consecutive_failures = 0
+    app_state = socket.app.state["app_state"]
+    window = (
+        failure_window_seconds
+        if failure_window_seconds is not None
+        else app_state.ws_revalidation_window_seconds
+    )
+    max_failures = (
+        failure_max
+        if failure_max is not None
+        else app_state.ws_revalidation_max_failures
+    )
+    failure_limiter = _SlidingWindowRateLimiter(
+        max_events=max_failures,
+        window_seconds=float(window),
+    )
     while True:
         try:
             await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
             return
         try:
-            app_state = socket.app.state["app_state"]
             db_user = await app_state.persistence.users.get(user.user_id)
         except Exception as exc:
-            consecutive_failures += 1
+            admitted = await failure_limiter.take(user.user_id)
             logger.warning(
                 API_WS_TRANSPORT_ERROR,
                 reason="revalidate_persistence_error",
                 client=str(socket.client),
                 user_id=user.user_id,
-                consecutive_failures=consecutive_failures,
+                window_seconds=window,
+                max_failures=max_failures,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            if consecutive_failures >= _WS_REVALIDATE_MAX_FAILURES:
+            if not admitted:
+                # TRY400: this is a budget-exhaustion event that
+                # already includes the precipitating exception via the
+                # warning above; an exception() trace here would
+                # duplicate that and bury the structured fields.
+                logger.error(  # noqa: TRY400
+                    API_WS_REVALIDATION_BUDGET_EXHAUSTED,
+                    client=str(socket.client),
+                    user_id=user.user_id,
+                    window_seconds=window,
+                    max_failures=max_failures,
+                )
                 await _close_socket_safely(
                     socket,
                     code=_WS_CLOSE_SERVER_ERROR,
@@ -155,7 +195,6 @@ async def _periodic_revalidate(
                 return
             continue
 
-        consecutive_failures = 0
         revoke_reason = _revocation_reason(db_user, user, app_state)
         if revoke_reason is not None:
             logger.info(
@@ -833,12 +872,14 @@ async def ws_handler(
             )
 
 
-async def _receive_loop(
+async def _receive_loop(  # noqa: PLR0913 -- one extra optional kw arg for the timeout
     socket: WebSocket[Any, Any, Any],
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
     conn_user: AuthenticatedUser,
     outbound_queue: asyncio.Queue[bytes],
+    *,
+    frame_timeout_seconds: int | None = None,
 ) -> None:
     """Process client subscribe/unsubscribe commands.
 
@@ -852,10 +893,37 @@ async def _receive_loop(
     via ``API_WS_BACKPRESSURE_DROPPED``) and the socket continues to
     accept new inbound frames rather than hanging forever on an
     unbounded ``await queue.put``.
+
+    The per-frame ``frame_timeout_seconds`` budget caps how long the
+    loop waits for the next inbound frame.  A connection that goes
+    silent past the budget is closed with policy code 1008 so a
+    silent client cannot indefinitely hold a slot (DoS prevention,
+    issue #1683).  Defaults to ``app_state.ws_frame_timeout_seconds``
+    (registered setting ``api.ws_frame_timeout_seconds``, default 30).
     """
+    if frame_timeout_seconds is None:
+        app_state = socket.app.state["app_state"]
+        frame_timeout_seconds = app_state.ws_frame_timeout_seconds
     try:
         while True:
-            data = await socket.receive_text()
+            try:
+                data = await asyncio.wait_for(
+                    socket.receive_text(),
+                    timeout=frame_timeout_seconds,
+                )
+            except TimeoutError:
+                logger.info(
+                    API_WS_FRAME_TIMEOUT,
+                    user_id=conn_user.user_id,
+                    client=str(socket.client),
+                    timeout_seconds=frame_timeout_seconds,
+                )
+                await _close_socket_safely(
+                    socket,
+                    code=1008,  # RFC 6455 Policy Violation
+                    reason="frame timeout",
+                )
+                return
             # Snapshot ``subscribed`` / ``filters`` before applying the
             # handler so that if the ack cannot be enqueued (queue full)
             # we can roll back the mutation. Without the rollback,

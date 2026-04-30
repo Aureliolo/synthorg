@@ -1,5 +1,6 @@
 """Tests for classification downstream sinks."""
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,6 +14,7 @@ from synthorg.engine.classification.models import (
 from synthorg.engine.classification.sinks import (
     NotificationDispatcherSink,
     PerformanceTrackerSink,
+    _SlidingWindowRateLimiter,
 )
 from synthorg.notifications.models import (
     NotificationCategory,
@@ -282,3 +284,66 @@ class TestNotificationDispatcherSink:
             # Should not raise -- construction is inside the try/except.
             await sink.on_classification(result)
         dispatcher.dispatch.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestSlidingWindowRateLimiterRaceConditions:
+    """Regression tests for issue #1683.
+
+    Concurrent ``take()`` / ``release()`` must not admit beyond
+    ``max_events`` and must keep the per-key timestamp lists
+    internally consistent. The async refactor (``asyncio.Lock``)
+    replaced the previous sync implementation so that two awaiting
+    tasks cannot both observe ``len(events) < max_events`` and admit
+    beyond budget.
+    """
+
+    async def test_concurrent_take_admits_at_most_max_events(self) -> None:
+        max_events = 3
+        n_callers = 50
+        fake_time = [0.0]
+        limiter = _SlidingWindowRateLimiter(
+            max_events=max_events,
+            window_seconds=60.0,
+            clock=lambda: fake_time[0],
+        )
+        barrier = asyncio.Barrier(n_callers)
+
+        async def attempt_take() -> bool:
+            await barrier.wait()
+            return await limiter.take("agent-A")
+
+        results = await asyncio.gather(
+            *(attempt_take() for _ in range(n_callers)),
+        )
+        assert sum(results) == max_events
+
+    async def test_release_after_concurrent_take_reopens_slots(self) -> None:
+        max_events = 5
+        fake_time = [0.0]
+        limiter = _SlidingWindowRateLimiter(
+            max_events=max_events,
+            window_seconds=60.0,
+            clock=lambda: fake_time[0],
+        )
+
+        # Saturate the window.
+        for _ in range(max_events):
+            assert await limiter.take("agent-A") is True
+        assert await limiter.take("agent-A") is False
+
+        # Release all admissions concurrently.
+        await asyncio.gather(*(limiter.release("agent-A") for _ in range(max_events)))
+
+        # All slots should be free again.
+        n_callers = 20
+        barrier = asyncio.Barrier(n_callers)
+
+        async def attempt_take() -> bool:
+            await barrier.wait()
+            return await limiter.take("agent-A")
+
+        results = await asyncio.gather(
+            *(attempt_take() for _ in range(n_callers)),
+        )
+        assert sum(results) == max_events

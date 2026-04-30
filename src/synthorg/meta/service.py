@@ -749,7 +749,7 @@ class SelfImprovementService:
                     )
         if self._analytics_emitter is not None:
             try:
-                await self._analytics_emitter.close()
+                await self._analytics_emitter.aclose()
             except Exception:
                 logger.exception(
                     XDEPLOY_EVENT_EMIT_FAILED,

@@ -5,10 +5,16 @@ pattern querying, and threshold recommendations.
 """
 
 from litestar import Controller, get, post
+from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    paginate_cursor,
+)
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.telemetry.collector import InMemoryAnalyticsCollector  # noqa: TC001
 from synthorg.meta.telemetry.models import (
@@ -96,15 +102,18 @@ class MetaAnalyticsController(Controller):
     @get("/patterns")
     async def get_patterns(
         self,
+        state: State,
         min_deployments: int = Parameter(default=3, ge=1, le=100),
-    ) -> ApiResponse[list[AggregatedPattern]]:
-        """Query aggregated cross-deployment patterns.
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[AggregatedPattern]:
+        """Query aggregated cross-deployment patterns (paginated).
 
         Args:
+            state: Application state.
             min_deployments: Minimum unique deployments for pattern.
-
-        Returns:
-            Aggregated patterns.
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
         """
         collector = _require_collector()
         # Clamp to configured privacy floor so callers cannot
@@ -113,25 +122,45 @@ class MetaAnalyticsController(Controller):
         patterns = await collector.query_patterns(
             min_deployments=effective,
         )
-        return ApiResponse[list[AggregatedPattern]](
-            data=list(patterns),
+        page, meta = paginate_cursor(
+            tuple(patterns),
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
         )
+        return PaginatedResponse[AggregatedPattern](data=page, pagination=meta)
 
     @get("/recommendations")
     async def get_recommendations(
         self,
-    ) -> ApiResponse[list[ThresholdRecommendation]]:
-        """Get threshold recommendations from aggregated data.
-
-        Returns:
-            Threshold recommendations sorted by confidence.
-        """
+        state: State,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[ThresholdRecommendation]:
+        """Get threshold recommendations from aggregated data (paginated)."""
         collector = _require_collector()
         if _recommender is None:
-            return ApiResponse[list[ThresholdRecommendation]](data=[])
+            empty_recs: tuple[ThresholdRecommendation, ...] = ()
+            page, meta = paginate_cursor(
+                empty_recs,
+                limit=limit,
+                cursor=cursor,
+                secret=state.app_state.cursor_secret,
+            )
+            return PaginatedResponse[ThresholdRecommendation](
+                data=page,
+                pagination=meta,
+            )
         recs = await _recommender.get_recommendations(
             collector=collector,
         )
-        return ApiResponse[list[ThresholdRecommendation]](
-            data=list(recs),
+        page, meta = paginate_cursor(
+            tuple(recs),
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
+        return PaginatedResponse[ThresholdRecommendation](
+            data=page,
+            pagination=meta,
         )

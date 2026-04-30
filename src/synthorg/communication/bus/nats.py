@@ -186,11 +186,17 @@ class JetStreamMessageBus:
             state.running = True
             state.shutdown_event.clear()
 
-        logger.info(
-            COMM_BUS_STARTED,
-            channels_created=len(state.config.channels),
-            backend="nats",
-        )
+            # Emit the success event INSIDE the lock so the structured
+            # log accurately reflects the held-lock state. Per
+            # ``docs/reference/lifecycle-sync.md``, lifecycle events
+            # MUST land while the lock is held -- a log emitted after
+            # release could be reordered with a racing stop() and
+            # mislead operators about the true lifecycle order.
+            logger.info(
+                COMM_BUS_STARTED,
+                channels_created=len(state.config.channels),
+                backend="nats",
+            )
 
     async def stop(self) -> None:
         """Stop the bus gracefully. Idempotent."""

@@ -406,7 +406,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
         # subscriber attached to the hub: ``finally`` always runs
         # ``hub.unsubscribe`` and tolerates ``queue is None`` when the
         # subscribe itself raised.
-        queue = hub.subscribe(session_id)
+        queue = await hub.subscribe(session_id)
         logger.info(
             EVENT_STREAM_CLIENT_CONNECTED,
             session_id=session_id,
@@ -491,7 +491,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
             # Tolerate the case where ``hub.subscribe`` itself raised:
             # there is nothing to unsubscribe in that branch.
             if queue is not None:
-                hub.unsubscribe(session_id, queue)
+                await hub.unsubscribe(session_id, queue)
         finally:
             logger.info(
                 EVENT_STREAM_CLIENT_DISCONNECTED,

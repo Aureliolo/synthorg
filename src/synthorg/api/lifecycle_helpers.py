@@ -580,6 +580,37 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error_desc=safe_error_description(exc),
         )
 
+    try:
+        app_state.set_ws_frame_timeout_seconds(
+            await app_state.config_resolver.get_int(
+                SettingNamespace.API.value,
+                "ws_frame_timeout_seconds",
+            )
+        )
+        app_state.set_ws_revalidation_window_seconds(
+            await app_state.config_resolver.get_int(
+                SettingNamespace.API.value,
+                "ws_revalidation_window_seconds",
+            )
+        )
+        app_state.set_ws_revalidation_max_failures(
+            await app_state.config_resolver.get_int(
+                SettingNamespace.API.value,
+                "ws_revalidation_max_failures",
+            )
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            error=(
+                "Failed to apply WS DoS-prevention settings; using built-in defaults"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+
     from synthorg.api.auth.token_size import (  # noqa: PLC0415
         _DEFAULT_AUTH_TOKEN_BYTES,
         set_auth_token_bytes,
