@@ -130,11 +130,6 @@
       "allowedVersions": "<3.15"
     },
     {
-      "description": "Block litellm 1.83.1+ (hard-pins pydantic==2.12.5, jsonschema==4.23.0). Upstream: BerriAI/litellm#25280. Re-enable when upstream reverts exact pins.",
-      "matchDepNames": ["litellm"],
-      "allowedVersions": "<=1.83.0"
-    },
-    {
       "description": "Block opentelemetry-* >=1.41.0 while logfire pins opentelemetry-sdk<1.41.0 (see logfire pyproject.toml on main). Without this, every Renovate run produces a grouped Python PR whose uv.lock regeneration fails. Lift the cap when logfire releases a version that allows OTel 1.41+.",
       "matchDepNames": [
         "opentelemetry-api",
