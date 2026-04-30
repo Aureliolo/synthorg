@@ -132,6 +132,6 @@ Backend auto-wire precedence: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB
 
 Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates port collisions across all enabled services.
 
-`synthorg status` renders a verdict banner (`OK` / `DEGRADED` / `CRITICAL`) computed by `computeVerdict()` in `cli/cmd/status.go`. `CRITICAL` wins over `DEGRADED`; signals are gated on install expectations so an internal-bus install is not flagged degraded merely because the health response omits `message_bus`.
+`synthorg status` renders a verdict banner (`OK` / `DEGRADED` / `CRITICAL`) computed by `computeVerdict()` in `cli/cmd/status.go`. `CRITICAL` wins over `DEGRADED`; signals are gated on install expectations so an internal-bus install is not flagged `DEGRADED` merely because the health response omits `message_bus`.
 
 See [docs/reference/cli-persistence-backends.md](../docs/reference/cli-persistence-backends.md) for the per-step Postgres orchestration (random-password generation, `SYNTHORG_POSTGRES_SSL_MODE` defaults, depends_on health gate), DHI cosign + SLSA verification cache (`verified_digests`), the NATS config file shape (`max_payload: 16MB`), and the verdict-banner escalation rules.
