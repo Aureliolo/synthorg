@@ -42,6 +42,13 @@ class A2APushVerifier:
         *,
         clock: Clock | None = None,
     ) -> None:
+        # Validate at the boundary: a negative skew would let
+        # attacker-supplied future timestamps slip past the freshness
+        # gate. ``0`` is the documented opt-out (no freshness check)
+        # per the ``> 0`` guard in ``verify``.
+        if clock_skew_seconds < 0:
+            msg = f"clock_skew_seconds must be non-negative; got {clock_skew_seconds}"
+            raise ValueError(msg)
         self._clock_skew_seconds = clock_skew_seconds
         self._clock: Clock = clock if clock is not None else SystemClock()
 

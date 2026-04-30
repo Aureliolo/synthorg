@@ -16,9 +16,10 @@ test.describe('Agent creation critical flow', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
-    // Override the agents list with a deterministic three-agent
-    // payload so the visible card count is stable. Routed BEFORE
-    // mockApiRoutes so the more specific match wins.
+    // Register the catch-all FIRST so the specific route stub below
+    // overrides it: Playwright matches route handlers in LIFO order,
+    // so the most-recently-registered handler wins.
+    await mockApiRoutes(page)
     await page.route('**/api/v1/agents', (route) =>
       route.fulfill({
         json: {
@@ -30,7 +31,6 @@ test.describe('Agent creation critical flow', () => {
         },
       }),
     )
-    await mockApiRoutes(page)
   })
 
   test('loads the agents list page', async ({ page }) => {

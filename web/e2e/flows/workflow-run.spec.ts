@@ -14,6 +14,9 @@ test.describe('Workflow run critical flow', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
+    // Catch-all FIRST so the specific stub below wins (Playwright
+    // matches handlers LIFO).
+    await mockApiRoutes(page)
     await page.route('**/api/v1/workflows', (route) =>
       route.fulfill({
         json: {
@@ -25,7 +28,6 @@ test.describe('Workflow run critical flow', () => {
         },
       }),
     )
-    await mockApiRoutes(page)
   })
 
   test('loads workflows and processes a WS execution-status event', async ({

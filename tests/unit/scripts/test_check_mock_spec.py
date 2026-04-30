@@ -73,6 +73,33 @@ def test_non_mock_calls_not_flagged(write_test_file: object) -> None:
     assert _MODULE._scan_file(path) == []  # type: ignore[attr-defined]
 
 
+def test_empty_splat_args_treated_as_bare(write_test_file: object) -> None:
+    """``Mock(*())`` and ``Mock(**{})`` are still bare calls."""
+    src = (
+        "from unittest.mock import AsyncMock\n"
+        "x = AsyncMock(*())\n"
+        "y = AsyncMock(**{})\n"
+        "z = AsyncMock(*[], **{})\n"
+    )
+    path = write_test_file(src)  # type: ignore[operator]
+    hits = _MODULE._scan_file(path)  # type: ignore[attr-defined]
+    assert len(hits) == 3
+    assert {lineno for lineno, _ in hits} == {2, 3, 4}
+
+
+def test_non_empty_splat_not_flagged(write_test_file: object) -> None:
+    """Real splats with content are not bare calls."""
+    src = (
+        "from unittest.mock import AsyncMock\n"
+        "args = (1, 2)\n"
+        "x = AsyncMock(*args)\n"
+        "y = AsyncMock(*[1])\n"
+        "z = AsyncMock(**{'a': 1})\n"
+    )
+    path = write_test_file(src)  # type: ignore[operator]
+    assert _MODULE._scan_file(path) == []  # type: ignore[attr-defined]
+
+
 def test_unparseable_file_raises(write_test_file: object) -> None:
     src = "def broken(:\n"
     path = write_test_file(src)  # type: ignore[operator]

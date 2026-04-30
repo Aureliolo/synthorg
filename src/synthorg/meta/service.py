@@ -684,6 +684,11 @@ class SelfImprovementService:
             )
             raise SelfImprovementTriggerError(msg)
         started_at = self._clock.now()
+        # Capture monotonic alongside the wall-clock so duration is
+        # immune to wall-clock jumps. ``started_at`` / ``completed_at``
+        # remain wall-clock for the audit trail, but the reported
+        # duration goes through monotonic deltas.
+        started_monotonic = self._clock.monotonic()
         try:
             snapshot = await self._snapshot_builder()
         except MemoryError, RecursionError:
@@ -725,7 +730,7 @@ class SelfImprovementService:
             META_CYCLE_TRIGGERED,
             cycle_id=result.cycle_id,
             proposals_count=result.proposals_count,
-            duration_seconds=(completed_at - started_at).total_seconds(),
+            duration_seconds=self._clock.monotonic() - started_monotonic,
         )
         return result
 

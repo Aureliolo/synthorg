@@ -15,6 +15,9 @@ test.describe('Provider probe critical flow', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
+    // Catch-all FIRST so the specific stub below wins (Playwright
+    // matches handlers LIFO).
+    await mockApiRoutes(page)
     await page.route('**/api/v1/providers', (route) =>
       route.fulfill({
         json: {
@@ -26,7 +29,6 @@ test.describe('Provider probe critical flow', () => {
         },
       }),
     )
-    await mockApiRoutes(page)
   })
 
   test('loads providers and processes a WS health event', async ({ page }) => {

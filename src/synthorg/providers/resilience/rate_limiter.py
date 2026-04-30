@@ -85,7 +85,11 @@ class RateLimiter:
                 # trail before re-raising so an oncall debugging a
                 # truncated request can see the rate limiter was the
                 # site that absorbed the cancel signal.
-                logger.info(
+                # Error path: WARNING per CLAUDE.md "All error paths
+                # must log at WARNING or ERROR with context before
+                # raising". Cancellation is the negative-control path
+                # for this loop, not a normal info-level event.
+                logger.warning(
                     PROVIDER_RATE_LIMITER_CANCELLED,
                     provider=self._provider_name,
                     wait_seconds=round(remaining, 2),
@@ -177,7 +181,7 @@ class RateLimiter:
             try:
                 await self._clock.sleep(wait)
             except asyncio.CancelledError:
-                logger.info(
+                logger.warning(
                     PROVIDER_RATE_LIMITER_CANCELLED,
                     provider=self._provider_name,
                     wait_seconds=round(wait, 2),

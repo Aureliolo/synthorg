@@ -14,6 +14,10 @@ test.describe('Memory recall critical flow', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
+    // Register the catch-all FIRST so the specific route stubs
+    // below override it: Playwright matches route handlers in LIFO
+    // order, so the most-recently-registered handler wins.
+    await mockApiRoutes(page)
     await page.route('**/api/v1/memory/search**', (route) =>
       route.fulfill({
         json: {
@@ -36,7 +40,6 @@ test.describe('Memory recall critical flow', () => {
         },
       }),
     )
-    await mockApiRoutes(page)
   })
 
   test('loads the ontology page where memory surfaces live', async ({ page }) => {

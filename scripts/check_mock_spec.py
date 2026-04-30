@@ -82,14 +82,46 @@ class _BareMockFinder(ast.NodeVisitor):
         self.hits: list[tuple[int, int]] = []
 
     def visit_Call(self, node: ast.Call) -> None:
-        """Match bare-call mocks (no positional args, no keyword args)."""
-        if node.args or node.keywords:
+        """Match bare-call mocks (no effective positional or keyword args).
+
+        ``Mock(*())`` and ``Mock(**{})`` are still bare calls: the splat
+        is empty, so the runtime call has zero args. The naive check
+        ``if node.args or node.keywords`` would treat them as
+        non-bare. Walk the args/kwargs and keep the call in scope only
+        when every entry is an empty literal splat.
+        """
+        if not _all_args_empty(node.args) or not _all_keywords_empty(node.keywords):
             self.generic_visit(node)
             return
         terminal = _terminal_callee_name(node.func)
         if terminal is not None and terminal in _MOCK_NAMES:
             self.hits.append((node.lineno, node.col_offset))
         self.generic_visit(node)
+
+
+def _is_empty_splat(value: ast.expr) -> bool:
+    """Return True if ``value`` is an empty tuple/list/dict literal.
+
+    Used to recognise ``*()`` / ``*[]`` / ``**{}`` splats that pass
+    no actual arguments at runtime.
+    """
+    if isinstance(value, (ast.Tuple, ast.List)):
+        return not value.elts
+    if isinstance(value, ast.Dict):
+        return not value.keys
+    return False
+
+
+def _all_args_empty(args: list[ast.expr]) -> bool:
+    """Return True if every positional arg is an empty splat."""
+    return all(
+        isinstance(arg, ast.Starred) and _is_empty_splat(arg.value) for arg in args
+    )
+
+
+def _all_keywords_empty(keywords: list[ast.keyword]) -> bool:
+    """Return True if every keyword is an empty double-splat."""
+    return all(kw.arg is None and _is_empty_splat(kw.value) for kw in keywords)
 
 
 def _terminal_callee_name(value: ast.expr) -> str | None:

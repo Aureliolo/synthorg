@@ -43,6 +43,9 @@ test.describe('Task lifecycle critical flow', () => {
       cancelled: makeKanbanColumn('cancelled', 0),
     }
     const allTasks = Object.values(columns).flat()
+    // Catch-all FIRST so the specific stub below wins (Playwright
+    // matches handlers LIFO).
+    await mockApiRoutes(page)
     await page.route('**/api/v1/tasks**', (route) =>
       route.fulfill({
         json: {
@@ -54,7 +57,6 @@ test.describe('Task lifecycle critical flow', () => {
         },
       }),
     )
-    await mockApiRoutes(page)
   })
 
   test(

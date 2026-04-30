@@ -19,12 +19,14 @@ test.describe('Budget check critical flow', () => {
       budget_remaining: 400,
       budget_used_percent: 20,
     })
+    // Catch-all FIRST so the specific stub below wins (Playwright
+    // matches handlers LIFO).
+    await mockApiRoutes(page)
     await page.route('**/api/v1/budget/snapshot', (route) =>
       route.fulfill({
         json: { success: true, data: snapshot, error: null, error_detail: null },
       }),
     )
-    await mockApiRoutes(page)
   })
 
   test('loads the budget page', async ({ page }) => {
