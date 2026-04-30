@@ -10,7 +10,7 @@ from typing import Any
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException, NotFoundException
+from litestar.exceptions import ClientException
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,6 +18,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
@@ -233,7 +234,7 @@ class CustomRuleController(Controller):
         rule = await _service(state).get(rule_id)
         if rule is None:
             msg = f"Custom rule {rule_id} not found"
-            raise NotFoundException(msg)
+            raise NotFoundError(msg)
         return ApiResponse[dict[str, Any]](data=rule_to_dict(rule))
 
     @post(
@@ -310,7 +311,7 @@ class CustomRuleController(Controller):
                 data.model_dump(exclude_none=True),
             )
         except CustomRuleNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         except ConstraintViolationError as exc:
             raise ClientException(
                 detail=str(exc),
@@ -342,7 +343,7 @@ class CustomRuleController(Controller):
         try:
             await _service(state).delete(NotBlankStr(rule_id))
         except CustomRuleNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
 
     @post(
         "/{rule_id:str}/toggle",
@@ -368,7 +369,7 @@ class CustomRuleController(Controller):
         try:
             toggled = await _service(state).toggle(NotBlankStr(rule_id))
         except CustomRuleNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(toggled),
         )

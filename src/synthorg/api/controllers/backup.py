@@ -14,7 +14,6 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import (
     ClientException,
     InternalServerException,
-    NotFoundException,
 )
 from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
@@ -44,6 +43,7 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.backup import (
@@ -227,7 +227,7 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=backup_id,
             )
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=manifest)
 
     @delete("/{backup_id:str}", status_code=HTTP_204_NO_CONTENT)
@@ -256,7 +256,7 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=backup_id,
             )
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
 
     @post(
         "/restore",
@@ -301,7 +301,7 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=data.backup_id,
             )
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         except ManifestError as exc:
             logger.warning(
                 BACKUP_RESTORE_FAILED,

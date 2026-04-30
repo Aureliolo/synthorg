@@ -13,7 +13,6 @@ import pytest
 from litestar.exceptions import (
     ClientException,
     InternalServerException,
-    NotFoundException,
 )
 from litestar.testing import TestClient
 
@@ -33,6 +32,7 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
+from synthorg.core.domain_errors import NotFoundError
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -165,7 +165,7 @@ class TestGetBackup:
         )
 
         ctrl = _controller()
-        with pytest.raises(NotFoundException):
+        with pytest.raises(NotFoundError):
             await ctrl.get_backup.fn(
                 ctrl,
                 state=state,
@@ -198,7 +198,7 @@ class TestDeleteBackup:
         )
 
         ctrl = _controller()
-        with pytest.raises(NotFoundException):
+        with pytest.raises(NotFoundError):
             await ctrl.delete_backup.fn(
                 ctrl,
                 state=state,
@@ -276,7 +276,7 @@ class TestRestoreBackup:
             confirm=True,
         )
         ctrl = _controller()
-        with pytest.raises(NotFoundException):
+        with pytest.raises(NotFoundError):
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
     async def test_restore_raises_409_on_in_progress(self) -> None:

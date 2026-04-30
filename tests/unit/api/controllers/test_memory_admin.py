@@ -289,10 +289,10 @@ class TestDeleteMemoryEntryEndpoint:
         from unittest.mock import AsyncMock
 
         from litestar.datastructures import State
-        from litestar.exceptions import NotFoundException
 
         from synthorg.api.controllers import memory as memory_module
         from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.core.domain_errors import NotFoundError
 
         fake_service = SimpleNamespace(
             delete_memory_entry=AsyncMock(return_value=False),
@@ -309,7 +309,7 @@ class TestDeleteMemoryEntryEndpoint:
         original_build = memory_module._build_memory_service
         memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
         try:
-            with pytest.raises(NotFoundException):
+            with pytest.raises(NotFoundError):
                 await controller.delete_memory_entry.fn(
                     controller,
                     state=State({"app_state": SimpleNamespace()}),

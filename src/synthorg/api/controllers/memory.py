@@ -9,7 +9,7 @@ from typing import Final
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException, NotFoundException
+from litestar.exceptions import ClientException
 from litestar.status_codes import HTTP_409_CONFLICT, HTTP_501_NOT_IMPLEMENTED
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,6 +17,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import HumanRole, require_roles
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
@@ -389,7 +390,7 @@ class MemoryAdminController(Controller):
         try:
             updated = await service.deploy_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundException(detail=str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         except QueryError as exc:
             raise ClientException(
                 detail="Failed to update embedder settings",
@@ -430,7 +431,7 @@ class MemoryAdminController(Controller):
         try:
             updated = await service.rollback_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundException(detail=str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         except CheckpointRollbackUnavailableError as exc:
             raise ClientException(detail=str(exc)) from exc
         except CheckpointRollbackCorruptError as exc:
@@ -466,7 +467,7 @@ class MemoryAdminController(Controller):
         try:
             await service.delete_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundException(detail=str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         except QueryError as exc:
             raise ClientException(
                 detail=str(exc),
@@ -523,7 +524,8 @@ class MemoryAdminController(Controller):
             # ``MEMORY_ENTRY_DELETE_FAILED`` with ``reason="not_found"``
             # for this branch, so the controller stays in the layering
             # role of HTTP translation only.
-            raise NotFoundException(detail=f"memory entry {memory_id!r} not found")
+            msg = f"memory entry {memory_id!r} not found"
+            raise NotFoundError(msg)
         return ApiResponse(data=None)
 
     # -- Run history -------------------------------------------------

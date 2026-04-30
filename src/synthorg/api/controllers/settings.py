@@ -9,7 +9,6 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import (
     ClientException,
     InternalServerException,
-    NotFoundException,
 )
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import (
@@ -29,6 +28,7 @@ from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
@@ -191,7 +191,7 @@ def _validate_namespace(namespace: str) -> None:
     """Raise 404 if namespace is not a known SettingNamespace member."""
     if namespace not in _VALID_NAMESPACES:
         msg = f"Unknown namespace: {namespace!r}"
-        raise NotFoundException(msg)
+        raise NotFoundError(msg)
 
 
 async def _check_setting_etag(
@@ -226,7 +226,7 @@ async def _check_setting_etag(
             key,
         )
     except SettingNotFoundError as exc:
-        raise NotFoundException(str(exc)) from exc
+        raise NotFoundError(str(exc)) from exc
     current_etag = compute_etag(
         current.value,
         current.updated_at or "",
@@ -374,7 +374,7 @@ class SettingsController(Controller):
         try:
             entry = await app_state.settings_service.get_entry(namespace, key)
         except SettingNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         etag = compute_etag(
             entry.value,
             entry.updated_at or "",
@@ -419,7 +419,7 @@ class SettingsController(Controller):
                 import_source=SettingsImportSource.API_BODY,
             )
         except SettingNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
         except SettingValidationError as exc:
             raise ClientException(str(exc), status_code=422) from exc
         except SettingsEncryptionError:
@@ -466,7 +466,7 @@ class SettingsController(Controller):
         try:
             await app_state.settings_service.delete(namespace, key)
         except SettingNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            raise NotFoundError(str(exc)) from exc
 
     # ── Observability sink endpoints ──────────────────────────────
 
