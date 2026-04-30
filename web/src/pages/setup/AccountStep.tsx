@@ -32,18 +32,42 @@ export function AccountStep() {
   // Read backend-configured min password length. Surfaced as an error so
   // users cannot submit under the default policy if the server has a stricter
   // rule (otherwise the create-account POST would fail with a confusing error).
+  // The fetch is wrapped in a 5-second timeout and retries once on transient
+  // failure; otherwise a slow / hung server would block the entire setup
+  // wizard with the form disabled and no recovery path.
   const fetchPolicy = useCallback(async () => {
     setPolicyLoading(true)
     setPolicyError(null)
-    try {
-      const status = await getSetupStatus()
-      setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
-    } catch (err) {
-      log.error('Failed to fetch setup status:', sanitizeForLog(err))
-      setPolicyError(getErrorMessage(err))
-    } finally {
-      setPolicyLoading(false)
+    const POLICY_TIMEOUT_MS = 5_000
+    function withTimeout<T>(work: Promise<T>): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          reject(new Error('password-policy fetch timed out'))
+        }, POLICY_TIMEOUT_MS)
+        work.then(
+          (value) => { window.clearTimeout(timer); resolve(value) },
+          (err: unknown) => { window.clearTimeout(timer); reject(err instanceof Error ? err : new Error(String(err))) },
+        )
+      })
     }
+    let lastErr: unknown = null
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const status = await withTimeout(getSetupStatus())
+        setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
+        setPolicyLoading(false)
+        return
+      } catch (err) {
+        lastErr = err
+        log.warn('password-policy fetch attempt failed', {
+          attempt: attempt + 1,
+          error: getErrorMessage(err),
+        })
+      }
+    }
+    log.error('Failed to fetch setup status after retries:', sanitizeForLog(lastErr))
+    setPolicyError(getErrorMessage(lastErr))
+    setPolicyLoading(false)
   }, [])
 
   useEffect(() => {
