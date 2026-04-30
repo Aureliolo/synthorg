@@ -23,17 +23,25 @@ test.describe('Approval critical flow', () => {
     await expect(page.locator('main')).toBeVisible()
 
     // Inject a synthetic WebSocket event matching the wire shape for
-    // an approval status transition. The dashboard's WS layer parses
-    // the frame and updates the approval store; the assertion here is
-    // the negative one -- the page does not crash on receipt -- which
-    // is the minimum guarantee a regression like a missing event
-    // type discriminator would break.
+    // an approval transition. The frame must conform to the dashboard's
+    // ``WsEvent`` runtime validator (``isWsEvent``): ``event_type`` /
+    // ``channel`` / ``timestamp`` / ``payload`` are mandatory; an
+    // event with the legacy ``{type, ..., approval}`` shape is silently
+    // discarded by the WS layer, so the test would pass without
+    // exercising the handler chain at all.
     const approval = makeApprovalRequest({ status: 'approved' })
     await injectEvent(page, {
-      type: 'approval.status_changed',
-      version: 1,
-      approval,
+      event_type: 'approval.approved',
+      channel: 'approvals',
+      timestamp: '2026-04-01T12:00:00Z',
+      payload: { ...approval, approval_id: approval.id },
     })
+    // The notifications store enqueues an "Approval approved" toast
+    // for this event_type. Asserting that title is visible proves the
+    // WS frame reached the registered handler -- a regression in the
+    // envelope check or notifications dispatch chain would prevent
+    // the toast from ever rendering.
+    await expect(page.getByText('Approval approved').first()).toBeVisible()
     await expect(page.locator('main')).toBeVisible()
   })
 })

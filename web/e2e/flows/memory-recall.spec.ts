@@ -1,13 +1,14 @@
 import { test, expect } from '@playwright/test'
 import { mockApiRoutes, freezeTime } from '../fixtures/mock-api'
-import { installWebSocketHarness } from '../fixtures/websocket-harness'
+import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harness'
 import { makeMemoryEntry, makeOntologyFact } from '../factories'
 
 /**
  * Critical-flow E2E: memory / ontology surface.
  *
  * Mounts the page with deterministic memory entries and ontology
- * facts so a regression that hides either surface fails this test.
+ * facts, then drives a personality-trimmed event through the WS
+ * harness so the notifications dispatch chain is exercised.
  */
 
 test.describe('Memory recall critical flow', () => {
@@ -42,7 +43,7 @@ test.describe('Memory recall critical flow', () => {
     )
   })
 
-  test('loads the ontology page where memory surfaces live', async ({ page }) => {
+  test('loads the ontology page and processes a trim event', async ({ page }) => {
     await page.goto('/ontology')
     await expect(page).toHaveURL(/\/ontology/)
     await expect(page.locator('main')).toBeVisible()
@@ -54,5 +55,18 @@ test.describe('Memory recall critical flow', () => {
       page.getByText('Always validate inputs before processing').first(),
     ).toBeVisible()
     await expect(page.getByText('reports_to').first()).toBeVisible()
+
+    // Drive a personality-trimmed event through the harness. The
+    // event_type is in ``WS_EVENT_TYPE_VALUES`` and the notifications
+    // store enqueues a "Personality trimmed" entry, so visibility of
+    // that title proves the WS frame conformed to the runtime
+    // validator (``isWsEvent``) and reached the dispatch chain.
+    await injectEvent(page, {
+      event_type: 'personality.trimmed',
+      channel: 'agents',
+      timestamp: '2026-04-01T12:00:00Z',
+      payload: { agent_id: 'agent-001', agent_name: 'Alice' },
+    })
+    await expect(page.getByText('Personality trimmed').first()).toBeVisible()
   })
 })

@@ -40,16 +40,23 @@ test.describe('Provider probe critical flow', () => {
     await expect(page.getByText('example-provider').first()).toBeVisible()
 
     await injectEvent(page, {
-      type: 'provider.health_changed',
-      version: 1,
-      health: makeProviderHealth({ status: 'degraded', latency_ms: 250 }),
+      event_type: 'system.error',
+      channel: 'system',
+      timestamp: '2026-04-01T12:00:00Z',
+      payload: {
+        message: 'example-provider degraded: latency 250ms',
+        ...makeProviderHealth({ status: 'degraded', latency_ms: 250 }),
+      },
     })
-    // The dashboard surfaces provider health via the ProviderHealthBadge
-    // role="img" element. Asserting the badge stays visible after the
-    // health-changed event proves the SPA processed the WS frame
-    // without tearing down the surface; a regression in the WS handler
-    // chain (missing discriminator, type drift on the event payload)
-    // would either crash the page or leave the badge unrendered.
+    // The notifications store enqueues a "System error" entry for
+    // ``system.error`` events. Asserting that title is visible proves
+    // the WS frame conformed to the runtime validator (``isWsEvent``)
+    // and reached the registered handler chain. ``provider.*`` events
+    // are not yet in ``WS_EVENT_TYPE_VALUES``, so we use the closest
+    // generic channel that the dashboard already wires up; the
+    // provider-list rerender is also asserted separately to catch a
+    // surface teardown regression.
+    await expect(page.getByText('System error').first()).toBeVisible()
     await expect(page.getByText('example-provider').first()).toBeVisible()
   })
 })

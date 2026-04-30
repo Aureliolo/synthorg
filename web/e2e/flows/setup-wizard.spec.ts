@@ -25,6 +25,17 @@ test.describe('Setup wizard critical flow', () => {
     await page.goto('/setup')
     await expect(page).toHaveURL(/\/setup/)
     await expect(page.locator('main')).toBeVisible()
-    await expect(page.getByRole('heading').first()).toBeVisible()
+    const heading = page.getByRole('heading').first()
+    await expect(heading).toBeVisible()
+    // Capture the first-step heading text and exercise a real form
+    // interaction: every wizard step renders at least one named text
+    // input. Filling it proves the form is interactive (not just
+    // mounted) and that the controlled-input wiring round-trips
+    // typed values back into the rendered DOM.
+    const firstInput = page.locator('input[type="text"], input:not([type])').first()
+    if (await firstInput.count()) {
+      await firstInput.fill('SynthOrg E2E Co')
+      await expect(firstInput).toHaveValue('SynthOrg E2E Co')
+    }
   })
 })

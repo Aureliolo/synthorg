@@ -105,3 +105,54 @@ def test_unparseable_file_raises(write_test_file: object) -> None:
     path = write_test_file(src)  # type: ignore[operator]
     with pytest.raises(_MODULE.InspectionError):  # type: ignore[attr-defined]
         _MODULE._scan_file(path)  # type: ignore[attr-defined]
+
+
+def test_kwargs_without_spec_flagged(write_test_file: object) -> None:
+    """``Mock(name="x")``, ``Mock(return_value=42)`` etc. don't declare a spec."""
+    src = (
+        "from unittest.mock import AsyncMock, MagicMock, Mock\n"
+        "a = AsyncMock(name='x')\n"
+        "b = MagicMock(return_value=42)\n"
+        "c = Mock(side_effect=ValueError)\n"
+        "d = Mock(wraps=object())\n"
+    )
+    path = write_test_file(src)  # type: ignore[operator]
+    hits = _MODULE._scan_file(path)  # type: ignore[attr-defined]
+    assert len(hits) == 4
+    assert {lineno for lineno, _ in hits} == {2, 3, 4, 5}
+
+
+def test_spec_kwarg_ignored(write_test_file: object) -> None:
+    """``spec=`` and ``spec_set=`` keyword args declare the interface."""
+    src = (
+        "from unittest.mock import AsyncMock, Mock\n"
+        "class Foo: ...\n"
+        "a = AsyncMock(spec=Foo, name='x')\n"
+        "b = Mock(spec_set=Foo, return_value=42)\n"
+    )
+    path = write_test_file(src)  # type: ignore[operator]
+    assert _MODULE._scan_file(path) == []  # type: ignore[attr-defined]
+
+
+def test_shared_dir_excluded_via_pre_commit_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``cmd_scan_paths`` skips ``tests/_shared/`` like ``--scan-all`` does.
+
+    Pre-commit feeds individual paths to ``cmd_scan_paths``; the
+    exclusion needs to apply at that entry point too, not only at the
+    walk-the-tree entry point.
+    """
+    tests_root = tmp_path / "tests"
+    shared = tests_root / "_shared"
+    shared.mkdir(parents=True)
+    bad_file = shared / "fake.py"
+    bad_file.write_text(
+        "from unittest.mock import AsyncMock\nx = AsyncMock()\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(_MODULE, "_TESTS_ROOT", tests_root)
+    monkeypatch.setattr(_MODULE, "_load_baseline", set)
+    rc = _MODULE.cmd_scan_paths([str(bad_file)])  # type: ignore[attr-defined]
+    assert rc == 0

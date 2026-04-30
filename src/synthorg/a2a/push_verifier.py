@@ -14,6 +14,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
     A2A_PUSH_VERIFICATION_FAILED,
     A2A_PUSH_VERIFIED,
+    A2A_PUSH_VERIFIER_CONFIG_INVALID,
 )
 
 logger = get_logger(__name__)
@@ -47,6 +48,11 @@ class A2APushVerifier:
         # gate. ``0`` is the documented opt-out (no freshness check)
         # per the ``> 0`` guard in ``verify``.
         if clock_skew_seconds < 0:
+            logger.warning(
+                A2A_PUSH_VERIFIER_CONFIG_INVALID,
+                reason="clock_skew_seconds must be non-negative",
+                clock_skew_seconds=clock_skew_seconds,
+            )
             msg = f"clock_skew_seconds must be non-negative; got {clock_skew_seconds}"
             raise ValueError(msg)
         self._clock_skew_seconds = clock_skew_seconds

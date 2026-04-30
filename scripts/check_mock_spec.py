@@ -12,10 +12,14 @@ The gate matches a call when:
 1. The callee is a ``Name`` or ``Attribute`` whose terminal
    identifier is one of ``Mock`` / ``AsyncMock`` / ``MagicMock``,
    covering both ``Mock()`` and ``mock.Mock()`` shapes.
-2. The call has zero positional and zero keyword arguments. A
-   ``spec=Class`` (or ``spec_set=Class``, or any positional first
-   arg interpreted as the spec) is sufficient to declare the
-   interface; only the bare-call form is forbidden.
+2. The call does NOT declare a spec. A spec is declared via the
+   first positional arg (``Mock(SomeClass)`` is an alias for
+   ``Mock(spec=SomeClass)``) OR an explicit ``spec=`` / ``spec_set=``
+   keyword arg. Other keyword args (``name=``, ``return_value=``,
+   ``side_effect=``, ``wraps=``, ...) configure mock behaviour but
+   do NOT declare the interface, so they don't exempt the call.
+   Non-empty ``*args`` / ``**kwargs`` splats are conservatively
+   skipped because a spec could be passed dynamically.
 
 Allowlist
 ---------
@@ -82,20 +86,35 @@ class _BareMockFinder(ast.NodeVisitor):
         self.hits: list[tuple[int, int]] = []
 
     def visit_Call(self, node: ast.Call) -> None:
-        """Match bare-call mocks (no effective positional or keyword args).
+        """Flag Mock-family calls that don't declare a spec.
 
-        ``Mock(*())`` and ``Mock(**{})`` are still bare calls: the splat
-        is empty, so the runtime call has zero args. The naive check
-        ``if node.args or node.keywords`` would treat them as
-        non-bare. Walk the args/kwargs and keep the call in scope only
-        when every entry is an empty literal splat.
+        A spec is declared via:
+          * the first positional arg (``Mock(SomeClass)`` is an alias
+            for ``Mock(spec=SomeClass)``), OR
+          * an explicit ``spec=`` / ``spec_set=`` keyword arg.
+
+        Other keyword args (``name=``, ``return_value=``, ``side_effect=``,
+        ``wraps=``, ...) configure mock behaviour but do NOT declare the
+        interface, so they don't exempt the call from the gate. Empty
+        splats (``*[]``, ``**{}``) also don't declare a spec.
+
+        Non-empty ``*args`` / ``**kwargs`` splats are the one ambiguous
+        case: a spec could be passed dynamically. The gate stays
+        conservative and skips those (the bare-call form is what the
+        rule targets; dynamic-splat call sites are vanishingly rare in
+        the test suite and any false negative there is acceptable).
         """
-        if not _all_args_empty(node.args) or not _all_keywords_empty(node.keywords):
+        terminal = _terminal_callee_name(node.func)
+        if terminal is None or terminal not in _MOCK_NAMES:
             self.generic_visit(node)
             return
-        terminal = _terminal_callee_name(node.func)
-        if terminal is not None and terminal in _MOCK_NAMES:
-            self.hits.append((node.lineno, node.col_offset))
+        if _has_spec_positional(node.args) or _has_spec_keyword(node.keywords):
+            self.generic_visit(node)
+            return
+        if _has_dynamic_splat(node.args, node.keywords):
+            self.generic_visit(node)
+            return
+        self.hits.append((node.lineno, node.col_offset))
         self.generic_visit(node)
 
 
@@ -112,16 +131,38 @@ def _is_empty_splat(value: ast.expr) -> bool:
     return False
 
 
-def _all_args_empty(args: list[ast.expr]) -> bool:
-    """Return True if every positional arg is an empty splat."""
-    return all(
-        isinstance(arg, ast.Starred) and _is_empty_splat(arg.value) for arg in args
-    )
+def _has_spec_positional(args: list[ast.expr]) -> bool:
+    """Return True if the first positional arg declares a spec.
+
+    ``Mock(SomeClass)`` is an alias for ``Mock(spec=SomeClass)``;
+    the first positional arg counts as a spec declaration as long
+    as it is a real value (not an empty splat).
+    """
+    if not args:
+        return False
+    first = args[0]
+    if isinstance(first, ast.Starred):
+        return not _is_empty_splat(first.value)
+    return True
 
 
-def _all_keywords_empty(keywords: list[ast.keyword]) -> bool:
-    """Return True if every keyword is an empty double-splat."""
-    return all(kw.arg is None and _is_empty_splat(kw.value) for kw in keywords)
+def _has_spec_keyword(keywords: list[ast.keyword]) -> bool:
+    """Return True if any keyword arg is ``spec=`` or ``spec_set=``."""
+    return any(kw.arg in ("spec", "spec_set") for kw in keywords)
+
+
+def _has_dynamic_splat(args: list[ast.expr], keywords: list[ast.keyword]) -> bool:
+    """Return True if args/kwargs contain a non-empty splat.
+
+    A non-empty splat (``*some_list``, ``**some_dict``) could pass
+    a spec dynamically; the gate stays conservative and treats
+    those as non-violations.
+    """
+    if any(
+        isinstance(arg, ast.Starred) and not _is_empty_splat(arg.value) for arg in args
+    ):
+        return True
+    return any(kw.arg is None and not _is_empty_splat(kw.value) for kw in keywords)
 
 
 def _terminal_callee_name(value: ast.expr) -> str | None:
@@ -253,12 +294,22 @@ def cmd_scan_all() -> int:
 
 
 def cmd_scan_paths(paths: Iterable[str]) -> int:
-    """Scan the given files (pre-commit entry point)."""
+    """Scan the given files (pre-commit entry point).
+
+    Skips files under ``tests/_shared/`` for the same reason
+    ``_iter_test_files`` does: the package holds shared test utilities
+    (``FakeClock``, ...) that are imported by tests, not collected as
+    tests themselves. Scanning them via the pre-commit path would let
+    the gate disagree with the ``--scan-all`` / ``--update`` paths.
+    """
     baseline = _load_baseline()
+    shared_dir = _TESTS_ROOT / "_shared"
     violations: list[str] = []
     for p in paths:
         path = Path(p).resolve()
         if not path.is_relative_to(_TESTS_ROOT):
+            continue
+        if shared_dir in path.parents:
             continue
         if not path.exists() or path.suffix != ".py":
             continue

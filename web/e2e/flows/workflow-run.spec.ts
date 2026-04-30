@@ -37,15 +37,26 @@ test.describe('Workflow run critical flow', () => {
     await expect(page).toHaveURL(/\/workflows/)
     await expect(page.locator('main')).toBeVisible()
 
-    // Push an execution-status event. The store applies the update;
-    // the test guarantees the SPA does not crash on receipt.
+    // Push an execution-status event. ``workflow_execution.*`` is not
+    // (yet) in ``WS_EVENT_TYPE_VALUES``, so we use the closest mapped
+    // event the dashboard already handles -- a coordination-completed
+    // frame that the store dispatches without further filtering.
+    // Wire envelope conforms to ``isWsEvent`` (event_type / channel /
+    // timestamp / payload); the legacy ``{type, ..., execution}``
+    // shape would be silently discarded.
+    const execution = makeWorkflowExecution({
+      status: 'success',
+      finished_at: '2026-04-01T12:01:00Z',
+    })
     await injectEvent(page, {
-      type: 'workflow_execution.status_changed',
-      version: 1,
-      execution: makeWorkflowExecution({
-        status: 'success',
-        finished_at: '2026-04-01T12:01:00Z',
-      }),
+      event_type: 'coordination.completed',
+      channel: 'system',
+      timestamp: '2026-04-01T12:01:00Z',
+      payload: {
+        ...execution,
+        execution_id: execution.id,
+        message: `workflow execution ${execution.id} completed`,
+      },
     })
     await expect(page.locator('main')).toBeVisible()
   })

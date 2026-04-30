@@ -25,6 +25,10 @@ import {
  * status updates pushed through the harness instead. That keeps the
  * test resilient while still asserting every transition the user
  * journey produces lands in the rendered DOM.
+ *
+ * Wire envelope: events match the dashboard's ``WsEvent`` runtime
+ * validator (``isWsEvent`` in ``stores/websocket.ts``); the legacy
+ * ``{type, ...domain}`` shape is silently discarded by the WS layer.
  */
 
 test.describe('Task lifecycle critical flow', () => {
@@ -81,32 +85,54 @@ test.describe('Task lifecycle critical flow', () => {
         status: 'pending',
       })
       await injectEvent(page, {
-        type: 'task.approval_requested',
-        version: 1,
-        task: highRiskTask,
-        approval,
+        event_type: 'approval.submitted',
+        channel: 'approvals',
+        timestamp: '2026-04-01T12:00:00Z',
+        payload: {
+          ...approval,
+          approval_id: approval.id,
+          task: highRiskTask,
+        },
       })
 
       // Step 2: reviewer approves.
       await injectEvent(page, {
-        type: 'approval.status_changed',
-        version: 1,
-        approval: { ...approval, status: 'approved', reviewer_id: 'agent-002' },
+        event_type: 'approval.approved',
+        channel: 'approvals',
+        timestamp: '2026-04-01T12:01:00Z',
+        payload: {
+          ...approval,
+          approval_id: approval.id,
+          status: 'approved',
+          reviewer_id: 'agent-002',
+        },
       })
 
       // Step 3: task transitions TODO -> IN_PROGRESS via the
       // server-pushed status event.
       await injectEvent(page, {
-        type: 'task.status_changed',
-        version: 1,
-        task: { ...highRiskTask, approved: true, status: 'in_progress' },
+        event_type: 'task.status_changed',
+        channel: 'tasks',
+        timestamp: '2026-04-01T12:02:00Z',
+        payload: {
+          ...highRiskTask,
+          task_id: highRiskTask.id,
+          approved: true,
+          status: 'in_progress',
+        },
       })
 
       // Step 4: task transitions IN_PROGRESS -> DONE.
       await injectEvent(page, {
-        type: 'task.status_changed',
-        version: 1,
-        task: { ...highRiskTask, approved: true, status: 'done' },
+        event_type: 'task.status_changed',
+        channel: 'tasks',
+        timestamp: '2026-04-01T12:03:00Z',
+        payload: {
+          ...highRiskTask,
+          task_id: highRiskTask.id,
+          approved: true,
+          status: 'done',
+        },
       })
 
       // The board renders task cards by title; asserting the seeded
