@@ -196,10 +196,154 @@ extra=forbid) and reuse the `_ArgsBase` / `PaginationFields` /
 `DestructiveGuardrailFields` mixins under
 `src/synthorg/meta/mcp/domains/_common_args.py` where applicable.
 
+## 10. Pydantic v2 model conventions
+
+Three rules apply on top of §8's frozen `ConfigDict`:
+
+* **`NotBlankStr` for identifier / name fields.** Import from
+  `synthorg.core.types` and use it for every identifier, name, or
+  required-non-empty string field, including the `NotBlankStr | None`
+  optional and `tuple[NotBlankStr, ...]` tuple variants. Replaces the
+  manual whitespace validators that several models used to carry.
+* **`@computed_field` for derived values.** Never store + validate a
+  redundant field; let it derive. Canonical example:
+  `TokenUsage.total_tokens` is a computed field over `prompt_tokens`
+  and `completion_tokens`.
+* **`allow_inf_nan=False` everywhere.** Already part of the standard
+  `ConfigDict` from §8. The point is that numeric fields reject `NaN`
+  and `Inf` at validation time rather than producing silent garbage
+  downstream.
+
+Reference: 30+ occurrences across `src/synthorg/`. The
+`tests/unit/api/test_response_models.py` and
+`tests/unit/persistence/test_token_usage.py` suites pin the
+`computed_field` and `NotBlankStr` patterns.
+
+## 11. Async concurrency: `asyncio.TaskGroup` and structured concurrency
+
+New code uses `asyncio.TaskGroup` for fan-out / fan-in parallel work
+(multiple tool invocations, parallel agent calls). Bare
+`asyncio.create_task` is reserved for genuinely fire-and-forget paths
+that escape the current scope (rare; prefer structured concurrency).
+
+When running multiple tasks inside a `TaskGroup` where one task's
+failure should NOT cancel the others -- independent workers,
+classification detectors, notification sinks -- wrap each task body
+in a small `async def` helper that catches `Exception` and returns a
+safe default. Re-raise only `MemoryError` / `RecursionError` (those
+indicate the interpreter itself is in trouble and the group should
+unwind):
+
+```python
+async def _safe_dispatch(sink: NotificationSink, payload: Payload) -> None:
+    try:
+        await sink.dispatch(payload)
+    except (MemoryError, RecursionError):
+        raise
+    except Exception:
+        logger.warning(SINK_DISPATCH_FAILED, sink=sink.name, exc_info=False)
+
+async with asyncio.TaskGroup() as tg:
+    for sink in self._sinks:
+        tg.create_task(_safe_dispatch(sink, payload))
+```
+
+Migration is incremental. Existing `gather(..., return_exceptions=True)`
+sites are being converted as code in their vicinity changes; do not
+preemptively rewrite unrelated modules.
+
+## 12. Time injection: the `Clock` seam
+
+Any class that reads wall-clock time, monotonic time, or sleeps
+cooperatively MUST take an optional `clock: Clock | None = None`
+constructor parameter that defaults to `SystemClock()` (both from
+`synthorg.core.clock`):
+
+| Replace ... | with ... |
+|---|---|
+| `datetime.now(UTC)` | `self._clock.now()` |
+| `time.monotonic()` | `self._clock.monotonic()` |
+| `await asyncio.sleep(...)` | `await self._clock.sleep(...)` |
+| `time.time()` (epoch float) | `self._clock.now().timestamp()` |
+
+The wall-clock-epoch case matters for sites that compare against an
+attacker-supplied timestamp header (webhook freshness checks):
+`self._clock.now().timestamp()` produces the same epoch float
+without bypassing the seam.
+
+Tests inject `FakeClock` from `tests/_shared/fake_clock.py` and drive
+virtual time deterministically via `clock.advance(seconds)`,
+`await clock.advance_async(seconds)`, or `await clock.sleep(seconds)`
+(which advances and yields once so awaiters wake up the same way they
+would under `SystemClock`).
+
+### Sanctioned legacy callable shape
+
+`loop_prevention/{circuit_breaker,dedup,rate_limit}.py` and
+`communication/meeting/scheduler.py` deliberately stay on the older
+`clock: Callable[[], float] = time.monotonic` shape. The migration
+churn there (~30 test sites passing callables) outweighs the
+testability win. New code uses the `Clock` Protocol; do not add new
+modules to the legacy-callable list without justification.
+
+## 13. Observability event-name inventory
+
+Every observability event is a `Final[str]` constant in a
+domain-scoped module under `src/synthorg/observability/events/`.
+Import by name from the domain module; never use a string literal in
+a `logger.*(...)` call.
+
+Domains currently exposing constants (non-exhaustive; see
+`src/synthorg/observability/events/__init__.py` for the live list):
+`api`, `tool`, `workflow_execution`, `approval_gate`, `hr`,
+`workers`, `meeting`, `engine`, `escalation`, `settings`,
+`memory`, `persistence`, `mcp`, `telemetry`, `classification`,
+`verification`, `rollout`, `chief_of_staff`, `analytics`,
+`integrations`, `a2a`, `budget`, `coordination`.
+
+### `events/telemetry.py` namespace split
+
+`events/telemetry.py` carries two name-spaced groups:
+
+- `TELEMETRY_*` constants are observability log events emitted via
+  `logger.*(...)`.
+- `TELEMETRY_EVENT_*` constants are payload event types that go
+  inside `TelemetryEvent.event_type` and ride through the privacy
+  scrubber.
+
+Pick the right namespace when adding constants. Mixing them is the
+typical cause of "the scrubber rejected my new field" surprises.
+
+### `*_STATUS_TRANSITIONED` constants
+
+Every status enum hop (including non-terminal ones like
+`PENDING -> RUNNING`) MUST log at INFO using a domain-scoped
+`*_STATUS_TRANSITIONED` constant carrying `from_status`,
+`to_status`, and the domain identifier. Examples:
+`WORKFLOW_EXEC_STATUS_TRANSITIONED`,
+`APPROVAL_STATUS_TRANSITIONED`,
+`PRUNING_REQUEST_STATUS_TRANSITIONED`.
+
+Subsystems that already have terminal-state events
+(`MEETING_COMPLETED`, `WORKFLOW_EXEC_FAILED`, ...) keep those for
+final-hop summaries. The transition log fires AFTER the persistence
+write succeeds, so the audit trail captures only transitions that
+actually landed; if pre-decision visibility is needed, emit a
+separate DEBUG "attempting transition" log alongside.
+
 ## See also
 
 * [persistence-boundary.md](persistence-boundary.md): repository /
-  service / controller layering.
+  service / controller layering, plus the datetime-marshalling
+  helpers (`parse_iso_utc`, `format_iso_utc`, `normalize_utc`,
+  `coerce_row_timestamp`).
 * [lifecycle-sync.md](lifecycle-sync.md): `_lifecycle_lock` rule.
 * [pluggable-subsystems.md](pluggable-subsystems.md): protocol +
   strategy + factory + config discriminator pattern.
+* [sec-prompt-safety.md](sec-prompt-safety.md): SEC-1 untrusted-content
+  fences, HTML parsing guard, secret-log redaction (the `error=str(exc)`
+  ban).
+* [errors.md](errors.md): RFC 9457 problem details, error-code
+  ranges, HTTP exception handler registration recipe.
+* [mcp-handler-contract.md](mcp-handler-contract.md): the Args models
+  contract at the MCP boundary (#1611).
