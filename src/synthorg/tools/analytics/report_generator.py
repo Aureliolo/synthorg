@@ -5,9 +5,10 @@ the results into human-readable reports in text, markdown, or JSON.
 """
 
 import asyncio
-import copy
 import json
-from typing import Any, Final
+from typing import Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -17,6 +18,7 @@ from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_REPORT_START,
     ANALYTICS_TOOL_REPORT_SUCCESS,
 )
+from synthorg.tools.analytics._args import ReportGeneratorArgs
 from synthorg.tools.analytics.base_analytics_tool import BaseAnalyticsTool
 from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
 from synthorg.tools.analytics.data_aggregator import (
@@ -54,30 +56,6 @@ _REPORT_METRICS: Final[dict[str, list[str]]] = {
     ],
 }
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "report_type": {
-            "type": "string",
-            "enum": sorted(_REPORT_TYPES),
-            "description": "Type of report to generate",
-        },
-        "period": {
-            "type": "string",
-            "enum": sorted(_VALID_PERIODS),
-            "description": "Reporting period",
-        },
-        "format": {
-            "type": "string",
-            "enum": sorted(_OUTPUT_FORMATS),
-            "description": "Output format (default: markdown)",
-            "default": "markdown",
-        },
-    },
-    "required": ["report_type", "period"],
-    "additionalProperties": False,
-}
-
 
 class ReportGeneratorTool(BaseAnalyticsTool):
     """Generate formatted analytics reports.
@@ -98,6 +76,8 @@ class ReportGeneratorTool(BaseAnalyticsTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = ReportGeneratorArgs
+
     def __init__(
         self,
         *,
@@ -107,9 +87,10 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         """Initialize the report generator tool.
 
         Args:
-            provider: Analytics data provider.  ``None`` means
-                the tool will return an error on execution.
-            config: Analytics tool configuration.
+            provider: Analytics data source. ``None`` makes
+                ``execute`` return a configuration error.
+            config: Analytics tool configuration. ``None`` falls back
+                to defaults.
         """
         super().__init__(
             name="report_generator",
@@ -117,7 +98,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 "Generate formatted analytics reports "
                 "(budget, performance, trends, cost breakdown)."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=ReportGeneratorArgs.model_json_schema(),
             action_type=ActionType.CODE_READ,
             config=config,
         )

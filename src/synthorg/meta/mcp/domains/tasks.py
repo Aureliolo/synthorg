@@ -5,6 +5,16 @@ Covers tasks and activities controllers.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._tasks_args import (
+    ActivitiesListArgs,
+    TasksCancelArgs,
+    TasksCreateArgs,
+    TasksDeleteArgs,
+    TasksGetArgs,
+    TasksListArgs,
+    TasksTransitionArgs,
+    TasksUpdateArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
@@ -31,6 +41,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "project": {"type": "string", "description": "Filter by project"},
             **PAGINATION_PROPERTIES,
         },
+        args_model=TasksListArgs,
     ),
     read_tool(
         "tasks",
@@ -40,6 +51,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "task_id": {"type": "string", "description": "Task UUID"},
         },
         required=("task_id",),
+        args_model=TasksGetArgs,
     ),
     write_tool(
         "tasks",
@@ -52,6 +64,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "project": {"type": "string", "description": "Project name"},
         },
         required=("title",),
+        args_model=TasksCreateArgs,
     ),
     write_tool(
         "tasks",
@@ -62,6 +75,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "updates": {"type": "object", "description": "Fields to update"},
         },
         required=("task_id", "updates"),
+        args_model=TasksUpdateArgs,
     ),
     admin_tool(
         "tasks",
@@ -72,6 +86,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("task_id", "reason", "confirm"),
+        args_model=TasksDeleteArgs,
     ),
     write_tool(
         "tasks",
@@ -82,6 +97,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "target_status": {"type": "string", "description": "Target status"},
         },
         required=("task_id", "target_status"),
+        args_model=TasksTransitionArgs,
     ),
     admin_tool(
         "tasks",
@@ -92,6 +108,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("task_id", "reason", "confirm"),
+        args_model=TasksCancelArgs,
     ),
     # --- Activities ---
     read_tool(
@@ -108,5 +125,6 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             },
             **PAGINATION_PROPERTIES,
         },
+        args_model=ActivitiesListArgs,
     ),
 )

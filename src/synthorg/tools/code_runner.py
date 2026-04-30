@@ -3,7 +3,9 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger
@@ -13,6 +15,7 @@ from synthorg.observability.events.code_runner import (
     CODE_RUNNER_EXECUTE_SUCCESS,
     CODE_RUNNER_INVALID_LANGUAGE,
 )
+from synthorg.tools._misc_args import CodeRunnerArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 
@@ -27,29 +30,6 @@ _LANGUAGE_COMMANDS: Final[dict[str, tuple[str, str]]] = {
     "bash": ("bash", "-c"),
 }
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "code": {
-            "type": "string",
-            "description": "Source code to execute",
-        },
-        "language": {
-            "type": "string",
-            "enum": ["python", "javascript", "bash"],
-            "description": "Programming language of the code",
-        },
-        "timeout": {
-            "type": "number",
-            "description": "Optional timeout in seconds",
-            "minimum": 0,
-            "maximum": 600,
-        },
-    },
-    "required": ["code", "language"],
-    "additionalProperties": False,
-}
-
 
 class CodeRunnerTool(BaseTool):
     """Executes code snippets in a sandboxed environment.
@@ -58,11 +38,14 @@ class CodeRunnerTool(BaseTool):
     a ``SandboxBackend`` for isolation and resource control.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = CodeRunnerArgs
+
     def __init__(self, *, sandbox: SandboxBackend) -> None:
         """Initialize the code runner tool.
 
         Args:
-            sandbox: Sandbox backend for isolated code execution.
+            sandbox: Sandboxed execution backend that enforces
+                isolation and resource control.
         """
         super().__init__(
             name="code_runner",
@@ -71,7 +54,7 @@ class CodeRunnerTool(BaseTool):
                 "or Bash within a sandboxed environment"
             ),
             category=ToolCategory.CODE_EXECUTION,
-            parameters_schema=dict(_PARAMETERS_SCHEMA),
+            parameters_schema=CodeRunnerArgs.model_json_schema(),
         )
         self._sandbox = sandbox
 

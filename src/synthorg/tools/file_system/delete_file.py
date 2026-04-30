@@ -1,12 +1,15 @@
 """Delete file tool -- removes a single file from the workspace."""
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import TOOL_FS_DELETE, TOOL_FS_ERROR
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.file_system._args import DeleteFileArgs
 from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool
 
 if TYPE_CHECKING:
@@ -46,28 +49,16 @@ class DeleteFileTool(BaseFileSystemTool):
             result = await tool.execute(arguments={"path": "tmp.txt"})
     """
 
-    def __init__(self, *, workspace_root: Path) -> None:
-        """Initialize the delete-file tool.
+    args_model: ClassVar[type[BaseModel] | None] = DeleteFileArgs
 
-        Args:
-            workspace_root: Root directory bounding file access.
-        """
+    def __init__(self, *, workspace_root: Path) -> None:
+        """Initialize the delete-file tool, deriving its schema from DeleteFileArgs."""
         super().__init__(
             workspace_root=workspace_root,
             name="delete_file",
             action_type=ActionType.CODE_DELETE,
             description="Delete a single file from the workspace.",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "File path relative to workspace",
-                    },
-                },
-                "required": ["path"],
-                "additionalProperties": False,
-            },
+            parameters_schema=DeleteFileArgs.model_json_schema(),
         )
 
     @property

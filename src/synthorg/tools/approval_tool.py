@@ -7,8 +7,10 @@ until the approval decision arrives.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import uuid4
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.core.validation import is_valid_action_type
@@ -19,6 +21,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RISK_CLASSIFIED,
     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
 )
+from synthorg.tools._misc_args import RequestHumanApprovalArgs
 
 from .base import BaseTool, ToolExecutionResult
 
@@ -46,6 +49,8 @@ class RequestHumanApprovalTool(BaseTool):
         task_id: Optional associated task identifier.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = RequestHumanApprovalArgs
+
     def __init__(
         self,
         *,
@@ -65,31 +70,7 @@ class RequestHumanApprovalTool(BaseTool):
             ),
             category=ToolCategory.OTHER,
             action_type="comms:internal",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "action_type": {
-                        "type": "string",
-                        "maxLength": 128,
-                        "description": (
-                            "Action type in category:action format "
-                            "(e.g. 'deploy:production', 'db:admin')"
-                        ),
-                    },
-                    "title": {
-                        "type": "string",
-                        "maxLength": 256,
-                        "description": "Short summary of the approval request",
-                    },
-                    "description": {
-                        "type": "string",
-                        "maxLength": 4096,
-                        "description": "Detailed explanation of what needs approval",
-                    },
-                },
-                "required": ["action_type", "title", "description"],
-                "additionalProperties": False,
-            },
+            parameters_schema=RequestHumanApprovalArgs.model_json_schema(),
         )
         self._approval_store = approval_store
         self._risk_classifier = risk_classifier
@@ -266,10 +247,12 @@ class RequestHumanApprovalTool(BaseTool):
                 level = self._risk_classifier.classify(action_type)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.warning(
                     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
                     action_type=action_type,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     note="Risk classification failed -- defaulting to HIGH",
                 )
                 return ApprovalRiskLevel.HIGH

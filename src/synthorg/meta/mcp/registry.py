@@ -33,15 +33,32 @@ class MCPToolDef(BaseModel):
         capability: Capability tag in ``domain:action`` format (e.g.
             ``"tasks:read"``).  Used by ``MCPToolScoper`` for filtering.
         handler_key: Key into the handler registry for dispatch.
+        args_model: Optional Pydantic model class for typed-args
+            validation at the invoker boundary (#1611 Phase 4).  When
+            set, :class:`MCPToolInvoker` validates the raw ``arguments``
+            dict against the model before calling the handler; the
+            ``ValidationError`` surfaces as an
+            ``invalid_argument``-coded error envelope without ever
+            reaching the handler.  ``None`` (the default) keeps the
+            legacy ``common_args`` validators inside the handler body.
+            Each domain's ``_*_args.py`` module exports the matching
+            model alongside its tool registration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True, allow_inf_nan=False, arbitrary_types_allowed=True
+    )
 
     name: NotBlankStr = Field(description="Tool name (synthorg_{domain}_{action})")
     description: NotBlankStr = Field(description="Human-readable description")
     parameters: dict[str, Any] = Field(description="JSON Schema for parameters")
     capability: NotBlankStr = Field(description="Capability tag (domain:action)")
     handler_key: NotBlankStr = Field(description="Handler registry key")
+    args_model: type[BaseModel] | None = Field(
+        default=None,
+        description="Optional Pydantic args model for typed validation",
+        exclude=True,
+    )
 
     _NAME_RE = re.compile(r"^synthorg_[a-z][a-z0-9_]*_[a-z][a-z0-9_]*$")
     _CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
@@ -70,6 +87,64 @@ class MCPToolDef(BaseModel):
             msg = (
                 f"Capability must match 'domain:action' "
                 f"(lowercase alphanumeric + underscores): {self.capability!r}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_args_model_property_alignment(self) -> Self:
+        """Catch drift between ``args_model`` and the wire JSON Schema.
+
+        When the registration carries both an ``args_model`` (used by
+        the invoker for runtime validation) and a hand-crafted
+        ``parameters`` dict (the wire schema clients see in
+        ``tools/list``), they MUST advertise the same property names
+        AND the same required-field set.  Otherwise the invoker
+        rejects shapes the wire schema accepts (or vice versa), or the
+        wire schema documents one contract while validation enforces
+        another -- both of which surface as silent caller bugs.
+        """
+        if self.args_model is None:
+            return self
+        wire_props = self.parameters.get("properties")
+        if not isinstance(wire_props, dict):
+            return self
+        wire_keys = set(wire_props)
+        model_keys = set(self.args_model.model_fields)
+        wire_only = wire_keys - model_keys
+        model_only = model_keys - wire_keys
+        if wire_only or model_only:
+            msg = (
+                f"Tool {self.name!r} has args_model / wire-schema drift; "
+                f"properties on wire but not in args_model: "
+                f"{sorted(wire_only) or 'none'}; fields in args_model "
+                f"but not on wire: {sorted(model_only) or 'none'}.  "
+                "Either drop the explicit properties so the wire schema "
+                "is derived from args_model, or update both surfaces in "
+                "lockstep."
+            )
+            raise ValueError(msg)
+        # Required-field alignment.  The wire schema's ``required``
+        # list and the args_model's required-field set must agree, or
+        # one side accepts payloads the other rejects.  ``FieldInfo.is_required()``
+        # is True when the field has no default (positional-style required).
+        wire_required_raw = self.parameters.get("required") or ()
+        wire_required: set[str] = set(wire_required_raw)
+        model_required = {
+            field_name
+            for field_name, field_info in self.args_model.model_fields.items()
+            if field_info.is_required()
+        }
+        wire_required_only = wire_required - model_required
+        model_required_only = model_required - wire_required
+        if wire_required_only or model_required_only:
+            msg = (
+                f"Tool {self.name!r} has args_model / wire-schema "
+                f"required-field drift; required on wire but optional "
+                f"in args_model: {sorted(wire_required_only) or 'none'}; "
+                f"required in args_model but optional on wire: "
+                f"{sorted(model_required_only) or 'none'}.  Update both "
+                "surfaces in lockstep."
             )
             raise ValueError(msg)
         return self

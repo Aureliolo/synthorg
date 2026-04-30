@@ -14,12 +14,12 @@ prevent filesystem escape regardless of read_only setting.
 """
 
 import asyncio
-import copy
 import re
 import urllib.parse
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 import aiosqlite
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -31,6 +31,7 @@ from synthorg.observability.events.database import (
     DB_WRITE_BLOCKED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.database._args import SqlQueryArgs
 from synthorg.tools.database.base_db_tool import BaseDatabaseTool
 from synthorg.tools.database.config import DatabaseConnectionConfig  # noqa: TC001
 
@@ -71,23 +72,6 @@ _LEADING_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
     re.DOTALL,
 )
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "query": {
-            "type": "string",
-            "description": "SQL query to execute",
-        },
-        "parameters": {
-            "type": "array",
-            "items": {},
-            "description": "Query parameters (for parameterized queries)",
-        },
-    },
-    "required": ["query"],
-    "additionalProperties": False,
-}
-
 
 def _classify_statement(query: str) -> str:
     """Return the uppercase first keyword of a SQL statement.
@@ -125,11 +109,15 @@ class SqlQueryTool(BaseDatabaseTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = SqlQueryArgs
+
     def __init__(self, *, config: DatabaseConnectionConfig) -> None:
         """Initialize the SQL query tool.
 
         Args:
-            config: Database connection configuration.
+            config: Database connection settings. The action type
+                resolves from ``config.read_only`` so security
+                policies can gate write-capable connections.
         """
         # Use DB_MUTATE when writes are permitted so security
         # policies can gate write-capable connections appropriately.
@@ -141,7 +129,7 @@ class SqlQueryTool(BaseDatabaseTool):
                 "Read-only by default; write queries require "
                 "explicit configuration."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=SqlQueryArgs.model_json_schema(),
             action_type=action,
             config=config,
         )

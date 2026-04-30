@@ -4,11 +4,33 @@ On-demand reference for implementing tool handlers in `src/synthorg/meta/mcp/han
 
 ## Surface
 
-SynthOrg exposes 200+ tools across 15 domains via its MCP server. Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
+SynthOrg exposes 200+ tools across the 15 domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organization, communication, integrations, infrastructure, memory). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
 
 ## ToolHandler protocol
 
-**Signature**: `async def _<tool>(*, app_state, arguments, actor: AgentIdentity | None = None) -> str`. The `actor` kwarg threads calling-agent identity through the invoker so destructive-op guardrails can attribute audit records. Handlers that don't care about identity still accept and ignore it.
+**Signature**: `async def _<tool>(*, app_state, arguments: dict[str, Any], actor: AgentIdentity | None = None) -> str`. The `actor` kwarg threads calling-agent identity through the invoker so destructive-op guardrails can attribute audit records. Handlers that don't care about identity still accept and ignore it.
+
+## Argument validation (typed-args path, #1611 Phase 4)
+
+Each builder accepts an optional `args_model: type[BaseModel]` kwarg that flows through to `MCPToolDef.args_model`. When set, the invoker validates the raw `arguments` dict against the Pydantic model **before** dispatching to the handler:
+
+- Validation success: the invoker takes the validated model's `model_dump(mode="python")` and passes that dict to the handler. Every key matches the model's declared fields with no extras (because args models use `extra="forbid"`); enum/datetime/etc. values are already coerced.
+- Validation failure: the invoker short-circuits with a `{"status": "error", "error_type": "ArgumentValidationError", "domain_code": "invalid_argument", "message": "...", "tool": ...}` envelope. The handler is never invoked.
+
+The handler's signature stays at `arguments: dict[str, Any]` (the protocol contract) so existing handlers don't need to migrate; the dict is just structurally sound after validation. Handlers that want compile-time typed access can call `args_model.model_validate(arguments)` locally (a no-op re-validate that returns the typed model with full mypy-strict field access):
+
+```python
+async def list_tasks_handler(*, app_state, arguments: dict[str, Any], actor=None) -> str:
+    args = TasksListArgs.model_validate(arguments)  # typed access from here on
+    page = await app_state.task_service.list(
+        status=args.status, offset=args.offset, limit=args.limit,
+    )
+    return ok(data=...)
+```
+
+Tools without an `args_model` (legacy / dynamically-shaped tools such as `MCPBridgeTool`) keep the manual `common_args` validation path described below.
+
+## Argument validation (legacy `common_args` path)
 
 ## Shared helper modules
 
@@ -29,9 +51,7 @@ Return a JSON string built by helpers in `common.py`:
 
 Never emit a bare `{"status": "not_implemented"}` payload; `make_placeholder_handler` delegates to `not_supported()` so every unwired tool ships the single agreed envelope. The `service_fallback()` helper is retained in `common.py` but has zero call sites after META-MCP-2; `tests/integration/mcp/test_tool_surface.py` asserts zero `MCP_HANDLER_SERVICE_FALLBACK` emissions across the full 204-tool surface.
 
-## Argument validation
-
-Use the helpers in `common_args.py`:
+Use the helpers in `common_args.py` for tools without `args_model`:
 
 - `require_arg(arguments, key, ty)` for typed required extraction.
 - `require_non_blank(arguments, key)` for required non-blank strings.

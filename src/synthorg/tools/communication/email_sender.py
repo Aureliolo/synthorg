@@ -6,12 +6,13 @@ blocking the event loop, following the same pattern as
 """
 
 import asyncio
-import copy
 import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -22,6 +23,7 @@ from synthorg.observability.events.communication import (
     COMM_TOOL_EMAIL_VALIDATION_FAILED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.communication._args import EmailSenderArgs
 from synthorg.tools.communication.base_communication_tool import (
     BaseCommunicationTool,
 )
@@ -38,43 +40,6 @@ _CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 
 # Reject addresses with newlines/carriage returns (header injection).
 _UNSAFE_ADDR_RE: Final[re.Pattern[str]] = re.compile(r"[\r\n]")
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "to": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Recipient email addresses",
-        },
-        "cc": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "CC email addresses",
-        },
-        "bcc": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "BCC email addresses",
-        },
-        "subject": {
-            "type": "string",
-            "description": "Email subject line",
-        },
-        "body": {
-            "type": "string",
-            "description": "Email body content",
-            "default": "",
-        },
-        "body_is_html": {
-            "type": "boolean",
-            "description": "Whether body is HTML (default: plain text)",
-            "default": False,
-        },
-    },
-    "required": ["to", "subject"],
-    "additionalProperties": False,
-}
 
 
 class EmailSenderTool(BaseCommunicationTool):
@@ -97,6 +62,8 @@ class EmailSenderTool(BaseCommunicationTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = EmailSenderArgs
+
     def __init__(
         self,
         *,
@@ -105,20 +72,21 @@ class EmailSenderTool(BaseCommunicationTool):
         """Initialize the email sender tool.
 
         Args:
-            config: Communication tool configuration with email
-                settings.
+            config: Communication tool configuration with email/SMTP
+                settings, recipient-count caps, and allowlist.
+                ``None`` falls back to defaults.
         """
         super().__init__(
             name="email_sender",
             description=(
                 "Send emails via SMTP. Supports plain text and HTML body content."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=EmailSenderArgs.model_json_schema(),
             action_type=ActionType.COMMS_EXTERNAL,
             config=config,
         )
 
-    async def execute(  # noqa: PLR0911
+    async def execute(  # noqa: PLR0911, C901
         self,
         *,
         arguments: dict[str, Any],
@@ -148,7 +116,9 @@ class EmailSenderTool(BaseCommunicationTool):
             )
 
         to_addrs = arguments.get("to")
-        if not isinstance(to_addrs, list):
+        if not isinstance(to_addrs, list) or any(
+            not isinstance(addr, str) for addr in to_addrs
+        ):
             logger.warning(
                 COMM_TOOL_EMAIL_VALIDATION_FAILED,
                 reason="invalid_to",
@@ -157,8 +127,40 @@ class EmailSenderTool(BaseCommunicationTool):
                 content="'to' must be a list of email addresses.",
                 is_error=True,
             )
-        cc_addrs: list[str] = arguments.get("cc") or []
-        bcc_addrs: list[str] = arguments.get("bcc") or []
+        # Direct callers (bypassing the invoker's args_model validation)
+        # can still send non-list cc/bcc, which would raise TypeError on
+        # the recipient concatenation below.  Reject the container shape
+        # AND the element types here; otherwise the
+        # ``_UNSAFE_ADDR_RE.search(addr)`` call later would raise
+        # ``TypeError`` and bypass the structured envelope.
+        cc_raw = arguments.get("cc")
+        if cc_raw is not None and (
+            not isinstance(cc_raw, list)
+            or any(not isinstance(addr, str) for addr in cc_raw)
+        ):
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="invalid_cc",
+            )
+            return ToolExecutionResult(
+                content="'cc' must be a list of email addresses.",
+                is_error=True,
+            )
+        bcc_raw = arguments.get("bcc")
+        if bcc_raw is not None and (
+            not isinstance(bcc_raw, list)
+            or any(not isinstance(addr, str) for addr in bcc_raw)
+        ):
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="invalid_bcc",
+            )
+            return ToolExecutionResult(
+                content="'bcc' must be a list of email addresses.",
+                is_error=True,
+            )
+        cc_addrs: list[str] = cc_raw or []
+        bcc_addrs: list[str] = bcc_raw or []
         subject = arguments.get("subject")
         if not isinstance(subject, str):
             logger.warning(

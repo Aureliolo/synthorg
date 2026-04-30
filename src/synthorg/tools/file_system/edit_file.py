@@ -4,7 +4,9 @@ import asyncio
 import os
 import pathlib
 import tempfile
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -16,6 +18,7 @@ from synthorg.observability.events.tool import (
     TOOL_FS_SIZE_EXCEEDED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.file_system._args import EditFileArgs
 from synthorg.tools.file_system._base_fs_tool import (
     BaseFileSystemTool,
     _map_os_error,
@@ -92,12 +95,10 @@ class EditFileTool(BaseFileSystemTool):
             )
     """
 
-    def __init__(self, *, workspace_root: Path) -> None:
-        """Initialize the edit-file tool.
+    args_model: ClassVar[type[BaseModel] | None] = EditFileArgs
 
-        Args:
-            workspace_root: Root directory bounding file access.
-        """
+    def __init__(self, *, workspace_root: Path) -> None:
+        """Initialize the edit-file tool, deriving its schema from EditFileArgs."""
         super().__init__(
             workspace_root=workspace_root,
             name="edit_file",
@@ -106,26 +107,7 @@ class EditFileTool(BaseFileSystemTool):
                 "Replace the first occurrence of old_text with new_text "
                 "in a file. Use empty new_text to delete text."
             ),
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "File path relative to workspace",
-                    },
-                    "old_text": {
-                        "type": "string",
-                        "minLength": 1,
-                        "description": "Exact text to find",
-                    },
-                    "new_text": {
-                        "type": "string",
-                        "description": "Replacement text (empty string to delete)",
-                    },
-                },
-                "required": ["path", "old_text", "new_text"],
-                "additionalProperties": False,
-            },
+            parameters_schema=EditFileArgs.model_json_schema(),
         )
 
     def _validate_edit_args(

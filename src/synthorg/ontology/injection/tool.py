@@ -5,8 +5,9 @@ retrieve entity definitions.  No prompt injection -- agents
 discover entities through the tool interface.
 """
 
-import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger
@@ -15,6 +16,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_TOOL_LOOKUP,
 )
 from synthorg.ontology.errors import OntologyNotFoundError
+from synthorg.ontology.injection._tool_args import LookupEntityArgs
 from synthorg.ontology.injection.prompt import format_entity
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
@@ -28,27 +30,6 @@ logger = get_logger(__name__)
 LOOKUP_ENTITY_TOOL_NAME = "lookup_entity"
 """Default tool name for entity lookup."""
 
-_LOOKUP_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "name": {
-            "type": "string",
-            "description": (
-                "Exact entity name to retrieve (e.g. 'Task', "
-                "'AgentIdentity'). Use 'query' for search instead."
-            ),
-        },
-        "query": {
-            "type": "string",
-            "description": (
-                "Free-text search query to find entities by name "
-                "or definition text. Use 'name' for exact lookup."
-            ),
-        },
-    },
-    "additionalProperties": False,
-}
-
 
 class LookupEntityTool(BaseTool):
     """On-demand entity definition lookup tool.
@@ -60,6 +41,8 @@ class LookupEntityTool(BaseTool):
         backend: Ontology backend for entity retrieval.
         tool_name: Override the default tool name.
     """
+
+    args_model: ClassVar[type[BaseModel] | None] = LookupEntityArgs
 
     def __init__(
         self,
@@ -74,7 +57,7 @@ class LookupEntityTool(BaseTool):
                 "ontology. Use 'name' for exact lookup or 'query' for "
                 "free-text search across entity names and definitions."
             ),
-            parameters_schema=copy.deepcopy(_LOOKUP_SCHEMA),
+            parameters_schema=LookupEntityArgs.model_json_schema(),
             category=ToolCategory.ONTOLOGY,
         )
         self._backend = backend

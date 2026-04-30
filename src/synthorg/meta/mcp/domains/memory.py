@@ -5,6 +5,20 @@ Covers memory admin controller (fine-tuning, checkpoints, embedder).
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._remaining_args import (
+    MemoryCancelFineTuneArgs,
+    MemoryDeleteCheckpointArgs,
+    MemoryDeleteEntryArgs,
+    MemoryDeployCheckpointArgs,
+    MemoryGetActiveEmbedderArgs,
+    MemoryGetFineTuneStatusArgs,
+    MemoryListCheckpointsArgs,
+    MemoryListRunsArgs,
+    MemoryResumeFineTuneArgs,
+    MemoryRollbackCheckpointArgs,
+    MemoryRunPreflightArgs,
+    MemoryStartFineTuneArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
@@ -143,6 +157,7 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "Start a memory fine-tuning pipeline.",
         _FINE_TUNE_PLAN_PROPERTIES,
         required=("source_dir",),
+        args_model=MemoryStartFineTuneArgs,
     ),
     admin_tool(
         "memory",
@@ -152,9 +167,13 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
             "run_id": {"type": "string", "description": "Run ID to resume"},
         },
         required=("run_id",),
+        args_model=MemoryResumeFineTuneArgs,
     ),
     read_tool(
-        "memory", "get_fine_tune_status", "Get the current fine-tune pipeline status."
+        "memory",
+        "get_fine_tune_status",
+        "Get the current fine-tune pipeline status.",
+        args_model=MemoryGetFineTuneStatusArgs,
     ),
     admin_tool(
         "memory",
@@ -162,6 +181,7 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "Cancel an active fine-tune pipeline (destructive; requires confirm).",
         {**DESTRUCTIVE_GUARDRAIL_PROPERTIES},
         required=("reason", "confirm"),
+        args_model=MemoryCancelFineTuneArgs,
     ),
     admin_tool(
         "memory",
@@ -169,6 +189,7 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "Run preflight checks before fine-tuning.",
         _FINE_TUNE_PLAN_PROPERTIES,
         required=("source_dir",),
+        args_model=MemoryRunPreflightArgs,
     ),
     # --- Checkpoints ---
     read_tool(
@@ -176,6 +197,7 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "list_checkpoints",
         "List fine-tune checkpoints.",
         PAGINATION_PROPERTIES,
+        args_model=MemoryListCheckpointsArgs,
     ),
     admin_tool(
         "memory",
@@ -185,6 +207,7 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
             "checkpoint_id": {"type": "string", "description": "Checkpoint UUID"},
         },
         required=("checkpoint_id",),
+        args_model=MemoryDeployCheckpointArgs,
     ),
     admin_tool(
         "memory",
@@ -195,6 +218,7 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("checkpoint_id", "reason", "confirm"),
+        args_model=MemoryRollbackCheckpointArgs,
     ),
     admin_tool(
         "memory",
@@ -205,16 +229,22 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("checkpoint_id", "reason", "confirm"),
+        args_model=MemoryDeleteCheckpointArgs,
     ),
     # --- Runs ---
     read_tool(
-        "memory", "list_runs", "List fine-tune pipeline runs.", PAGINATION_PROPERTIES
+        "memory",
+        "list_runs",
+        "List fine-tune pipeline runs.",
+        PAGINATION_PROPERTIES,
+        args_model=MemoryListRunsArgs,
     ),
     # --- Embedder ---
     read_tool(
         "memory",
         "get_active_embedder",
         "Get active embedder configuration (provider, model, dims).",
+        args_model=MemoryGetActiveEmbedderArgs,
     ),
     # --- Memory entries (GDPR) ---
     admin_tool(
@@ -240,5 +270,6 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("agent_id", "memory_id", "reason", "confirm"),
+        args_model=MemoryDeleteEntryArgs,
     ),
 )

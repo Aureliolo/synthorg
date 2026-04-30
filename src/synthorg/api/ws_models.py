@@ -6,7 +6,7 @@ serialised to JSON and pushed to WebSocket subscribers.
 
 import copy
 from enum import StrEnum
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from pydantic import (
     AwareDatetime,
@@ -17,6 +17,30 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+if TYPE_CHECKING:
+    from pydantic import TypeAdapter
+
+# Lazy reference resolved on first use.  Avoids a circular import
+# (``ws_payloads`` imports ``WsEventType`` from this module).
+_PAYLOAD_ADAPTER: TypeAdapter[object] | None = None
+
+
+def _get_payload_adapter() -> TypeAdapter[object]:
+    """Return the cached :class:`TypeAdapter` for ``WsEventPayload``.
+
+    Lazy-initialised to avoid a circular import: ``ws_payloads.py``
+    imports :class:`WsEventType` from this module.
+    """
+    global _PAYLOAD_ADAPTER  # noqa: PLW0603 -- module-level cache by design
+    if _PAYLOAD_ADAPTER is None:
+        from pydantic import TypeAdapter  # noqa: PLC0415 -- lazy
+
+        from synthorg.api.ws_payloads import WsEventPayload  # noqa: PLC0415 -- lazy
+
+        _PAYLOAD_ADAPTER = TypeAdapter(WsEventPayload)
+    return _PAYLOAD_ADAPTER
+
 
 #: Current WebSocket wire-protocol version. Clients on older versions
 #: are expected to ignore unknown-version events (see
@@ -156,4 +180,34 @@ class WsEvent(BaseModel):
     @model_validator(mode="after")
     def _deep_copy_payload(self) -> Self:
         object.__setattr__(self, "payload", copy.deepcopy(self.payload))
+        return self
+
+    @model_validator(mode="after")
+    def _validate_payload_shape(self) -> Self:
+        """Validate ``payload`` against the typed :data:`WsEventPayload` union.
+
+        Every :class:`WsEventType` has a corresponding frozen Pydantic
+        model in :mod:`synthorg.api.ws_payloads`.  This validator
+        first rejects a caller-supplied ``payload["event_type"]`` that
+        disagrees with the envelope (smuggled discriminator) -- the
+        ``WsEvent`` is frozen so we cannot rewrite ``self.payload`` in
+        place, and merely overwriting the merged copy still leaves the
+        smuggled value in ``self.payload`` at serialisation time.  A
+        mismatched event type therefore fails fast with a clear
+        message.  Once that's clean, the merged dict is run through
+        the discriminated union adapter and a shape mismatch (missing
+        required field, wrong type, extra field) raises
+        :class:`pydantic.ValidationError` so the bad event never
+        reaches a subscriber.
+        """
+        nested = self.payload.get("event_type")
+        if nested is not None and nested != self.event_type.value:
+            msg = (
+                f"payload['event_type']={nested!r} does not match "
+                f"envelope event_type={self.event_type.value!r}; "
+                "remove the nested key or use the envelope value"
+            )
+            raise ValueError(msg)
+        adapter = _get_payload_adapter()
+        adapter.validate_python({**self.payload, "event_type": self.event_type.value})
         return self

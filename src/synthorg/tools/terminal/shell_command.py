@@ -5,9 +5,10 @@ are validated against allow/blocklist before execution.  Output is
 truncated at ``max_output_bytes``.
 """
 
-import copy
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.terminal import (
@@ -16,33 +17,12 @@ from synthorg.observability.events.terminal import (
     TERMINAL_COMMAND_SUCCESS,
     TERMINAL_COMMAND_TIMEOUT,
 )
+from synthorg.tools._misc_args import ShellCommandArgs
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 
 logger = get_logger(__name__)
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "command": {
-            "type": "string",
-            "description": "Shell command to execute",
-        },
-        "working_directory": {
-            "type": "string",
-            "description": "Working directory (relative to workspace)",
-        },
-        "timeout": {
-            "type": "number",
-            "description": "Command timeout in seconds",
-            "minimum": 1,
-            "maximum": 600,
-        },
-    },
-    "required": ["command"],
-    "additionalProperties": False,
-}
 
 
 class ShellCommandTool(BaseTerminalTool):
@@ -62,11 +42,16 @@ class ShellCommandTool(BaseTerminalTool):
             result = await tool.execute(arguments={"command": "ls -la"})
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = ShellCommandArgs
+
     def __init__(self, **kwargs: Any) -> None:
         """Initialize the shell command tool.
 
         Args:
-            **kwargs: Passed to ``BaseTerminalTool.__init__``.
+            **kwargs: Forwarded to :class:`BaseTerminalTool`. Typically
+                includes ``sandbox`` (sandboxed execution backend) and
+                ``config`` (terminal-tool configuration with
+                allowlist/blocklist + timeouts).
         """
         super().__init__(
             name="shell_command",
@@ -74,7 +59,7 @@ class ShellCommandTool(BaseTerminalTool):
                 "Execute a shell command in a sandboxed environment. "
                 "Output is captured and returned."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=ShellCommandArgs.model_json_schema(),
             **kwargs,
         )
 

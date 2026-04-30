@@ -70,9 +70,15 @@ Run in one Bash batch (parallel `&` then `wait` is fine here, or sequential sinc
 
 ```bash
 gh pr view N --json state,headRefOid,statusCheckRollup,reviewDecision,mergeable,mergedAt,headRefName
-gh api repos/OWNER/REPO/pulls/N/reviews --paginate --jq '[.[] | {id, author: .user.login, state, submitted_at, body}]'
+# Head commit timestamp -- needed by the Phase 3 silent-approval
+# fallback to compare the rolling summary's `updated_at` against the
+# moment the head was pushed.  ``commit.committer.date`` is the
+# canonical "this commit landed on the branch" timestamp.
+HEAD_SHA="$(gh pr view N --json headRefOid --jq .headRefOid)"
+HEAD_COMMIT_TIME="$(gh api "repos/OWNER/REPO/commits/$HEAD_SHA" --jq '.commit.committer.date')"
+gh api repos/OWNER/REPO/pulls/N/reviews --paginate --jq '[.[] | {id, commit_id, author: .user.login, state, submitted_at, body}]'
 gh api repos/OWNER/REPO/pulls/N/comments --paginate --jq '[.[] | {id, author: .user.login, path, line, body, created_at}]'
-gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | {id, author: .user.login, body, created_at}]'
+gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | {id, author: .user.login, body, created_at, updated_at}]'
 ```
 
 `mergedAt` is the right field; `merged` does not exist on `gh pr view --json` and will fail. A non-null `mergedAt` (or `state == "MERGED"`) means merged. Cap each fetch at a reasonable size; CodeRabbit review bodies can be 50KB+, that's fine.
@@ -123,7 +129,10 @@ If `state` is `MERGED` or `CLOSED`:
 
 Convergence holds when ALL true:
 - Every entry in `statusCheckRollup` has `conclusion` in {SUCCESS, NEUTRAL, SKIPPED} and no entry is `IN_PROGRESS` / `QUEUED` / `PENDING`.
-- The most recent CodeRabbit review body (if any CodeRabbit reviews exist) contains `Actionable comments posted: 0`.
+- **CodeRabbit "no findings" signal** -- check in this order:
+  1. **Rolling summary comment (primary signal).** CodeRabbit posts ONE issue comment with a leading marker `<!-- This is an auto-generated comment: summarize by coderabbit.ai -->` and *edits that same comment* on every push. Find it via `gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | select(.user.login == "coderabbitai[bot]" and (.body | startswith("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->")))] | .[0]'` (sort-stable, the *first* such comment is the rolling one). Both convergence checks below are *substring* matches against the comment body -- the body has banner / details / configuration sections wrapping the relevant lines, so don't try to anchor either match to a specific position. **Convergence holds** when (a) the body contains the substring `No actionable comments were generated in the recent review. 🎉`, AND (b) the body contains a `Reviewing files that changed from the base of the PR and between <BASE_SHA> and <HEAD_SHA>.` block whose `<HEAD_SHA>` token equals the current `headRefOid`. This is the canonical "review done, nothing to fix" signal; trust it.
+  2. **Per-review fallback.** If the summary comment is unavailable (very early PR, or CodeRabbit changed its banner format), accept the older signal: the most recent CodeRabbit review body contains `Actionable comments posted: 0`.
+  3. **Silent-approval fallback (last resort).** If the most recent CodeRabbit review's `commit_id` is older than the current head AND the rolling summary comment is also stale (its `updated_at` predates `HEAD_COMMIT_TIME` from the Phase 1 fetch), AND the CodeRabbit `StatusContext` (`__typename: "StatusContext", context: "CodeRabbit"`) for the current head is `state: SUCCESS`, AND no rate-limit / "currently processing" / "I'll be back" markers (as defined in the Phase 4 marker table) were detected on the most recent CodeRabbit-authored item across reviews + issue comments (the same scan set Phase 4 uses) -- treat as silent approval. Used only when neither (1) nor (2) is conclusive.
 - **Zero open security alerts in scope.** Scope is per-scanner (matches Phase 6b): zero open **code-scanning** alerts on the PR branch (`ref=refs/heads/$HEAD_BRANCH`), zero **Dependabot** vulnerabilities introduced/surfaced by the PR's dependency changes (via `/dependency-graph/compare/<base>...<head>`), and zero open **secret-scanning** alerts at the repository level (secret-scanning is always repo-scoped because a leaked secret is a leaked secret regardless of which PR happened to surface it). Every in-scope alert must be either fixed or explicitly dismissed via Phase 6b.
 - No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4).
 

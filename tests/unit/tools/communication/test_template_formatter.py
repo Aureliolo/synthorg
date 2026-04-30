@@ -200,11 +200,13 @@ class TestTemplateFormatterTool:
         assert not result.is_error
         assert "<b>bold</b>" in result.content
 
-    def test_parameters_schema_requires_template_and_variables(
+    def test_parameters_schema_requires_template(
         self,
     ) -> None:
+        """``template`` is required; ``variables`` defaults to {}."""
         tool = TemplateFormatterTool()
         schema = tool.parameters_schema
         assert schema is not None
         assert "template" in schema["required"]
-        assert "variables" in schema["required"]
+        # ``variables`` now has a default_factory so it's not required.
+        assert "variables" not in schema["required"]

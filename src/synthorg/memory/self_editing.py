@@ -21,7 +21,7 @@ import copy
 from types import MappingProxyType
 from typing import Any, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -39,8 +39,17 @@ from synthorg.memory.models import (
 )
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import ScoredMemory
+from synthorg.memory.self_editing_args import (
+    ArchivalMemorySearchArgs,
+    ArchivalMemoryWriteArgs,
+    CoreMemoryReadArgs,
+    CoreMemoryWriteArgs,
+    RecallMemoryReadArgs,
+    RecallMemoryWriteArgs,
+    parse_self_editing_args,
+)
 from synthorg.memory.tool_retriever import ERROR_PREFIX
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_SELF_EDIT_ARCHIVAL_SEARCH,
     MEMORY_SELF_EDIT_ARCHIVAL_WRITE,
@@ -50,7 +59,7 @@ from synthorg.observability.events.memory import (
     MEMORY_SELF_EDIT_RECALL_READ,
     MEMORY_SELF_EDIT_RECALL_WRITE,
     MEMORY_SELF_EDIT_TOOL_EXECUTE,
-    MEMORY_SELF_EDIT_WRITE_FAILED,
+    MEMORY_SELF_EDIT_TOOL_FAILED,
 )
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
@@ -69,10 +78,6 @@ RECALL_MEMORY_WRITE_TOOL: Final[str] = "recall_memory_write"
 
 # Auto-tag added to archival/recall writes when write_auto_tag=True.
 _AUTO_TAG: Final[str] = "self_edited"
-
-# Input size limits for LLM-supplied values (prevent unbounded writes/lookups).
-_MAX_CONTENT_LEN: Final[int] = 50_000
-_MAX_MEMORY_ID_LEN: Final[int] = 256
 
 # ---------------------------------------------------------------------------
 # JSON Schema constants (MappingProxyType -- read-only at module level)
@@ -174,24 +179,19 @@ _RECALL_MEMORY_WRITE_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyTyp
 # ---------------------------------------------------------------------------
 
 
-def _extract_str(arguments: dict[str, Any], key: str) -> str | None:
-    """Extract a non-blank string value from tool arguments.
+def _format_self_editing_error(err: object) -> str:
+    """Render a single Pydantic ``errors()`` entry as ``loc: msg``.
 
-    Returns ``None`` when the key is absent, the value is not a string,
-    or the stripped value is empty.
-
-    Args:
-        arguments: Tool arguments dict from the LLM.
-        key: Key to extract.
-
-    Returns:
-        Stripped string, or ``None`` if absent/blank/non-string.
+    Strips the ``tool`` discriminator from ``loc`` (it's a dispatch
+    concern not surfaced to the LLM caller).
     """
-    raw = arguments.get(key, "")
-    if not isinstance(raw, str):
-        return None
-    stripped = raw.strip()
-    return stripped or None
+    if not isinstance(err, dict):
+        return "<arguments>: invalid"
+    loc_raw = err.get("loc", ())
+    loc_parts = loc_raw if isinstance(loc_raw, tuple) else ()
+    loc = ".".join(str(p) for p in loc_parts if p != "tool") or "<arguments>"
+    msg = err.get("msg", "")
+    return f"{loc}: {msg}" if isinstance(msg, str) else f"{loc}: invalid"
 
 
 def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
@@ -206,19 +206,6 @@ def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
     if not entries:
         return "No memories found."
     return "\n".join(f"[{e.category.value}] (id={e.id}) {e.content}" for e in entries)
-
-
-def _format_error_oversized(field: str, max_len: int) -> str:
-    """Format error message for oversized field content.
-
-    Args:
-        field: Field name (e.g., ``"content"``, ``"memory_id"``).
-        max_len: Maximum allowed length.
-
-    Returns:
-        Error message string.
-    """
-    return f"{ERROR_PREFIX} {field} exceeds maximum length ({max_len} characters)."
 
 
 # ---------------------------------------------------------------------------
@@ -436,8 +423,8 @@ class SelfEditingMemoryStrategy:
                 MEMORY_SELF_EDIT_CORE_READ,
                 source="prepare_messages",
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ()
 
@@ -508,6 +495,13 @@ class SelfEditingMemoryStrategy:
     ) -> str:
         """Dispatch a tool call to the appropriate handler.
 
+        Validates the LLM-supplied ``arguments`` dict against the
+        :class:`~synthorg.memory.self_editing_args.SelfEditingArgs`
+        discriminated union before dispatch; missing keys, blank
+        identifiers, oversized content, and unknown enum members all
+        raise ``ValidationError`` and surface as an ``ERROR_PREFIX``
+        response without ever reaching a handler.
+
         Args:
             tool_name: Name of the self-editing tool being called.
             arguments: Tool arguments from the LLM.
@@ -522,51 +516,85 @@ class SelfEditingMemoryStrategy:
             tool_name=tool_name,
             agent_id=agent_id,
         )
+        # Defensive guard: ``parse_self_editing_args`` spreads
+        # ``arguments`` into a dict before passing to ``TypeAdapter``,
+        # which raises ``TypeError`` on non-mapping inputs (None, [],
+        # scalars).  The static type says ``dict`` but the actual
+        # LLM-provider call site is dynamic; catch the bad shape
+        # upfront so the LLM-facing response stays in the
+        # ``Error: ...`` envelope instead of bubbling out as an
+        # internal failure.  Widen to ``object`` for the isinstance
+        # check so mypy doesn't flag the runtime guard as unreachable.
+        raw_arguments: object = arguments
+        if not isinstance(raw_arguments, dict):
+            return (
+                f"{ERROR_PREFIX} Invalid arguments: "
+                "<arguments>: input should be an object"
+            )
         try:
-            return await self._dispatch_tool_call(tool_name, arguments, agent_id)
+            args = parse_self_editing_args(tool_name, arguments)
+        except ValidationError as exc:
+            errors = exc.errors(include_input=False, include_url=False)
+            if not errors:
+                return f"{ERROR_PREFIX} Invalid arguments."
+            first = errors[0]
+            if first["type"] == "union_tag_invalid":
+                return f"{ERROR_PREFIX} Unknown self-editing tool: {tool_name!r}"
+            details = "; ".join(_format_self_editing_error(e) for e in errors)
+            return f"{ERROR_PREFIX} Invalid arguments: {details}"
+
+        try:
+            return await self._dispatch_tool_call(args, agent_id)
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            # Generic dispatch failure event: covers every self-editing
+            # tool (read / write / search / recall) so a failed
+            # core_memory_read is not recorded under the write-specific
+            # MEMORY_SELF_EDIT_WRITE_FAILED constant.
             logger.warning(
-                MEMORY_SELF_EDIT_WRITE_FAILED,
+                MEMORY_SELF_EDIT_TOOL_FAILED,
                 tool_name=tool_name,
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return f"{ERROR_PREFIX} Memory operation failed."
 
     async def _dispatch_tool_call(
         self,
-        tool_name: str,
-        arguments: dict[str, Any],
+        args: (
+            CoreMemoryReadArgs
+            | CoreMemoryWriteArgs
+            | ArchivalMemorySearchArgs
+            | ArchivalMemoryWriteArgs
+            | RecallMemoryReadArgs
+            | RecallMemoryWriteArgs
+        ),
         agent_id: NotBlankStr,
     ) -> str:
-        """Route a tool name to the corresponding private handler.
+        """Route a typed args variant to the corresponding private handler.
 
         Args:
-            tool_name: Name of the self-editing tool.
-            arguments: Tool arguments from the LLM.
+            args: Typed self-editing-tool arguments.
             agent_id: Calling agent identifier.
 
         Returns:
             String result for the LLM.
         """
-        if tool_name == CORE_MEMORY_READ_TOOL:
-            coro = self._handle_core_memory_read(agent_id)
-        elif tool_name == CORE_MEMORY_WRITE_TOOL:
-            coro = self._handle_core_memory_write(agent_id, arguments)
-        elif tool_name == ARCHIVAL_MEMORY_SEARCH_TOOL:
-            coro = self._handle_archival_memory_search(agent_id, arguments)
-        elif tool_name == ARCHIVAL_MEMORY_WRITE_TOOL:
-            coro = self._handle_archival_memory_write(agent_id, arguments)
-        elif tool_name == RECALL_MEMORY_READ_TOOL:
-            coro = self._handle_recall_memory_read(agent_id, arguments)
-        elif tool_name == RECALL_MEMORY_WRITE_TOOL:
-            coro = self._handle_recall_memory_write(agent_id, arguments)
-        else:
-            return f"{ERROR_PREFIX} Unknown self-editing tool: {tool_name!r}"
-        return await coro
+        match args:
+            case CoreMemoryReadArgs():
+                return await self._handle_core_memory_read(agent_id)
+            case CoreMemoryWriteArgs():
+                return await self._handle_core_memory_write(agent_id, args)
+            case ArchivalMemorySearchArgs():
+                return await self._handle_archival_memory_search(agent_id, args)
+            case ArchivalMemoryWriteArgs():
+                return await self._handle_archival_memory_write(agent_id, args)
+            case RecallMemoryReadArgs():
+                return await self._handle_recall_memory_read(agent_id, args)
+            case RecallMemoryWriteArgs():
+                return await self._handle_recall_memory_write(agent_id, args)
 
     # ------------------------------------------------------------------
     # Private handlers
@@ -585,7 +613,7 @@ class SelfEditingMemoryStrategy:
     async def _handle_core_memory_write(
         self,
         agent_id: NotBlankStr,
-        arguments: dict[str, Any],
+        args: CoreMemoryWriteArgs,
     ) -> str:
         """Append an entry to core memory.
 
@@ -603,12 +631,7 @@ class SelfEditingMemoryStrategy:
             )
             return f"{ERROR_PREFIX} Core memory writes are disabled for this agent."
 
-        content = _extract_str(arguments, "content")
-        if content is None:
-            return f"{ERROR_PREFIX} content is required and must be non-blank."
-        if len(content) > _MAX_CONTENT_LEN:
-            return _format_error_oversized("content", _MAX_CONTENT_LEN)
-
+        content = args.content
         existing = await self._backend.retrieve(agent_id, self._core_query())
         if len(existing) >= self._config.core_max_entries:
             logger.info(
@@ -640,43 +663,23 @@ class SelfEditingMemoryStrategy:
     async def _handle_archival_memory_search(
         self,
         agent_id: NotBlankStr,
-        arguments: dict[str, Any],
+        args: ArchivalMemorySearchArgs,
     ) -> str:
         """Search archival memory by natural language query."""
-        query_text = _extract_str(arguments, "query")
-        if query_text is None:
-            return f"{ERROR_PREFIX} query is required and must be non-blank."
+        categories: frozenset[MemoryCategory] | None = (
+            frozenset({args.category}) if args.category is not None else None
+        )
 
-        categories: frozenset[MemoryCategory] | None = None
-        cat_raw = arguments.get("category")
-        if cat_raw is not None:
-            try:
-                categories = frozenset({MemoryCategory(str(cat_raw))})
-            except ValueError:
-                valid = ", ".join(
-                    sorted(
-                        c.value for c in MemoryCategory if c != MemoryCategory.WORKING
-                    )
-                )
-                return f"{ERROR_PREFIX} Unknown memory category. Valid values: {valid}."
-
-        limit_raw = arguments.get("limit", self._config.archival_search_limit)
-        try:
-            limit = int(limit_raw)
-        except TypeError, ValueError:
-            logger.debug(
-                MEMORY_SELF_EDIT_ARCHIVAL_SEARCH,
-                agent_id=agent_id,
-                detail="invalid_limit_fallback",
-                raw_limit=str(limit_raw)[:50],
-            )
-            limit = self._config.archival_search_limit
-        limit = max(1, min(limit, self._config.archival_search_limit))
+        # Apply the config-driven cap.  Pydantic validated ``limit`` is
+        # positive (or ``None``); the runtime clamp keeps it in
+        # ``[1, archival_search_limit]``.
+        cap = self._config.archival_search_limit
+        limit = min(args.limit, cap) if args.limit is not None else cap
 
         entries = await self._backend.retrieve(
             agent_id,
             MemoryQuery(
-                text=query_text,
+                text=args.query,
                 categories=categories,
                 limit=limit,
             ),
@@ -684,7 +687,7 @@ class SelfEditingMemoryStrategy:
         logger.info(
             MEMORY_SELF_EDIT_ARCHIVAL_SEARCH,
             agent_id=agent_id,
-            query=query_text,
+            query=args.query,
             count=len(entries),
         )
         return _format_entries(entries)
@@ -692,27 +695,10 @@ class SelfEditingMemoryStrategy:
     async def _handle_archival_memory_write(
         self,
         agent_id: NotBlankStr,
-        arguments: dict[str, Any],
+        args: ArchivalMemoryWriteArgs,
     ) -> str:
         """Store an entry in archival memory."""
-        content = _extract_str(arguments, "content")
-        if content is None:
-            return f"{ERROR_PREFIX} content is required and must be non-blank."
-        if len(content) > _MAX_CONTENT_LEN:
-            return _format_error_oversized("content", _MAX_CONTENT_LEN)
-
-        cat_raw = arguments.get("category")
-        if cat_raw is None:
-            return f"{ERROR_PREFIX} category is required."
-
-        try:
-            category = MemoryCategory(str(cat_raw))
-        except ValueError:
-            valid = ", ".join(
-                sorted(c.value for c in MemoryCategory if c != MemoryCategory.WORKING)
-            )
-            return f"{ERROR_PREFIX} Unknown memory category. Valid values: {valid}."
-
+        category = args.category
         if category not in self._config.archival_categories:
             valid = ", ".join(sorted(c.value for c in self._config.archival_categories))
             return (
@@ -724,7 +710,7 @@ class SelfEditingMemoryStrategy:
         tags: tuple[str, ...] = (_AUTO_TAG,) if self._config.write_auto_tag else ()
         request = MemoryStoreRequest(
             category=category,
-            content=content,
+            content=args.content,
             metadata=MemoryMetadata(tags=tags),
         )
         memory_id = await self._backend.store(agent_id, request)
@@ -739,42 +725,30 @@ class SelfEditingMemoryStrategy:
     async def _handle_recall_memory_read(
         self,
         agent_id: NotBlankStr,
-        arguments: dict[str, Any],
+        args: RecallMemoryReadArgs,
     ) -> str:
         """Retrieve a specific episodic memory by ID."""
-        memory_id = _extract_str(arguments, "memory_id")
-        if memory_id is None:
-            return f"{ERROR_PREFIX} memory_id is required and must be non-blank."
-        if len(memory_id) > _MAX_MEMORY_ID_LEN:
-            return _format_error_oversized("memory_id", _MAX_MEMORY_ID_LEN)
-
-        entry = await self._backend.get(agent_id, memory_id)
+        entry = await self._backend.get(agent_id, args.memory_id)
         logger.info(
             MEMORY_SELF_EDIT_RECALL_READ,
             agent_id=agent_id,
-            memory_id=memory_id,
+            memory_id=args.memory_id,
             found=entry is not None,
         )
         if entry is None:
-            return f"{ERROR_PREFIX} Memory not found: {memory_id!r}"
+            return f"{ERROR_PREFIX} Memory not found: {args.memory_id!r}"
         return f"[{entry.category.value}] {entry.content}"
 
     async def _handle_recall_memory_write(
         self,
         agent_id: NotBlankStr,
-        arguments: dict[str, Any],
+        args: RecallMemoryWriteArgs,
     ) -> str:
         """Record an episodic event or experience."""
-        content = _extract_str(arguments, "content")
-        if content is None:
-            return f"{ERROR_PREFIX} content is required and must be non-blank."
-        if len(content) > _MAX_CONTENT_LEN:
-            return _format_error_oversized("content", _MAX_CONTENT_LEN)
-
         tags: tuple[str, ...] = (_AUTO_TAG,) if self._config.write_auto_tag else ()
         request = MemoryStoreRequest(
             category=MemoryCategory.EPISODIC,
-            content=content,
+            content=args.content,
             metadata=MemoryMetadata(tags=tags),
         )
         memory_id = await self._backend.store(agent_id, request)

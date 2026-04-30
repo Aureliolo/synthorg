@@ -5,6 +5,24 @@ Covers workflows, subworkflows, workflow executions, and workflow versions.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._workflows_org_args import (
+    SubworkflowsCreateArgs,
+    SubworkflowsDeleteArgs,
+    SubworkflowsGetArgs,
+    SubworkflowsListArgs,
+    WorkflowExecutionsCancelArgs,
+    WorkflowExecutionsGetArgs,
+    WorkflowExecutionsListArgs,
+    WorkflowExecutionsStartArgs,
+    WorkflowsCreateArgs,
+    WorkflowsDeleteArgs,
+    WorkflowsGetArgs,
+    WorkflowsListArgs,
+    WorkflowsUpdateArgs,
+    WorkflowsValidateArgs,
+    WorkflowVersionsGetArgs,
+    WorkflowVersionsListArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
@@ -18,7 +36,13 @@ if TYPE_CHECKING:
 
 WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Workflow CRUD ---
-    read_tool("workflows", "list", "List workflow definitions.", PAGINATION_PROPERTIES),
+    read_tool(
+        "workflows",
+        "list",
+        "List workflow definitions.",
+        PAGINATION_PROPERTIES,
+        args_model=WorkflowsListArgs,
+    ),
     read_tool(
         "workflows",
         "get",
@@ -27,6 +51,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
         },
         required=("workflow_id",),
+        args_model=WorkflowsGetArgs,
     ),
     write_tool(
         "workflows",
@@ -37,6 +62,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "steps": {"type": "array", "description": "Workflow step definitions"},
         },
         required=("name", "steps"),
+        args_model=WorkflowsCreateArgs,
     ),
     write_tool(
         "workflows",
@@ -47,6 +73,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "updates": {"type": "object", "description": "Fields to update"},
         },
         required=("workflow_id", "updates"),
+        args_model=WorkflowsUpdateArgs,
     ),
     admin_tool(
         "workflows",
@@ -57,6 +84,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("workflow_id", "reason", "confirm"),
+        args_model=WorkflowsDeleteArgs,
     ),
     read_tool(
         "workflows",
@@ -66,6 +94,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
         },
         required=("workflow_id",),
+        args_model=WorkflowsValidateArgs,
     ),
     # --- Subworkflows ---
     read_tool(
@@ -77,6 +106,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             **PAGINATION_PROPERTIES,
         },
         required=("workflow_id",),
+        args_model=SubworkflowsListArgs,
     ),
     read_tool(
         "subworkflows",
@@ -86,6 +116,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "subworkflow_id": {"type": "string", "description": "Subworkflow UUID"},
         },
         required=("subworkflow_id",),
+        args_model=SubworkflowsGetArgs,
     ),
     write_tool(
         "subworkflows",
@@ -97,6 +128,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "steps": {"type": "array", "description": "Step definitions"},
         },
         required=("workflow_id", "name"),
+        args_model=SubworkflowsCreateArgs,
     ),
     admin_tool(
         "subworkflows",
@@ -107,6 +139,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("subworkflow_id", "reason", "confirm"),
+        args_model=SubworkflowsDeleteArgs,
     ),
     # --- Workflow executions ---
     read_tool(
@@ -118,6 +151,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "status": {"type": "string", "description": "Filter by execution status"},
             **PAGINATION_PROPERTIES,
         },
+        args_model=WorkflowExecutionsListArgs,
     ),
     read_tool(
         "workflow_executions",
@@ -127,6 +161,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "execution_id": {"type": "string", "description": "Execution UUID"},
         },
         required=("execution_id",),
+        args_model=WorkflowExecutionsGetArgs,
     ),
     write_tool(
         "workflow_executions",
@@ -137,6 +172,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             "parameters": {"type": "object", "description": "Execution parameters"},
         },
         required=("workflow_id",),
+        args_model=WorkflowExecutionsStartArgs,
     ),
     admin_tool(
         "workflow_executions",
@@ -147,6 +183,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("execution_id", "reason", "confirm"),
+        args_model=WorkflowExecutionsCancelArgs,
     ),
     # --- Workflow versions ---
     read_tool(
@@ -158,6 +195,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             **PAGINATION_PROPERTIES,
         },
         required=("workflow_id",),
+        args_model=WorkflowVersionsListArgs,
     ),
     read_tool(
         "workflow_versions",
@@ -172,5 +210,6 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
             },
         },
         required=("workflow_id", "version_num"),
+        args_model=WorkflowVersionsGetArgs,
     ),
 )

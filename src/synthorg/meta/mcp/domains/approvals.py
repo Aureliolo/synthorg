@@ -6,8 +6,18 @@
 handler.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
+from synthorg.meta.mcp.domains._simple_args import (
+    RISK_LEVEL_DEFAULT,
+    ApprovalsApproveArgs,
+    ApprovalsCreateArgs,
+    ApprovalsGetArgs,
+    ApprovalsListArgs,
+    ApprovalsRejectArgs,
+    ApprovalStatus,
+    RiskLevel,
+)
 from synthorg.meta.mcp.tool_builder import (
     DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
@@ -19,8 +29,12 @@ from synthorg.meta.mcp.tool_builder import (
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
-_APPROVAL_STATUS_ENUM = ["pending", "approved", "rejected", "expired"]
-_RISK_LEVEL_ENUM = ["low", "medium", "high", "critical"]
+# Derived from the canonical Literal types in ``_simple_args`` via
+# ``typing.get_args`` so the wire schema enum lists cannot drift from
+# the args-model surface.  Adding a status / risk level on the args
+# side automatically widens the wire enum.
+_APPROVAL_STATUS_ENUM = list(get_args(ApprovalStatus))
+_RISK_LEVEL_ENUM = list(get_args(RiskLevel))
 
 APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
@@ -41,6 +55,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             "action_type": {"type": "string", "description": "Filter by action type"},
             **PAGINATION_PROPERTIES,
         },
+        args_model=ApprovalsListArgs,
     ),
     read_tool(
         "approvals",
@@ -50,6 +65,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             "approval_id": {"type": "string", "description": "Approval UUID"},
         },
         required=("approval_id",),
+        args_model=ApprovalsGetArgs,
     ),
     write_tool(
         "approvals",
@@ -76,10 +92,11 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Risk level assessment",
                 "enum": _RISK_LEVEL_ENUM,
-                "default": "medium",
+                "default": RISK_LEVEL_DEFAULT,
             },
         },
-        required=("action_type", "description"),
+        required=("action_type", "title", "description"),
+        args_model=ApprovalsCreateArgs,
     ),
     write_tool(
         "approvals",
@@ -90,6 +107,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             "comment": {"type": "string", "description": "Approval comment"},
         },
         required=("approval_id",),
+        args_model=ApprovalsApproveArgs,
     ),
     admin_tool(
         "approvals",
@@ -100,5 +118,6 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("approval_id", "reason", "confirm"),
+        args_model=ApprovalsRejectArgs,
     ),
 )

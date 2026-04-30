@@ -6,9 +6,10 @@ shipped -- users inject a provider at construction time.
 """
 
 import asyncio
-import copy
 from datetime import datetime
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, runtime_checkable
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -18,6 +19,7 @@ from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_QUERY_START,
     ANALYTICS_TOOL_QUERY_SUCCESS,
 )
+from synthorg.tools.analytics._args import DataAggregatorArgs
 from synthorg.tools.analytics.base_analytics_tool import BaseAnalyticsTool
 from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
 from synthorg.tools.base import ToolExecutionResult
@@ -117,6 +119,8 @@ class DataAggregatorTool(BaseAnalyticsTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = DataAggregatorArgs
+
     def __init__(
         self,
         *,
@@ -126,9 +130,11 @@ class DataAggregatorTool(BaseAnalyticsTool):
         """Initialize the data aggregator tool.
 
         Args:
-            provider: Analytics data provider.  ``None`` means
-                the tool will return an error on execution.
-            config: Analytics tool configuration.
+            provider: Analytics data source. ``None`` keeps the tool
+                defined but every ``execute`` returns a configuration
+                error.
+            config: Analytics tool configuration. ``None`` falls back
+                to defaults.
         """
         super().__init__(
             name="data_aggregator",
@@ -136,7 +142,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 "Query and aggregate analytics data "
                 "(costs, tasks, performance metrics)."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=DataAggregatorArgs.model_json_schema(),
             action_type=ActionType.CODE_READ,
             config=config,
         )

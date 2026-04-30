@@ -228,11 +228,22 @@ async function in `src/synthorg/meta/mcp/handlers/<domain>.py`; handlers shim
 onto the existing service layer rather than reimplementing business logic.
 
 **Handler Protocol.** Every handler implements
-`ToolHandler.__call__(*, app_state, arguments, actor: AgentIdentity | None = None) -> str`
-(see `src/synthorg/meta/mcp/invoker.py`). The `actor` argument threads the
+`ToolHandler.__call__(*, app_state, arguments: dict[str, Any], actor: AgentIdentity | None = None) -> str`
+(see `src/synthorg/meta/mcp/handler_protocol.py`). The `actor` argument threads the
 calling agent identity through the invoker so destructive-op guardrails can
 enforce attribution; handlers that don't care about identity accept it and
 ignore it.
+
+**Typed args (#1611 Phase 4).** Each MCP tool registration optionally carries
+an `args_model: type[BaseModel]` (see `MCPToolDef.args_model`). When set, the
+invoker validates the raw `arguments` dict against the Pydantic model **before**
+dispatching to the handler; validation failures short-circuit to a typed
+`ArgumentValidationError` envelope without ever invoking the handler. Handlers
+therefore receive a structurally-validated dict and can either access fields
+directly (the model guarantees presence + type) or re-validate locally for
+typed access (`args_model.model_validate(arguments)`). Tools without
+`args_model` (legacy / dynamic shapes such as `MCPBridgeTool`) continue using
+the manual `common_args` validators inside the handler body.
 
 **Envelope Contract.** Every handler returns a JSON string. Success envelope
 (data is always present, pagination appears only on list/collection responses):

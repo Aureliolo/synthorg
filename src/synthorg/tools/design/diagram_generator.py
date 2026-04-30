@@ -5,8 +5,9 @@ by downstream tools or the web dashboard.  No external provider is
 required -- the tool outputs DSL text directly.
 """
 
-import copy
-from typing import Any, Final
+from typing import Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -16,6 +17,7 @@ from synthorg.observability.events.design import (
     DESIGN_DIAGRAM_GENERATION_SUCCESS,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.design._args import DiagramGeneratorArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
 
@@ -38,36 +40,6 @@ _OUTPUT_FORMATS: Final[frozenset[str]] = frozenset(
     }
 )
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "diagram_type": {
-            "type": "string",
-            "enum": sorted(_DIAGRAM_TYPES),
-            "description": "Type of diagram to generate",
-        },
-        "description": {
-            "type": "string",
-            "description": (
-                "Diagram specification -- structured description "
-                "of nodes, edges, and relationships"
-            ),
-        },
-        "title": {
-            "type": "string",
-            "description": "Optional diagram title",
-        },
-        "output_format": {
-            "type": "string",
-            "enum": sorted(_OUTPUT_FORMATS),
-            "description": "Output markup format (default: mermaid)",
-            "default": "mermaid",
-        },
-    },
-    "required": ["diagram_type", "description"],
-    "additionalProperties": False,
-}
-
 
 class DiagramGeneratorTool(BaseDesignTool):
     """Generate diagram markup (Mermaid/Graphviz) from structured descriptions.
@@ -88,6 +60,8 @@ class DiagramGeneratorTool(BaseDesignTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = DiagramGeneratorArgs
+
     def __init__(
         self,
         *,
@@ -96,7 +70,8 @@ class DiagramGeneratorTool(BaseDesignTool):
         """Initialize the diagram generator tool.
 
         Args:
-            config: Design tool configuration.
+            config: Design tool configuration with diagram size
+                limits. ``None`` falls back to defaults.
         """
         super().__init__(
             name="diagram_generator",
@@ -104,7 +79,7 @@ class DiagramGeneratorTool(BaseDesignTool):
                 "Generate diagram markup (Mermaid or Graphviz) "
                 "from structured descriptions."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=DiagramGeneratorArgs.model_json_schema(),
             action_type=ActionType.DOCS_WRITE,
             config=config,
         )

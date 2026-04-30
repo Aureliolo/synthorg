@@ -10,7 +10,9 @@ Write/delete tools enforce autonomy gating per issue #1266 spec:
 ``LOCKED`` allowed (upstream approval/plan-review gate expected).
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import (
     AutonomyLevel,
@@ -23,11 +25,24 @@ from synthorg.memory.org.models import (
     OrgFactWriteRequest,
     OrgMemoryQuery,
 )
-from synthorg.observability import get_logger
+from synthorg.memory.tools._args import (
+    KnowledgeArchitectBrowseWikiArgs,
+    KnowledgeArchitectDeleteArgs,
+    KnowledgeArchitectGuideArgs,
+    KnowledgeArchitectReadArgs,
+    KnowledgeArchitectSearchArgs,
+    KnowledgeArchitectWriteArgs,
+)
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
+    KNOWLEDGE_ARCHITECT_BROWSE_WIKI_FAILED,
     KNOWLEDGE_ARCHITECT_DELETE,
+    KNOWLEDGE_ARCHITECT_DELETE_FAILED,
+    KNOWLEDGE_ARCHITECT_READ_FAILED,
+    KNOWLEDGE_ARCHITECT_SEARCH_FAILED,
     KNOWLEDGE_ARCHITECT_WRITE,
     KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+    KNOWLEDGE_ARCHITECT_WRITE_FAILED,
 )
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
@@ -56,15 +71,13 @@ _GUIDE_TEXT = (
 class KnowledgeArchitectGuideTool(BaseTool):
     """``memory.guide`` -- returns mechanics doc for the architect."""
 
+    args_model: ClassVar[type[BaseModel] | None] = KnowledgeArchitectGuideArgs
+
     def __init__(self) -> None:
         super().__init__(
             name="memory.guide",
             description="Returns memory tools guide for the architect",
-            parameters_schema={
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            },
+            parameters_schema=KnowledgeArchitectGuideArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
 
@@ -80,6 +93,8 @@ class KnowledgeArchitectGuideTool(BaseTool):
 class KnowledgeArchitectSearchTool(BaseTool):
     """``memory.search`` -- search org memory."""
 
+    args_model: ClassVar[type[BaseModel] | None] = KnowledgeArchitectSearchArgs
+
     def __init__(
         self,
         *,
@@ -88,21 +103,7 @@ class KnowledgeArchitectSearchTool(BaseTool):
         super().__init__(
             name="memory.search",
             description="Search organizational memory",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "category": {"type": "string"},
-                    "limit": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 100,
-                        "default": 10,
-                    },
-                },
-                "required": ["query"],
-                "additionalProperties": False,
-            },
+            parameters_schema=KnowledgeArchitectSearchArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._org_backend = org_backend
@@ -131,8 +132,14 @@ class KnowledgeArchitectSearchTool(BaseTool):
             )
             facts = await self._org_backend.query(query)
         except Exception as exc:
+            safe_error = safe_error_description(exc)
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_SEARCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error,
+            )
             return ToolExecutionResult(
-                content=f"Search failed: {exc}",
+                content=f"Search failed: {safe_error}",
                 is_error=True,
             )
         if not facts:
@@ -150,6 +157,8 @@ class KnowledgeArchitectSearchTool(BaseTool):
 class KnowledgeArchitectReadTool(BaseTool):
     """``memory.read`` -- read a specific org memory entry."""
 
+    args_model: ClassVar[type[BaseModel] | None] = KnowledgeArchitectReadArgs
+
     def __init__(
         self,
         *,
@@ -158,14 +167,7 @@ class KnowledgeArchitectReadTool(BaseTool):
         super().__init__(
             name="memory.read",
             description="Read a specific organizational memory entry",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {"type": "string"},
-                },
-                "required": ["entry_id"],
-                "additionalProperties": False,
-            },
+            parameters_schema=KnowledgeArchitectReadArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._org_backend = org_backend
@@ -188,8 +190,15 @@ class KnowledgeArchitectReadTool(BaseTool):
                 None,
             )
         except Exception as exc:
+            safe_error = safe_error_description(exc)
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_READ_FAILED,
+                entry_id=entry_id,
+                error_type=type(exc).__name__,
+                error=safe_error,
+            )
             return ToolExecutionResult(
-                content=f"Read failed: {exc}",
+                content=f"Read failed: {safe_error}",
                 is_error=True,
             )
         if match is None:
@@ -225,6 +234,8 @@ class KnowledgeArchitectWriteTool(BaseTool):
     (``ApprovalItem`` / plan review infrastructure).
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = KnowledgeArchitectWriteArgs
+
     def __init__(
         self,
         *,
@@ -236,23 +247,7 @@ class KnowledgeArchitectWriteTool(BaseTool):
         super().__init__(
             name="memory.write",
             description="Write to organizational memory",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "content": {
-                        "type": "string",
-                        "maxLength": 100000,
-                    },
-                    "category": {"type": "string"},
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "maxItems": 50,
-                    },
-                },
-                "required": ["content", "category"],
-                "additionalProperties": False,
-            },
+            parameters_schema=KnowledgeArchitectWriteArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._org_backend = org_backend
@@ -328,8 +323,16 @@ class KnowledgeArchitectWriteTool(BaseTool):
                 author=author,
             )
         except Exception as exc:
+            safe_error = safe_error_description(exc)
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_WRITE_FAILED,
+                agent_id=self._agent_id,
+                category=arguments.get("category"),
+                error_type=type(exc).__name__,
+                error=safe_error,
+            )
             return ToolExecutionResult(
-                content=f"Write failed: {exc}",
+                content=f"Write failed: {safe_error}",
                 is_error=True,
             )
         logger.info(
@@ -353,6 +356,8 @@ class KnowledgeArchitectDeleteTool(BaseTool):
     allowed (upstream approval/plan review gate expected).
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = KnowledgeArchitectDeleteArgs
+
     def __init__(
         self,
         *,
@@ -365,14 +370,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         super().__init__(
             name="memory.delete",
             description="Archive an organizational memory entry",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "entry_id": {"type": "string"},
-                },
-                "required": ["entry_id"],
-                "additionalProperties": False,
-            },
+            parameters_schema=KnowledgeArchitectDeleteArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._org_backend = org_backend
@@ -437,14 +435,16 @@ class KnowledgeArchitectDeleteTool(BaseTool):
                 author=author,
             )
         except Exception as exc:
+            safe_error = safe_error_description(exc)
             logger.warning(
-                KNOWLEDGE_ARCHITECT_DELETE,
+                KNOWLEDGE_ARCHITECT_DELETE_FAILED,
                 agent_id=self._agent_id,
                 entry_id=entry_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error,
             )
             return ToolExecutionResult(
-                content=f"Delete failed: {exc}",
+                content=f"Delete failed: {safe_error}",
                 is_error=True,
             )
         if not deleted:
@@ -467,6 +467,8 @@ class KnowledgeArchitectDeleteTool(BaseTool):
 class KnowledgeArchitectBrowseWikiTool(BaseTool):
     """``memory.browse_wiki`` -- export and browse wiki."""
 
+    args_model: ClassVar[type[BaseModel] | None] = KnowledgeArchitectBrowseWikiArgs
+
     def __init__(
         self,
         *,
@@ -476,16 +478,7 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         super().__init__(
             name="memory.browse_wiki",
             description="Export and browse memory as wiki",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "include_raw": {
-                        "type": "boolean",
-                        "default": False,
-                    },
-                },
-                "additionalProperties": False,
-            },
+            parameters_schema=KnowledgeArchitectBrowseWikiArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
         )
         self._wiki_exporter = wiki_exporter
@@ -512,8 +505,15 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         try:
             result = await self._wiki_exporter.export(self._agent_id)
         except Exception as exc:
+            safe_error = safe_error_description(exc)
+            logger.warning(
+                KNOWLEDGE_ARCHITECT_BROWSE_WIKI_FAILED,
+                agent_id=self._agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error,
+            )
             return ToolExecutionResult(
-                content=f"Wiki export failed: {exc}",
+                content=f"Wiki export failed: {safe_error}",
                 is_error=True,
             )
         lines = ["Wiki exported:"]

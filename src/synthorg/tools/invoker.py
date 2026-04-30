@@ -497,9 +497,15 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         if sub_constraint_error is not None:
             return sub_constraint_error
 
-        param_error = self._validate_params(tool_or_error, tool_call)
-        if param_error is not None:
-            return param_error
+        param_outcome = self._validate_params(tool_or_error, tool_call)
+        if isinstance(param_outcome, ToolResult):
+            return param_outcome
+        # ``param_outcome`` is now ``dict[str, object]`` (validated
+        # args-model dump) or ``None`` (legacy JSON-Schema path).  The
+        # dict, when present, supersedes ``tool_call.arguments`` for
+        # the rest of the pipeline so coercions/defaults reach the
+        # tool body.
+        validated_arguments: dict[str, object] | None = param_outcome
 
         # Build security context inside fail-closed handling.
         security_context, security_error = await self._check_security(
@@ -509,7 +515,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         if security_error is not None:
             return security_error
 
-        exec_result = await self._execute_tool(tool_or_error, tool_call)
+        exec_result = await self._execute_tool(
+            tool_or_error,
+            tool_call,
+            validated_arguments=validated_arguments,
+        )
         if isinstance(exec_result, ToolResult):
             return exec_result
 
@@ -558,11 +568,26 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         self,
         tool: BaseTool,
         tool_call: ToolCall,
+        *,
+        validated_arguments: dict[str, object] | None = None,
     ) -> ToolExecutionResult | ToolResult:
-        """Deep-copy arguments for isolation, then execute the tool."""
-        safe_args = self._safe_deepcopy_args(tool_call)
-        if isinstance(safe_args, ToolResult):
-            return safe_args
+        """Deep-copy arguments for isolation, then execute the tool.
+
+        When ``validated_arguments`` is provided (set by ``_validate_params``
+        for tools that declare an ``args_model``), it carries the
+        normalized model dump including defaults, coercions, and
+        ``AfterValidator`` results.  We still deep-copy before dispatch
+        so nested ``dict``/``list`` fields aren't shared with subsequent
+        invocations.  When ``None`` (legacy JSON-Schema path), fall
+        back to deep-copying the raw ``tool_call.arguments``.
+        """
+        if validated_arguments is not None:
+            safe_args: dict[str, object] = copy.deepcopy(validated_arguments)
+        else:
+            deepcopied = self._safe_deepcopy_args(tool_call)
+            if isinstance(deepcopied, ToolResult):
+                return deepcopied
+            safe_args = deepcopied
         try:
             return await tool.execute(arguments=safe_args)
         except (MemoryError, RecursionError) as exc:

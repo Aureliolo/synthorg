@@ -5,7 +5,9 @@ supervisor-facing async task operations as LLM-callable tools.
 """
 
 import json
-from typing import Any, Final
+from typing import Any, ClassVar
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.communication.async_tasks.models import TaskSpec
 from synthorg.communication.async_tasks.service import AsyncTaskService  # noqa: TC001
@@ -18,78 +20,21 @@ from synthorg.observability.events.async_task import (
     ASYNC_TASK_TOOL_UPDATE_FAILED,
 )
 from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.communication._args import (
+    CancelAsyncTaskArgs,
+    CheckAsyncTaskArgs,
+    ListAsyncTasksArgs,
+    StartAsyncTaskArgs,
+    UpdateAsyncTaskArgs,
+)
 
 logger = get_logger(__name__)
-
-_START_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "agent_id": {
-            "type": "string",
-            "description": "Target agent ID to execute the task",
-        },
-        "title": {
-            "type": "string",
-            "description": "Short task title",
-        },
-        "description": {
-            "type": "string",
-            "description": "Detailed task description",
-        },
-    },
-    "required": ["agent_id", "title", "description"],
-}
-
-_CHECK_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "task_id": {
-            "type": "string",
-            "description": "Task ID to check",
-        },
-    },
-    "required": ["task_id"],
-}
-
-_UPDATE_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "task_id": {
-            "type": "string",
-            "description": "Task ID to update",
-        },
-        "instructions": {
-            "type": "string",
-            "description": "New instructions for the executing agent",
-        },
-    },
-    "required": ["task_id", "instructions"],
-}
-
-_CANCEL_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "task_id": {
-            "type": "string",
-            "description": "Task ID to cancel",
-        },
-    },
-    "required": ["task_id"],
-}
-
-_LIST_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "supervisor_task_id": {
-            "type": "string",
-            "description": "Supervisor task ID (optional, uses default if omitted)",
-        },
-    },
-}
 
 
 class StartAsyncTaskTool(BaseTool):
     """Start a new async task on a subagent."""
+
+    args_model: ClassVar[type[BaseModel] | None] = StartAsyncTaskArgs
 
     def __init__(
         self,
@@ -102,7 +47,7 @@ class StartAsyncTaskTool(BaseTool):
             name="start_async_task",
             description="Start a background task on a subagent",
             category=ToolCategory.COMMUNICATION,
-            parameters_schema=_START_SCHEMA,
+            parameters_schema=StartAsyncTaskArgs.model_json_schema(),
         )
         self._service = service
         self._supervisor_id = supervisor_id
@@ -132,7 +77,7 @@ class StartAsyncTaskTool(BaseTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Failed to start task: {exc}",
+                content=f"Failed to start task: {safe_error_description(exc)}",
                 is_error=True,
             )
         return ToolExecutionResult(
@@ -143,12 +88,14 @@ class StartAsyncTaskTool(BaseTool):
 class CheckAsyncTaskTool(BaseTool):
     """Check the status of an async task."""
 
+    args_model: ClassVar[type[BaseModel] | None] = CheckAsyncTaskArgs
+
     def __init__(self, *, service: AsyncTaskService) -> None:
         super().__init__(
             name="check_async_task",
             description="Check the status of a background task",
             category=ToolCategory.COMMUNICATION,
-            parameters_schema=_CHECK_SCHEMA,
+            parameters_schema=CheckAsyncTaskArgs.model_json_schema(),
         )
         self._service = service
 
@@ -163,12 +110,14 @@ class CheckAsyncTaskTool(BaseTool):
                 arguments["task_id"],
             )
         except LookupError as exc:
+            safe_error = safe_error_description(exc)
             logger.warning(
                 ASYNC_TASK_TOOL_CHECK_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error,
             )
             return ToolExecutionResult(
-                content=str(exc),
+                content=safe_error,
                 is_error=True,
             )
         return ToolExecutionResult(
@@ -179,12 +128,14 @@ class CheckAsyncTaskTool(BaseTool):
 class UpdateAsyncTaskTool(BaseTool):
     """Send new instructions to a running async task."""
 
+    args_model: ClassVar[type[BaseModel] | None] = UpdateAsyncTaskArgs
+
     def __init__(self, *, service: AsyncTaskService) -> None:
         super().__init__(
             name="update_async_task",
             description="Send new instructions to a running task",
             category=ToolCategory.COMMUNICATION,
-            parameters_schema=_UPDATE_SCHEMA,
+            parameters_schema=UpdateAsyncTaskArgs.model_json_schema(),
         )
         self._service = service
 
@@ -200,12 +151,14 @@ class UpdateAsyncTaskTool(BaseTool):
                 instructions=arguments["instructions"],
             )
         except LookupError as exc:
+            safe_error = safe_error_description(exc)
             logger.warning(
                 ASYNC_TASK_TOOL_UPDATE_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error,
             )
             return ToolExecutionResult(
-                content=str(exc),
+                content=safe_error,
                 is_error=True,
             )
         return ToolExecutionResult(
@@ -215,6 +168,8 @@ class UpdateAsyncTaskTool(BaseTool):
 
 class CancelAsyncTaskTool(BaseTool):
     """Cancel a running async task."""
+
+    args_model: ClassVar[type[BaseModel] | None] = CancelAsyncTaskArgs
 
     def __init__(
         self,
@@ -226,7 +181,7 @@ class CancelAsyncTaskTool(BaseTool):
             name="cancel_async_task",
             description="Cancel a running background task",
             category=ToolCategory.COMMUNICATION,
-            parameters_schema=_CANCEL_SCHEMA,
+            parameters_schema=CancelAsyncTaskArgs.model_json_schema(),
         )
         self._service = service
         self._supervisor_id = supervisor_id
@@ -249,7 +204,7 @@ class CancelAsyncTaskTool(BaseTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Failed to cancel: {exc}",
+                content=f"Failed to cancel: {safe_error_description(exc)}",
                 is_error=True,
             )
         return ToolExecutionResult(
@@ -259,6 +214,8 @@ class CancelAsyncTaskTool(BaseTool):
 
 class ListAsyncTasksTool(BaseTool):
     """List all tracked async tasks for this supervisor."""
+
+    args_model: ClassVar[type[BaseModel] | None] = ListAsyncTasksArgs
 
     def __init__(
         self,
@@ -270,7 +227,7 @@ class ListAsyncTasksTool(BaseTool):
             name="list_async_tasks",
             description="List all background tasks",
             category=ToolCategory.COMMUNICATION,
-            parameters_schema=_LIST_SCHEMA,
+            parameters_schema=ListAsyncTasksArgs.model_json_schema(),
         )
         self._service = service
         self._supervisor_task_id = supervisor_task_id

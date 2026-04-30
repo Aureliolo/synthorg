@@ -6,7 +6,9 @@ registered handler functions, with structured error mapping.
 
 import json
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.observability import get_logger, safe_error_description
@@ -27,6 +29,17 @@ logger = get_logger(__name__)
 
 
 __all__ = ["MCPToolInvoker", "ToolHandler"]
+
+
+def _format_pydantic_error(err: object) -> str:
+    """Render a single Pydantic ``errors()`` entry as ``loc: msg``."""
+    if not isinstance(err, dict):
+        return "<arguments>: invalid"
+    loc_raw = err.get("loc", ())
+    loc_parts = loc_raw if isinstance(loc_raw, tuple) else ()
+    loc = ".".join(str(p) for p in loc_parts) or "<arguments>"
+    msg = err.get("msg", "")
+    return f"{loc}: {msg}" if isinstance(msg, str) else f"{loc}: invalid"
 
 
 class MCPToolInvoker:
@@ -112,13 +125,91 @@ class MCPToolInvoker:
                 is_error=True,
             )
 
+        # Phase 4 of #1611: when the tool registration carries an
+        # ``args_model``, validate the raw dict against it and pass the
+        # validated ``model_dump()`` to the handler.  Validation
+        # failure surfaces as an ``invalid_argument`` error envelope
+        # without ever reaching the handler.  Legacy tools
+        # (``args_model is None``) keep receiving the deepcopied raw
+        # dict, validated by the handler's own ``common_args`` calls.
+        handler_arguments: dict[str, Any]
+        if tool_def.args_model is not None:
+            # Reject non-mapping payloads up front. Otherwise
+            # ``model_validate`` would still raise, but only after
+            # Pydantic walked an iterable that ``dict(...)`` quietly
+            # accepts (e.g. a list of pairs), which is not part of the
+            # MCP contract.  An explicit shape check keeps the
+            # ``invalid_argument`` envelope as the only escape route.
+            # The static type is ``dict[str, Any]``, but the MCP wire
+            # surface can in practice deliver any JSON value, so the
+            # runtime guard erases the static narrowing via ``cast``.
+            raw_arguments = cast("object", arguments)
+            if not isinstance(raw_arguments, dict):
+                detail = (
+                    f"arguments must be a JSON object, got "
+                    f"{type(raw_arguments).__name__}"
+                )
+                logger.warning(
+                    MCP_SERVER_INVOKE_FAILED,
+                    tool_name=tool_name,
+                    error_type="ArgumentValidationError",
+                    error=detail,
+                )
+                return ToolExecutionResult(
+                    content=json.dumps(
+                        {
+                            "status": "error",
+                            "error_type": "ArgumentValidationError",
+                            "message": detail,
+                            "domain_code": "invalid_argument",
+                            "tool": tool_name,
+                        },
+                    ),
+                    is_error=True,
+                )
+            try:
+                validated = tool_def.args_model.model_validate(arguments)
+            except PydanticValidationError as exc:
+                errors = exc.errors(include_input=False, include_url=False)
+                detail = (
+                    "; ".join(_format_pydantic_error(e) for e in errors)
+                    if errors
+                    else safe_error_description(exc)
+                )
+                logger.warning(
+                    MCP_SERVER_INVOKE_FAILED,
+                    tool_name=tool_name,
+                    error_type="ArgumentValidationError",
+                    error=detail,
+                )
+                return ToolExecutionResult(
+                    content=json.dumps(
+                        {
+                            "status": "error",
+                            "error_type": "ArgumentValidationError",
+                            "message": detail,
+                            "domain_code": "invalid_argument",
+                            "tool": tool_name,
+                        },
+                    ),
+                    is_error=True,
+                )
+            # Deep-copy the validated dump before dispatch so handlers
+            # receive a fresh mutable dict; nested ``dict``/``list``
+            # fields from the frozen args model would otherwise be
+            # shared with subsequent invocations.  Matches the legacy
+            # ``deepcopy(arguments)`` path below.
+            handler_arguments = deepcopy(validated.model_dump(mode="python"))
+        else:
+            handler_arguments = deepcopy(arguments)
+
         # Invoke handler.  Re-raise MemoryError/RecursionError
         # (system-critical) and let application exceptions map to
         # error results.
         try:
             result = await handler(
                 app_state=app_state,
-                arguments=deepcopy(arguments),
+                arguments=handler_arguments,
                 actor=actor,
             )
         except MemoryError, RecursionError:
@@ -138,7 +229,10 @@ class MCPToolInvoker:
             return ToolExecutionResult(
                 content=json.dumps(
                     {
-                        "error": error_type,
+                        "status": "error",
+                        "error_type": error_type,
+                        "message": safe_error_description(exc) or error_type,
+                        "domain_code": "handler_failure",
                         "tool": tool_name,
                     }
                 ),

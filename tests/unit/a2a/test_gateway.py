@@ -121,19 +121,47 @@ class TestMethodHandlers:
     """Method handler registration."""
 
     @pytest.mark.unit
-    def test_handler_registry_matches_supported_methods(self) -> None:
-        """Every supported method has a registered handler."""
-        from synthorg.a2a.gateway import _METHOD_HANDLERS, _SUPPORTED_METHODS
+    def test_typed_union_covers_every_supported_method(self) -> None:
+        """The ``A2ARpcParams`` discriminated union covers every supported method.
 
-        assert set(_METHOD_HANDLERS.keys()) == _SUPPORTED_METHODS
+        Replaces the old ``_METHOD_HANDLERS`` dict assertion: dispatch
+        is now structural (``match params:``) and the invariant moves to
+        the discriminator literals on each variant model.
+        """
+        from typing import get_args
+
+        from synthorg.a2a.gateway import _SUPPORTED_METHODS
+        from synthorg.a2a.rpc_params import A2ARpcParams
+
+        # ``Annotated[Union[...], Discriminator(...)]`` -> first arg
+        # is the union itself; ``get_args`` on the union yields the
+        # variant models.  Every variant has a ``method`` field
+        # whose default is its ``Literal`` value.
+        union_alias, _discriminator = get_args(A2ARpcParams)
+        variants = get_args(union_alias)
+        method_literals = {
+            variant.model_fields["method"].default for variant in variants
+        }
+        assert method_literals == _SUPPORTED_METHODS
 
     @pytest.mark.unit
-    def test_handler_functions_are_callable(self) -> None:
-        """All handler values are async callables."""
-        from synthorg.a2a.gateway import _METHOD_HANDLERS
+    def test_handler_functions_are_async_callable(self) -> None:
+        """All three method handlers are async callables."""
+        import inspect
 
-        for method, handler in _METHOD_HANDLERS.items():
-            assert callable(handler), f"Handler for {method} is not callable"
+        from synthorg.a2a.gateway import (
+            _handle_message_send,
+            _handle_tasks_cancel,
+            _handle_tasks_get,
+        )
+
+        for handler in (
+            _handle_message_send,
+            _handle_tasks_get,
+            _handle_tasks_cancel,
+        ):
+            assert callable(handler)
+            assert inspect.iscoroutinefunction(handler)
 
 
 class TestParseJsonrpc:

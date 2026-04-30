@@ -7,7 +7,50 @@ infrastructure controllers.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._remaining_args import (
+    AuditListArgs,
+    BackupCreateArgs,
+    BackupDeleteArgs,
+    BackupGetArgs,
+    BackupListArgs,
+    BackupRestoreArgs,
+    EventsListArgs,
+    HealthCheckArgs,
+    IntegrationHealthGetAllArgs,
+    IntegrationHealthGetArgs,
+    ProjectsCreateArgs,
+    ProjectsDeleteArgs,
+    ProjectsGetArgs,
+    ProjectsListArgs,
+    ProjectsUpdateArgs,
+    ProvidersGetArgs,
+    ProvidersGetHealthArgs,
+    ProvidersListArgs,
+    ProvidersTestConnectionArgs,
+    RequestsCreateArgs,
+    RequestsGetArgs,
+    RequestsListArgs,
+    SettingsDeleteArgs,
+    SettingsGetArgs,
+    SettingsListArgs,
+    SettingsUpdateArgs,
+    SetupGetStatusArgs,
+    SetupInitializeArgs,
+    SimulationsCreateArgs,
+    SimulationsGetArgs,
+    SimulationsListArgs,
+    TemplatePacksGetArgs,
+    TemplatePacksInstallArgs,
+    TemplatePacksListArgs,
+    TemplatePacksUninstallArgs,
+    UsersCreateArgs,
+    UsersDeleteArgs,
+    UsersGetArgs,
+    UsersListArgs,
+    UsersUpdateArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -19,9 +62,20 @@ if TYPE_CHECKING:
 
 INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Health ---
-    read_tool("health", "check", "Get service health status."),
+    read_tool(
+        "health",
+        "check",
+        "Get service health status.",
+        args_model=HealthCheckArgs,
+    ),
     # --- Settings ---
-    read_tool("settings", "list", "List all settings.", PAGINATION_PROPERTIES),
+    read_tool(
+        "settings",
+        "list",
+        "List all settings.",
+        PAGINATION_PROPERTIES,
+        args_model=SettingsListArgs,
+    ),
     read_tool(
         "settings",
         "get",
@@ -30,6 +84,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "key": {"type": "string", "description": "Setting key"},
         },
         required=("key",),
+        args_model=SettingsGetArgs,
     ),
     admin_tool(
         "settings",
@@ -40,18 +95,26 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "value": {"type": "string", "description": "New value"},
         },
         required=("key", "value"),
+        args_model=SettingsUpdateArgs,
     ),
     admin_tool(
         "settings",
         "delete",
-        "Delete a setting.",
+        "Delete a setting (destructive; requires confirm).",
         {
             "key": {"type": "string", "description": "Setting key"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("key",),
+        required=("key", "reason", "confirm"),
+        args_model=SettingsDeleteArgs,
     ),
     # --- Providers ---
-    read_tool("providers", "list", "List configured LLM providers."),
+    read_tool(
+        "providers",
+        "list",
+        "List configured LLM providers.",
+        args_model=ProvidersListArgs,
+    ),
     read_tool(
         "providers",
         "get",
@@ -60,6 +123,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "provider_name": {"type": "string", "description": "Provider name"},
         },
         required=("provider_name",),
+        args_model=ProvidersGetArgs,
     ),
     read_tool(
         "providers",
@@ -69,6 +133,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "provider_name": {"type": "string", "description": "Provider name"},
         },
         required=("provider_name",),
+        args_model=ProvidersGetHealthArgs,
     ),
     admin_tool(
         "providers",
@@ -78,10 +143,11 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "provider_name": {"type": "string", "description": "Provider name"},
         },
         required=("provider_name",),
+        args_model=ProvidersTestConnectionArgs,
     ),
     # --- Backup ---
-    admin_tool("backup", "create", "Create a backup."),
-    read_tool("backup", "list", "List available backups."),
+    admin_tool("backup", "create", "Create a backup.", args_model=BackupCreateArgs),
+    read_tool("backup", "list", "List available backups.", args_model=BackupListArgs),
     read_tool(
         "backup",
         "get",
@@ -90,24 +156,29 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "backup_id": {"type": "string", "description": "Backup UUID"},
         },
         required=("backup_id",),
+        args_model=BackupGetArgs,
     ),
     admin_tool(
         "backup",
         "delete",
-        "Delete a backup.",
+        "Delete a backup (destructive; requires confirm).",
         {
             "backup_id": {"type": "string", "description": "Backup UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("backup_id",),
+        required=("backup_id", "reason", "confirm"),
+        args_model=BackupDeleteArgs,
     ),
     admin_tool(
         "backup",
         "restore",
-        "Restore from a backup.",
+        "Restore from a backup (destructive; requires confirm).",
         {
             "backup_id": {"type": "string", "description": "Backup UUID to restore"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("backup_id",),
+        required=("backup_id", "reason", "confirm"),
+        args_model=BackupRestoreArgs,
     ),
     # --- Audit ---
     read_tool(
@@ -119,10 +190,19 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "tool_name": {"type": "string", "description": "Filter by tool"},
             "action_type": {"type": "string", "description": "Filter by action type"},
             "verdict": {"type": "string", "description": "Filter by verdict"},
-            "since": {"type": "string", "description": "Start datetime (ISO 8601)"},
-            "until": {"type": "string", "description": "End datetime (ISO 8601)"},
+            "since": {
+                "type": "string",
+                "description": "Start datetime (ISO 8601)",
+                "format": "date-time",
+            },
+            "until": {
+                "type": "string",
+                "description": "End datetime (ISO 8601)",
+                "format": "date-time",
+            },
             **PAGINATION_PROPERTIES,
         },
+        args_model=AuditListArgs,
     ),
     # --- Events ---
     read_tool(
@@ -133,9 +213,16 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "event_type": {"type": "string", "description": "Filter by event type"},
             **PAGINATION_PROPERTIES,
         },
+        args_model=EventsListArgs,
     ),
     # --- Users ---
-    read_tool("users", "list", "List users.", PAGINATION_PROPERTIES),
+    read_tool(
+        "users",
+        "list",
+        "List users.",
+        PAGINATION_PROPERTIES,
+        args_model=UsersListArgs,
+    ),
     read_tool(
         "users",
         "get",
@@ -144,6 +231,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "user_id": {"type": "string", "description": "User UUID"},
         },
         required=("user_id",),
+        args_model=UsersGetArgs,
     ),
     admin_tool(
         "users",
@@ -154,6 +242,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "role": {"type": "string", "description": "User role"},
         },
         required=("username", "role"),
+        args_model=UsersCreateArgs,
     ),
     admin_tool(
         "users",
@@ -164,18 +253,27 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "updates": {"type": "object", "description": "Fields to update"},
         },
         required=("user_id", "updates"),
+        args_model=UsersUpdateArgs,
     ),
     admin_tool(
         "users",
         "delete",
-        "Delete a user.",
+        "Delete a user (destructive; requires confirm).",
         {
             "user_id": {"type": "string", "description": "User UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("user_id",),
+        required=("user_id", "reason", "confirm"),
+        args_model=UsersDeleteArgs,
     ),
     # --- Projects ---
-    read_tool("projects", "list", "List projects.", PAGINATION_PROPERTIES),
+    read_tool(
+        "projects",
+        "list",
+        "List projects.",
+        PAGINATION_PROPERTIES,
+        args_model=ProjectsListArgs,
+    ),
     read_tool(
         "projects",
         "get",
@@ -184,6 +282,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "project_id": {"type": "string", "description": "Project UUID"},
         },
         required=("project_id",),
+        args_model=ProjectsGetArgs,
     ),
     write_tool(
         "projects",
@@ -194,6 +293,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "description": {"type": "string", "description": "Project description"},
         },
         required=("name",),
+        args_model=ProjectsCreateArgs,
     ),
     write_tool(
         "projects",
@@ -204,18 +304,27 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "updates": {"type": "object", "description": "Fields to update"},
         },
         required=("project_id", "updates"),
+        args_model=ProjectsUpdateArgs,
     ),
-    write_tool(
+    admin_tool(
         "projects",
         "delete",
-        "Delete a project.",
+        "Delete a project (destructive; requires confirm).",
         {
             "project_id": {"type": "string", "description": "Project UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("project_id",),
+        required=("project_id", "reason", "confirm"),
+        args_model=ProjectsDeleteArgs,
     ),
     # --- Requests ---
-    read_tool("requests", "list", "List agent requests.", PAGINATION_PROPERTIES),
+    read_tool(
+        "requests",
+        "list",
+        "List agent requests.",
+        PAGINATION_PROPERTIES,
+        args_model=RequestsListArgs,
+    ),
     read_tool(
         "requests",
         "get",
@@ -224,6 +333,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "request_id": {"type": "string", "description": "Request UUID"},
         },
         required=("request_id",),
+        args_model=RequestsGetArgs,
     ),
     write_tool(
         "requests",
@@ -234,9 +344,15 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "content": {"type": "string", "description": "Request content"},
         },
         required=("type", "content"),
+        args_model=RequestsCreateArgs,
     ),
     # --- Setup ---
-    read_tool("setup", "get_status", "Get setup wizard status."),
+    read_tool(
+        "setup",
+        "get_status",
+        "Get setup wizard status.",
+        args_model=SetupGetStatusArgs,
+    ),
     admin_tool(
         "setup",
         "initialize",
@@ -244,9 +360,16 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "config": {"type": "object", "description": "Initial configuration"},
         },
+        args_model=SetupInitializeArgs,
     ),
     # --- Simulations ---
-    read_tool("simulations", "list", "List simulation runs.", PAGINATION_PROPERTIES),
+    read_tool(
+        "simulations",
+        "list",
+        "List simulation runs.",
+        PAGINATION_PROPERTIES,
+        args_model=SimulationsListArgs,
+    ),
     read_tool(
         "simulations",
         "get",
@@ -255,6 +378,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "simulation_id": {"type": "string", "description": "Simulation UUID"},
         },
         required=("simulation_id",),
+        args_model=SimulationsGetArgs,
     ),
     write_tool(
         "simulations",
@@ -265,6 +389,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "parameters": {"type": "object", "description": "Simulation parameters"},
         },
         required=("scenario",),
+        args_model=SimulationsCreateArgs,
     ),
     # --- Template packs ---
     read_tool(
@@ -272,6 +397,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List available template packs.",
         PAGINATION_PROPERTIES,
+        args_model=TemplatePacksListArgs,
     ),
     read_tool(
         "template_packs",
@@ -281,6 +407,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "pack_id": {"type": "string", "description": "Template pack UUID"},
         },
         required=("pack_id",),
+        args_model=TemplatePacksGetArgs,
     ),
     admin_tool(
         "template_packs",
@@ -290,6 +417,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "pack_id": {"type": "string", "description": "Template pack to install"},
         },
         required=("pack_id",),
+        args_model=TemplatePacksInstallArgs,
     ),
     admin_tool(
         "template_packs",
@@ -299,10 +427,14 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "pack_id": {"type": "string", "description": "Template pack UUID"},
         },
         required=("pack_id",),
+        args_model=TemplatePacksUninstallArgs,
     ),
     # --- Integration health ---
     read_tool(
-        "integration_health", "get_all", "Get health status for all integrations."
+        "integration_health",
+        "get_all",
+        "Get health status for all integrations.",
+        args_model=IntegrationHealthGetAllArgs,
     ),
     read_tool(
         "integration_health",
@@ -312,5 +444,6 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "integration_name": {"type": "string", "description": "Integration name"},
         },
         required=("integration_name",),
+        args_model=IntegrationHealthGetArgs,
     ),
 )

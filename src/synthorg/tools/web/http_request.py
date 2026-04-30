@@ -6,10 +6,10 @@ bodies are streamed and truncated at ``max_response_bytes`` to
 prevent memory exhaustion.
 """
 
-import copy
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 import httpx
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -24,6 +24,7 @@ from synthorg.tools.network_validator import (  # noqa: TC001
     DnsValidationOk,
     NetworkPolicy,
 )
+from synthorg.tools.web._args import HttpRequestArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
 
 logger = get_logger(__name__)
@@ -36,39 +37,6 @@ _ALLOWED_METHODS: Final[frozenset[str]] = frozenset(
         "DELETE",
     }
 )
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "url": {
-            "type": "string",
-            "description": "The URL to request",
-        },
-        "method": {
-            "type": "string",
-            "enum": ["GET", "POST", "PUT", "DELETE"],
-            "description": "HTTP method (default: GET)",
-            "default": "GET",
-        },
-        "headers": {
-            "type": "object",
-            "additionalProperties": {"type": "string"},
-            "description": "Optional request headers",
-        },
-        "body": {
-            "type": "string",
-            "description": "Optional request body (for POST/PUT)",
-        },
-        "timeout": {
-            "type": "number",
-            "description": "Request timeout in seconds",
-            "minimum": 0,
-            "maximum": 300,
-        },
-    },
-    "required": ["url"],
-    "additionalProperties": False,
-}
 
 
 class HttpRequestTool(BaseWebTool):
@@ -87,6 +55,8 @@ class HttpRequestTool(BaseWebTool):
             )
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = HttpRequestArgs
+
     def __init__(
         self,
         *,
@@ -97,9 +67,13 @@ class HttpRequestTool(BaseWebTool):
         """Initialize the HTTP request tool.
 
         Args:
-            network_policy: Network policy for SSRF prevention.
-            max_response_bytes: Maximum response body size to return.
-            request_timeout: Default request timeout in seconds.
+            network_policy: SSRF + scheme allowlist applied to every
+                outgoing request URL. ``None`` uses the default
+                conservative policy.
+            max_response_bytes: Hard cap on body size in bytes
+                (default 1 MiB) to bound memory.
+            request_timeout: Per-request timeout in seconds
+                (default 30.0).
         """
         super().__init__(
             name="http_request",
@@ -107,7 +81,7 @@ class HttpRequestTool(BaseWebTool):
                 "Execute HTTP requests (GET, POST, PUT, DELETE). "
                 "URLs are validated against SSRF policies."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=HttpRequestArgs.model_json_schema(),
             action_type=ActionType.COMMS_EXTERNAL,
             network_policy=network_policy,
             request_timeout=request_timeout,

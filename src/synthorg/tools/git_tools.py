@@ -8,7 +8,9 @@ validation shared by all tools.
 """
 
 from pathlib import Path  # noqa: TC003 -- used at runtime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -17,6 +19,14 @@ from synthorg.observability.events.git import (
     GIT_CLONE_TOCTOU_SKIPPED,
     GIT_CLONE_URL_REJECTED,
     GIT_COMMAND_START,
+)
+from synthorg.tools._git_args import (
+    GitBranchArgs,
+    GitCloneArgs,
+    GitCommitArgs,
+    GitDiffArgs,
+    GitLogArgs,
+    GitStatusArgs,
 )
 from synthorg.tools._git_base import _BaseGitTool
 from synthorg.tools.base import ToolExecutionResult
@@ -49,6 +59,8 @@ class GitStatusTool(_BaseGitTool):
     porcelain formatting.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = GitStatusArgs
+
     def __init__(
         self,
         *,
@@ -67,22 +79,7 @@ class GitStatusTool(_BaseGitTool):
                 "Show the working tree status. Returns modified, staged, "
                 "and untracked files in the workspace repository."
             ),
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "short": {
-                        "type": "boolean",
-                        "description": "Use short format output.",
-                        "default": False,
-                    },
-                    "porcelain": {
-                        "type": "boolean",
-                        "description": ("Use machine-readable porcelain format."),
-                        "default": False,
-                    },
-                },
-                "additionalProperties": False,
-            },
+            parameters_schema=GitStatusArgs.model_json_schema(),
             workspace=workspace,
             sandbox=sandbox,
             action_type=ActionType.VCS_READ,
@@ -112,53 +109,14 @@ class GitStatusTool(_BaseGitTool):
 # ── GitLogTool ────────────────────────────────────────────────────
 
 
-_GIT_LOG_SCHEMA: Final[dict[str, object]] = {
-    "type": "object",
-    "properties": {
-        "max_count": {
-            "type": "integer",
-            "description": "Max commits (default 10, max 100).",
-            "default": 10,
-            "minimum": 1,
-            "maximum": 100,
-        },
-        "oneline": {
-            "type": "boolean",
-            "description": "Use one-line format.",
-            "default": False,
-        },
-        "ref": {
-            "type": "string",
-            "description": "Branch, tag, or commit ref to start from.",
-        },
-        "author": {
-            "type": "string",
-            "description": "Filter commits by author pattern.",
-        },
-        "since": {
-            "type": "string",
-            "description": "Show commits after date (e.g. '2024-01-01').",
-        },
-        "until": {
-            "type": "string",
-            "description": "Show commits before this date.",
-        },
-        "paths": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Limit to commits touching these paths.",
-        },
-    },
-    "additionalProperties": False,
-}
-
-
 class GitLogTool(_BaseGitTool):
     """Show commit log history.
 
     Returns recent commits with optional filtering by count, author,
     date range, ref, and paths.
     """
+
+    args_model: ClassVar[type[BaseModel] | None] = GitLogArgs
 
     _MAX_COUNT_LIMIT: Final[int] = 100
 
@@ -180,7 +138,7 @@ class GitLogTool(_BaseGitTool):
                 "Show commit log. Returns recent commits with optional "
                 "filtering by count, author, date range, ref, and paths."
             ),
-            parameters_schema=_GIT_LOG_SCHEMA,
+            parameters_schema=GitLogArgs.model_json_schema(),
             workspace=workspace,
             sandbox=sandbox,
             action_type=ActionType.VCS_READ,
@@ -263,6 +221,8 @@ class GitDiffTool(_BaseGitTool):
     staged changes view, stat summary, and path filtering.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = GitDiffArgs
+
     def __init__(
         self,
         *,
@@ -283,35 +243,7 @@ class GitDiffTool(_BaseGitTool):
                 "filtering."
             ),
             action_type=ActionType.VCS_READ,
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "staged": {
-                        "type": "boolean",
-                        "description": "Show staged (cached) changes.",
-                        "default": False,
-                    },
-                    "ref1": {
-                        "type": "string",
-                        "description": "First ref for comparison.",
-                    },
-                    "ref2": {
-                        "type": "string",
-                        "description": "Second ref for comparison.",
-                    },
-                    "stat": {
-                        "type": "boolean",
-                        "description": ("Show diffstat summary instead of full diff."),
-                        "default": False,
-                    },
-                    "paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Limit diff to these paths.",
-                    },
-                },
-                "additionalProperties": False,
-            },
+            parameters_schema=GitDiffArgs.model_json_schema(),
             workspace=workspace,
             sandbox=sandbox,
         )
@@ -376,6 +308,8 @@ class GitBranchTool(_BaseGitTool):
     branches.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = GitBranchArgs
+
     _ACTIONS_REQUIRING_NAME = frozenset({"create", "switch", "delete"})
 
     def __init__(
@@ -397,41 +331,7 @@ class GitBranchTool(_BaseGitTool):
                 "Provide an action and branch name as needed."
             ),
             action_type=ActionType.VCS_BRANCH,
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": [
-                            "list",
-                            "create",
-                            "switch",
-                            "delete",
-                        ],
-                        "description": "Branch action to perform.",
-                        "default": "list",
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": (
-                            "Branch name (required for create/switch/delete)."
-                        ),
-                    },
-                    "start_point": {
-                        "type": "string",
-                        "description": ("Starting ref for branch creation."),
-                    },
-                    "force": {
-                        "type": "boolean",
-                        "description": (
-                            "Force delete (-D) instead of safe delete (-d)."
-                        ),
-                        "default": False,
-                    },
-                },
-                "required": ["action"],
-                "additionalProperties": False,
-            },
+            parameters_schema=GitBranchArgs.model_json_schema(),
             workspace=workspace,
             sandbox=sandbox,
         )
@@ -513,6 +413,8 @@ class GitCommitTool(_BaseGitTool):
     creates a commit with the provided message.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = GitCommitArgs
+
     def __init__(
         self,
         *,
@@ -533,27 +435,7 @@ class GitCommitTool(_BaseGitTool):
                 "optionally specify paths to stage or use 'all' to stage "
                 "everything."
             ),
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "message": {
-                        "type": "string",
-                        "description": "Commit message.",
-                    },
-                    "paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": ("Paths to stage before committing."),
-                    },
-                    "all": {
-                        "type": "boolean",
-                        "description": ("Stage all modified and deleted files."),
-                        "default": False,
-                    },
-                },
-                "required": ["message"],
-                "additionalProperties": False,
-            },
+            parameters_schema=GitCommitArgs.model_json_schema(),
             workspace=workspace,
             sandbox=sandbox,
         )
@@ -609,6 +491,8 @@ class GitCloneTool(_BaseGitTool):
     ``http://`` URLs are rejected.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = GitCloneArgs
+
     def __init__(
         self,
         *,
@@ -619,11 +503,12 @@ class GitCloneTool(_BaseGitTool):
         """Initialize the git_clone tool.
 
         Args:
-            workspace: Absolute path to the workspace root.
-            sandbox: Optional sandbox backend for subprocess isolation.
-            network_policy: SSRF prevention network policy.  Defaults
-                to blocking all private/reserved IPs with an empty
-                hostname allowlist.
+            workspace: Workspace root for clone destinations.
+            sandbox: Optional sandbox backend that runs ``git`` in
+                isolation. ``None`` runs locally inside the workspace.
+            network_policy: SSRF + scheme allowlist policy applied to
+                the requested URL. ``None`` uses the default
+                conservative policy (HTTPS + SSH only).
         """
         super().__init__(
             name="git_clone",
@@ -632,30 +517,7 @@ class GitCloneTool(_BaseGitTool):
                 "Clone a git repository into a directory within the "
                 "workspace. Supports branch selection and shallow clones."
             ),
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "Repository URL to clone.",
-                    },
-                    "directory": {
-                        "type": "string",
-                        "description": ("Target directory name within workspace."),
-                    },
-                    "branch": {
-                        "type": "string",
-                        "description": "Branch to clone.",
-                    },
-                    "depth": {
-                        "type": "integer",
-                        "description": "Shallow clone depth.",
-                        "minimum": 1,
-                    },
-                },
-                "required": ["url"],
-                "additionalProperties": False,
-            },
+            parameters_schema=GitCloneArgs.model_json_schema(),
             workspace=workspace,
             sandbox=sandbox,
         )

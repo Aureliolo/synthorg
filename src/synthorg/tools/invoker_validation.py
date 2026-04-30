@@ -10,10 +10,12 @@ import copy
 from typing import TYPE_CHECKING
 
 import jsonschema
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 from referencing import Registry as JsonSchemaRegistry
 from referencing.exceptions import NoSuchResource
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_DEEPCOPY_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
@@ -42,6 +44,17 @@ SAFE_REGISTRY: JsonSchemaRegistry = JsonSchemaRegistry(  # type: ignore[call-arg
 )
 
 
+def _format_pydantic_error(err: object) -> str:
+    """Render a single Pydantic ``errors()`` entry as ``loc: msg``."""
+    if not isinstance(err, dict):
+        return "<arguments>: invalid"
+    loc_raw = err.get("loc", ())
+    loc_parts = loc_raw if isinstance(loc_raw, tuple) else ()
+    loc = ".".join(str(p) for p in loc_parts) or "<arguments>"
+    msg = err.get("msg", "")
+    return f"{loc}: {msg}" if isinstance(msg, str) else f"{loc}: invalid"
+
+
 class ToolInvokerValidationMixin:
     """Parameter-validation helpers for ``ToolInvoker``."""
 
@@ -49,11 +62,81 @@ class ToolInvokerValidationMixin:
         self,
         tool: BaseTool,
         tool_call: ToolCall,
-    ) -> ToolResult | None:
-        """Validate tool call arguments against JSON Schema.
+    ) -> ToolResult | dict[str, object] | None:
+        """Validate tool call arguments.
 
-        Returns ``None`` on success or a ``ToolResult`` on failure.
+        Tries the typed ``args_model`` when the subclass declares one
+        (the Phase 3 typed-args path of #1611) and falls back to
+        JSON-Schema validation against ``parameters_schema`` otherwise.
+
+        Returns:
+          * ``ToolResult`` on validation failure (caller short-circuits).
+          * ``dict[str, object]`` (the normalized args-model dump) when
+            an ``args_model`` validated successfully.  Defaults,
+            coercions, and ``AfterValidator`` results are baked in;
+            callers MUST pass this dict to ``tool.execute`` instead of
+            the raw ``tool_call.arguments`` so the typed-boundary
+            promise actually reaches the tool body.
+          * ``None`` when there is no ``args_model`` and the legacy
+            JSON-Schema check passed; callers fall back to the raw
+            deepcopied arguments.
         """
+        args_model = tool.args_model
+        if args_model is not None:
+            return self._validate_args_model(args_model, tool_call)
+        return self._validate_json_schema(tool, tool_call)
+
+    def _validate_args_model(
+        self,
+        args_model: type[BaseModel],
+        tool_call: ToolCall,
+    ) -> ToolResult | dict[str, object]:
+        """Validate ``tool_call.arguments`` against a Pydantic args model.
+
+        Returns the validated ``model_dump(mode="python")`` on success
+        so coercions / defaults / ``AfterValidator`` results propagate
+        to the tool body (per the typed-args contract); returns a
+        ``ToolResult`` on failure.
+        """
+        try:
+            validated = args_model.model_validate(dict(tool_call.arguments))
+            # ``model_dump`` is inside the same ``try`` so a
+            # serialization failure (custom serializer raising,
+            # unbounded recursion in nested types, etc.) flows through
+            # the same failure paths as validation -- without this,
+            # serialization errors would escape ``_validate_args_model``
+            # uncaught and break the method's "always returns a
+            # ToolResult or a normalized dict" contract.
+            return validated.model_dump(mode="python")
+        except PydanticValidationError as exc:
+            errors = exc.errors(include_input=False, include_url=False)
+            detail = (
+                "; ".join(_format_pydantic_error(e) for e in errors)
+                if errors
+                else safe_error_description(exc)
+            )
+            return self._param_error_result(tool_call, detail)
+        except (MemoryError, RecursionError) as exc:
+            logger.error(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                exc_info=True,
+            )
+            raise
+        except Exception as exc:
+            return self._unexpected_validation_result(
+                tool_call, safe_error_description(exc) or type(exc).__name__
+            )
+
+    def _validate_json_schema(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Validate ``tool_call.arguments`` against the legacy JSON Schema."""
         schema = tool.parameters_schema
         if schema is None:
             return None
@@ -68,16 +151,19 @@ class ToolInvokerValidationMixin:
         except jsonschema.ValidationError as exc:
             return self._param_error_result(tool_call, exc.message)
         except (MemoryError, RecursionError) as exc:
-            logger.exception(
+            logger.error(
                 TOOL_INVOKE_NON_RECOVERABLE,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                exc_info=True,
             )
             raise
         except Exception as exc:
-            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
-            return self._unexpected_validation_result(tool_call, error_msg)
+            return self._unexpected_validation_result(
+                tool_call, safe_error_description(exc) or type(exc).__name__
+            )
         return None
 
     def _schema_error_result(
@@ -128,7 +214,7 @@ class ToolInvokerValidationMixin:
         error_msg: str,
     ) -> ToolResult:
         """Build an error result for unexpected validation failures."""
-        logger.exception(
+        logger.warning(
             TOOL_INVOKE_VALIDATION_UNEXPECTED,
             tool_call_id=tool_call.id,
             tool_name=tool_call.name,
@@ -154,20 +240,23 @@ class ToolInvokerValidationMixin:
         try:
             return copy.deepcopy(tool_call.arguments)
         except (MemoryError, RecursionError) as exc:
-            logger.exception(
+            logger.error(
                 TOOL_INVOKE_NON_RECOVERABLE,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                exc_info=True,
             )
             raise
         except Exception as exc:
-            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
-            logger.exception(
+            error_msg = safe_error_description(exc) or type(exc).__name__
+            logger.warning(
                 TOOL_INVOKE_DEEPCOPY_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error=f"Failed to deep-copy arguments: {error_msg}",
+                error_type=type(exc).__name__,
+                error=error_msg,
             )
             return ToolResult(
                 tool_call_id=tool_call.id,

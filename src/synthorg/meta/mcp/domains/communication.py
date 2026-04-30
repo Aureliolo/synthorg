@@ -5,6 +5,29 @@ Covers messages, meetings, connections, webhooks, and tunnel.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._remaining_args import (
+    ConnectionsCheckHealthArgs,
+    ConnectionsCreateArgs,
+    ConnectionsDeleteArgs,
+    ConnectionsGetArgs,
+    ConnectionsListArgs,
+    MeetingsCreateArgs,
+    MeetingsDeleteArgs,
+    MeetingsGetArgs,
+    MeetingsListArgs,
+    MeetingsUpdateArgs,
+    MessagesDeleteArgs,
+    MessagesGetArgs,
+    MessagesListArgs,
+    MessagesSendArgs,
+    TunnelConnectArgs,
+    TunnelGetStatusArgs,
+    WebhooksCreateArgs,
+    WebhooksDeleteArgs,
+    WebhooksGetArgs,
+    WebhooksListArgs,
+    WebhooksUpdateArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
@@ -27,6 +50,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "sender": {"type": "string", "description": "Filter by sender"},
             **PAGINATION_PROPERTIES,
         },
+        args_model=MessagesListArgs,
     ),
     read_tool(
         "messages",
@@ -36,6 +60,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "message_id": {"type": "string", "description": "Message UUID"},
         },
         required=("message_id",),
+        args_model=MessagesGetArgs,
     ),
     write_tool(
         "messages",
@@ -47,6 +72,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "sender": {"type": "string", "description": "Sender name"},
         },
         required=("channel", "content"),
+        args_model=MessagesSendArgs,
     ),
     admin_tool(
         "messages",
@@ -61,9 +87,16 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("message_id", "reason", "confirm"),
+        args_model=MessagesDeleteArgs,
     ),
     # --- Meetings ---
-    read_tool("meetings", "list", "List meeting records.", PAGINATION_PROPERTIES),
+    read_tool(
+        "meetings",
+        "list",
+        "List meeting records.",
+        PAGINATION_PROPERTIES,
+        args_model=MeetingsListArgs,
+    ),
     read_tool(
         "meetings",
         "get",
@@ -72,6 +105,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "meeting_id": {"type": "string", "description": "Meeting UUID"},
         },
         required=("meeting_id",),
+        args_model=MeetingsGetArgs,
     ),
     write_tool(
         "meetings",
@@ -86,6 +120,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             },
         },
         required=("title",),
+        args_model=MeetingsCreateArgs,
     ),
     write_tool(
         "meetings",
@@ -96,6 +131,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "updates": {"type": "object", "description": "Fields to update"},
         },
         required=("meeting_id", "updates"),
+        args_model=MeetingsUpdateArgs,
     ),
     admin_tool(
         "meetings",
@@ -110,9 +146,15 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("meeting_id", "reason", "confirm"),
+        args_model=MeetingsDeleteArgs,
     ),
     # --- Connections ---
-    read_tool("connections", "list", "List external connections."),
+    read_tool(
+        "connections",
+        "list",
+        "List external connections.",
+        args_model=ConnectionsListArgs,
+    ),
     read_tool(
         "connections",
         "get",
@@ -121,6 +163,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "name": {"type": "string", "description": "Connection name"},
         },
         required=("name",),
+        args_model=ConnectionsGetArgs,
     ),
     admin_tool(
         "connections",
@@ -132,15 +175,18 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "credentials": {"type": "object", "description": "Connection credentials"},
         },
         required=("name", "connection_type"),
+        args_model=ConnectionsCreateArgs,
     ),
     admin_tool(
         "connections",
         "delete",
-        "Delete an external connection.",
+        "Delete an external connection (destructive; requires confirm).",
         {
             "name": {"type": "string", "description": "Connection name"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("name",),
+        required=("name", "reason", "confirm"),
+        args_model=ConnectionsDeleteArgs,
     ),
     read_tool(
         "connections",
@@ -150,9 +196,16 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "name": {"type": "string", "description": "Connection name"},
         },
         required=("name",),
+        args_model=ConnectionsCheckHealthArgs,
     ),
     # --- Webhooks ---
-    read_tool("webhooks", "list", "List registered webhooks.", PAGINATION_PROPERTIES),
+    read_tool(
+        "webhooks",
+        "list",
+        "List registered webhooks.",
+        PAGINATION_PROPERTIES,
+        args_model=WebhooksListArgs,
+    ),
     read_tool(
         "webhooks",
         "get",
@@ -161,6 +214,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "webhook_id": {"type": "string", "description": "Webhook UUID"},
         },
         required=("webhook_id",),
+        args_model=WebhooksGetArgs,
     ),
     admin_tool(
         "webhooks",
@@ -175,6 +229,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             },
         },
         required=("url", "events"),
+        args_model=WebhooksCreateArgs,
     ),
     admin_tool(
         "webhooks",
@@ -185,18 +240,26 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "updates": {"type": "object", "description": "Fields to update"},
         },
         required=("webhook_id", "updates"),
+        args_model=WebhooksUpdateArgs,
     ),
     admin_tool(
         "webhooks",
         "delete",
-        "Delete a webhook.",
+        "Delete a webhook (destructive; requires confirm).",
         {
             "webhook_id": {"type": "string", "description": "Webhook UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("webhook_id",),
+        required=("webhook_id", "reason", "confirm"),
+        args_model=WebhooksDeleteArgs,
     ),
     # --- Tunnel ---
-    read_tool("tunnel", "get_status", "Get tunnel connection status."),
+    read_tool(
+        "tunnel",
+        "get_status",
+        "Get tunnel connection status.",
+        args_model=TunnelGetStatusArgs,
+    ),
     admin_tool(
         "tunnel",
         "connect",
@@ -205,5 +268,6 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "target": {"type": "string", "description": "Tunnel target endpoint"},
         },
         required=("target",),
+        args_model=TunnelConnectArgs,
     ),
 )

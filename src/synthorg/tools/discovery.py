@@ -12,7 +12,9 @@ Discovery tools signal load/unload state changes via
 """
 
 import json
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
+
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.core.tool_disclosure import (  # noqa: TC001
@@ -24,6 +26,11 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_DISCLOSURE_MANAGER_BOUND,
     TOOL_DISCLOSURE_MANAGER_NOT_BOUND,
+)
+from synthorg.tools._misc_args import (
+    ListToolsArgs,
+    LoadToolArgs,
+    LoadToolResourceArgs,
 )
 
 from .base import BaseTool, ToolExecutionResult
@@ -79,10 +86,13 @@ class ListToolsTool(BaseTool):
     Always available regardless of agent access level.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = ListToolsArgs
+
     def __init__(self, manager: ToolDisclosureManager) -> None:
         super().__init__(
             name="list_tools",
             description="List all available tools with brief descriptions",
+            parameters_schema=ListToolsArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
             action_type="memory:read",
         )
@@ -118,20 +128,13 @@ class LoadToolTool(BaseTool):
     ``DisclosureMiddleware`` to mark the tool as loaded.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = LoadToolArgs
+
     def __init__(self, manager: ToolDisclosureManager) -> None:
         super().__init__(
             name="load_tool",
             description="Load the full specification for a tool",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "tool_name": {
-                        "type": "string",
-                        "description": "Name of the tool to load",
-                    },
-                },
-                "required": ["tool_name"],
-            },
+            parameters_schema=LoadToolArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
             action_type="memory:read",
         )
@@ -171,24 +174,13 @@ class LoadToolResourceTool(BaseTool):
     ``DisclosureMiddleware``.
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = LoadToolResourceArgs
+
     def __init__(self, manager: ToolDisclosureManager) -> None:
         super().__init__(
             name="load_tool_resource",
             description="Load a specific advanced resource for a tool",
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "tool_name": {
-                        "type": "string",
-                        "description": "Name of the tool",
-                    },
-                    "resource_id": {
-                        "type": "string",
-                        "description": "Identifier of the resource",
-                    },
-                },
-                "required": ["tool_name", "resource_id"],
-            },
+            parameters_schema=LoadToolResourceArgs.model_json_schema(),
             category=ToolCategory.MEMORY,
             action_type="memory:read",
         )

@@ -121,6 +121,27 @@ Every business-logic module follows the same top-down ordering:
 
 Reference: `src/synthorg/communication/bus/memory.py`.
 
+For tool / handler argument models (Pydantic), the convention is to
+co-locate them in a single domain-scoped `_args.py` module rather than
+inline with the consumer. Examples:
+
+* `src/synthorg/tools/<domain>/_args.py` for `BaseTool` subclasses
+  (`file_system/_args.py`, `web/_args.py`, `database/_args.py`,
+  `communication/_args.py`, `analytics/_args.py`, `design/_args.py`);
+  smaller domains share an aggregator module
+  (`tools/_git_args.py`, `tools/_misc_args.py`).
+* `src/synthorg/meta/mcp/domains/_*_args.py` for MCP tool
+  registrations (`_common_args.py`, `_tasks_args.py`,
+  `_agents_args.py`, `_simple_args.py`, `_workflows_org_args.py`,
+  `_remaining_args.py`).
+* `src/synthorg/memory/self_editing_args.py` for the six
+  self-editing-memory tools.
+* `src/synthorg/api/ws_payloads/` for the WebSocket payload
+  discriminated union (split across `_lifecycle.py` and `_domain.py`
+  with the union exported from `__init__.py`).
+* `src/synthorg/a2a/rpc_params.py` for the A2A JSON-RPC param
+  discriminated union.
+
 ## 8. Frozen `ConfigDict` pattern
 
 Every Pydantic model declares
@@ -132,6 +153,48 @@ existing ones" property the immutability covenant relies on.
 
 References: 30+ occurrences across `src/synthorg/`. Canonical example:
 `src/synthorg/approval/models.py:28`.
+
+## 9. Typed args models at system boundaries (#1611)
+
+Every system boundary that accepted a raw `dict[str, Any]` now
+validates against a frozen Pydantic args model:
+
+* **A2A JSON-RPC** (`src/synthorg/a2a/rpc_params.py`): one model per
+  RPC method, joined into `A2ARpcParams` discriminated union via the
+  `method` literal. The gateway calls `parse_rpc_params(rpc_request)`
+  before dispatching.
+* **WebSocket events** (`src/synthorg/api/ws_payloads/`): one model
+  per `WsEventType` value, joined into `WsEventPayload` discriminated
+  union via `event_type`. `WsEvent` runs every constructed payload
+  through the union adapter so shape drift is rejected at construction.
+* **Self-editing memory** (`src/synthorg/memory/self_editing_args.py`):
+  six args models discriminated by the `tool` literal.
+  `parse_self_editing_args(tool_name, arguments)` validates before
+  dispatch; the dispatcher matches on the typed variant.
+* **Tool ecosystem** (`src/synthorg/tools/`): every concrete
+  `BaseTool` subclass declares
+  `args_model: ClassVar[type[BaseModel] | None] = <Args>`. The
+  `ToolInvoker` calls `args_model.model_validate(arguments)` before
+  invoking `execute`; failures surface as a typed
+  `ToolParameterError` envelope.
+* **MCP handlers** (`src/synthorg/meta/mcp/`): every
+  `read_tool` / `write_tool` / `admin_tool` registration *may* pass
+  `args_model=<Args>` through to `MCPToolDef.args_model`; when set,
+  the invoker validates ahead of dispatch and failures surface as the
+  standard `ArgumentValidationError` envelope without ever calling
+  the handler. `args_model` is optional (typed
+  `type[BaseModel] | None` on `MCPToolDef`); registrations with
+  `args_model=None` -- e.g. `MCPBridgeTool` whose shape mirrors a
+  remote MCP server's `tools/list` response and is not known until
+  runtime -- keep the legacy `common_args` validators inside the
+  handler body. The bulk of in-tree tools declare a concrete
+  `args_model`; the `None` exit is reserved for genuinely
+  dynamically-shaped tools.
+
+All args models share the convention from §8 (frozen, no NaN/Inf,
+extra=forbid) and reuse the `_ArgsBase` / `PaginationFields` /
+`DestructiveGuardrailFields` mixins under
+`src/synthorg/meta/mcp/domains/_common_args.py` where applicable.
 
 ## See also
 

@@ -5,6 +5,26 @@ Covers agents, personalities, and training controllers.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._agents_args import (
+    AgentsCreateArgs,
+    AgentsDeleteArgs,
+    AgentsGetActivityArgs,
+    AgentsGetArgs,
+    AgentsGetHealthArgs,
+    AgentsGetHistoryArgs,
+    AgentsGetPerformanceArgs,
+    AgentsListArgs,
+    AgentsUpdateArgs,
+    AutonomyGetArgs,
+    AutonomyUpdateArgs,
+    CollaborationGetCalibrationArgs,
+    CollaborationGetScoreArgs,
+    PersonalitiesGetArgs,
+    PersonalitiesListArgs,
+    TrainingGetSessionArgs,
+    TrainingListSessionsArgs,
+    TrainingStartSessionArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
@@ -21,7 +41,11 @@ _AGENT_NAME = {"agent_name": {"type": "string", "description": "Agent name"}}
 AGENT_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Agent CRUD ---
     read_tool(
-        "agents", "list", "List all agents with pagination.", PAGINATION_PROPERTIES
+        "agents",
+        "list",
+        "List all agents with pagination.",
+        PAGINATION_PROPERTIES,
+        args_model=AgentsListArgs,
     ),
     read_tool(
         "agents",
@@ -29,6 +53,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "Get a single agent by name.",
         _AGENT_NAME,
         required=("agent_name",),
+        args_model=AgentsGetArgs,
     ),
     write_tool(
         "agents",
@@ -40,6 +65,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "department": {"type": "string", "description": "Department name"},
         },
         required=("name", "role", "department"),
+        args_model=AgentsCreateArgs,
     ),
     write_tool(
         "agents",
@@ -50,6 +76,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "updates": {"type": "object", "description": "Fields to update"},
         },
         required=("agent_name", "updates"),
+        args_model=AgentsUpdateArgs,
     ),
     admin_tool(
         "agents",
@@ -57,6 +84,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "Remove an agent from the organization (destructive; requires confirm).",
         {**_AGENT_NAME, **DESTRUCTIVE_GUARDRAIL_PROPERTIES},
         required=("agent_name", "reason", "confirm"),
+        args_model=AgentsDeleteArgs,
     ),
     # --- Agent observability ---
     read_tool(
@@ -65,6 +93,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "Get agent performance summary.",
         _AGENT_NAME,
         required=("agent_name",),
+        args_model=AgentsGetPerformanceArgs,
     ),
     read_tool(
         "agents",
@@ -75,6 +104,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             **PAGINATION_PROPERTIES,
         },
         required=("agent_name",),
+        args_model=AgentsGetActivityArgs,
     ),
     read_tool(
         "agents",
@@ -82,6 +112,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "Get agent career history.",
         _AGENT_NAME,
         required=("agent_name",),
+        args_model=AgentsGetHistoryArgs,
     ),
     read_tool(
         "agents",
@@ -89,6 +120,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "Get agent health status.",
         _AGENT_NAME,
         required=("agent_name",),
+        args_model=AgentsGetHealthArgs,
     ),
     # --- Personalities ---
     read_tool(
@@ -96,6 +128,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List available personality configurations.",
         PAGINATION_PROPERTIES,
+        args_model=PersonalitiesListArgs,
     ),
     read_tool(
         "personalities",
@@ -105,10 +138,15 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "name": {"type": "string", "description": "Personality name"},
         },
         required=("name",),
+        args_model=PersonalitiesGetArgs,
     ),
     # --- Training ---
     read_tool(
-        "training", "list_sessions", "List training sessions.", PAGINATION_PROPERTIES
+        "training",
+        "list_sessions",
+        "List training sessions.",
+        PAGINATION_PROPERTIES,
+        args_model=TrainingListSessionsArgs,
     ),
     read_tool(
         "training",
@@ -118,6 +156,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "session_id": {"type": "string", "description": "Training session ID"},
         },
         required=("session_id",),
+        args_model=TrainingGetSessionArgs,
     ),
     write_tool(
         "training",
@@ -154,6 +193,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             },
         },
         required=("new_agent_id", "new_agent_role", "new_agent_level"),
+        args_model=TrainingStartSessionArgs,
     ),
     # --- Autonomy ---
     read_tool(
@@ -164,6 +204,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "agent_id": {"type": "string", "description": "Agent ID"},
         },
         required=("agent_id",),
+        args_model=AutonomyGetArgs,
     ),
     admin_tool(
         "autonomy",
@@ -194,6 +235,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             },
         },
         required=("agent_id", "level", "reason"),
+        args_model=AutonomyUpdateArgs,
     ),
     # --- Collaboration ---
     read_tool(
@@ -204,6 +246,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "agent_id": {"type": "string", "description": "Agent ID"},
         },
         required=("agent_id",),
+        args_model=CollaborationGetScoreArgs,
     ),
     read_tool(
         "collaboration",
@@ -213,5 +256,6 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
             "agent_id": {"type": "string", "description": "Agent ID"},
         },
         required=("agent_id",),
+        args_model=CollaborationGetCalibrationArgs,
     ),
 )

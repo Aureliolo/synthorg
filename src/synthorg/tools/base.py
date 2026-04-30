@@ -7,7 +7,7 @@ Defines the ``BaseTool`` ABC that all concrete tools extend, and the
 import copy
 from abc import ABC, abstractmethod
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -70,7 +70,20 @@ class BaseTool(ABC):
             skips validation).
         category: Tool category for access-level gating.
         action_type: Security action type for SecOps classification.
+        args_model: Optional Pydantic model class for typed argument
+            validation.  When set on a subclass, the
+            ``ToolInvoker`` validates raw arguments against the model
+            before calling :meth:`execute`; the ``Args.model_validate``
+            ``ValidationError`` surfaces as a parameter-error
+            ``ToolResult`` without ever reaching the tool body.
+            Each ``synthorg.tools.<domain>._args`` module exports the
+            matching model alongside the tool subclass.  Defaults to
+            ``None`` (the invoker falls back to JSON-Schema validation
+            via :attr:`parameters_schema`); subclasses migrated to
+            typed args set this to the relevant model class.
     """
+
+    args_model: ClassVar[type[BaseModel] | None] = None
 
     def __init__(
         self,

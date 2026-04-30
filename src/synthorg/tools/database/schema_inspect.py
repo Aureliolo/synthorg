@@ -5,11 +5,11 @@ Always read-only.
 """
 
 import asyncio
-import copy
 import re
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 import aiosqlite
+from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -19,6 +19,7 @@ from synthorg.observability.events.database import (
     DB_SCHEMA_INSPECT_SUCCESS,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.database._args import SchemaInspectArgs
 from synthorg.tools.database.base_db_tool import BaseDatabaseTool
 from synthorg.tools.database.config import DatabaseConnectionConfig  # noqa: TC001
 
@@ -27,23 +28,6 @@ logger = get_logger(__name__)
 _SAFE_IDENTIFIER_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 _ACTIONS: Final[tuple[str, ...]] = ("list_tables", "describe_table")
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "action": {
-            "type": "string",
-            "enum": list(_ACTIONS),
-            "description": "Inspection action: list_tables or describe_table",
-        },
-        "table_name": {
-            "type": "string",
-            "description": "Table name (required for describe_table)",
-        },
-    },
-    "required": ["action"],
-    "additionalProperties": False,
-}
 
 
 class SchemaInspectTool(BaseDatabaseTool):
@@ -59,18 +43,21 @@ class SchemaInspectTool(BaseDatabaseTool):
             result = await tool.execute(arguments={"action": "list_tables"})
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = SchemaInspectArgs
+
     def __init__(self, *, config: DatabaseConnectionConfig) -> None:
         """Initialize the schema inspection tool.
 
         Args:
-            config: Database connection configuration.
+            config: Database connection settings (driver, DSN, query
+                timeouts, allowlists).
         """
         super().__init__(
             name="schema_inspect",
             description=(
                 "Inspect database schema: list tables or describe table columns."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=SchemaInspectArgs.model_json_schema(),
             action_type=ActionType.DB_QUERY,
             config=config,
         )

@@ -7,8 +7,7 @@ inject a provider at construction time.
 
 import asyncio
 import base64
-import copy
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +21,7 @@ from synthorg.observability.events.design import (
     DESIGN_PROVIDER_NOT_CONFIGURED,
 )
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.design._args import ImageGeneratorArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
 
@@ -80,44 +80,6 @@ class ImageProvider(Protocol):
         ...
 
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "prompt": {
-            "type": "string",
-            "description": "Image description",
-        },
-        "style": {
-            "type": "string",
-            "enum": ["realistic", "sketch", "diagram", "icon"],
-            "description": "Image style (default: realistic)",
-            "default": "realistic",
-        },
-        "width": {
-            "type": "integer",
-            "description": "Image width in pixels",
-            "minimum": 256,
-            "maximum": 2048,
-            "default": 1024,
-        },
-        "height": {
-            "type": "integer",
-            "description": "Image height in pixels",
-            "minimum": 256,
-            "maximum": 2048,
-            "default": 1024,
-        },
-        "quality": {
-            "type": "string",
-            "enum": ["draft", "standard", "high"],
-            "description": "Image quality preset",
-            "default": "standard",
-        },
-    },
-    "required": ["prompt"],
-    "additionalProperties": False,
-}
-
 _VALID_STYLES: Final[frozenset[str]] = frozenset(
     {"realistic", "sketch", "diagram", "icon"}
 )
@@ -141,6 +103,8 @@ class ImageGeneratorTool(BaseDesignTool):
             result = await tool.execute(arguments={"prompt": "A sunset over mountains"})
     """
 
+    args_model: ClassVar[type[BaseModel] | None] = ImageGeneratorArgs
+
     def __init__(
         self,
         *,
@@ -150,16 +114,17 @@ class ImageGeneratorTool(BaseDesignTool):
         """Initialize the image generator tool.
 
         Args:
-            provider: Image generation provider.  ``None`` means
-                the tool will return an error on execution.
-            config: Design tool configuration.
+            provider: Image generation backend. ``None`` makes
+                ``execute`` return a configuration error.
+            config: Design tool configuration with prompt-length and
+                size caps. ``None`` falls back to defaults.
         """
         super().__init__(
             name="image_generator",
             description=(
                 "Generate images from text prompts. Supports style and quality presets."
             ),
-            parameters_schema=copy.deepcopy(_PARAMETERS_SCHEMA),
+            parameters_schema=ImageGeneratorArgs.model_json_schema(),
             action_type=ActionType.DOCS_WRITE,
             config=config,
         )
