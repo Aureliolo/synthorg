@@ -1,19 +1,45 @@
 """Tests for the bare-Mock pre-commit gate."""
 
 import importlib.util
-from collections.abc import Callable
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Protocol, cast
 
 import pytest
 
 pytestmark = pytest.mark.unit
 
-# Callable signature for the ``write_test_file`` fixture; precise typing
-# here lets call sites drop their ``# type: ignore[operator]`` markers.
-WriteTestFile = Callable[..., Path]
+
+class WriteTestFile(Protocol):
+    """Callable signature for the ``write_test_file`` fixture.
+
+    Precise Protocol typing lets call sites drop their
+    ``# type: ignore[operator]`` markers.
+    """
+
+    def __call__(self, content: str, name: str = ...) -> Path: ...
 
 
-def _load_module() -> object:
+class _CheckMockSpecModule(Protocol):
+    """Subset of ``scripts/check_mock_spec.py`` the tests exercise.
+
+    Captures the dynamically-loaded module's surface so mypy strict
+    mode can type-check the call sites instead of relying on
+    ``# type: ignore[attr-defined]`` everywhere.
+    """
+
+    InspectionError: type[Exception]
+    _TESTS_ROOT: Path
+
+    @staticmethod
+    def _load_baseline() -> set[str]: ...
+    @staticmethod
+    def _scan_file(path: Path) -> list[tuple[int, int]]: ...
+    @staticmethod
+    def cmd_scan_paths(paths: Iterable[str]) -> int: ...
+
+
+def _load_module() -> _CheckMockSpecModule:
     repo_root = Path(__file__).resolve().parents[3]
     script_path = repo_root / "scripts" / "check_mock_spec.py"
     spec = importlib.util.spec_from_file_location("check_mock_spec", script_path)
@@ -22,7 +48,7 @@ def _load_module() -> object:
         raise RuntimeError(msg)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast(_CheckMockSpecModule, module)
 
 
 _MODULE = _load_module()
@@ -43,7 +69,7 @@ def write_test_file(tmp_path: Path) -> WriteTestFile:
 def test_bare_mock_detected(write_test_file: WriteTestFile) -> None:
     src = "from unittest.mock import AsyncMock\nx = AsyncMock()\n"
     path = write_test_file(src)
-    hits = _MODULE._scan_file(path)  # type: ignore[attr-defined]
+    hits = _MODULE._scan_file(path)
     assert len(hits) == 1
     assert hits[0][0] == 2  # line 2
 
@@ -53,21 +79,21 @@ def test_specced_mock_ignored(write_test_file: WriteTestFile) -> None:
         "from unittest.mock import AsyncMock\nclass Foo: ...\nx = AsyncMock(spec=Foo)\n"
     )
     path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []  # type: ignore[attr-defined]
+    assert _MODULE._scan_file(path) == []
 
 
 def test_positional_first_arg_treated_as_spec(write_test_file: WriteTestFile) -> None:
     """``Mock(SomeClass)`` is conventionally a spec hint; not a bare mock."""
     src = "from unittest.mock import Mock\nclass Foo: ...\nx = Mock(Foo)\n"
     path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []  # type: ignore[attr-defined]
+    assert _MODULE._scan_file(path) == []
 
 
 def test_attribute_call_form_detected(write_test_file: WriteTestFile) -> None:
     """``mock.MagicMock()`` is the same offence as a bare-name call."""
     src = "import unittest.mock as mock\nx = mock.MagicMock()\n"
     path = write_test_file(src)
-    hits = _MODULE._scan_file(path)  # type: ignore[attr-defined]
+    hits = _MODULE._scan_file(path)
     assert len(hits) == 1
 
 
@@ -75,7 +101,7 @@ def test_non_mock_calls_not_flagged(write_test_file: WriteTestFile) -> None:
     """A bare ``list()`` / ``dict()`` is not in scope."""
     src = "x = list()\ny = dict()\n"
     path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []  # type: ignore[attr-defined]
+    assert _MODULE._scan_file(path) == []
 
 
 def test_empty_splat_args_treated_as_bare(write_test_file: WriteTestFile) -> None:
@@ -87,7 +113,7 @@ def test_empty_splat_args_treated_as_bare(write_test_file: WriteTestFile) -> Non
         "z = AsyncMock(*[], **{})\n"
     )
     path = write_test_file(src)
-    hits = _MODULE._scan_file(path)  # type: ignore[attr-defined]
+    hits = _MODULE._scan_file(path)
     assert len(hits) == 3
     assert {lineno for lineno, _ in hits} == {2, 3, 4}
 
@@ -102,14 +128,14 @@ def test_non_empty_splat_not_flagged(write_test_file: WriteTestFile) -> None:
         "z = AsyncMock(**{'a': 1})\n"
     )
     path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []  # type: ignore[attr-defined]
+    assert _MODULE._scan_file(path) == []
 
 
 def test_unparseable_file_raises(write_test_file: WriteTestFile) -> None:
     src = "def broken(:\n"
     path = write_test_file(src)
-    with pytest.raises(_MODULE.InspectionError):  # type: ignore[attr-defined]
-        _MODULE._scan_file(path)  # type: ignore[attr-defined]
+    with pytest.raises(_MODULE.InspectionError):
+        _MODULE._scan_file(path)
 
 
 def test_kwargs_without_spec_flagged(write_test_file: WriteTestFile) -> None:
@@ -122,7 +148,7 @@ def test_kwargs_without_spec_flagged(write_test_file: WriteTestFile) -> None:
         "d = Mock(wraps=object())\n"
     )
     path = write_test_file(src)
-    hits = _MODULE._scan_file(path)  # type: ignore[attr-defined]
+    hits = _MODULE._scan_file(path)
     assert len(hits) == 4
     assert {lineno for lineno, _ in hits} == {2, 3, 4, 5}
 
@@ -136,7 +162,7 @@ def test_spec_kwarg_ignored(write_test_file: WriteTestFile) -> None:
         "b = Mock(spec_set=Foo, return_value=42)\n"
     )
     path = write_test_file(src)
-    assert _MODULE._scan_file(path) == []  # type: ignore[attr-defined]
+    assert _MODULE._scan_file(path) == []
 
 
 def test_shared_dir_excluded_via_pre_commit_path(
@@ -159,5 +185,5 @@ def test_shared_dir_excluded_via_pre_commit_path(
     )
     monkeypatch.setattr(_MODULE, "_TESTS_ROOT", tests_root)
     monkeypatch.setattr(_MODULE, "_load_baseline", set)
-    rc = _MODULE.cmd_scan_paths([str(bad_file)])  # type: ignore[attr-defined]
+    rc = _MODULE.cmd_scan_paths([str(bad_file)])
     assert rc == 0

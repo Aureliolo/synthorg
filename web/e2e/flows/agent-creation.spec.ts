@@ -4,17 +4,25 @@ import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harn
 import { makeAgentList } from '../factories'
 
 /**
- * Critical-flow E2E: agents list surface (precursor to "New Agent").
+ * Critical-flow E2E: agents list mount + WS hire-event intake.
  *
  * The full multi-step "create agent" form requires a realistic
- * backend; this test confirms the agents list mounts with a
- * deterministic three-agent payload so the user reaches the entry
- * point of the new-agent flow without the page erroring out, and
- * exercises a server-pushed agent-hired event so the dashboard's
- * notification chain processes the WS frame end-to-end.
+ * backend (multi-step persistence, role validation, identity-card
+ * round-trip) that this E2E doesn't simulate; covering it would
+ * require the wizard's `/api/v1/agents` POST + downstream
+ * /api/v1/agents/{id}/identity flow stubbed end-to-end. Until that
+ * harness lands, this spec scopes to:
+ *   1. Agents list mount + seeded payload renders.
+ *   2. Click handler on the agent card works (entry point users
+ *      actually exercise on every visit).
+ *   3. WS ``agent.hired`` frame processed end-to-end through the
+ *      notifications dispatch chain.
+ * The "creation" suffix is preserved in the file name for grep
+ * continuity with #1604, but the test description and describe
+ * block reflect the actual scope.
  */
 
-test.describe('Agent creation critical flow', () => {
+test.describe('Agents list + WS hire intake', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)

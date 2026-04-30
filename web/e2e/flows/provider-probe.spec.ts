@@ -4,14 +4,21 @@ import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harn
 import { makeProvider, makeProviderHealth } from '../factories'
 
 /**
- * Critical-flow E2E: provider probe.
+ * Critical-flow E2E: provider list mount + WS notification intake.
  *
- * Pushes a server-side health-check result via the WebSocket harness
- * so the dashboard's provider-health badge surface processes the
- * event without errors.
+ * Asserts the providers list mounts with the seeded provider, the
+ * provider row click handler works, and the dashboard processes a
+ * WS frame without crashing. The spec does NOT assert that the
+ * provider-health badge updates in response to the WS frame because
+ * ``provider.*`` event types are not (yet) in the dashboard's
+ * ``WS_EVENT_TYPE_VALUES`` enum and no provider store subscribes to
+ * health-change events (only notifications consume the closest
+ * ``system.error`` mapping). Renaming the spec to reflect this
+ * scope is the honest path until provider-health WS routing lands;
+ * see ``web/src/api/types/websocket.ts``.
  */
 
-test.describe('Provider probe critical flow', () => {
+test.describe('Provider list + notification intake', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
@@ -31,7 +38,7 @@ test.describe('Provider probe critical flow', () => {
     )
   })
 
-  test('loads providers and processes a WS health event', async ({ page }) => {
+  test('loads providers, clicks a row, processes a WS notification', async ({ page }) => {
     await page.goto('/providers')
     await expect(page).toHaveURL(/\/providers/)
     await expect(page.locator('main')).toBeVisible()

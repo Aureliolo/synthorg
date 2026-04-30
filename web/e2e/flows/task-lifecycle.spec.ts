@@ -10,21 +10,35 @@ import {
 } from '../factories/tasks'
 
 /**
- * Critical-flow E2E: full task lifecycle including approval gate.
+ * Critical-flow E2E: Kanban board mount + WS frame intake + click.
  *
  * Walks the user journey:
- *   1. Page mounts the Kanban board with deterministic columns.
- *   2. A high-risk task fires its approval gate (server-pushed).
- *   3. The reviewer approves the request (server-pushed).
- *   4. Task transitions through TODO -> IN_PROGRESS -> DONE via
- *      WebSocket events.
+ *   1. Page mounts the Kanban board with deterministic columns and
+ *      asserts the seeded todo task lands in the ``backlog`` column
+ *      via ``data-column-id`` (the production board groups status
+ *      ``created`` / ``ready`` / ``in_progress`` / ``in_review`` /
+ *      ``done`` / ``blocked`` / ``terminal``; see ``KANBAN_COLUMNS``
+ *      in ``web/src/utils/tasks.ts``).
+ *   2. The user clicks the seeded task card (mandatory interaction).
+ *   3. A high-risk approval request fires via WS (envelope-validated).
+ *   4. Reviewer approves via WS (envelope-validated).
+ *   5. WS task.status_changed frames stream through the dashboard.
+ *
+ * Why no in-flight column-membership assertions for the WS task
+ * transitions: the production tasks store does NOT subscribe to
+ * ``task.status_changed`` for column re-routing (only the
+ * notifications store consumes it, and only for ``failed`` /
+ * ``blocked`` statuses; see ``web/src/stores/notifications.ts``).
+ * Asserting column membership after each WS frame would always fail
+ * because the seeded task stays where the API placed it. The frames
+ * still get value-asserted -- a regression that crashes the WS
+ * handler chain or fails ``isWsEvent`` envelope validation would
+ * tear the page down and the final ``main visible`` + title assertion
+ * would fail.
  *
  * The drag-drop column move is not exercised end-to-end here -- the
- * Kanban DnD path requires the page's HTML5 drag handlers to be
- * mounted by the production code, which we stub via deterministic
- * status updates pushed through the harness instead. That keeps the
- * test resilient while still asserting every transition the user
- * journey produces lands in the rendered DOM.
+ * Kanban DnD path requires the page's HTML5 drag handlers, which is
+ * a separate flow.
  *
  * Wire envelope: events match the dashboard's ``WsEvent`` runtime
  * validator (``isWsEvent`` in ``stores/websocket.ts``); the legacy
@@ -37,13 +51,18 @@ test.describe('Task lifecycle critical flow', () => {
     await installWebSocketHarness(page)
 
     // Seed the Kanban board with one task per column so the
-    // dashboard's grouping logic has rows to render.
+    // dashboard's grouping logic has rows to render. Use production
+    // status values (``created``, ``in_progress``, ...) so each
+    // seeded task lands in the Kanban column defined by
+    // ``STATUS_TO_COLUMN`` in ``web/src/utils/tasks.ts``.
     const columns: Record<TaskStatus, MockTask[]> = {
-      todo: makeKanbanColumn('todo', 1),
+      created: makeKanbanColumn('created', 1),
+      assigned: makeKanbanColumn('assigned', 0),
       in_progress: makeKanbanColumn('in_progress', 1),
       in_review: makeKanbanColumn('in_review', 0),
       blocked: makeKanbanColumn('blocked', 0),
-      done: makeKanbanColumn('done', 0),
+      completed: makeKanbanColumn('completed', 0),
+      failed: makeKanbanColumn('failed', 0),
       cancelled: makeKanbanColumn('cancelled', 0),
     }
     const allTasks = Object.values(columns).flat()
@@ -64,24 +83,27 @@ test.describe('Task lifecycle critical flow', () => {
   })
 
   test(
-    'mounts board, fires approval gate, transitions task to done',
+    'mounts Kanban, asserts backlog column, processes WS approval + status frames',
     async ({ page }) => {
       await page.goto('/tasks')
       await expect(page).toHaveURL(/\/tasks/)
       await expect(page.locator('main')).toBeVisible()
 
-      // Real UI interaction: click on a seeded task card so the
+      // Real UI interaction: click on the seeded backlog task so the
       // selection / detail-open path is exercised in addition to the
-      // synthetic WS frames below. The Kanban DnD path is still not
-      // exercised end-to-end because it requires the page's HTML5
-      // drag handlers (see comment block above), but the click into
-      // a task is the entry point users actually use; a regression
-      // in the card click handler would surface here.
-      const todoCard = page.locator('main').getByText(/^task-/).first()
-      if (await todoCard.count()) {
-        await todoCard.click()
-        await expect(page.locator('main')).toBeVisible()
-      }
+      // synthetic WS frames below. Kanban DnD requires the page's
+      // HTML5 drag handlers (a separate flow); the card click is the
+      // entry point users exercise on every visit, so a regression
+      // in the click handler surfaces here. Mandatory: the seed
+      // builds one ``created``-status task that ``STATUS_TO_COLUMN``
+      // maps to the ``backlog`` column; the locator must match.
+      const seededTask = allTasks[0]
+      const backlogColumn = page.locator('[data-column-id="backlog"]')
+      await expect(backlogColumn).toBeVisible()
+      const todoCard = backlogColumn.getByText(seededTask.title).first()
+      await expect(todoCard).toBeVisible()
+      await todoCard.click()
+      await expect(page.locator('main')).toBeVisible()
 
       // Step 1: a high-risk task gates on approval.
       const highRiskTask = makeTask({
@@ -148,16 +170,18 @@ test.describe('Task lifecycle critical flow', () => {
         },
       })
 
-      // The board renders task cards by title; asserting the seeded
-      // high-risk task title is visible after the four events confirms
-      // (a) the dashboard processed every event without crashing and
-      // (b) the task survived the transition chain instead of being
-      // dropped by the WS handler. Asserting exact column membership
-      // would couple the test to the Kanban component's data-testid
-      // contract; this resilient text assertion catches the most
-      // common regression (any one event throwing in the WS handler
-      // chain) without that coupling.
-      await expect(page.getByText('High-risk migration').first()).toBeVisible()
+      // After the four WS frames, the seeded backlog task must still
+      // be visible in the ``backlog`` column. The test does NOT
+      // assert column transition for the WS-injected high-risk task
+      // because the production tasks store does not subscribe to
+      // ``task.status_changed`` for column re-routing (only the
+      // notifications store consumes it, and only for ``failed`` /
+      // ``blocked`` statuses; see the docstring at the top of this
+      // file). The assertions below catch the regressions a Tier-1
+      // flow needs to catch: any event throwing in the WS dispatch
+      // chain or failing ``isWsEvent`` would tear the page down or
+      // drop the seeded task from the rendered DOM.
+      await expect(backlogColumn.getByText(seededTask.title).first()).toBeVisible()
       await expect(page.locator('main')).toBeVisible()
     },
   )

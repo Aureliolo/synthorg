@@ -3,14 +3,25 @@
  *
  * The Kanban board groups tasks by status; ``makeKanbanColumn``
  * provides a convenience builder for a list of tasks in one column.
+ *
+ * The status enum mirrors the production ``TaskStatus`` from
+ * ``web/src/api/types/enums.ts`` (resolved against the OpenAPI
+ * schema) so seeded tasks land in the production Kanban columns
+ * defined by ``KANBAN_COLUMNS`` in ``web/src/utils/tasks.ts``:
+ * ``created`` -> backlog, ``assigned`` -> ready, ``in_progress`` ->
+ * in_progress, ``in_review`` -> in_review, ``completed`` -> done,
+ * ``blocked`` / ``auth_required`` -> blocked, ``failed`` /
+ * ``interrupted`` / ``cancelled`` / ``rejected`` -> terminal.
  */
 
 export type TaskStatus =
-  | 'todo'
+  | 'created'
+  | 'assigned'
   | 'in_progress'
   | 'in_review'
+  | 'completed'
   | 'blocked'
-  | 'done'
+  | 'failed'
   | 'cancelled'
 
 export interface MockTask {
@@ -29,7 +40,7 @@ export function makeTask(overrides: Partial<MockTask> = {}): MockTask {
     id: 'task-001',
     title: 'Refactor auth middleware',
     description: 'Tighten the session validation path.',
-    status: 'todo',
+    status: 'created',
     priority: 'medium',
     assignee_id: 'agent-001',
     created_at: '2026-04-01T12:00:00Z',

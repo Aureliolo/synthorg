@@ -286,6 +286,13 @@ class TestPerAgentIdleTimeout:
         # FakeClock the sleep returns at once and advances virtual
         # time, so the loop converges in two iterations.
         await _settle()
+        # Both grace (10.0s) and idle (0.15s) timers run under the
+        # same FakeClock. Asserting destruction happened isn't enough
+        # because grace-path cleanup alone could destroy the container
+        # without ever exercising the idle path; assert the idle
+        # duration was actually scheduled so the test fails if the
+        # idle timer never armed.
+        assert any(call == pytest.approx(0.15) for call in clock.sleep_calls)
         assert "idle-test" in destroyed
 
     async def test_zero_max_idle_disables_timer(self) -> None:
