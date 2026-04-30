@@ -101,7 +101,7 @@ All significant design and architecture decisions in force today, organized by d
 | MTEB | General passage retrieval | MTEB performance does not transfer to memory retrieval (Pearson: -0.115). Optimizing for MTEB may actively harm memory retrieval quality |
 | Manual evaluation | Custom retrieval benchmarks | Too expensive to maintain. LMEB provides a standardized, reproducible alternative |
 
-**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) configured via `EmbeddingFineTuneConfig`; when enabled, the Mem0 adapter uses the checkpoint path as the model identifier. The fine-tuning pipeline stages (data generation, hard negative mining, contrastive training, checkpoint deploy) are not yet implemented; functions validate inputs and raise `NotImplementedError` (see #1001).
+**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) configured via `EmbeddingFineTuneConfig`; when enabled, the Mem0 adapter uses the checkpoint path as the model identifier. The five-stage offline pipeline (synthetic data generation, hard-negative mining, contrastive training, evaluation, deploy) is functional via `synthorg.memory.embedding.fine_tune`; orchestration ships in `synthorg.memory.embedding.fine_tune_orchestrator` and the admin endpoint `POST /admin/memory/fine-tune` drives it from the dashboard.
 
 ## Memory Architecture Evolution
 
@@ -126,7 +126,7 @@ All significant design and architecture decisions in force today, organized by d
 
 **SynthOrg JetStream usage** (verified in `bus/nats.py` facade and `workers/claim.py`): `SYNTHORG_BUS` stream (LimitsPolicy, `_nats_connection`), `SYNTHORG_TASKS` stream (WorkQueuePolicy, `claim.py`), `SYNTHORG_BUS_CHANNELS` KV bucket (`_nats_kv`), durable pull consumers with `ConsumerConfig` (`_nats_consumers`), stream management via `stream_info`/`add_stream`/`update_stream` (`_nats_connection`), history scanning with ephemeral consumers using `DeliverPolicy.ALL`/`AckPolicy.NONE` (`_nats_history`), connection lifecycle callbacks (`_nats_connection`).
 
-**Mitigation plan:** (1) File upstream PR against `nats-io/nats.py` with the one-line `inspect.iscoroutinefunction` fix; upstream PR status is tracked in the project issue queue (search `nats-py` label); the scoped `filterwarnings` entry in `pyproject.toml` remains the active workaround until a fixed upstream release is available. (2) If upstream is unresponsive after 60 days, maintain a local monkey-patch in `bus/_nats_compat.py`. (3) Monitor `nats-core` for future JetStream support.
+**Mitigation plan:** (1) File upstream PR against `nats-io/nats.py` with the one-line `inspect.iscoroutinefunction` fix; upstream PR status is tracked in the project issue queue (search `nats-py` label); the scoped `filterwarnings` entry in `pyproject.toml` remains the active workaround until a fixed upstream release is available. (2) If upstream is unresponsive by **2026-06-10** (60 days from the 2026-04-11 review), maintain a local monkey-patch in `bus/_nats_compat.py`. (3) Monitor `nats-core` for future JetStream support.
 
 ## Overarching Pattern
 

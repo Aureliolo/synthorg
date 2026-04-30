@@ -694,7 +694,12 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     _update_info_description(result.setdefault("info", {}))
 
     # Normalize after all schemas are in place (including ProblemDetail).
-    # Workaround for renderer bug -- see issue #268 for details
+    # Litestar emits ``oneOf: [{type: "string"}, {type: "null"}]`` for
+    # nullable primitive fields; ``_normalize_nullable_unions`` flattens
+    # those to the idiomatic ``type: ["string", "null"]`` shape that
+    # OpenAPI renderers (Scalar, Swagger UI, Redoc) prefer, and converts
+    # ``$ref``-based nullable unions to ``anyOf`` so renderers can deref
+    # cleanly.  Originally tracked under closed issue #268.
     result = _normalize_nullable_unions(result, all_schemas=schemas)
 
     path_count = len(result.get("paths", {}))

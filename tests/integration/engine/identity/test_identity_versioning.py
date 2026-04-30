@@ -19,8 +19,12 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import DecisionOutcome
+from synthorg.core.task import Task
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence import atlas
+from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.service import VersioningService
 
@@ -186,21 +190,24 @@ class TestCharterVersionInDecisionRecord:
             record.version = 1
             return record
 
-        mock_decision_repo = AsyncMock()
+        mock_decision_repo = AsyncMock(spec=DecisionRepository)
         mock_decision_repo.append_with_next_version.side_effect = _capture
 
-        mock_persistence = MagicMock()
+        mock_persistence = MagicMock(spec=PersistenceBackend)
         mock_persistence.identity_versions = version_repo
         mock_persistence.decision_records = mock_decision_repo
 
         # Build a minimal Task mock
-        mock_task = MagicMock()
+        mock_task = MagicMock(spec=Task)
         mock_task.id = str(uuid4())
         mock_task.assigned_to = agent_id
         mock_task.acceptance_criteria = []
         mock_task.title = "test-task"
 
-        svc = ReviewGateService(task_engine=MagicMock(), persistence=mock_persistence)
+        svc = ReviewGateService(
+            task_engine=MagicMock(spec=TaskEngine),
+            persistence=mock_persistence,
+        )
         await svc._record_decision(
             task=mock_task,
             decided_by="reviewer-001",
@@ -235,19 +242,22 @@ class TestCharterVersionInDecisionRecord:
             record.version = 1
             return record
 
-        mock_decision_repo = AsyncMock()
+        mock_decision_repo = AsyncMock(spec=DecisionRepository)
         mock_decision_repo.append_with_next_version.side_effect = _capture
 
-        mock_persistence = MagicMock()
+        mock_persistence = MagicMock(spec=PersistenceBackend)
         mock_persistence.identity_versions = version_repo
         mock_persistence.decision_records = mock_decision_repo
 
-        mock_task = MagicMock()
+        mock_task = MagicMock(spec=Task)
         mock_task.id = str(uuid4())
         mock_task.assigned_to = "unknown-agent-id"
         mock_task.acceptance_criteria = []
 
-        svc = ReviewGateService(task_engine=MagicMock(), persistence=mock_persistence)
+        svc = ReviewGateService(
+            task_engine=MagicMock(spec=TaskEngine),
+            persistence=mock_persistence,
+        )
         await svc._record_decision(
             task=mock_task,
             decided_by="reviewer-001",
@@ -277,25 +287,28 @@ class TestCharterVersionInDecisionRecord:
             record.version = 1
             return record
 
-        mock_decision_repo = AsyncMock()
+        mock_decision_repo = AsyncMock(spec=DecisionRepository)
         mock_decision_repo.append_with_next_version.side_effect = _capture
 
         # identity_versions raises QueryError on lookup
-        failing_version_repo = AsyncMock()
+        failing_version_repo = AsyncMock(spec=SQLiteVersionRepository)
         failing_version_repo.get_latest_version.side_effect = QueryError(
             "DB failure simulated"
         )
 
-        mock_persistence = MagicMock()
+        mock_persistence = MagicMock(spec=PersistenceBackend)
         mock_persistence.identity_versions = failing_version_repo
         mock_persistence.decision_records = mock_decision_repo
 
-        mock_task = MagicMock()
+        mock_task = MagicMock(spec=Task)
         mock_task.id = str(uuid4())
         mock_task.assigned_to = "any-agent-id"
         mock_task.acceptance_criteria = []
 
-        svc = ReviewGateService(task_engine=MagicMock(), persistence=mock_persistence)
+        svc = ReviewGateService(
+            task_engine=MagicMock(spec=TaskEngine),
+            persistence=mock_persistence,
+        )
         await svc._record_decision(
             task=mock_task,
             decided_by="reviewer-001",
