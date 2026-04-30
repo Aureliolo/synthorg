@@ -72,50 +72,14 @@ The CLI uses four hint tiers with different visibility rules per `hints` mode. W
 
 ## Additional Env Vars
 
-No corresponding flag, settable via env var or `config set`:
+`SYNTHORG_*` env vars without a corresponding flag (settable via env or `config set`) cover four buckets:
 
-| Env Var | Description |
-|---------|-------------|
-| `SYNTHORG_LOG_LEVEL` | Override backend log level |
-| `SYNTHORG_BACKEND_PORT` | Override backend API port |
-| `SYNTHORG_WEB_PORT` | Override web dashboard port |
-| `SYNTHORG_CHANNEL` | Override release channel (stable/dev) |
-| `SYNTHORG_IMAGE_TAG` | Override container image tag |
-| `SYNTHORG_AUTO_UPDATE_CLI` | Auto-accept CLI self-updates |
-| `SYNTHORG_AUTO_PULL` | Auto-accept container image pulls |
-| `SYNTHORG_AUTO_RESTART` | Auto-restart containers after update |
-| `SYNTHORG_TELEMETRY_ENABLED` | Enable anonymous project telemetry (true/false) |
-| `SYNTHORG_FINE_TUNE_IMAGE` | Fine-tune container image ref read by the backend. Set by the CLI in the generated compose.yml to the variant-specific verified image (`synthorg-fine-tune-gpu` or `synthorg-fine-tune-cpu`), chosen via `synthorg init` and persisted as `fine_tuning_variant` in config.json. Not read by the CLI; manual operator overrides bypass CLI signature/provenance verification and are not supported. |
-| `SYNTHORG_REGISTRY_HOST` | Override default container registry hostname (disables verification when set) |
-| `SYNTHORG_IMAGE_REPO_PREFIX` | Override default image repository prefix (disables verification when set) |
-| `SYNTHORG_DHI_REGISTRY` | Override Docker Hardened Images registry (disables verification when set) |
-| `SYNTHORG_POSTGRES_IMAGE_TAG` | Override pinned Postgres DHI tag (disables verification when set) |
-| `SYNTHORG_NATS_IMAGE_TAG` | Override pinned NATS DHI tag (disables verification when set) |
-| `SYNTHORG_DEFAULT_NATS_URL` | Override `synthorg worker start --nats-url` default |
-| `SYNTHORG_DEFAULT_NATS_STREAM_PREFIX` | Override `synthorg worker start --stream-prefix` default |
-| `SYNTHORG_BACKUP_CREATE_TIMEOUT` | Override `synthorg backup create --timeout` default (duration, e.g. `60s`) |
-| `SYNTHORG_BACKUP_RESTORE_TIMEOUT` | Override `synthorg backup restore --timeout` default |
-| `SYNTHORG_HEALTH_CHECK_TIMEOUT` | HTTP timeout for health endpoint probes (duration) |
-| `SYNTHORG_SELF_UPDATE_HTTP_TIMEOUT` | HTTP timeout for CLI binary download (duration) |
-| `SYNTHORG_SELF_UPDATE_API_TIMEOUT` | HTTP timeout for GitHub API metadata fetches (duration) |
-| `SYNTHORG_TUF_FETCH_TIMEOUT` | HTTP timeout for Sigstore TUF trusted root fetch (duration) |
-| `SYNTHORG_ATTESTATION_HTTP_TIMEOUT` | HTTP timeout for GitHub attestation API (duration) |
-| `SYNTHORG_MAX_API_RESPONSE_BYTES` | Maximum bytes for API/checksum downloads (default `4MiB`; accepts `1MiB`, `1048576`). Sized for the list-commits walk used by `synthorg update`: each commit object inlines the full PGP signature plus signed-payload duplicate plus 20+ author/committer URL fields (~15 KiB/commit), so a typical 25-entry page is ~400 KiB and 4 MiB gives 10x headroom. Hard ceiling is 1 GiB via `MaxBytesCeiling`. |
-| `SYNTHORG_MAX_BINARY_BYTES` | Maximum bytes for CLI binary archive downloads (accepts `256MiB`) |
-| `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` | Maximum bytes per archive entry during extraction (accepts `128MiB`) |
-| `SYNTHORG_IMAGE_VERIFY_TIMEOUT` | Context timeout for the cosign + SLSA verification pass during `start` and `update`. Duration, default `120s`, hard minimum `1s` (shorter values would bypass verification by silently timing out before cosign/SLSA/TUF completes network I/O) |
-| `SYNTHORG_IMAGE_PULL_ATTEMPTS` | Retry count for transient `docker pull` failures on standalone images (integer in `[1, 100]`, default `3`) |
-| `SYNTHORG_IMAGE_PULL_RETRY_DELAY` | Base backoff between pull retries. Exponential: N-th retry waits `delay * 2^(N-1)` seconds (e.g. `2s` base → 2s, 4s, 8s, 16s, ...), saturated at a 5 min ceiling to guard against overflow when `image_pull_attempts` is large. Duration, default `2s` |
-| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | Override fine-tune container health server port (integer in `[1, 65535]`, default `15002`). Env-only: read directly by the fine-tune Python runner, so it is **not** exposed as a `synthorg config set` key and does not trigger compose regeneration. |
+- **Backend / channel overrides**: `SYNTHORG_LOG_LEVEL`, `SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`, `SYNTHORG_CHANNEL`, `SYNTHORG_IMAGE_TAG`, `SYNTHORG_TELEMETRY_ENABLED`, `SYNTHORG_AUTO_*` (UPDATE_CLI / PULL / RESTART).
+- **Image / registry overrides**: `SYNTHORG_REGISTRY_HOST`, `SYNTHORG_IMAGE_REPO_PREFIX`, `SYNTHORG_DHI_REGISTRY`, `SYNTHORG_POSTGRES_IMAGE_TAG`, `SYNTHORG_NATS_IMAGE_TAG`, `SYNTHORG_FINE_TUNE_IMAGE` (any of these disables verification for that invocation).
+- **Timeouts and retry tuning**: `SYNTHORG_BACKUP_*_TIMEOUT`, `SYNTHORG_HEALTH_CHECK_TIMEOUT`, `SYNTHORG_SELF_UPDATE_*_TIMEOUT`, `SYNTHORG_TUF_FETCH_TIMEOUT`, `SYNTHORG_ATTESTATION_HTTP_TIMEOUT`, `SYNTHORG_IMAGE_VERIFY_TIMEOUT` (default 120s, hard min 1s), `SYNTHORG_IMAGE_PULL_ATTEMPTS` (1..100, default 3), `SYNTHORG_IMAGE_PULL_RETRY_DELAY` (default 2s, exponential).
+- **Byte caps and ports**: `SYNTHORG_MAX_API_RESPONSE_BYTES` (default 4MiB), `SYNTHORG_MAX_BINARY_BYTES` (256MiB), `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` (128MiB), `SYNTHORG_DEFAULT_NATS_URL`, `SYNTHORG_DEFAULT_NATS_STREAM_PREFIX`, `SYNTHORG_FINE_TUNE_HEALTH_PORT` (env-only, not in `config set`).
 
-### Hardcoded network literals (audit rationale)
-
-The CLI contains several `localhost` / service-DNS / port literals that look non-configurable but are correct by design:
-
-- **`localhost` in `doctor.go` / `start.go` / `status.go` / `wipe.go` / `update.go`**: these print URLs pointing at the operator's own host (e.g. `http://localhost:<BackendPort>/api/v1/readyz`). The port is flag/env-driven (`SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`); the hostname is literally the host the CLI is running on.
-- **`postgres:5432` in `compose/generate.go::pgDSN`**: docker-compose internal DNS, container-to-container. The host-side Postgres port is a separate `Params.PostgresPort` tunable rendered in `compose.yml.tmpl`.
-- **`nats:4222` / `nats:8222` in `compose.yml.tmpl`**: NATS client and HTTP monitoring ports inside the compose network. `nats` is the compose service name. `8222` is the NATS-standard monitoring port, not exposed to the host.
-- **`nats://nats:4222` in `worker_start.go`**: compiled-in default for the `--nats-url` flag, already overridable via `SYNTHORG_DEFAULT_NATS_URL` (see above).
+See [docs/reference/cli-env-vars.md](../docs/reference/cli-env-vars.md) for the full table with descriptions, byte-cap rationales, and the audit rationale for hardcoded `localhost` / `postgres:5432` / `nats:4222` literals (correct by design).
 
 ## Exit Codes
 
@@ -130,32 +94,11 @@ The CLI contains several `localhost` / service-DNS / port literals that look non
 
 ## Config Subcommands
 
-`synthorg config <subcommand>`:
+`synthorg config <subcommand>` exposes `show` / `get <key>` / `set <key> <value>` / `unset <key>` / `list` / `path` / `edit`. There are 37 settable keys (e.g. `backend_port`, `web_port`, `sandbox`, `image_tag`, `log_level`, `fine_tuning`, `telemetry_opt_in`, `channel`, plus all the tunables listed above). Compose-affecting keys trigger automatic `compose.yml` regeneration; toggling `fine_tuning` on requires `sandbox=true` and amd64.
 
-| Subcommand | Description |
-|------------|-------------|
-| `show` | Display all current settings (default when no subcommand) |
-| `get <key>` | Get a single config value (37 gettable keys) |
-| `set <key> <value>` | Set a config value (37 settable keys, compose-affecting keys trigger regeneration) |
-| `unset <key>` | Reset a key to its default value |
-| `list` | Show all keys with resolved value and source (env/config/default) |
-| `path` | Print the config file path |
-| `edit` | Open config file in $VISUAL/$EDITOR |
+Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, or `nats_image_tag` disables image signature + SLSA verification **for that invocation only** and writes a stderr warning on every invocation (not suppressed by `--quiet` or `--json`).
 
-Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `changelog_view`, `channel`, `color`, `docker_sock`, `fine_tuning`, `fine_tuning_variant`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`, plus the tunables: `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_url`, `default_nats_stream_prefix`, `backup_create_timeout`, `backup_restore_timeout`, `health_check_timeout`, `self_update_http_timeout`, `self_update_api_timeout`, `tuf_fetch_timeout`, `attestation_http_timeout`, `image_verify_timeout`, `image_pull_attempts`, `image_pull_retry_delay`, `max_api_response_bytes`, `max_binary_bytes`, `max_archive_entry_bytes`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `image_tag`, `log_level`, `telemetry_opt_in`, `fine_tuning`, `fine_tuning_variant`, `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_url`, `default_nats_stream_prefix`) trigger automatic `compose.yml` regeneration. Toggling `fine_tuning` on requires `sandbox=true` and amd64; validation runs at `config set` time so inconsistent combinations fail before the next `start`.
-
-Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, or `nats_image_tag` transfers trust to the operator: the CLI disables image signature and SLSA provenance verification **for that invocation only** and writes a one-shot warning to stderr on **every** invocation where the override is active. The warning is **not** suppressed under `--quiet` or `--json`; a safety-critical notice must appear in the audit trail of every scripted run. The pinned SAN regex and DHI digest map are bound to the default values, so verification cannot succeed against a custom deployment target.
-
-### Tunable value formats
-
-- **Durations**: Go `time.ParseDuration` format. Examples: `30s`, `5m`, `1h`, `500ms`. Values must be strictly positive.
-- **Byte sizes**: plain integers (`1048576` = 1 MiB) or suffixed values. IEC binary suffixes: `B`, `KiB`, `MiB`, `GiB` (powers of 1024). SI decimal suffixes: `KB`, `MB`, `GB` (powers of 1000). Case-insensitive. Rejected: negative, zero, or values exceeding the 1 GiB runtime ceiling.
-- **Integers**: plain decimal integers. Each integer tunable declares its own `[min, max]` range (e.g. `image_pull_attempts` is `[1, 100]`). Rejected: non-numeric values, negatives, or values outside the per-tunable range.
-- **Registry hosts**: DNS hostname, optionally with `:port`. Matches `[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?`.
-- **Image tags**: Docker tag grammar. Matches `[a-zA-Z0-9][a-zA-Z0-9._-]*`.
-- **NATS URLs**: must use `nats://`, `tls://`, or `nats+tls://` scheme and include a host.
-- **NATS stream prefix**: uppercase alphanumerics with `_` or `-`. Matches `[A-Z0-9][A-Z0-9_-]*`.
-- **`changelog_view`**: enum, either `highlights` (default) or `commits`. Sets the default view for the `synthorg update` upgrade walk between installed and target releases. `highlights` shows the AI-generated three-section summary; `commits` shows the Release Please commit-based changelog. Inside the walk, `c` toggles between the two views for the current session without modifying the persisted value. On the `dev` channel the setting is moot: dev pre-releases have no Highlights block, so the walk always renders a single combined commit list fetched by paginating the GitHub list-commits endpoint (`/repos/.../commits?sha=&per_page=25&page=N`) backwards from the target release until the installed commit SHA is encountered. The compare endpoint is deliberately not used because it inlines a `files[]` patch array per commit and routinely overruns the API response cap on multi-hundred-file release ranges. When the walk cannot render (network failure, the installed dev pre-release tag was pruned from the remote, or the range is empty) the CLI prints an explicit `Warn` line explaining the cause and falls back to the terse offline notice; it never silently degrades.
+See [docs/reference/cli-config-subcommands.md](../docs/reference/cli-config-subcommands.md) for the full settable-key inventory, the compose-affecting subset, the verification-disabling override semantics, the tunable value formats (durations, byte sizes, integers, registry hosts, image tags, NATS URL grammar), and the `changelog_view` upgrade-walk recipe.
 
 ## Per-Command Flags
 
@@ -181,54 +124,14 @@ Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgre
 
 ## Persistence Backends
 
-The CLI orchestrates two persistence backends:
+`--persistence-backend sqlite` (default, single-node) uses the in-process SQLite store under volume `synthorg-data`. `--persistence-backend postgres` adds a `dhi.io/postgres:18-debian13` DHI service on port `3002` (override via `--postgres-port`) backed by volume `synthorg-pgdata`. Interactive `init` defaults to Postgres + NATS; non-interactive defaults to SQLite + internal bus.
 
-| Backend | Flag | Port | Data volume | When to use |
-|---------|------|------|-------------|-------------|
-| `sqlite` (default) | `--persistence-backend sqlite` | n/a (in-process) | `synthorg-data` | Single-node, development, small deployments |
-| `postgres` | `--persistence-backend postgres` | `3002` (default, override with `--postgres-port`) | `synthorg-pgdata` | Multi-instance, production, high concurrency |
+Every generated `compose.yml` includes a one-shot `data-init` helper that chowns each named volume to its non-root owner (`65532:65532` for backend / NATS, `70:70` with mode `0700` for Postgres) before stateful services start. The Postgres / NATS services declare `depends_on: data-init: condition: service_completed_successfully`.
 
-### Volume ownership (`data-init`)
+Backend auto-wire precedence: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB_PATH` are present, `SYNTHORG_DATABASE_URL` wins (Postgres is initialised; the SQLite path is ignored). A malformed URL raises loudly at startup rather than silently falling back to a no-persistence install. Atlas migrations run on every backend connection; the Atlas binary is baked into the backend image at `/usr/local/bin/atlas` from `arigaio/atlas:latest-community-distroless`, pinned by multi-arch manifest digest.
 
-Every generated `compose.yml` includes a `data-init` helper container (busybox) that runs once before the stateful services start. Its job is to chown each named volume to the UID of the non-root user that will own it:
+Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates port collisions across all enabled services.
 
-- `synthorg-data` -> `65532:65532` (backend / distroless nonroot)
-- `synthorg-pgdata` -> `70:70` with mode `0700` (DHI postgres user; `initdb` requires exclusive 0700 or it aborts with "permissions should be u=rwx (0700) or u=rwx,g=rx (0750)"); only mounted when `--persistence-backend postgres`
-- `synthorg-nats-data` -> `65532:65532` (DHI nats `nonroot` user); only mounted when `--bus-backend nats`
+`synthorg status` renders a verdict banner (`OK` / `DEGRADED` / `CRITICAL`) computed by `computeVerdict()` in `cli/cmd/status.go`. `CRITICAL` wins over `DEGRADED`; signals are gated on install expectations so an internal-bus install is not flagged degraded merely because the health response omits `message_bus`.
 
-Fresh Docker named volumes are owned by `root:root` at creation, and DHI images run as non-root with no capability to self-chown, so this one-shot container is required for every backend selection to avoid permission errors. The `postgres` and `nats` services both declare `depends_on: data-init: condition: service_completed_successfully` to block on the chown before starting.
-
-### Postgres orchestration
-
-When `--persistence-backend postgres` is selected, `synthorg init`:
-
-1. Adds a `dhi.io/postgres:18-debian13` DHI (Docker Hardened Image) service to the generated `compose.yml` (read-only rootfs, minimal capabilities via `cap_add`, `pg_isready` healthcheck, named volume `synthorg-pgdata`).
-2. Extends the `data-init` helper (see above) to also chown `synthorg-pgdata` to `70:70` with mode `0700`.
-3. Generates a 32-byte URL-safe random password via `crypto/rand` and persists it to `config.json` (`postgres_password`). Re-init preserves the existing password to avoid breaking the running container.
-4. Wires `SYNTHORG_DATABASE_URL=postgresql://synthorg:<password>@postgres:5432/synthorg` into the backend container's environment. The SQLite-only `SYNTHORG_DB_PATH` variable is omitted.
-5. Sets `SYNTHORG_POSTGRES_SSL_MODE=disable` on the backend because the local DHI postgres inside the docker bridge runs plaintext. Override to `verify-full` for production deployments where TLS terminates at Postgres with trusted certs.
-6. Declares `depends_on: postgres: condition: service_healthy` on the backend service so backend startup blocks until Postgres accepts connections.
-
-Backend auto-wire precedence (`src/synthorg/api/app.py`): when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB_PATH` are present, `SYNTHORG_DATABASE_URL` wins and Postgres is initialized; the SQLite path is ignored. A malformed URL raises loudly at startup rather than silently falling back to a no-persistence install.
-
-**Interactive mode (TUI)** defaults to PostgreSQL + NATS; **non-interactive mode** defaults to SQLite + internal bus. Use `--persistence-backend sqlite` / `--bus-backend internal` in flags to override.
-
-`synthorg start` brings up Postgres first (via compose ordering), then the backend applies Atlas migrations on connection. The Atlas CLI binary is sourced at image-build time from the upstream `arigaio/atlas:latest-community-distroless` image, pinned by multi-arch manifest digest in `docker/backend/Dockerfile`. Renovate's built-in `docker` manager tracks the digest automatically; rebuilds that pick up Go stdlib security patches flow through normal Renovate PRs with no manual SHA refresh. The static binary is copied into the distroless runtime at `/usr/local/bin/atlas` so `persistence.migrate()` can shell out without needing a package manager. `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed. `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
-
-DHI images are verified before pulling via cosign ECDSA signature + SLSA v1 provenance attestation + Rekor transparency log. Verification results are cached in `config.json` (`verified_digests`) and invalidated when Renovate bumps the pinned index digest.
-
-Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates port collisions: web vs backend always; postgres vs web/backend/NATS when postgres enabled; NATS vs web/backend when distributed bus mode is active.
-
-### NATS configuration file
-
-When `--bus-backend nats` is selected, `synthorg init` writes `nats.conf` next to the generated `compose.yml` and the NATS service bind-mounts it at `/etc/nats/nats.conf` (read-only). The canonical config content lives in `cli/internal/compose/nats_config.go` (`NATSConfigContent`) and currently sets `max_payload: 16MB`, sized for full LLM agent outputs and meeting transcripts while staying well under NATS's 64MB ceiling. The helper `writeNATSConfigIfNeeded` keeps the file in sync on every compose write (init, start's digest pin rewrite, `config set`, update's compose refresh) and removes a stale `nats.conf` when switching back to the internal bus.
-
-### Status banner verdict levels
-
-`synthorg status` renders a top-of-screen verdict banner computed by `computeVerdict()` in `cli/cmd/status.go`:
-
-- `OK`: collapses to a single green "All systems operational" line; the happy path stays compact.
-- `DEGRADED`: amber box listing recoverable issues (e.g., a service restarting, or distributed bus expected but not wired).
-- `CRITICAL`: red box for unrecoverable state (e.g., backend unreachable, persistence not wired when expected, any container unhealthy).
-
-Escalation rules: `CRITICAL` wins over `DEGRADED`, and signals are gated on install expectations: a default internal-bus install is not flagged `DEGRADED` merely because the backend's health response omits `message_bus` (only `--bus-backend nats` installs expect one). An unmatched `--services` filter reports `OK`, not `CRITICAL`, because `renderContainersSection` already explains "No containers match requested services".
+See [docs/reference/cli-persistence-backends.md](../docs/reference/cli-persistence-backends.md) for the per-step Postgres orchestration (random-password generation, `SYNTHORG_POSTGRES_SSL_MODE` defaults, depends_on health gate), DHI cosign + SLSA verification cache (`verified_digests`), the NATS config file shape (`max_payload: 16MB`), and the verdict-banner escalation rules.
