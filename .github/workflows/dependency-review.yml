@@ -95,6 +95,12 @@ jobs:
           # (https://github.com/CodSpeedHQ/pytest-codspeed/blob/main/LICENSE)
           # but PyPI metadata is null. Verified manually. Test-only dependency
           # used by the Python perf-regression suite under tests/benchmarks/.
+          #
+          # Newly added in #1679 (deps bump after litellm override-dependencies):
+          # hypothesis (MPL-2.0), litellm (MIT), openai (Apache-2.0),
+          # pyngrok (MIT), tokenizers (Apache-2.0), typer (MIT). All have null
+          # SPDX metadata on PyPI but their upstream LICENSE files declare the
+          # licenses listed; manually verified against each project's repo.
           allow-dependencies-licenses: >-
             pkg:pypi/mem0ai@1.0.9,
             pkg:pypi/numpy@2.4.4,
@@ -107,7 +113,13 @@ jobs:
             pkg:pypi/grpcio@1.80.0,
             pkg:pypi/charset-normalizer@3.4.6,
             pkg:pypi/wrapt@2.1.2,
-            pkg:pypi/pytest-codspeed@4.4.0,
+            pkg:pypi/pytest-codspeed@4.5.0,
+            pkg:pypi/hypothesis@6.152.4,
+            pkg:pypi/litellm@1.83.14,
+            pkg:pypi/openai@2.33.0,
+            pkg:pypi/pyngrok@8.1.2,
+            pkg:pypi/tokenizers@0.23.1,
+            pkg:pypi/typer@0.25.0,
             pkg:npm/@img/sharp-wasm32@0.33.5,
             pkg:npm/@img/sharp-win32-ia32@0.33.5,
             pkg:npm/@img/sharp-win32-x64@0.33.5,
