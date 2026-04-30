@@ -30,11 +30,15 @@ from synthorg.tools.base import BaseTool
 
 # Tools that legitimately do NOT declare ``args_model`` because their
 # parameter schema is dynamic at construction (set from a remote MCP
-# server's tools/list response, etc.).  Adding to this set requires a
-# justification in the docstring/code.
+# server's tools/list response, etc.).  Entries are *fully-qualified*
+# (``module.ClassName``) so a tool with a colliding short name in
+# another module cannot be exempted accidentally.  Adding to this set
+# requires a justification in the docstring/code.
 _ALLOWLIST: frozenset[str] = frozenset(
     {
-        "MCPBridgeTool",  # parameters_schema mirrors a remote MCP tool
+        # parameters_schema mirrors a remote MCP server's tools/list
+        # response, so the shape is not known until runtime.
+        "synthorg.tools.mcp.bridge_tool.MCPBridgeTool",
     }
 )
 
@@ -120,7 +124,8 @@ class TestEveryToolHasArgsModel:
             # Skip private test fixtures and tools defined inside tests.
             if sub.__name__.startswith("_") or sub.__module__.startswith("tests."):
                 continue
-            if sub.__name__ in _ALLOWLIST:
+            fqcn = f"{sub.__module__}.{sub.__name__}"
+            if fqcn in _ALLOWLIST:
                 continue
             if not _is_valid_args_model(getattr(sub, "args_model", None)):
                 missing.append(sub.__name__)
