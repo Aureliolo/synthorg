@@ -20,7 +20,10 @@ from synthorg.client.models import ClientProfile
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
+)
 
 logger = get_logger(__name__)
 
@@ -219,6 +222,11 @@ class ClientController(Controller):
         sim_state = app_state.client_simulation_state
         if await sim_state.pool.has_profile(data.client_id):
             msg = f"Client {data.client_id!r} already exists"
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                client_id=data.client_id,
+                reason=msg,
+            )
             raise ConflictError(msg)
         profile = ClientProfile(
             client_id=data.client_id,
@@ -251,6 +259,11 @@ class ClientController(Controller):
             current = await sim_state.pool.get_profile(client_id)
         except KeyError as exc:
             msg = f"Client {client_id!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                client_id=client_id,
+                reason=msg,
+            )
             raise NotFoundError(msg) from exc
 
         updates = data.model_dump(exclude_none=True)
@@ -282,6 +295,11 @@ class ClientController(Controller):
             profile = await sim_state.pool.deactivate(client_id)
         except KeyError as exc:
             msg = f"Client {client_id!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                client_id=client_id,
+                reason=msg,
+            )
             raise NotFoundError(msg) from exc
         _publish_client_event(request, WsEventType.CLIENT_DEACTIVATED, profile)
 
@@ -302,6 +320,11 @@ class ClientController(Controller):
             await sim_state.pool.get_profile(client_id)
         except KeyError as exc:
             msg = f"Client {client_id!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                client_id=client_id,
+                reason=msg,
+            )
             raise NotFoundError(msg) from exc
         entries = await sim_state.feedback_store.list_for_client(client_id)
         points = tuple(

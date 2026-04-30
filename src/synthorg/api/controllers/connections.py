@@ -28,6 +28,11 @@ from synthorg.integrations.errors import (
     SecretRetrievalError,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
+    API_VALIDATION_FAILED,
+)
 from synthorg.observability.events.integrations import (
     CONNECTION_SECRET_REVEAL_FAILED,
     CONNECTION_SECRET_REVEALED,
@@ -97,6 +102,7 @@ class ConnectionsController(Controller):
         conn = await catalog.get(name)
         if conn is None:
             msg = f"Connection '{name}' not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=msg)
             raise NotFoundError(msg) from None
         return ApiResponse(data=conn)
 
@@ -122,6 +128,7 @@ class ConnectionsController(Controller):
         name = data.get("name")
         if not isinstance(name, str) or not name.strip():
             msg = "Field 'name' is required and must be a non-empty string"
+            logger.warning(API_VALIDATION_FAILED, field="name", reason=msg)
             raise ValidationError(msg)
         # Persist the canonical trimmed form so "  github  " and
         # "github" cannot become two distinct identities and so the
@@ -131,26 +138,44 @@ class ConnectionsController(Controller):
         connection_type_raw = data.get("connection_type")
         if not isinstance(connection_type_raw, str) or not connection_type_raw:
             msg = "Field 'connection_type' is required"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                field="connection_type",
+                reason=msg,
+            )
             raise ValidationError(msg)
         try:
             connection_type = ConnectionType(connection_type_raw)
         except ValueError as exc:
             msg = f"Unknown connection_type '{connection_type_raw}'"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                field="connection_type",
+                value=connection_type_raw,
+                reason=msg,
+            )
             raise ValidationError(msg) from exc
 
         credentials = data.get("credentials", {})
         if not isinstance(credentials, dict):
             msg = "Field 'credentials' must be an object"
+            logger.warning(API_VALIDATION_FAILED, field="credentials", reason=msg)
             raise ValidationError(msg)
 
         metadata = data.get("metadata")
         if metadata is not None and not isinstance(metadata, dict):
             msg = "Field 'metadata' must be an object if provided"
+            logger.warning(API_VALIDATION_FAILED, field="metadata", reason=msg)
             raise ValidationError(msg)
 
         health_check_enabled = data.get("health_check_enabled", True)
         if not isinstance(health_check_enabled, bool):
             msg = "Field 'health_check_enabled' must be a boolean"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                field="health_check_enabled",
+                reason=msg,
+            )
             raise ValidationError(msg)
 
         catalog = state["app_state"].connection_catalog
@@ -165,8 +190,19 @@ class ConnectionsController(Controller):
                 health_check_enabled=health_check_enabled,
             )
         except DuplicateConnectionError as exc:
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                connection=name,
+                reason=str(exc),
+            )
             raise ConflictError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                connection=name,
+                field="auth_method",
+                reason=str(exc),
+            )
             raise ValidationError(str(exc)) from exc
         return ApiResponse(data=conn)
 
@@ -214,6 +250,7 @@ class ConnectionsController(Controller):
                 health_check_enabled=health_check_enabled,
             )
         except ConnectionNotFoundError as exc:
+            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=str(exc))
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=conn)
 
@@ -236,6 +273,7 @@ class ConnectionsController(Controller):
         try:
             await catalog.delete(name)
         except ConnectionNotFoundError as exc:
+            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=str(exc))
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=None)
 
@@ -258,6 +296,7 @@ class ConnectionsController(Controller):
         try:
             report = await check_connection_health(catalog, name)
         except ConnectionNotFoundError as exc:
+            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=str(exc))
             raise NotFoundError(str(exc)) from exc
         await catalog.update_health(
             name,
