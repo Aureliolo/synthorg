@@ -63,36 +63,46 @@ export function NotificationItemCard({
   return (
     <div
       role="listitem"
-      tabIndex={0}
-      aria-label={`${item.severity} notification: ${item.title}`}
       className={cn(
         'group relative flex w-full gap-3 rounded-md border-l-2 px-3 py-2 text-left',
         'transition-colors hover:bg-card-hover',
         item.read ? 'border-l-transparent' : BORDER_COLORS[item.severity],
         !item.read && 'bg-accent/5',
-        item.href && 'cursor-pointer',
       )}
-      onClick={handleClick}
-      onKeyDown={(e) => {
-        if ((e.key === 'Enter' || e.key === ' ') && !(e.target as HTMLElement).closest('button')) {
-          e.preventDefault()
-          handleClick()
-        }
-      }}
     >
-      <Icon className={cn('mt-0.5 size-4 shrink-0', SEVERITY_COLORS[item.severity])} />
-
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
-        {item.description && (
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {item.description}
-          </p>
+      {/* Main click target as a real button: native keyboard support
+          (Enter/Space) without a manual onKeyDown shim, native disabled
+          semantics, and the right role for screen readers. The click
+          handler still does the mark-as-read + optional navigate; the
+          per-action icons (Mark / Dismiss) live as sibling buttons
+          outside this one to avoid invalid nested-button HTML. */}
+      <button
+        type="button"
+        onClick={handleClick}
+        aria-label={`${item.severity} notification: ${item.title}`}
+        className={cn(
+          'flex flex-1 items-start gap-3 text-left -m-px',
+          item.href ? 'cursor-pointer' : 'cursor-default',
         )}
-        <p className="mt-1 text-xs text-muted-foreground/70">
-          {formatRelativeTime(item.timestamp)}
-        </p>
-      </div>
+      >
+        <Icon
+          className={cn('mt-0.5 size-4 shrink-0', SEVERITY_COLORS[item.severity])}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-foreground">
+            {item.title}
+          </span>
+          {item.description && (
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+              {item.description}
+            </span>
+          )}
+          <span className="mt-1 block text-xs text-muted-foreground/70">
+            {formatRelativeTime(item.timestamp)}
+          </span>
+        </span>
+      </button>
 
       <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         {!item.read && (
@@ -101,12 +111,9 @@ export function NotificationItemCard({
             className="rounded p-0.5 text-muted-foreground hover:bg-accent/10 hover:text-accent"
             aria-label="Mark as read"
             title="Mark as read"
-            onClick={(e) => {
-              e.stopPropagation()
-              onMarkRead(item.id)
-            }}
+            onClick={() => { onMarkRead(item.id) }}
           >
-            <Check className="size-3.5" />
+            <Check className="size-3.5" aria-hidden="true" />
           </button>
         )}
         <button
@@ -114,12 +121,9 @@ export function NotificationItemCard({
           className="rounded p-0.5 text-muted-foreground hover:bg-danger/10 hover:text-danger"
           aria-label="Dismiss notification"
           title="Dismiss"
-          onClick={(e) => {
-            e.stopPropagation()
-            onDismiss(item.id)
-          }}
+          onClick={() => { onDismiss(item.id) }}
         >
-          <X className="size-3.5" />
+          <X className="size-3.5" aria-hidden="true" />
         </button>
       </div>
     </div>
