@@ -170,7 +170,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
             'transition-[opacity,translate,scale] duration-200 ease-out',
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
             'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
-            'max-h-[85vh] overflow-y-auto',
+            'max-h-[85vh] overflow-y-auto sm:max-h-[80vh]',
           )}
         >
           <div className="flex items-center justify-between mb-4">

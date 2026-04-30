@@ -77,7 +77,7 @@ export function ChannelSidebar({
 
   if (loading && channels.length === 0) {
     return (
-      <nav aria-label="Channels" className="flex w-56 shrink-0 flex-col gap-2 border-r border-border pr-4">
+      <nav aria-label="Channels" className="hidden w-56 shrink-0 flex-col gap-2 border-r border-border pr-4 lg:flex">
         <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Channels</div>
         {Array.from({ length: 6 }, (_, i) => (
           <Skeleton key={i} className="h-8 w-full rounded-md" />
@@ -88,7 +88,7 @@ export function ChannelSidebar({
 
   if (channels.length === 0) {
     return (
-      <nav aria-label="Channels" className="flex w-56 shrink-0 flex-col border-r border-border pr-4">
+      <nav aria-label="Channels" className="hidden w-56 shrink-0 flex-col border-r border-border pr-4 lg:flex">
         <EmptyState
           icon={MessageSquare}
           title="No channels"
@@ -99,7 +99,7 @@ export function ChannelSidebar({
   }
 
   return (
-    <nav aria-label="Channels" className="flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border pr-4">
+    <nav aria-label="Channels" className="hidden w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border pr-4 lg:flex">
       {TYPE_ORDER.map((type) => {
         const items = grouped.get(type)
         if (!items || items.length === 0) return null
