@@ -491,6 +491,16 @@ def _credentials_match(stored: str, presented: str) -> bool:
     Unicode credentials and avoids ``compare_digest``'s
     ``str``-vs-``bytes`` type sensitivity.
 
+    ``errors="replace"`` is used on both encodes (matching the
+    pattern used elsewhere in this codebase, e.g.
+    :func:`synthorg.api.controllers.webhooks._build_idem_key`) so a
+    presented credential that contains broken UTF-8 (mojibake,
+    unpaired surrogates from a misbehaving transport) does not
+    raise ``UnicodeEncodeError`` mid-comparison. The replacement
+    bytes still differ from any well-formed stored credential, so
+    the comparison correctly returns ``False`` rather than crashing
+    the auth path.
+
     Length mismatches are tolerated: ``compare_digest`` returns
     ``False`` in time proportional to the shorter input, which is
     the closest constant-time behaviour available without
@@ -502,8 +512,8 @@ def _credentials_match(stored: str, presented: str) -> bool:
     purely byte-wise and reports two empty strings as equal.
     """
     return hmac.compare_digest(
-        stored.encode("utf-8"),
-        presented.encode("utf-8"),
+        stored.encode("utf-8", errors="replace"),
+        presented.encode("utf-8", errors="replace"),
     )
 
 

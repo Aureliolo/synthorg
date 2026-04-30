@@ -307,6 +307,15 @@ def _system_prompt() -> str:
     Computed lazily so the ``synthorg.engine.prompt_safety`` import
     does not run during ``synthorg.engine.__init__`` boot, which would
     create a circular import via the security service.
+
+    A failed import here surfaces as ``ImportError`` to the caller
+    (the ``classify`` request path). That is intentional: the
+    classifier is a security-critical surface, and falling back
+    silently on a missing prompt-safety helper would weaken the
+    SEC-1 fence rather than surface the boot bug. The call site in
+    ``classify`` already has a fail-safe (``SUSPICIOUS`` verdict on
+    any unhandled exception); a hard ``ImportError`` is the
+    correct route for "the build is broken" vs "the LLM said no".
     """
     from synthorg.engine.prompt_safety import (  # noqa: PLC0415
         TAG_TASK_DATA,

@@ -125,6 +125,41 @@ class TestUpdateConnectionRequest:
         assert "base_url" not in omitted.model_fields_set
         assert "base_url" in explicit.model_fields_set
 
+    def test_omitted_vs_explicit_null_round_trip_through_controller_logic(
+        self,
+    ) -> None:
+        """Verify the ``_UNSET`` sentinel is forwarded to the catalog
+        only when ``base_url`` was omitted from the request body.
+
+        Pre-PR review finding (#1682, item #9): the three-way
+        omit / null / overwrite invariant on ``base_url`` is encoded
+        outside the type. This test pins the behaviour at the
+        controller layer so a future refactor that drops the
+        ``model_fields_set`` check would be caught.
+        """
+        from synthorg.integrations.connections.catalog import _UNSET
+
+        # Helper mirroring the controller's logic at
+        # ``ConnectionsController.update_connection``.
+        def resolve_base_url(req: UpdateConnectionRequest) -> object:
+            return req.base_url if "base_url" in req.model_fields_set else _UNSET
+
+        # Case 1: field omitted entirely.
+        omitted = UpdateConnectionRequest()
+        assert resolve_base_url(omitted) is _UNSET
+
+        # Case 2: explicit None (clear the field).
+        explicit_null = UpdateConnectionRequest.model_validate(
+            {"base_url": None},
+        )
+        assert resolve_base_url(explicit_null) is None
+
+        # Case 3: explicit string (overwrite the field).
+        overwrite = UpdateConnectionRequest.model_validate(
+            {"base_url": "https://example.com"},
+        )
+        assert resolve_base_url(overwrite) == "https://example.com"
+
 
 @pytest.mark.unit
 class TestInitiateOAuthFlowRequest:

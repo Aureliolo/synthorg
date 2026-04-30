@@ -63,10 +63,13 @@ _COST_WINDOW_HOURS = 168  # 7 days
 _AUTO_PRUNE_THRESHOLD = 100_000
 
 #: Default capacity of the per-tracker LRU set used to dedupe
-#: ``CostRecord.claim_id``.  10k entries is well above the steady-state
-#: rate of a busy synthetic org (the 7-day record window itself is
-#: bounded at ``_AUTO_PRUNE_THRESHOLD``) and bounds memory growth so
-#: a misbehaving caller cannot fill the dedup set without bound.
+#: ``CostRecord.claim_id``.  Sized as 10% of ``_AUTO_PRUNE_THRESHOLD``
+#: (the 7-day per-tracker total-event cap, 100k events): the dedup
+#: set only needs to cover the redelivery / retry window, not the
+#: full 7-day archive.  10k entries comfortably outlasts JetStream's
+#: default redelivery horizon and any reasonable in-process retry
+#: while keeping the LRU footprint bounded so a misbehaving caller
+#: spamming unique ``claim_id`` values cannot grow it without limit.
 _DEFAULT_CLAIM_LRU_CAPACITY = 10_000
 
 

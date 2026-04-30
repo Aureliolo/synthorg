@@ -487,14 +487,14 @@ class WebhooksController(Controller):
         else:
             normalized_payload = {"data": payload}
 
-        # Both branches publish through the durable idempotency
-        # service so JetStream redelivery / retried POSTs cannot
-        # double-bus the same event. When the provider supplies a
-        # nonce / request-id we use that directly; otherwise we
-        # synthesize one from the body's SHA-256 so byte-identical
-        # redeliveries collapse to a single publish. The
-        # ``dedup_source`` tag on the success log lets operators
-        # distinguish the two paths.
+        # Both branches below publish through the durable
+        # idempotency service so JetStream redelivery / retried POSTs
+        # cannot double-bus the same event. When the provider
+        # supplies a nonce / request-id we use that directly;
+        # otherwise we synthesise one from the body's SHA-256 so
+        # byte-identical redeliveries collapse to a single publish.
+        # The ``dedup_source`` tag on the success log lets operators
+        # distinguish the two paths in audit traces.
         if nonce:
             idem_nonce = nonce
             dedup_source = "nonce"

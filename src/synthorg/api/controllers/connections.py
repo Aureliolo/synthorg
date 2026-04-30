@@ -40,10 +40,17 @@ from synthorg.observability.events.integrations import (
 )
 
 # Length caps applied at the API boundary to prevent unbounded
-# string allocation on attacker-controllable inputs (#1682).
+# string allocation on attacker-controllable inputs (#1682). The
+# credential / metadata key caps share the same value as the
+# connection-name cap, but the *names* are kept distinct so a future
+# tuner who needs to widen credential keys (e.g. for tokens with
+# embedded scopes) does not have to disentangle the connection-name
+# semantic from the dict-key one.
 _MAX_NAME_LEN = 128
 _MAX_BASE_URL_LEN = 2048
+_MAX_CRED_KEY_LEN = 128
 _MAX_CRED_VALUE_LEN = 8192
+_MAX_METADATA_KEY_LEN = 128
 _MAX_METADATA_VALUE_LEN = 4096
 
 
@@ -65,13 +72,13 @@ class CreateConnectionRequest(BaseModel):
     connection_type: ConnectionType
     auth_method: AuthMethod = AuthMethod.API_KEY
     credentials: dict[
-        Annotated[str, Field(max_length=_MAX_NAME_LEN)],
+        Annotated[str, Field(max_length=_MAX_CRED_KEY_LEN)],
         Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
     ] = Field(default_factory=dict)
     base_url: Annotated[str, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
         dict[
-            Annotated[str, Field(max_length=_MAX_NAME_LEN)],
+            Annotated[str, Field(max_length=_MAX_METADATA_KEY_LEN)],
             Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
         ]
         | None
@@ -82,11 +89,19 @@ class CreateConnectionRequest(BaseModel):
 class UpdateConnectionRequest(BaseModel):
     """Body model for ``PATCH /connections/{name}``.
 
-    Optional fields; ``base_url`` is a discriminated three-way:
-    omitted leaves the value unchanged, ``None`` clears it, a string
-    overwrites it. Pydantic + ``extra="forbid"`` distinguishes the
-    "omitted" case from "explicitly null" via field-presence checks
-    on ``model_fields_set``.
+    Optional fields with three-way semantics on ``base_url``:
+
+    * **omitted** (``base_url`` not in ``model_fields_set``): leave
+      the stored value unchanged.
+    * **explicit ``None``** (``"base_url": null`` in the JSON body):
+      clear the stored value.
+    * **string**: overwrite.
+
+    The controller distinguishes the omitted vs explicit-null cases
+    by inspecting ``data.model_fields_set`` (see
+    :meth:`ConnectionsController.update_connection`) and forwards the
+    sentinel ``_UNSET`` to the catalog when the field was omitted.
+    Pydantic + ``extra="forbid"`` rejects unknown fields entirely.
     """
 
     model_config = ConfigDict(
@@ -98,7 +113,7 @@ class UpdateConnectionRequest(BaseModel):
     base_url: Annotated[str, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
         dict[
-            Annotated[str, Field(max_length=_MAX_NAME_LEN)],
+            Annotated[str, Field(max_length=_MAX_METADATA_KEY_LEN)],
             Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
         ]
         | None

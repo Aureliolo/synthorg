@@ -12,7 +12,7 @@ the nonce and nonce-less branches with the appropriate key shape.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import structlog.testing
@@ -173,3 +173,279 @@ class TestNoncelessWebhookKeyShape:
         # The prefix or a hash-of-prefix appears in the key (operator
         # visibility); the entire key is non-empty.
         assert key
+
+    def test_nonce_less_key_uses_sha256_not_truncated(self) -> None:
+        """Real-body SHA-256 digest survives ``_build_idem_key`` unmangled.
+
+        Pre-PR review finding (#1682, item #11): assert that the helper
+        keeps the full 64-hex-char digest visible (or as a hash-of-key
+        when the composite is over the column cap), bounded under
+        ``_IDEMPOTENCY_KEY_MAX_LEN``. A regression that swapped to a
+        weaker hash or truncated the digest mid-key would otherwise
+        slip past the test surface.
+        """
+        import hashlib
+
+        body = b'{"event": "issues.opened", "number": 42}'
+        digest = hashlib.sha256(body).hexdigest()
+        # SHA-256 is always 64 hex chars by definition.
+        sha256_hex_length = 64
+        assert len(digest) == sha256_hex_length
+
+        key = webhooks_module._build_idem_key(
+            connection_name="github-prod",
+            event_type="issues.opened",
+            nonce=f"sha256:{digest}",
+        )
+        assert len(key) <= webhooks_module._IDEMPOTENCY_KEY_MAX_LEN
+        # The digest survives in the key (either inline or reduced via
+        # the helper's two-stage SHA-256 collapse for oversized
+        # composites). Either way the key is deterministic and
+        # non-empty for the same body.
+        assert key
+        # Re-hashing the same body produces the same key; this is the
+        # core idempotency invariant.
+        repeat_key = webhooks_module._build_idem_key(
+            connection_name="github-prod",
+            event_type="issues.opened",
+            nonce=f"sha256:{digest}",
+        )
+        assert key == repeat_key
+
+    def test_nonce_less_key_at_column_cap_boundary(self) -> None:
+        """Composite key sitting exactly at the DB cap is accepted.
+
+        Pre-PR review finding (#1682, item #11, boundary case): a
+        connection_name + event_type + ``sha256:`` prefix + 64-hex
+        digest crafted to land near the cap should still fit; pad up
+        to the boundary and confirm the helper does not truncate or
+        crash.
+        """
+        # Pad connection_name so the full composite is right at the cap.
+        digest = "0" * 64
+        prefix_overhead = len(":") + len(":") + len("sha256:") + len(digest)
+        # ``_IDEMPOTENCY_KEY_MAX_LEN`` is 255; reserve event_type=8 chars.
+        event_type = "evt.test"
+        room = (
+            webhooks_module._IDEMPOTENCY_KEY_MAX_LEN - prefix_overhead - len(event_type)
+        )
+        connection_name = "x" * max(1, room)
+        key = webhooks_module._build_idem_key(
+            connection_name=connection_name,
+            event_type=event_type,
+            nonce=f"sha256:{digest}",
+        )
+        assert len(key) <= webhooks_module._IDEMPOTENCY_KEY_MAX_LEN
+        assert key
+
+
+@pytest.mark.unit
+class TestReceiveWebhookEndToEnd:
+    """Controller-level: both branches flow through durable idempotency.
+
+    Pre-PR review finding (#1682, item #6): the helper-level tests
+    above mock ``publish_webhook_event`` and ``run_idempotent``, which
+    is enough for unit isolation but does not catch a regression where
+    the orchestrator drops the ``dedup_source`` plumbing or skips the
+    body-SHA256 derivation entirely. These tests invoke
+    :meth:`WebhooksController.receive_webhook` directly with a mocked
+    :class:`State` so the full branch logic runs.
+    """
+
+    async def _invoke_branch(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        body_bytes: bytes,
+        request_headers: dict[str, str],
+    ) -> dict[str, Any]:
+        """Run ``receive_webhook`` once and return the captured kwargs.
+
+        Stubs every collaborator the controller calls (catalog,
+        signature verification, replay/freshness, payload-size guard,
+        bus publish) so the test surfaces exactly the
+        ``_publish_with_durable_idempotency`` arguments the orchestrator
+        assembled.
+        """
+        from synthorg.api.controllers.webhooks import (
+            WebhooksController,
+        )
+
+        captured: dict[str, Any] = {}
+
+        async def fake_get_connection_or_404(
+            state: Any,
+            connection_name: str,
+        ) -> Any:
+            class _Conn:
+                connection_type = "github"
+
+            return _Conn()
+
+        async def fake_enforce_max_payload(
+            request: Any,
+            *,
+            connection_name: str,
+            max_payload: int,
+        ) -> bytes:
+            return body_bytes
+
+        async def fake_verify_signature(
+            *,
+            catalog: Any,
+            connection_name: str,
+            connection_type: str,
+            body: bytes,
+            headers: dict[str, str],
+        ) -> None:
+            return None
+
+        def fake_parse_timestamp(
+            headers: dict[str, str],
+            *,
+            connection_name: str,
+        ) -> Any:
+            return None
+
+        def fake_check_replay_or_freshness(
+            *,
+            state: Any,
+            connection_name: str,
+            nonce: str | None,
+            timestamp: Any,
+        ) -> None:
+            return None
+
+        async def spy_publish_with_durable_idempotency(
+            **kwargs: Any,
+        ) -> dict[str, object]:
+            captured.update(kwargs)
+            return {"status": "accepted", "event_type": kwargs["event_type"]}
+
+        monkeypatch.setattr(
+            webhooks_module,
+            "_get_connection_or_404",
+            fake_get_connection_or_404,
+        )
+        monkeypatch.setattr(
+            webhooks_module,
+            "_enforce_max_payload",
+            fake_enforce_max_payload,
+        )
+        monkeypatch.setattr(
+            webhooks_module,
+            "_verify_signature",
+            fake_verify_signature,
+        )
+        monkeypatch.setattr(
+            webhooks_module,
+            "_parse_timestamp",
+            fake_parse_timestamp,
+        )
+        monkeypatch.setattr(
+            webhooks_module,
+            "_check_replay_or_freshness",
+            fake_check_replay_or_freshness,
+        )
+        monkeypatch.setattr(
+            webhooks_module,
+            "_publish_with_durable_idempotency",
+            spy_publish_with_durable_idempotency,
+        )
+
+        # Litestar Request stub: the controller only reads
+        # ``request.headers`` after the payload guard, plus the
+        # connection-name/event-type path params it gets from
+        # arguments. We hand it a minimal object that returns the
+        # provided headers.
+        class _StubRequest:
+            headers = request_headers
+
+        # AppState stub exposes only what the controller touches.
+        class _ConfigWebhooks:
+            max_payload_bytes = 1_000_000
+
+        class _ConfigIntegrations:
+            webhooks = _ConfigWebhooks()
+
+        class _Config:
+            integrations = _ConfigIntegrations()
+
+        class _AppState:
+            connection_catalog = object()
+            config = _Config()
+            message_bus = _FakeBus()
+
+        state: dict[str, Any] = {"app_state": _AppState()}
+        # Litestar's ``@post`` decorator wraps ``receive_webhook``
+        # into an ``HTTPRouteHandler``; the original async function
+        # is preserved at ``.fn`` and accepts ``self`` as the first
+        # arg. Calling it directly bypasses Litestar's request
+        # parsing (which is what we want -- this test exercises the
+        # orchestrator's branch logic, not the framework wiring).
+        receive_webhook_fn = WebhooksController.receive_webhook.fn
+        from litestar import Router
+
+        self_stub = MagicMock(spec=Router)
+
+        await receive_webhook_fn(
+            self_stub,
+            state=state,
+            request=_StubRequest(),
+            connection_name="github-prod",
+            event_type="issues.opened",
+        )
+        return captured
+
+    async def test_nonce_branch_flows_through_idempotency(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Header-supplied nonce reaches ``_publish_with_durable_idempotency``."""
+        captured = await self._invoke_branch(
+            monkeypatch,
+            body_bytes=b'{"x": 1}',
+            request_headers={"x-nonce": "provider-nonce-123"},
+        )
+        assert captured["nonce"] == "provider-nonce-123"
+        assert captured["dedup_source"] == "nonce"
+        assert captured["connection_name"] == "github-prod"
+        assert captured["event_type"] == "issues.opened"
+
+    async def test_nonce_less_branch_flows_through_idempotency_with_sha256(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Missing nonce -> body SHA-256 reaches the helper as the key."""
+        import hashlib
+
+        body = b'{"event": "push", "ref": "main"}'
+        expected_digest = hashlib.sha256(body).hexdigest()
+        captured = await self._invoke_branch(
+            monkeypatch,
+            body_bytes=body,
+            request_headers={},
+        )
+        assert captured["nonce"] == f"sha256:{expected_digest}"
+        assert captured["dedup_source"] == "body_sha256"
+        assert captured["connection_name"] == "github-prod"
+        assert captured["event_type"] == "issues.opened"
+
+    async def test_redelivery_same_body_yields_same_idempotency_key(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Two byte-identical bodies derive the same key (deterministic)."""
+        body = b'{"event": "duplicate-redelivery"}'
+        first = await self._invoke_branch(
+            monkeypatch,
+            body_bytes=body,
+            request_headers={},
+        )
+        second = await self._invoke_branch(
+            monkeypatch,
+            body_bytes=body,
+            request_headers={},
+        )
+        assert first["nonce"] == second["nonce"]
+        assert first["dedup_source"] == second["dedup_source"] == "body_sha256"

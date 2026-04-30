@@ -8,13 +8,15 @@ SEC-1 wrap-ownership note (#1682): this module is stateless control
 flow only. The :func:`wrap_untrusted` responsibility lives upstream
 of the loop:
 
-- Tool-result wrapping is owned by :mod:`synthorg.engine.loop_tool_execution`
-  (see ``_wrap_tool_result`` and ``_FENCE_TAGS``).
-- User-message wrapping is owned by the prompt builders that produce
-  the initial ``ChatMessage`` payload (e.g.
+- Tool-result wrapping is owned by
+  :func:`synthorg.engine.loop_tool_execution._wrap_tool_result` (see
+  also ``_FENCE_TAGS`` in that module).
+- User-message wrapping is owned by the per-strategy prompt builders
+  that produce the initial ``ChatMessage`` payload, e.g.
   :func:`synthorg.engine.prompt_validation.format_task_instruction`,
-  :mod:`synthorg.engine.decomposition.llm_prompt`,
-  :mod:`synthorg.engine.intake.strategies.agent_intake`).
+  :func:`synthorg.engine.decomposition.llm_prompt.build_task_message`,
+  and ``AgentIntake._build_prompt`` in
+  :mod:`synthorg.engine.intake.strategies.agent_intake`.
 
 Editors of this module should NOT add ``wrap_untrusted`` calls here:
 those would re-wrap already-fenced payloads and weaken the SEC-1

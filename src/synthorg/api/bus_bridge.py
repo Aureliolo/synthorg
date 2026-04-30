@@ -128,6 +128,10 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._poll_timeout_fallback_logged:
+                # SEC-1 (#1682): no exc_info on a settings-resolver
+                # fallback path. ConfigResolver fetches can carry
+                # connection strings or API tokens in scope, and a
+                # traceback would serialise frame-locals into the log.
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     error=(
@@ -135,7 +139,6 @@ class MessageBusBridge:
                         " using fallback (logging suppressed until recovery)"
                     ),
                     poll_timeout=_POLL_TIMEOUT,
-                    exc_info=True,
                 )
                 self._poll_timeout_fallback_logged = True
             return _POLL_TIMEOUT
@@ -162,6 +165,7 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._drain_timeout_fallback_logged:
+                # SEC-1 (#1682): no exc_info on settings-resolver fallback.
                 logger.warning(
                     API_BUS_BRIDGE_DRAIN_RESOLVE_ERROR,
                     error=(
@@ -169,7 +173,6 @@ class MessageBusBridge:
                         " using fallback (logging suppressed until recovery)"
                     ),
                     timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
-                    exc_info=True,
                 )
                 self._drain_timeout_fallback_logged = True
             return _STOP_DRAIN_TIMEOUT_SECONDS
@@ -195,6 +198,7 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._max_errors_fallback_logged:
+                # SEC-1 (#1682): no exc_info on settings-resolver fallback.
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     error=(
@@ -202,7 +206,6 @@ class MessageBusBridge:
                         " using fallback (logging suppressed until recovery)"
                     ),
                     max_errors=_MAX_CONSECUTIVE_ERRORS,
-                    exc_info=True,
                 )
                 self._max_errors_fallback_logged = True
             return _MAX_CONSECUTIVE_ERRORS

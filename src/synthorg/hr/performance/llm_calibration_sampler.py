@@ -38,6 +38,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+#: Static head of the calibration prompt (no user-controlled data).
+#:
+#: The prompt body is composed at message-build time from this header,
+#: a metrics block (bounded numeric fields), and a ``wrap_untrusted``
+#: fence around the free-form ``interaction_summary``. Keeping the
+#: header constant lets prompt-fingerprint tests pin it.
 _SYSTEM_PROMPT_HEADER = (
     "You are evaluating the quality of collaboration in an AI agent "
     "interaction.\n\n"
@@ -47,7 +53,6 @@ _SYSTEM_PROMPT_HEADER = (
     '{"score": <float>, "rationale": "<brief explanation>"}\n\n'
     + untrusted_content_directive((TAG_TASK_DATA,))
 )
-"""Static head of the calibration prompt (no user-controlled data)."""
 
 _COMPLETION_CONFIG = CompletionConfig(temperature=0.3, max_tokens=256)
 

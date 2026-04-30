@@ -584,9 +584,17 @@ class LLMConsolidationStrategy:
         ``TAG_MEMORY_ENTRY`` tag so the consolidator LLM treats the
         content as data, and so any literal closing-tag breakout
         attempt inside the entry is rewritten before serialisation.
-        The category is captured as a metadata line *inside* the
-        fence rather than as a tag attribute -- attribute injection
-        was the original failure mode of the hand-rolled XML escape.
+
+        The entry's ``category`` is rendered as a plain-text
+        ``"category: <value>"`` line inside the fenced body, NOT as
+        an XML attribute on the opening tag. Attribute-style
+        rendering was the original failure mode of the hand-rolled
+        XML escape: an attacker who controlled the category value
+        could break out of the attribute quoting. As a plain line
+        inside the fence, the category is normal data;
+        ``wrap_untrusted`` already protects against closing-tag
+        injection so the only exit from the fence is the wrapper's
+        own trailing ``</memory-entry>``.
 
         The total concatenated length is capped at
         ``config.max_total_user_content_chars``; if the cap is reached,

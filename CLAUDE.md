@@ -155,7 +155,7 @@ See [docs/reference/configuration-precedence.md](docs/reference/configuration-pr
 - **State transitions**: every hop on a status enum (including non-terminal hops like `PENDING -> RUNNING`) logs at INFO using a domain-scoped `*_STATUS_TRANSITIONED` constant carrying `from_status` / `to_status` / domain id, AFTER the persistence write succeeds. See [docs/reference/conventions.md](docs/reference/conventions.md) §13.
 - **DEBUG** for object creation, internal flow, entry/exit of key functions. Pure data models, enums, re-exports do NOT need logging.
 - **Source-of-resolution audit**: every settings read emits one INFO `settings.value.resolved` event on first cold read per process. See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md).
-- **Secret-log redaction (SEC-1)**: never `logger.exception(EVENT, error=str(exc))`; use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))`. Enforced unconditionally by `scripts/check_logger_exception_str_exc.py`. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md).
+- **Secret-log redaction (SEC-1)**: never `logger.exception(EVENT, error=str(exc))`, `logger.warning(EVENT, error=str(exc))`, or `logger.error(EVENT, error=str(exc))`; use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` (`from synthorg.observability import safe_error_description`). All three log methods are enforced unconditionally by `scripts/check_logger_exception_str_exc.py` (#1682 extended the gate from exception-only). See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md).
 
 ## MCP Handler Layer
 
