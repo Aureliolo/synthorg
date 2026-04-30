@@ -70,6 +70,7 @@ test.describe('Workflows list + system.error notification path', () => {
       status: 'success',
       finished_at: '2026-04-01T12:01:00Z',
     })
+    const message = `workflow execution ${execution.id} completed`
     await injectEvent(page, {
       event_type: 'system.error',
       channel: 'system',
@@ -77,10 +78,18 @@ test.describe('Workflows list + system.error notification path', () => {
       payload: {
         ...execution,
         execution_id: execution.id,
-        message: `workflow execution ${execution.id} completed`,
+        message,
       },
     })
+    // Assert BOTH the static title and the payload-driven message
+    // so a regression where the dispatch chain drops the
+    // description (or the notifications store renders only the
+    // title) fails the test. The notifications case for
+    // ``system.error`` enqueues
+    // ``{title: 'System error', description: payload.message}``;
+    // both fields land in the rendered notification entry.
     await expect(page.getByText('System error').first()).toBeVisible()
+    await expect(page.getByText(message).first()).toBeVisible()
     await expect(page.locator('main')).toBeVisible()
   })
 })
