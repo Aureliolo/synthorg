@@ -37,19 +37,22 @@ test.describe('Workflow run critical flow', () => {
     await expect(page).toHaveURL(/\/workflows/)
     await expect(page.locator('main')).toBeVisible()
 
-    // Push an execution-status event. ``workflow_execution.*`` is not
-    // (yet) in ``WS_EVENT_TYPE_VALUES``, so we use the closest mapped
-    // event the dashboard already handles -- a coordination-completed
-    // frame that the store dispatches without further filtering.
-    // Wire envelope conforms to ``isWsEvent`` (event_type / channel /
-    // timestamp / payload); the legacy ``{type, ..., execution}``
-    // shape would be silently discarded.
+    // Push a workflow-failure system event. ``workflow_execution.*``
+    // is not in ``WS_EVENT_TYPE_VALUES`` and the production
+    // notifications store has no ``coordination.completed`` handler,
+    // so neither would surface an observable UI change. The
+    // dashboard's notifications dispatch DOES handle ``system.error``
+    // (enqueues a "System error" entry with the payload's message);
+    // sending the workflow-failure context that way exercises the
+    // full envelope-validate -> dispatch -> notification-render
+    // chain end-to-end. A regression in any of those layers would
+    // prevent the "System error" title from rendering.
     const execution = makeWorkflowExecution({
       status: 'success',
       finished_at: '2026-04-01T12:01:00Z',
     })
     await injectEvent(page, {
-      event_type: 'coordination.completed',
+      event_type: 'system.error',
       channel: 'system',
       timestamp: '2026-04-01T12:01:00Z',
       payload: {
@@ -58,6 +61,7 @@ test.describe('Workflow run critical flow', () => {
         message: `workflow execution ${execution.id} completed`,
       },
     })
+    await expect(page.getByText('System error').first()).toBeVisible()
     await expect(page.locator('main')).toBeVisible()
   })
 })

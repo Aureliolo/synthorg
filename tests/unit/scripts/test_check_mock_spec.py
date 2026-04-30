@@ -184,6 +184,16 @@ def test_shared_dir_excluded_via_pre_commit_path(
         encoding="utf-8",
     )
     monkeypatch.setattr(_MODULE, "_TESTS_ROOT", tests_root)
-    monkeypatch.setattr(_MODULE, "_load_baseline", set)
+
+    # Stub baseline lookup with an explicit callable returning an
+    # empty set; passing the ``set`` type directly works (it's
+    # callable and returns ``set()``) but obscures the intent that
+    # ``_load_baseline()`` must return an empty allowlist for the
+    # test to verify suppression-by-exclusion rather than
+    # suppression-by-baseline.
+    def _empty_baseline() -> set[str]:
+        return set()
+
+    monkeypatch.setattr(_MODULE, "_load_baseline", _empty_baseline)
     rc = _MODULE.cmd_scan_paths([str(bad_file)])
     assert rc == 0
