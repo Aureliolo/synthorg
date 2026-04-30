@@ -39,7 +39,6 @@ class TestIsoDatetimeStr:
         "value",
         [
             "tomorrow-ish",
-            "2026-04-29",
             "not-a-date",
             "",
             "   ",
@@ -51,10 +50,23 @@ class TestIsoDatetimeStr:
         with pytest.raises(ValidationError):
             _TimeWindowArgs(since=value)
 
-    def test_naive_datetime_rejected(self) -> None:
-        """Naive ISO 8601 strings (no offset / no Z) are rejected."""
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "2026-04-29T22:50:23",  # tz-naive datetime
+            "2026-04-29",  # date-only -- parses, but no tzinfo
+        ],
+    )
+    def test_naive_datetime_rejected(self, value: str) -> None:
+        """ISO 8601 values without a timezone are rejected.
+
+        ``"2026-04-29"`` is valid ISO 8601 -- ``datetime.fromisoformat``
+        accepts it as midnight on that date.  It still fails the
+        validator because it carries no ``tzinfo``, which is the
+        invariant we care about here.
+        """
         with pytest.raises(ValidationError):
-            _TimeWindowArgs(since="2026-04-29T22:50:23")
+            _TimeWindowArgs(since=value)
 
     def test_rejected_input_not_echoed_in_error_message(self) -> None:
         """Validator ``msg`` MUST NOT splice the rejected raw input.
