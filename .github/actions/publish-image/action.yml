@@ -1,14 +1,17 @@
 name: Publish container image
 description: >-
   Download the per-arch docker-archive tarballs emitted by
-  `build-scan-image`, log into GHCR, push them unchanged to the registry,
-  assemble a multi-arch manifest list, cosign-sign it keyless via GitHub
-  OIDC, attest SLSA Level 3 build provenance, and emit a CycloneDX SBOM.
-  Because the pushed bytes are the exact bytes Trivy + CIS scanned, there
-  is no rebuild-vs-scan digest drift. Called from a companion publish-only
-  job that carries `packages: write`, `id-token: write`, and
-  `attestations: write`, gated by the `image-push` deployment environment
-  (branch policy `main,v*`).
+  `build-scan-image`, load them into the local Docker daemon under
+  the `sha-<short>-<arch>` tags, then delegate to the shared
+  `publish-image-loaded` composite action which pushes the manifest
+  list, cosign-signs it, attests SLSA Level 3 provenance, emits a
+  CycloneDX SBOM, and writes the per-image pushed-tag inventory.
+
+  Because the pushed bytes are the exact bytes Trivy + CIS scanned,
+  there is no rebuild-vs-scan digest drift. Called from a companion
+  publish-only job that carries `packages: write`, `id-token: write`,
+  and `attestations: write`, gated by the `image-push` deployment
+  environment (branch policy `main,v*`).
 
 inputs:
   image-name:
@@ -30,7 +33,10 @@ inputs:
 outputs:
   digest:
     description: "Pushed multi-arch manifest digest (sha256:...) for the sha-<short> tag."
-    value: ${{ steps.push.outputs.digest }}
+    value: ${{ steps.publish.outputs.digest }}
+  pushed_tags:
+    description: "Newline-separated list of tags pushed by the shared publish action."
+    value: ${{ steps.publish.outputs.pushed_tags }}
 
 runs:
   using: composite
@@ -60,8 +66,8 @@ runs:
 
         # Tarballs embed the internal `scan-<full_sha>-<arch>` tag used
         # during build-scan-image. Re-tag to the public short-SHA form
-        # (matching build-web) before push; the scan tag is never
-        # published to GHCR.
+        # (matching the local tag publish-image-loaded expects) before
+        # pushing; the scan tag is never published to GHCR.
         docker load -i "/tmp/scan-image-${IMAGE_NAME}-amd64.tar"
         docker tag "${REPO}:scan-${GITHUB_SHA}-amd64" "${REPO}:sha-${SHORT_SHA}-amd64"
 
@@ -70,149 +76,14 @@ runs:
           docker tag "${REPO}:scan-${GITHUB_SHA}-arm64" "${REPO}:sha-${SHORT_SHA}-arm64"
         fi
 
-    - name: Log in to GHCR
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+    # Hand off to the shared publish path -- digest-pinning, signing,
+    # post-sign verification, attestation, SBOM, and pushed-tag
+    # inventory all happen there.
+    - name: Publish image
+      id: publish
+      uses: ./.github/actions/publish-image-loaded
       with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ inputs.ghcr-token }}
-
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
-      with:
-        images: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
-        tags: |
-          type=raw,value=${{ inputs.app-version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-          type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-          type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-          type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
-          type=sha,prefix=sha-
-
-    # Push the loaded per-arch images to GHCR under their -amd64 / -arm64
-    # tags, then assemble one multi-arch manifest list per desired tag
-    # (sha-short, semver, raw, dev). This mirrors the build-web publish
-    # path: push scanned bytes, never rebuild. `--amend` on manifest
-    # create keeps re-runs safe since a prior success would otherwise
-    # fail with "manifest already exists".
-    - name: Push per-arch images and assemble manifest list
-      id: push
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.image-name }}
-        ENABLE_ARM64: ${{ inputs.enable-arm64 }}
-        META_TAGS: ${{ steps.meta.outputs.tags }}
-      run: |
-        set -euo pipefail
-        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
-        SHORT_SHA="${GITHUB_SHA::7}"
-
-        docker push "${REPO}:sha-${SHORT_SHA}-amd64"
-        if [ "$ENABLE_ARM64" = "true" ]; then
-          docker push "${REPO}:sha-${SHORT_SHA}-arm64"
-        fi
-
-        DIGEST=""
-        while IFS= read -r full_tag; do
-          [ -z "$full_tag" ] && continue
-          # metadata-action emits fully-qualified refs (repo:tag); strip
-          # the repo prefix so we can reapply it to the per-arch sources.
-          t="${full_tag#${REPO}:}"
-
-          if [ "$ENABLE_ARM64" = "true" ]; then
-            docker manifest create --amend "${REPO}:${t}" \
-              "${REPO}:sha-${SHORT_SHA}-amd64" \
-              "${REPO}:sha-${SHORT_SHA}-arm64"
-          else
-            docker manifest create --amend "${REPO}:${t}" \
-              "${REPO}:sha-${SHORT_SHA}-amd64"
-          fi
-          docker manifest push "${REPO}:${t}"
-
-          # Capture the manifest digest of the sha-<short> tag as the
-          # canonical output -- that is what cosign + attest will sign.
-          # `docker manifest push` stdout is unreliable across Docker
-          # versions: some print `sha256:<hex>`, some print only
-          # `Created manifest list <ref>` with no digest. Read it back
-          # from the registry via buildx imagetools, which always
-          # returns the canonical manifest digest.
-          if [ "$t" = "sha-${SHORT_SHA}" ]; then
-            DIGEST="$(docker buildx imagetools inspect "${REPO}:${t}" --format '{{.Manifest.Digest}}')"
-          fi
-        done <<< "$META_TAGS"
-
-        if [ -z "$DIGEST" ]; then
-          echo "::error::metadata-action did not emit a sha-${SHORT_SHA} tag -- cannot compute signing digest"
-          exit 1
-        fi
-        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-
-    # GitHub releases occasionally 5xx; cosign-installer's internal retry (3
-    # attempts in ~7s) is not enough to ride out a longer outage. Wrap the
-    # install in two continue-on-error attempts with backoff before the
-    # final fail-hard attempt, so a single 10-20s burst of 500s doesn't
-    # kill the run. Mirrors the pattern in publish-apko-base.
-    - name: Install cosign (attempt 1)
-      id: cosign_1
-      continue-on-error: true
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-    - name: Back off before cosign retry 1
-      if: steps.cosign_1.outcome == 'failure'
-      shell: bash
-      run: sleep 15
-
-    - name: Install cosign (attempt 2)
-      if: steps.cosign_1.outcome == 'failure'
-      id: cosign_2
-      continue-on-error: true
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-    - name: Back off before cosign retry 2
-      if: steps.cosign_2.outcome == 'failure'
-      shell: bash
-      run: sleep 30
-
-    - name: Install cosign (final attempt)
-      if: steps.cosign_2.outcome == 'failure'
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-    - name: Sign image
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.image-name }}
-        DIGEST: ${{ steps.push.outputs.digest }}
-      run: |
-        set -euo pipefail
-        if [ -z "$DIGEST" ]; then
-          echo "::error::Push step did not produce a digest -- cannot sign image"
-          exit 1
-        fi
-        if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
-          if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-            echo "::notice::Image already signed in transparency log -- skipping"
-          else
-            exit 1
-          fi
-        fi
-
-    - name: Attest build provenance (SLSA Level 3)
-      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-      with: # zizmor: ignore[template-injection]
-        subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
-        subject-digest: ${{ steps.push.outputs.digest }}
-        push-to-registry: true
-
-    - name: Generate SBOM
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-      with:
-        image: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}@${{ steps.push.outputs.digest }}
-        format: cyclonedx-json
-        output-file: sbom-${{ inputs.image-name }}.cdx.json
-
-    - name: Upload SBOM artifact
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: sbom-${{ inputs.image-name }}
-        path: sbom-${{ inputs.image-name }}.cdx.json
-        retention-days: 30
+        image-name: ${{ inputs.image-name }}
+        app-version: ${{ inputs.app-version }}
+        enable-arm64: ${{ inputs.enable-arm64 }}
+        ghcr-token: ${{ inputs.ghcr-token }}

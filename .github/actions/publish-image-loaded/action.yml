@@ -1,0 +1,374 @@
+name: Publish container image (already loaded)
+description: >-
+  Push an image whose per-arch variants are already loaded in the local
+  Docker daemon as `ghcr.io/aureliolo/synthorg-${image-name}:sha-<short>-amd64`
+  and (optionally) `-arm64`, then assemble the multi-arch manifest list,
+  cosign-sign it keyless via GitHub OIDC, attest SLSA Level 3 build
+  provenance, emit a CycloneDX SBOM, and publish a per-image
+  `pushed-tags-<image>.txt` artifact for the workflow-level
+  `verify-signatures` job to aggregate.
+
+  Callers prep the local tags themselves (e.g. `publish-image` downloads
+  per-arch scan tarballs and re-tags; the inline web publish flow loads
+  an apko-built multi-arch tarball whose internal tags already match
+  the expected names). This action then runs the security-critical
+  publish path that must be byte-identical across every caller.
+
+  Background on the digest-pinning: a previous version used
+  `${REPO}:sha-X-amd64` tag refs in `docker manifest create`.
+  `docker manifest create` re-resolves tag references against the
+  registry on every call, so when a concurrent main-push run overwrote
+  the per-arch tag between two iterations of a tag-push run's loop,
+  the manifest lists for different destination tags ended up with
+  different per-arch digests. cosign signed only the last one, leaving
+  the user-facing version tag unsigned. Capturing the per-arch digest
+  immediately after push and referencing manifest list members by
+  `@sha256:digest` makes every iteration produce byte-identical bytes.
+
+  Caller responsibilities:
+    - `packages: write`, `id-token: write`, `attestations: write`
+      permissions on the calling job.
+    - Run on a `runs-on: ubuntu-latest` runner.
+    - Have already loaded the per-arch images into the local Docker
+      daemon under `ghcr.io/aureliolo/synthorg-${image-name}:sha-<short-sha>-amd64`
+      (and `-arm64` when `enable-arm64: "true"`).
+
+inputs:
+  image-name:
+    description: "Short image name suffix (e.g. backend, sandbox, sidecar, web, fine-tune-gpu, fine-tune-cpu)."
+    required: true
+  app-version:
+    description: "Application version for the `type=raw` tag on stable `v*` releases."
+    required: true
+  enable-arm64:
+    description: >-
+      Push the arm64 image alongside amd64. Set "false" for images that
+      ship amd64-only (e.g. fine-tune variants).
+    required: false
+    default: "true"
+  ghcr-token:
+    description: "GITHUB_TOKEN for GHCR login -- must come from the caller's `secrets.GITHUB_TOKEN`."
+    required: true
+
+outputs:
+  digest:
+    description: "Pushed multi-arch manifest digest (sha256:...) for the sha-<short> tag."
+    value: ${{ steps.push.outputs.digest }}
+  pushed_tags:
+    description: "Newline-separated list of tags pushed in this invocation."
+    value: ${{ steps.push.outputs.pushed_tags }}
+
+runs:
+  using: composite
+  steps:
+    - name: Log in to GHCR
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.ghcr-token }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+      with:
+        images: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
+        tags: |
+          type=raw,value=${{ inputs.app-version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
+          type=sha,prefix=sha-
+
+    # Push the loaded per-arch images to GHCR, capturing each per-arch
+    # manifest digest directly from `docker push` stdout (Docker emits
+    # `<tag>: digest: sha256:<hex> size: <bytes>` per the docker.io
+    # CLI reference). This closes the TOCTOU window that existed when
+    # we re-read the tag via `docker buildx imagetools inspect` after
+    # push: a parallel workflow run could overwrite our per-arch tag
+    # in the registry between push and inspect, making `inspect`
+    # return the OTHER run's digest. Parsing the push output gives us
+    # the digest of the bytes WE just pushed, regardless of any later
+    # tag mutations.
+    #
+    # The manifest list assembled below references members by
+    # `@sha256:...` rather than the mutable per-arch tags. This makes
+    # the manifest list bytes byte-identical across every iteration of
+    # the loop and immune to concurrent registry mutations.
+    #
+    # Note: the manifest-list digest below is still read via
+    # `docker buildx imagetools inspect` because `docker manifest
+    # push` stdout is unreliable across Docker versions (PR #1650
+    # documented this: some versions emit the digest, some only
+    # print `Created manifest list`).
+    - name: Push per-arch images and assemble manifest list
+      id: push
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        ENABLE_ARM64: ${{ inputs.enable-arm64 }}
+        META_TAGS: ${{ steps.meta.outputs.tags }}
+      run: |
+        set -euo pipefail
+        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
+        SHORT_SHA="${GITHUB_SHA::7}"
+
+        # Wrap each `docker push` so `set -e` doesn't abort the step
+        # before we can dump the captured stderr to the build log on
+        # failure. Without this, a real GHCR/auth error is swallowed
+        # because the variable assignment exits before the next line
+        # runs.
+        if ! AMD64_PUSH_OUTPUT="$(docker push "${REPO}:sha-${SHORT_SHA}-amd64" 2>&1)"; then
+          printf '%s\n' "${AMD64_PUSH_OUTPUT}"
+          echo "::error::docker push failed for ${REPO}:sha-${SHORT_SHA}-amd64"
+          exit 1
+        fi
+        printf '%s\n' "${AMD64_PUSH_OUTPUT}"
+        AMD64_DIGEST="$(printf '%s\n' "${AMD64_PUSH_OUTPUT}" | sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' | tail -n1)"
+        if [ -z "$AMD64_DIGEST" ]; then
+          echo "::error::Could not parse amd64 digest from docker push output"
+          exit 1
+        fi
+
+        ARM64_DIGEST=""
+        if [ "$ENABLE_ARM64" = "true" ]; then
+          if ! ARM64_PUSH_OUTPUT="$(docker push "${REPO}:sha-${SHORT_SHA}-arm64" 2>&1)"; then
+            printf '%s\n' "${ARM64_PUSH_OUTPUT}"
+            echo "::error::docker push failed for ${REPO}:sha-${SHORT_SHA}-arm64"
+            exit 1
+          fi
+          printf '%s\n' "${ARM64_PUSH_OUTPUT}"
+          ARM64_DIGEST="$(printf '%s\n' "${ARM64_PUSH_OUTPUT}" | sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' | tail -n1)"
+          if [ -z "$ARM64_DIGEST" ]; then
+            echo "::error::Could not parse arm64 digest from docker push output"
+            exit 1
+          fi
+        fi
+
+        # Build manifest list once with per-arch digests, push it under
+        # every desired tag. Identical bytes -> identical digest for
+        # every tag, regardless of what concurrent runs do.
+        DIGEST=""
+        PUSHED_TAGS=()
+        while IFS= read -r full_tag; do
+          [ -z "$full_tag" ] && continue
+          # metadata-action emits fully-qualified refs (repo:tag); strip
+          # the repo prefix so we can reapply it to the per-arch sources.
+          t="${full_tag#${REPO}:}"
+
+          if [ "$ENABLE_ARM64" = "true" ]; then
+            docker manifest create --amend "${REPO}:${t}" \
+              "${REPO}@${AMD64_DIGEST}" \
+              "${REPO}@${ARM64_DIGEST}"
+          else
+            docker manifest create --amend "${REPO}:${t}" \
+              "${REPO}@${AMD64_DIGEST}"
+          fi
+          docker manifest push "${REPO}:${t}"
+          PUSHED_TAGS+=("${t}")
+
+          # Read the canonical manifest list digest back from the
+          # registry. With digest-pinned source members above, every
+          # iteration produces the same bytes, so the digest is the
+          # same. Capture once on the sha-<short> iteration to keep the
+          # output stable.
+          if [ "$t" = "sha-${SHORT_SHA}" ]; then
+            DIGEST="$(docker buildx imagetools inspect "${REPO}:${t}" --format '{{.Manifest.Digest}}')"
+          fi
+        done <<< "$META_TAGS"
+
+        if [ -z "$DIGEST" ]; then
+          echo "::error::metadata-action did not emit a sha-${SHORT_SHA} tag -- cannot compute signing digest"
+          exit 1
+        fi
+        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+        # Newline-separated list of tags pushed in this step. Consumed
+        # by the post-sign verify step below and surfaced as the
+        # `pushed_tags` output for the workflow-level inventory.
+        # Newline-separated (not space-separated) so the consumer
+        # iterates with `while IFS= read -r` and is immune to
+        # word-splitting / glob expansion. GitHub Actions multiline
+        # output uses the heredoc delimiter syntax.
+        {
+          printf 'pushed_tags<<__SYNTHORG_TAG_EOF__\n'
+          printf '%s\n' "${PUSHED_TAGS[@]}"
+          printf '__SYNTHORG_TAG_EOF__\n'
+        } >> "$GITHUB_OUTPUT"
+
+    # GitHub releases occasionally 5xx; cosign-installer's internal retry (3
+    # attempts in ~7s) is not enough to ride out a longer outage. Wrap the
+    # install in two continue-on-error attempts with backoff before the
+    # final fail-hard attempt, so a single 10-20s burst of 500s doesn't
+    # kill the run. Mirrors the pattern in publish-apko-base.
+    - name: Install cosign (attempt 1)
+      id: cosign_1
+      continue-on-error: true
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Back off before cosign retry 1
+      if: steps.cosign_1.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Install cosign (attempt 2)
+      if: steps.cosign_1.outcome == 'failure'
+      id: cosign_2
+      continue-on-error: true
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Back off before cosign retry 2
+      if: steps.cosign_2.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Install cosign (final attempt)
+      if: steps.cosign_2.outcome == 'failure'
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Sign image
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        set -euo pipefail
+        if [ -z "$DIGEST" ]; then
+          echo "::error::Push step did not produce a digest -- cannot sign image"
+          exit 1
+        fi
+        if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
+          if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
+            echo "::notice::Image already signed in transparency log -- skipping"
+          else
+            exit 1
+          fi
+        fi
+
+    # Belt-and-braces: confirm every tag pushed in this step resolves
+    # (in the registry, NOW) to the same digest cosign just signed. A
+    # mismatch means a concurrent run overwrote one of our tags with a
+    # different digest after we signed -- the user will be unable to
+    # cosign-verify that tag. Fail the job loudly so the regression is
+    # caught at CI time, not in production.
+    #
+    # The OCI referrer index is queried directly (no cosign verify call)
+    # so we depend only on the registry, not on Sigstore reachability
+    # at this stage. The full keyless verify happens client-side via
+    # the CLI's `synthorg start --verify`/`synthorg update` flow.
+    - name: Verify every pushed tag resolves to the signed digest
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        SIGNED_DIGEST: ${{ steps.push.outputs.digest }}
+        PUSHED_TAGS: ${{ steps.push.outputs.pushed_tags }}
+        GHCR_TOKEN: ${{ inputs.ghcr-token }}
+      run: |
+        set -euo pipefail
+        REPO_PATH="aureliolo/synthorg-${IMAGE_NAME}"
+        REPO="ghcr.io/${REPO_PATH}"
+
+        # GHCR requires a bearer token for the v2 API even on public
+        # packages; mint a pull-scoped one from the workflow token.
+        # `pipefail` will surface a Python KeyError on a malformed
+        # response, but defensively check for an empty token too: a
+        # silent empty REG_TOKEN would otherwise have us issue every
+        # subsequent `curl` with an empty Bearer header.
+        # `-L` follows redirects so registry-side rewrites (rare on
+        # GHCR but possible in proxy / mirror setups) don't fail.
+        REG_TOKEN="$(curl -sSL -u "x-access-token:${GHCR_TOKEN}" \
+          "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_PATH}:pull" \
+          | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+        if [ -z "${REG_TOKEN}" ]; then
+          echo "::error::Failed to mint GHCR pull token for ${REPO_PATH}"
+          exit 1
+        fi
+
+        # Iterate the newline-separated tag list with `read -r` so
+        # tags containing shell metacharacters cannot affect the loop
+        # (Docker tags exclude such chars per spec, but no enforcer
+        # validates the metadata-action output here).
+        FAILED=0
+        while IFS= read -r t; do
+          [ -z "${t}" ] && continue
+          ACTUAL="$(curl -sSL -I \
+            -H "Authorization: Bearer ${REG_TOKEN}" \
+            -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json" \
+            "https://ghcr.io/v2/${REPO_PATH}/manifests/${t}" \
+            | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}')"
+          if [ "${ACTUAL}" != "${SIGNED_DIGEST}" ]; then
+            echo "::error::Tag ${t} resolves to ${ACTUAL} but we signed ${SIGNED_DIGEST} -- a concurrent run overwrote the tag after signing"
+            FAILED=1
+          else
+            echo "✓ ${REPO}:${t} -> ${ACTUAL} (signed)"
+          fi
+        done <<< "${PUSHED_TAGS}"
+
+        # Confirm the signed digest is reachable as an OCI referrer
+        # index entry on the registry side. cosign v3 publishes
+        # signatures via the OCI referrer mechanism, surfaced on GHCR
+        # as the `sha256-<hex>` referrer tag.
+        SIG_HEX="${SIGNED_DIGEST#sha256:}"
+        SIG_STATUS="$(curl -sSL -o /dev/null -w '%{http_code}' \
+          -H "Authorization: Bearer ${REG_TOKEN}" \
+          -H "Accept: application/vnd.oci.image.index.v1+json" \
+          "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"
+        if [ "${SIG_STATUS}" != "200" ]; then
+          echo "::error::cosign signature artifact missing for ${REPO}@${SIGNED_DIGEST} (referrer tag sha256-${SIG_HEX} returned HTTP ${SIG_STATUS})"
+          FAILED=1
+        else
+          echo "✓ signature artifact present at ${REPO}:sha256-${SIG_HEX}"
+        fi
+
+        if [ "$FAILED" -ne 0 ]; then
+          exit 1
+        fi
+
+    - name: Attest build provenance (SLSA Level 3)
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      with: # zizmor: ignore[template-injection]
+        subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true
+
+    - name: Generate SBOM
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}@${{ steps.push.outputs.digest }}
+        format: cyclonedx-json
+        output-file: sbom-${{ inputs.image-name }}.cdx.json
+
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: sbom-${{ inputs.image-name }}
+        path: sbom-${{ inputs.image-name }}.cdx.json
+        retention-days: 30
+
+    # Emit the canonical (image, tag) inventory as an artifact for the
+    # workflow-level `verify-signatures` job to aggregate. Avoids the
+    # drift risk of mirroring the metadata-action tag policy in two
+    # places.
+    - name: Write pushed-tag inventory
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        PUSHED_TAGS: ${{ steps.push.outputs.pushed_tags }}
+      run: |
+        set -euo pipefail
+        OUT="pushed-tags-${IMAGE_NAME}.txt"
+        : > "$OUT"
+        while IFS= read -r t; do
+          [ -z "${t}" ] && continue
+          printf '%s:%s\n' "${IMAGE_NAME}" "${t}" >> "$OUT"
+        done <<< "${PUSHED_TAGS}"
+        echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
+
+    - name: Upload pushed-tag inventory
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: pushed-tags-${{ inputs.image-name }}
+        path: pushed-tags-${{ inputs.image-name }}.txt
+        # 7d gives the verify-signatures aggregator headroom for
+        # retries / delayed downstream jobs (e.g. update-release on tag
+        # pushes). Original 1d cut it close to the workflow lifetime.
+        retention-days: 7

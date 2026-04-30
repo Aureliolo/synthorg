@@ -19,6 +19,7 @@ on:
       - ".github/actions/cis-scan/**"
       - ".github/actions/publish-apko-base/**"
       - ".github/actions/publish-image/**"
+      - ".github/actions/publish-image-loaded/**"
       - ".github/actions/setup-apko/**"
       - ".github/actions/setup-python-uv/**"
       - "scripts/cis-scan.sh"
@@ -77,6 +78,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             sandbox:
@@ -88,6 +90,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             sidecar:
@@ -99,6 +102,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             fine-tune:
@@ -113,6 +117,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             web:
@@ -125,6 +130,7 @@ jobs:
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
               - '.github/actions/setup-python-uv/**'
               - 'scripts/cis-scan.sh'
@@ -802,114 +808,40 @@ jobs:
       id-token: write
       attestations: write
     outputs:
-      digest: ${{ steps.push.outputs.digest }}
+      digest: ${{ steps.publish.outputs.digest }}
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
       - name: Download web image tarball
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: web-image-tarball
           path: .
 
+      # The apko-built `web.tar` is a multi-arch tarball whose internal
+      # tags are `ghcr.io/aureliolo/synthorg-web:sha-<short>-amd64` and
+      # `:sha-<short>-arm64` (set by the `apko build` invocation in
+      # `build-web`). After `docker load` those are exactly the local
+      # tags `publish-image-loaded` expects, so we can hand off
+      # directly without any re-tagging.
       - name: Load image
         run: |
           docker load -i web.tar
 
-      - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      # Hand off to the shared publish path. Identical signing and
+      # post-sign verification logic as the backend / sandbox / sidecar
+      # / fine-tune images, so a future fix lands in one place instead
+      # of two.
+      - name: Publish image
+        id: publish
+        uses: ./.github/actions/publish-image-loaded
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push web image (multi-arch manifest)
-        id: push
-        env:
-          APP_VERSION: ${{ needs.version.outputs.app_version }}
-        run: |
-          SHA_TAG="sha-${GITHUB_SHA::7}"
-          REPO="ghcr.io/aureliolo/synthorg-web"
-
-          # Push per-arch images
-          docker push "${REPO}:${SHA_TAG}-amd64"
-          docker push "${REPO}:${SHA_TAG}-arm64"
-
-          # Collect manifest tags (deduplicated -- TAG and APP_VERSION can match)
-          declare -A SEEN_TAGS
-          MANIFEST_TAGS=()
-          for candidate in "${SHA_TAG}" $(
-            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-              TAG="${GITHUB_REF_NAME#v}"
-              echo "${TAG}"
-              if [[ "$TAG" != *-dev.* ]]; then
-                echo "${TAG%.*}"
-                echo "${APP_VERSION}"
-              else
-                echo "dev"
-              fi
-            fi
-          ); do
-            if [ -z "${SEEN_TAGS[$candidate]+x}" ]; then
-              SEEN_TAGS[$candidate]=1
-              MANIFEST_TAGS+=("$candidate")
-            fi
-          done
-
-          # Create and push multi-arch manifest for each tag. --amend keeps
-          # re-runs on the same SHA safe: a prior successful push leaves the
-          # manifest list present, and a plain `create` would fail with
-          # "manifest already exists" on retry.
-          DIGEST=""
-          for t in "${MANIFEST_TAGS[@]}"; do
-            docker manifest create --amend "${REPO}:${t}" \
-              "${REPO}:${SHA_TAG}-amd64" \
-              "${REPO}:${SHA_TAG}-arm64"
-            docker manifest push "${REPO}:${t}"
-            # `docker manifest push` stdout is unreliable across Docker
-            # versions: some emit `sha256:<hex>`, some only print
-            # `Created manifest list <ref>` with no digest. Read the
-            # canonical manifest digest back from the registry via
-            # buildx imagetools, which is deterministic.
-            if [ "$t" = "${SHA_TAG}" ]; then
-              DIGEST="$(docker buildx imagetools inspect "${REPO}:${t}" --format '{{.Manifest.Digest}}')"
-            fi
-          done
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      - name: Sign image
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
-          set -euo pipefail
-          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
-            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed -- skipping"
-            else exit 1; fi
-          fi
-
-      - name: Attest build provenance (SLSA Level 3)
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ghcr.io/aureliolo/synthorg-web
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
-      - name: Generate SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: ghcr.io/aureliolo/synthorg-web@${{ steps.push.outputs.digest }}
-          format: cyclonedx-json
-          output-file: sbom-web.cdx.json
-
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom-web
-          path: sbom-web.cdx.json
-          retention-days: 30
+          image-name: web
+          app-version: ${{ needs.version.outputs.app_version }}
+          enable-arm64: "true"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sandbox:
     name: Build Sandbox
@@ -1156,6 +1088,98 @@ jobs:
           path: fine-tune-${{ matrix.variant }}.digest
           retention-days: 1
 
+  # Final cross-publish gate. After every publish job has finished
+  # (which means in-step verification has already passed for each
+  # image+tag locally), confirm one more time that NO concurrent run
+  # has overwritten any of our tags between the in-step check and now.
+  # The script also catches divergent digests across tags of the same
+  # image -- the exact failure mode that left
+  # `synthorg-sandbox:0.7.6-dev.9` unsigned despite a green CI run.
+  # Run on every main + tag push (not PRs, which never publish).
+  verify-signatures:
+    name: Verify Image Signatures
+    needs:
+      - version
+      - build-backend-base-publish
+      - build-sandbox-base-publish
+      - build-sidecar-base-publish
+      - build-fine-tune-base-publish
+      - build-backend-publish
+      - build-web-publish
+      - build-sandbox-publish
+      - build-sidecar-publish
+      - build-fine-tune-publish
+    if: >-
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      github.event_name != 'pull_request' &&
+      !cancelled() &&
+      needs.build-backend-publish.result == 'success' &&
+      needs.build-web-publish.result == 'success' &&
+      needs.build-sandbox-publish.result == 'success' &&
+      needs.build-sidecar-publish.result == 'success' &&
+      needs.build-fine-tune-publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # `contents: read` covers checkout for the helper script, and
+    # `packages: read` is what the workflow `GITHUB_TOKEN` needs to
+    # mint a pull-scoped GHCR token. No write permissions: this job
+    # only verifies, never pushes.
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      # Aggregate the (image, tag) inventory directly from the artifacts
+      # each publish job emits via its `Write pushed-tag inventory` /
+      # `Upload pushed-tag inventory` steps. This avoids re-deriving the
+      # metadata-action tag policy in two places (a previous version of
+      # this job mirrored the rules locally and risked silent drift on
+      # future tag-policy changes).
+      - name: Download per-job pushed-tag inventories
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: pushed-tags-*
+          merge-multiple: true
+          path: tag-inventories
+
+      - name: Aggregate pushed-tag inventories
+        id: inventory
+        run: |
+          set -euo pipefail
+          if [ ! -d tag-inventories ] || [ -z "$(ls -A tag-inventories 2>/dev/null)" ]; then
+            echo "::error::No pushed-tag inventory artifacts found -- the publish jobs did not emit any."
+            exit 1
+          fi
+          cat tag-inventories/*.txt | sort -u > pushed-image-tags.txt
+          if [ ! -s pushed-image-tags.txt ]; then
+            echo "::error::Aggregated inventory is empty"
+            exit 1
+          fi
+          echo "Pushed inventory:"
+          cat pushed-image-tags.txt
+
+      - name: Set up Python
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Verify cosign signatures for every pushed (image, tag)
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Convert the inventory into one --image-tags arg per line so
+          # the script can deduplicate tags within an image group.
+          ARGS=()
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            ARGS+=("--image-tags" "$line")
+          done < pushed-image-tags.txt
+          python3 scripts/check_image_signatures.py "${ARGS[@]}"
+
   # Append container image references to the GitHub Release (version tags only).
   # The `*-publish` jobs transitively depend on their `*-base` / `*-base-publish`
   # counterparts (via `build-X` -> `build-X-publish`), so listing only the
@@ -1169,6 +1193,7 @@ jobs:
       - build-sandbox-publish
       - build-sidecar-publish
       - build-fine-tune-publish
+      - verify-signatures
     if: >-
       startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request' &&
       !cancelled() &&
@@ -1176,7 +1201,8 @@ jobs:
       needs.build-web-publish.result == 'success' &&
       needs.build-sandbox-publish.result == 'success' &&
       needs.build-sidecar-publish.result == 'success' &&
-      needs.build-fine-tune-publish.result == 'success'
+      needs.build-fine-tune-publish.result == 'success' &&
+      needs.verify-signatures.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Uses `release-tags` (v*-only, no privileged secrets), not `release`
