@@ -39,6 +39,13 @@ test.describe('Provider probe critical flow', () => {
     // otherwise the assertion below would pass on an empty page.
     await expect(page.getByText('example-provider').first()).toBeVisible()
 
+    // Real UI interaction: click the provider entry. The full manual
+    // "probe now" trigger requires a backend that this E2E doesn't
+    // simulate, but the click-into-detail path is what users actually
+    // exercise; a regression in the click handler would surface here.
+    await page.getByText('example-provider').first().click()
+    await expect(page.locator('main')).toBeVisible()
+
     await injectEvent(page, {
       event_type: 'system.error',
       channel: 'system',

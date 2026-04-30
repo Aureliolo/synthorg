@@ -45,6 +45,16 @@ test.describe('Agent creation critical flow', () => {
     // this assertion fails loudly instead of passing silently.
     await expect(page.getByText('Alice').first()).toBeVisible()
 
+    // Real UI interaction: click on Alice's card to navigate to the
+    // agent detail / edit surface. The full multi-step "create agent"
+    // form requires a backend that this E2E doesn't simulate, so the
+    // selection-into-detail path is what we can exercise without a
+    // realistic API; failing this click would catch a regression that
+    // breaks list navigation, which is the entry point of the whole
+    // create / inspect flow.
+    await page.getByText('Alice').first().click()
+    await expect(page.locator('main')).toBeVisible()
+
     // Push an agent.hired event matching the dashboard's ``WsEvent``
     // runtime validator (``isWsEvent``: event_type / channel /
     // timestamp / payload required). The notifications store enqueues

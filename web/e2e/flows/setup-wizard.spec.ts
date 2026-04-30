@@ -27,15 +27,17 @@ test.describe('Setup wizard critical flow', () => {
     await expect(page.locator('main')).toBeVisible()
     const heading = page.getByRole('heading').first()
     await expect(heading).toBeVisible()
-    // Capture the first-step heading text and exercise a real form
-    // interaction: every wizard step renders at least one named text
-    // input. Filling it proves the form is interactive (not just
-    // mounted) and that the controlled-input wiring round-trips
-    // typed values back into the rendered DOM.
-    const firstInput = page.locator('input[type="text"], input:not([type])').first()
-    if (await firstInput.count()) {
-      await firstInput.fill('SynthOrg E2E Co')
-      await expect(firstInput).toHaveValue('SynthOrg E2E Co')
-    }
+    // Scope the input lookup to the wizard root so a stray dialog or
+    // command-palette input mounted outside the wizard never wins
+    // this match. Every wizard step renders at least one named text
+    // input; the assertion (not a soft conditional) makes the test
+    // fail loudly if the wizard regresses to a no-input shell.
+    const wizardRoot = page.locator('main')
+    const firstInput = wizardRoot
+      .locator('input[type="text"], input:not([type])')
+      .first()
+    await expect(firstInput).toBeVisible()
+    await firstInput.fill('SynthOrg E2E Co')
+    await expect(firstInput).toHaveValue('SynthOrg E2E Co')
   })
 })

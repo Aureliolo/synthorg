@@ -302,10 +302,15 @@ class TestPerAgentIdleTimeout:
         await strategy.acquire(owner_id="a1", create_fn=create_fn)
         # _reset_idle_timer returns early when max_idle <= 0, so no
         # task is scheduled. Settle the loop to be sure nothing runs,
-        # then confirm the container is still tracked.
+        # then confirm the FakeClock was never armed: any call to
+        # ``clock.sleep`` would mean the idle timer fired despite the
+        # opt-out, so the assertion catches a regression that the
+        # acquire-time tracking-only check would miss.
         await _settle()
+        assert clock.sleep_calls == ()
         h2 = await strategy.acquire(owner_id="a1", create_fn=create_fn)
         assert h2.container_id == "no-idle"
+        assert clock.sleep_calls == ()
         await strategy.cleanup_all(destroy_fn=destroy_fn)
 
 

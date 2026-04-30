@@ -24,7 +24,11 @@ class TestPromptTemplateAdapter:
     def mock_memory_backend(self) -> AsyncMock:
         """Create a mock MemoryBackend spec'd against the Protocol."""
         backend = AsyncMock(spec=MemoryBackend)
-        backend.store = AsyncMock(return_value="memory-id-001")
+        # Configure the spec'd ``store`` coroutine in place so the
+        # MemoryBackend Protocol constraint is preserved; replacing
+        # ``backend.store`` with a bare ``AsyncMock()`` would drop the
+        # spec and silently absorb any attribute access.
+        backend.store.return_value = "memory-id-001"
         return backend
 
     @pytest.fixture

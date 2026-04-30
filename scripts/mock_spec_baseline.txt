@@ -823,8 +823,6 @@ tests/unit/engine/classification/test_sinks.py:80:18
 tests/unit/engine/classification/test_sinks.py:81:45
 tests/unit/engine/classification/test_sinks.py:91:18
 tests/unit/engine/classification/test_sinks.py:92:45
-tests/unit/engine/evolution/adapters/test_prompt_template.py:27:24
-tests/unit/engine/evolution/adapters/test_strategy_selection.py:29:24
 tests/unit/engine/evolution/proposers/test_composite.py:26:19
 tests/unit/engine/evolution/proposers/test_composite.py:33:19
 tests/unit/engine/evolution/proposers/test_self_report.py:29:15

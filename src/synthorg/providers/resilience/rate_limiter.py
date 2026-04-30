@@ -8,6 +8,7 @@ from synthorg.core.resilience_config import RateLimiterConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_RATE_LIMITER_CANCELLED,
+    PROVIDER_RATE_LIMITER_INVARIANT_VIOLATED,
     PROVIDER_RATE_LIMITER_PAUSED,
     PROVIDER_RATE_LIMITER_THROTTLED,
 )
@@ -164,13 +165,28 @@ class RateLimiter:
 
             # ``oldest > cutoff`` is the loop entry condition (no slot
             # available means the deque is full of in-window
-            # timestamps), so ``wait`` is strictly positive here. The
-            # assert guards against a future refactor that loses that
-            # invariant -- silently sleeping zero or negative would
-            # bypass the rate limit entirely.
-            assert wait > 0, (  # noqa: S101 -- defensive invariant
-                f"RPM wait must be > 0; got {wait}, oldest={oldest}, cutoff={cutoff}"
-            )
+            # timestamps), so ``wait`` is strictly positive here. Use
+            # an explicit runtime check (not ``assert``) so production
+            # builds that strip asserts still enforce the invariant:
+            # silently sleeping zero or negative would bypass the rate
+            # limit entirely. Raising ``RuntimeError`` is the correct
+            # signal for a programming bug; the engine layer treats
+            # non-retryable errors as terminal so the bug surfaces
+            # immediately instead of corrupting the limiter state.
+            if wait <= 0:
+                logger.error(
+                    PROVIDER_RATE_LIMITER_INVARIANT_VIOLATED,
+                    provider=self._provider_name,
+                    wait=wait,
+                    oldest=oldest,
+                    cutoff=cutoff,
+                    reason="rpm_wait_non_positive",
+                )
+                msg = (
+                    f"RPM wait must be > 0; got {wait}, "
+                    f"oldest={oldest}, cutoff={cutoff}"
+                )
+                raise RuntimeError(msg)
             # Sleep outside the lock so other coroutines can proceed.
             logger.debug(
                 PROVIDER_RATE_LIMITER_THROTTLED,

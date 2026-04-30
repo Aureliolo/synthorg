@@ -16,9 +16,22 @@ deadline get a chance to observe the new time.
 """
 
 import asyncio
+import math
 from datetime import UTC, datetime, timedelta
 
 from pydantic import AwareDatetime
+
+
+def _validate_seconds(seconds: float, *, action: str) -> None:
+    """Reject negative and non-finite (NaN / inf) durations.
+
+    ``timedelta(seconds=nan)`` and ``timedelta(seconds=inf)`` produce
+    nonsensical state that surfaces only later as opaque assertion
+    failures; failing fast here keeps the test signal clean.
+    """
+    if not math.isfinite(seconds) or seconds < 0.0:
+        msg = f"{action} seconds must be finite and non-negative, got {seconds}"
+        raise ValueError(msg)
 
 
 class FakeClock:
@@ -57,14 +70,12 @@ class FakeClock:
         propagation that the production code relies on.
 
         Args:
-            seconds: Non-negative duration.
+            seconds: Finite non-negative duration.
 
         Raises:
-            ValueError: If ``seconds`` is negative.
+            ValueError: If ``seconds`` is negative or non-finite (NaN / inf).
         """
-        if seconds < 0.0:
-            msg = f"sleep seconds must be non-negative, got {seconds}"
-            raise ValueError(msg)
+        _validate_seconds(seconds, action="sleep")
         self._sleep_calls.append(seconds)
         self._now = self._now + timedelta(seconds=seconds)
         # Yield once so a CancelledError pending on the awaiting task
@@ -88,14 +99,12 @@ class FakeClock:
         """Advance virtual time without recording a sleep call.
 
         Args:
-            seconds: Non-negative duration.
+            seconds: Finite non-negative duration.
 
         Raises:
-            ValueError: If ``seconds`` is negative.
+            ValueError: If ``seconds`` is negative or non-finite (NaN / inf).
         """
-        if seconds < 0.0:
-            msg = f"advance seconds must be non-negative, got {seconds}"
-            raise ValueError(msg)
+        _validate_seconds(seconds, action="advance")
         self._now = self._now + timedelta(seconds=seconds)
 
     async def advance_async(self, seconds: float) -> None:

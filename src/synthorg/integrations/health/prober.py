@@ -30,7 +30,7 @@ from synthorg.observability.events.integrations import (
     HEALTH_PROBER_CONFIG_INVALID,
     HEALTH_PROBER_STARTED,
     HEALTH_PROBER_STOPPED,
-    HEALTH_STATUS_CHANGED,
+    HEALTH_STATUS_TRANSITIONED,
 )
 
 logger = get_logger(__name__)
@@ -230,38 +230,14 @@ class HealthProberService:
 
         old_status = conn.health_status
         now = self._clock.now()
-
-        async with self._failure_lock:
-            if report.status == ConnectionStatus.HEALTHY:
-                self._failure_counts.pop(name, None)
-                new_status = ConnectionStatus.HEALTHY
-            else:
-                count = self._failure_counts.get(name, 0) + 1
-                self._failure_counts[name] = count
-                # Honour ``degraded_threshold``: stay ``HEALTHY`` until
-                # the degraded threshold is reached, transition to
-                # ``DEGRADED`` between the two thresholds, and flip to
-                # ``UNHEALTHY`` only once ``unhealthy_threshold`` is
-                # hit. Previously a single failure forced ``DEGRADED``
-                # regardless of configuration, so raising
-                # ``degraded_threshold`` had no effect.
-                if count >= self._unhealthy_threshold:
-                    new_status = ConnectionStatus.UNHEALTHY
-                elif count >= self._degraded_threshold:
-                    new_status = ConnectionStatus.DEGRADED
-                else:
-                    new_status = ConnectionStatus.HEALTHY
-
-        if old_status != new_status:
-            logger.info(
-                HEALTH_STATUS_CHANGED,
-                connection_name=name,
-                old_status=old_status,
-                new_status=new_status,
-            )
+        new_status = await self._classify_status(name, report.status)
 
         # Same principle: an error inside ``update_health`` must not
-        # cancel sibling TaskGroup probes either.
+        # cancel sibling TaskGroup probes either. The transition log
+        # fires only after the persistence write succeeds (CLAUDE.md
+        # state-transition rule: "Logs fire AFTER the persistence
+        # write succeeds so the audit trail only captures transitions
+        # that actually landed").
         try:
             await self._catalog.update_health(
                 name,
@@ -274,3 +250,38 @@ class HealthProberService:
                 connection_name=name,
                 error="catalog.update_health failed",
             )
+        else:
+            if old_status != new_status:
+                logger.info(
+                    HEALTH_STATUS_TRANSITIONED,
+                    connection_name=name,
+                    from_status=old_status,
+                    to_status=new_status,
+                    checked_at=now,
+                )
+
+    async def _classify_status(
+        self,
+        name: str,
+        report_status: ConnectionStatus,
+    ) -> ConnectionStatus:
+        """Update the per-name failure counter and resolve the new status.
+
+        Honours ``degraded_threshold``: stay ``HEALTHY`` until the
+        degraded threshold is reached, transition to ``DEGRADED``
+        between the two thresholds, and flip to ``UNHEALTHY`` only
+        once ``unhealthy_threshold`` is hit. Previously a single
+        failure forced ``DEGRADED`` regardless of configuration, so
+        raising ``degraded_threshold`` had no effect.
+        """
+        async with self._failure_lock:
+            if report_status == ConnectionStatus.HEALTHY:
+                self._failure_counts.pop(name, None)
+                return ConnectionStatus.HEALTHY
+            count = self._failure_counts.get(name, 0) + 1
+            self._failure_counts[name] = count
+            if count >= self._unhealthy_threshold:
+                return ConnectionStatus.UNHEALTHY
+            if count >= self._degraded_threshold:
+                return ConnectionStatus.DEGRADED
+            return ConnectionStatus.HEALTHY

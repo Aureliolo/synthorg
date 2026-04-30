@@ -73,6 +73,7 @@ HEALTH_PROBER_STARTED: Final[str] = "integrations.health.prober_started"
 HEALTH_PROBER_STOPPED: Final[str] = "integrations.health.prober_stopped"
 HEALTH_PROBER_CONFIG_INVALID: Final[str] = "integrations.health.prober_config_invalid"
 HEALTH_STATUS_CHANGED: Final[str] = "integrations.health.status_changed"
+HEALTH_STATUS_TRANSITIONED: Final[str] = "integrations.health.status_transitioned"
 
 # -- Tool-side rate limiting ---------------------------------------------
 

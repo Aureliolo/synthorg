@@ -42,6 +42,9 @@ PROVIDER_RETRY_SKIPPED: Final[str] = "provider.retry.skipped"
 PROVIDER_RATE_LIMITER_THROTTLED: Final[str] = "provider.rate_limiter.throttled"
 PROVIDER_RATE_LIMITER_PAUSED: Final[str] = "provider.rate_limiter.paused"
 PROVIDER_RATE_LIMITER_CANCELLED: Final[str] = "provider.rate_limiter.cancelled"
+PROVIDER_RATE_LIMITER_INVARIANT_VIOLATED: Final[str] = (
+    "provider.rate_limiter.invariant_violated"
+)
 
 # ── Provider management ─────────────────────────────────────
 # Created/Updated/Deleted moved to events.security as

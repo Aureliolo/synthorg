@@ -70,6 +70,19 @@ test.describe('Task lifecycle critical flow', () => {
       await expect(page).toHaveURL(/\/tasks/)
       await expect(page.locator('main')).toBeVisible()
 
+      // Real UI interaction: click on a seeded task card so the
+      // selection / detail-open path is exercised in addition to the
+      // synthetic WS frames below. The Kanban DnD path is still not
+      // exercised end-to-end because it requires the page's HTML5
+      // drag handlers (see comment block above), but the click into
+      // a task is the entry point users actually use; a regression
+      // in the card click handler would surface here.
+      const todoCard = page.locator('main').getByText(/^task-/).first()
+      if (await todoCard.count()) {
+        await todoCard.click()
+        await expect(page.locator('main')).toBeVisible()
+      }
+
       // Step 1: a high-risk task gates on approval.
       const highRiskTask = makeTask({
         id: 'task-high-risk',

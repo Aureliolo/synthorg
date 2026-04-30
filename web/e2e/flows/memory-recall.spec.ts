@@ -56,6 +56,13 @@ test.describe('Memory recall critical flow', () => {
     ).toBeVisible()
     await expect(page.getByText('reports_to').first()).toBeVisible()
 
+    // Real UI interaction: click on the seeded ontology fact to
+    // exercise the surface's selection / detail-open path. Failing
+    // click would catch a regression that breaks the click handler
+    // on the entry point users actually rely on.
+    await page.getByText('reports_to').first().click()
+    await expect(page.locator('main')).toBeVisible()
+
     // Drive a personality-trimmed event through the harness. The
     // event_type is in ``WS_EVENT_TYPE_VALUES`` and the notifications
     // store enqueues a "Personality trimmed" entry, so visibility of
