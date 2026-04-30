@@ -324,26 +324,35 @@ class TestEmitterCloseEnqueueRace:
             self_improvement_config=self_improvement_config,
             builtin_rule_names=BUILTIN_RULE_NAMES,
         )
-        # Hook the no-op flush-task ensure so we can flip ``_closed``
-        # AFTER the outer guard but BEFORE the lock is acquired -- the
-        # exact race the inner guard exists to defend against.
-        original_ensure = em._ensure_flush_task
+        try:
+            # Replace ``_ensure_flush_task`` with a no-op coroutine that
+            # flips ``_closed`` AFTER the outer guard but BEFORE the
+            # buffer-mutation lock is acquired. The previous shape
+            # delegated to ``original_ensure`` which would actually
+            # spawn the real ``_periodic_flush`` background task and
+            # leak it past test teardown -- the test only needs the
+            # closed-flag flip; spawning the periodic task is irrelevant
+            # to the assertion. (round 3 inline #10)
+            async def race(*args: object, **kwargs: object) -> None:
+                em._closed = True
 
-        async def race(*args: object, **kwargs: object) -> None:
-            await original_ensure(*args, **kwargs)
-            em._closed = True
-
-        em._ensure_flush_task = race  # type: ignore[method-assign]
-        # Use a spec'd Mock for the event so we don't depend on
-        # ``AnonymizedOutcomeEvent``'s exact field set; we only need
-        # something the buffer-append branch *would* enqueue if the
-        # inner guard were missing.
-        event = MagicMock(spec=AnonymizedOutcomeEvent)
-        event.event_type = "proposal_decision"
-        await em._enqueue(event)
-        # Inner guard MUST drop the event; before the fix this
-        # appended to a buffer that aclose() would never drain.
-        assert em.pending_count == 0
+            em._ensure_flush_task = race  # type: ignore[method-assign]
+            # Use a spec'd Mock for the event so we don't depend on
+            # ``AnonymizedOutcomeEvent``'s exact field set; we only
+            # need something the buffer-append branch *would* enqueue
+            # if the inner guard were missing.
+            event = MagicMock(spec=AnonymizedOutcomeEvent)
+            event.event_type = "proposal_decision"
+            await em._enqueue(event)
+            # Inner guard MUST drop the event; before the fix this
+            # appended to a buffer that aclose() would never drain.
+            assert em.pending_count == 0
+        finally:
+            # Close the httpx client so the test does not leave a live
+            # ``httpx.AsyncClient`` past teardown. ``aclose`` is safe
+            # to call even though we already flipped ``_closed``;
+            # the client close is the only side-effect we care about.
+            await em._client.aclose()
 
     async def test_enqueue_outer_guard_drops_event_when_already_closed(
         self,
@@ -360,8 +369,11 @@ class TestEmitterCloseEnqueueRace:
             self_improvement_config=self_improvement_config,
             builtin_rule_names=BUILTIN_RULE_NAMES,
         )
-        em._closed = True
-        event = MagicMock(spec=AnonymizedOutcomeEvent)
-        event.event_type = "proposal_decision"
-        await em._enqueue(event)
-        assert em.pending_count == 0
+        try:
+            em._closed = True
+            event = MagicMock(spec=AnonymizedOutcomeEvent)
+            event.event_type = "proposal_decision"
+            await em._enqueue(event)
+            assert em.pending_count == 0
+        finally:
+            await em._client.aclose()

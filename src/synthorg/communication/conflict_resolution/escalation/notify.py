@@ -138,18 +138,23 @@ class PostgresEscalationNotifySubscriber:
         self._channel = channel
         self._reconnect_delay = reconnect_delay_seconds
         self._task: asyncio.Task[None] | None = None
-        # Lazy-init: asyncio primitives bind to the running loop on
-        # first use, but this subscriber is wired at app-build time
-        # (no loop) and may outlive one lifespan in tests that share
-        # an app across loops.  Create on ``start()``, drop on ``stop()``.
-        self._stop_event: asyncio.Event | None = None
-        self._start_lock: asyncio.Lock | None = None
+        # Eager construction of the lifecycle primitives. Python 3.10+
+        # ``asyncio.Lock`` / ``asyncio.Event`` are loop-agnostic until
+        # first ``acquire()`` / ``set()``, so constructing them at
+        # app-wire time (no loop yet) is safe. The previous "lazy
+        # create in start()" shape published the lock attribute
+        # *before* the ``async with`` body ran, which let a racing
+        # ``stop()`` observe a fresh lock instance and operate on
+        # different primitives than the in-flight ``start()`` -- the
+        # bug CodeRabbit flagged on round 3.
+        self._stop_event: asyncio.Event = asyncio.Event()
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
         # Per ``docs/reference/lifecycle-sync.md``: a ``stop()`` drain
         # that exceeds the hard deadline marks the subscriber
         # unrestartable so a subsequent ``start()`` cannot attach a
-        # fresh task while the orphan loop still owns the LISTEN
-        # connection. The flag survives the primitive resets in
-        # ``stop()`` so it remains observable on the next ``start()``.
+        # fresh task while the orphan loop still holds the LISTEN
+        # connection. The flag survives any state resets so it
+        # remains observable on the next ``start()`` call.
         self._stop_failed: bool = False
         self._stop_drain_timeout_seconds: float = 30.0
 
@@ -157,15 +162,13 @@ class PostgresEscalationNotifySubscriber:
         """Schedule the background subscriber loop.
 
         Per the canonical lifecycle pattern
-        (``docs/reference/lifecycle-sync.md``), the lock is held
-        across the full body including the success log so concurrent
-        ``start()`` / ``stop()`` calls cannot interleave.
+        (``docs/reference/lifecycle-sync.md``), ``self._lifecycle_lock``
+        is held across the full body including the success log so
+        concurrent ``start()`` / ``stop()`` calls cannot interleave,
+        and no lifecycle primitive is published outside the lock
+        (those are constructed once in ``__init__``).
         """
-        if self._start_lock is None:
-            self._start_lock = asyncio.Lock()
-        if self._stop_event is None:
-            self._stop_event = asyncio.Event()
-        async with self._start_lock:
+        async with self._lifecycle_lock:
             if self._stop_failed:
                 msg = (
                     "PostgresEscalationNotifySubscriber is unrestartable "
@@ -194,26 +197,13 @@ class PostgresEscalationNotifySubscriber:
     async def stop(self) -> None:
         """Signal the loop to exit and await its completion.
 
-        Acquires ``_start_lock`` so a concurrent ``start()`` cannot
-        recreate the task mid-stop. Per
+        Acquires ``self._lifecycle_lock`` so a concurrent ``start()``
+        cannot recreate the task mid-stop. Per
         ``docs/reference/lifecycle-sync.md``, lifecycle locks must be
         held across the full body of both ``start`` and ``stop``.
-
-        Idle stop: when nothing was ever started (``_task`` and
-        ``_stop_event`` both None) we return immediately without
-        allocating ``_start_lock``. Allocating an asyncio.Lock here
-        would bind it to the current event loop; if the next ``start``
-        runs on a different loop (test pattern with fresh-per-test
-        loops) the orphan lock causes ``RuntimeError: ... is bound to
-        a different event loop``.
         """
-        if self._task is None and self._stop_event is None:
-            return
-        if self._start_lock is None:
-            self._start_lock = asyncio.Lock()
-        async with self._start_lock:
-            if self._stop_event is not None:
-                self._stop_event.set()
+        async with self._lifecycle_lock:
+            self._stop_event.set()
             task = self._task
             if task is None:
                 return
@@ -265,16 +255,16 @@ class PostgresEscalationNotifySubscriber:
                 )
                 raise
             self._task = None
-            self._stop_event = None
             logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
-        # Release-and-clear last so a racing ``start()`` observes the
-        # cleared task before recreating the lock primitive.
-        self._start_lock = None
+        # The lifecycle primitives stay constructed once across the
+        # subscriber's entire life; only ``_task`` is reset so a
+        # future ``start()`` can spawn a fresh ``_run``. The
+        # ``_stop_event`` already holds ``set()``; the next
+        # ``start()`` calls ``self._stop_event.clear()`` before
+        # scheduling.
 
     async def _run(self) -> None:
         """Main loop: (re)open a listen connection and dispatch notifies."""
-        if self._stop_event is None:
-            return
         while not self._stop_event.is_set():
             try:
                 await self._listen_once()
@@ -309,7 +299,7 @@ class PostgresEscalationNotifySubscriber:
         """
         async with self._repo.subscribe_notifications(self._channel) as payloads:
             async for payload in payloads:
-                if self._stop_event is None or self._stop_event.is_set():
+                if self._stop_event.is_set():
                     break
                 await self._dispatch_payload(payload)
 

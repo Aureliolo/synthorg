@@ -90,6 +90,15 @@ class HttpAnalyticsEmitter:
         self._builtin_rule_names = frozenset(builtin_rule_names)
         self._buffer: list[AnonymizedOutcomeEvent] = []
         self._lock = asyncio.Lock()
+        # Dedicated lifecycle lock serialises flush-task creation
+        # (``_ensure_flush_task``) and shutdown (``aclose``). Without
+        # this, two concurrent first-emit producers could both pass
+        # the ``_flush_task is None`` guard and spawn two
+        # ``_periodic_flush`` tasks; only the last assigned to
+        # ``self._flush_task`` would be cancelled by ``aclose``, and
+        # the orphan would continue running and call ``flush`` /
+        # ``self._client`` after the client had been closed.
+        self._lifecycle_lock = asyncio.Lock()
         self._last_flush_at = time.monotonic()
         self._closed = False
         self._flush_task: asyncio.Task[None] | None = None
@@ -200,15 +209,22 @@ class HttpAnalyticsEmitter:
         ``CancelledError`` to the awaiter via ``suppress``. The
         explicit final ``flush()`` then sweeps any events appended
         between the cancellation request and this call.
+
+        ``self._lifecycle_lock`` is held across the flag flip + task
+        cancel + client close so a concurrent ``_enqueue`` cannot
+        spawn a fresh ``_periodic_flush`` task in between -- otherwise
+        the orphan would survive shutdown and call ``flush`` (which
+        touches ``self._client``) after ``self._client.aclose()``.
         """
-        self._closed = True
-        if self._flush_task is not None:
-            self._flush_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._flush_task
-        await self.flush()
-        await self._client.aclose()
-        logger.info(XDEPLOY_EMITTER_CLOSED)
+        async with self._lifecycle_lock:
+            self._closed = True
+            if self._flush_task is not None:
+                self._flush_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._flush_task
+            await self.flush()
+            await self._client.aclose()
+            logger.info(XDEPLOY_EMITTER_CLOSED)
 
     async def __aenter__(self) -> Self:
         """Enter the async context manager."""
@@ -224,11 +240,23 @@ class HttpAnalyticsEmitter:
         await self.aclose()
 
     async def _ensure_flush_task(self) -> None:
-        """Start the periodic flush background task if not running."""
-        if self._flush_task is None or self._flush_task.done():
-            self._flush_task = asyncio.create_task(
-                self._periodic_flush(),
-            )
+        """Start the periodic flush background task if not running.
+
+        Holds ``self._lifecycle_lock`` so two concurrent first-emit
+        producers can't both pass the ``is None / done()`` guard and
+        spawn two background tasks (only one would be remembered on
+        ``self._flush_task``; the other would orphan and survive
+        ``aclose``). The lock is also acquired by ``aclose`` so a
+        producer racing shutdown observes the closed flag set inside
+        the same critical section.
+        """
+        async with self._lifecycle_lock:
+            if self._closed:
+                return
+            if self._flush_task is None or self._flush_task.done():
+                self._flush_task = asyncio.create_task(
+                    self._periodic_flush(),
+                )
 
     async def _periodic_flush(self) -> None:
         """Background loop that flushes on interval.

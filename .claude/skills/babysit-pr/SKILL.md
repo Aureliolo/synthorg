@@ -176,6 +176,8 @@ Then increment `rate_limit_pings`, increment `round`, append history `{round, ac
 
 **MUST NOT update `last_review_id` / `last_pr_comment_id` / `last_issue_comment_id` on either exit path.** Those IDs only advance in Phase 11 after fixes have been pushed. If a Phase 4 exit bumped them, the next tick would treat any reviewer feedback that arrived before the ping as already-processed and silently drop it. The whole point of waiting for CodeRabbit is to batch its findings with already-pending reviewer feedback into one push the *next* round.
 
+**State-write discipline (read-modify-write).** Phase 4 / Phase 5 state writes are not allowed to be a "fresh template" write that re-emits a default state.json. The implementation MUST: (a) read the existing state.json (Phase 0 already does this), (b) preserve `last_review_id`, `last_pr_comment_id`, `last_issue_comment_id`, `rate_limit_pings`, `scanners_available`, `history`, and any other persisted fields exactly as-is, (c) modify only the explicitly-allowed fields for the current phase (Phase 4: `round`, optional `rate_limit_pings` increment, append `history` entry; Phase 5: `round`, `last_head_sha`, `last_action_at`, append `history` entry), and (d) write the merged object back. Re-using the default-template object from Phase 0 step 4 as a write source would zero the cached IDs even though "no bump" was respected, because every field not in the modify-list would be overwritten with the default.
+
 **Important:** when scanning issue comments later, exclude any comment authored by `synthorg-repo-bot[bot]` OR with body exactly `@coderabbitai review` so the skill doesn't trip on its own pings.
 
 There is NO upper bound on `rate_limit_pings`. The user explicitly said 10x with 15min delay is fine. The only stop is `max_rounds`.
@@ -196,6 +198,7 @@ If NONE of these AND no rate-limit dance fired in Phase 4:
 - Increment `round`.
 - Append history `{round, action: "noop"}`.
 - **MUST NOT update `last_review_id` / `last_pr_comment_id` / `last_issue_comment_id`.** A noop means we observed feedback but didn't triage it; bumping the IDs here would lose the items on the next tick.
+- **State write is read-modify-write** (same rule as Phase 4): preserve every cached-ID field, `rate_limit_pings`, `scanners_available`, and `history` exactly as-is; modify only `round`, `last_head_sha`, `last_action_at`, and the appended `history` entry. Never re-emit a default-template state.json on a noop.
 - Write state. Print: `babysit-pr round R: no changes, sleeping <cadence>m.`
 - ScheduleWakeup, exit.
 
@@ -333,10 +336,10 @@ Failure handling: if a gate fails, fix the failure in this round (don't push bro
 
 ## Phase 11: update state, schedule next tick
 
-1. Update `state.json` (success path only: Phase 8 fixes triaged AND pushed):
+1. Update `state.json` (success path only: Phase 8 fixes triaged AND pushed). The state write is **read-modify-write**: read the existing state.json (Phase 0 already did this), preserve every field not on the modify-list verbatim, modify only the fields below, and write the merged object back. Do NOT re-emit a fresh template object as the write source; that would zero unrelated fields like `rate_limit_pings` / `scanners_available` / `history` / `self_login`.
    - `round += 1`
    - `last_head_sha = current_head_sha`
-   - `last_review_id = max(review.id, last_review_id)` (same for the two comment streams). Bumped **only here**, never in Phase 3 convergence exit / Phase 4 / Phase 5 / Phase 6b dismissals.
+   - **Watermark bump (cached IDs).** `last_review_id = max(id for id in Phase6_working_set, default=last_review_id)` where `Phase6_working_set` is the Phase 6 triage working set *after exclusions* (drop self/`synthorg-repo-bot[bot]` items and your own `@coderabbitai review` pings, before max). Apply the same `max(...)` bump to `last_pr_comment_id` and `last_issue_comment_id` against their respective Phase 6 streams. Bumping over the entire working set (not just the patched-or-marked-valid subset) is what guarantees an item factually-disproved-and-skipped this round doesn't re-surface as new feedback next round. Cached IDs are bumped **only here**, never in Phase 3 convergence exit, Phase 4 / Phase 5 / Phase 6b dismissals.
    - `last_ci_state = current_ci_state`
    - `last_action_at = <ISO-now>`
    - Append history `{round, action: "fixed_and_pushed", findings: M, sources: {...}}`

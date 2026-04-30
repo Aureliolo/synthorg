@@ -309,14 +309,16 @@ class TestSlidingWindowRateLimiterRaceConditions:
         )
         barrier = asyncio.Barrier(n_callers)
 
-        async def attempt_take() -> bool:
+        async def attempt_take() -> object | None:
             await barrier.wait()
             return await limiter.take("agent-A")
 
         results = await asyncio.gather(
             *(attempt_take() for _ in range(n_callers)),
         )
-        assert sum(results) == max_events
+        # The non-None handles are the granted admissions.
+        granted = [r for r in results if r is not None]
+        assert len(granted) == max_events
 
     async def test_release_after_concurrent_take_reopens_slots(self) -> None:
         max_events = 5
@@ -327,23 +329,62 @@ class TestSlidingWindowRateLimiterRaceConditions:
             clock=lambda: fake_time[0],
         )
 
-        # Saturate the window.
+        # Saturate the window. Capture each admission handle so we
+        # can release the exact slots later.
+        handles: list[object] = []
         for _ in range(max_events):
-            assert await limiter.take("agent-A") is True
-        assert await limiter.take("agent-A") is False
+            admission = await limiter.take("agent-A")
+            assert admission is not None
+            handles.append(admission)
+        assert await limiter.take("agent-A") is None
 
-        # Release all admissions concurrently.
-        await asyncio.gather(*(limiter.release("agent-A") for _ in range(max_events)))
+        # Release all admissions concurrently using their handles.
+        await asyncio.gather(
+            *(limiter.release("agent-A", handle) for handle in handles),
+        )
 
         # All slots should be free again.
         n_callers = 20
         barrier = asyncio.Barrier(n_callers)
 
-        async def attempt_take() -> bool:
+        async def attempt_take() -> object | None:
             await barrier.wait()
             return await limiter.take("agent-A")
 
         results = await asyncio.gather(
             *(attempt_take() for _ in range(n_callers)),
         )
-        assert sum(results) == max_events
+        granted = [r for r in results if r is not None]
+        assert len(granted) == max_events
+
+    async def test_release_targets_exact_admission_not_newest(self) -> None:
+        """Concrete regression for the round-3 CodeRabbit re-flag.
+
+        Two same-agent admissions are alive concurrently. The OLDER
+        one fails after the NEWER one has already been granted; the
+        old code would refund the newest slot and leave the failed
+        admission counted. The handle-based ``release`` must remove
+        the exact admission so the newer dispatch keeps its slot.
+        """
+        max_events = 1
+        fake_time = [0.0]
+        limiter = _SlidingWindowRateLimiter(
+            max_events=max_events,
+            window_seconds=60.0,
+            clock=lambda: fake_time[0],
+        )
+        # First admission lands.
+        first = await limiter.take("agent-A")
+        assert first is not None
+        # Window is now saturated.
+        assert await limiter.take("agent-A") is None
+        # Release the first (older) admission *by handle* -- which
+        # corresponds to the failed dispatch's slot.
+        await limiter.release("agent-A", first)
+        # The window should be free again. A second take must
+        # succeed; before the fix this would still see the original
+        # timestamp because release popped a no-op (or the wrong
+        # entry).
+        second = await limiter.take("agent-A")
+        assert second is not None
+        assert second is not first

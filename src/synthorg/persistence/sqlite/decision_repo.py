@@ -494,11 +494,31 @@ class SQLiteDecisionRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
-        """List decision records for a task (paginated, oldest first).
+        """List decision records for a task, oldest first.
 
         Serialized against concurrent writers via ``_write_lock`` so
         reads never observe phantom rows from a mid-transaction
         ``append_with_next_version``.
+
+        Args:
+            task_id: Identifier of the task whose decisions are being
+                listed.
+            limit: Maximum number of records to return on this page;
+                must be ``>= 1``. The repo additionally clamps the
+                returned slice to ``_MAX_PAGE_LIMIT`` to prevent a
+                runaway caller from materialising the full table.
+            offset: Number of records to skip before the page; must
+                be ``>= 0``.
+
+        Returns:
+            ``tuple[DecisionRecord, ...]`` ordered ascending by
+            ``version`` (oldest decision first).
+
+        Raises:
+            QueryError: If ``limit`` / ``offset`` fail the type or
+                bounds check, or if the underlying SQLite query
+                raises. The structured ``WARNING`` is emitted before
+                the raise.
         """
         validate_pagination_args(
             limit,
@@ -546,6 +566,30 @@ class SQLiteDecisionRepository:
         re-check at runtime to guard against bad callers that bypass
         type checking.  A rejected role is logged before raising.
         Serialized against concurrent writers via ``_write_lock``.
+
+        Args:
+            agent_id: Identifier of the agent whose decisions are
+                being listed.
+            role: Either ``"executor"`` or ``"reviewer"``; selects
+                which side of the decision the agent participated on.
+                Anything outside that set raises ``QueryError``.
+            limit: Maximum number of records to return on this page;
+                must be ``>= 1``. Clamped to ``_MAX_PAGE_LIMIT`` to
+                prevent unbounded queries.
+            offset: Number of records to skip before the page; must
+                be ``>= 0``.
+
+        Returns:
+            ``tuple[DecisionRecord, ...]`` ordered by
+            ``(recorded_at DESC, id DESC)`` so newest decisions come
+            first. The ``id`` tiebreaker matches the Postgres
+            backend and keeps page boundaries stable under
+            concurrent inserts.
+
+        Raises:
+            QueryError: If ``role`` is outside the closed set, if
+                ``limit`` / ``offset`` fail the type or bounds check,
+                or if the underlying SQLite query raises.
         """
         # Runtime defense in depth: the Literal prevents type-safe
         # callers from passing bad values, but untyped callers can

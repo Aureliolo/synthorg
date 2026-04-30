@@ -412,7 +412,14 @@ class CodeApplier:
                     project_root=str(resolved_root),
                 )
                 msg = f"Path escapes project root: {change.file_path}"
-                raise RuntimeError(msg)
+                # Carry the applied subset on ``PartialWriteError`` so
+                # ``apply()``'s outer revert reaches the writes that
+                # already landed before this change tripped the
+                # path-escape guard. Raising a plain ``RuntimeError``
+                # would leave ``applied_subset=()`` on the outer
+                # handler and the partially-written workspace would
+                # stay dirty after the failed apply.
+                raise PartialWriteError(msg, applied=tuple(applied))
             try:
                 _apply_single_change(change, file_path)
             except MemoryError, RecursionError:

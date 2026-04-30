@@ -435,7 +435,28 @@ class PostgresDecisionRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
-        """List decision records for a task (paginated, oldest first)."""
+        """List decision records for a task, oldest first.
+
+        Args:
+            task_id: Identifier of the task whose decisions are being
+                listed.
+            limit: Maximum number of records to return on this page;
+                must be ``>= 1``. The repo additionally clamps the
+                returned slice to ``_MAX_PAGE_LIMIT`` to prevent a
+                runaway caller from materialising the full table.
+            offset: Number of records to skip before the page; must
+                be ``>= 0``.
+
+        Returns:
+            ``tuple[DecisionRecord, ...]`` ordered ascending by
+            ``version`` (oldest decision first).
+
+        Raises:
+            QueryError: If ``limit`` / ``offset`` fail the type or
+                bounds check, or if the underlying ``psycopg`` query
+                raises. The structured ``WARNING`` is emitted before
+                the raise so operators can correlate the failure.
+        """
         validate_pagination_args(
             limit,
             offset,
@@ -479,7 +500,33 @@ class PostgresDecisionRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
-        """List decision records where the agent acted in the given role."""
+        """List decision records where the agent acted in the given role.
+
+        Args:
+            agent_id: Identifier of the agent whose decisions are
+                being listed.
+            role: Either ``"executor"`` or ``"reviewer"``; selects
+                which side of the decision the agent participated on.
+                Anything outside that set raises ``QueryError`` so
+                callers don't accidentally widen the closed set.
+            limit: Maximum number of records to return on this page;
+                must be ``>= 1``. Clamped to ``_MAX_PAGE_LIMIT`` to
+                prevent unbounded queries.
+            offset: Number of records to skip before the page; must
+                be ``>= 0``.
+
+        Returns:
+            ``tuple[DecisionRecord, ...]`` ordered by
+            ``(recorded_at DESC, id DESC)`` so newest decisions come
+            first. The ``id`` tiebreaker keeps the page boundary
+            stable under concurrent inserts.
+
+        Raises:
+            QueryError: If ``role`` is outside the closed set, if
+                ``limit`` / ``offset`` fail the type or bounds check,
+                or if the underlying ``psycopg`` query raises. The
+                structured ``WARNING`` is emitted before the raise.
+        """
         # Runtime defense: validate role is in the closed set
         role_obj: object = role
         if not isinstance(role_obj, str):

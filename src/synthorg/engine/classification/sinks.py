@@ -171,14 +171,27 @@ class _SlidingWindowRateLimiter:
         self._max_events = max_events
         self._window_seconds = window_seconds
         self._clock: Callable[[], float] = clock or time.monotonic
-        self._events: dict[str, list[float]] = {}
+        # Each per-key entry stores ``(handle, timestamp)`` pairs. The
+        # ``handle`` is an opaque ``object`` minted by ``take`` and
+        # returned to the caller; ``release`` removes that exact entry
+        # rather than popping the latest timestamp -- otherwise a slow
+        # admission whose dispatch fails could refund a *later*
+        # admission's slot, leaving the failed admission counted (the
+        # bug CodeRabbit re-flagged on round 3 after seeing the trace
+        # of two same-agent in-flight notifications).
+        self._events: dict[str, list[tuple[object, float]]] = {}
         self._lock = asyncio.Lock()
 
-    async def take(self, key: str) -> bool:
+    async def take(self, key: str) -> object | None:
         """Attempt to consume one admission for ``key``.
 
-        Returns ``True`` when the admission was granted (the caller
-        may proceed) and ``False`` when the window is saturated.
+        Returns an opaque admission handle when the slot was granted
+        (the caller may proceed and must pass the same handle to
+        ``release`` if the downstream action ultimately fails) or
+        ``None`` when the window is saturated. The handle is an
+        ``object()`` instance with no public attributes; callers MUST
+        treat it as opaque and only use it for ``release``.
+
         Prunes stale entries for idle keys on each call to prevent
         unbounded growth of ``_events`` from one-off agent IDs.
 
@@ -192,32 +205,41 @@ class _SlidingWindowRateLimiter:
             # Prune idle keys whose latest timestamp is outside the window.
             stale_keys = [
                 k
-                for k, timestamps in self._events.items()
-                if k != key and (not timestamps or timestamps[-1] <= cutoff)
+                for k, entries in self._events.items()
+                if k != key and (not entries or entries[-1][1] <= cutoff)
             ]
             for k in stale_keys:
                 del self._events[k]
-            events = [ts for ts in self._events.get(key, []) if ts > cutoff]
-            if len(events) >= self._max_events:
-                self._events[key] = events
-                return False
-            events.append(now)
-            self._events[key] = events
-            return True
+            entries = [
+                (handle, ts) for handle, ts in self._events.get(key, []) if ts > cutoff
+            ]
+            if len(entries) >= self._max_events:
+                self._events[key] = entries
+                return None
+            handle: object = object()
+            entries.append((handle, now))
+            self._events[key] = entries
+            return handle
 
-    async def release(self, key: str) -> None:
-        """Refund the most recent admission for ``key``.
+    async def release(self, key: str, handle: object) -> None:
+        """Refund the exact admission identified by ``handle``.
 
-        Call this when a ``take`` succeeded but the downstream
-        action failed, so the slot can be reused by the next
-        attempt.  Removes the latest timestamp for the key.
+        Call this when a ``take`` succeeded but the downstream action
+        failed, so the slot can be reused by the next attempt. Only
+        the entry whose handle is identical (``is``) to the supplied
+        one is removed; if no match is found the call is a silent
+        no-op (the handle expired out of the window before the failure
+        was detected, which is a benign race).
         """
         async with self._lock:
-            events = self._events.get(key)
-            if events:
-                events.pop()
-                if not events:
-                    del self._events[key]
+            entries = self._events.get(key)
+            if not entries:
+                return
+            remaining = [(h, ts) for h, ts in entries if h is not handle]
+            if remaining:
+                self._events[key] = remaining
+            else:
+                del self._events[key]
 
 
 class NotificationDispatcherSink:
@@ -282,7 +304,8 @@ class NotificationDispatcherSink:
             if _SEVERITY_ORDER[finding.severity] < self._min_rank:
                 continue
 
-            if not await self._rate_limiter.take(result.agent_id):
+            admission = await self._rate_limiter.take(result.agent_id)
+            if admission is None:
                 logger.info(
                     NOTIFICATION_RATE_LIMITED,
                     agent_id=result.agent_id,
@@ -316,12 +339,14 @@ class NotificationDispatcherSink:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # Best-effort path: refund the admission and log a
-                # SEC-1-compliant warning instead of ``logger.exception``.
-                # ``logger.exception`` would attach a traceback that can
-                # leak sensitive locals; the structured warning carries
-                # the diagnostic context we actually need.
-                await self._rate_limiter.release(result.agent_id)
+                # Best-effort path: refund the *exact* admission this
+                # iteration consumed (not the newest slot for the
+                # agent), and log a SEC-1-compliant warning instead
+                # of ``logger.exception``. ``logger.exception`` would
+                # attach a traceback that can leak sensitive locals;
+                # the structured warning carries the diagnostic
+                # context we actually need.
+                await self._rate_limiter.release(result.agent_id, admission)
                 logger.warning(
                     CLASSIFICATION_SINK_ERROR,
                     agent_id=result.agent_id,
