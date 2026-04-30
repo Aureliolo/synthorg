@@ -1,0 +1,186 @@
+name: Retag published container image
+description: >-
+  Apply release version tags to an image previously published and signed
+  by the main-push run of the same SHA. Resolves the signed manifest
+  list digest from GHCR's `sha-<short>` tag, applies each metadata-
+  action tag to that exact digest via `docker buildx imagetools create`
+  (registry-side; no image bytes move), regenerates the CycloneDX SBOM
+  against the digest, and emits the per-image `pushed-tags-<image>.txt`
+  inventory artifact for the workflow-level `verify-signatures` job.
+
+  Why this exists: the tag-push run of `docker.yml` previously rebuilt
+  every image and signed its own slightly-different manifest list bytes,
+  racing main-push on the shared `sha-<short>` tag. Since cosign signs
+  by digest -- not by tag -- a signature attached to
+  `synthorg-<name>@sha256:abc` remains valid for any tag pointing to
+  that digest. Resolving once and applying the version tags to that
+  same digest carries the existing main-run signature forward to every
+  new tag ref by construction. No re-signing, no re-attesting, no race.
+
+  Caller responsibilities:
+    - `packages: write` permission on the calling job (covers GHCR
+      login + tag application). NO `id-token: write` and NO
+      `attestations: write` -- the retag flow neither signs nor
+      attests; both already happened in main-run.
+    - Run on `runs-on: ubuntu-latest` (Docker buildx is available by
+      default; no extra setup needed).
+    - The main-push run for the same SHA must have completed
+      successfully and pushed `ghcr.io/aureliolo/synthorg-${image-name}:sha-<short>`
+      under a cosign signature. The workflow's per-SHA concurrency
+      group queues this action behind main-run.
+
+inputs:
+  image-name:
+    description: "Short image name suffix (e.g. backend, sandbox, sidecar, web, fine-tune-gpu, fine-tune-cpu)."
+    required: true
+  app-version:
+    description: "Application version for the `type=raw` tag on stable `v*` releases."
+    required: true
+  ghcr-token:
+    description: "GITHUB_TOKEN for GHCR login -- must come from the caller's `secrets.GITHUB_TOKEN`."
+    required: true
+
+outputs:
+  digest:
+    description: "Signed multi-arch manifest digest (sha256:...) inherited from the main-run publish."
+    value: ${{ steps.resolve.outputs.digest }}
+  pushed_tags:
+    description: "Newline-separated list of tags applied in this invocation."
+    value: ${{ steps.retag.outputs.pushed_tags }}
+
+runs:
+  using: composite
+  steps:
+    - name: Log in to GHCR
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.ghcr-token }}
+
+    # Mirror the tag policy from publish-image-loaded so the version
+    # tags applied here line up with the policy main-run would have
+    # used. Drift between the two metadata-action invocations would
+    # surface as a missing tag on the release.
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+      with:
+        images: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
+        tags: |
+          type=raw,value=${{ inputs.app-version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
+          type=sha,prefix=sha-
+
+    # Resolve `sha-<short>` to its manifest list digest. This is the
+    # digest cosign signed in main-run; every tag we apply below points
+    # at this exact digest, so the existing signature carries over.
+    # If main-run did not push this image (or pushed but failed before
+    # signing), the inspect call 404s and we fail loudly.
+    - name: Resolve main-run signed digest
+      id: resolve
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        set -euo pipefail
+        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
+        SHORT_SHA="${GITHUB_SHA::7}"
+        if ! INSPECT_OUTPUT="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}' 2>&1)"; then
+          printf '%s\n' "${INSPECT_OUTPUT}"
+          echo "::error::Could not resolve ${REPO}:sha-${SHORT_SHA} -- the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image. Re-run the main-push first; this tag-push retag job will then succeed on re-run."
+          exit 1
+        fi
+        DIGEST="${INSPECT_OUTPUT}"
+        if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          echo "::error::imagetools inspect returned an unexpected digest: ${DIGEST}"
+          exit 1
+        fi
+        echo "Resolved ${REPO}:sha-${SHORT_SHA} -> ${DIGEST}"
+        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+    # Apply each metadata-action tag to the resolved digest. Since the
+    # source is pinned by `@digest`, every iteration produces byte-
+    # identical manifest list bytes; re-runs on the same SHA are
+    # idempotent at the registry level.
+    - name: Apply version tags to signed digest
+      id: retag
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        SIGNED_DIGEST: ${{ steps.resolve.outputs.digest }}
+        META_TAGS: ${{ steps.meta.outputs.tags }}
+      run: |
+        set -euo pipefail
+        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
+        PUSHED_TAGS=()
+        while IFS= read -r full_tag; do
+          [ -z "${full_tag}" ] && continue
+          # metadata-action emits fully-qualified refs (repo:tag);
+          # strip the repo prefix to get the bare tag.
+          t="${full_tag#${REPO}:}"
+          docker buildx imagetools create -t "${REPO}:${t}" "${REPO}@${SIGNED_DIGEST}"
+          PUSHED_TAGS+=("${t}")
+          echo "✓ ${REPO}:${t} -> ${SIGNED_DIGEST}"
+        done <<< "${META_TAGS}"
+
+        if [ "${#PUSHED_TAGS[@]}" -eq 0 ]; then
+          echo "::error::metadata-action emitted no tags -- nothing to retag"
+          exit 1
+        fi
+
+        # Newline-separated multiline output, mirroring
+        # publish-image-loaded so the inventory writer below and the
+        # workflow-level verify-signatures gate consume the same shape.
+        {
+          printf 'pushed_tags<<__SYNTHORG_TAG_EOF__\n'
+          printf '%s\n' "${PUSHED_TAGS[@]}"
+          printf '__SYNTHORG_TAG_EOF__\n'
+        } >> "$GITHUB_OUTPUT"
+
+    # Regenerate the CycloneDX SBOM against the signed digest.
+    # anchore/sbom-action operates on the registry image manifest, so
+    # the same digest produces the same SBOM bytes every run -- but
+    # `update-release` consumes the artifact from THIS workflow run
+    # (cross-run artifact downloads are not supported by
+    # actions/download-artifact), so we re-emit it here on tag-push.
+    - name: Generate SBOM
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}@${{ steps.resolve.outputs.digest }}
+        format: cyclonedx-json
+        output-file: sbom-${{ inputs.image-name }}.cdx.json
+
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: sbom-${{ inputs.image-name }}
+        path: sbom-${{ inputs.image-name }}.cdx.json
+        retention-days: 30
+
+    # Same artifact name + format as publish-image-loaded so the
+    # workflow-level verify-signatures aggregator works regardless of
+    # which path produced the inventory.
+    - name: Write pushed-tag inventory
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        PUSHED_TAGS: ${{ steps.retag.outputs.pushed_tags }}
+      run: |
+        set -euo pipefail
+        OUT="pushed-tags-${IMAGE_NAME}.txt"
+        : > "$OUT"
+        while IFS= read -r t; do
+          [ -z "${t}" ] && continue
+          printf '%s:%s\n' "${IMAGE_NAME}" "${t}" >> "$OUT"
+        done <<< "${PUSHED_TAGS}"
+        echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
+
+    - name: Upload pushed-tag inventory
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: pushed-tags-${{ inputs.image-name }}
+        path: pushed-tags-${{ inputs.image-name }}.txt
+        retention-days: 7
