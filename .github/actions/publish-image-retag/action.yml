@@ -88,12 +88,15 @@ runs:
         set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
         SHORT_SHA="${GITHUB_SHA::7}"
-        if ! INSPECT_OUTPUT="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}' 2>&1)"; then
-          printf '%s\n' "${INSPECT_OUTPUT}"
+        # Capture only stdout so the digest variable can never be
+        # corrupted by stderr (Docker emits experimental-feature /
+        # deprecation warnings on stderr; merging via `2>&1` would
+        # break the regex check below). On failure stderr still
+        # reaches the GHA log via the inherited file descriptor.
+        if ! DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}')"; then
           echo "::error::Could not resolve ${REPO}:sha-${SHORT_SHA} -- the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image. Re-run the main-push first; this tag-push retag job will then succeed on re-run."
           exit 1
         fi
-        DIGEST="${INSPECT_OUTPUT}"
         if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
           echo "::error::imagetools inspect returned an unexpected digest: ${DIGEST}"
           exit 1
@@ -101,10 +104,13 @@ runs:
         echo "Resolved ${REPO}:sha-${SHORT_SHA} -> ${DIGEST}"
         echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
-    # Apply each metadata-action tag to the resolved digest. Since the
-    # source is pinned by `@digest`, every iteration produces byte-
-    # identical manifest list bytes; re-runs on the same SHA are
-    # idempotent at the registry level.
+    # Apply every metadata-action tag to the resolved digest in a
+    # single `imagetools create` invocation. `imagetools create`
+    # accepts multiple `-t` flags and writes the manifest list once
+    # per call; batching means one registry round-trip per image
+    # instead of one per tag (six tags drop from six API calls to
+    # one). Source pinned by `@digest` keeps the operation idempotent
+    # on re-runs.
     - name: Apply version tags to signed digest
       id: retag
       shell: bash
@@ -116,20 +122,25 @@ runs:
         set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
         PUSHED_TAGS=()
+        CREATE_ARGS=()
         while IFS= read -r full_tag; do
           [ -z "${full_tag}" ] && continue
           # metadata-action emits fully-qualified refs (repo:tag);
           # strip the repo prefix to get the bare tag.
           t="${full_tag#${REPO}:}"
-          docker buildx imagetools create -t "${REPO}:${t}" "${REPO}@${SIGNED_DIGEST}"
+          CREATE_ARGS+=("-t" "${REPO}:${t}")
           PUSHED_TAGS+=("${t}")
-          echo "✓ ${REPO}:${t} -> ${SIGNED_DIGEST}"
         done <<< "${META_TAGS}"
 
         if [ "${#PUSHED_TAGS[@]}" -eq 0 ]; then
           echo "::error::metadata-action emitted no tags -- nothing to retag"
           exit 1
         fi
+
+        docker buildx imagetools create "${CREATE_ARGS[@]}" "${REPO}@${SIGNED_DIGEST}"
+        for t in "${PUSHED_TAGS[@]}"; do
+          echo "✓ ${REPO}:${t} -> ${SIGNED_DIGEST}"
+        done
 
         # Newline-separated multiline output, mirroring
         # publish-image-loaded so the inventory writer below and the
