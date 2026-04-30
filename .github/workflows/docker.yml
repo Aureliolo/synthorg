@@ -31,11 +31,15 @@ on:
 permissions: {}
 
 # PR runs cancel each other (we don't care about intermediate PR-build
-# artifacts). Main pushes and tag pushes queue serially: cancelling
-# would drop per-SHA `:main` images, skip "Update Release Notes", and
-# leave finalize-release with an upstream conclusion of `cancelled`.
+# artifacts). Non-PR events key on the SHA: a main-push and a
+# tag-push for the same commit (the release-please flow) share the
+# group and queue serially -- the tag-push retag jobs require the
+# main-push publish to have completed first. Successive main-pushes
+# of different SHAs run in parallel because main-push only emits the
+# unique `sha-<short>` tag (no shared mutable tags), so there is
+# nothing for them to race on.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -247,6 +251,7 @@ jobs:
     needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.backend == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -271,12 +276,14 @@ jobs:
   build-backend-base-publish:
     name: Publish Backend Base (apko)
     needs: [version, build-backend-base]
-    # Restricted to main pushes and v-tags: `github.event_name != 'pull_request'`
-    # alone would also admit workflow_dispatch from an arbitrary feature branch,
-    # letting unmerged code push, sign, and attest base images.
+    # Main-push only: tag-push runs the retag-* jobs instead, which
+    # apply version tags to main-run's already-signed digest without
+    # rebuilding. Restricting to `refs/heads/main` (rather than
+    # `event_name != 'pull_request'`) blocks workflow_dispatch from
+    # arbitrary feature branches from pushing/signing base images.
     if: >-
       !cancelled() &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      github.ref == 'refs/heads/main' &&
       needs.build-backend-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -307,6 +314,7 @@ jobs:
     needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.sandbox == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -333,7 +341,7 @@ jobs:
     needs: [version, build-sandbox-base]
     if: >-
       !cancelled() &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      github.ref == 'refs/heads/main' &&
       needs.build-sandbox-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -364,6 +372,7 @@ jobs:
     needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.sidecar == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -390,7 +399,7 @@ jobs:
     needs: [version, build-sidecar-base]
     if: >-
       !cancelled() &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      github.ref == 'refs/heads/main' &&
       needs.build-sidecar-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -421,6 +430,7 @@ jobs:
     needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.fine-tune == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -447,7 +457,7 @@ jobs:
     needs: [version, build-fine-tune-base]
     if: >-
       !cancelled() &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      github.ref == 'refs/heads/main' &&
       needs.build-fine-tune-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -480,14 +490,17 @@ jobs:
   build-backend:
     name: Build Backend
     needs: [version, build-backend-base, build-backend-base-publish]
-    # On PR events publish is always skipped (guarded to main / v* tags), so
-    # the app build falls back to the locally-loaded scan artifact. On any
+    # On PR events publish is always skipped (guarded to main), so the
+    # app build falls back to the locally-loaded scan artifact. On any
     # non-PR event we require publish to have succeeded -- this makes
     # workflow_dispatch from a feature branch skip the app build entirely
     # instead of trying to pull a base tag that was never pushed to GHCR.
+    # Tag pushes skip the build/publish path entirely; the retag-* jobs
+    # apply version tags to main-run's already-signed digest.
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-backend-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-backend-base-publish.result == 'success')
     runs-on: ubuntu-latest
@@ -568,7 +581,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.build-backend.result == 'success' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: image-push
@@ -600,6 +613,7 @@ jobs:
     needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.web == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -698,6 +712,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-web-assets.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -798,7 +813,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.build-web.result == 'success' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: image-push
@@ -849,6 +864,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-sandbox-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-sandbox-base-publish.result == 'success')
     runs-on: ubuntu-latest
@@ -880,7 +896,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.build-sandbox.result == 'success' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: image-push
@@ -910,6 +926,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-sidecar-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-sidecar-base-publish.result == 'success')
     runs-on: ubuntu-latest
@@ -941,7 +958,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.build-sidecar.result == 'success' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: image-push
@@ -982,6 +999,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-fine-tune-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-fine-tune-base-publish.result == 'success')
     runs-on: ubuntu-latest
@@ -1026,7 +1044,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.build-fine-tune.result == 'success' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -1088,6 +1106,184 @@ jobs:
           path: fine-tune-${{ matrix.variant }}.digest
           retention-days: 1
 
+  # =========================================================================
+  # Retag-only jobs -- fire on `push: tags: [v*]` instead of the full
+  # build/scan/publish pipeline. Resolve main-run's already-signed
+  # manifest list digest for each image from GHCR's `sha-<short>` tag,
+  # then apply the version tags via `docker buildx imagetools create`
+  # (registry-side; no image bytes move). cosign signs by digest, so the
+  # main-run signature carries forward to every new tag ref by
+  # construction. Halves CI minutes on releases and eliminates the
+  # cross-run race that #1676 surfaced.
+  #
+  # Base images (`synthorg-{x}-base`) are intentionally NOT retagged on
+  # tag-push: they're internal artifacts consumed only by app
+  # Dockerfiles via `FROM ...@digest`, so version tags add no consumer
+  # value.
+  #
+  # The per-SHA concurrency group at the top of this workflow queues
+  # these jobs behind the main-push run for the same SHA. If main-run
+  # failed, the publish-image-retag action's "resolve signed digest"
+  # step 404s with an actionable error message.
+  # =========================================================================
+  retag-backend:
+    name: Retag Backend
+    needs: [version]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !cancelled() &&
+      needs.version.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.retag.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - id: retag
+        uses: ./.github/actions/publish-image-retag
+        with:
+          image-name: backend
+          app-version: ${{ needs.version.outputs.app_version }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+  retag-web:
+    name: Retag Web
+    needs: [version]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !cancelled() &&
+      needs.version.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.retag.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - id: retag
+        uses: ./.github/actions/publish-image-retag
+        with:
+          image-name: web
+          app-version: ${{ needs.version.outputs.app_version }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+  retag-sandbox:
+    name: Retag Sandbox
+    needs: [version]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !cancelled() &&
+      needs.version.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.retag.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - id: retag
+        uses: ./.github/actions/publish-image-retag
+        with:
+          image-name: sandbox
+          app-version: ${{ needs.version.outputs.app_version }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+  retag-sidecar:
+    name: Retag Sidecar
+    needs: [version]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !cancelled() &&
+      needs.version.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.retag.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - id: retag
+        uses: ./.github/actions/publish-image-retag
+        with:
+          image-name: sidecar
+          app-version: ${{ needs.version.outputs.app_version }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Matrix mirrors `build-fine-tune-publish`: each variant is a separate
+  # image repo (`synthorg-fine-tune-gpu`, `synthorg-fine-tune-cpu`) and
+  # carries its own signed digest. GitHub Actions matrix jobs cannot
+  # expose per-variant `outputs:` (only the last leg's outputs would
+  # win), so per-variant digests reach `update-release` via the same
+  # `fine-tune-{variant}-digest` artifact pattern the build-publish
+  # path uses. `verify-signatures` and `update-release` reference this
+  # job by `result` only; consumers needing a per-variant digest read
+  # the artifact, not `needs.retag-fine-tune.outputs.*`.
+  retag-fine-tune:
+    name: Retag Fine-Tune
+    needs: [version]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !cancelled() &&
+      needs.version.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: gpu
+          - variant: cpu
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - id: retag
+        uses: ./.github/actions/publish-image-retag
+        with:
+          image-name: fine-tune-${{ matrix.variant }}
+          app-version: ${{ needs.version.outputs.app_version }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write digest to file
+        if: steps.retag.outputs.digest != ''
+        env:
+          DIGEST: ${{ steps.retag.outputs.digest }}
+        run: printf '%s' "$DIGEST" > "fine-tune-${{ matrix.variant }}.digest"
+
+      - name: Upload digest artifact
+        if: steps.retag.outputs.digest != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fine-tune-${{ matrix.variant }}-digest
+          path: fine-tune-${{ matrix.variant }}.digest
+          retention-days: 1
+
   # Final cross-publish gate. After every publish job has finished
   # (which means in-step verification has already passed for each
   # image+tag locally), confirm one more time that NO concurrent run
@@ -1109,15 +1305,35 @@ jobs:
       - build-sandbox-publish
       - build-sidecar-publish
       - build-fine-tune-publish
+      - retag-backend
+      - retag-web
+      - retag-sandbox
+      - retag-sidecar
+      - retag-fine-tune
+    # Two event paths feed this gate:
+    #   - main-push: build-*-publish succeeds, retag-* skipped.
+    #   - tag-push: retag-* succeeds, build-*-publish skipped.
+    # Either path emits the `pushed-tags-*` artifacts the script
+    # consumes. Bases are only in the inventory on main-push (skipped
+    # on tag-push by design); the script's per-image divergence check
+    # works on whichever scope of tags shows up.
     if: >-
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
       github.event_name != 'pull_request' &&
       !cancelled() &&
-      needs.build-backend-publish.result == 'success' &&
-      needs.build-web-publish.result == 'success' &&
-      needs.build-sandbox-publish.result == 'success' &&
-      needs.build-sidecar-publish.result == 'success' &&
-      needs.build-fine-tune-publish.result == 'success'
+      (
+        (github.ref == 'refs/heads/main' &&
+          needs.build-backend-publish.result == 'success' &&
+          needs.build-web-publish.result == 'success' &&
+          needs.build-sandbox-publish.result == 'success' &&
+          needs.build-sidecar-publish.result == 'success' &&
+          needs.build-fine-tune-publish.result == 'success') ||
+        (startsWith(github.ref, 'refs/tags/v') &&
+          needs.retag-backend.result == 'success' &&
+          needs.retag-web.result == 'success' &&
+          needs.retag-sandbox.result == 'success' &&
+          needs.retag-sidecar.result == 'success' &&
+          needs.retag-fine-tune.result == 'success')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # `contents: read` covers checkout for the helper script, and
@@ -1181,27 +1397,28 @@ jobs:
           python3 scripts/check_image_signatures.py "${ARGS[@]}"
 
   # Append container image references to the GitHub Release (version tags only).
-  # The `*-publish` jobs transitively depend on their `*-base` / `*-base-publish`
-  # counterparts (via `build-X` -> `build-X-publish`), so listing only the
-  # publish jobs here is sufficient for both ordering and `result` gating.
+  # On tag-push, retag-* jobs supply the per-image manifest list digest
+  # (inherited from main-run's signed digest) and re-emit per-run SBOM
+  # artifacts. Build-publish jobs are skipped on tag-push, so we depend
+  # exclusively on the retag-* set here.
   update-release:
     name: Update Release Notes
     needs:
       - version
-      - build-backend-publish
-      - build-web-publish
-      - build-sandbox-publish
-      - build-sidecar-publish
-      - build-fine-tune-publish
+      - retag-backend
+      - retag-web
+      - retag-sandbox
+      - retag-sidecar
+      - retag-fine-tune
       - verify-signatures
     if: >-
       startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request' &&
       !cancelled() &&
-      needs.build-backend-publish.result == 'success' &&
-      needs.build-web-publish.result == 'success' &&
-      needs.build-sandbox-publish.result == 'success' &&
-      needs.build-sidecar-publish.result == 'success' &&
-      needs.build-fine-tune-publish.result == 'success' &&
+      needs.retag-backend.result == 'success' &&
+      needs.retag-web.result == 'success' &&
+      needs.retag-sandbox.result == 'success' &&
+      needs.retag-sidecar.result == 'success' &&
+      needs.retag-fine-tune.result == 'success' &&
       needs.verify-signatures.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -1245,10 +1462,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-          BACKEND_DIGEST: ${{ needs.build-backend-publish.outputs.digest }}
-          WEB_DIGEST: ${{ needs.build-web-publish.outputs.digest }}
-          SANDBOX_DIGEST: ${{ needs.build-sandbox-publish.outputs.digest }}
-          SIDECAR_DIGEST: ${{ needs.build-sidecar-publish.outputs.digest }}
+          BACKEND_DIGEST: ${{ needs.retag-backend.outputs.digest }}
+          WEB_DIGEST: ${{ needs.retag-web.outputs.digest }}
+          SANDBOX_DIGEST: ${{ needs.retag-sandbox.outputs.digest }}
+          SIDECAR_DIGEST: ${{ needs.retag-sidecar.outputs.digest }}
           FINE_TUNE_GPU_DIGEST: ${{ steps.ft-digests.outputs.gpu }}
           FINE_TUNE_CPU_DIGEST: ${{ steps.ft-digests.outputs.cpu }}
         run: |
