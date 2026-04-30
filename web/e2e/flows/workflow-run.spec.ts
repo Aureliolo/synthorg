@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { mockApiRoutes, freezeTime } from '../fixtures/mock-api'
 import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harness'
 import { makeWorkflow, makeWorkflowExecution } from '../factories'
+import { clickLocator } from '../helpers/interactions'
 
 /**
  * Critical-flow E2E: workflows list mount + system.error notification path.
@@ -54,6 +55,17 @@ test.describe('Workflows list + system.error notification path', () => {
   }) => {
     await page.goto('/workflows')
     await expect(page).toHaveURL(/\/workflows/)
+    await expect(page.locator('main')).toBeVisible()
+
+    // Real UI interaction: click on the seeded workflow row so the
+    // selection / detail-open path is exercised before the WS event
+    // arrives. The makeWorkflow factory seeds name='Daily standup';
+    // a regression in the click handler or list-item rendering would
+    // surface here. Mandatory: the list payload guarantees one row,
+    // so the locator must match.
+    const seededWorkflow = page.getByText('Daily standup').first()
+    await expect(seededWorkflow).toBeVisible()
+    await clickLocator(seededWorkflow)
     await expect(page.locator('main')).toBeVisible()
 
     // Push a workflow-failure system event. ``workflow_execution.*``
