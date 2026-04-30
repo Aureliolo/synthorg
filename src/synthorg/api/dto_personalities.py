@@ -1,6 +1,5 @@
 """Request/response DTOs for personality preset endpoints."""
 
-from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,13 +13,13 @@ from synthorg.core.enums import (
     RiskTolerance,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.templates.preset_models import PresetSource
 
-
-class PresetSource(StrEnum):
-    """Origin of a personality preset."""
-
-    BUILTIN = "builtin"
-    CUSTOM = "custom"
+__all__ = [
+    "PresetDetailResponse",
+    "PresetSource",
+    "PresetSummaryResponse",
+]
 
 
 # ── Responses ────────────────────────────────────────────────

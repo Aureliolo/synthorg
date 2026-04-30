@@ -6,35 +6,22 @@ from synthorg.core.company import Team  # noqa: TC001
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
+from synthorg.organization.models import UpdateCompanyRequest
 
 # -- Company -----------------------------------------------------------
-
-
-class UpdateCompanyRequest(BaseModel):
-    """Partial update for company-level settings."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    company_name: NotBlankStr | None = Field(
-        default=None,
-        description="Display name of the company.",
-    )
-    autonomy_level: AutonomyLevel | None = Field(
-        default=None,
-        description="Org-wide autonomy level (full, semi, supervised, locked).",
-    )
-    budget_monthly: float | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Monthly budget cap for the company in the operator's configured "
-            "currency; set to 0 to disable enforcement."
-        ),
-    )
-    communication_pattern: NotBlankStr | None = Field(
-        default=None,
-        description="Communication strategy or pattern identifier.",
-    )
+#
+# UpdateCompanyRequest is sourced from synthorg.organization.models so
+# the domain service can validate the same input shape without
+# importing from the API layer (audit-144).
+__all__ = [
+    "CreateAgentOrgRequest",
+    "CreateDepartmentRequest",
+    "ReorderAgentsRequest",
+    "ReorderDepartmentsRequest",
+    "UpdateAgentOrgRequest",
+    "UpdateCompanyRequest",
+    "UpdateDepartmentRequest",
+]
 
 
 # -- Departments -------------------------------------------------------

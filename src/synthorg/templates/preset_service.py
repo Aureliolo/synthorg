@@ -12,7 +12,6 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.api.dto_personalities import PresetSource
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
@@ -28,6 +27,7 @@ from synthorg.observability.events.preset import (
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
+from synthorg.templates.preset_models import PresetSource
 from synthorg.templates.presets import PERSONALITY_PRESETS
 
 logger = get_logger(__name__)
