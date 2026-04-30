@@ -229,9 +229,11 @@ class TestSQLiteDecisionRepositoryListByAgent:
     async def test_list_by_agent_invalid_role_raises(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """Invalid role raises ValueError."""
+        """Invalid role raises QueryError (matches pagination-arg behaviour)."""
+        from synthorg.core.persistence_errors import QueryError
+
         repo = SQLiteDecisionRepository(migrated_db)
-        with pytest.raises(ValueError, match="role must be"):
+        with pytest.raises(QueryError, match="role must be"):
             await repo.list_by_agent("alice", role="observer")  # type: ignore[arg-type]
 
 

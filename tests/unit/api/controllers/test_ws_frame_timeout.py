@@ -59,22 +59,34 @@ class _SilentSocket:
 
 
 async def test_receive_loop_closes_after_frame_timeout() -> None:
-    """A silent client is closed with policy code 1008 after the budget."""
+    """A silent client is closed with policy code 1008 after the budget.
+
+    Also asserts the elapsed wall time is at least ``timeout * 0.9`` so
+    a future refactor that accidentally halves or zeroes the timeout
+    fails this test rather than passing on a near-zero close-code
+    check.
+    """
+    timeout_seconds = 1
     socket = _SilentSocket()
     outbound: asyncio.Queue[bytes] = asyncio.Queue(maxsize=8)
     user = _make_auth_user()
 
-    # Tight budget keeps the test fast; the loop returns when the
-    # wait_for inside times out and we've closed the socket.
+    started = asyncio.get_event_loop().time()
     await _receive_loop(
         socket,  # type: ignore[arg-type]
         subscribed=set(),
         filters={},
         conn_user=user,
         outbound_queue=outbound,
-        frame_timeout_seconds=1,
+        frame_timeout_seconds=timeout_seconds,
     )
+    elapsed = asyncio.get_event_loop().time() - started
 
     assert socket.closed is True
     assert socket.close_code == 1008
     assert "frame timeout" in (socket.close_reason or "")
+    # Allow a small floor (0.9x) for scheduler jitter; reject any
+    # implementation that closes substantially earlier than the budget.
+    assert elapsed >= timeout_seconds * 0.9, (
+        f"loop closed too quickly: {elapsed:.3f}s < {timeout_seconds * 0.9:.3f}s"
+    )

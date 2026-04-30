@@ -277,11 +277,26 @@ class InterruptStore:
         cannot observe a half-applied state where ``_pending`` is cleared
         but the resolution has not landed in ``_results`` yet.
 
+        Returns ``None`` in three cases (each emits a structured log so
+        operators can distinguish them):
+
+        * ``EVENT_STREAM_INTERRUPT_NOT_FOUND`` -- no matching pending
+          interrupt for ``resolution.interrupt_id``.
+        * ``EVENT_STREAM_INVALID_RESUME_PAYLOAD`` (TOOL_APPROVAL) --
+          ``decision`` was missing.
+        * ``EVENT_STREAM_INVALID_RESUME_PAYLOAD`` (INFO_REQUEST) --
+          ``response`` was missing.
+
+        On the latter two cases the interrupt stays in ``_pending`` so
+        the caller can retry with a corrected resolution; the eventual
+        ``wait_for_resolution()`` timeout cleans up if no retry arrives.
+
         Args:
             resolution: The resolution to apply.
 
         Returns:
-            The resolved interrupt, or ``None`` if not found.
+            The resolved interrupt, or ``None`` per the three cases
+            documented above.
         """
         async with self._lock:
             interrupt = self._pending.get(resolution.interrupt_id)

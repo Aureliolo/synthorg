@@ -49,6 +49,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_MAX_PAGE_LIMIT: int = 1_000
+
 _COLS = (
     "id, task_id, approval_id, executing_agent_id, reviewer_agent_id, "
     "decision, reason, criteria_snapshot, recorded_at, version, metadata"
@@ -434,10 +436,25 @@ class PostgresDecisionRepository:
         """List decision records for a task (paginated, oldest first)."""
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                task_id=task_id,
+                param="limit",
+                value=limit,
+            )
             raise QueryError(msg)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                task_id=task_id,
+                param="offset",
+                value=offset,
+            )
             raise QueryError(msg)
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -446,7 +463,7 @@ class PostgresDecisionRepository:
                 await cur.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
                     "WHERE task_id = %s ORDER BY version ASC LIMIT %s OFFSET %s",
-                    (task_id, limit, offset),
+                    (task_id, effective_limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -487,7 +504,7 @@ class PostgresDecisionRepository:
                 role_type=type(role_obj).__name__,
                 error=msg,
             )
-            raise TypeError(msg)
+            raise QueryError(msg)
         role_str: str = role_obj
         try:
             column = _ROLE_TO_COLUMN[role_str]
@@ -499,13 +516,30 @@ class PostgresDecisionRepository:
                 role=role_str,
                 error=msg,
             )
-            raise ValueError(msg) from exc
+            raise QueryError(msg) from exc
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                agent_id=agent_id,
+                role=role_str,
+                param="limit",
+                value=limit,
+            )
             raise QueryError(msg)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                agent_id=agent_id,
+                role=role_str,
+                param="offset",
+                value=offset,
+            )
             raise QueryError(msg)
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             # column is a closed-set value from _ROLE_TO_COLUMN.
             # ``id DESC`` tiebreaker keeps cursor pagination stable
@@ -519,7 +553,7 @@ class PostgresDecisionRepository:
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(query, (agent_id, limit, offset))
+                await cur.execute(query, (agent_id, effective_limit, offset))
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = (

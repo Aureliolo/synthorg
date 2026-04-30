@@ -101,15 +101,30 @@ class SQLiteSettingsRepository:
         """Return all (namespace, key, value, updated_at) (paginated)."""
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                error=msg,
+                param="limit",
+                value=limit,
+            )
             raise QueryError(msg)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                error=msg,
+                param="offset",
+                value=offset,
+            )
             raise QueryError(msg)
+        # Settings registry has a few hundred entries by design; the
+        # 1000 cap is a defensive ceiling against misconfigured callers.
+        effective_limit = min(limit, 1_000)
         try:
             cursor = await self._db.execute(
                 "SELECT namespace, key, value, updated_at FROM settings "
                 "ORDER BY namespace, key LIMIT ? OFFSET ?",
-                (limit, offset),
+                (effective_limit, offset),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

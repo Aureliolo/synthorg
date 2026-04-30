@@ -384,7 +384,7 @@ class CustomRuleController(Controller):
 
         Returns metric descriptors with bounds and metadata. The
         registry is bounded today but the endpoint is paginated for
-        uniform shape with the rest of the list surface (issue #1683).
+        uniform shape with the rest of the list surface.
         """
         entries = tuple(_metric_to_dict(m) for m in METRIC_REGISTRY)
         page, meta = paginate_cursor(

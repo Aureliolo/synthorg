@@ -5,11 +5,12 @@ import type {
   getCustomRule,
   listAllRules,
   listCustomRules,
-  listMetrics,
+  MetricDescriptor,
   previewRule,
   toggleCustomRule,
   updateCustomRule,
 } from '@/api/endpoints/custom-rules'
+import type { PaginatedResponse } from '@/api/types/http'
 import { apiError, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
@@ -36,7 +37,23 @@ export const customRulesHandlers = [
     HttpResponse.json(successFor<typeof listCustomRules>([])),
   ),
   http.get('/api/v1/meta/custom-rules/metrics', () =>
-    HttpResponse.json(successFor<typeof listMetrics>([])),
+    // Backend returns ``PaginatedResponse[MetricDescriptor]``; the
+    // endpoint helper flattens it to ``MetricDescriptor[]`` for
+    // callers, so the wire envelope must include the pagination
+    // metadata even when the page is empty.
+    HttpResponse.json({
+      data: [],
+      error: null,
+      error_detail: null,
+      pagination: {
+        total: 0,
+        offset: 0,
+        limit: 200,
+        next_cursor: null,
+        has_more: false,
+      },
+      success: true,
+    } satisfies PaginatedResponse<MetricDescriptor>),
   ),
   http.post('/api/v1/meta/custom-rules/preview', async ({ request }) => {
     await request.json()

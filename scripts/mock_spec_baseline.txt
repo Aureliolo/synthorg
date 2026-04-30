@@ -1384,8 +1384,9 @@ tests/unit/engine/workflow/test_subworkflow_service.py:185:19
 tests/unit/engine/workflow/test_subworkflow_service.py:198:19
 tests/unit/engine/workflow/test_subworkflow_service.py:90:29
 tests/unit/engine/workflow/test_subworkflow_service.py:97:19
-tests/unit/engine/workflow/test_version_service.py:119:15
-tests/unit/engine/workflow/test_version_service.py:129:15
+tests/unit/engine/workflow/test_version_service.py:124:15
+tests/unit/engine/workflow/test_version_service.py:146:15
+tests/unit/engine/workflow/test_version_service.py:156:15
 tests/unit/engine/workflow/test_version_service.py:20:55
 tests/unit/engine/workflow/test_version_service.py:76:15
 tests/unit/hr/evaluation/test_dogfooding_dataset_builder.py:25:13

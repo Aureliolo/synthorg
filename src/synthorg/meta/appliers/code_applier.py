@@ -19,7 +19,7 @@ from synthorg.meta.models import (
     ImprovementProposal,
     ProposalAltitude,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_CREATE_TARGET_EXISTS,
@@ -121,12 +121,24 @@ class CodeApplier:
                 altitude="code_modification",
                 proposal_id=str(proposal.id),
             )
-            await asyncio.to_thread(
-                self._revert_local_changes,
-                proposal.code_changes,
-                project_root,
-                defensive=True,
-            )
+            try:
+                await asyncio.to_thread(
+                    self._revert_local_changes,
+                    proposal.code_changes,
+                    project_root,
+                    defensive=True,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as revert_exc:
+                logger.warning(
+                    META_APPLY_FAILED,
+                    altitude="code_modification",
+                    proposal_id=str(proposal.id),
+                    reason="defensive_revert_failed",
+                    error_type=type(revert_exc).__name__,
+                    error=safe_error_description(revert_exc),
+                )
             try:
                 await self._github.delete_branch(branch)
             except Exception:
@@ -182,12 +194,29 @@ class CodeApplier:
                 project_root,
             )
         finally:
-            # Revert only the changes that were actually written.
-            await asyncio.to_thread(
-                self._revert_local_changes,
-                applied,
-                project_root,
-            )
+            # Revert only the changes that were actually written. The
+            # cleanup itself is wrapped so a transient I/O error during
+            # revert (e.g. permission flake) does not mask the CI
+            # outcome captured in ``ci_result`` -- the warning surfaces
+            # the cleanup failure for ops without overwriting the
+            # primary success/failure signal.
+            try:
+                await asyncio.to_thread(
+                    self._revert_local_changes,
+                    applied,
+                    project_root,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as revert_exc:
+                logger.warning(
+                    META_APPLY_FAILED,
+                    altitude="code_modification",
+                    proposal_id=str(proposal.id),
+                    reason="cleanup_revert_failed",
+                    error_type=type(revert_exc).__name__,
+                    error=safe_error_description(revert_exc),
+                )
         if not ci_result.passed:
             return ApplyResult(
                 success=False,

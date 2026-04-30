@@ -139,8 +139,7 @@ class DecisionRepository(Protocol):
             stable under concurrent inserts.
 
         Raises:
-            QueryError: If the operation fails or pagination args are
-                out of range.
-            ValueError: If ``role`` is not a recognised value.
+            QueryError: If the operation fails, pagination args are
+                out of range, or ``role`` is not a recognised value.
         """
         ...

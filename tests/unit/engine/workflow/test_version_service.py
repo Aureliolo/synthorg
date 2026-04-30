@@ -112,6 +112,33 @@ class TestListVersions:
                 limit=0,
             )
 
+    @pytest.mark.unit
+    async def test_count_failure_propagates_through_taskgroup(self) -> None:
+        """If ``count_versions`` raises, the TaskGroup propagates it.
+
+        Regression test for the count + list parallelization: a failure
+        in either branch must surface, not be swallowed by the other
+        branch's success. asyncio.TaskGroup wraps failures in
+        ExceptionGroup, which we assert on directly.
+        """
+        repo = AsyncMock()
+        repo.list_versions.return_value = (_snapshot(1),)
+        repo.count_versions.side_effect = RuntimeError("count failed")
+        service = _service(repo)
+        with pytest.raises(BaseExceptionGroup) as excinfo:
+            await service.list_versions(
+                NotBlankStr("wfdef-1"),
+                offset=0,
+                limit=10,
+            )
+        # The group should contain exactly the RuntimeError raised by
+        # ``count_versions``; other tasks' results are discarded.
+        runtime_errors = [
+            exc for exc in excinfo.value.exceptions if isinstance(exc, RuntimeError)
+        ]
+        assert len(runtime_errors) == 1
+        assert "count failed" in str(runtime_errors[0])
+
 
 class TestGetVersion:
     @pytest.mark.unit

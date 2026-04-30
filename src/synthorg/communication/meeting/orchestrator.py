@@ -274,9 +274,27 @@ class MeetingOrchestrator:
 
         Internal: every site that grows ``self._records`` MUST go through
         this helper so the mirror stays in lock-step with the list.
+
+        ``_check_invariant`` runs under ``__debug__`` so production
+        builds skip the O(1) length comparison; under ``-O`` the
+        assertion is elided. In test / dev mode it catches future
+        mutation sites that bypass the helper and drift the dict.
         """
         self._records.append(record)
         self._records_by_id[record.meeting_id] = record
+        self._check_invariant()
+
+    def _check_invariant(self) -> None:
+        """Verify the list and dict mirror agree on size.
+
+        Cheap O(1) sanity check: any drift between ``_records`` and
+        ``_records_by_id`` is a bug in record-mutation discipline. The
+        assertion is elided under ``python -O``.
+        """
+        assert len(self._records) == len(self._records_by_id), (  # noqa: S101
+            f"MeetingOrchestrator record drift: list={len(self._records)} "
+            f"dict={len(self._records_by_id)}"
+        )
 
     def delete_record(self, meeting_id: str) -> bool:
         """Remove the meeting record matching ``meeting_id``.

@@ -185,10 +185,9 @@ CREATE TABLE parked_contexts (
 
 CREATE INDEX idx_pc_agent_id ON parked_contexts(agent_id);
 CREATE INDEX idx_pc_approval_id ON parked_contexts(approval_id);
--- Composite index for "list parked contexts for agent X newest-first"
--- (issue #1683). Mirrors the SQLite shape so cursor pagination is
--- driven by an indexed (agent_id, parked_at DESC) seek on both
--- backends.
+-- Composite index for "list parked contexts for agent X newest-first".
+-- Mirrors the SQLite shape so cursor pagination is driven by an
+-- indexed (agent_id, parked_at DESC) seek on both backends.
 CREATE INDEX idx_parked_contexts_agent_parked_at
     ON parked_contexts(agent_id, parked_at DESC);
 
@@ -324,9 +323,9 @@ CREATE TABLE api_keys (
 );
 
 CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
--- Composite index for "list api_keys for user X with stable ordering"
--- (issue #1683). The trailing ``id`` keeps cursor pagination stable
--- across rows that share a ``created_at`` timestamp.
+-- Composite index for "list api_keys for user X with stable ordering".
+-- The trailing ``id`` keeps cursor pagination stable across rows that
+-- share a ``created_at`` timestamp.
 CREATE INDEX idx_api_keys_user_created_id
     ON api_keys(user_id, created_at, id);
 

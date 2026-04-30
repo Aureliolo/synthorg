@@ -422,7 +422,7 @@ class AppStateServicesMixin(_FacadesMixin):
 
     @property
     def ws_frame_timeout_seconds(self) -> int:
-        """Per-frame WebSocket receive timeout in seconds (issue #1683).
+        """Per-frame WebSocket receive timeout in seconds.
 
         Bounded by ``[1, 600]``; defaults to 30. Read once at controller
         construction (read_only_post_init), so the value can be staged

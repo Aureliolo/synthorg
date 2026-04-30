@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_MAX_PAGE_LIMIT: int = 1_000
+
 _COLS = (
     "id, task_id, approval_id, executing_agent_id, reviewer_agent_id, "
     "decision, reason, criteria_snapshot, recorded_at, version, metadata"
@@ -498,16 +500,31 @@ class SQLiteDecisionRepository:
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                task_id=task_id,
+                param="limit",
+                value=limit,
+            )
             raise QueryError(msg)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                task_id=task_id,
+                param="offset",
+                value=offset,
+            )
             raise QueryError(msg)
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             async with self._write_lock:
                 cursor = await self._db.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
                     "WHERE task_id = ? ORDER BY version ASC LIMIT ? OFFSET ?",
-                    (task_id, limit, offset),
+                    (task_id, effective_limit, offset),
                 )
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -568,7 +585,7 @@ class SQLiteDecisionRepository:
                 role_type=type(role_obj).__name__,
                 error=msg,
             )
-            raise ValueError(msg)  # noqa: TRY004  # consistent with unknown-string ValueError below
+            raise QueryError(msg)
         role_str: str = role_obj
         try:
             column = _ROLE_TO_COLUMN[role_str]
@@ -580,13 +597,30 @@ class SQLiteDecisionRepository:
                 role=role_str,
                 error=msg,
             )
-            raise ValueError(msg) from exc
+            raise QueryError(msg) from exc
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                agent_id=agent_id,
+                role=role_str,
+                param="limit",
+                value=limit,
+            )
             raise QueryError(msg)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                agent_id=agent_id,
+                role=role_str,
+                param="offset",
+                value=offset,
+            )
             raise QueryError(msg)
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             # column is a closed-set value from _ROLE_TO_COLUMN, never
             # user-supplied; agent_id flows through the positional
@@ -599,7 +633,10 @@ class SQLiteDecisionRepository:
                 f"LIMIT ? OFFSET ?"
             )
             async with self._write_lock:
-                cursor = await self._db.execute(query, (agent_id, limit, offset))
+                cursor = await self._db.execute(
+                    query,
+                    (agent_id, effective_limit, offset),
+                )
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = (

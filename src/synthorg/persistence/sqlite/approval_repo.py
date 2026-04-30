@@ -23,6 +23,8 @@ from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 
 logger = get_logger(__name__)
 
+_MAX_PAGE_LIMIT: int = 1_000
+
 _APPROVALS_UPSERT_SQL = """
     INSERT INTO approvals (
         id, action_type, title, description, requested_by,
@@ -253,10 +255,25 @@ class SQLiteApprovalRepository:
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                error=msg,
+                param="limit",
+                value=limit,
+            )
             raise QueryError(msg)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                error=msg,
+                param="offset",
+                value=offset,
+            )
             raise QueryError(msg)
+        # Clamp limit at ``_MAX_PAGE_LIMIT`` so a runaway caller cannot
+        # exhaust memory with a single oversized fetch.
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         clauses: list[str] = []
         params: list[object] = []
         if status is not None:
@@ -269,7 +286,7 @@ class SQLiteApprovalRepository:
             clauses.append("action_type = ?")
             params.append(action_type)
         where = " AND ".join(clauses) if clauses else "1=1"
-        params.extend([limit, offset])
+        params.extend([effective_limit, offset])
         sql = f"""
             SELECT id, action_type, title, description, requested_by,
                    risk_level, status, created_at, expires_at,
@@ -278,7 +295,7 @@ class SQLiteApprovalRepository:
             FROM approvals WHERE {where}
             ORDER BY created_at DESC, id DESC
             LIMIT ? OFFSET ?
-        """  # noqa: S608
+        """  # noqa: S608  -- ``where`` is built from a closed set of column predicates
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()

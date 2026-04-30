@@ -205,9 +205,21 @@ RETURNING (xmax = 0) AS created""",
         """List artifacts with optional filters (paginated)."""
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_LIST_FAILED,
+                error=msg,
+                param="limit",
+                value=limit,
+            )
             raise QueryError(msg)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_LIST_FAILED,
+                error=msg,
+                param="offset",
+                value=offset,
+            )
             raise QueryError(msg)
         effective_limit = min(limit, _MAX_LIST_ROWS)
         conditions: list[str] = []

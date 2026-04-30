@@ -26,7 +26,6 @@ from litestar.channels import ChannelsPlugin
 from litestar.exceptions import WebSocketDisconnect
 from litestar.handlers import websocket
 
-from synthorg.api.auth.config import WS_REVALIDATE_INTERVAL_SECONDS
 from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.channels import ALL_CHANNELS, user_channel
 from synthorg.api.controllers.ws_protocol import (
@@ -35,8 +34,11 @@ from synthorg.api.controllers.ws_protocol import (
     matches_filters,
     parse_event_payload,
 )
+from synthorg.api.controllers.ws_revalidation import (
+    _close_socket_safely,
+    _periodic_revalidate,
+)
 from synthorg.api.guards import _READ_ROLES, HumanRole
-from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_AUTH_OK,
@@ -46,200 +48,26 @@ from synthorg.observability.events.api import (
     API_WS_DISCONNECTED,
     API_WS_EVENT_DROPPED,
     API_WS_FRAME_TIMEOUT,
-    API_WS_REVALIDATION_BUDGET_EXHAUSTED,
     API_WS_SEND_FAILED,
     API_WS_TICKET_INVALID,
     API_WS_TRANSPORT_ERROR,
 )
-from synthorg.observability.events.security import SECURITY_SESSION_REVOKED
 
 logger = get_logger(__name__)
 
-# Inbound (client -> server) control-message size cap. Subscribe/unsubscribe
-# /auth/ping payloads max out around 3 KiB even at full filter limits, so 4
-# KiB is a tight DoS guard with deliberate headroom. Mirrored in
-# ``ws_protocol.py`` for the subscribe/unsubscribe path; kept here for
-# first-message-auth validation, which runs before the protocol helpers.
+# Inbound size cap (subscribe/unsubscribe/auth/ping); 4 KiB DoS guard
+# with headroom. Mirrored in ``ws_protocol.py`` for the protocol path.
 _MAX_WS_MESSAGE_BYTES: int = 4096
-# Outbound (server -> client) per-event size cap. Largest realistic event
-# today is COMPANY_UPDATED at ~25-30 KB for a 15+ dept org. 32 KiB covers
-# all current emitters with headroom; oversized events are dropped without
-# closing the socket so a single producer cannot nuke the channel for
-# every subscriber. Mirror in ``web/src/utils/constants.ts`` as
-# ``WS_MAX_MESSAGE_SIZE``.
+# Outbound per-event cap; 32 KiB covers all current emitters. Mirror in
+# ``web/src/utils/constants.ts`` as ``WS_MAX_MESSAGE_SIZE``.
 _MAX_OUTBOUND_EVENT_BYTES: int = 32_768
-# Per-client outbound queue depth before backpressure drops kick in. Sized
-# generously (~64 events) so a brief stall doesn't drop legitimate traffic
-# while still bounding memory at ~2 MB worst case (64 * 32 KiB).
+# Per-client outbound queue depth before backpressure drops kick in.
 _OUTBOUND_QUEUE_DEPTH: int = 64
 
 # Application-layer WS close codes (RFC 6455 §7.4.2: 4000-4999).
+# ``_WS_CLOSE_SERVER_ERROR`` lives in :mod:`ws_revalidation`.
 _WS_CLOSE_AUTH_FAILED: int = 4001
 _WS_CLOSE_FORBIDDEN: int = 4003
-_WS_CLOSE_SERVER_ERROR: int = 4011
-
-# Sliding-window key for revalidation failure tracking. Per-connection
-# limiter is keyed on a constant since each connection has its own
-# limiter instance; using the user_id keeps the log line readable when
-# the budget is exhausted.
-
-
-async def _close_socket_safely(
-    socket: WebSocket[Any, Any, Any],
-    *,
-    code: int,
-    reason: str,
-) -> None:
-    """Best-effort close that logs but does not propagate teardown errors.
-
-    The socket may already be torn down (client disconnected, network
-    blip), but we still want the revocation decision recorded AND the
-    close failure logged so operators can diagnose half-open sockets
-    after a session-revocation event (#1599).
-    """
-    try:
-        await socket.close(code=code, reason=reason)
-    except Exception as exc:
-        logger.warning(
-            API_WS_TRANSPORT_ERROR,
-            reason="socket_close_failed_during_revoke",
-            client=str(socket.client),
-            close_code=code,
-            close_reason=reason,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
-async def _periodic_revalidate(
-    socket: WebSocket[Any, Any, Any],
-    user: AuthenticatedUser,
-    *,
-    interval_seconds: int = WS_REVALIDATE_INTERVAL_SECONDS,
-    failure_window_seconds: int | None = None,
-    failure_max: int | None = None,
-) -> None:
-    """Re-load the user every *interval_seconds* and close on revocation.
-
-    Bounds the post-revocation window to one tick: an admin who
-    deletes the user, demotes the role below ``_READ_ROLES``, or
-    revokes the session sees the WS close within ``interval_seconds``
-    rather than at next disconnect.
-
-    Persistence failures are tracked through a sliding window
-    (``failure_window_seconds`` / ``failure_max``) rather than a
-    streak counter that resets on success: a flaky persistence
-    layer that returns one good response between every failure
-    cluster could otherwise hold a stale-auth WS open indefinitely.
-    Once ``failure_max`` failures are admitted within the window,
-    the connection is closed with the server-error code so the
-    client can reconnect against a healthy replica.
-
-    The defaults track the registered settings:
-    ``api.ws_revalidation_window_seconds`` (60s) and
-    ``api.ws_revalidation_max_failures`` (5).  At construction time
-    the parent passes the values resolved from ``AppState`` so the
-    limiter window matches operator config.
-    """
-    app_state = socket.app.state["app_state"]
-    window = (
-        failure_window_seconds
-        if failure_window_seconds is not None
-        else app_state.ws_revalidation_window_seconds
-    )
-    max_failures = (
-        failure_max
-        if failure_max is not None
-        else app_state.ws_revalidation_max_failures
-    )
-    failure_limiter = _SlidingWindowRateLimiter(
-        max_events=max_failures,
-        window_seconds=float(window),
-    )
-    while True:
-        try:
-            await asyncio.sleep(interval_seconds)
-        except asyncio.CancelledError:
-            return
-        try:
-            db_user = await app_state.persistence.users.get(user.user_id)
-        except Exception as exc:
-            admitted = await failure_limiter.take(user.user_id)
-            logger.warning(
-                API_WS_TRANSPORT_ERROR,
-                reason="revalidate_persistence_error",
-                client=str(socket.client),
-                user_id=user.user_id,
-                window_seconds=window,
-                max_failures=max_failures,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            if not admitted:
-                # TRY400: this is a budget-exhaustion event that
-                # already includes the precipitating exception via the
-                # warning above; an exception() trace here would
-                # duplicate that and bury the structured fields.
-                logger.error(  # noqa: TRY400
-                    API_WS_REVALIDATION_BUDGET_EXHAUSTED,
-                    client=str(socket.client),
-                    user_id=user.user_id,
-                    window_seconds=window,
-                    max_failures=max_failures,
-                )
-                await _close_socket_safely(
-                    socket,
-                    code=_WS_CLOSE_SERVER_ERROR,
-                    reason="Revalidation backend unavailable",
-                )
-                return
-            continue
-
-        revoke_reason = _revocation_reason(db_user, user, app_state)
-        if revoke_reason is not None:
-            logger.info(
-                SECURITY_SESSION_REVOKED,
-                client=str(socket.client),
-                user_id=user.user_id,
-                reason=revoke_reason,
-                trigger="ws_periodic_revalidate",
-            )
-            await _close_socket_safely(
-                socket,
-                code=_WS_CLOSE_FORBIDDEN,
-                reason=f"Session revoked ({revoke_reason})",
-            )
-            return
-
-
-def _revocation_reason(
-    db_user: object | None,
-    user: AuthenticatedUser,
-    app_state: Any,
-) -> str | None:
-    """Return the rejection reason or None when still authorised.
-
-    Three independent gates: the user record (deleted / role-missing /
-    role-demoted), the role allowlist, and the session-revocation
-    set. The session check uses the JWT JTI captured at ticket-issue
-    time and consults the in-memory revoked-session set published by
-    ``session_store`` so an admin's ``DELETE /sessions/{jti}`` kicks
-    the live connection out without waiting for token expiry.
-    """
-    if db_user is None:
-        return "user_deleted"
-    role = getattr(db_user, "role", None)
-    if role is None:
-        return "user_role_missing"
-    if role not in _READ_ROLES:
-        return "role_demoted"
-    if (
-        user.session_id is not None
-        and app_state.has_session_store
-        and app_state.session_store.is_revoked(user.session_id)
-    ):
-        return "session_revoked"
-    return None
 
 
 async def _validate_ticket(
@@ -897,9 +725,9 @@ async def _receive_loop(  # noqa: PLR0913 -- one extra optional kw arg for the t
     The per-frame ``frame_timeout_seconds`` budget caps how long the
     loop waits for the next inbound frame.  A connection that goes
     silent past the budget is closed with policy code 1008 so a
-    silent client cannot indefinitely hold a slot (DoS prevention,
-    issue #1683).  Defaults to ``app_state.ws_frame_timeout_seconds``
-    (registered setting ``api.ws_frame_timeout_seconds``, default 30).
+    silent client cannot indefinitely hold a slot (DoS prevention).
+    Defaults to ``app_state.ws_frame_timeout_seconds`` (registered
+    setting ``api.ws_frame_timeout_seconds``, default 30).
     """
     if frame_timeout_seconds is None:
         app_state = socket.app.state["app_state"]

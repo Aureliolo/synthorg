@@ -197,10 +197,10 @@ CREATE TABLE parked_contexts (
 
 CREATE INDEX idx_pc_agent_id ON parked_contexts(agent_id);
 CREATE INDEX idx_pc_approval_id ON parked_contexts(approval_id);
--- Composite index for "list parked contexts for agent X newest-first"
--- (issue #1683). The ``parked_at DESC`` clause sustains keyset
--- pagination without a sort, and the leading ``agent_id`` predicate
--- is the usual filter at the controller layer.
+-- Composite index for "list parked contexts for agent X newest-first".
+-- The ``parked_at DESC`` clause sustains keyset pagination without a
+-- sort, and the leading ``agent_id`` predicate is the usual filter at
+-- the controller layer.
 CREATE INDEX idx_parked_contexts_agent_parked_at
     ON parked_contexts(agent_id, parked_at DESC);
 
@@ -309,9 +309,9 @@ CREATE TABLE api_keys (
 );
 
 CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
--- Composite index for "list api_keys for user X with stable ordering"
--- (issue #1683). The ``id`` tiebreaker keeps cursor pagination stable
--- when two rows share a ``created_at`` timestamp.
+-- Composite index for "list api_keys for user X with stable ordering".
+-- The ``id`` tiebreaker keeps cursor pagination stable when two rows
+-- share a ``created_at`` timestamp.
 CREATE INDEX idx_api_keys_user_created_id
     ON api_keys(user_id, created_at, id);
 
@@ -1266,7 +1266,7 @@ CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
 -- (AUTOINCREMENT) so it doubles as the keyset pagination cursor.
 -- ``payload`` is JSON-stringified event metadata; credentials
 -- inside payload MUST be masked (``"prefix***last4"``) per SEC-1.
--- Column name aligned with Postgres (issue #1683 schema parity).
+-- Column name aligned with Postgres.
 CREATE TABLE provider_audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     provider_name TEXT NOT NULL CHECK(length(trim(provider_name)) > 0),
@@ -1294,7 +1294,7 @@ CREATE INDEX idx_provider_audit_events_occurred
 CREATE TABLE preset_overrides (
     preset_name TEXT NOT NULL PRIMARY KEY
         CHECK(length(trim(preset_name)) > 0),
-    -- Column names aligned with Postgres (issue #1683 schema parity).
+    -- Column names aligned with Postgres.
     default_models TEXT,
     supported_auth_types TEXT,
     candidate_urls TEXT,
