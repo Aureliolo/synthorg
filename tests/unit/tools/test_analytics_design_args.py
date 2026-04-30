@@ -64,6 +64,49 @@ class TestDataAggregatorArgs:
             )
 
     @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "extra_dates",
+        [
+            pytest.param({"start_date": "2026-01-01"}, id="start_only"),
+            pytest.param({"end_date": "2026-02-01"}, id="end_only"),
+            pytest.param(
+                {"start_date": "2026-01-01", "end_date": "2026-02-01"},
+                id="both",
+            ),
+        ],
+    )
+    def test_non_custom_period_rejects_dates(self, extra_dates: dict[str, str]) -> None:
+        """``start_date`` / ``end_date`` are only allowed with ``period='custom'``."""
+        payload: dict[str, object] = {
+            "metrics": ["x"],
+            "period": "7d",
+            **extra_dates,
+        }
+        with pytest.raises(ValidationError, match="only allowed when period='custom'"):
+            DataAggregatorArgs.model_validate(payload)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "bad_date",
+        # Non-blank but non-ISO-8601 strings.  Whitespace-only inputs
+        # are rejected one layer earlier by ``NotBlankStr``; this
+        # parametrize exercises the ``IsoDateStr`` AfterValidator
+        # specifically.
+        ["not-a-date", "2026/01/01", "tomorrow", "01-01-2026"],
+    )
+    def test_custom_period_rejects_invalid_date_format(self, bad_date: str) -> None:
+        """Non-ISO date strings fail at the ``IsoDateStr`` boundary."""
+        with pytest.raises(ValidationError, match="valid ISO 8601 date"):
+            DataAggregatorArgs.model_validate(
+                {
+                    "metrics": ["x"],
+                    "period": "custom",
+                    "start_date": bad_date,
+                    "end_date": "2026-02-01",
+                },
+            )
+
+    @pytest.mark.unit
     def test_invalid_period_rejected(self) -> None:
         with pytest.raises(ValidationError):
             DataAggregatorArgs.model_validate(
