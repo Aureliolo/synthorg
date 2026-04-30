@@ -142,14 +142,21 @@ conflicts = [
         { group = "fine-tune-cpu" },
     ],
 ]
-# Override transitive `==` pins from upstream that conflict with our own
-# direct pins. Wide-range overrides so Renovate can keep moving the project's
-# exact pins through `[project].dependencies` without ever touching this block.
-# Re-evaluate when BerriAI/litellm#25280 / #25210 close (then these can be dropped).
+# Override transitive `==` pins from upstream (primarily litellm 1.83.x, see
+# BerriAI/litellm#25280 / #25210) that would otherwise force older versions
+# into our resolution. Wide ranges so Renovate keeps driving project pins
+# through `[project].dependencies` without ever touching this block; re-evaluate
+# the whole list when the upstream issues close and `==` constraints relax.
 override-dependencies = [
-    "pydantic>=2.13",
-    "jsonschema>=4.26",
-    "python-dotenv>=1.2.2",
+    "pydantic>=2.13",            # litellm pins ==2.12.5
+    "jsonschema>=4.26",          # litellm pins ==4.23.0
+    "python-dotenv>=1.2.2",      # litellm pins ==1.2.2 (already aligned, kept as guard)
+    "aiohttp>=3.13.5",           # litellm pins ==3.13.4
+    "click>=8.3",                # litellm pins ==8.1.8; 8.2 dropped 3.7/3.8/3.9 support
+    "importlib-metadata>=9.0",   # litellm pins ==8.5.0; 9.0 raises MetadataNotFound on missing metadata
+    "openai>=2.33",              # litellm pins ==2.24.0; 2.25-2.33 are additive
+    "tokenizers>=0.23.1",        # litellm pins ==0.22.2; 0.23.x adds proper Python 3.14 support
+    "typer>=0.25",               # transitive downgrade from litellm's click==8.1.8 + openai==2.24
 ]
 
 [[tool.uv.index]]
