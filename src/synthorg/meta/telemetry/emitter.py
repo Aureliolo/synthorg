@@ -246,13 +246,30 @@ class HttpAnalyticsEmitter:
     async def _enqueue(self, event: AnonymizedOutcomeEvent) -> None:
         """Add event to buffer and maybe flush.
 
-        Silently drops events after ``close()`` has been called.
+        Silently drops events after ``close()`` has been called. The
+        ``_closed`` check is repeated INSIDE the buffer-mutation lock
+        so a producer that passed the early guard cannot append after
+        ``aclose()`` set the flag and drained the buffer; otherwise
+        the post-shutdown event would be stranded forever.
         """
         if self._closed:
             return
         await self._ensure_flush_task()
         should_flush = False
         async with self._lock:
+            if self._closed:
+                # ``aclose()`` set the flag while we were awaiting the
+                # lock or the flush-task helper above; the buffer may
+                # already have been drained. Drop the event rather
+                # than stranding it past shutdown.
+                #
+                # mypy ``[unreachable]`` on the ``return`` below:
+                # mypy narrows ``self._closed`` to ``False`` after the
+                # outer guard, but this is concurrent code; another
+                # coroutine can flip the flag while we ``await
+                # _ensure_flush_task()`` or the lock. The narrowing is
+                # incorrect for async-mutated state.
+                return  # type: ignore[unreachable]
             self._buffer.append(event)
             logger.debug(
                 XDEPLOY_EVENT_QUEUED,

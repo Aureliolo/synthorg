@@ -19,12 +19,14 @@ from synthorg.persistence._shared.datetime_marshaller import (
     format_iso_utc,
     parse_iso_utc,
 )
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 __all__ = (
     "coerce_row_timestamp",
     "format_iso_utc",
     "normalize_utc",
     "parse_iso_utc",
+    "validate_pagination_args",
 )
 
 logger = get_logger(__name__)

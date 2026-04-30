@@ -333,13 +333,15 @@ Failure handling: if a gate fails, fix the failure in this round (don't push bro
 
 ## Phase 11: update state, schedule next tick
 
-1. Update `state.json` (success path: fixes triaged AND pushed, OR convergence reached but PR still open):
+1. Update `state.json` (success path only: Phase 8 fixes triaged AND pushed):
    - `round += 1`
    - `last_head_sha = current_head_sha`
-   - `last_review_id = max(review.id, last_review_id)` (same for the two comment streams). Bumped **only here**, never in Phase 4 / Phase 5 / Phase 6b dismissals.
+   - `last_review_id = max(review.id, last_review_id)` (same for the two comment streams). Bumped **only here**, never in Phase 3 convergence exit / Phase 4 / Phase 5 / Phase 6b dismissals.
    - `last_ci_state = current_ci_state`
    - `last_action_at = <ISO-now>`
    - Append history `{round, action: "fixed_and_pushed", findings: M, sources: {...}}`
+
+   The convergence path (Phase 3) writes its own terminal state entry and exits without bumping cached IDs; if a future tick re-opens the PR with new feedback, those IDs serve as the "watermark from the last triage" so already-triaged items don't get re-processed.
 2. **Max-rounds check:** if `round >= max_rounds`:
    - `AskUserQuestion`: "babysit-pr hit round R/max_rounds on PR #N. Continue / stop / raise cap?"
    - On "continue": apply the user's new cap, reschedule.

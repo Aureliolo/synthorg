@@ -1,12 +1,23 @@
 """API namespace setting definitions.
 
-Registers 31 settings covering server, TLS, CORS, rate limiting
-(global + per-operation sliding-window + per-operation inflight),
-authentication, and setup.  Twelve are runtime-editable (picked up by
-the matching ``SettingsSubscriber`` on change); the remaining nineteen
-are ``restart_required=True`` because Litestar bakes middleware,
-rate-limit budgets, CORS origins, and store backends into the
-application at construction time.
+Registers settings covering server, TLS, CORS, rate limiting (global
++ per-operation sliding-window + per-operation inflight),
+authentication, setup, and the WebSocket frame-receive / revalidation
+budget added in the #1683 reliability bundle.
+
+Counts (kept generic on purpose; the registry below is the
+authoritative source so docstring counts do not silently drift on the
+next addition):
+
+* The majority are ``restart_required=True`` because Litestar bakes
+  middleware, rate-limit budgets, CORS origins, store backends, and
+  WebSocket frame-timeout / revalidation tracker construction into the
+  application at construction time.
+* The remainder are runtime-editable and picked up by the matching
+  ``SettingsSubscriber`` on change.
+* A subset of the restart-required entries also carry
+  ``read_only_post_init=True`` for surfaces that are init-only at the
+  controller construction site (currently the WebSocket budget knobs).
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType

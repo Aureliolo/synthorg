@@ -245,6 +245,14 @@ class InterruptStore:
 
         Returns a deep copy so callers cannot mutate in-store state.
 
+        The deep copy runs **outside** the lock so an arbitrarily large
+        ``Interrupt`` payload doesn't block concurrent ``create`` /
+        ``resolve`` writers for the duration of the copy. The store is
+        only held long enough to snapshot the in-store reference; the
+        reference is immutable for our purposes (``Interrupt`` is a
+        frozen Pydantic model and we only ever replace the dict slot,
+        never mutate in place), so copying after the release is safe.
+
         Args:
             interrupt_id: The interrupt identifier.
 
@@ -253,7 +261,7 @@ class InterruptStore:
         """
         async with self._lock:
             interrupt = self._pending.get(interrupt_id)
-            return copy.deepcopy(interrupt) if interrupt is not None else None
+        return copy.deepcopy(interrupt) if interrupt is not None else None
 
     async def list_pending(
         self,
@@ -263,6 +271,13 @@ class InterruptStore:
 
         Returns deep copies so callers cannot mutate in-store state.
 
+        Snapshots the matching ``Interrupt`` references under the lock,
+        then deep-copies them outside the lock. Same justification as
+        ``get``: the in-store entries are immutable replace-only slots,
+        so a snapshot taken under the lock is safe to copy after
+        release. This keeps a large pending queue's copy cost off the
+        critical path of concurrent ``create`` / ``resolve`` writers.
+
         Args:
             session_id: Filter by session, or ``None`` for all.
 
@@ -271,12 +286,12 @@ class InterruptStore:
         """
         async with self._lock:
             if session_id is None:
-                return tuple(copy.deepcopy(i) for i in self._pending.values())
-            return tuple(
-                copy.deepcopy(i)
-                for i in self._pending.values()
-                if i.session_id == session_id
-            )
+                snapshot: tuple[Interrupt, ...] = tuple(self._pending.values())
+            else:
+                snapshot = tuple(
+                    i for i in self._pending.values() if i.session_id == session_id
+                )
+        return tuple(copy.deepcopy(i) for i in snapshot)
 
     async def resolve(
         self,

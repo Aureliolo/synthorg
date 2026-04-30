@@ -144,6 +144,14 @@ class PostgresEscalationNotifySubscriber:
         # an app across loops.  Create on ``start()``, drop on ``stop()``.
         self._stop_event: asyncio.Event | None = None
         self._start_lock: asyncio.Lock | None = None
+        # Per ``docs/reference/lifecycle-sync.md``: a ``stop()`` drain
+        # that exceeds the hard deadline marks the subscriber
+        # unrestartable so a subsequent ``start()`` cannot attach a
+        # fresh task while the orphan loop still owns the LISTEN
+        # connection. The flag survives the primitive resets in
+        # ``stop()`` so it remains observable on the next ``start()``.
+        self._stop_failed: bool = False
+        self._stop_drain_timeout_seconds: float = 30.0
 
     async def start(self) -> None:
         """Schedule the background subscriber loop.
@@ -158,6 +166,19 @@ class PostgresEscalationNotifySubscriber:
         if self._stop_event is None:
             self._stop_event = asyncio.Event()
         async with self._start_lock:
+            if self._stop_failed:
+                msg = (
+                    "PostgresEscalationNotifySubscriber is unrestartable "
+                    "after a timed-out stop; construct a fresh subscriber "
+                    "instead"
+                )
+                logger.warning(
+                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    channel=self._channel,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise RuntimeError(msg)
             if self._task is not None and not self._task.done():
                 return
             self._stop_event.clear()
@@ -197,20 +218,54 @@ class PostgresEscalationNotifySubscriber:
             if task is None:
                 return
             task.cancel()
+
+            # Spawn the await as a separate task and ``shield`` it from
+            # the outer ``wait_for`` cancellation: if ``_run`` (or any
+            # callee, e.g. a stuck ``subscribe_notifications`` context
+            # manager) suppresses ``CancelledError``, ``await task``
+            # would block INSIDE the lifecycle lock waiting for the
+            # suppressed cancellation to take effect -- the hard
+            # deadline would be soft. Same pattern as
+            # ``MessageBusBridge.stop()``.
+            async def _drain() -> None:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    logger.warning(
+                        CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
             try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception as exc:
-                logger.warning(
-                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                    note="shutdown",
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=self._stop_drain_timeout_seconds,
                 )
-            finally:
-                self._task = None
-                self._stop_event = None
+            except TimeoutError:
+                # Drain exceeded the hard deadline. Mark the subscriber
+                # unrestartable so a future ``start()`` cannot spawn a
+                # fresh ``_run`` while the orphan task still holds the
+                # LISTEN connection.
+                self._stop_failed = True
+                # TRY400: ``logger.exception`` here would append a
+                # ``TimeoutError`` traceback with no actionable
+                # diagnostic information beyond the structured fields.
+                logger.error(  # noqa: TRY400
+                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    channel=self._channel,
+                    error=(
+                        "stop exceeded hard deadline; subscriber marked unrestartable"
+                    ),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
+            self._task = None
+            self._stop_event = None
             logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
         # Release-and-clear last so a racing ``start()`` observes the
         # cleared task before recreating the lock primitive.

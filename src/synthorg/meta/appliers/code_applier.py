@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from synthorg.meta.models import (
     ApplyResult,
     CIValidationResult,
+    CodeChange,
     CodeOperation,
     ImprovementProposal,
     ProposalAltitude,
@@ -35,10 +36,24 @@ from synthorg.observability.events.meta import (
 
 if TYPE_CHECKING:
     from synthorg.meta.config import CodeModificationConfig
-    from synthorg.meta.models import CodeChange
     from synthorg.meta.protocol import CIValidator, GitHubAPI
 
 logger = get_logger(__name__)
+
+
+class PartialWriteError(RuntimeError):
+    """Raised by ``_write_changes`` on partial application failure.
+
+    Carries the ordered subset of ``CodeChange`` instances that were
+    successfully written before the error, so the outer ``apply()``
+    handler can revert ONLY those files. Without this, defensive
+    revert with the full proposal would attempt to undo changes that
+    were never made and could clobber files the proposal never touched.
+    """
+
+    def __init__(self, message: str, *, applied: tuple[CodeChange, ...]) -> None:
+        super().__init__(message)
+        self.applied = applied
 
 
 class CodeApplier:
@@ -115,16 +130,24 @@ class CodeApplier:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as outer_exc:
             logger.exception(
                 META_APPLY_FAILED,
                 altitude="code_modification",
                 proposal_id=str(proposal.id),
             )
+            # Revert ONLY the changes that were actually written. If
+            # the failure surfaced from ``_write_changes`` it carries
+            # the applied-so-far subset on a ``PartialWriteError``;
+            # any other failure path means the inner finally already
+            # reverted (so an empty subset is the safe default).
+            applied_subset: tuple[CodeChange, ...] = ()
+            if isinstance(outer_exc, PartialWriteError):
+                applied_subset = outer_exc.applied
             try:
                 await asyncio.to_thread(
                     self._revert_local_changes,
-                    proposal.code_changes,
+                    applied_subset,
                     project_root,
                     defensive=True,
                 )
@@ -403,7 +426,14 @@ class CodeApplier:
                     error=str(exc),
                 )
                 msg = f"{change.operation.value} failed for '{change.file_path}': {exc}"
-                raise RuntimeError(msg) from exc
+                # Wrap the underlying error so the caller can revert
+                # ONLY the changes that were successfully written
+                # before the failure -- avoids defensive-revert
+                # clobbering files that were never touched.
+                raise PartialWriteError(
+                    msg,
+                    applied=tuple(applied),
+                ) from exc
             applied.append(change)
             changed.append(change.file_path)
             logger.debug(

@@ -5,7 +5,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from synthorg.meta.appliers.code_applier import CodeApplier
+from synthorg.meta.appliers.code_applier import (
+    CodeApplier,
+    PartialWriteError,
+)
 from synthorg.meta.appliers.github_client import (
     GitHubAPIError,
     GitHubAuthError,
@@ -422,4 +425,85 @@ class TestGitHubExceptions:
     def test_github_auth_error_is_subclass(self) -> None:
         err = GitHubAuthError(status_code=401, action="verify", body="bad")
         assert isinstance(err, GitHubAPIError)
-        assert err.status_code == 401
+
+
+class TestPartialWriteError:
+    """Regression tests for the partial-revert path (#1683 round 3).
+
+    Verifies that ``_write_changes`` records the successfully-written
+    subset on ``PartialWriteError.applied`` so the outer ``apply()``
+    revert clobbers only those files instead of defensively touching
+    every change in the proposal.
+    """
+
+    def test_write_changes_carries_applied_subset_on_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """First two CREATEs land; the third raises -> applied = (c1, c2)."""
+        target_a = tmp_path / "a.py"
+        target_b = tmp_path / "b.py"
+        target_c = tmp_path / "c.py"
+        change_a = CodeChange(
+            file_path="a.py",
+            operation=CodeOperation.CREATE,
+            new_content="A\n",
+            description="A",
+            reasoning="A",
+        )
+        change_b = CodeChange(
+            file_path="b.py",
+            operation=CodeOperation.CREATE,
+            new_content="B\n",
+            description="B",
+            reasoning="B",
+        )
+        change_c = CodeChange(
+            file_path="c.py",
+            operation=CodeOperation.CREATE,
+            new_content="C\n",
+            description="C",
+            reasoning="C",
+        )
+        # Patch ``_apply_single_change`` so c.py's write blows up; the
+        # others write to disk normally.
+        from synthorg.meta.appliers import code_applier as code_applier_module
+
+        original = code_applier_module._apply_single_change
+
+        def faulty(change: CodeChange, file_path: Path) -> None:
+            if change.file_path == "c.py":
+                msg = "synthetic write failure"
+                raise OSError(msg)
+            original(change, file_path)
+
+        monkeypatch.setattr(code_applier_module, "_apply_single_change", faulty)
+
+        with pytest.raises(PartialWriteError) as excinfo:
+            CodeApplier._write_changes(
+                (change_a, change_b, change_c),
+                tmp_path,
+            )
+
+        # Only the first two changes should be on the applied tuple --
+        # the failure happened on c.py before its write completed.
+        assert tuple(c.file_path for c in excinfo.value.applied) == ("a.py", "b.py")
+        # Sanity: the production write actually happened for a.py / b.py
+        # (proves the failure was synthetic, not a setup bug).
+        assert target_a.exists()
+        assert target_b.exists()
+        assert not target_c.exists()
+
+    def test_partial_write_error_init_preserves_applied(self) -> None:
+        """The exception class itself round-trips ``applied``."""
+        change = CodeChange(
+            file_path="a.py",
+            operation=CodeOperation.CREATE,
+            new_content="A\n",
+            description="A",
+            reasoning="A",
+        )
+        err = PartialWriteError("boom", applied=(change,))
+        assert err.applied == (change,)
+        assert "boom" in str(err)

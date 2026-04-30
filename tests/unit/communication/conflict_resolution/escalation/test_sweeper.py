@@ -1,6 +1,7 @@
 """Tests for :class:`EscalationExpirationSweeper` (#1418)."""
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -96,6 +97,82 @@ class TestSweeperLifecycle:
         store = InMemoryEscalationStore()
         with pytest.raises(ValueError, match="interval_seconds"):
             EscalationExpirationSweeper(store, interval_seconds=0.5)
+
+    async def test_stop_drain_timeout_marks_unrestartable(self) -> None:
+        """A stop() drain that exceeds the hard deadline marks the
+        sweeper unrestartable so a subsequent start() cannot spawn a
+        fresh task while the orphan loop still owns the store.
+
+        Simulates a stuck _run by running a task that suppresses
+        CancelledError; the deadline is reduced so the test runs in
+        well under a second.
+        """
+        store = InMemoryEscalationStore()
+        sweeper = EscalationExpirationSweeper(store, interval_seconds=1.0)
+        await sweeper.start()
+        task = sweeper._task
+        assert task is not None
+
+        # Replace the real task with one that ignores cancellation by
+        # consuming each ``CancelledError`` and re-suspending until a
+        # test-only "release" event is set. Production equivalent: a
+        # ``_run`` callee that wraps its body in ``except Exception``
+        # plus a re-suspending retry loop, swallowing the cancel signal
+        # without ever returning. The release event is the explicit
+        # teardown hook so the test does not leak the orphan task to
+        # xdist after the assertion completes.
+        release_event = asyncio.Event()
+
+        async def _stuck() -> None:
+            never = asyncio.get_event_loop().create_future()
+            while not release_event.is_set():
+                try:
+                    await asyncio.wait(
+                        [never, asyncio.create_task(release_event.wait())],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                except asyncio.CancelledError:
+                    # The cancel signal increments the task's cancel
+                    # counter; we explicitly clear it so the next await
+                    # does not immediately re-raise. ``uncancel`` was
+                    # added in Python 3.11 for exactly this scenario.
+                    current = asyncio.current_task()
+                    if current is not None:
+                        current.uncancel()
+                    continue
+
+        task.cancel()
+        # Wait the original task out so we do not leak its cancellation.
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        stuck_task = asyncio.create_task(_stuck(), name="stuck-sweeper")
+        sweeper._task = stuck_task
+        sweeper._stop_drain_timeout_seconds = 0.05
+        # Yield once so the stuck task starts and reaches its first
+        # ``await never`` suspend point. Without this yield the task
+        # is still in the "scheduled, not started" state when
+        # ``stop()`` calls ``cancel()``, and asyncio satisfies the
+        # cancel by simply not starting the coroutine -- the task
+        # finishes immediately and the drain returns clean.
+        await asyncio.sleep(0)
+
+        with pytest.raises(TimeoutError):
+            await sweeper.stop()
+        assert sweeper._stop_failed is True
+
+        # A subsequent start() must refuse to spawn a fresh task.
+        with pytest.raises(RuntimeError, match="unrestartable"):
+            await sweeper.start()
+
+        # Release the stuck task so the event loop can drain on
+        # teardown; without this the orphan task survives the test and
+        # ``Task was destroyed but it is pending`` warnings poison
+        # subsequent xdist workers.
+        release_event.set()
+        try:
+            await asyncio.wait_for(stuck_task, timeout=1.0)
+        except asyncio.CancelledError, TimeoutError:
+            stuck_task.cancel()
 
 
 class TestSweeperRunLoop:

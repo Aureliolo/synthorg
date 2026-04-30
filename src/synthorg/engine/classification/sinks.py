@@ -111,11 +111,17 @@ class PerformanceTrackerSink:
                 await self._tracker.record_collaboration_event(record)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                # SEC-1: never use logger.exception here -- the
+                # traceback can leak sensitive locals. Use the
+                # safe-warning shape that the dispatcher sink
+                # already follows.
+                logger.warning(
                     CLASSIFICATION_SINK_ERROR,
                     agent_id=result.agent_id,
                     task_id=result.task_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
 

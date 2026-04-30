@@ -294,3 +294,74 @@ class TestEmitterHttpBehavior:
             )
             # Buffer cleared by flush attempt (events sent to _send_batch).
             assert em.pending_count == 0
+
+
+class TestEmitterCloseEnqueueRace:
+    """Regression tests for the close/enqueue race fix (#1683 round 3).
+
+    Before the fix, ``_enqueue`` only checked ``_closed`` outside the
+    lock. A producer that passed the outer guard would still ``await``
+    ``_ensure_flush_task`` and then take the lock; if ``aclose()`` had
+    set ``_closed`` and drained the buffer in the meantime, the event
+    would be appended to a buffer that nothing was watching anymore --
+    stranded forever.
+
+    The fix re-checks ``_closed`` *inside* the lock and drops the
+    event if ``aclose()`` already shut things down.
+    """
+
+    async def test_enqueue_after_close_inside_lock_drops_event(
+        self,
+        analytics_config: CrossDeploymentAnalyticsConfig,
+        self_improvement_config: SelfImprovementConfig,
+    ) -> None:
+        from unittest.mock import MagicMock
+
+        from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent
+
+        em = HttpAnalyticsEmitter(
+            analytics_config=analytics_config,
+            self_improvement_config=self_improvement_config,
+            builtin_rule_names=BUILTIN_RULE_NAMES,
+        )
+        # Hook the no-op flush-task ensure so we can flip ``_closed``
+        # AFTER the outer guard but BEFORE the lock is acquired -- the
+        # exact race the inner guard exists to defend against.
+        original_ensure = em._ensure_flush_task
+
+        async def race(*args: object, **kwargs: object) -> None:
+            await original_ensure(*args, **kwargs)
+            em._closed = True
+
+        em._ensure_flush_task = race  # type: ignore[method-assign]
+        # Use a spec'd Mock for the event so we don't depend on
+        # ``AnonymizedOutcomeEvent``'s exact field set; we only need
+        # something the buffer-append branch *would* enqueue if the
+        # inner guard were missing.
+        event = MagicMock(spec=AnonymizedOutcomeEvent)
+        event.event_type = "proposal_decision"
+        await em._enqueue(event)
+        # Inner guard MUST drop the event; before the fix this
+        # appended to a buffer that aclose() would never drain.
+        assert em.pending_count == 0
+
+    async def test_enqueue_outer_guard_drops_event_when_already_closed(
+        self,
+        analytics_config: CrossDeploymentAnalyticsConfig,
+        self_improvement_config: SelfImprovementConfig,
+    ) -> None:
+        """Outer guard short-circuits before taking the lock."""
+        from unittest.mock import MagicMock
+
+        from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent
+
+        em = HttpAnalyticsEmitter(
+            analytics_config=analytics_config,
+            self_improvement_config=self_improvement_config,
+            builtin_rule_names=BUILTIN_RULE_NAMES,
+        )
+        em._closed = True
+        event = MagicMock(spec=AnonymizedOutcomeEvent)
+        event.event_type = "proposal_decision"
+        await em._enqueue(event)
+        assert em.pending_count == 0
