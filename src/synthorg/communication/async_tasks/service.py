@@ -17,7 +17,7 @@ from synthorg.communication.message import Message, TextPart
 from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.task_engine_models import CreateTaskData
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
     ASYNC_TASK_CANCELLED,
     ASYNC_TASK_CHECKED,
@@ -114,11 +114,13 @@ class AsyncTaskService:
                 assigned_to=task_spec.agent_id,
                 parent_task_id=task_spec.parent_task_id,
             )
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 ASYNC_TASK_START_FAILED,
                 supervisor_id=supervisor_id,
                 title=task_spec.title,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             if task is not None:
                 try:
@@ -127,12 +129,13 @@ class AsyncTaskService:
                         requested_by=supervisor_id,
                         reason="assignment_failed",
                     )
-                except Exception:
+                except Exception as cancel_exc:
                     logger.warning(
                         ASYNC_TASK_START_FAILED,
                         task_id=task.id,
-                        error="rollback cancel also failed",
-                        exc_info=True,
+                        error_type=type(cancel_exc).__name__,
+                        reason="rollback cancel also failed",
+                        error=safe_error_description(cancel_exc),
                     )
             raise
 

@@ -1,6 +1,7 @@
 """Tests for AgentRegistryService."""
 
 import pytest
+import structlog.testing
 
 from synthorg.core.enums import AgentStatus, SeniorityLevel
 from synthorg.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
@@ -234,6 +235,47 @@ class TestAgentRegistryService:
         fetched = await registry.get(str(identity.id))
         assert fetched is not None
         assert fetched.status == AgentStatus.ON_LEAVE
+
+    async def test_update_status_emits_transition_event(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """update_status emits HR_AGENT_STATUS_TRANSITIONED with
+        from_status / to_status / agent_id AFTER the persistence
+        write so the audit stream records every persisted hop."""
+        identity = make_agent_identity(name="alice", status=AgentStatus.ACTIVE)
+        await registry.register(identity)
+        with structlog.testing.capture_logs() as events:
+            await registry.update_status(
+                str(identity.id),
+                AgentStatus.ON_LEAVE,
+            )
+        transition_events = [
+            e for e in events if e.get("event") == "hr.agent.status_transitioned"
+        ]
+        assert len(transition_events) == 1
+        entry = transition_events[0]
+        assert entry["from_status"] == "active"
+        assert entry["to_status"] == "on_leave"
+        assert entry["agent_id"] == str(identity.id)
+
+    async def test_update_status_noop_skips_transition_event(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """No-op transitions (status unchanged) skip the transition
+        event so the audit stream records actual state changes only."""
+        identity = make_agent_identity(name="alice", status=AgentStatus.ACTIVE)
+        await registry.register(identity)
+        with structlog.testing.capture_logs() as events:
+            await registry.update_status(
+                str(identity.id),
+                AgentStatus.ACTIVE,
+            )
+        transition_events = [
+            e for e in events if e.get("event") == "hr.agent.status_transitioned"
+        ]
+        assert transition_events == []
 
     async def test_update_status_not_found_raises(
         self,

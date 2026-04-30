@@ -156,7 +156,7 @@ class GeneralRetryHandler:
         """
         if self._base == 0:
             return 0.0
-        delay = min(self._base * (2**attempt), self._cap)
+        delay: float = min(self._base * (2**attempt), self._cap)
         if self._jitter:
-            return random.uniform(0, delay)  # noqa: S311
+            return float(random.uniform(0, delay))  # noqa: S311
         return delay

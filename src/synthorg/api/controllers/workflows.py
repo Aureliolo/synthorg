@@ -319,6 +319,19 @@ class WorkflowController(Controller):
                 status_code=422,
             )
 
+        # Audit-chain entry fires BEFORE the persistence write so the
+        # security audit captures intent even if the create itself
+        # fails (the trail then holds the operator's request and the
+        # subsequent error log shows the failure).  Mirrors the
+        # AGENT_DELETED_AUDIT placement in agents.py.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=definition.id,
+            action="create",
+            actor=creator,
+            version_after=definition.version,
+        )
+
         try:
             await _service(state).create_definition(definition, saved_by=creator)
         except WorkflowDefinitionExistsError as exc:
@@ -340,18 +353,6 @@ class WorkflowController(Controller):
 
         # Snapshot recording is handled inside ``WorkflowService`` via the
         # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
-
-        # Audit-chain entry covers schema-level mutations (create /
-        # update / delete).  Workflow execution is already
-        # well-instrumented; this captures the upstream definition
-        # changes that operators need for forensic reconstruction.
-        logger.info(
-            WORKFLOW_DEFINITION_CHANGED,
-            definition_id=definition.id,
-            action="create",
-            actor=creator,
-            version_after=definition.version,
-        )
 
         return Response(
             content=ApiResponse[WorkflowDefinition](data=definition),
@@ -426,6 +427,16 @@ class WorkflowController(Controller):
             )
 
         updater = get_auth_user_id(request)
+        # Audit-chain entry fires BEFORE the persistence write so the
+        # security audit captures intent even if the update fails.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=updated.id,
+            action="update",
+            actor=updater,
+            version_before=existing.version,
+            version_after=updated.version,
+        )
         try:
             await service.update_definition(updated, saved_by=updater)
         except WorkflowDefinitionNotFoundError as exc:
@@ -457,15 +468,6 @@ class WorkflowController(Controller):
         # Snapshot recording is handled inside ``WorkflowService`` via the
         # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
 
-        logger.info(
-            WORKFLOW_DEFINITION_CHANGED,
-            definition_id=updated.id,
-            action="update",
-            actor=updater,
-            version_before=existing.version,
-            version_after=updated.version,
-        )
-
         return Response(
             content=ApiResponse[WorkflowDefinition](data=updated),
         )
@@ -485,6 +487,16 @@ class WorkflowController(Controller):
         workflow_id: PathId,
     ) -> None:
         """Delete a workflow definition and its version history."""
+        # Audit-chain entry fires BEFORE the persistence delete so the
+        # security audit captures intent even if the delete itself
+        # fails.  Mirrors the AGENT_DELETED_AUDIT placement in
+        # agents.py.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=workflow_id,
+            action="delete",
+            actor=get_auth_user_id(request),
+        )
         deleted = await _service(state).delete_definition(workflow_id)
         if not deleted:
             logger.warning(
@@ -493,12 +505,6 @@ class WorkflowController(Controller):
             )
             msg = "Workflow definition not found"
             raise NotFoundError(msg)
-        logger.info(
-            WORKFLOW_DEFINITION_CHANGED,
-            definition_id=workflow_id,
-            action="delete",
-            actor=get_auth_user_id(request),
-        )
 
     @post("/validate-draft", guards=[require_read_access], status_code=200)
     async def validate_draft(

@@ -146,20 +146,26 @@ class DistributedDispatcher:
 
         try:
             await self._retry.execute(publish, task_id=task_id)
-        except Exception:
+        except Exception as exc:
             # Preserve the original, less-severe event on the final
             # failure so downstream monitoring that still filters on
             # ``WORKERS_DISPATCHER_PUBLISH_FAILED`` does not silently
             # stop seeing these failures, and emit the new exhausted
-            # event with the attempt count.
+            # event with the attempt count.  Carrying ``error_type``
+            # lets operators tell transient retry-exhaustion apart
+            # from permanent failures (auth, malformed config) that
+            # the broad ``retryable=lambda _exc: True`` predicate
+            # cannot distinguish on its own.
             logger.exception(
                 WORKERS_DISPATCHER_PUBLISH_FAILED,
                 task_id=task_id,
+                error_type=type(exc).__name__,
             )
             logger.error(  # noqa: TRY400
                 WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
                 task_id=task_id,
                 attempts=_PUBLISH_MAX_ATTEMPTS,
+                error_type=type(exc).__name__,
             )
             return False
         else:

@@ -122,10 +122,23 @@ class TestCASRetryHandler:
             pytest.fail("write should not be called when read raises")
 
         handler = CASRetryHandler(resource="agents", max_attempts=3)
-        with pytest.raises(ValueError, match="invalid"):
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(ValueError, match="invalid"),
+        ):
             await handler.execute(read, write)
 
         assert read_calls == 1
+        # Read errors are propagated immediately and must NOT be
+        # treated as concurrency conflicts; verify no retry log
+        # was emitted.  A future regression that wraps ``await
+        # read()`` inside the retry-on-VersionConflictError branch
+        # would silently turn deterministic validation failures
+        # into retry storms; this assertion catches that.
+        retry_events = [
+            e for e in events if e.get("event") == "api.concurrency.conflict"
+        ]
+        assert retry_events == []
 
     async def test_max_attempts_must_be_positive(self) -> None:
         with pytest.raises(ValueError, match="max_attempts must be >= 1"):

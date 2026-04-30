@@ -152,7 +152,8 @@ class OrgDepartmentMutationsMixin:
         saved_by: str = "api",
     ) -> Department:
         """Update an existing department."""
-        captured: dict[str, Any] = {}
+        captured: dict[str, Department] = {}
+        captured_updates: dict[str, Any] = {}
 
         async def read() -> tuple[tuple[Department, ...], str]:
             _, version = await self._read_setting_versioned(
@@ -187,7 +188,7 @@ class OrgDepartmentMutationsMixin:
                 updated if d.name.lower() == name.lower() else d for d in departments
             )
             self._check_budget_sum(new_departments)
-            captured["updates"] = updates
+            captured_updates.update(updates)
             captured["updated"] = updated
             return new_departments, version
 
@@ -206,7 +207,7 @@ class OrgDepartmentMutationsMixin:
         logger.info(
             API_DEPARTMENT_UPDATED,
             department=name,
-            updated_fields=list(captured["updates"].keys()),
+            updated_fields=list(captured_updates.keys()),
         )
         return captured["updated"]
 

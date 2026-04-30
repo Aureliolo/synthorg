@@ -253,11 +253,11 @@ class InMemoryEscalationStore(EscalationQueueStore):
         # Per-escalation transition log so each PENDING -> EXPIRED hop
         # appears in the audit stream with from_status / to_status, not
         # just the bulk count summary below.
-        for escalation_id, prior_status in expired_pairs:
+        for escalation_id, expired_from in expired_pairs:
             logger.info(
                 CONFLICT_ESCALATION_STATUS_TRANSITIONED,
                 escalation_id=escalation_id,
-                from_status=prior_status.value,
+                from_status=expired_from.value,
                 to_status=EscalationStatus.EXPIRED.value,
             )
         expired_ids = [eid for eid, _ in expired_pairs]

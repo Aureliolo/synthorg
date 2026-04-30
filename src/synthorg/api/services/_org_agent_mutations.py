@@ -209,7 +209,8 @@ class OrgAgentMutationsMixin:
         saved_by: str = "api",
     ) -> AgentConfig:
         """Update an existing agent."""
-        captured: dict[str, Any] = {}
+        captured: dict[str, AgentConfig] = {}
+        captured_updates: dict[str, Any] = {}
 
         async def read() -> tuple[tuple[AgentConfig, ...], str]:
             _, version = await self._read_setting_versioned("company", "agents")
@@ -232,7 +233,7 @@ class OrgAgentMutationsMixin:
             new_agents = tuple(
                 updated if a.name.lower() == name.lower() else a for a in agents
             )
-            captured["updates"] = updates
+            captured_updates.update(updates)
             captured["updated"] = updated
             return new_agents, version
 
@@ -248,7 +249,7 @@ class OrgAgentMutationsMixin:
         logger.info(
             API_AGENT_UPDATED,
             agent=name,
-            updated_fields=list(captured["updates"].keys()),
+            updated_fields=list(captured_updates.keys()),
         )
         return captured["updated"]
 

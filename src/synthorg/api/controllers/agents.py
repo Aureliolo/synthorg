@@ -10,6 +10,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
+from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateAgentOrgRequest,
@@ -306,14 +307,14 @@ class AgentController(Controller):
         )
         # Audit-chain entry: identity-bearing fields (name, role,
         # department, level, model, autonomy) just changed. The actor
-        # is the request principal; the field set is what the request
-        # body declared explicitly via Pydantic ``model_fields_set``.
-        actor = getattr(getattr(request, "user", None), "username", "api")
+        # is the request principal (stable user_id, matching the
+        # workflows.py audit pattern); the field set is what the
+        # request body declared via Pydantic ``model_fields_set``.
         logger.info(
             AGENT_IDENTITY_MODIFIED,
             agent_name=agent_name,
             fields_changed=tuple(data.model_fields_set),
-            actor=actor,
+            actor=get_auth_user_id(request),
         )
         publish_ws_event(
             request,
@@ -359,11 +360,10 @@ class AgentController(Controller):
         # security audit captures intent even if the delete itself
         # fails (the trail then holds the operator's request and the
         # subsequent error log shows the failure).
-        actor = getattr(getattr(request, "user", None), "username", "api")
         logger.info(
             AGENT_DELETED_AUDIT,
             agent_name=agent_name,
-            actor=actor,
+            actor=get_auth_user_id(request),
         )
         await app_state.org_mutation_service.delete_agent(agent_name)
         publish_ws_event(

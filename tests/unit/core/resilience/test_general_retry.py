@@ -181,6 +181,26 @@ class TestGeneralRetryHandler:
         await handler.execute(op)
 
         assert sleep_calls == 0  # base=0 means no sleep
+        # Verify the delay computation itself returns exactly 0.0 so
+        # a future regression that returns a small epsilon (e.g.
+        # ``return self._base or 1e-9``) is caught.
+        assert handler._compute_delay(0) == 0.0
+        assert handler._compute_delay(5) == 0.0
+
+    async def test_jitter_with_base_zero_returns_zero(self) -> None:
+        # Even when jitter=True, base=0 must short-circuit to 0.0
+        # before random sampling so self-correction loops don't
+        # accidentally introduce sleep.
+        handler = GeneralRetryHandler(
+            retryable=_always_retryable,
+            max_attempts=3,
+            base=0.0,
+            cap=0.0,
+            event="test.retry",
+            jitter=True,
+        )
+        assert handler._compute_delay(0) == 0.0
+        assert handler._compute_delay(3) == 0.0
 
     async def test_delay_caps_at_cap_no_jitter(
         self,
