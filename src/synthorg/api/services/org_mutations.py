@@ -20,12 +20,12 @@ from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
 from synthorg.api.services._org_department_mutations import OrgDepartmentMutationsMixin
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Company, Department
-from synthorg.core.domain_errors import ValidationError, VersionConflictError
+from synthorg.core.concurrency import CASRetryHandler
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_COMPANY_UPDATED,
-    API_CONCURRENCY_CONFLICT,
     API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
@@ -41,9 +41,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _BUDGET_PERCENT_CAP = 100.0
-
-# Maximum CAS retry attempts for read-modify-write mutations.
-_MAX_CAS_ATTEMPTS = 2
 
 
 class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
@@ -292,37 +289,27 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         saved_by: str = "api",
     ) -> tuple[dict[str, Any], str]:
         """Update individual company scalar settings."""
-        updated: dict[str, Any] = {}
-        new_etag = ""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                if if_match:
-                    cur_etag = await self._company_snapshot_etag()
-                    check_if_match(if_match, cur_etag, "company")
+        captured: dict[str, Any] = {"updated": {}, "new_etag": ""}
 
-                updated = await self._apply_company_scalars(data)
-                new_etag = await self._company_snapshot_etag()
-                if "budget_monthly" in updated:
-                    await self._snapshot_budget_config(saved_by=saved_by)
-                await self._snapshot_company(saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
-        logger.info(API_COMPANY_UPDATED, fields=list(updated.keys()))
-        return updated, new_etag
+        async def read() -> tuple[UpdateCompanyRequest, str]:
+            # Pre-write precondition runs every attempt: between
+            # attempts a concurrent writer may have changed the
+            # snapshot etag, invalidating the operator's If-Match.
+            if if_match:
+                cur_etag = await self._company_snapshot_etag()
+                check_if_match(if_match, cur_etag, "company")
+            return data, ""
+
+        async def write(payload: UpdateCompanyRequest, _version: str) -> None:
+            captured["updated"] = await self._apply_company_scalars(payload)
+            captured["new_etag"] = await self._company_snapshot_etag()
+            if "budget_monthly" in captured["updated"]:
+                await self._snapshot_budget_config(saved_by=saved_by)
+            await self._snapshot_company(saved_by=saved_by)
+
+        await CASRetryHandler(resource="org_mutation").execute(read, write)
+        logger.info(API_COMPANY_UPDATED, fields=list(captured["updated"].keys()))
+        return captured["updated"], captured["new_etag"]
 
     async def _apply_company_scalars(
         self,

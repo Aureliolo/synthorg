@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Self
 
 import httpx
 
+from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.meta.telemetry.anonymizer import anonymize_decision, anonymize_rollout
 from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent, EventBatch
 from synthorg.observability import get_logger
@@ -41,11 +42,30 @@ logger = get_logger(__name__)
 
 _MAX_RETRIES = 3
 _BACKOFF_BASE_SECONDS = 1.0
+_BACKOFF_CAP_SECONDS = 30.0
 _SUCCESS_MIN = 200
 _SUCCESS_MAX = 300
 _CLIENT_ERROR_MIN = 400
 _SERVER_ERROR_MIN = 500
 _LOG_BODY_MAX_LEN = 500
+
+
+class _TransientPostError(Exception):
+    """Internal sentinel: retryable HTTP failure (network exception, 3xx, 5xx).
+
+    Carries either an HTTP status (3xx / 5xx response) or ``None``
+    when the underlying ``httpx`` call raised a network-layer
+    exception.  Wrapping into a single exception type lets
+    :class:`GeneralRetryHandler` classify retries with one predicate
+    while preserving distinct status logging in the call site.
+    """
+
+    def __init__(self, status: int | None, body: str = "") -> None:
+        self.status = status
+        self.body = body
+        super().__init__(
+            f"transient post failure: status={status} body={body!r}",
+        )
 
 
 class HttpAnalyticsEmitter:
@@ -368,90 +388,66 @@ class HttpAnalyticsEmitter:
     ) -> None:
         """POST a batch of events to the collector with retry.
 
-        Retries up to ``_MAX_RETRIES`` times on 5xx responses
-        with exponential backoff. Drops the batch on 4xx.
-        Treats 3xx redirects as failures.
+        Retries up to ``_MAX_RETRIES`` times on 3xx / 5xx responses
+        and network-layer exceptions with exponential backoff.
+        Drops the batch on 4xx (terminal client error).  Treats 3xx
+        redirects as failures because the POST may not have been
+        stored on the redirect target.
         """
         if self._analytics_config.collector_url is None:
             msg = "collector_url is required when analytics is enabled"
             raise ValueError(msg)
         url = str(self._analytics_config.collector_url).rstrip("/") + "/events"
         payload = EventBatch(events=events).model_dump(mode="json")
+        event_count = len(events)
 
-        for attempt in range(_MAX_RETRIES + 1):
+        async def post_once() -> None:
+            """One POST attempt; raises ``_TransientPostError`` on retry."""
             try:
                 response = await self._client.post(
                     url,
                     json=payload,
                     headers={"Content-Type": "application/json"},
                 )
-            except Exception:
-                await self._handle_send_error(attempt, len(events))
-                continue
-            if self._handle_response(response, attempt, len(events)):
+            except Exception as exc:
+                raise _TransientPostError(None) from exc
+
+            if _SUCCESS_MIN <= response.status_code < _SUCCESS_MAX:
+                logger.info(
+                    XDEPLOY_BATCH_FLUSHED,
+                    event_count=event_count,
+                    status=response.status_code,
+                )
                 return
-            # 5xx: sleep before retry (delay logged by _handle_response).
-            if attempt < _MAX_RETRIES:
-                delay = _BACKOFF_BASE_SECONDS * (2**attempt)
-                await asyncio.sleep(delay)
+            if _CLIENT_ERROR_MIN <= response.status_code < _SERVER_ERROR_MIN:
+                logger.warning(
+                    XDEPLOY_BATCH_DROPPED,
+                    event_count=event_count,
+                    status=response.status_code,
+                    response_body=_safe_response_text(response),
+                )
+                return
+            raise _TransientPostError(
+                response.status_code,
+                _safe_response_text(response),
+            )
 
-        logger.error(
-            XDEPLOY_BATCH_FLUSH_FAILED,
-            event_count=len(events),
-            retries_exhausted=True,
+        retry = GeneralRetryHandler(
+            retryable=lambda exc: isinstance(exc, _TransientPostError),
+            max_attempts=_MAX_RETRIES + 1,
+            base=_BACKOFF_BASE_SECONDS,
+            cap=_BACKOFF_CAP_SECONDS,
+            event=XDEPLOY_BATCH_FLUSH_RETRYING,
+            jitter=False,
         )
-
-    def _handle_response(
-        self,
-        response: httpx.Response,
-        attempt: int,
-        event_count: int,
-    ) -> bool:
-        """Handle HTTP response. Returns True if processing is done."""
-        if _SUCCESS_MIN <= response.status_code < _SUCCESS_MAX:
-            logger.info(
-                XDEPLOY_BATCH_FLUSHED,
-                event_count=event_count,
-                status=response.status_code,
-            )
-            return True
-        if _CLIENT_ERROR_MIN <= response.status_code < _SERVER_ERROR_MIN:
-            body = _safe_response_text(response)
-            logger.warning(
-                XDEPLOY_BATCH_DROPPED,
-                event_count=event_count,
-                status=response.status_code,
-                response_body=body,
-            )
-            return True
-        # 3xx redirects: treat as failure (POST may not be stored).
-        # 5xx: will retry if attempts remain.
-        if attempt < _MAX_RETRIES:
-            logger.warning(
-                XDEPLOY_BATCH_FLUSH_RETRYING,
-                attempt=attempt + 1,
-                status=response.status_code,
-            )
-        return False
-
-    async def _handle_send_error(
-        self,
-        attempt: int,
-        event_count: int,
-    ) -> None:
-        """Handle send exception with retry or final failure."""
-        if attempt < _MAX_RETRIES:
-            delay = _BACKOFF_BASE_SECONDS * (2**attempt)
-            logger.warning(
-                XDEPLOY_BATCH_FLUSH_RETRYING,
-                attempt=attempt + 1,
-                delay_seconds=delay,
-            )
-            await asyncio.sleep(delay)
-        else:
-            logger.exception(
+        try:
+            await retry.execute(post_once, event_count=event_count)
+        except _TransientPostError as exc:
+            logger.error(  # noqa: TRY400 -- exhaustion is expected; no traceback
                 XDEPLOY_BATCH_FLUSH_FAILED,
                 event_count=event_count,
+                retries_exhausted=True,
+                final_status=exc.status,
             )
 
 

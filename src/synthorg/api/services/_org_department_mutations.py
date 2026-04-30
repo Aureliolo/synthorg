@@ -11,14 +11,13 @@ from typing import TYPE_CHECKING, Any
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Department
+from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
-    VersionConflictError,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_CONCURRENCY_CONFLICT,
     API_DEPARTMENT_CREATED,
     API_DEPARTMENT_DELETED,
     API_DEPARTMENT_UPDATED,
@@ -35,8 +34,6 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger(__name__)
-
-_MAX_CAS_ATTEMPTS = 2
 
 
 class OrgDepartmentMutationsMixin:
@@ -98,52 +95,47 @@ class OrgDepartmentMutationsMixin:
         saved_by: str = "api",
     ) -> Department:
         """Create a new department."""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                _, version = await self._read_setting_versioned(
-                    "company",
-                    "departments",
-                )
-                departments = await self._read_departments()
-                if self._find_department(departments, data.name):
-                    msg = f"Department {data.name!r} already exists"
-                    logger.warning(
-                        API_RESOURCE_CONFLICT,
-                        reason=msg,
-                        department=data.name,
-                    )
-                    raise ConflictError(msg)
+        captured: dict[str, Department] = {}
 
-                dept = Department(
-                    name=data.name,
-                    head=data.head,
-                    budget_percent=data.budget_percent,
-                    autonomy_level=data.autonomy_level,
+        async def read() -> tuple[tuple[Department, ...], str]:
+            _, version = await self._read_setting_versioned(
+                "company",
+                "departments",
+            )
+            departments = await self._read_departments()
+            if self._find_department(departments, data.name):
+                msg = f"Department {data.name!r} already exists"
+                logger.warning(
+                    API_RESOURCE_CONFLICT,
+                    reason=msg,
+                    department=data.name,
                 )
-                new_departments = (*departments, dept)
-                self._check_budget_sum(new_departments)
-                await self._write_departments(
-                    new_departments,
-                    expected_updated_at=version,
-                )
-                await self._snapshot_company(saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
+                raise ConflictError(msg)
 
+            dept = Department(
+                name=data.name,
+                head=data.head,
+                budget_percent=data.budget_percent,
+                autonomy_level=data.autonomy_level,
+            )
+            captured["dept"] = dept
+            new_departments = (*departments, dept)
+            self._check_budget_sum(new_departments)
+            return new_departments, version
+
+        async def write(
+            new_departments: tuple[Department, ...],
+            version: str,
+        ) -> None:
+            await self._write_departments(
+                new_departments,
+                expected_updated_at=version,
+            )
+            await self._snapshot_company(saved_by=saved_by)
+
+        await CASRetryHandler(resource="org_mutation").execute(read, write)
+
+        dept = captured["dept"]
         logger.info(
             API_DEPARTMENT_CREATED,
             department=data.name,
@@ -160,69 +152,63 @@ class OrgDepartmentMutationsMixin:
         saved_by: str = "api",
     ) -> Department:
         """Update an existing department."""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                _, version = await self._read_setting_versioned(
-                    "company",
-                    "departments",
-                )
-                departments = await self._read_departments()
-                existing = self._find_department(departments, name)
-                if existing is None:
-                    msg = f"Department {name!r} not found"
-                    logger.warning(
-                        API_RESOURCE_NOT_FOUND,
-                        reason=msg,
-                        department=name,
-                    )
-                    raise NotFoundError(msg)
+        captured: dict[str, Any] = {}
 
-                if if_match:
-                    cur = json.dumps(
-                        existing.model_dump(mode="json"),
-                        sort_keys=True,
-                    )
-                    check_if_match(
-                        if_match,
-                        compute_etag(cur, ""),
-                        f"department:{name}",
-                    )
+        async def read() -> tuple[tuple[Department, ...], str]:
+            _, version = await self._read_setting_versioned(
+                "company",
+                "departments",
+            )
+            departments = await self._read_departments()
+            existing = self._find_department(departments, name)
+            if existing is None:
+                msg = f"Department {name!r} not found"
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    reason=msg,
+                    department=name,
+                )
+                raise NotFoundError(msg)
 
-                updates = self._collect_department_updates(data)
-                updated = existing.model_copy(update=updates, deep=True)
-                new_departments = tuple(
-                    updated if d.name.lower() == name.lower() else d
-                    for d in departments
+            if if_match:
+                cur = json.dumps(
+                    existing.model_dump(mode="json"),
+                    sort_keys=True,
                 )
-                self._check_budget_sum(new_departments)
-                await self._write_departments(
-                    new_departments,
-                    expected_updated_at=version,
+                check_if_match(
+                    if_match,
+                    compute_etag(cur, ""),
+                    f"department:{name}",
                 )
-                await self._snapshot_company(saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
+
+            updates = self._collect_department_updates(data)
+            updated = existing.model_copy(update=updates, deep=True)
+            new_departments = tuple(
+                updated if d.name.lower() == name.lower() else d for d in departments
+            )
+            self._check_budget_sum(new_departments)
+            captured["updates"] = updates
+            captured["updated"] = updated
+            return new_departments, version
+
+        async def write(
+            new_departments: tuple[Department, ...],
+            version: str,
+        ) -> None:
+            await self._write_departments(
+                new_departments,
+                expected_updated_at=version,
+            )
+            await self._snapshot_company(saved_by=saved_by)
+
+        await CASRetryHandler(resource="org_mutation").execute(read, write)
 
         logger.info(
             API_DEPARTMENT_UPDATED,
             department=name,
-            updated_fields=list(updates.keys()),
+            updated_fields=list(captured["updates"].keys()),
         )
-        return updated
+        return captured["updated"]
 
     async def delete_department(
         self,
@@ -230,65 +216,68 @@ class OrgDepartmentMutationsMixin:
         *,
         saved_by: str = "api",
     ) -> None:
-        """Delete a department."""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                await self._try_delete_department(name, saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
+        """Delete a department.
 
-        logger.info(API_DEPARTMENT_DELETED, department=name)
-
-    async def _try_delete_department(
-        self,
-        name: str,
-        *,
-        saved_by: str,
-    ) -> None:
-        """One TOCTOU-safe attempt: CAS on BOTH departments and agents."""
+        TOCTOU-safe: CAS guards both the departments and agents
+        settings simultaneously via ``set_many`` so a concurrent
+        agent reattach cannot race the department removal.
+        """
         from synthorg.api.services._org_serialization import (  # noqa: PLC0415
             json_dump_models as _json_dump_models,
         )
 
-        _, dept_version = await self._read_setting_versioned("company", "departments")
-        _, agents_version = await self._read_setting_versioned("company", "agents")
-        departments = await self._read_departments()
-        if self._find_department(departments, name) is None:
-            msg = f"Department {name!r} not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=name)
-            raise NotFoundError(msg)
+        async def read() -> tuple[dict[str, Any], str]:
+            _, dept_version = await self._read_setting_versioned(
+                "company",
+                "departments",
+            )
+            _, agents_version = await self._read_setting_versioned(
+                "company",
+                "agents",
+            )
+            departments = await self._read_departments()
+            if self._find_department(departments, name) is None:
+                msg = f"Department {name!r} not found"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=name)
+                raise NotFoundError(msg)
 
-        agents = await self._read_agents()
-        self._check_no_attached_agents(name, agents)
+            agents = await self._read_agents()
+            self._check_no_attached_agents(name, agents)
 
-        new_departments = tuple(
-            d for d in departments if d.name.lower() != name.lower()
-        )
-        await self._settings.set_many(
-            [
-                ("company", "departments", _json_dump_models(new_departments)),
-                ("company", "agents", _json_dump_models(agents)),
-            ],
-            expected_updated_at_map={
-                ("company", "departments"): dept_version,
-                ("company", "agents"): agents_version,
-            },
-        )
-        await self._snapshot_company(saved_by=saved_by)
+            new_departments = tuple(
+                d for d in departments if d.name.lower() != name.lower()
+            )
+            payload = {
+                "departments": new_departments,
+                "agents": agents,
+                "dept_version": dept_version,
+                "agents_version": agents_version,
+            }
+            return payload, ""
+
+        async def write(payload: dict[str, Any], _version: str) -> None:
+            await self._settings.set_many(
+                [
+                    (
+                        "company",
+                        "departments",
+                        _json_dump_models(payload["departments"]),
+                    ),
+                    (
+                        "company",
+                        "agents",
+                        _json_dump_models(payload["agents"]),
+                    ),
+                ],
+                expected_updated_at_map={
+                    ("company", "departments"): payload["dept_version"],
+                    ("company", "agents"): payload["agents_version"],
+                },
+            )
+            await self._snapshot_company(saved_by=saved_by)
+
+        await CASRetryHandler(resource="org_mutation").execute(read, write)
+        logger.info(API_DEPARTMENT_DELETED, department=name)
 
     def _check_no_attached_agents(
         self,
@@ -320,45 +309,35 @@ class OrgDepartmentMutationsMixin:
         saved_by: str = "api",
     ) -> tuple[Department, ...]:
         """Reorder departments."""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                _, version = await self._read_setting_versioned(
-                    "company",
-                    "departments",
-                )
-                departments = await self._read_departments()
-                current_names = tuple(d.name for d in departments)
-                self._validate_permutation(
-                    current_names,
-                    data.department_names,
-                    "department",
-                )
 
-                dept_by_lower = {d.name.lower(): d for d in departments}
-                reordered = tuple(
-                    dept_by_lower[n.lower()] for n in data.department_names
-                )
-                await self._write_departments(
-                    reordered,
-                    expected_updated_at=version,
-                )
-                await self._snapshot_company(saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
+        async def read() -> tuple[tuple[Department, ...], str]:
+            _, version = await self._read_setting_versioned(
+                "company",
+                "departments",
+            )
+            departments = await self._read_departments()
+            current_names = tuple(d.name for d in departments)
+            self._validate_permutation(
+                current_names,
+                data.department_names,
+                "department",
+            )
+
+            dept_by_lower = {d.name.lower(): d for d in departments}
+            reordered = tuple(dept_by_lower[n.lower()] for n in data.department_names)
+            return reordered, version
+
+        async def write(
+            reordered: tuple[Department, ...],
+            version: str,
+        ) -> None:
+            await self._write_departments(reordered, expected_updated_at=version)
+            await self._snapshot_company(saved_by=saved_by)
+
+        reordered = await CASRetryHandler(resource="org_mutation").execute(
+            read,
+            write,
+        )
 
         logger.info(
             API_DEPARTMENTS_REORDERED,

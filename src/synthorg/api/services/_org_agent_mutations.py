@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.config.schema import AgentConfig
+from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
     ValidationError,
-    VersionConflictError,
 )
 from synthorg.core.enums import SeniorityLevel
 from synthorg.observability import get_logger
@@ -22,7 +22,6 @@ from synthorg.observability.events.api import (
     API_AGENT_DELETED,
     API_AGENT_UPDATED,
     API_AGENTS_REORDERED,
-    API_CONCURRENCY_CONFLICT,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
@@ -36,8 +35,6 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger(__name__)
-
-_MAX_CAS_ATTEMPTS = 2
 
 
 class OrgAgentMutationsMixin:
@@ -96,69 +93,57 @@ class OrgAgentMutationsMixin:
         saved_by: str = "api",
     ) -> AgentConfig:
         """Create a new agent in the org config."""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                _, version = await self._read_setting_versioned(
-                    "company",
-                    "agents",
-                )
-                departments = await self._read_departments()
-                if not self._find_department(departments, data.department):
-                    msg = f"Department {data.department!r} does not exist"
-                    logger.warning(
-                        API_VALIDATION_FAILED,
-                        reason=msg,
-                        department=data.department,
-                    )
-                    raise ValidationError(msg)
+        captured: dict[str, AgentConfig] = {}
 
-                agents = await self._read_agents()
-                if self._find_agent(agents, data.name):
-                    msg = f"Agent {data.name!r} already exists"
-                    logger.warning(
-                        API_RESOURCE_CONFLICT,
-                        reason=msg,
-                        agent=data.name,
-                    )
-                    raise ConflictError(msg)
-
-                model_dict: dict[str, Any] = {}
-                if data.model_provider is not None:
-                    model_dict = {
-                        "provider": str(data.model_provider),
-                        "model_id": str(data.model_id),
-                    }
-
-                agent = AgentConfig(
-                    name=data.name,
-                    role=data.role,
+        async def read() -> tuple[tuple[AgentConfig, ...], str]:
+            _, version = await self._read_setting_versioned("company", "agents")
+            departments = await self._read_departments()
+            if not self._find_department(departments, data.department):
+                msg = f"Department {data.department!r} does not exist"
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    reason=msg,
                     department=data.department,
-                    level=data.level,
-                    model=model_dict,
                 )
-                new_agents = (*agents, agent)
-                await self._write_agents(
-                    new_agents,
-                    expected_updated_at=version,
-                )
-                await self._snapshot_company(saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
+                raise ValidationError(msg)
 
+            agents = await self._read_agents()
+            if self._find_agent(agents, data.name):
+                msg = f"Agent {data.name!r} already exists"
+                logger.warning(
+                    API_RESOURCE_CONFLICT,
+                    reason=msg,
+                    agent=data.name,
+                )
+                raise ConflictError(msg)
+
+            model_dict: dict[str, Any] = {}
+            if data.model_provider is not None:
+                model_dict = {
+                    "provider": str(data.model_provider),
+                    "model_id": str(data.model_id),
+                }
+
+            agent = AgentConfig(
+                name=data.name,
+                role=data.role,
+                department=data.department,
+                level=data.level,
+                model=model_dict,
+            )
+            captured["agent"] = agent
+            return (*agents, agent), version
+
+        async def write(
+            new_agents: tuple[AgentConfig, ...],
+            version: str,
+        ) -> None:
+            await self._write_agents(new_agents, expected_updated_at=version)
+            await self._snapshot_company(saved_by=saved_by)
+
+        await CASRetryHandler(resource="org_mutation").execute(read, write)
+
+        agent = captured["agent"]
         logger.info(
             API_AGENT_CREATED,
             agent=data.name,
@@ -224,131 +209,86 @@ class OrgAgentMutationsMixin:
         saved_by: str = "api",
     ) -> AgentConfig:
         """Update an existing agent."""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                _, version = await self._read_setting_versioned(
-                    "company",
-                    "agents",
-                )
-                agents = await self._read_agents()
-                existing = self._find_agent(agents, name)
-                if existing is None:
-                    msg = f"Agent {name!r} not found"
-                    logger.warning(
-                        API_RESOURCE_NOT_FOUND,
-                        reason=msg,
-                        agent=name,
-                    )
-                    raise NotFoundError(msg)
+        captured: dict[str, Any] = {}
 
-                if if_match:
-                    cur = json.dumps(
-                        existing.model_dump(mode="json"),
-                        sort_keys=True,
-                    )
-                    check_if_match(
-                        if_match,
-                        compute_etag(cur, ""),
-                        f"agent:{name}",
-                    )
+        async def read() -> tuple[tuple[AgentConfig, ...], str]:
+            _, version = await self._read_setting_versioned("company", "agents")
+            agents = await self._read_agents()
+            existing = self._find_agent(agents, name)
+            if existing is None:
+                msg = f"Agent {name!r} not found"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
+                raise NotFoundError(msg)
 
-                updates = await self._validate_agent_update(
-                    name,
-                    data,
-                    agents,
+            if if_match:
+                cur = json.dumps(
+                    existing.model_dump(mode="json"),
+                    sort_keys=True,
                 )
+                check_if_match(if_match, compute_etag(cur, ""), f"agent:{name}")
 
-                updated = existing.model_copy(update=updates, deep=True)
-                new_agents = tuple(
-                    updated if a.name.lower() == name.lower() else a for a in agents
-                )
-                await self._write_agents(
-                    new_agents,
-                    expected_updated_at=version,
-                )
-                await self._snapshot_company(saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
+            updates = await self._validate_agent_update(name, data, agents)
+            updated = existing.model_copy(update=updates, deep=True)
+            new_agents = tuple(
+                updated if a.name.lower() == name.lower() else a for a in agents
+            )
+            captured["updates"] = updates
+            captured["updated"] = updated
+            return new_agents, version
+
+        async def write(
+            new_agents: tuple[AgentConfig, ...],
+            version: str,
+        ) -> None:
+            await self._write_agents(new_agents, expected_updated_at=version)
+            await self._snapshot_company(saved_by=saved_by)
+
+        await CASRetryHandler(resource="org_mutation").execute(read, write)
 
         logger.info(
             API_AGENT_UPDATED,
             agent=name,
-            updated_fields=list(updates.keys()),
+            updated_fields=list(captured["updates"].keys()),
         )
-        return updated
+        return captured["updated"]
 
     async def delete_agent(self, name: str, *, saved_by: str = "api") -> None:
         """Delete an agent from the org config."""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                _, version = await self._read_setting_versioned(
-                    "company",
-                    "agents",
-                )
-                agents = await self._read_agents()
-                existing = self._find_agent(agents, name)
-                if existing is None:
-                    msg = f"Agent {name!r} not found"
-                    logger.warning(
-                        API_RESOURCE_NOT_FOUND,
-                        reason=msg,
-                        agent=name,
-                    )
-                    raise NotFoundError(msg)
 
-                if (
-                    existing.level == SeniorityLevel.C_SUITE
-                    and existing.role.lower() == "ceo"
-                ):
-                    msg = (
-                        f"Cannot delete CEO agent {name!r} -- reassign or demote first"
-                    )
-                    logger.warning(
-                        API_RESOURCE_CONFLICT,
-                        reason=msg,
-                        agent=name,
-                        level=existing.level.value,
-                        role=existing.role,
-                    )
-                    raise ConflictError(msg)
+        async def read() -> tuple[tuple[AgentConfig, ...], str]:
+            _, version = await self._read_setting_versioned("company", "agents")
+            agents = await self._read_agents()
+            existing = self._find_agent(agents, name)
+            if existing is None:
+                msg = f"Agent {name!r} not found"
+                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
+                raise NotFoundError(msg)
 
-                new_agents = tuple(a for a in agents if a.name.lower() != name.lower())
-                await self._write_agents(
-                    new_agents,
-                    expected_updated_at=version,
+            if (
+                existing.level == SeniorityLevel.C_SUITE
+                and existing.role.lower() == "ceo"
+            ):
+                msg = f"Cannot delete CEO agent {name!r} -- reassign or demote first"
+                logger.warning(
+                    API_RESOURCE_CONFLICT,
+                    reason=msg,
+                    agent=name,
+                    level=existing.level.value,
+                    role=existing.role,
                 )
-                await self._snapshot_company(saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
+                raise ConflictError(msg)
 
+            new_agents = tuple(a for a in agents if a.name.lower() != name.lower())
+            return new_agents, version
+
+        async def write(
+            new_agents: tuple[AgentConfig, ...],
+            version: str,
+        ) -> None:
+            await self._write_agents(new_agents, expected_updated_at=version)
+            await self._snapshot_company(saved_by=saved_by)
+
+        await CASRetryHandler(resource="org_mutation").execute(read, write)
         logger.info(API_AGENT_DELETED, agent=name)
 
     async def reorder_agents(
@@ -359,73 +299,56 @@ class OrgAgentMutationsMixin:
         saved_by: str = "api",
     ) -> tuple[AgentConfig, ...]:
         """Reorder agents within a department."""
-        for attempt in range(_MAX_CAS_ATTEMPTS):
-            try:
-                _, version = await self._read_setting_versioned(
-                    "company",
-                    "agents",
-                )
-                departments = await self._read_departments()
-                if not self._find_department(departments, dept_name):
-                    msg = f"Department {dept_name!r} not found"
-                    logger.warning(
-                        API_RESOURCE_NOT_FOUND,
-                        reason=msg,
-                        department=dept_name,
-                    )
-                    raise NotFoundError(msg)
+        captured: dict[str, tuple[AgentConfig, ...]] = {}
 
-                agents = await self._read_agents()
-                dept_agents = tuple(
-                    a for a in agents if a.department.lower() == dept_name.lower()
+        async def read() -> tuple[tuple[AgentConfig, ...], str]:
+            _, version = await self._read_setting_versioned("company", "agents")
+            departments = await self._read_departments()
+            if not self._find_department(departments, dept_name):
+                msg = f"Department {dept_name!r} not found"
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    reason=msg,
+                    department=dept_name,
                 )
-                current_names = tuple(a.name for a in dept_agents)
-                self._validate_permutation(
-                    current_names,
-                    data.agent_names,
-                    "agent",
-                )
+                raise NotFoundError(msg)
 
-                agent_by_lower = {a.name.lower(): a for a in dept_agents}
-                reordered_dept = tuple(
-                    agent_by_lower[n.lower()] for n in data.agent_names
-                )
+            agents = await self._read_agents()
+            dept_agents = tuple(
+                a for a in agents if a.department.lower() == dept_name.lower()
+            )
+            current_names = tuple(a.name for a in dept_agents)
+            self._validate_permutation(current_names, data.agent_names, "agent")
 
-                new_agents: list[AgentConfig] = []
-                dept_inserted = False
-                dept_lower = dept_name.lower()
-                for a in agents:
-                    if a.department.lower() == dept_lower:
-                        if not dept_inserted:
-                            new_agents.extend(reordered_dept)
-                            dept_inserted = True
-                    else:
-                        new_agents.append(a)
-                if not dept_inserted:
-                    new_agents.extend(reordered_dept)
+            agent_by_lower = {a.name.lower(): a for a in dept_agents}
+            reordered_dept = tuple(agent_by_lower[n.lower()] for n in data.agent_names)
+            captured["reordered_dept"] = reordered_dept
 
-                await self._write_agents(
-                    tuple(new_agents),
-                    expected_updated_at=version,
-                )
-                await self._snapshot_company(saved_by=saved_by)
-                break
-            except VersionConflictError:
-                if attempt == _MAX_CAS_ATTEMPTS - 1:
-                    logger.warning(
-                        API_CONCURRENCY_CONFLICT,
-                        resource="org_mutation",
-                        attempts=_MAX_CAS_ATTEMPTS,
-                    )
-                    raise
-                logger.debug(
-                    API_CONCURRENCY_CONFLICT,
-                    resource="org_mutation",
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_CAS_ATTEMPTS,
-                )
-                continue
+            new_agents: list[AgentConfig] = []
+            dept_inserted = False
+            dept_lower = dept_name.lower()
+            for a in agents:
+                if a.department.lower() == dept_lower:
+                    if not dept_inserted:
+                        new_agents.extend(reordered_dept)
+                        dept_inserted = True
+                else:
+                    new_agents.append(a)
+            if not dept_inserted:
+                new_agents.extend(reordered_dept)
 
+            return tuple(new_agents), version
+
+        async def write(
+            new_agents: tuple[AgentConfig, ...],
+            version: str,
+        ) -> None:
+            await self._write_agents(new_agents, expected_updated_at=version)
+            await self._snapshot_company(saved_by=saved_by)
+
+        await CASRetryHandler(resource="org_mutation").execute(read, write)
+
+        reordered_dept = captured["reordered_dept"]
         logger.info(
             API_AGENTS_REORDERED,
             department=dept_name,
