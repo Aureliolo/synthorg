@@ -1,11 +1,9 @@
 """Tests for RerankerCache."""
 
-import time
-from unittest.mock import patch
-
 import pytest
 
 from synthorg.memory.retrieval.reranking.cache import RerankerCache
+from tests._shared.fake_clock import FakeClock
 
 
 class TestRerankerCache:
@@ -26,15 +24,11 @@ class TestRerankerCache:
 
     @pytest.mark.unit
     async def test_ttl_expiry(self) -> None:
-        cache = RerankerCache(ttl_seconds=1)
+        clock = FakeClock()
+        cache = RerankerCache(ttl_seconds=1, clock=clock)
         await cache.put("key1", ("mem-1",))
-
-        # Patch time.monotonic to simulate passage of time
-        original_monotonic = time.monotonic
-        with patch("synthorg.memory.retrieval.reranking.cache.time") as mock_time:
-            mock_time.monotonic.return_value = original_monotonic() + 2
-            result = await cache.get("key1")
-            assert result is None
+        clock.advance(2.0)
+        assert await cache.get("key1") is None
 
     @pytest.mark.unit
     async def test_lru_eviction(self) -> None:

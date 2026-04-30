@@ -5,10 +5,10 @@ reduce redundant calls to external MCP servers.
 """
 
 import copy
-import time
 from collections import OrderedDict
 from typing import Any
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_CACHE_EVICT,
@@ -40,9 +40,11 @@ class MCPResultCache:
         *,
         max_size: int = 256,
         ttl_seconds: float = 60.0,
+        clock: Clock | None = None,
     ) -> None:
         self._max_size = max_size
         self._ttl_seconds = ttl_seconds
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._cache: OrderedDict[tuple[str, Any], tuple[float, ToolExecutionResult]] = (
             OrderedDict()
         )
@@ -72,7 +74,7 @@ class MCPResultCache:
             return None
 
         timestamp, result = entry
-        if time.monotonic() - timestamp > self._ttl_seconds:
+        if self._clock.monotonic() - timestamp > self._ttl_seconds:
             del self._cache[key]
             logger.debug(
                 MCP_CACHE_MISS,
@@ -119,7 +121,7 @@ class MCPResultCache:
             record_cache_operation(cache_name=_CACHE_NAME, outcome="evict")
 
         if self._max_size > 0:
-            self._cache[key] = (time.monotonic(), copy.deepcopy(result))
+            self._cache[key] = (self._clock.monotonic(), copy.deepcopy(result))
 
     def invalidate(
         self,

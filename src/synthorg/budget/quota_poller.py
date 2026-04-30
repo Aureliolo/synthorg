@@ -10,10 +10,10 @@ Individual poll failures are logged and do not propagate.
 
 import asyncio
 import contextlib
-import time
 from typing import TYPE_CHECKING
 
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.quota import (
     QUOTA_ALERT_COOLDOWN_ACTIVE,
@@ -51,11 +51,17 @@ class QuotaPoller:
         quota_tracker: QuotaTracker,
         config: QuotaPollerConfig,
         notification_dispatcher: NotificationDispatcher | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._tracker = quota_tracker
         self._config = config
         self._dispatcher = notification_dispatcher
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._task: asyncio.Task[None] | None = None
+        # Held across the full body of ``start`` and ``stop`` so the
+        # check-and-mutate of ``self._task`` is atomic against
+        # concurrent callers, per CLAUDE.md "Lifecycle synchronization".
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
         self._cooldown: dict[_CooldownKey, float] = {}
 
     async def start(self) -> None:
@@ -65,28 +71,38 @@ class QuotaPoller:
         repeatedly at the configured interval.  Calling ``start()``
         when already running is a no-op.
         """
-        if self._task is not None and not self._task.done():
-            return
-        if self._task is not None and self._task.done():
-            self._task = None
-        self._task = asyncio.get_running_loop().create_task(
-            self._poll_loop(),
-            name="quota-poller",
-        )
-        logger.info(
-            QUOTA_POLLER_STARTED,
-            interval=self._config.poll_interval_seconds,
-        )
+        async with self._lifecycle_lock:
+            if self._task is not None and not self._task.done():
+                return
+            if self._task is not None and self._task.done():
+                self._task = None
+            self._task = asyncio.get_running_loop().create_task(
+                self._poll_loop(),
+                name="quota-poller",
+            )
+            logger.info(
+                QUOTA_POLLER_STARTED,
+                interval=self._config.poll_interval_seconds,
+            )
 
     async def stop(self) -> None:
         """Cancel the background polling task and wait for it to finish."""
-        if self._task is None or self._task.done():
-            return
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
-        self._task = None
-        logger.info(QUOTA_POLLER_STOPPED)
+        async with self._lifecycle_lock:
+            if self._task is None:
+                return
+            if self._task.done():
+                # The task already exited (e.g. cancellation racing
+                # with a self-finishing loop body). Clear the
+                # reference so a subsequent ``start()`` is treated as
+                # a fresh cold start instead of seeing a stale done
+                # task and short-circuiting.
+                self._task = None
+                return
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+            logger.info(QUOTA_POLLER_STOPPED)
 
     async def poll_once(self) -> None:
         """Execute a single poll cycle.
@@ -130,7 +146,7 @@ class QuotaPoller:
                     QUOTA_POLL_FAILED,
                     error=type(exc).__name__,
                 )
-            await asyncio.sleep(self._config.poll_interval_seconds)
+            await self._clock.sleep(self._config.poll_interval_seconds)
 
     async def _check_snapshot(self, snap: QuotaSnapshot) -> None:
         """Evaluate a single snapshot and dispatch an alert if needed."""
@@ -147,7 +163,7 @@ class QuotaPoller:
             return
 
         key: _CooldownKey = (snap.provider_name, snap.window, level)
-        now = time.monotonic()
+        now = self._clock.monotonic()
         last = self._cooldown.get(key)
         if last is not None:
             elapsed = now - last
@@ -168,7 +184,7 @@ class QuotaPoller:
             level=level,
             usage_pct=usage_pct,
         )
-        self._cooldown[key] = time.monotonic()
+        self._cooldown[key] = self._clock.monotonic()
 
         if self._dispatcher is not None:
             try:

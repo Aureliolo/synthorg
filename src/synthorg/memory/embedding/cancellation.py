@@ -49,3 +49,22 @@ class CancellationToken:
             msg = "Fine-tuning pipeline run was cancelled"
             logger.warning(MEMORY_FINE_TUNE_CANCELLED, source="stage_check")
             raise FineTuneCancelledError(msg)
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Block until cancellation is signalled.
+
+        Useful for stage workers that have nothing to do but wait for
+        a cancel signal (e.g. between batches with no data ready):
+        spinning on ``is_cancelled`` with ``time.sleep`` burns CPU and
+        adds a polling delay before cancel is observed; this method
+        wakes immediately when ``cancel()`` is called.
+
+        Args:
+            timeout: Maximum seconds to wait, or ``None`` to block
+                indefinitely.
+
+        Returns:
+            ``True`` if cancellation was signalled, ``False`` if the
+            wait timed out.
+        """
+        return self._event.wait(timeout)

@@ -2,11 +2,13 @@
 
 import asyncio
 import math
-import time
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.resilience_config import RateLimiterConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
+    PROVIDER_RATE_LIMITER_CANCELLED,
+    PROVIDER_RATE_LIMITER_INVARIANT_VIOLATED,
     PROVIDER_RATE_LIMITER_PAUSED,
     PROVIDER_RATE_LIMITER_THROTTLED,
 )
@@ -24,6 +26,9 @@ class RateLimiter:
     Args:
         config: Rate limiter configuration.
         provider_name: Provider name for logging context.
+        clock: Time source for RPM-window timestamps and pause-until
+            tracking. Defaults to ``SystemClock``; tests inject
+            ``FakeClock`` for deterministic window expiry.
     """
 
     def __init__(
@@ -31,9 +36,11 @@ class RateLimiter:
         config: RateLimiterConfig,
         *,
         provider_name: str,
+        clock: Clock | None = None,
     ) -> None:
         self._config = config
         self._provider_name = provider_name
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._semaphore: asyncio.Semaphore | None = (
             asyncio.Semaphore(config.max_concurrent)
             if config.max_concurrent > 0
@@ -56,13 +63,13 @@ class RateLimiter:
         Blocks until both the RPM window and concurrency semaphore
         allow a new request.  Also respects any active pause.
         """
-        if not self.is_enabled and self._pause_until <= time.monotonic():
+        if not self.is_enabled and self._pause_until <= self._clock.monotonic():
             return
 
         # Respect pause-until from retry_after.
         # Re-check in a loop in case pause() extends _pause_until while sleeping.
         while True:
-            now = time.monotonic()
+            now = self._clock.monotonic()
             remaining = self._pause_until - now
             if remaining <= 0:
                 break
@@ -72,7 +79,24 @@ class RateLimiter:
                 wait_seconds=round(remaining, 2),
                 reason="pause_active",
             )
-            await asyncio.sleep(remaining)
+            try:
+                await self._clock.sleep(remaining)
+            except asyncio.CancelledError:
+                # Surface pause-interrupted cancellation in the audit
+                # trail before re-raising so an oncall debugging a
+                # truncated request can see the rate limiter was the
+                # site that absorbed the cancel signal.
+                # Error path: WARNING per CLAUDE.md "All error paths
+                # must log at WARNING or ERROR with context before
+                # raising". Cancellation is the negative-control path
+                # for this loop, not a normal info-level event.
+                logger.warning(
+                    PROVIDER_RATE_LIMITER_CANCELLED,
+                    provider=self._provider_name,
+                    wait_seconds=round(remaining, 2),
+                    reason="pause_active",
+                )
+                raise
 
         # RPM sliding window
         if self._config.max_requests_per_minute > 0:
@@ -103,7 +127,7 @@ class RateLimiter:
         if not math.isfinite(seconds) or seconds < 0:
             msg = f"pause seconds must be a finite non-negative number, got {seconds!r}"
             raise ValueError(msg)
-        new_until = time.monotonic() + seconds
+        new_until = self._clock.monotonic() + seconds
         if new_until > self._pause_until:
             self._pause_until = new_until
             logger.info(
@@ -123,7 +147,7 @@ class RateLimiter:
 
         while True:
             async with self._rpm_lock:
-                now = time.monotonic()
+                now = self._clock.monotonic()
                 cutoff = now - window
 
                 # Prune timestamps outside the window
@@ -139,12 +163,44 @@ class RateLimiter:
                 oldest = self._request_timestamps[0]
                 wait = oldest - cutoff
 
+            # ``oldest > cutoff`` is the loop entry condition (no slot
+            # available means the deque is full of in-window
+            # timestamps), so ``wait`` is strictly positive here. Use
+            # an explicit runtime check (not ``assert``) so production
+            # builds that strip asserts still enforce the invariant:
+            # silently sleeping zero or negative would bypass the rate
+            # limit entirely. Raising ``RuntimeError`` is the correct
+            # signal for a programming bug; the engine layer treats
+            # non-retryable errors as terminal so the bug surfaces
+            # immediately instead of corrupting the limiter state.
+            if wait <= 0:
+                logger.error(
+                    PROVIDER_RATE_LIMITER_INVARIANT_VIOLATED,
+                    provider=self._provider_name,
+                    wait=wait,
+                    oldest=oldest,
+                    cutoff=cutoff,
+                    reason="rpm_wait_non_positive",
+                )
+                msg = (
+                    f"RPM wait must be > 0; got {wait}, "
+                    f"oldest={oldest}, cutoff={cutoff}"
+                )
+                raise RuntimeError(msg)
             # Sleep outside the lock so other coroutines can proceed.
-            if wait > 0:
-                logger.debug(
-                    PROVIDER_RATE_LIMITER_THROTTLED,
+            logger.debug(
+                PROVIDER_RATE_LIMITER_THROTTLED,
+                provider=self._provider_name,
+                wait_seconds=round(wait, 2),
+                reason="rpm_limit",
+            )
+            try:
+                await self._clock.sleep(wait)
+            except asyncio.CancelledError:
+                logger.warning(
+                    PROVIDER_RATE_LIMITER_CANCELLED,
                     provider=self._provider_name,
                     wait_seconds=round(wait, 2),
                     reason="rpm_limit",
                 )
-                await asyncio.sleep(wait)
+                raise

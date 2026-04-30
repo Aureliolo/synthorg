@@ -7,8 +7,8 @@ timestamps within a configurable window.
 import hashlib
 import math
 from collections import OrderedDict
-from collections.abc import Callable  # noqa: TC003
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import WEBHOOK_REPLAY_DETECTED
 
@@ -37,17 +37,6 @@ def _fingerprint_nonce(nonce: str) -> str:
     return hashlib.sha256(nonce.encode("utf-8", errors="replace")).hexdigest()
 
 
-def _default_clock() -> float:
-    """Wall-clock seconds since the Unix epoch.
-
-    Kept out of the ``time`` import so tests can inject a clock
-    without patching a module-wide name.
-    """
-    import time  # noqa: PLC0415
-
-    return time.time()
-
-
 class ReplayProtector:
     """In-memory nonce + timestamp replay protection.
 
@@ -63,7 +52,11 @@ class ReplayProtector:
     Args:
         window_seconds: Maximum clock skew / replay window.
         max_entries: Maximum nonces retained at once.
-        clock: Wall-clock source (injectable for deterministic tests).
+        clock: Time source (injectable for deterministic tests).
+            Wall-clock epoch values are read via
+            ``clock.now().timestamp()`` so the freshness check
+            compares like-for-like with the attacker-supplied
+            timestamp header.
     """
 
     def __init__(
@@ -71,7 +64,7 @@ class ReplayProtector:
         window_seconds: int = _DEFAULT_WINDOW_SECONDS,
         *,
         max_entries: int = _DEFAULT_MAX_ENTRIES,
-        clock: Callable[[], float] = _default_clock,
+        clock: Clock | None = None,
     ) -> None:
         # Validate up-front so a config typo cannot silently disable
         # replay protection. ``max_entries <= 0`` would evict every
@@ -87,7 +80,7 @@ class ReplayProtector:
         self._window = window_seconds
         self._max_entries = max_entries
         self._seen: OrderedDict[str, float] = OrderedDict()
-        self._clock = clock
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     def check_freshness(self, timestamp: float | None) -> bool:
         """Validate timestamp staleness only (no nonce dedup).
@@ -115,7 +108,7 @@ class ReplayProtector:
             return False
         # Capture once so the comparison and the logged ``skew`` field
         # cannot disagree if the clock advances between calls.
-        now = self._clock()
+        now = self._clock.now().timestamp()
         skew = abs(now - timestamp)
         if skew > self._window:
             logger.warning(
@@ -142,7 +135,7 @@ class ReplayProtector:
             ``True`` if the request is safe (not a replay).
             ``False`` if the request should be rejected.
         """
-        now = self._clock()
+        now = self._clock.now().timestamp()
 
         # Fail closed: when neither a nonce nor a timestamp is supplied
         # the protector has nothing to check against, so accepting the

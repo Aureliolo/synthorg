@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
+    from synthorg.core.clock import Clock
     from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.protocol import (
@@ -65,7 +66,6 @@ if TYPE_CHECKING:
         ProposalGuard,
     )
     from synthorg.meta.rollout.before_after import SnapshotBuilder
-    from synthorg.meta.rollout.clock import Clock
     from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
     from synthorg.meta.rollout.inverse_dispatch import (
         ArchitectureMutator,
@@ -321,7 +321,7 @@ def build_rollout_strategies(
         config: Self-improvement configuration. When provided, supplies
             A/B test config, observation window, and check interval.
         clock: Clock for sleeping and timestamping. Defaults to
-            ``RealClock`` when omitted.
+            ``SystemClock`` when omitted.
         roster: Live agent roster. Defaults to ``NoOpOrgRoster``; the
             service layer should inject a real roster.
         snapshot_builder: Async factory producing the current signal

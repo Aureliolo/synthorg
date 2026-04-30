@@ -30,7 +30,7 @@ from synthorg.meta.rollout.ab_comparator import ABTestComparator
 from synthorg.meta.rollout.ab_test import ABTestRollout
 from synthorg.meta.rollout.before_after import BeforeAfterRollout
 from synthorg.meta.rollout.group_aggregator import GroupSamples
-from tests.unit.meta.rollout._fake_clock import FakeClock
+from tests._shared.fake_clock import FakeClock
 from tests.unit.meta.rollout._ramp import ramp as _ramp
 
 pytestmark = pytest.mark.unit

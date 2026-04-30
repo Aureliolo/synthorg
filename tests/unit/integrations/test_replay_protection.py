@@ -1,25 +1,18 @@
 """Unit tests for webhook replay protection.
 
-All tests use an injected clock so the nonce / timestamp checks
-are fully deterministic -- no dependency on wall-clock time.
+All tests inject a ``FakeClock`` so the nonce / timestamp checks are
+fully deterministic -- no dependency on wall-clock time.
 """
 
 import pytest
 
 from synthorg.integrations.webhooks.replay_protection import ReplayProtector
+from tests._shared.fake_clock import FakeClock
 
 
-class _FakeClock:
-    """Injectable clock for deterministic replay tests."""
-
-    def __init__(self, start: float = 1_700_000_000.0) -> None:
-        self.now = start
-
-    def __call__(self) -> float:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
+def _epoch(clock: FakeClock) -> float:
+    """Return the clock's current wall-clock time as Unix epoch seconds."""
+    return clock.now().timestamp()
 
 
 @pytest.mark.unit
@@ -41,17 +34,18 @@ class TestReplayProtector:
         *,
         expected_second: bool,
     ) -> None:
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
-        protector.check(nonce=first_nonce, timestamp=clock.now)
+        protector.check(nonce=first_nonce, timestamp=_epoch(clock))
         assert (
-            protector.check(nonce=second_nonce, timestamp=clock.now) is expected_second
+            protector.check(nonce=second_nonce, timestamp=_epoch(clock))
+            is expected_second
         )
 
     def test_fresh_request_accepted(self) -> None:
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
-        assert protector.check(nonce="abc", timestamp=clock.now) is True
+        assert protector.check(nonce="abc", timestamp=_epoch(clock)) is True
 
     @pytest.mark.parametrize(
         "skew_seconds",
@@ -62,19 +56,19 @@ class TestReplayProtector:
         self,
         skew_seconds: int,
     ) -> None:
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(window_seconds=60, clock=clock)
-        skewed = clock.now + skew_seconds
+        skewed = _epoch(clock) + skew_seconds
         assert protector.check(nonce="n", timestamp=skewed) is False
 
     def test_none_timestamp_with_nonce_accepted(self) -> None:
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
         assert protector.check(nonce="z", timestamp=None) is True
 
     def test_both_none_fails_closed(self) -> None:
         """Missing both nonce and timestamp must reject the request."""
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
         assert protector.check(nonce=None, timestamp=None) is False
 
@@ -83,14 +77,14 @@ class TestReplayProtector:
             _fingerprint_nonce,
         )
 
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(window_seconds=1, clock=clock)
-        protector.check(nonce="old", timestamp=clock.now)
+        protector.check(nonce="old", timestamp=_epoch(clock))
         old_key = _fingerprint_nonce("old")
         assert old_key in protector._seen
         clock.advance(10)
         # Trigger eviction via a fresh check.
-        protector.check(nonce="new", timestamp=clock.now)
+        protector.check(nonce="new", timestamp=_epoch(clock))
         assert old_key not in protector._seen
 
     def test_bounded_cache_evicts_oldest(self) -> None:
@@ -99,14 +93,14 @@ class TestReplayProtector:
             _fingerprint_nonce,
         )
 
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(
             window_seconds=3600,
             max_entries=3,
             clock=clock,
         )
         for i in range(5):
-            assert protector.check(nonce=f"n{i}", timestamp=clock.now) is True
+            assert protector.check(nonce=f"n{i}", timestamp=_epoch(clock)) is True
         # Only the 3 most recent nonces should remain -- compare
         # against the SHA-256 fingerprints since the cache stores
         # fixed-size digests, not raw attacker-controlled strings.
@@ -127,17 +121,17 @@ class TestReplayProtector:
             MAX_NONCE_CHARS,
         )
 
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
         big_nonce = "a" * (MAX_NONCE_CHARS + 1)
-        assert protector.check(nonce=big_nonce, timestamp=clock.now) is False
+        assert protector.check(nonce=big_nonce, timestamp=_epoch(clock)) is False
         assert not protector._seen
 
     def test_duplicate_detected_after_single_check(self) -> None:
         """A second call with the same nonce must be rejected."""
-        clock = _FakeClock()
+        clock = FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
-        assert protector.check(nonce="once", timestamp=clock.now) is True
+        assert protector.check(nonce="once", timestamp=_epoch(clock)) is True
         # Advance a little but stay inside the window.
         clock.advance(30)
-        assert protector.check(nonce="once", timestamp=clock.now) is False
+        assert protector.check(nonce="once", timestamp=_epoch(clock)) is False

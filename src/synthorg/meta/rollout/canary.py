@@ -9,6 +9,7 @@ yields SUCCESS with the observed elapsed time.
 import hashlib
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
@@ -22,7 +23,6 @@ from synthorg.meta.rollout.before_after import (
     SnapshotBuilder,
     _default_snapshot_builder,
 )
-from synthorg.meta.rollout.clock import Clock, RealClock
 from synthorg.meta.rollout.roster import NoOpOrgRoster, OrgRoster
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
@@ -65,7 +65,7 @@ class CanarySubsetRollout:
             msg = "check_interval_hours must be positive"
             raise ValueError(msg)
         self._canary_fraction = canary_fraction
-        self._clock: Clock = clock or RealClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._roster: OrgRoster = roster or NoOpOrgRoster()
         self._snapshot_builder: SnapshotBuilder = (
             snapshot_builder or _default_snapshot_builder

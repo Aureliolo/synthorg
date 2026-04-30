@@ -15,12 +15,12 @@ adjustments.
 
 import math
 import secrets
-import time
 
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_WS_TICKET_CLEANUP,
@@ -87,6 +87,7 @@ class WsTicketStore:
         ttl_seconds: float = 30.0,
         *,
         max_pending_per_user: int = _MAX_PENDING_PER_USER,
+        clock: Clock | None = None,
     ) -> None:
         if not math.isfinite(ttl_seconds) or ttl_seconds <= 0:
             msg = f"ttl_seconds must be a finite positive number, got {ttl_seconds}"
@@ -96,6 +97,7 @@ class WsTicketStore:
             raise ValueError(msg)
         self._ttl = ttl_seconds
         self._max_pending = max_pending_per_user
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._tickets: dict[str, _TicketEntry] = {}
 
     @property
@@ -128,7 +130,7 @@ class WsTicketStore:
         Returns:
             URL-safe random token string.
         """
-        now = time.monotonic()
+        now = self._clock.monotonic()
         user_pending = sum(
             1
             for e in self._tickets.values()
@@ -141,7 +143,7 @@ class WsTicketStore:
         ticket = secrets.token_urlsafe(get_auth_token_bytes())
         entry = _TicketEntry(
             user=user,
-            expires_at=time.monotonic() + self._ttl,
+            expires_at=self._clock.monotonic() + self._ttl,
         )
         self._tickets[ticket] = entry
         logger.info(
@@ -171,7 +173,7 @@ class WsTicketStore:
             logger.warning(API_WS_TICKET_INVALID, reason="not_found")
             return None
 
-        now = time.monotonic()
+        now = self._clock.monotonic()
         if now > entry.expires_at:
             logger.warning(
                 API_WS_TICKET_EXPIRED,
@@ -197,7 +199,7 @@ class WsTicketStore:
         Returns:
             Number of entries removed.
         """
-        now = time.monotonic()
+        now = self._clock.monotonic()
         expired = [k for k, v in self._tickets.items() if now > v.expires_at]
         for k in expired:
             self._tickets.pop(k, None)

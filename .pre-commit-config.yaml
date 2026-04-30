@@ -162,6 +162,13 @@ repos:
         language: system
         files: ^src/synthorg/.*\.py$
 
+      - id: no-new-bare-mock
+        name: block new bare Mock()/AsyncMock()/MagicMock() in tests/ (#1604)
+        entry: uv
+        args: [run, python, scripts/check_mock_spec.py]
+        language: system
+        files: ^tests/.*\.py$
+
       - id: no-release-please-token
         name: forbid new RELEASE_PLEASE_TOKEN references (#1555)
         entry: uv

@@ -5,7 +5,7 @@ patterns across all error categories.
 """
 
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -33,7 +33,6 @@ from synthorg.engine.loop_protocol import (
     TurnRecord,
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
-from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import Notification
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
@@ -681,20 +680,21 @@ class TestClassificationSinksFlowThrough:
 
     async def test_findings_reach_performance_tracker_and_dispatcher(
         self,
+        mock_dispatcher: AsyncMock,
     ) -> None:
         """Both sinks must see the generated findings.
 
         Uses a live ``PerformanceTracker`` (in-memory) and spies on
-        its ``record_collaboration_event`` method, plus a mock
-        ``NotificationDispatcher`` so we can assert on
+        its ``record_collaboration_event`` method, plus the shared
+        ``mock_dispatcher`` fixture (an ``AsyncMock`` covering the full
+        ``NotificationDispatcher`` interface) so we can assert on
         ``dispatch`` calls without pulling in a real sink.
         """
         tracker = PerformanceTracker()
         record_spy = AsyncMock(wraps=tracker.record_collaboration_event)
         tracker.record_collaboration_event = record_spy  # type: ignore[method-assign]
 
-        dispatcher = MagicMock(spec=NotificationDispatcher)
-        dispatcher.dispatch = AsyncMock()
+        dispatcher = mock_dispatcher
 
         performance_sink = PerformanceTrackerSink(tracker=tracker)
         notification_sink = NotificationDispatcherSink(
@@ -761,10 +761,12 @@ class TestClassificationSinksFlowThrough:
         expected_title = "coordination_failure"
         assert all(expected_title in n.title.lower() for n in dispatched)
 
-    async def test_notification_rate_limiter_caps_alert_storms(self) -> None:
+    async def test_notification_rate_limiter_caps_alert_storms(
+        self,
+        mock_dispatcher: AsyncMock,
+    ) -> None:
         """Per-agent rate limiter drops excess notifications in the window."""
-        dispatcher = MagicMock(spec=NotificationDispatcher)
-        dispatcher.dispatch = AsyncMock()
+        dispatcher = mock_dispatcher
 
         # A deterministic clock so the sliding window behaves
         # predictably during a single-shot classification run.

@@ -15,6 +15,7 @@ from synthorg.engine.evolution.models import (
     AdaptationSource,
 )
 from synthorg.memory.models import MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 
 
 @pytest.mark.unit
@@ -23,9 +24,13 @@ class TestStrategySelectionAdapter:
 
     @pytest.fixture
     def mock_memory_backend(self) -> AsyncMock:
-        """Create a mock MemoryBackend."""
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="memory-id-001")
+        """Create a mock MemoryBackend spec'd against the Protocol."""
+        backend = AsyncMock(spec=MemoryBackend)
+        # Configure the spec'd ``store`` coroutine in place so the
+        # MemoryBackend Protocol constraint is preserved; replacing
+        # ``backend.store`` with a bare ``AsyncMock()`` would drop the
+        # spec and silently absorb any attribute access.
+        backend.store.return_value = "memory-id-001"
         return backend
 
     @pytest.fixture

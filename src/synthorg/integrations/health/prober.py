@@ -7,10 +7,10 @@ Periodically checks the health of all connections with
 import asyncio
 import contextlib
 import copy
-from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     ConnectionStatus,
@@ -24,12 +24,13 @@ from synthorg.integrations.health.checks.github import GitHubHealthCheck
 from synthorg.integrations.health.checks.slack import SlackHealthCheck
 from synthorg.integrations.health.checks.smtp import SmtpHealthCheck
 from synthorg.integrations.health.protocol import ConnectionHealthCheck  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     HEALTH_CHECK_FAILED,
+    HEALTH_PROBER_CONFIG_INVALID,
     HEALTH_PROBER_STARTED,
     HEALTH_PROBER_STOPPED,
-    HEALTH_STATUS_CHANGED,
+    HEALTH_STATUS_TRANSITIONED,
 )
 
 logger = get_logger(__name__)
@@ -87,11 +88,45 @@ class HealthProberService:
         interval_seconds: int = 300,
         unhealthy_threshold: int = 3,
         degraded_threshold: int = 1,
+        clock: Clock | None = None,
     ) -> None:
+        # Validate at the boundary so a misconfigured operator value
+        # surfaces a clear ValueError at construction instead of
+        # crashing the probe task at runtime when the negative value
+        # reaches ``self._clock.sleep`` (which rejects negatives).
+        if interval_seconds <= 0:
+            logger.error(
+                HEALTH_PROBER_CONFIG_INVALID,
+                parameter="interval_seconds",
+                value=interval_seconds,
+            )
+            msg = f"interval_seconds must be positive; got {interval_seconds}"
+            raise ValueError(msg)
+        if degraded_threshold <= 0:
+            logger.error(
+                HEALTH_PROBER_CONFIG_INVALID,
+                parameter="degraded_threshold",
+                value=degraded_threshold,
+            )
+            msg = f"degraded_threshold must be positive; got {degraded_threshold}"
+            raise ValueError(msg)
+        if unhealthy_threshold < degraded_threshold:
+            logger.error(
+                HEALTH_PROBER_CONFIG_INVALID,
+                parameter="unhealthy_threshold",
+                unhealthy_threshold=unhealthy_threshold,
+                degraded_threshold=degraded_threshold,
+            )
+            msg = (
+                f"unhealthy_threshold ({unhealthy_threshold}) must be "
+                f">= degraded_threshold ({degraded_threshold})"
+            )
+            raise ValueError(msg)
         self._catalog = catalog
         self._interval = interval_seconds
         self._unhealthy_threshold = unhealthy_threshold
         self._degraded_threshold = degraded_threshold
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._failure_counts: dict[str, int] = {}
         self._failure_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
@@ -123,12 +158,18 @@ class HealthProberService:
                 await self._probe_all()
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                # Routine probe-loop failure: log a redacted structured
+                # warning instead of ``logger.exception`` (SEC-1: full
+                # tracebacks are reserved for ``MemoryError`` /
+                # ``RecursionError`` per CLAUDE.md).
+                logger.warning(
                     HEALTH_CHECK_FAILED,
-                    error="unexpected error in probe loop",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    reason="unexpected error in probe loop",
                 )
-            await asyncio.sleep(self._interval)
+            await self._clock.sleep(self._interval)
 
     async def _probe_all(self) -> None:
         """Probe all connections with health checks enabled."""
@@ -167,11 +208,15 @@ class HealthProberService:
         # ``TaskGroup``.
         try:
             conn = await self._catalog.get(name)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Routine catalog-load failure: redacted warning, not full
+            # traceback (SEC-1, see _probe_loop comment).
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,
-                error="catalog.get failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="catalog.get failed",
             )
             return
         if conn is None:
@@ -184,58 +229,77 @@ class HealthProberService:
 
         try:
             report = await checker.check(conn)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Routine checker failure: redacted warning, not full
+            # traceback (SEC-1, see _probe_loop comment).
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,
                 connection_type=str(connection_type),
-                error="health checker raised unexpected exception",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="health checker raised unexpected exception",
             )
             return
 
         old_status = conn.health_status
-        now = datetime.now(UTC)
-
-        async with self._failure_lock:
-            if report.status == ConnectionStatus.HEALTHY:
-                self._failure_counts.pop(name, None)
-                new_status = ConnectionStatus.HEALTHY
-            else:
-                count = self._failure_counts.get(name, 0) + 1
-                self._failure_counts[name] = count
-                # Honour ``degraded_threshold``: stay ``HEALTHY`` until
-                # the degraded threshold is reached, transition to
-                # ``DEGRADED`` between the two thresholds, and flip to
-                # ``UNHEALTHY`` only once ``unhealthy_threshold`` is
-                # hit. Previously a single failure forced ``DEGRADED``
-                # regardless of configuration, so raising
-                # ``degraded_threshold`` had no effect.
-                if count >= self._unhealthy_threshold:
-                    new_status = ConnectionStatus.UNHEALTHY
-                elif count >= self._degraded_threshold:
-                    new_status = ConnectionStatus.DEGRADED
-                else:
-                    new_status = ConnectionStatus.HEALTHY
-
-        if old_status != new_status:
-            logger.info(
-                HEALTH_STATUS_CHANGED,
-                connection_name=name,
-                old_status=old_status,
-                new_status=new_status,
-            )
+        now = self._clock.now()
+        new_status = await self._classify_status(name, report.status)
 
         # Same principle: an error inside ``update_health`` must not
-        # cancel sibling TaskGroup probes either.
+        # cancel sibling TaskGroup probes either. The transition log
+        # fires only after the persistence write succeeds (CLAUDE.md
+        # state-transition rule: "Logs fire AFTER the persistence
+        # write succeeds so the audit trail only captures transitions
+        # that actually landed").
         try:
             await self._catalog.update_health(
                 name,
                 status=new_status,
                 checked_at=now,
             )
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Routine catalog-write failure: redacted warning, not
+            # full traceback (SEC-1, see _probe_loop comment).
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,
-                error="catalog.update_health failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="catalog.update_health failed",
             )
+        else:
+            if old_status != new_status:
+                logger.info(
+                    HEALTH_STATUS_TRANSITIONED,
+                    connection_name=name,
+                    from_status=old_status,
+                    to_status=new_status,
+                    checked_at=now,
+                )
+
+    async def _classify_status(
+        self,
+        name: str,
+        report_status: ConnectionStatus,
+    ) -> ConnectionStatus:
+        """Update the per-name failure counter and resolve the new status.
+
+        Honours ``degraded_threshold``: stay ``HEALTHY`` until the
+        degraded threshold is reached, transition to ``DEGRADED``
+        between the two thresholds, and flip to ``UNHEALTHY`` only
+        once ``unhealthy_threshold`` is hit. Previously a single
+        failure forced ``DEGRADED`` regardless of configuration, so
+        raising ``degraded_threshold`` had no effect.
+        """
+        async with self._failure_lock:
+            if report_status == ConnectionStatus.HEALTHY:
+                self._failure_counts.pop(name, None)
+                return ConnectionStatus.HEALTHY
+            count = self._failure_counts.get(name, 0) + 1
+            self._failure_counts[name] = count
+            if count >= self._unhealthy_threshold:
+                return ConnectionStatus.UNHEALTHY
+            if count >= self._degraded_threshold:
+                return ConnectionStatus.DEGRADED
+            return ConnectionStatus.HEALTHY

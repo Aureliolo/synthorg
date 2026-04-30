@@ -8,6 +8,7 @@ import sys
 import time
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
+from typing import Any
 
 # Boot-time guard parity (see synthorg.api.app create_app): every backend
 # boot -- dev, pre-release, prod -- refuses to start with an ephemeral
@@ -48,7 +49,7 @@ from synthorg.persistence import atlas
 # subprocess call individually).  No production code path imports
 # this conftest, so the patch is strictly test-only.
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
-    from typing import Any, cast
+    from typing import cast
 
     _original_popen_init: Any = subprocess.Popen.__init__
 
@@ -443,6 +444,27 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     )
     _TEMPLATE_DB = db_path
     return _TEMPLATE_DB
+
+
+@pytest.fixture
+def mock_dispatcher() -> Any:
+    """``AsyncMock`` conforming to the full ``NotificationDispatcher`` contract.
+
+    Spec covers ``register`` / ``start`` / ``aclose`` / ``dispatch`` so a
+    test cannot accidentally call a method the production class does not
+    expose. Use this fixture in any test that needs to stand in for
+    ``NotificationDispatcher`` -- it replaces the previous
+    ``MagicMock(spec=NotificationDispatcher); dispatcher.dispatch =
+    AsyncMock()`` pattern that defeated the spec by overwriting one
+    method with a bare ``AsyncMock()``.
+    """
+    from unittest.mock import AsyncMock
+
+    from synthorg.notifications.dispatcher import (
+        NotificationDispatcher,
+    )
+
+    return AsyncMock(spec=NotificationDispatcher)
 
 
 @pytest.fixture

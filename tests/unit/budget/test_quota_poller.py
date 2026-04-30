@@ -2,12 +2,13 @@
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
 from synthorg.budget.quota_poller_config import QuotaAlertThresholds, QuotaPollerConfig
+from tests._shared.fake_clock import FakeClock
 
 
 def _snapshot(  # noqa: PLR0913
@@ -35,6 +36,7 @@ def _make_poller(
     *,
     config: QuotaPollerConfig | None = None,
     notification_dispatcher: Any = None,
+    clock: FakeClock | None = None,
 ) -> Any:
     from synthorg.budget.quota_poller import QuotaPoller
 
@@ -45,6 +47,7 @@ def _make_poller(
         quota_tracker=tracker,
         config=config or QuotaPollerConfig(enabled=True),
         notification_dispatcher=notification_dispatcher,
+        clock=clock,
     ), tracker
 
 
@@ -221,20 +224,19 @@ class TestCooldown:
         dispatcher.dispatch = AsyncMock()
         snap = _snapshot(requests_used=90, requests_limit=100)
 
-        # Monotonic clock: first poll at t=0, second poll at t=301 (past cooldown)
-        with patch("synthorg.budget.quota_poller.time") as mock_time:
-            mock_time.monotonic.side_effect = [0.0, 0.0, 301.0, 301.0]
-
-            poller, _ = _make_poller(
-                {"test-provider": (snap,)},
-                config=QuotaPollerConfig(
-                    enabled=True,
-                    cooldown_seconds=300.0,
-                ),
-                notification_dispatcher=dispatcher,
-            )
-            await poller.poll_once()
-            await poller.poll_once()
+        clock = FakeClock()
+        poller, _ = _make_poller(
+            {"test-provider": (snap,)},
+            config=QuotaPollerConfig(
+                enabled=True,
+                cooldown_seconds=300.0,
+            ),
+            notification_dispatcher=dispatcher,
+            clock=clock,
+        )
+        await poller.poll_once()
+        clock.advance(301.0)
+        await poller.poll_once()
 
         assert dispatcher.dispatch.call_count == 2
 

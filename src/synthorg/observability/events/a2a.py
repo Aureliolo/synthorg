@@ -61,6 +61,7 @@ A2A_PEER_DISCOVERED: Final[str] = "a2a.peer.discovered"
 A2A_PUSH_RECEIVED: Final[str] = "a2a.push.received"
 A2A_PUSH_VERIFIED: Final[str] = "a2a.push.verified"
 A2A_PUSH_VERIFICATION_FAILED: Final[str] = "a2a.push.verification_failed"
+A2A_PUSH_VERIFIER_CONFIG_INVALID: Final[str] = "a2a.push.verifier_config_invalid"
 
 # -- JSON-RPC errors -------------------------------------------------------
 

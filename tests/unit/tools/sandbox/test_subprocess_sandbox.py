@@ -306,6 +306,13 @@ class TestExecution:
         self,
         subprocess_sandbox: SubprocessSandbox,
     ) -> None:
+        # The 5 s / 2 s sleep here runs inside the spawned subprocess,
+        # not the test process. Mock time cannot reach across the
+        # process boundary, and the assertion under test ("the
+        # SubprocessSandbox actually kills a long-running child after
+        # the timeout") fundamentally depends on the child genuinely
+        # outliving the timeout. The test's wall-clock cost is bounded
+        # by the 0.5 s timeout (#1604).
         if os.name == "nt":
             result = await subprocess_sandbox.execute(
                 command=sys.executable,

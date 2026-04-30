@@ -2,7 +2,6 @@
 
 import asyncio
 import contextlib
-from unittest import mock
 
 import pytest
 import structlog
@@ -13,6 +12,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_RATE_LIMITER_THROTTLED,
 )
 from synthorg.providers.resilience.rate_limiter import RateLimiter
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -97,116 +97,46 @@ class TestRateLimiterRPM:
 class TestRateLimiterPause:
     async def test_pause_blocks_acquire(self) -> None:
         """acquire() sleeps for the remaining pause duration."""
+        clock = FakeClock()
         config = RateLimiterConfig(max_concurrent=10)
-        limiter = RateLimiter(config, provider_name="test-provider")
+        limiter = RateLimiter(config, provider_name="test-provider", clock=clock)
 
-        # Use a mutable clock instead of call-count to avoid flakiness
-        # when logging or asyncio internals call time.monotonic().
-        current_time = 500_000.0
+        limiter.pause(0.1)
+        await limiter.acquire()
 
-        def time_fn() -> float:
-            return current_time
-
-        slept_for: float | None = None
-
-        async def fake_sleep(seconds: float) -> None:
-            nonlocal current_time, slept_for
-            slept_for = seconds
-            current_time += seconds
-
-        with (
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.time.monotonic",
-                time_fn,
-            ),
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
-                fake_sleep,
-            ),
-        ):
-            limiter.pause(0.1)
-            await limiter.acquire()
-
-        assert slept_for is not None
-        assert slept_for > 0  # must have waited
+        # FakeClock.sleep advances virtual time by the requested
+        # duration, so the acquire() loop converges in one iteration.
+        assert len(clock.sleep_calls) == 1
+        assert clock.sleep_calls[0] > 0
         limiter.release()
 
     async def test_pause_extends_if_longer(self) -> None:
         """A longer second pause extends the pause window."""
+        clock = FakeClock()
         config = RateLimiterConfig(max_concurrent=10)
-        limiter = RateLimiter(config, provider_name="test-provider")
+        limiter = RateLimiter(config, provider_name="test-provider", clock=clock)
 
-        # Use a mutable clock instead of call-count to avoid flakiness
-        # when logging or asyncio internals call time.monotonic().
-        current_time = 600_000.0
+        limiter.pause(0.05)
+        limiter.pause(0.15)  # extends
+        await limiter.acquire()
 
-        def time_fn() -> float:
-            return current_time
-
-        slept_for: float | None = None
-
-        async def fake_sleep(seconds: float) -> None:
-            nonlocal current_time, slept_for
-            slept_for = seconds
-            current_time += seconds
-
-        with (
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.time.monotonic",
-                time_fn,
-            ),
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
-                fake_sleep,
-            ),
-        ):
-            limiter.pause(0.05)
-            limiter.pause(0.15)  # extends
-            await limiter.acquire()
-
-        # Should have waited for the longer pause
-        assert slept_for is not None
-        assert slept_for > 0.10
+        # The remaining-pause sleep should reflect the longer window.
+        assert any(s > 0.10 for s in clock.sleep_calls)
         limiter.release()
 
     async def test_pause_no_extend_if_shorter(self) -> None:
         """A shorter second pause does not reduce the pause window."""
+        clock = FakeClock()
         config = RateLimiterConfig(max_concurrent=10)
-        limiter = RateLimiter(config, provider_name="test-provider")
+        limiter = RateLimiter(config, provider_name="test-provider", clock=clock)
 
-        # Use a mutable clock instead of call-count to avoid flakiness
-        # when logging or asyncio internals call time.monotonic().
-        current_time = 700_000.0
+        limiter.pause(0.15)
+        limiter.pause(0.01)  # shorter, should not reduce
+        await limiter.acquire()
 
-        def time_fn() -> float:
-            return current_time
-
-        slept_for: float | None = None
-
-        async def fake_sleep(seconds: float) -> None:
-            nonlocal current_time, slept_for
-            slept_for = seconds
-            # Advance the clock by the sleep duration so the
-            # acquire() loop converges deterministically.
-            current_time += seconds
-
-        with (
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.time.monotonic",
-                time_fn,
-            ),
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
-                fake_sleep,
-            ),
-        ):
-            limiter.pause(0.15)
-            limiter.pause(0.01)  # shorter, should not reduce
-            await limiter.acquire()
-
-        # Should have waited 0.15s (the original longer pause, not reduced)
-        assert slept_for is not None
-        assert slept_for > 0.10
+        # Should have waited the original 0.15s, not the shorter
+        # 0.01s second-pause.
+        assert any(s > 0.10 for s in clock.sleep_calls)
         limiter.release()
 
     async def test_pause_rejects_negative(self) -> None:
@@ -228,73 +158,30 @@ class TestRateLimiterPause:
 class TestRateLimiterRPMThrottling:
     async def test_rpm_throttles_when_over_limit(self) -> None:
         """acquire() sleeps when RPM budget is exhausted, then retries."""
+        clock = FakeClock()
         config = RateLimiterConfig(max_requests_per_minute=1)
-        limiter = RateLimiter(config, provider_name="test-provider")
+        limiter = RateLimiter(config, provider_name="test-provider", clock=clock)
 
-        base_t = 1_000_000.0
-        slept = False
+        # Fill the single RPM slot.
+        await limiter.acquire()
 
-        async def instant_sleep(seconds: float) -> None:
-            nonlocal slept
-            slept = True
+        # Second acquire must sleep (budget exhausted). Under FakeClock
+        # the acquire-loop call to clock.sleep advances virtual time
+        # past the 60 s window, so the next iteration prunes the
+        # filled slot and admits the request.
+        await limiter.acquire()
 
-        def time_fn() -> float:
-            return base_t if not slept else base_t + 61.0
-
-        # Fill the single RPM slot
-        with mock.patch(
-            "synthorg.providers.resilience.rate_limiter.time.monotonic",
-            time_fn,
-        ):
-            await limiter.acquire()
-
-        # Second acquire must sleep (budget exhausted)
-        with (
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.time.monotonic",
-                time_fn,
-            ),
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
-                instant_sleep,
-            ),
-        ):
-            await limiter.acquire()
-
-        assert slept
+        assert any(s > 0 for s in clock.sleep_calls)
 
     async def test_rpm_throttle_logs_rpm_limit_reason(self) -> None:
         """RPM throttling emits a log entry with reason='rpm_limit'."""
+        clock = FakeClock()
         config = RateLimiterConfig(max_requests_per_minute=1)
-        limiter = RateLimiter(config, provider_name="test-provider")
+        limiter = RateLimiter(config, provider_name="test-provider", clock=clock)
 
-        base_t = 2_000_000.0
-        slept = False
+        await limiter.acquire()
 
-        async def instant_sleep(seconds: float) -> None:
-            nonlocal slept
-            slept = True
-
-        def time_fn() -> float:
-            return base_t if not slept else base_t + 61.0
-
-        with mock.patch(
-            "synthorg.providers.resilience.rate_limiter.time.monotonic",
-            time_fn,
-        ):
-            await limiter.acquire()
-
-        with (
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.time.monotonic",
-                time_fn,
-            ),
-            mock.patch(
-                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
-                instant_sleep,
-            ),
-            structlog.testing.capture_logs() as cap,
-        ):
+        with structlog.testing.capture_logs() as cap:
             await limiter.acquire()
 
         rpm_logs = [e for e in cap if e.get("reason") == "rpm_limit"]

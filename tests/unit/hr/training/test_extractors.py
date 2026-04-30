@@ -16,6 +16,8 @@ from synthorg.hr.training.extractors.tool_patterns import (
     ToolPatternExtractor,
 )
 from synthorg.hr.training.models import ContentType
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 
 def _now() -> datetime:
@@ -65,7 +67,7 @@ class TestProceduralMemoryExtractor:
     """ProceduralMemoryExtractor tests."""
 
     def test_content_type(self) -> None:
-        extractor = ProceduralMemoryExtractor(backend=AsyncMock())
+        extractor = ProceduralMemoryExtractor(backend=AsyncMock(spec=MemoryBackend))
         assert extractor.content_type == ContentType.PROCEDURAL
 
     async def test_extracts_procedural_memories(self) -> None:
@@ -73,7 +75,7 @@ class TestProceduralMemoryExtractor:
             _make_memory_entry(memory_id="m1", content="Lesson 1"),
             _make_memory_entry(memory_id="m2", content="Lesson 2"),
         )
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve.return_value = entries
 
         extractor = ProceduralMemoryExtractor(backend=backend)
@@ -88,7 +90,7 @@ class TestProceduralMemoryExtractor:
         assert items[0].source_memory_id == "m1"
 
     async def test_extracts_from_multiple_agents(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve.side_effect = [
             (_make_memory_entry(agent_id="s1", content="A"),),
             (_make_memory_entry(agent_id="s2", content="B"),),
@@ -103,7 +105,7 @@ class TestProceduralMemoryExtractor:
         assert len(items) == 2
 
     async def test_returns_empty_for_no_agents(self) -> None:
-        extractor = ProceduralMemoryExtractor(backend=AsyncMock())
+        extractor = ProceduralMemoryExtractor(backend=AsyncMock(spec=MemoryBackend))
         items = await extractor.extract(
             source_agent_ids=(),
             new_agent_role="engineer",
@@ -112,7 +114,7 @@ class TestProceduralMemoryExtractor:
         assert items == ()
 
     async def test_returns_empty_when_no_memories(self) -> None:
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve.return_value = ()
 
         extractor = ProceduralMemoryExtractor(backend=backend)
@@ -132,7 +134,7 @@ class TestSemanticMemoryExtractor:
     """SemanticMemoryExtractor tests."""
 
     def test_content_type(self) -> None:
-        extractor = SemanticMemoryExtractor(backend=AsyncMock())
+        extractor = SemanticMemoryExtractor(backend=AsyncMock(spec=MemoryBackend))
         assert extractor.content_type == ContentType.SEMANTIC
 
     async def test_extracts_semantic_memories(self) -> None:
@@ -143,7 +145,7 @@ class TestSemanticMemoryExtractor:
                 category=MemoryCategory.SEMANTIC,
             ),
         )
-        backend = AsyncMock()
+        backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve.return_value = entries
 
         extractor = SemanticMemoryExtractor(backend=backend)
@@ -165,7 +167,7 @@ class TestToolPatternExtractor:
     """ToolPatternExtractor tests."""
 
     def test_content_type(self) -> None:
-        extractor = ToolPatternExtractor(tracker=AsyncMock())
+        extractor = ToolPatternExtractor(tracker=AsyncMock(spec=ToolInvocationTracker))
         assert extractor.content_type == ContentType.TOOL_PATTERNS
 
     async def test_extracts_tool_patterns(self) -> None:
@@ -175,7 +177,7 @@ class TestToolPatternExtractor:
             _make_tool_record(tool_name="api_tool", is_success=False),
             _make_tool_record(tool_name="db_tool", is_success=True),
         )
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=ToolInvocationTracker)
         tracker.get_records.return_value = records
 
         extractor = ToolPatternExtractor(tracker=tracker)
@@ -194,7 +196,7 @@ class TestToolPatternExtractor:
             _make_tool_record(tool_name="api", is_success=True),
             _make_tool_record(tool_name="api", is_success=False),
         )
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=ToolInvocationTracker)
         tracker.get_records.return_value = records
 
         extractor = ToolPatternExtractor(tracker=tracker)
@@ -208,7 +210,7 @@ class TestToolPatternExtractor:
         assert "api" in items[0].content.lower()
 
     async def test_returns_empty_for_no_records(self) -> None:
-        tracker = AsyncMock()
+        tracker = AsyncMock(spec=ToolInvocationTracker)
         tracker.get_records.return_value = ()
 
         extractor = ToolPatternExtractor(tracker=tracker)

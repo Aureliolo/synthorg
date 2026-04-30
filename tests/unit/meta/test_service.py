@@ -18,7 +18,7 @@ from synthorg.meta.models import (
     RolloutOutcome,
 )
 from synthorg.meta.service import SelfImprovementService
-from tests.unit.meta.rollout._fake_clock import FakeClock
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 

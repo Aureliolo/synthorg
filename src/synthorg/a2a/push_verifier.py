@@ -7,12 +7,14 @@ A2A-specific HMAC-SHA256 push notification verification.
 
 import hashlib
 import hmac
-import time
+import math
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
     A2A_PUSH_VERIFICATION_FAILED,
     A2A_PUSH_VERIFIED,
+    A2A_PUSH_VERIFIER_CONFIG_INVALID,
 )
 
 logger = get_logger(__name__)
@@ -29,15 +31,32 @@ class A2APushVerifier:
     Args:
         clock_skew_seconds: Maximum allowed clock skew between
             the push sender and this receiver.
+        clock: Time source for the freshness comparison; tests inject
+            ``FakeClock`` to drive the skew calculation deterministically.
     """
 
-    __slots__ = ("_clock_skew_seconds",)
+    __slots__ = ("_clock", "_clock_skew_seconds")
 
     def __init__(
         self,
         clock_skew_seconds: int = _DEFAULT_CLOCK_SKEW_SECONDS,
+        *,
+        clock: Clock | None = None,
     ) -> None:
+        # Validate at the boundary: a negative skew would let
+        # attacker-supplied future timestamps slip past the freshness
+        # gate. ``0`` is the documented opt-out (no freshness check)
+        # per the ``> 0`` guard in ``verify``.
+        if clock_skew_seconds < 0:
+            logger.warning(
+                A2A_PUSH_VERIFIER_CONFIG_INVALID,
+                reason="clock_skew_seconds must be non-negative",
+                clock_skew_seconds=clock_skew_seconds,
+            )
+            msg = f"clock_skew_seconds must be non-negative; got {clock_skew_seconds}"
+            raise ValueError(msg)
         self._clock_skew_seconds = clock_skew_seconds
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def signature_header(self) -> str:
@@ -81,15 +100,28 @@ class A2APushVerifier:
                     reason="missing timestamp header",
                 )
                 return False
+            # Parse + finiteness in one branch so the function stays
+            # under the 6-return-statement ruff lint cap. A non-finite
+            # timestamp (``float("nan")``) would otherwise bypass the
+            # skew gate because ``abs(now - nan) > skew`` is False;
+            # reject malformed AND non-finite values up-front with the
+            # same fail-closed exit.
             try:
                 timestamp = float(timestamp_str)
-            except ValueError:
+                timestamp_ok = math.isfinite(timestamp)
+            except ValueError, TypeError:
+                # ``TypeError`` covers a non-string header value
+                # slipping through the dict.get default; ``ValueError``
+                # covers malformed strings.
+                timestamp = 0.0
+                timestamp_ok = False
+            if not timestamp_ok:
                 logger.warning(
                     A2A_PUSH_VERIFICATION_FAILED,
-                    reason="malformed timestamp",
+                    reason="malformed or non-finite timestamp",
                 )
                 return False
-            now = time.time()
+            now = self._clock.now().timestamp()
             if abs(now - timestamp) > self._clock_skew_seconds:
                 logger.warning(
                     A2A_PUSH_VERIFICATION_FAILED,
@@ -102,7 +134,16 @@ class A2APushVerifier:
         # Compute expected HMAC-SHA256.
         # When clock skew checking is enabled the timestamp is
         # included in the signed payload to prevent replay attacks.
-        signed_payload = timestamp_str.encode("utf-8") + body if timestamp_str else body
+        # In no-skew mode the timestamp is unvalidated and unrequired,
+        # so it MUST NOT be folded into the HMAC input -- otherwise a
+        # sender that signs only the body but ships a stray
+        # ``x-a2a-timestamp`` header would always fail verification,
+        # making the "no freshness check" mode depend on a header it
+        # neither requires nor validates.
+        include_timestamp = self._clock_skew_seconds > 0 and timestamp_str
+        signed_payload = (
+            timestamp_str.encode("utf-8") + body if include_timestamp else body
+        )
         expected = hmac.new(
             secret.encode("utf-8"),
             signed_payload,

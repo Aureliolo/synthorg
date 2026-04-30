@@ -13,6 +13,10 @@ from synthorg.core.task import Task
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -59,11 +63,14 @@ def _make_ctx_at_turn(
 
 
 def _make_repos() -> tuple[AsyncMock, AsyncMock]:
-    """Build mock checkpoint and heartbeat repositories."""
-    checkpoint_repo = AsyncMock()
-    checkpoint_repo.save = AsyncMock()
-    heartbeat_repo = AsyncMock()
-    heartbeat_repo.save = AsyncMock()
+    """Build mock checkpoint and heartbeat repositories.
+
+    Both mocks are spec'd against their Protocol so a test that calls
+    a method that does not exist on the Protocol fails loudly instead
+    of silently absorbing the call.
+    """
+    checkpoint_repo = AsyncMock(spec=CheckpointRepository)
+    heartbeat_repo = AsyncMock(spec=HeartbeatRepository)
     return checkpoint_repo, heartbeat_repo
 
 

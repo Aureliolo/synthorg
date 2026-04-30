@@ -8,11 +8,11 @@ synchronous ``is_locked`` checks on the auth hot path.
 
 import asyncio
 import threading
-import time
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
@@ -45,12 +45,15 @@ class PostgresLockoutRepository:
         self,
         pool: AsyncConnectionPool,
         config: AuthConfig,
+        *,
+        clock: Clock | None = None,
     ) -> None:
         self._pool = pool
         self._threshold = config.lockout_threshold
         self._window = timedelta(minutes=config.lockout_window_minutes)
         self._duration = timedelta(minutes=config.lockout_duration_minutes)
         self._duration_seconds = config.lockout_duration_minutes * 60
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._locked: dict[str, float] = {}
         # ``_locked_lock`` is held briefly for sync dict mutations and
         # by the auth hot-path ``is_locked`` reader. Holding it across
@@ -82,7 +85,10 @@ class PostgresLockoutRepository:
             locked_until = self._locked.get(username)
             if locked_until is None:
                 return False
-            if time.monotonic() > locked_until:
+            # ``>=`` so an exact-match expiry releases the lock and
+            # evicts the entry; a strict ``>`` would briefly hold a
+            # user past the configured duration.
+            if self._clock.monotonic() >= locked_until:
                 self._locked.pop(username, None)
                 return False
             return True
@@ -100,8 +106,8 @@ class PostgresLockoutRepository:
         """
         dict_row = self._dict_row
 
-        now = datetime.now(UTC)
-        scan_start = now - (self._window + self._duration)
+        scan_now = self._clock.now()
+        scan_start = scan_now - (self._window + self._duration)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
@@ -132,7 +138,14 @@ class PostgresLockoutRepository:
             )
             rows = await cur.fetchall()
 
-        mono_now = time.monotonic()
+        # Resample wall-clock AFTER the DB read so query latency does
+        # not inflate restored lockout durations. ``mono_now`` and
+        # ``restore_now`` are sampled together as the post-query
+        # anchor; computing ``remaining`` from the pre-query
+        # ``scan_now`` would extend every restored lock by the
+        # observed query duration.
+        restore_now = self._clock.now()
+        mono_now = self._clock.monotonic()
         restored = 0
         with self._locked_lock:
             for row in rows:
@@ -140,7 +153,7 @@ class PostgresLockoutRepository:
                 if uname not in self._locked:
                     max_at = row["max_attempted_at"]
                     locked_until = max_at + self._duration
-                    remaining = (locked_until - now).total_seconds()
+                    remaining = (locked_until - restore_now).total_seconds()
                     if remaining > 0:
                         self._locked[uname] = mono_now + remaining
                         restored += 1
@@ -162,7 +175,7 @@ class PostgresLockoutRepository:
     ) -> bool:
         """Record a failed login attempt.  Return ``True`` if now locked."""
         username = username.lower()
-        now = datetime.now(UTC)
+        now = self._clock.now()
         window_start = now - self._window
 
         # Hold ``_write_lock`` across the entire DB tx + cache
@@ -201,7 +214,9 @@ class PostgresLockoutRepository:
             # by the surrounding async tx.
             if now_locked:
                 with self._locked_lock:
-                    self._locked[username] = time.monotonic() + self._duration_seconds
+                    self._locked[username] = (
+                        self._clock.monotonic() + self._duration_seconds
+                    )
         # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
         # fields (attempts, threshold, duration); persistence does not
         # emit decision events (#1599 persistence-boundary rule).
@@ -246,7 +261,7 @@ class PostgresLockoutRepository:
         whose lockouts are still in effect but whose attempt rows
         were pruned.
         """
-        cutoff = datetime.now(UTC) - (self._window + self._duration)
+        cutoff = self._clock.now() - (self._window + self._duration)
         async with (
             self._pool.connection() as conn,
             conn.transaction(),

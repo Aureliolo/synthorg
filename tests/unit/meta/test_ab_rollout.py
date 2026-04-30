@@ -127,7 +127,7 @@ def _ab_rollout(
     roster_size: int = 10,
 ) -> ABTestRollout:
     """Construct an ABTestRollout wired with FakeClock + static roster."""
-    from tests.unit.meta.rollout._fake_clock import FakeClock
+    from tests._shared.fake_clock import FakeClock
 
     return ABTestRollout(
         control_fraction=control_fraction,

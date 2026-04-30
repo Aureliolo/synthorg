@@ -1,12 +1,10 @@
 """Tests for MCP result cache."""
 
-import time
-from unittest.mock import patch
-
 import pytest
 
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.mcp.cache import MCPResultCache, _make_hashable
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -57,15 +55,11 @@ class TestCacheTTL:
     """TTL expiry behavior."""
 
     def test_expired_entry_returns_none(self) -> None:
-        cache = MCPResultCache(max_size=10, ttl_seconds=0.5)
-        result = ToolExecutionResult(content="old")
-        cache.put("tool", {}, result)
-
-        # Mock time to simulate expiry
-        original_time = time.monotonic()
-        with patch("synthorg.tools.mcp.cache.time") as mock_time:
-            mock_time.monotonic.return_value = original_time + 1.0
-            assert cache.get("tool", {}) is None
+        clock = FakeClock()
+        cache = MCPResultCache(max_size=10, ttl_seconds=0.5, clock=clock)
+        cache.put("tool", {}, ToolExecutionResult(content="old"))
+        clock.advance(1.0)
+        assert cache.get("tool", {}) is None
 
     def test_fresh_entry_returns_result(self) -> None:
         cache = MCPResultCache(max_size=10, ttl_seconds=60.0)
