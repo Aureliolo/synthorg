@@ -592,7 +592,7 @@ def _is_within(candidate: Path, root: Path) -> bool:
     return True
 
 
-def _revert_single_change(
+def _revert_single_change(  # noqa: C901 -- linear branch tree per CodeOperation, splitting hides the parallel structure
     change: CodeChange,
     path: Path,
     *,
@@ -607,8 +607,18 @@ def _revert_single_change(
             change was applied (prevents overwriting untouched files).
     """
     if change.operation == CodeOperation.CREATE:
-        if defensive and not path.exists():
-            return
+        if defensive:
+            # Only delete if the file's current contents match what
+            # ``_apply_single_change`` would have written. Without this
+            # check, defensive revert of a CREATE proposal whose target
+            # accidentally pre-existed (caused the precondition failure
+            # in ``_apply_single_change``) would clobber the operator's
+            # pre-existing file.
+            if not path.exists():
+                return
+            current = path.read_text(encoding="utf-8")
+            if current != change.new_content:
+                return
         path.unlink(missing_ok=True)
     elif change.operation == CodeOperation.MODIFY:
         if defensive:

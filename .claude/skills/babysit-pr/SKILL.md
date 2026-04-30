@@ -20,6 +20,10 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
 
 **Rule (mandatory):** When fixes are needed, fix EVERYTHING valid in this round. No "out of scope", no "pre-existing", no "too big", no "older non-touched code". The only items skipped are ones factually wrong (verified against current code, not vibes); each skip is logged in the round-history entry with the reason.
 
+**First-tick semantics:** On a fresh state file (`last_review_id == 0` and the other ID fields at 0), every existing review / inline comment / issue comment counts as "new" relative to the cached IDs. That's intentional: the loop's first invocation against an already-active PR must triage everything that has piled up before babysit started watching, not just deltas going forward. CodeRabbit-mid-processing is the typical first-tick state on a freshly-opened PR; the right response is to wait (Phase 4 no-op) so the *next* tick batches CodeRabbit's findings together with any earlier reviewers (Gemini, Copilot, Greptile, human reviewers) into one push. The cached-ID hygiene rule below is what makes that batching work.
+
+**Cached-ID hygiene (CRITICAL):** `last_review_id`, `last_pr_comment_id`, and `last_issue_comment_id` advance ONLY in Phase 11, after Phase 8 fixes have been pushed. Phase 4 early-exits (rate-limit dance, "currently processing") and Phase 5 no-ops MUST NOT bump these IDs; if they did, items not yet triaged would silently fall out of scope on the next tick. `last_head_sha` is a separate concern and may advance on every tick (it tracks "what commit have we seen", not "what feedback have we processed"). `round` increments at the END of every tick (success path or otherwise) so the printed round number monotonically counts wakeups.
+
 **Security alerts (CodeQL / code-scanning, Dependabot, Secret Scanning) are NEVER allowed to sit open.** Each open alert in scope for this PR must be either (a) fixed in the source code in this round, or (b) explicitly dismissed via the GitHub API with one of the sanctioned reasons (Phase 6b). Silent acceptance ("we'll get to it later", "not blocking", "third-party issue") is forbidden. The only sanctioned exits are FIX or DISMISS WITH REASON.
 
 **Socket Security** alerts surface as PR-level review comments, not via a dedicated GitHub API. Treat them as part of the regular reviewer feedback in Phase 6 (FIX in code or, if a verified false-positive, post an `@socket-security ignore-rule <rule>` reply on the comment thread per Socket's ignore syntax). Convergence (Phase 3) does not gate on a separate Socket Security counter; the "no new comments since cached IDs" branch already covers Socket's PR-comment flow.
@@ -166,7 +170,11 @@ Inspect the most recent CodeRabbit-authored item across reviews + issue comments
 gh api "repos/$OWNER_REPO/issues/$PR/comments" -X POST -f body='@coderabbitai review'
 ```
 
-Then increment `rate_limit_pings`, append history `{round, action: "rate_limit_ping", ping_count: K}`, ScheduleWakeup, exit.
+Then increment `rate_limit_pings`, increment `round`, append history `{round, action: "rate_limit_ping", ping_count: K}`, write state, ScheduleWakeup, exit.
+
+**No-op exit (`currently processing`):** increment `round`, append history `{round, action: "coderabbit_processing", reviewers_seen: [...]}`, write state, ScheduleWakeup, exit. The marker reflects an in-flight CodeRabbit review that will land in 5 to 10 minutes; pinging would just fight CodeRabbit's own scheduler.
+
+**MUST NOT update `last_review_id` / `last_pr_comment_id` / `last_issue_comment_id` on either exit path.** Those IDs only advance in Phase 11 after fixes have been pushed. If a Phase 4 exit bumped them, the next tick would treat any reviewer feedback that arrived before the ping as already-processed and silently drop it. The whole point of waiting for CodeRabbit is to batch its findings with already-pending reviewer feedback into one push the *next* round.
 
 **Important:** when scanning issue comments later, exclude any comment authored by `synthorg-repo-bot[bot]` OR with body exactly `@coderabbitai review` so the skill doesn't trip on its own pings.
 
@@ -184,7 +192,10 @@ Compute deltas vs. cached IDs:
 
 If NONE of these AND no rate-limit dance fired in Phase 4:
 - `state.last_action_at = <ISO-now>` (heartbeat)
-- Append history `{round, action: "noop"}`
+- `state.last_head_sha = current_head_sha` (track latest seen commit; safe to advance on noops since it gates new-commit detection, not feedback triage)
+- Increment `round`.
+- Append history `{round, action: "noop"}`.
+- **MUST NOT update `last_review_id` / `last_pr_comment_id` / `last_issue_comment_id`.** A noop means we observed feedback but didn't triage it; bumping the IDs here would lose the items on the next tick.
 - Write state. Print: `babysit-pr round R: no changes, sleeping <cadence>m.`
 - ScheduleWakeup, exit.
 
@@ -322,10 +333,11 @@ Failure handling: if a gate fails, fix the failure in this round (don't push bro
 
 ## Phase 11: update state, schedule next tick
 
-1. Update `state.json`:
+1. Update `state.json` (success path: fixes triaged AND pushed, OR convergence reached but PR still open):
    - `round += 1`
    - `last_head_sha = current_head_sha`
-   - `last_review_id = max(review.id, last_review_id)` (same for the two comment streams)
+   - `last_review_id = max(review.id, last_review_id)` (same for the two comment streams). Bumped **only here**, never in Phase 4 / Phase 5 / Phase 6b dismissals.
+   - `last_ci_state = current_ci_state`
    - `last_action_at = <ISO-now>`
    - Append history `{round, action: "fixed_and_pushed", findings: M, sources: {...}}`
 2. **Max-rounds check:** if `round >= max_rounds`:

@@ -314,8 +314,21 @@ class MeetingOrchestrator:
             self._records.remove(record)
         except ValueError:
             # The list and dict drifted -- restore the dict entry so the
-            # caller's "found" answer doesn't regress to a silent loss.
+            # caller's "found" answer doesn't regress to a silent loss
+            # AND emit a structured ERROR log so operators see the
+            # invariant violation instead of debugging a phantom
+            # "delete returned False" later.
             self._records_by_id[meeting_id] = record
+            # TRY400: this is an invariant-violation log, not a stack
+            # trace use case; the relevant context is the structured
+            # fields below, not the ValueError trace.
+            logger.error(  # noqa: TRY400
+                MEETING_FAILED,
+                reason="record_mirror_drift",
+                meeting_id=meeting_id,
+                list_len=len(self._records),
+                dict_len=len(self._records_by_id),
+            )
             return False
         return True
 

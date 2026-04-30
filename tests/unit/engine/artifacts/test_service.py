@@ -44,6 +44,19 @@ class _FakeArtifactRepo:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
+        # Mirror the real repo's validation so service-level tests
+        # exercising bad pagination args see the same QueryError they
+        # would in production.
+        if limit < 1:
+            from synthorg.core.persistence_errors import QueryError
+
+            msg = f"limit must be >= 1, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            from synthorg.core.persistence_errors import QueryError
+
+            msg = f"offset must be >= 0, got {offset}"
+            raise QueryError(msg)
         rows = sorted(self._rows.values(), key=lambda a: a.id)
         if task_id is not None:
             rows = [a for a in rows if a.task_id == task_id]

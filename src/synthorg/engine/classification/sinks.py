@@ -19,7 +19,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.classification import (
     CLASSIFICATION_SINK_ERROR,
     NOTIFICATION_RATE_LIMITED,
@@ -309,10 +309,17 @@ class NotificationDispatcherSink:
                 await self._dispatcher.dispatch(notification)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
+                # Best-effort path: refund the admission and log a
+                # SEC-1-compliant warning instead of ``logger.exception``.
+                # ``logger.exception`` would attach a traceback that can
+                # leak sensitive locals; the structured warning carries
+                # the diagnostic context we actually need.
                 await self._rate_limiter.release(result.agent_id)
-                logger.exception(
+                logger.warning(
                     CLASSIFICATION_SINK_ERROR,
                     agent_id=result.agent_id,
                     task_id=result.task_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )

@@ -177,7 +177,17 @@ class PostgresEscalationNotifySubscriber:
         recreate the task mid-stop. Per
         ``docs/reference/lifecycle-sync.md``, lifecycle locks must be
         held across the full body of both ``start`` and ``stop``.
+
+        Idle stop: when nothing was ever started (``_task`` and
+        ``_stop_event`` both None) we return immediately without
+        allocating ``_start_lock``. Allocating an asyncio.Lock here
+        would bind it to the current event loop; if the next ``start``
+        runs on a different loop (test pattern with fresh-per-test
+        loops) the orphan lock causes ``RuntimeError: ... is bound to
+        a different event loop``.
         """
+        if self._task is None and self._stop_event is None:
+            return
         if self._start_lock is None:
             self._start_lock = asyncio.Lock()
         async with self._start_lock:

@@ -164,17 +164,43 @@ class HttpAnalyticsEmitter:
             logger.exception(XDEPLOY_EVENT_EMIT_FAILED, event_type="rollout_result")
 
     async def flush(self) -> None:
-        """Flush all buffered events to the collector."""
+        """Flush all buffered events to the collector.
+
+        The buffer is cleared up-front so concurrent ``emit_*`` calls
+        can keep enqueueing while the network round-trip runs. If the
+        flush is cancelled mid-flight (e.g. by ``aclose()`` cancelling
+        the periodic task) we re-stage the cleared batch onto the front
+        of the buffer so the subsequent ``aclose().flush()`` retries it
+        instead of silently dropping the batch.
+        """
         async with self._lock:
             if not self._buffer:
                 return
             batch = tuple(self._buffer)
             self._buffer.clear()
             self._last_flush_at = time.monotonic()
-        await self._send_batch(batch)
+        try:
+            await self._send_batch(batch)
+        except asyncio.CancelledError:
+            async with self._lock:
+                # Prepend so chronological order is preserved relative
+                # to any events appended while we were sending.
+                self._buffer[:0] = batch
+            raise
 
     async def aclose(self) -> None:
-        """Flush remaining events and close the HTTP client."""
+        """Flush remaining events and close the HTTP client.
+
+        Cancellation order matters: ``self._closed = True`` is set
+        BEFORE awaiting the flush task so the periodic loop's
+        ``while not self._closed`` guard exits cleanly on its next
+        iteration. We then ``cancel()`` to interrupt the in-progress
+        ``asyncio.sleep`` (which is the only place the loop can be
+        parked); a flush already in progress propagates its
+        ``CancelledError`` to the awaiter via ``suppress``. The
+        explicit final ``flush()`` then sweeps any events appended
+        between the cancellation request and this call.
+        """
         self._closed = True
         if self._flush_task is not None:
             self._flush_task.cancel()

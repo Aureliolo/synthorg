@@ -51,6 +51,53 @@ logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
 
+
+def _validate_pagination_args(
+    limit: object,
+    offset: object,
+    **context: object,
+) -> None:
+    """Type-check + bounds-check pagination args, log + raise on failure.
+
+    Both args must be ``int`` (and not ``bool``); the bounds are
+    ``limit >= 1`` and ``offset >= 0``. Mirrors the SQLite repo helper
+    so the two backends share identical validation semantics.
+    """
+    for name, value in (("limit", limit), ("offset", offset)):
+        if isinstance(value, bool) or not isinstance(value, int):
+            msg = f"{name} must be int, got {type(value).__name__}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                param=name,
+                provided_type=type(value).__name__,
+                **context,
+            )
+            raise QueryError(msg)
+    assert isinstance(limit, int)  # noqa: S101
+    assert isinstance(offset, int)  # noqa: S101
+    if limit < 1:
+        msg = f"limit must be >= 1, got {limit}"
+        logger.warning(
+            PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+            error=msg,
+            param="limit",
+            value=limit,
+            **context,
+        )
+        raise QueryError(msg)
+    if offset < 0:
+        msg = f"offset must be >= 0, got {offset}"
+        logger.warning(
+            PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+            error=msg,
+            param="offset",
+            value=offset,
+            **context,
+        )
+        raise QueryError(msg)
+
+
 _COLS = (
     "id, task_id, approval_id, executing_agent_id, reviewer_agent_id, "
     "decision, reason, criteria_snapshot, recorded_at, version, metadata"
@@ -434,26 +481,7 @@ class PostgresDecisionRepository:
         offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records for a task (paginated, oldest first)."""
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error=msg,
-                task_id=task_id,
-                param="limit",
-                value=limit,
-            )
-            raise QueryError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error=msg,
-                task_id=task_id,
-                param="offset",
-                value=offset,
-            )
-            raise QueryError(msg)
+        _validate_pagination_args(limit, offset, task_id=task_id)
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             async with (
@@ -517,28 +545,7 @@ class PostgresDecisionRepository:
                 error=msg,
             )
             raise QueryError(msg) from exc
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error=msg,
-                agent_id=agent_id,
-                role=role_str,
-                param="limit",
-                value=limit,
-            )
-            raise QueryError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error=msg,
-                agent_id=agent_id,
-                role=role_str,
-                param="offset",
-                value=offset,
-            )
-            raise QueryError(msg)
+        _validate_pagination_args(limit, offset, agent_id=agent_id, role=role_str)
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             # column is a closed-set value from _ROLE_TO_COLUMN.

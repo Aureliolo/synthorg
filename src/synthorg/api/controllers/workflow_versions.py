@@ -27,7 +27,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
 )
 from synthorg.engine.workflow.diff import WorkflowDiff, compute_diff
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_DIFF_COMPUTED,
     WORKFLOW_DEF_INVALID_REQUEST,
@@ -390,11 +390,16 @@ class WorkflowVersionController(Controller):
                 snapshot=rolled_back,
                 saved_by=updater,
             )
-        except PersistenceError:
-            logger.exception(
+        except PersistenceError as exc:
+            # Best-effort: a snapshot failure here does not block the
+            # rollback. Use a sanitized warning per SEC-1 instead of
+            # ``logger.exception`` (which can leak locals).
+            logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=rolled_back.id,
                 revision=rolled_back.revision,
+                error_type=type(exc).__name__,
+                error_desc=safe_error_description(exc),
             )
         logger.info(
             WORKFLOW_DEF_ROLLED_BACK,

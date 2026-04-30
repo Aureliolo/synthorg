@@ -22,6 +22,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_INTERRUPT_CREATED,
+    EVENT_STREAM_INTERRUPT_DUPLICATE,
     EVENT_STREAM_INTERRUPT_EXPIRED,
     EVENT_STREAM_INTERRUPT_NOT_FOUND,
     EVENT_STREAM_INTERRUPT_RESUMED,
@@ -218,6 +219,17 @@ class InterruptStore:
                 or interrupt.id in self._results
             ):
                 msg = f"Interrupt {interrupt.id!r} already exists"
+                # Log before raise per the repo's error-path observability
+                # rule. Includes the interrupt id + which dict already had
+                # it so concurrent-create races are diagnosable from the
+                # event stream alone.
+                logger.warning(
+                    EVENT_STREAM_INTERRUPT_DUPLICATE,
+                    interrupt_id=interrupt.id,
+                    in_pending=interrupt.id in self._pending,
+                    in_events=interrupt.id in self._events,
+                    in_results=interrupt.id in self._results,
+                )
                 raise ValueError(msg)
             self._pending[interrupt.id] = copy.deepcopy(interrupt)
             self._events[interrupt.id] = asyncio.Event()

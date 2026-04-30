@@ -675,7 +675,8 @@ _r.register(
         description=(
             "Maximum number of revalidation failures admitted in the"
             " ws_revalidation_window_seconds window before the"
-            " WebSocket is closed with policy code 1008."
+            " WebSocket is closed with server-error code 4011 so the"
+            " client reconnects against a healthy replica."
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,

@@ -37,6 +37,58 @@ logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
 
+
+def _validate_pagination_args(
+    limit: object,
+    offset: object,
+    **context: object,
+) -> None:
+    """Type-check + bounds-check pagination args, log + raise on failure.
+
+    Both args must be ``int`` (and not ``bool``, which subclasses int);
+    string / None / float values are caller bugs that would otherwise
+    raise ``TypeError`` deep inside the comparison without a structured
+    log. The numeric bounds (``limit >= 1``, ``offset >= 0``) are also
+    enforced here so the call sites stay one-line.
+    """
+    for name, value in (("limit", limit), ("offset", offset)):
+        if isinstance(value, bool) or not isinstance(value, int):
+            msg = f"{name} must be int, got {type(value).__name__}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+                error=msg,
+                param=name,
+                provided_type=type(value).__name__,
+                **context,
+            )
+            raise QueryError(msg)
+    # mypy now knows limit / offset are int (the loop above raised on
+    # any non-int; PT018 wants the conjunction split, but the two
+    # asserts together prove the same property and ruff is happy).
+    assert isinstance(limit, int)  # noqa: S101
+    assert isinstance(offset, int)  # noqa: S101
+    if limit < 1:
+        msg = f"limit must be >= 1, got {limit}"
+        logger.warning(
+            PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+            error=msg,
+            param="limit",
+            value=limit,
+            **context,
+        )
+        raise QueryError(msg)
+    if offset < 0:
+        msg = f"offset must be >= 0, got {offset}"
+        logger.warning(
+            PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+            error=msg,
+            param="offset",
+            value=offset,
+            **context,
+        )
+        raise QueryError(msg)
+
+
 _COLS = (
     "id, task_id, approval_id, executing_agent_id, reviewer_agent_id, "
     "decision, reason, criteria_snapshot, recorded_at, version, metadata"
@@ -498,26 +550,7 @@ class SQLiteDecisionRepository:
         reads never observe phantom rows from a mid-transaction
         ``append_with_next_version``.
         """
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error=msg,
-                task_id=task_id,
-                param="limit",
-                value=limit,
-            )
-            raise QueryError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error=msg,
-                task_id=task_id,
-                param="offset",
-                value=offset,
-            )
-            raise QueryError(msg)
+        _validate_pagination_args(limit, offset, task_id=task_id)
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             async with self._write_lock:
@@ -598,28 +631,7 @@ class SQLiteDecisionRepository:
                 error=msg,
             )
             raise QueryError(msg) from exc
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error=msg,
-                agent_id=agent_id,
-                role=role_str,
-                param="limit",
-                value=limit,
-            )
-            raise QueryError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error=msg,
-                agent_id=agent_id,
-                role=role_str,
-                param="offset",
-                value=offset,
-            )
-            raise QueryError(msg)
+        _validate_pagination_args(limit, offset, agent_id=agent_id, role=role_str)
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             # column is a closed-set value from _ROLE_TO_COLUMN, never

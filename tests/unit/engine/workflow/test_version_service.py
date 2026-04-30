@@ -13,11 +13,21 @@ from synthorg.engine.workflow.definition import (
     WorkflowNode,
 )
 from synthorg.engine.workflow.version_service import WorkflowVersionService
+from synthorg.persistence.version_repo import VersionRepository
 from synthorg.versioning.models import VersionSnapshot
 
 
+def _make_repo() -> AsyncMock:
+    """Build a typed mock for the VersionRepository protocol (#1604).
+
+    Spec'ing against the protocol catches accidental rename / signature
+    drift between the service and its repo dependency.
+    """
+    return AsyncMock(spec=VersionRepository)
+
+
 def _service(repo: AsyncMock | None = None) -> WorkflowVersionService:
-    return WorkflowVersionService(version_repo=repo or AsyncMock())
+    return WorkflowVersionService(version_repo=repo or _make_repo())
 
 
 def _definition(revision: int = 1) -> WorkflowDefinition:
@@ -73,7 +83,7 @@ def _snapshot(revision: int = 1) -> VersionSnapshot[WorkflowDefinition]:
 class TestListVersions:
     @pytest.mark.unit
     async def test_returns_page_and_total(self) -> None:
-        repo = AsyncMock()
+        repo = _make_repo()
         repo.count_versions.return_value = 7
         snap_a = _snapshot(2)
         snap_b = _snapshot(1)
@@ -121,7 +131,7 @@ class TestListVersions:
         branch's success. asyncio.TaskGroup wraps failures in
         ExceptionGroup, which we assert on directly.
         """
-        repo = AsyncMock()
+        repo = _make_repo()
         repo.list_versions.return_value = (_snapshot(1),)
         repo.count_versions.side_effect = RuntimeError("count failed")
         service = _service(repo)
@@ -143,7 +153,7 @@ class TestListVersions:
 class TestGetVersion:
     @pytest.mark.unit
     async def test_returns_snapshot(self) -> None:
-        repo = AsyncMock()
+        repo = _make_repo()
         snap = _snapshot(3)
         repo.get_version.return_value = snap
         service = _service(repo)
@@ -153,7 +163,7 @@ class TestGetVersion:
 
     @pytest.mark.unit
     async def test_returns_none_when_missing(self) -> None:
-        repo = AsyncMock()
+        repo = _make_repo()
         repo.get_version.return_value = None
         service = _service(repo)
         result = await service.get_version(NotBlankStr("wfdef-1"), 99)
