@@ -28,7 +28,7 @@ import {
 const log = createLogger('WorkflowExecutionsPage')
 
 const TERMINAL_STATUSES = new Set<WorkflowExecution['status']>([
-  'succeeded',
+  'completed',
   'failed',
   'cancelled',
 ])
@@ -121,11 +121,11 @@ export default function WorkflowExecutionsPage() {
                     {row.status}
                   </span>
                   <span className="flex-1 text-xs text-text-secondary">
-                    {row.started_at ? `Started ${formatDateTime(row.started_at)}` : 'Pending'}
+                    {`Started ${formatDateTime(row.created_at)}`}
                   </span>
-                  {row.error_message && (
-                    <span className="truncate text-xs text-danger" title={row.error_message}>
-                      {row.error_message}
+                  {row.error && (
+                    <span className="truncate text-xs text-danger" title={row.error}>
+                      {row.error}
                     </span>
                   )}
                   {inFlight && (

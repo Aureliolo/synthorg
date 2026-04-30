@@ -8,7 +8,6 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { getPasswordStrength } from '@/utils/password-strength'
 import { getSetupStatus } from '@/api/endpoints/setup'
 import { getErrorMessage } from '@/utils/errors'
-import { sanitizeForLog } from '@/utils/logging'
 import { cn } from '@/lib/utils'
 
 const log = createLogger('setup')
@@ -51,7 +50,9 @@ export function AccountStep() {
       })
     }
     let lastErr: unknown = null
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    const attemptErrors: string[] = []
+    const MAX_ATTEMPTS = 2
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       try {
         const status = await withTimeout(getSetupStatus())
         setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
@@ -59,13 +60,18 @@ export function AccountStep() {
         return
       } catch (err) {
         lastErr = err
-        log.warn('password-policy fetch attempt failed', {
-          attempt: attempt + 1,
-          error: getErrorMessage(err),
-        })
+        attemptErrors.push(getErrorMessage(err))
       }
     }
-    log.error('Failed to fetch setup status after retries:', sanitizeForLog(lastErr))
+    // Log a single error after the loop with every attempt's message
+    // in a structured ``attempts`` array. The previous form logged
+    // attempt 1 at WARN and the final failure at ERROR, which split
+    // the retry sequence across two log levels and made diagnosis
+    // harder for operators tailing the ERROR stream.
+    log.error('Failed to fetch setup status after retries', {
+      attempts: attemptErrors,
+      error: getErrorMessage(lastErr),
+    })
     setPolicyError(getErrorMessage(lastErr))
     setPolicyLoading(false)
   }, [])

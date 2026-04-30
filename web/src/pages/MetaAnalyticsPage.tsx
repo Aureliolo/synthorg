@@ -26,7 +26,13 @@ export default function MetaAnalyticsPage() {
   const [signals, setSignals] = useState<SignalsResponse | null>(null)
   const [proposals, setProposals] = useState<readonly ProposalSummary[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // Per-resource error state so the operator sees which fetch failed
+  // (not a conflated "x; y" string). When both are non-null the page
+  // is fully unavailable; when one is null the page renders the
+  // available data plus a partial-failure banner pointing at the
+  // failed resource.
+  const [signalsError, setSignalsError] = useState<string | null>(null)
+  const [proposalsError, setProposalsError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -35,36 +41,58 @@ export default function MetaAnalyticsPage() {
     void Promise.resolve().then(async () => {
       if (cancelled) return
       setLoading(true)
-      setError(null)
+      setSignalsError(null)
+      setProposalsError(null)
       const [signalsRes, proposalsRes] = await Promise.allSettled([getSignals(), listProposals()])
       if (cancelled) return
-      const errors: string[] = []
       if (signalsRes.status === 'fulfilled') {
         setSignals(signalsRes.value)
       } else {
         const message = getErrorMessage(signalsRes.reason)
         log.error('getSignals failed', { error: message })
-        errors.push(message)
+        setSignalsError(message)
       }
       if (proposalsRes.status === 'fulfilled') {
         setProposals(proposalsRes.value)
       } else {
         const message = getErrorMessage(proposalsRes.reason)
         log.error('listProposals failed', { error: message })
-        errors.push(message)
+        setProposalsError(message)
       }
-      if (errors.length > 0) setError(errors.join('; '))
       setLoading(false)
     })
     return () => { cancelled = true }
   }, [])
 
+  const bothFailed = signalsError !== null && proposalsError !== null
+
   return (
     <div className="space-y-section-gap">
       <ListHeader title="Meta analytics" />
 
-      {error && (
-        <ErrorBanner severity="error" title="Could not load meta analytics" description={error} />
+      {bothFailed ? (
+        <ErrorBanner
+          severity="error"
+          title="Could not load meta analytics"
+          description={`Signals: ${signalsError}. Proposals: ${proposalsError}.`}
+        />
+      ) : (
+        <>
+          {signalsError && (
+            <ErrorBanner
+              severity="warning"
+              title="Could not load meta signals"
+              description={signalsError}
+            />
+          )}
+          {proposalsError && (
+            <ErrorBanner
+              severity="warning"
+              title="Could not load proposals"
+              description={proposalsError}
+            />
+          )}
+        </>
       )}
 
       {loading && !signals && proposals.length === 0 ? (

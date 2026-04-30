@@ -18,11 +18,11 @@ import { SelectField } from '@/components/ui/select-field'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { createLogger } from '@/lib/logger'
 import { ROUTES } from '@/router/routes'
-import { formatDateTime, formatNumber } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
 import {
   listWebhookActivity,
-  type WebhookActivityEntry,
+  type WebhookReceipt,
 } from '@/api/endpoints/webhooks'
 
 const log = createLogger('WebhookReceiptsPage')
@@ -30,14 +30,15 @@ const log = createLogger('WebhookReceiptsPage')
 export default function WebhookReceiptsPage() {
   const { connections } = useConnectionsData()
   const [selected, setSelected] = useState<string>('')
-  const [entries, setEntries] = useState<readonly WebhookActivityEntry[]>([])
+  const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Default the selector to the first connection that supports webhooks
   // (we don't have that flag locally; just pick the first connection).
-  // Defer the setState to a microtask so the synchronous-in-effect
-  // form does not trip @eslint-react/set-state-in-effect.
+  // The setState is deferred to a microtask so the effect body itself
+  // stays free of synchronous setState calls per the ESLint
+  // set-state-in-effect rule.
   useEffect(() => {
     if (selected !== '' || connections.length === 0) return
     let cancelled = false
@@ -117,7 +118,7 @@ export default function WebhookReceiptsPage() {
                   <th className="py-2 pr-4">Received</th>
                   <th className="py-2 pr-4">Event</th>
                   <th className="py-2 pr-4">Status</th>
-                  <th className="py-2 pr-4">Bytes</th>
+                  <th className="py-2 pr-4">Processed</th>
                   <th className="py-2 pr-4">Error</th>
                 </tr>
               </thead>
@@ -125,15 +126,14 @@ export default function WebhookReceiptsPage() {
                 {entries.map((row) => (
                   <tr key={row.id}>
                     <td className="py-2 pr-4 font-mono text-xs">{formatDateTime(row.received_at)}</td>
-                    <td className="py-2 pr-4 text-foreground">{row.event_type}</td>
+                    <td className="py-2 pr-4 text-foreground">{row.event_type || '-'}</td>
                     <td className="py-2 pr-4">
                       <span className="rounded-md border border-border bg-card px-2 py-0.5 text-xs uppercase text-text-secondary">
                         {row.status}
-                        {row.status_code != null && ` · ${row.status_code}`}
                       </span>
                     </td>
                     <td className="py-2 pr-4 font-mono text-xs text-text-secondary">
-                      {row.payload_bytes != null ? formatNumber(row.payload_bytes) : '-'}
+                      {row.processed_at ? formatDateTime(row.processed_at) : '-'}
                     </td>
                     <td className="py-2 pr-4 truncate max-w-xs text-xs text-danger" title={row.error ?? undefined}>
                       {row.error}

@@ -401,6 +401,11 @@ export default function TaskBoardPage() {
   )
 }
 
+interface ActiveFilterChipsProps {
+  filters: TaskBoardFilters
+  onChange: (filters: TaskBoardFilters) => void
+}
+
 /**
  * Render the currently-applied TaskBoardFilters as removable chips.
  * Hidden when no filters are active. Each chip's X button removes
@@ -408,13 +413,7 @@ export default function TaskBoardPage() {
  * more are active so the operator can reset the whole bar in one
  * click.
  */
-function ActiveFilterChips({
-  filters,
-  onChange,
-}: {
-  filters: TaskBoardFilters
-  onChange: (filters: TaskBoardFilters) => void
-}) {
+function ActiveFilterChips({ filters, onChange }: ActiveFilterChipsProps) {
   const chips: { key: keyof TaskBoardFilters; label: string }[] = []
   if (filters.status) chips.push({ key: 'status', label: `Status: ${filters.status}` })
   if (filters.priority) chips.push({ key: 'priority', label: `Priority: ${filters.priority}` })

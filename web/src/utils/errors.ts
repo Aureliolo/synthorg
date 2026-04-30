@@ -2,10 +2,27 @@
 
 import axios, { type AxiosError } from 'axios'
 import { createLogger } from '@/lib/logger'
-import { ApiRequestError } from '@/api/client'
 import type { ErrorCode, ErrorDetail } from '@/api/types/errors'
 
 const log = createLogger('errors')
+
+/**
+ * Duck-typed check for ``ApiRequestError`` instances without importing
+ * the class. Importing ``@/api/client`` here would pull ``axios.create()``
+ * into utility modules that test code mocks ``axios`` for, breaking
+ * the property-based tests in ``errors.property.test.ts``.
+ *
+ * The class lives in ``@/api/client`` and sets ``this.name = 'ApiRequestError'``
+ * in its constructor; matching on the name plus the public
+ * ``errorDetail`` field is sufficient for the read-only access path.
+ */
+function isApiRequestError(error: unknown): error is { errorDetail: ErrorDetail | null } {
+  return (
+    error instanceof Error
+    && error.name === 'ApiRequestError'
+    && 'errorDetail' in error
+  )
+}
 
 /**
  * Check if an error is an Axios error.
@@ -92,7 +109,7 @@ export function getErrorMessage(error: unknown): string {
  * include structured error metadata.
  */
 export function getErrorDetail(error: unknown): ErrorDetail | null {
-  if (error instanceof ApiRequestError) {
+  if (isApiRequestError(error)) {
     return error.errorDetail
   }
   if (!isAxiosError(error)) return null

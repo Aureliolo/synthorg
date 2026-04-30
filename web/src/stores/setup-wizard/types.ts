@@ -87,6 +87,11 @@ export interface CompanySlice {
    * ``CompanyStep`` to discriminate actionable failures (e.g.
    * ``ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT`` -> route the
    * operator back to the providers step) from generic retryable errors.
+   *
+   * Lifecycle: ephemeral. Cleared by ``submitCompany`` at the start
+   * of the next attempt and never read after success; on a successful
+   * response both this field and ``companyError`` are reset to
+   * ``null`` together.
    */
   companyErrorCode: ErrorCode | null
   setCompanyName: (name: string) => void
