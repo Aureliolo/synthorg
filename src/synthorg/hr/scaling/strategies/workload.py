@@ -26,7 +26,13 @@ class WorkloadAutoScaleStrategy:
 
     Args:
         hire_threshold: Utilization fraction above which to hire.
+            Default 0.85 -- hire when sustained utilization exceeds
+            85% so the team is not at risk of saturation under
+            transient load spikes.
         prune_threshold: Utilization fraction below which to prune.
+            Default 0.30 -- prune when sustained utilization drops
+            below 30% so headroom is reclaimed without churning the
+            team on temporary lulls.
     """
 
     def __init__(

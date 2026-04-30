@@ -26,6 +26,14 @@ CONFLICT_PARSE_FAILED = STRATEGY_CONFLICT_PARSE_FAILED
 
 logger = get_logger(__name__)
 
+# Default cosine similarity threshold below which two leader positions
+# are considered conflicting.  0.7 is the empirical "clearly distinct"
+# point for sentence-transformer embeddings on chat-like text; below
+# this the responses diverge enough that downstream discussion adds
+# value, above this they agree closely enough to skip the discussion
+# phase.  Shared by EmbeddingSimilarityDetector and HybridDetector.
+_DEFAULT_SIMILARITY_THRESHOLD: float = 0.7
+
 
 @runtime_checkable
 class ConflictDetector(Protocol):
@@ -313,12 +321,16 @@ class EmbeddingSimilarityDetector:
     - Return True if any pair has similarity below threshold
     """
 
-    def __init__(self, *, similarity_threshold: float = 0.7) -> None:
+    def __init__(
+        self,
+        *,
+        similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
+    ) -> None:
         """Initialize with similarity threshold.
 
         Args:
             similarity_threshold: Cosine similarity threshold below which
-                positions are considered conflicting (default 0.7).
+                positions are considered conflicting.
         """
         self.similarity_threshold = similarity_threshold
 
@@ -352,11 +364,16 @@ class HybridDetector:
     This allows deterministic fallback when embeddings are uncertain.
     """
 
-    def __init__(self, *, similarity_threshold: float = 0.7) -> None:
+    def __init__(
+        self,
+        *,
+        similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
+    ) -> None:
         """Initialize with similarity threshold.
 
         Args:
-            similarity_threshold: Cosine similarity threshold (default 0.7).
+            similarity_threshold: Cosine similarity threshold (default
+                ``_DEFAULT_SIMILARITY_THRESHOLD``).
         """
         self.embedding_detector = EmbeddingSimilarityDetector(
             similarity_threshold=similarity_threshold,

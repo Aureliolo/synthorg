@@ -304,14 +304,19 @@ class TokenSpeedupRatio(BaseModel):
         """Token multiplier divided by latency speedup."""
         return self.token_multiplier / self.latency_speedup
 
+    # Alerts trigger when the token-to-speedup ratio exceeds this
+    # value: paying twice as many tokens for the same wall-clock win
+    # is the empirical "diminishing returns" point operators care
+    # about, regardless of agent count.
+    _DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO: float = 2.0
+
     @computed_field(  # type: ignore[prop-decorator]
-        description="Alert when ratio > 2.0",
+        description="Alert when ratio exceeds the alert threshold",
     )
     @property
     def alert(self) -> bool:
         """True when paying disproportionately more tokens than speed gained."""
-        _alert_threshold = 2.0
-        return self.ratio > _alert_threshold
+        return self.ratio > self._DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO
 
 
 class MessageOverhead(BaseModel):

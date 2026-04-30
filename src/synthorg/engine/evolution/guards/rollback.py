@@ -31,7 +31,10 @@ class RollbackGuard:
 
         Args:
             window_tasks: Number of tasks to observe post-adaptation.
-            regression_threshold: Quality drop threshold (0-1) to trigger rollback.
+            regression_threshold: Quality drop threshold (0-1) to
+                trigger rollback.  Default 0.1 = 10% quality drop;
+                tighter than humans typically notice but loose enough
+                to absorb evaluation-noise without thrashing.
         """
         self._window_tasks = window_tasks
         self._regression_threshold = regression_threshold
