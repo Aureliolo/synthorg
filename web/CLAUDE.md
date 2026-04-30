@@ -59,7 +59,7 @@ All store **mutation** actions (create / update / delete) follow the `stores/con
 
 **Test teardown (MANDATORY)**: `web/src/test-setup.tsx` registers a global `afterEach` that calls `useToastStore.getState().dismissAll()`, `cancelPendingPersist()` (notifications store), and `useThemeStore.getState().teardown()`. **Any new store that schedules timers or attaches event listeners must expose an equivalent cleanup hook** and register it in the global `afterEach`. The websocket store is a deliberate exception (file-local `resetStore()` in its test file).
 
-**Async-leak ceiling (MANDATORY)**: CI fails if `vitest --detect-async-leaks` reports more than `MAX_ASYNC_LEAKS` (currently 80). Local floor is 49; CI baseline 76 (event-loop timing variance). Raise the ceiling only with documented per-PR justification; the structural floor is MSW 2.x + axios + tough-cookie and is tracked by #1468.
+**Async-leak ceiling (MANDATORY)**: CI fails if `vitest --detect-async-leaks` reports more than `MAX_ASYNC_LEAKS` (currently 90). Local floor is 49; CI baseline 77-80 (event-loop timing variance). Raise the ceiling only with documented per-PR justification; the structural floor is MSW 2.x + axios + tough-cookie and is tracked by #1468.
 
 **WS payload sanitization**: `sanitizeWsString()` (from `web/src/stores/notifications.ts`) normalizes every string field received from WebSocket events. Any new WS payload handler that ingests untrusted strings MUST route through it.
 

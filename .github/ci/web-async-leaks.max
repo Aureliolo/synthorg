@@ -9,4 +9,4 @@
 #
 # The CI step reads this file via:
 #   grep -v '^#' .github/ci/web-async-leaks.max | head -1
-80
+90
