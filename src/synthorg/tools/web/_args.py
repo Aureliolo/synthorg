@@ -15,7 +15,7 @@ Tools wired to consume these models:
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
@@ -24,6 +24,12 @@ _ARGS_CONFIG = ConfigDict(
     allow_inf_nan=False,
     extra="forbid",
 )
+
+# ASCII control-character bounds for HTTP header validation.  Anything
+# below 0x20 (SP) or equal to 0x7F (DEL) is a control char that must
+# not appear in HTTP header names or values per RFC 7230 § 3.2.6.
+_ASCII_PRINTABLE_MIN = 0x20
+_ASCII_DEL = 0x7F
 
 
 # ``HttpMethod`` is closed: the existing tool body rejects anything
@@ -66,7 +72,7 @@ class HttpRequestArgs(BaseModel):
     method: HttpMethod = Field(default="GET", description="HTTP method")
     headers: dict[str, str] = Field(
         default_factory=dict,
-        description="Optional request headers",
+        description="Optional request headers (no CR/LF or other ASCII control chars)",
     )
     body: str | None = Field(
         default=None,
@@ -78,6 +84,30 @@ class HttpRequestArgs(BaseModel):
         le=300,
         description="Request timeout in seconds (defaults to per-tool config)",
     )
+
+    @field_validator("headers", mode="after")
+    @classmethod
+    def _reject_control_chars_in_headers(cls, value: dict[str, str]) -> dict[str, str]:
+        r"""Block header smuggling at the typed boundary.
+
+        Rejects ASCII control characters (``\r``, ``\n``, NUL, etc.)
+        in both header names and values so request smuggling /
+        response-splitting attempts fail before reaching the HTTP
+        client.  Mirrors the ``Validate at system boundaries`` rule.
+        """
+        for name, val in value.items():
+            for label, candidate in (("name", name), ("value", val)):
+                if any(
+                    ord(ch) < _ASCII_PRINTABLE_MIN or ord(ch) == _ASCII_DEL
+                    for ch in candidate
+                ):
+                    msg = (
+                        f"header {label} contains an ASCII control "
+                        f"character (CR/LF/NUL etc.); reject to prevent "
+                        f"header smuggling"
+                    )
+                    raise ValueError(msg)
+        return value
 
 
 class HtmlParserArgs(BaseModel):

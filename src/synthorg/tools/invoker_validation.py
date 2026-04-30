@@ -62,13 +62,24 @@ class ToolInvokerValidationMixin:
         self,
         tool: BaseTool,
         tool_call: ToolCall,
-    ) -> ToolResult | None:
+    ) -> ToolResult | dict[str, object] | None:
         """Validate tool call arguments.
 
         Tries the typed ``args_model`` when the subclass declares one
         (the Phase 3 typed-args path of #1611) and falls back to
         JSON-Schema validation against ``parameters_schema`` otherwise.
-        Returns ``None`` on success or a ``ToolResult`` on failure.
+
+        Returns:
+          * ``ToolResult`` on validation failure (caller short-circuits).
+          * ``dict[str, object]`` (the normalized args-model dump) when
+            an ``args_model`` validated successfully.  Defaults,
+            coercions, and ``AfterValidator`` results are baked in;
+            callers MUST pass this dict to ``tool.execute`` instead of
+            the raw ``tool_call.arguments`` so the typed-boundary
+            promise actually reaches the tool body.
+          * ``None`` when there is no ``args_model`` and the legacy
+            JSON-Schema check passed; callers fall back to the raw
+            deepcopied arguments.
         """
         args_model = tool.args_model
         if args_model is not None:
@@ -79,10 +90,16 @@ class ToolInvokerValidationMixin:
         self,
         args_model: type[BaseModel],
         tool_call: ToolCall,
-    ) -> ToolResult | None:
-        """Validate ``tool_call.arguments`` against a Pydantic args model."""
+    ) -> ToolResult | dict[str, object]:
+        """Validate ``tool_call.arguments`` against a Pydantic args model.
+
+        Returns the validated ``model_dump(mode="python")`` on success
+        so coercions / defaults / ``AfterValidator`` results propagate
+        to the tool body (per the typed-args contract); returns a
+        ``ToolResult`` on failure.
+        """
         try:
-            args_model.model_validate(dict(tool_call.arguments))
+            validated = args_model.model_validate(dict(tool_call.arguments))
         except PydanticValidationError as exc:
             errors = exc.errors(include_input=False, include_url=False)
             detail = (
@@ -105,7 +122,7 @@ class ToolInvokerValidationMixin:
             return self._unexpected_validation_result(
                 tool_call, safe_error_description(exc) or type(exc).__name__
             )
-        return None
+        return validated.model_dump(mode="python")
 
     def _validate_json_schema(
         self,

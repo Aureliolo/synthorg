@@ -98,9 +98,11 @@ class MCPToolDef(BaseModel):
         When the registration carries both an ``args_model`` (used by
         the invoker for runtime validation) and a hand-crafted
         ``parameters`` dict (the wire schema clients see in
-        ``tools/list``), they MUST advertise the same property names.
-        Otherwise the invoker rejects shapes the wire schema accepts,
-        or the wire schema documents fields the validator strips.
+        ``tools/list``), they MUST advertise the same property names
+        AND the same required-field set.  Otherwise the invoker
+        rejects shapes the wire schema accepts (or vice versa), or the
+        wire schema documents one contract while validation enforces
+        another -- both of which surface as silent caller bugs.
         """
         if self.args_model is None:
             return self
@@ -120,6 +122,29 @@ class MCPToolDef(BaseModel):
                 "Either drop the explicit properties so the wire schema "
                 "is derived from args_model, or update both surfaces in "
                 "lockstep."
+            )
+            raise ValueError(msg)
+        # Required-field alignment.  The wire schema's ``required``
+        # list and the args_model's required-field set must agree, or
+        # one side accepts payloads the other rejects.  ``FieldInfo.is_required()``
+        # is True when the field has no default (positional-style required).
+        wire_required_raw = self.parameters.get("required") or ()
+        wire_required: set[str] = set(wire_required_raw)
+        model_required = {
+            field_name
+            for field_name, field_info in self.args_model.model_fields.items()
+            if field_info.is_required()
+        }
+        wire_required_only = wire_required - model_required
+        model_required_only = model_required - wire_required
+        if wire_required_only or model_required_only:
+            msg = (
+                f"Tool {self.name!r} has args_model / wire-schema "
+                f"required-field drift; required on wire but optional "
+                f"in args_model: {sorted(wire_required_only) or 'none'}; "
+                f"required in args_model but optional on wire: "
+                f"{sorted(model_required_only) or 'none'}.  Update both "
+                "surfaces in lockstep."
             )
             raise ValueError(msg)
         return self

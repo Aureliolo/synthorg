@@ -229,7 +229,7 @@ onto the existing service layer rather than reimplementing business logic.
 
 **Handler Protocol.** Every handler implements
 `ToolHandler.__call__(*, app_state, arguments: dict[str, Any], actor: AgentIdentity | None = None) -> str`
-(see `src/synthorg/meta/mcp/invoker.py`). The `actor` argument threads the
+(see `src/synthorg/meta/mcp/handler_protocol.py`). The `actor` argument threads the
 calling agent identity through the invoker so destructive-op guardrails can
 enforce attribution; handlers that don't care about identity accept it and
 ignore it.

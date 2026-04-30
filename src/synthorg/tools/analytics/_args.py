@@ -10,11 +10,37 @@ Tools wired to consume these models:
   -> :class:`ReportGeneratorArgs`
 """
 
-from typing import Literal, Self
+from datetime import date
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
+
+
+def _validate_iso_8601_date(value: str) -> str:
+    """Reject strings that are not parseable as ISO 8601 calendar dates.
+
+    Mirrors the contract documented in the wire schema (``ISO 8601``) so
+    free-form values like ``"next friday"`` fail at the typed boundary.
+    Returns ``value`` unchanged on success; the analytics handler keeps
+    its ``str`` signature unchanged.
+    """
+    try:
+        date.fromisoformat(value)
+    except ValueError as exc:
+        msg = "value is not a valid ISO 8601 date"
+        raise ValueError(msg) from exc
+    return value
+
+
+IsoDateStr = Annotated[NotBlankStr, AfterValidator(_validate_iso_8601_date)]
+"""Non-blank string that parses as an ISO 8601 calendar date.
+
+Used for ``start_date`` / ``end_date`` filter fields whose wire schema
+documents ``ISO 8601``.  Validation runs at the args-model boundary so
+downstream handlers continue to receive a ``str`` unchanged.
+"""
 
 _ARGS_CONFIG = ConfigDict(
     frozen=True,
@@ -51,11 +77,11 @@ class DataAggregatorArgs(BaseModel):
         default=None,
         description="Optional grouping dimension",
     )
-    start_date: NotBlankStr | None = Field(
+    start_date: IsoDateStr | None = Field(
         default=None,
         description="Start date for custom period (ISO 8601)",
     )
-    end_date: NotBlankStr | None = Field(
+    end_date: IsoDateStr | None = Field(
         default=None,
         description="End date for custom period (ISO 8601)",
     )

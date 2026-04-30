@@ -67,14 +67,29 @@ class TestGitBranchArgs:
     @pytest.mark.unit
     @pytest.mark.parametrize("action", ["list", "create", "switch", "delete"])
     def test_action_valid(self, action: str) -> None:
-        """Valid GitBranchAction literals are accepted."""
-        assert GitBranchArgs.model_validate({"action": action}).action == action
+        """Valid GitBranchAction literals are accepted.
+
+        Mutating actions (create / switch / delete) must supply a
+        branch ``name``; only ``list`` is allowed without one.  See
+        ``_name_required_for_mutating_actions``.
+        """
+        payload: dict[str, str] = {"action": action}
+        if action != "list":
+            payload["name"] = "feature/x"
+        assert GitBranchArgs.model_validate(payload).action == action
 
     @pytest.mark.unit
     def test_action_invalid_rejected(self) -> None:
         """Unknown actions are rejected."""
         with pytest.raises(ValidationError):
             GitBranchArgs.model_validate({"action": "rename"})
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("action", ["create", "switch", "delete"])
+    def test_mutating_action_without_name_rejected(self, action: str) -> None:
+        """Cross-field rule: create/switch/delete require ``name``."""
+        with pytest.raises(ValidationError):
+            GitBranchArgs.model_validate({"action": action})
 
 
 class TestGitCommitArgs:

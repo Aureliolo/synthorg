@@ -70,9 +70,9 @@ Run in one Bash batch (parallel `&` then `wait` is fine here, or sequential sinc
 
 ```bash
 gh pr view N --json state,headRefOid,statusCheckRollup,reviewDecision,mergeable,mergedAt,headRefName
-gh api repos/OWNER/REPO/pulls/N/reviews --paginate --jq '[.[] | {id, author: .user.login, state, submitted_at, body}]'
+gh api repos/OWNER/REPO/pulls/N/reviews --paginate --jq '[.[] | {id, commit_id, author: .user.login, state, submitted_at, body}]'
 gh api repos/OWNER/REPO/pulls/N/comments --paginate --jq '[.[] | {id, author: .user.login, path, line, body, created_at}]'
-gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | {id, author: .user.login, body, created_at}]'
+gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | {id, author: .user.login, body, created_at, updated_at}]'
 ```
 
 `mergedAt` is the right field; `merged` does not exist on `gh pr view --json` and will fail. A non-null `mergedAt` (or `state == "MERGED"`) means merged. Cap each fetch at a reasonable size; CodeRabbit review bodies can be 50KB+, that's fine.

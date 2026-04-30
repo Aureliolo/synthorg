@@ -95,7 +95,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
                 "default": RISK_LEVEL_DEFAULT,
             },
         },
-        required=("action_type", "description"),
+        required=("action_type", "title", "description"),
         args_model=ApprovalsCreateArgs,
     ),
     write_tool(

@@ -16,9 +16,9 @@ Tools wired to consume these models:
 * :class:`~synthorg.tools.git_tools.GitCloneTool` -> :class:`GitCloneArgs`
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
@@ -81,8 +81,9 @@ class GitLogArgs(BaseModel):
 class GitDiffArgs(BaseModel):
     """Args for ``git_diff``.
 
-    The ``ref2 requires ref1`` cross-field constraint is enforced inside
-    the tool body (LLM-facing message references the param names).
+    Cross-field rule: ``ref2`` is meaningless without ``ref1`` (it is
+    the second operand of a two-ref diff), so callers that supply
+    ``ref2`` alone are rejected at validation time.
     """
 
     model_config = _ARGS_CONFIG
@@ -98,20 +99,29 @@ class GitDiffArgs(BaseModel):
     )
     ref2: NotBlankStr | None = Field(
         default=None,
-        description="Second ref for comparison",
+        description="Second ref for comparison (requires ref1)",
     )
     paths: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Limit diff to these paths",
     )
 
+    @model_validator(mode="after")
+    def _ref2_requires_ref1(self) -> Self:
+        """Reject ``ref2`` without ``ref1``."""
+        if self.ref2 is not None and self.ref1 is None:
+            msg = "ref2 requires ref1: a two-ref diff needs both operands"
+            raise ValueError(msg)
+        return self
+
 
 class GitBranchArgs(BaseModel):
     """Args for ``git_branch``.
 
-    The ``name`` requirement for create/switch/delete actions is
-    enforced inside the tool body so the LLM-facing error names the
-    specific action.
+    Cross-field rule: ``create`` / ``switch`` / ``delete`` actions
+    require ``name``; only ``list`` is allowed without it.  Validation
+    runs at the typed-args boundary so a malformed payload fails
+    before the tool body sees it.
     """
 
     model_config = _ARGS_CONFIG
@@ -132,6 +142,17 @@ class GitBranchArgs(BaseModel):
         default=False,
         description="Force delete (-D) instead of safe delete (-d)",
     )
+
+    @model_validator(mode="after")
+    def _name_required_for_mutating_actions(self) -> Self:
+        """Reject create/switch/delete actions without a branch name."""
+        if self.action != "list" and self.name is None:
+            msg = (
+                f"action {self.action!r} requires a branch ``name``; "
+                "only ``list`` may be invoked without one"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class GitCommitArgs(BaseModel):

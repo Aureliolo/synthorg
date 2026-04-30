@@ -188,12 +188,15 @@ class WsEvent(BaseModel):
 
         Every :class:`WsEventType` has a corresponding frozen Pydantic
         model in :mod:`synthorg.api.ws_payloads`; this validator merges
-        the envelope ``event_type`` into the payload dict and runs it
-        through the discriminated union adapter.  A shape mismatch
+        the envelope ``event_type`` over the payload dict and runs it
+        through the discriminated union adapter.  Spreading the
+        envelope's ``event_type`` *last* makes it authoritative, so a
+        caller cannot smuggle a conflicting ``payload["event_type"]``
+        and have the union pick the wrong variant.  A shape mismatch
         (missing required field, wrong type, extra field) raises
         :class:`pydantic.ValidationError` at construction so the bad
         event never reaches a subscriber.
         """
         adapter = _get_payload_adapter()
-        adapter.validate_python({"event_type": self.event_type.value, **self.payload})
+        adapter.validate_python({**self.payload, "event_type": self.event_type.value})
         return self

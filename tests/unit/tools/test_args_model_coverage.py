@@ -16,6 +16,7 @@ fails this test, surfacing the regression at PR review time.
 """
 
 import importlib
+import inspect
 
 import pytest
 from pydantic import BaseModel
@@ -95,8 +96,20 @@ def _all_concrete_subclasses(cls: type) -> set[type]:
 
 
 def _is_valid_args_model(value: object) -> bool:
-    """Return True iff ``value`` is a concrete ``BaseModel`` subclass."""
-    return isinstance(value, type) and issubclass(value, BaseModel)
+    """Return True iff ``value`` is a *concrete* ``BaseModel`` subclass.
+
+    The contract is "every BaseTool declares an args model"; an abstract
+    intermediate (one with unimplemented ``@abstractmethod`` members)
+    can technically inherit from ``BaseModel`` while leaving the actual
+    args shape unspecified.  Reject those so the regression guard does
+    not silently accept a partial contract.
+    """
+    return (
+        isinstance(value, type)
+        and issubclass(value, BaseModel)
+        and value is not BaseModel
+        and not inspect.isabstract(value)
+    )
 
 
 @pytest.mark.unit

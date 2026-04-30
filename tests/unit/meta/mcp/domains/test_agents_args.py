@@ -71,6 +71,23 @@ class TestTrainingStartSessionArgs:
         )
         assert "procedural" in args.enabled_content_types
 
+    @pytest.mark.unit
+    def test_content_types_reject_unknown(self) -> None:
+        """Closed-set guard: arbitrary strings are rejected.
+
+        Without this case the closed-set assertion would still pass
+        even if ``enabled_content_types`` ever widened to ``str``.
+        """
+        with pytest.raises(ValidationError):
+            TrainingStartSessionArgs.model_validate(
+                {
+                    "new_agent_id": "a1",
+                    "new_agent_role": "r",
+                    "new_agent_level": "mid",
+                    "enabled_content_types": ("procedural", "unknown_type"),
+                },
+            )
+
 
 class TestAutonomyUpdateArgs:
     @pytest.mark.unit
