@@ -1232,9 +1232,13 @@ jobs:
 
   # Matrix mirrors `build-fine-tune-publish`: each variant is a separate
   # image repo (`synthorg-fine-tune-gpu`, `synthorg-fine-tune-cpu`) and
-  # carries its own signed digest. Per-variant digests reach
-  # `update-release` via the same `fine-tune-{variant}-digest` artifact
-  # pattern the build-publish path uses.
+  # carries its own signed digest. GitHub Actions matrix jobs cannot
+  # expose per-variant `outputs:` (only the last leg's outputs would
+  # win), so per-variant digests reach `update-release` via the same
+  # `fine-tune-{variant}-digest` artifact pattern the build-publish
+  # path uses. `verify-signatures` and `update-release` reference this
+  # job by `result` only; consumers needing a per-variant digest read
+  # the artifact, not `needs.retag-fine-tune.outputs.*`.
   retag-fine-tune:
     name: Retag Fine-Tune
     needs: [version]
