@@ -72,7 +72,7 @@ class BeforeAfterRollout:
         if check_interval_hours <= 0.0:
             msg = "check_interval_hours must be positive"
             raise ValueError(msg)
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._snapshot_builder: SnapshotBuilder = (
             snapshot_builder or _default_snapshot_builder
         )

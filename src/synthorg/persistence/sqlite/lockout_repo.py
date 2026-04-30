@@ -56,7 +56,7 @@ class SQLiteLockoutRepository:
         self._window = timedelta(minutes=config.lockout_window_minutes)
         self._duration = timedelta(minutes=config.lockout_duration_minutes)
         self._duration_seconds = config.lockout_duration_minutes * 60
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._locked: dict[str, float] = {}
         self._locked_lock: threading.Lock = threading.Lock()
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -78,7 +78,10 @@ class SQLiteLockoutRepository:
             locked_until = self._locked.get(username)
             if locked_until is None:
                 return False
-            if self._clock.monotonic() > locked_until:
+            # ``>=`` so an exact-match expiry releases the lock and
+            # evicts the entry; a strict ``>`` would briefly hold a
+            # user past the configured duration.
+            if self._clock.monotonic() >= locked_until:
                 self._locked.pop(username, None)
                 return False
             return True

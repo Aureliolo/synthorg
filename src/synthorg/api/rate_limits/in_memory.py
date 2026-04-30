@@ -61,7 +61,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 cold-bucket GC horizon. Defaults to ``SystemClock``;
                 tests inject ``FakeClock`` for deterministic eviction.
         """
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._buckets: dict[str, _Bucket] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         # Reference count of in-flight ``acquire`` calls per key, used

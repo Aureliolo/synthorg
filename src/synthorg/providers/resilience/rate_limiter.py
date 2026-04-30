@@ -39,7 +39,7 @@ class RateLimiter:
     ) -> None:
         self._config = config
         self._provider_name = provider_name
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._semaphore: asyncio.Semaphore | None = (
             asyncio.Semaphore(config.max_concurrent)
             if config.max_concurrent > 0

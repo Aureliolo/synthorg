@@ -121,7 +121,7 @@ class ABTestRollout:
             improvement_threshold=improvement_threshold,
             significance_level=significance_level,
         )
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._roster: OrgRoster = roster or NoOpOrgRoster()
         self._group_aggregator: GroupSignalAggregator = (
             group_aggregator or _NullGroupAggregator()

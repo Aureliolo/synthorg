@@ -44,7 +44,7 @@ class MCPResultCache:
     ) -> None:
         self._max_size = max_size
         self._ttl_seconds = ttl_seconds
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._cache: OrderedDict[tuple[str, Any], tuple[float, ToolExecutionResult]] = (
             OrderedDict()
         )

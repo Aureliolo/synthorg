@@ -229,7 +229,7 @@ class SelfImprovementService:
         # always have a clock to call on, even when the caller didn't
         # pass one. Tests that need deterministic timestamps inject a
         # FakeClock here.
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._rule_engine = build_rule_engine(config)
         self._strategies = build_strategies(config, provider=provider)
         self._guards = build_guards(config, approval_store=approval_store)

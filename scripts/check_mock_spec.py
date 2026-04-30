@@ -182,13 +182,17 @@ def _scan(test_path: Path, baseline: set[str]) -> list[str]:
 
 
 def _scan_all_for_baseline() -> list[str]:
-    """Return every bare-mock site in ``tests/`` for baseline regeneration."""
+    """Return every bare-mock site in ``tests/`` for baseline regeneration.
+
+    Re-raises ``InspectionError`` instead of silently continuing on a
+    parse failure: a baseline that quietly skips an unparseable file
+    would let the gate suppress every bare mock in that file going
+    forward, which is exactly the kind of silent failure the gate
+    exists to prevent.
+    """
     entries: list[str] = []
     for test_path in _iter_test_files():
-        try:
-            hits = _scan_file(test_path)
-        except InspectionError:
-            continue
+        hits = _scan_file(test_path)
         rel = _rel(test_path)
         for lineno, col in hits:
             entries.append(_format_entry(rel, lineno, col))

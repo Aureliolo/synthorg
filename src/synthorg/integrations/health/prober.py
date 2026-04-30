@@ -27,6 +27,7 @@ from synthorg.integrations.health.protocol import ConnectionHealthCheck  # noqa:
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     HEALTH_CHECK_FAILED,
+    HEALTH_PROBER_CONFIG_INVALID,
     HEALTH_PROBER_STARTED,
     HEALTH_PROBER_STOPPED,
     HEALTH_STATUS_CHANGED,
@@ -94,12 +95,28 @@ class HealthProberService:
         # crashing the probe task at runtime when the negative value
         # reaches ``self._clock.sleep`` (which rejects negatives).
         if interval_seconds <= 0:
+            logger.error(
+                HEALTH_PROBER_CONFIG_INVALID,
+                parameter="interval_seconds",
+                value=interval_seconds,
+            )
             msg = f"interval_seconds must be positive; got {interval_seconds}"
             raise ValueError(msg)
         if degraded_threshold <= 0:
+            logger.error(
+                HEALTH_PROBER_CONFIG_INVALID,
+                parameter="degraded_threshold",
+                value=degraded_threshold,
+            )
             msg = f"degraded_threshold must be positive; got {degraded_threshold}"
             raise ValueError(msg)
         if unhealthy_threshold < degraded_threshold:
+            logger.error(
+                HEALTH_PROBER_CONFIG_INVALID,
+                parameter="unhealthy_threshold",
+                unhealthy_threshold=unhealthy_threshold,
+                degraded_threshold=degraded_threshold,
+            )
             msg = (
                 f"unhealthy_threshold ({unhealthy_threshold}) must be "
                 f">= degraded_threshold ({degraded_threshold})"
@@ -109,7 +126,7 @@ class HealthProberService:
         self._interval = interval_seconds
         self._unhealthy_threshold = unhealthy_threshold
         self._degraded_threshold = degraded_threshold
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._failure_counts: dict[str, int] = {}
         self._failure_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None

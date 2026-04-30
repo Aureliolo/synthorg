@@ -59,7 +59,7 @@ class RerankerCache:
             raise ValueError(msg)
         self._ttl = ttl_seconds
         self._max_size = max_size
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._store: dict[
             str,
             tuple[tuple[str, ...], float, float],

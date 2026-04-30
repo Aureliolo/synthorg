@@ -30,7 +30,9 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
 
 export function makeAgentList(count: number = 3): MockAgent[] {
   if (!Number.isInteger(count) || count < 0) {
-    throw new RangeError(`makeAgentList: count must be a non-negative integer; got ${count}`)
+    throw new RangeError(
+      `makeAgentList: count must be a non-negative integer; got ${count}`,
+    )
   }
   return Array.from({ length: count }, (_, idx) =>
     makeAgent({

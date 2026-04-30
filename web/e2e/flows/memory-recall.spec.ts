@@ -43,14 +43,13 @@ test.describe('Memory recall critical flow', () => {
     await page.goto('/ontology')
     await expect(page).toHaveURL(/\/ontology/)
     await expect(page.locator('main')).toBeVisible()
-    // Assert at least one of the two seeded surfaces (memory entry
-    // content OR ontology fact entity) actually rendered. Catching
-    // 'Always validate inputs before processing.' from the memory
-    // factory or 'reports_to' from the ontology factory proves the
-    // panel mounted; a regression that hides either surface fails
-    // this assertion instead of silently passing.
+    // Assert BOTH seeded surfaces independently so a regression that
+    // hides either the memory panel OR the ontology panel fails this
+    // test. A single OR-regex assertion would let one surface go
+    // missing silently, weakening the signal.
     await expect(
-      page.getByText(/Always validate inputs before processing|reports_to/).first(),
+      page.getByText('Always validate inputs before processing').first(),
     ).toBeVisible()
+    await expect(page.getByText('reports_to').first()).toBeVisible()
   })
 })

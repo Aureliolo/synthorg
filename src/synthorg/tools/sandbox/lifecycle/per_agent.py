@@ -48,7 +48,7 @@ class PerAgentStrategy:
         """
         self._grace_seconds = config.grace_period_seconds
         self._max_idle = config.max_idle_seconds
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._containers: dict[str, ContainerHandle] = {}
         self._last_used: dict[str, float] = {}
         self._timers: dict[str, asyncio.Task[None]] = {}

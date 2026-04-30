@@ -80,7 +80,7 @@ class ReplayProtector:
         self._window = window_seconds
         self._max_entries = max_entries
         self._seen: OrderedDict[str, float] = OrderedDict()
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     def check_freshness(self, timestamp: float | None) -> bool:
         """Validate timestamp staleness only (no nonce dedup).

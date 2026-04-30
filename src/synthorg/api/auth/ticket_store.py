@@ -97,7 +97,7 @@ class WsTicketStore:
             raise ValueError(msg)
         self._ttl = ttl_seconds
         self._max_pending = max_pending_per_user
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._tickets: dict[str, _TicketEntry] = {}
 
     @property

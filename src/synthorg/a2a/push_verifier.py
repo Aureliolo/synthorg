@@ -43,7 +43,7 @@ class A2APushVerifier:
         clock: Clock | None = None,
     ) -> None:
         self._clock_skew_seconds = clock_skew_seconds
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def signature_header(self) -> str:
@@ -96,7 +96,10 @@ class A2APushVerifier:
             try:
                 timestamp = float(timestamp_str)
                 timestamp_ok = math.isfinite(timestamp)
-            except ValueError:
+            except ValueError, TypeError:
+                # ``TypeError`` covers a non-string header value
+                # slipping through the dict.get default; ``ValueError``
+                # covers malformed strings.
                 timestamp = 0.0
                 timestamp_ok = False
             if not timestamp_ok:

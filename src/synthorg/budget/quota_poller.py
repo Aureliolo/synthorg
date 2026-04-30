@@ -56,7 +56,7 @@ class QuotaPoller:
         self._tracker = quota_tracker
         self._config = config
         self._dispatcher = notification_dispatcher
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._task: asyncio.Task[None] | None = None
         # Held across the full body of ``start`` and ``stop`` so the
         # check-and-mutate of ``self._task`` is atomic against
@@ -88,7 +88,15 @@ class QuotaPoller:
     async def stop(self) -> None:
         """Cancel the background polling task and wait for it to finish."""
         async with self._lifecycle_lock:
-            if self._task is None or self._task.done():
+            if self._task is None:
+                return
+            if self._task.done():
+                # The task already exited (e.g. cancellation racing
+                # with a self-finishing loop body). Clear the
+                # reference so a subsequent ``start()`` is treated as
+                # a fresh cold start instead of seeing a stale done
+                # task and short-circuiting.
+                self._task = None
                 return
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

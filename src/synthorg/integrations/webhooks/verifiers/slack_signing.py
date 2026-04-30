@@ -31,7 +31,7 @@ class SlackSigningVerifier:
     __slots__ = ("_clock",)
 
     def __init__(self, *, clock: Clock | None = None) -> None:
-        self._clock: Clock = clock or SystemClock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def signature_header(self) -> str:
