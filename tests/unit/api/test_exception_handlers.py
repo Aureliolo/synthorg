@@ -563,6 +563,9 @@ class TestExceptionHandlers:
             assert resp.status_code == 401
             body = resp.json()
             assert body["success"] is False
+            # Unrecognised detail (Litestar's default) falls through to
+            # the generic UNAUTHORIZED code; the dashboard treats this
+            # as "show login, no toast".
             assert body["error"] == "Authentication required"
             _assert_error_detail(
                 body,
@@ -571,12 +574,77 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_not_authorized_scrubs_custom_detail(self) -> None:
-        """NotAuthorizedException always returns fixed message."""
+    def test_missing_authentication_maps_to_session_no_token(self) -> None:
+        """Missing-cookie path emits SESSION_NO_TOKEN.
+
+        The dashboard treats this as a fresh page load with no
+        session yet -- silent redirect to /login, no "you were
+        signed out" toast (which would be a false positive).
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            raise NotAuthorizedException(detail="Missing authentication")
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 401
+            body = resp.json()
+            assert body["error"] == "Authentication required"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.SESSION_NO_TOKEN,
+                error_category=ErrorCategory.AUTH,
+                retryable=False,
+            )
+
+    def test_invalid_session_cookie_maps_to_session_expired(self) -> None:
+        """Cookie-present-but-invalid path emits SESSION_EXPIRED.
+
+        The dashboard treats this as a session that lapsed --
+        redirect plus "Session expired. Please log in again."
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            raise NotAuthorizedException(detail="Invalid session cookie")
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 401
+            body = resp.json()
+            assert body["error"] == "Session expired. Please log in again."
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.SESSION_EXPIRED,
+                error_category=ErrorCategory.AUTH,
+                retryable=False,
+            )
+
+    def test_invalid_jwt_token_also_maps_to_session_expired(self) -> None:
+        """Bearer-token-invalid path is treated the same as expired cookie."""
 
         @get("/test")
         async def handler() -> None:
             raise NotAuthorizedException(detail="Invalid JWT token")
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 401
+            body = resp.json()
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.SESSION_EXPIRED,
+                error_category=ErrorCategory.AUTH,
+                retryable=False,
+            )
+
+    def test_not_authorized_unknown_detail_falls_through_to_unauthorized(self) -> None:
+        """Unrecognised detail strings get the generic UNAUTHORIZED code."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise NotAuthorizedException(detail="Custom: something else")
 
         with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")

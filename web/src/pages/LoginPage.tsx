@@ -4,8 +4,11 @@ import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginLockout } from '@/hooks/useLoginLockout'
 import { getSetupStatus } from '@/api/endpoints/setup'
-import { getErrorMessage } from '@/utils/errors'
+import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
 import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
+
+const log = createLogger('LoginPage')
 
 type Mode = 'loading' | 'login' | 'setup'
 
@@ -23,6 +26,12 @@ export default function LoginPage() {
   const { locked, checkAndClearLockout, recordFailure, reset } = useLoginLockout()
 
   // Detect first-run vs normal login on mount.
+  // Fail-open on error: assume setup is complete so the login form
+  // still renders, then SetupGuard re-checks after authentication.
+  // Log structured context (status code, error message) so operators
+  // can diagnose pre-auth fetch failures instead of silently falling
+  // back to the login form. Without the log, a misconfigured API
+  // base URL or a 5xx during boot has no signal.
   useEffect(() => {
     let cancelled = false
     getSetupStatus()
@@ -35,8 +44,13 @@ export default function LoginPage() {
           setMode('login')
         }
       })
-      .catch(() => {
-        if (!cancelled) setMode('login')
+      .catch((err: unknown) => {
+        if (cancelled) return
+        log.error('LoginPage setup-status check failed', {
+          error: getErrorMessage(err),
+          statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
+        })
+        setMode('login')
       })
     return () => { cancelled = true }
   }, [])

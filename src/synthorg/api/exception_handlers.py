@@ -705,16 +705,55 @@ def handle_invalid_cursor(
     )
 
 
+def _discriminate_unauthorized(detail: str | None) -> tuple[ErrorCode, str]:
+    """Map an auth middleware detail string to a discriminated error_code.
+
+    Lets the dashboard treat "fresh session, no token" (a normal cold
+    page load when the browser does not yet have a cookie) differently
+    from "expired token" (the user had a session but it lapsed). The
+    UI shows the login form in both cases but only toasts on expiry,
+    avoiding false-positive "you were signed out" messages on the
+    very first load.
+
+    The mapping reads ``exc.detail`` literally; both producer
+    (``synthorg.api.auth.middleware``) and consumer (this handler)
+    are owned by SynthOrg, so the string is a stable contract. New
+    detail strings fall through to the generic ``UNAUTHORIZED`` code.
+    """
+    match detail:
+        case "Missing authentication":
+            return (
+                ErrorCode.SESSION_NO_TOKEN,
+                "Authentication required",
+            )
+        case "Invalid session cookie" | "Invalid JWT token":
+            return (
+                ErrorCode.SESSION_EXPIRED,
+                "Session expired. Please log in again.",
+            )
+        case _:
+            return (ErrorCode.UNAUTHORIZED, "Authentication required")
+
+
 def handle_not_authorized(
     request: Request[Any, Any, Any],
     exc: NotAuthorizedException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``NotAuthorizedException`` to 401."""
+    """Map ``NotAuthorizedException`` to 401 with a discriminated error_code.
+
+    Reads ``exc.detail`` to distinguish "no session token" (fresh page
+    load) from "expired session" so the dashboard can choose between a
+    silent redirect to /login (no_token) and a redirect plus
+    informational toast (expired). The auth middleware in
+    ``synthorg.api.auth.middleware`` is the only producer of these
+    detail strings; see ``_discriminate_unauthorized`` for the mapping.
+    """
     _log_error(request, exc, status=401)
+    error_code, detail = _discriminate_unauthorized(exc.detail)
     return _build_response(
         request,
-        detail="Authentication required",
-        error_code=ErrorCode.UNAUTHORIZED,
+        detail=detail,
+        error_code=error_code,
         error_category=ErrorCategory.AUTH,
         status_code=401,
     )
