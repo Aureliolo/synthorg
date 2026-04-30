@@ -331,6 +331,58 @@ write succeeds, so the audit trail captures only transitions that
 actually landed; if pre-decision visibility is needed, emit a
 separate DEBUG "attempting transition" log alongside.
 
+## 14. Repository CRUD method names
+
+Persistence repositories share a CRUD vocabulary that's uniform
+across 100+ implementations:
+
+| Method | Signature | Semantics |
+|--------|-----------|-----------|
+| `save` | `async def save(entity) -> None` | Insert or update; idempotent. Used for every persist (no separate `create` / `update`). |
+| `get` | `async def get(id) -> Entity \| None` | Single-entity fetch. Returns `None` on miss, never raises `NotFoundError`. |
+| `delete` | `async def delete(id) -> None` | Removal. `None` is the success signal. |
+| `list_all` | `async def list_all() -> tuple[Entity, ...]` | Full scan. |
+| `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query. |
+
+Query methods always return `tuple[T, ...]`, never `list[T]`. This
+matches the immutability default for collection returns and lets
+callers safely share results without defensive copies.
+
+`NotFoundError` is raised by the **service** layer (after a `get`
+returns `None`), never by the repository. This keeps the repository
+boundary side-effect-free for reads.
+
+## 15. MCP handler logging centralization
+
+Every MCP handler error path uses one of three centralized helpers
+from `src/synthorg/meta/mcp/handlers/common_logging.py`:
+
+* `log_handler_argument_invalid(tool_name, exc)` for
+  `ArgumentValidationError`
+* `log_handler_invoke_failed(tool_name, exc, **context)` for any
+  other service-layer exception
+* `log_handler_guardrail_violated(tool_name, exc)` for
+  `GuardrailViolationError`
+
+Success paths emit `logger.info(MCP_HANDLER_INVOKE_SUCCESS,
+tool_name=...)`. Do NOT emit custom `logger.error()` /
+`logger.warning()` calls from handlers -- these three helpers are
+the single source of truth so an event-name change touches one
+file, not 200+ handler methods.
+
+## 16. Repository file structure
+
+* Repository protocols live in
+  `src/synthorg/persistence/<domain>_protocol.py` as
+  `@runtime_checkable Protocol` classes.
+* Concrete implementations live in
+  `src/synthorg/persistence/sqlite/<domain>_repo.py` and
+  `src/synthorg/persistence/postgres/<domain>_repo.py`.
+* Both backends MUST conform to the same protocol; dual-backend
+  conformance is enforced via `tests/conformance/persistence/`.
+* The naming consistency lets `glob`-based test discovery and
+  contributor onboarding find the right files without grepping.
+
 ## See also
 
 * [persistence-boundary.md](persistence-boundary.md): repository /
