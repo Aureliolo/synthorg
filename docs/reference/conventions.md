@@ -178,13 +178,18 @@ validates against a frozen Pydantic args model:
   invoking `execute`; failures surface as a typed
   `ToolParameterError` envelope.
 * **MCP handlers** (`src/synthorg/meta/mcp/`): every
-  `read_tool` / `write_tool` / `admin_tool` registration passes
-  `args_model=<Args>` through to `MCPToolDef.args_model`. The
-  invoker validates ahead of dispatch; failures surface as the
+  `read_tool` / `write_tool` / `admin_tool` registration *may* pass
+  `args_model=<Args>` through to `MCPToolDef.args_model`; when set,
+  the invoker validates ahead of dispatch and failures surface as the
   standard `ArgumentValidationError` envelope without ever calling
-  the handler. Handlers retain the legacy `common_args` validators
-  only for tools with `args_model=None` (e.g. `MCPBridgeTool` whose
-  shape is dynamic).
+  the handler. `args_model` is optional (typed
+  `type[BaseModel] | None` on `MCPToolDef`); registrations with
+  `args_model=None` -- e.g. `MCPBridgeTool` whose shape mirrors a
+  remote MCP server's `tools/list` response and is not known until
+  runtime -- keep the legacy `common_args` validators inside the
+  handler body. The bulk of in-tree tools declare a concrete
+  `args_model`; the `None` exit is reserved for genuinely
+  dynamically-shaped tools.
 
 All args models share the convention from §8 (frozen, no NaN/Inf,
 extra=forbid) and reuse the `_ArgsBase` / `PaginationFields` /

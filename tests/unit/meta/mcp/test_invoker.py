@@ -331,6 +331,44 @@ class TestMCPToolInvokerArgsModelValidation:
         assert "name" in body["message"]
         assert "count" in body["message"]
 
+    async def test_non_dict_arguments_rejected_before_handler(self) -> None:
+        """Non-mapping payloads short-circuit before ``model_validate``.
+
+        The MCP wire surface can deliver any JSON value at runtime;
+        the invoker has an explicit shape guard that rejects lists,
+        strings, etc. before they reach Pydantic.  Without this test
+        the guard could regress silently (Pydantic's ``model_validate``
+        would still raise on a list, but only after walking it as
+        though it were an iterable of pairs).
+        """
+        tool = self._tool_with_args_model()
+        registry = registry_with(tool)
+        invoked: list[bool] = []
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            invoked.append(True)
+            return json.dumps({"ok": True})
+
+        invoker = MCPToolInvoker(registry, {"synthorg_test_validated": handler})
+        # ``[("name", "alice")]`` is the classic failure mode
+        # ``dict(...)`` would have silently accepted.
+        result = await invoker.invoke(
+            "synthorg_test_validated",
+            [("name", "alice"), ("count", 1)],  # type: ignore[arg-type]
+            app_state=None,
+        )
+        assert result.is_error is True
+        assert invoked == []  # handler MUST NOT be reached
+        body = json.loads(result.content)
+        assert body["error_type"] == "ArgumentValidationError"
+        assert body["domain_code"] == "invalid_argument"
+        assert "JSON object" in body["message"]
+
     async def test_missing_required_field_rejected(self) -> None:
         """Missing required fields fail at the boundary."""
         tool = self._tool_with_args_model()

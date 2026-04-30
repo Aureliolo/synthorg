@@ -24,15 +24,23 @@ class TestDataAggregatorArgs:
         assert args.group_by is None
 
     @pytest.mark.unit
-    def test_custom_period_requires_dates(self) -> None:
+    @pytest.mark.parametrize(
+        "extra_dates",
+        [
+            pytest.param({}, id="missing_both"),
+            pytest.param({"start_date": "2026-01-01"}, id="missing_end"),
+            pytest.param({"end_date": "2026-02-01"}, id="missing_start"),
+        ],
+    )
+    def test_custom_period_requires_dates(self, extra_dates: dict[str, str]) -> None:
+        """``period='custom'`` requires both ``start_date`` and ``end_date``."""
+        payload: dict[str, object] = {
+            "metrics": ["x"],
+            "period": "custom",
+            **extra_dates,
+        }
         with pytest.raises(ValidationError, match="custom"):
-            DataAggregatorArgs(metrics=("x",), period="custom")
-        with pytest.raises(ValidationError, match="custom"):
-            DataAggregatorArgs(
-                metrics=("x",),
-                period="custom",
-                start_date="2026-01-01",
-            )
+            DataAggregatorArgs.model_validate(payload)
 
     @pytest.mark.unit
     def test_custom_period_with_dates_succeeds(self) -> None:
@@ -43,6 +51,17 @@ class TestDataAggregatorArgs:
             end_date="2026-02-01",
         )
         assert args.start_date == "2026-01-01"
+
+    @pytest.mark.unit
+    def test_custom_period_rejects_inverted_range(self) -> None:
+        """``start_date > end_date`` fails at the typed boundary."""
+        with pytest.raises(ValidationError, match="on or before"):
+            DataAggregatorArgs(
+                metrics=("x",),
+                period="custom",
+                start_date="2026-02-01",
+                end_date="2026-01-01",
+            )
 
     @pytest.mark.unit
     def test_invalid_period_rejected(self) -> None:
@@ -102,11 +121,18 @@ class TestImageGeneratorArgs:
         assert args.quality == "standard"
 
     @pytest.mark.unit
-    def test_dimension_bounds(self) -> None:
+    @pytest.mark.parametrize(
+        "dimension",
+        [
+            pytest.param({"width": 255}, id="width_below_min"),
+            pytest.param({"height": 2049}, id="height_above_max"),
+        ],
+    )
+    def test_dimension_bounds(self, dimension: dict[str, int]) -> None:
+        """Dimensions outside the [256, 2048] range are rejected."""
+        payload: dict[str, object] = {"prompt": "x", **dimension}
         with pytest.raises(ValidationError):
-            ImageGeneratorArgs(prompt="x", width=255)
-        with pytest.raises(ValidationError):
-            ImageGeneratorArgs(prompt="x", height=2049)
+            ImageGeneratorArgs.model_validate(payload)
 
 
 class TestDiagramGeneratorArgs:
