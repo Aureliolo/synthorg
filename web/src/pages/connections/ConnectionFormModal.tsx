@@ -259,7 +259,10 @@ export function ConnectionFormModal({
           <DialogCloseButton />
         </DialogHeader>
 
-        <div className="max-h-[70vh] overflow-y-auto p-card">
+        {/* Responsive max-h: phones get 85vh (more usable height
+            when the on-screen keyboard is up); desktop sits at 70vh
+            so the modal stays centered with surrounding context. */}
+        <div className="max-h-[85vh] overflow-y-auto p-card sm:max-h-[70vh]">
           {mode === 'create' && form.type === null ? (
             <TypePicker
               onSelect={(type) => setForm((prev) => ({ ...prev, type }))}
