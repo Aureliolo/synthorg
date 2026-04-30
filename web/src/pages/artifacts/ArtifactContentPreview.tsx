@@ -6,8 +6,11 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 import { downloadArtifactContent } from '@/api/endpoints/artifacts'
 import { downloadArtifactFile } from '@/utils/download'
-import { getErrorMessage } from '@/utils/errors'
+import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
 import type { Artifact } from '@/api/types/artifacts'
+
+const log = createLogger('ArtifactContentPreview')
 
 interface ArtifactContentPreviewProps {
   artifact: Artifact
@@ -51,7 +54,19 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
       })
       .catch((err: unknown) => {
         if (revoked) return
-        setImageError(getErrorMessage(err))
+        const message = getErrorMessage(err)
+        // Structured log so an operator chasing missing previews can
+        // tell whether this is a 404 (artifact gone), a 5xx (storage
+        // backend issue), or a network failure. Don't include the
+        // artifact path; it can carry user-content that might be
+        // sensitive in logs.
+        log.error('artifact image preview failed to load', {
+          artifactId: artifact.id,
+          contentType: artifact.content_type,
+          statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
+          error: message,
+        })
+        setImageError(message)
       })
     return () => {
       revoked = true

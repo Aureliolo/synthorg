@@ -12,8 +12,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { createLogger } from '@/lib/logger'
 import { useTrainingStore } from '@/stores/training'
 import type { AgentConfig } from '@/api/types/agents'
-import { getErrorMessage } from '@/utils/errors'
-import { sanitizeForLog } from '@/utils/logging'
+import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import {
   TrainingPlanTable,
   type TrainingPlanRow,
@@ -46,10 +45,16 @@ export default function TrainingPage() {
         }
       })
       .catch((err: unknown) => {
-        log.error(
-          'Failed to load agents',
-          sanitizeForLog({ err, message: getErrorMessage(err) }),
-        )
+        // Pass the structured fields the operator actually needs to
+        // diagnose: status code (404 vs 5xx vs network), error class
+        // name, and a length-bounded message. The previous call
+        // flattened the whole error through sanitizeForLog into a
+        // single string, which dropped the status code.
+        log.error('Failed to load agents', {
+          errorType: err instanceof Error ? err.constructor.name : typeof err,
+          statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
+          error: getErrorMessage(err),
+        })
         if (!cancelled) {
           setError(getErrorMessage(err))
           setLoading(false)

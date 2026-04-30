@@ -1,5 +1,6 @@
 import { CheckCircle } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
+import { EmptyState } from '@/components/ui/empty-state'
 
 interface MeetingDecisionsProps {
   decisions: readonly string[]
@@ -7,7 +8,17 @@ interface MeetingDecisionsProps {
 }
 
 export function MeetingDecisions({ decisions, className }: MeetingDecisionsProps) {
-  if (decisions.length === 0) return null
+  if (decisions.length === 0) {
+    return (
+      <SectionCard title="Decisions" icon={CheckCircle} className={className}>
+        <EmptyState
+          icon={CheckCircle}
+          title="No decisions recorded"
+          description="Decisions captured during this meeting will appear here."
+        />
+      </SectionCard>
+    )
+  }
 
   return (
     <SectionCard title="Decisions" icon={CheckCircle} className={className}>
