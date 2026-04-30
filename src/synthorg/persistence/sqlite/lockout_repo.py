@@ -96,8 +96,8 @@ class SQLiteLockoutRepository:
         ending at each user's most-recent attempt, so extending the
         scan range does not inflate the threshold check.
         """
-        now = self._clock.now()
-        scan_start = format_iso_utc(now - (self._window + self._duration))
+        scan_now = self._clock.now()
+        scan_start = format_iso_utc(scan_now - (self._window + self._duration))
         cursor = await self._db.execute(
             "SELECT username, attempted_at FROM login_attempts "
             "WHERE attempted_at >= ? "
@@ -112,6 +112,13 @@ class SQLiteLockoutRepository:
                 parse_iso_utc(row["attempted_at"]),
             )
 
+        # Resample wall-clock AFTER the DB read so query latency does
+        # not inflate the remaining lockout duration. ``mono_now`` and
+        # ``restore_now`` are sampled together as the post-query
+        # anchor; computing ``remaining`` from the pre-query
+        # ``scan_now`` would extend every restored lock by the
+        # observed query duration.
+        restore_now = self._clock.now()
         mono_now = self._clock.monotonic()
         restored = 0
         with self._locked_lock:
@@ -124,7 +131,7 @@ class SQLiteLockoutRepository:
                 if cnt_in_window < self._threshold:
                     continue
                 locked_until = max_at + self._duration
-                remaining = (locked_until - now).total_seconds()
+                remaining = (locked_until - restore_now).total_seconds()
                 if remaining > 0:
                     self._locked[uname] = mono_now + remaining
                     restored += 1

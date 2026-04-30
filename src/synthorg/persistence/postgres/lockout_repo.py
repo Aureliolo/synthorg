@@ -106,8 +106,8 @@ class PostgresLockoutRepository:
         """
         dict_row = self._dict_row
 
-        now = self._clock.now()
-        scan_start = now - (self._window + self._duration)
+        scan_now = self._clock.now()
+        scan_start = scan_now - (self._window + self._duration)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
@@ -138,6 +138,13 @@ class PostgresLockoutRepository:
             )
             rows = await cur.fetchall()
 
+        # Resample wall-clock AFTER the DB read so query latency does
+        # not inflate restored lockout durations. ``mono_now`` and
+        # ``restore_now`` are sampled together as the post-query
+        # anchor; computing ``remaining`` from the pre-query
+        # ``scan_now`` would extend every restored lock by the
+        # observed query duration.
+        restore_now = self._clock.now()
         mono_now = self._clock.monotonic()
         restored = 0
         with self._locked_lock:
@@ -146,7 +153,7 @@ class PostgresLockoutRepository:
                 if uname not in self._locked:
                     max_at = row["max_attempted_at"]
                     locked_until = max_at + self._duration
-                    remaining = (locked_until - now).total_seconds()
+                    remaining = (locked_until - restore_now).total_seconds()
                     if remaining > 0:
                         self._locked[uname] = mono_now + remaining
                         restored += 1

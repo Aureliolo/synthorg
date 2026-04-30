@@ -49,48 +49,62 @@ def test_wait_returns_false_on_timeout() -> None:
 
 
 def test_wait_unblocks_when_cancel_fires_from_another_thread() -> None:
-    """``wait()`` wakes immediately on cancel from a sibling thread."""
+    """``wait()`` wakes immediately on cancel from a sibling thread.
+
+    Synchronisation: the waiter runs in its own thread and signals
+    ``waiter_started`` immediately before calling ``token.wait()``;
+    the canceller blocks on ``waiter_started`` so ``cancel()`` only
+    fires once the waiter is actively exercising the wait path.
+    A pre-set cancel state would short-circuit ``wait()`` and pass
+    even if the blocking-wait wake path were broken.
+    """
     token = CancellationToken()
-    # ``ready`` synchronises the canceller with the main thread so the
-    # cancel only fires AFTER the main thread has called ``wait()``.
-    # Without it the canceller could win the race and call ``cancel()``
-    # before ``wait()`` even runs, masking a regression where ``wait()``
-    # fails to observe a pre-set cancel state.
-    ready = threading.Event()
+    waiter_started = threading.Event()
+    waiter_result: list[bool] = []
+
+    def _waiter() -> None:
+        waiter_started.set()
+        waiter_result.append(token.wait(timeout=5.0))
 
     def _canceller() -> None:
-        ready.wait()
+        waiter_started.wait()
         token.cancel()
 
+    waiter = threading.Thread(target=_waiter)
     canceller = threading.Thread(target=_canceller)
+    waiter.start()
     canceller.start()
-    try:
-        ready.set()
-        # Without cancellation this would block 5 s; with the
-        # threading.Event under the hood it returns immediately.
-        result = token.wait(timeout=5.0)
-        assert result is True
-    finally:
-        canceller.join()
+    waiter.join()
+    canceller.join()
+    assert not waiter.is_alive()
     assert not canceller.is_alive()
+    assert waiter_result == [True]
 
 
 def test_wait_without_timeout_blocks_until_cancel() -> None:
-    """``wait(None)`` blocks until cancel; a sibling thread cancels."""
+    """``wait(None)`` blocks until cancel; a sibling thread cancels.
+
+    Same waiter-started synchronisation as the timeout variant: the
+    canceller fires only after the waiter is parked in ``wait()``.
+    """
     token = CancellationToken()
-    ready = threading.Event()
+    waiter_started = threading.Event()
+    waiter_result: list[bool] = []
+
+    def _waiter() -> None:
+        waiter_started.set()
+        waiter_result.append(token.wait())
 
     def _canceller() -> None:
-        ready.wait()
+        waiter_started.wait()
         token.cancel()
 
+    waiter = threading.Thread(target=_waiter)
     canceller = threading.Thread(target=_canceller)
+    waiter.start()
     canceller.start()
-    try:
-        ready.set()
-        # Pass timeout=None implicitly via the default; the helper
-        # contract is that it returns True on cancel.
-        assert token.wait() is True
-    finally:
-        canceller.join()
+    waiter.join()
+    canceller.join()
+    assert not waiter.is_alive()
     assert not canceller.is_alive()
+    assert waiter_result == [True]

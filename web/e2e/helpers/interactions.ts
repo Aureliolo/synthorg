@@ -11,6 +11,19 @@
 import type { Locator, Page } from '@playwright/test'
 
 /**
+ * Escape regex metacharacters in a string so it matches literally.
+ *
+ * Without this, labels like ``"C++"`` or ``"Name?"`` would be
+ * interpreted as regex syntax (``+`` quantifier, ``?`` optional) and
+ * either fail to match or throw at construction time. The escape
+ * pattern is the standard one from MDN; covers ``. * + ? ^ $ { } ( )
+ * | [ ] \``.
+ */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
  * Drag *source* onto *target* using Playwright's HTML5 DnD API.
  *
  * Used by the Kanban board test to move a task card between columns.
@@ -24,14 +37,15 @@ export async function dragTo(source: Locator, target: Locator): Promise<void> {
  *
  * Convenience wrapper for multi-field forms (setup wizard, agent
  * creation). Each key is a label (regex or string) and each value is
- * the text to type.
+ * the text to type. Labels are matched literally (case-insensitive)
+ * so labels with regex metacharacters (``C++``, ``Name?``) work.
  */
 export async function fillForm(
   page: Page,
   fields: Record<string, string>,
 ): Promise<void> {
   for (const [label, value] of Object.entries(fields)) {
-    await page.getByLabel(new RegExp(label, 'i')).fill(value)
+    await page.getByLabel(new RegExp(escapeRegExp(label), 'i')).fill(value)
   }
 }
 
@@ -72,6 +86,8 @@ export async function selectOption(
   optionLabel: string,
 ): Promise<void> {
   await page
-    .getByLabel(typeof label === 'string' ? new RegExp(label, 'i') : label)
+    .getByLabel(
+      typeof label === 'string' ? new RegExp(escapeRegExp(label), 'i') : label,
+    )
     .selectOption({ label: optionLabel })
 }

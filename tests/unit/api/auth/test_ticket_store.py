@@ -139,8 +139,14 @@ class TestWsTicketStoreValidateAndConsume:
         ("ttl", "advance_by", "expect_consumable"),
         [
             pytest.param(10.0, 9.9, True, id="just_before_expiry"),
+            # Exact boundary: ``validate_and_consume`` uses
+            # ``now > entry.expires_at`` so ``now == expires_at`` is
+            # still consumable. This case locks the contract down so
+            # a future change of ``>`` to ``>=`` fails loudly.
+            pytest.param(10.0, 10.0, True, id="exact_expiry_consumable"),
             pytest.param(10.0, 11.0, False, id="just_after_expiry"),
             pytest.param(5.0, 4.0, True, id="custom_ttl_within"),
+            pytest.param(5.0, 5.0, True, id="custom_ttl_exact"),
             pytest.param(5.0, 6.0, False, id="custom_ttl_past"),
         ],
     )

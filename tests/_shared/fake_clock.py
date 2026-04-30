@@ -76,11 +76,15 @@ class FakeClock:
             ValueError: If ``seconds`` is negative or non-finite (NaN / inf).
         """
         _validate_seconds(seconds, action="sleep")
+        # Yield BEFORE mutating state so a cancelled awaiter exits
+        # without the FakeClock recording the (cancelled) sleep
+        # duration or advancing virtual time. ``SystemClock.sleep``
+        # delegates to ``asyncio.sleep`` whose ``CancelledError`` is
+        # raised before any virtual-time effect lands; preserving
+        # that ordering here keeps cancellation semantics aligned.
+        await asyncio.sleep(0)
         self._sleep_calls.append(seconds)
         self._now = self._now + timedelta(seconds=seconds)
-        # Yield once so a CancelledError pending on the awaiting task
-        # is delivered here, matching SystemClock.sleep semantics.
-        await asyncio.sleep(0)
 
     def now(self) -> AwareDatetime:
         """Return the current virtual time."""

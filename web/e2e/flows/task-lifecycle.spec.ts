@@ -46,26 +46,29 @@ import {
  */
 
 test.describe('Task lifecycle critical flow', () => {
+  // Seed the Kanban board with one task per column so the dashboard's
+  // grouping logic has rows to render. Use production status values
+  // (``created``, ``in_progress``, ...) so each seeded task lands in
+  // the Kanban column defined by ``STATUS_TO_COLUMN`` in
+  // ``web/src/utils/tasks.ts``. Hoisted to describe scope so the test
+  // body can reference ``allTasks[0]`` without crossing the
+  // ``beforeEach`` closure boundary (lifting fixes a ReferenceError
+  // that fired when the suite was actually executed).
+  const columns: Record<TaskStatus, MockTask[]> = {
+    created: makeKanbanColumn('created', 1),
+    assigned: makeKanbanColumn('assigned', 0),
+    in_progress: makeKanbanColumn('in_progress', 1),
+    in_review: makeKanbanColumn('in_review', 0),
+    blocked: makeKanbanColumn('blocked', 0),
+    completed: makeKanbanColumn('completed', 0),
+    failed: makeKanbanColumn('failed', 0),
+    cancelled: makeKanbanColumn('cancelled', 0),
+  }
+  const allTasks = Object.values(columns).flat()
+
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
-
-    // Seed the Kanban board with one task per column so the
-    // dashboard's grouping logic has rows to render. Use production
-    // status values (``created``, ``in_progress``, ...) so each
-    // seeded task lands in the Kanban column defined by
-    // ``STATUS_TO_COLUMN`` in ``web/src/utils/tasks.ts``.
-    const columns: Record<TaskStatus, MockTask[]> = {
-      created: makeKanbanColumn('created', 1),
-      assigned: makeKanbanColumn('assigned', 0),
-      in_progress: makeKanbanColumn('in_progress', 1),
-      in_review: makeKanbanColumn('in_review', 0),
-      blocked: makeKanbanColumn('blocked', 0),
-      completed: makeKanbanColumn('completed', 0),
-      failed: makeKanbanColumn('failed', 0),
-      cancelled: makeKanbanColumn('cancelled', 0),
-    }
-    const allTasks = Object.values(columns).flat()
     // Catch-all FIRST so the specific stub below wins (Playwright
     // matches handlers LIFO).
     await mockApiRoutes(page)

@@ -134,7 +134,16 @@ class A2APushVerifier:
         # Compute expected HMAC-SHA256.
         # When clock skew checking is enabled the timestamp is
         # included in the signed payload to prevent replay attacks.
-        signed_payload = timestamp_str.encode("utf-8") + body if timestamp_str else body
+        # In no-skew mode the timestamp is unvalidated and unrequired,
+        # so it MUST NOT be folded into the HMAC input -- otherwise a
+        # sender that signs only the body but ships a stray
+        # ``x-a2a-timestamp`` header would always fail verification,
+        # making the "no freshness check" mode depend on a header it
+        # neither requires nor validates.
+        include_timestamp = self._clock_skew_seconds > 0 and timestamp_str
+        signed_payload = (
+            timestamp_str.encode("utf-8") + body if include_timestamp else body
+        )
         expected = hmac.new(
             secret.encode("utf-8"),
             signed_payload,

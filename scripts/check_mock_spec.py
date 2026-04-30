@@ -131,24 +131,38 @@ def _is_empty_splat(value: ast.expr) -> bool:
     return False
 
 
+def _is_literal_none(value: ast.expr) -> bool:
+    """Return True if *value* is the literal ``None``.
+
+    ``Mock(None)`` and ``Mock(spec=None)`` look like spec declarations
+    syntactically but actually opt OUT of speccing -- ``unittest.mock``
+    treats them as no spec at all. The gate must not let those slip
+    through; recognising the literal here keeps the rule honest.
+    """
+    return isinstance(value, ast.Constant) and value.value is None
+
+
 def _has_spec_positional(args: list[ast.expr]) -> bool:
     """Return True if the first positional arg declares a spec.
 
     ``Mock(SomeClass)`` is an alias for ``Mock(spec=SomeClass)``;
     the first positional arg counts as a spec declaration as long
-    as it is a real value (not an empty splat).
+    as it is a real value (not ``None`` and not an empty splat).
     """
     if not args:
         return False
     first = args[0]
     if isinstance(first, ast.Starred):
         return not _is_empty_splat(first.value)
-    return True
+    return not _is_literal_none(first)
 
 
 def _has_spec_keyword(keywords: list[ast.keyword]) -> bool:
-    """Return True if any keyword arg is ``spec=`` or ``spec_set=``."""
-    return any(kw.arg in ("spec", "spec_set") for kw in keywords)
+    """Return True if a non-None ``spec=`` / ``spec_set=`` is passed."""
+    return any(
+        kw.arg in ("spec", "spec_set") and not _is_literal_none(kw.value)
+        for kw in keywords
+    )
 
 
 def _has_dynamic_splat(args: list[ast.expr], keywords: list[ast.keyword]) -> bool:

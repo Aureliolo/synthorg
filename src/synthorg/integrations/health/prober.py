@@ -24,7 +24,7 @@ from synthorg.integrations.health.checks.github import GitHubHealthCheck
 from synthorg.integrations.health.checks.slack import SlackHealthCheck
 from synthorg.integrations.health.checks.smtp import SmtpHealthCheck
 from synthorg.integrations.health.protocol import ConnectionHealthCheck  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     HEALTH_CHECK_FAILED,
     HEALTH_PROBER_CONFIG_INVALID,
@@ -158,10 +158,16 @@ class HealthProberService:
                 await self._probe_all()
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                # Routine probe-loop failure: log a redacted structured
+                # warning instead of ``logger.exception`` (SEC-1: full
+                # tracebacks are reserved for ``MemoryError`` /
+                # ``RecursionError`` per CLAUDE.md).
+                logger.warning(
                     HEALTH_CHECK_FAILED,
-                    error="unexpected error in probe loop",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    reason="unexpected error in probe loop",
                 )
             await self._clock.sleep(self._interval)
 
@@ -244,11 +250,15 @@ class HealthProberService:
                 status=new_status,
                 checked_at=now,
             )
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Routine catalog-write failure: redacted warning, not
+            # full traceback (SEC-1, see _probe_loop comment).
+            logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,
-                error="catalog.update_health failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="catalog.update_health failed",
             )
         else:
             if old_status != new_status:

@@ -56,12 +56,22 @@ test.describe('Memory recall critical flow', () => {
     ).toBeVisible()
     await expect(page.getByText('reports_to').first()).toBeVisible()
 
-    // Real UI interaction: click on the seeded ontology fact to
-    // exercise the surface's selection / detail-open path. Failing
-    // click would catch a regression that breaks the click handler
-    // on the entry point users actually rely on.
-    await page.getByText('reports_to').first().click()
-    await expect(page.locator('main')).toBeVisible()
+    // Real UI interaction: click on the seeded ontology fact and
+    // assert a click-specific postcondition (the seeded subject /
+    // object pair becomes visible in the detail surface). Asserting
+    // only ``main`` visibility wouldn't catch a click-handler
+    // regression because ``main`` was already visible above.
+    const factEntry = page.getByText('reports_to').first()
+    await factEntry.click()
+    // makeOntologyFact seeds entity='agent-001' / relation='reports_to'
+    // / target='agent-002'. The relation text was already visible
+    // before the click, so assert one of the related entity strings
+    // surfaces after the click -- a regression that breaks the
+    // selection/detail-open handler would leave the entity text
+    // unrendered.
+    await expect(
+      page.getByText(/agent-001|agent-002/).first(),
+    ).toBeVisible()
 
     // Drive a personality-trimmed event through the harness. The
     // event_type is in ``WS_EVENT_TYPE_VALUES`` and the notifications

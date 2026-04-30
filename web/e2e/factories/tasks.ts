@@ -21,8 +21,12 @@ export type TaskStatus =
   | 'in_review'
   | 'completed'
   | 'blocked'
+  | 'auth_required'
   | 'failed'
+  | 'interrupted'
   | 'cancelled'
+  | 'rejected'
+  | 'suspended'
 
 export interface MockTask {
   id: string
