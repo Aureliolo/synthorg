@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.7.6](https://github.com/Aureliolo/synthorg/compare/v0.7.5...v0.7.6) (2026-04-30)
+
+
+### Features
+
+* **skills:** add babysit-pr watchdog skill ([#1667](https://github.com/Aureliolo/synthorg/issues/1667)) ([efa1ca1](https://github.com/Aureliolo/synthorg/commit/efa1ca1bdb238cb7bd4d828d3d97239dcbcae150))
+
+
+### Bug Fixes
+
+* **ci:** eliminate publish-image race + add cosign signature gate ([#1676](https://github.com/Aureliolo/synthorg/issues/1676)) ([ccec605](https://github.com/Aureliolo/synthorg/commit/ccec6054da1b158af7616d8e3d2ca7f6c814cb6e))
+* **ci:** include all conventional-commit types in release-please CHANGELOG + bump web package version ([#1672](https://github.com/Aureliolo/synthorg/issues/1672)) ([eaf64d0](https://github.com/Aureliolo/synthorg/commit/eaf64d0b4c0db3635f3d3d83dc0cbeb759942771))
+* **ci:** replace unsupported package-lock-json extraFile with json jsonpath entries ([#1673](https://github.com/Aureliolo/synthorg/issues/1673)) ([b354f40](https://github.com/Aureliolo/synthorg/commit/b354f4089060ac875847464dcb04d0858b09f401))
+* **cli:** switch update-walk to list-commits + raise API response cap ([#1665](https://github.com/Aureliolo/synthorg/issues/1665)) ([f3436b6](https://github.com/Aureliolo/synthorg/commit/f3436b66e3d813e940e6e705eec636e4d0338639))
+* logging hygiene + production-runtime fixes ([#1666](https://github.com/Aureliolo/synthorg/issues/1666)) ([#1675](https://github.com/Aureliolo/synthorg/issues/1675)) ([7d51491](https://github.com/Aureliolo/synthorg/commit/7d514914cbb42dbc13eef60b70fea8a8adb86510))
+* **observability:** wire completeness gaps + registry-bound labels ([#1669](https://github.com/Aureliolo/synthorg/issues/1669)) ([ea2bdfe](https://github.com/Aureliolo/synthorg/commit/ea2bdfe2790dcb933b96cdd32e94521765c7231f))
+
+
+### Refactoring
+
+* **ci:** tag-push docker.yml retags signed digest instead of rebuilding ([#1681](https://github.com/Aureliolo/synthorg/issues/1681)) ([61a5dea](https://github.com/Aureliolo/synthorg/commit/61a5dea47e7b2a66827701a41abb49d01f3a5952))
+* extract boundary error abstraction to core ([#1668](https://github.com/Aureliolo/synthorg/issues/1668)) ([77253e4](https://github.com/Aureliolo/synthorg/commit/77253e4ab5d79b5b8764facbdbfa3b02cf4702e2))
+
+
+### Tests
+
+* audit test quality — sleeps, mock drift, E2E coverage stubs, clock injection ([#1604](https://github.com/Aureliolo/synthorg/issues/1604)) ([#1678](https://github.com/Aureliolo/synthorg/issues/1678)) ([62476e6](https://github.com/Aureliolo/synthorg/commit/62476e6c4b910ba98390fa08896071d83eb08fc3))
+
+
+### Maintenance
+
+* **deps:** bump litellm to 1.83.14 with uv override-dependencies ([#1679](https://github.com/Aureliolo/synthorg/issues/1679)) ([1a76fc6](https://github.com/Aureliolo/synthorg/commit/1a76fc6eeda1c29d711435c14115363467bdd217))
+
 ## [0.7.5](https://github.com/Aureliolo/synthorg/compare/v0.7.4...v0.7.5) (2026-04-28)
 
 
