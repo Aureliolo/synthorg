@@ -128,9 +128,17 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
   if (isImage && imageSrc) {
     return (
       <SectionCard title="Content Preview">
+        {/* width / height attributes set so the browser reserves space
+            before the image decodes; without them the layout shifts
+            on first paint and Lighthouse flags the page as having a
+            high CLS. The image is constrained by max-h-96 + object-
+            contain so the intrinsic dimensions only steer aspect-ratio
+            reservation, not final size. */}
         <img
           src={imageSrc}
           alt={`Preview of ${artifact.path}`}
+          width={800}
+          height={600}
           className="max-h-96 rounded-md border border-border object-contain"
         />
       </SectionCard>
