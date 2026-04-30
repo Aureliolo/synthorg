@@ -234,3 +234,15 @@ API_BRIDGE_CONFIG_REJECTED: Final[str] = "api.bridge_config.rejected"
 API_APP_SHUTDOWN_TIMEOUT: Final[str] = "api.app.shutdown.timeout"
 API_SHUTDOWN_SIGNAL_RECEIVED: Final[str] = "api.shutdown.signal.received"
 API_SHUTDOWN_HANDLER_SKIPPED: Final[str] = "api.shutdown.handler.skipped"
+
+# User presence (WS / auth controller)
+USER_PRESENCE_CONNECT: Final[str] = "user.presence.connect"
+USER_PRESENCE_DISCONNECT: Final[str] = "user.presence.disconnect"
+
+# Settings import-source classification (Wave 2.B B7)
+API_SETTINGS_VALIDATION_FAILED: Final[str] = "api.settings.validation_failed"
+
+# Audit chain entries written from controllers (Wave 2.B B4 / B5 / B6)
+AGENT_IDENTITY_MODIFIED: Final[str] = "audit.agent.identity_modified"
+AGENT_DELETED_AUDIT: Final[str] = "audit.agent.deleted"
+WORKFLOW_DEFINITION_CHANGED: Final[str] = "audit.workflow_definition.changed"

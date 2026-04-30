@@ -17,3 +17,8 @@ DECOMPOSITION_LLM_CALL_START: Final[str] = "decomposition.llm.call.start"
 DECOMPOSITION_LLM_CALL_COMPLETE: Final[str] = "decomposition.llm.call.complete"
 DECOMPOSITION_LLM_PARSE_ERROR: Final[str] = "decomposition.llm.parse.error"
 DECOMPOSITION_LLM_RETRY: Final[str] = "decomposition.llm.retry"
+
+DECOMPOSITION_EMPTY_PLAN_TEXT: Final[str] = "decomposition.empty_plan_text"
+"""Coordination-constraints middleware received an empty plan text
+from the LLM.  Caller falls back to a default plan; the event
+preserves the failure mode for triage."""

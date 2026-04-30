@@ -43,3 +43,9 @@ TASK_ASSIGNMENT_REASON_REWRITER_FAILED: Final[str] = (
 TASK_ASSIGNMENT_HIERARCHY_LOOKUP_FAILED: Final[str] = (
     "task_assignment.hierarchy.lookup_failed"
 )
+
+TASK_ASSIGNMENT_REGISTRY_BUILD: Final[str] = "task_assignment.registry.build"
+"""Assignment-strategy registry built at startup.
+
+Carries the registered strategy names so operators can confirm
+configuration parity across deployments."""
