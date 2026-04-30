@@ -8,7 +8,7 @@
  * wrapper around the list -- the controller returns the raw list
  * inside ``ApiResponse.data``).
  */
-import { apiClient, unwrap, unwrapVoid } from '../client'
+import { apiClient, unwrap } from '../client'
 import type { ApiResponse } from '../types/http'
 
 /** Mirrors ``synthorg.core.enums.WorkflowExecutionStatus``. */
@@ -72,14 +72,19 @@ export async function listWorkflowExecutions(
  * POST /workflow-executions/{execution_id}/cancel
  *
  * Backend returns ``ApiResponse[WorkflowExecution]`` (the cancelled
- * execution); we don't surface that body in the UI today, so the
- * caller treats this as a void mutation. Switch to ``unwrap`` and
+ * execution). The dashboard doesn't currently surface the cancelled
+ * execution body, so the function returns ``void`` and discards
+ * ``response.data`` after the success check. Switch to ``unwrap`` and
  * propagate the returned execution if a future caller needs it.
  */
 export async function cancelWorkflowExecution(executionId: string): Promise<void> {
-  const response = await apiClient.post<ApiResponse<null>>(
+  const response = await apiClient.post<ApiResponse<WorkflowExecution>>(
     `/workflow-executions/${encodeURIComponent(executionId)}/cancel`,
     {},
   )
-  unwrapVoid(response)
+  // The endpoint returns ApiResponse<WorkflowExecution>, but the UI
+  // doesn't render the cancelled execution. unwrap validates the
+  // envelope's success flag and returns the typed data; we discard
+  // it.
+  unwrap(response)
 }

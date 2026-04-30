@@ -163,7 +163,14 @@ export function useWorkflowEditorCallbacks(
       source_node_id: e.source,
       target_node_id: e.target,
       type: readString(e.data, 'edgeType') ?? 'sequential',
-      label: readString(e.data, 'label') ?? null,
+      // ReactFlow edges may store the label on ``data.label`` (our
+      // own write path) OR directly on ``e.label`` (older edges
+      // hydrated from the wire format). Fall back to ``e.label`` so
+      // duplicating a workflow preserves edge labels regardless of
+      // where they currently live.
+      label:
+        readString(e.data, 'label')
+        ?? (typeof e.label === 'string' ? e.label : null),
     }))
     const created = await useWorkflowsStore.getState().createWorkflow({
       name: `${state.definition.name} (Copy)`,

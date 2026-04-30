@@ -3,7 +3,7 @@ import type {
   listWorkflowExecutions,
   WorkflowExecution,
 } from '@/api/endpoints/workflow-executions'
-import { successFor, voidSuccess } from './helpers'
+import { apiSuccess, successFor } from './helpers'
 
 /**
  * Build a happy-path ``WorkflowExecution`` row for stories and tests.
@@ -46,7 +46,19 @@ export const workflowExecutionsHandlers = [
     ),
   ),
 
-  http.post('/api/v1/workflow-executions/:executionId/cancel', () =>
-    HttpResponse.json(voidSuccess()),
-  ),
+  // Backend returns ApiResponse<WorkflowExecution> from cancel; the
+  // MSW handler returns a representative cancelled execution so the
+  // wire shape matches the typed client.
+  http.post('/api/v1/workflow-executions/:executionId/cancel', ({ params }) => {
+    const executionId = String(params.executionId ?? 'wfx-cancelled')
+    return HttpResponse.json(
+      apiSuccess<WorkflowExecution>(
+        buildWorkflowExecution({
+          id: executionId,
+          status: 'cancelled',
+          completed_at: '2026-04-30T10:10:00Z',
+        }),
+      ),
+    )
+  }),
 ]

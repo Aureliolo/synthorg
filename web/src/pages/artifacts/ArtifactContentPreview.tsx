@@ -8,6 +8,7 @@ import { downloadArtifactContent } from '@/api/endpoints/artifacts'
 import { downloadArtifactFile } from '@/utils/download'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { Artifact } from '@/api/types/artifacts'
 
 const log = createLogger('ArtifactContentPreview')
@@ -60,11 +61,15 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
         // backend issue), or a network failure. Don't include the
         // artifact path; it can carry user-content that might be
         // sensitive in logs.
+        // SEC-1: every dynamic string passed into the structured log
+        // payload goes through sanitizeForLog. artifact.id /
+        // artifact.content_type can carry user-controlled bytes; the
+        // statusCode path is bounded to a number or null.
         log.error('artifact image preview failed to load', {
-          artifactId: artifact.id,
-          contentType: artifact.content_type,
+          artifactId: sanitizeForLog(artifact.id),
+          contentType: sanitizeForLog(artifact.content_type),
           statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
-          error: message,
+          error: sanitizeForLog(message),
         })
         setImageError(message)
       })

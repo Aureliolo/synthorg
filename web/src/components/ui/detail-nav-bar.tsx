@@ -46,9 +46,12 @@ export function DetailNavBar({
   // Bind keyboard shortcuts at the window level. The host detail page
   // typically wraps several inputs that we don't want to hijack, so
   // we ignore key events when focus is inside an input / textarea /
-  // contenteditable element.
+  // contenteditable element. Skip the binding entirely when the bar
+  // is hidden (``position === null`` means deep link / refresh) so
+  // the listener does not occupy the global keydown channel for a
+  // component that won't render anything.
   useEffect(() => {
-    if (!bindShortcuts) return
+    if (!bindShortcuts || position === null) return
     function isEditable(target: EventTarget | null): boolean {
       if (!(target instanceof HTMLElement)) return false
       if (target.isContentEditable) return true
@@ -68,7 +71,7 @@ export function DetailNavBar({
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
-  }, [bindShortcuts, canPrev, canNext, onPrev, onNext])
+  }, [bindShortcuts, position, canPrev, canNext, onPrev, onNext])
 
   if (position === null) return null
 

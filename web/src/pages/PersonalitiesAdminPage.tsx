@@ -17,6 +17,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { listPersonalityPresets } from '@/api/endpoints/setup'
 import type { PersonalityPresetInfo } from '@/api/types/setup'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('PersonalitiesAdminPage')
@@ -41,7 +42,8 @@ export default function PersonalitiesAdminPage() {
       } catch (err) {
         if (cancelled) return
         const message = getErrorMessage(err)
-        log.error('listPersonalityPresets failed', { error: message })
+        // SEC-1: sanitize before structured logging.
+        log.error('listPersonalityPresets failed', { error: sanitizeForLog(message) })
         setError(message)
       } finally {
         if (!cancelled) setLoading(false)
@@ -83,7 +85,7 @@ export default function PersonalitiesAdminPage() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="size-6 animate-spin text-text-muted" />
         </div>
-      ) : visible.length === 0 ? (
+      ) : visible.length === 0 && error === null ? (
         <EmptyState
           icon={Sparkles}
           title={searchQuery ? 'No matching presets' : 'No personality presets configured'}
@@ -93,7 +95,7 @@ export default function PersonalitiesAdminPage() {
               : 'Personality presets shipped with the runtime appear here.'
           }
         />
-      ) : (
+      ) : visible.length === 0 ? null : (
         <SectionCard title="Available presets" icon={Sparkles}>
           <ul className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
             {visible.map((preset) => (

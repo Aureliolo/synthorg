@@ -13,6 +13,7 @@ import { createLogger } from '@/lib/logger'
 import { useTrainingStore } from '@/stores/training'
 import type { AgentConfig } from '@/api/types/agents'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import {
   TrainingPlanTable,
   type TrainingPlanRow,
@@ -50,10 +51,15 @@ export default function TrainingPage() {
         // name, and a length-bounded message. The previous call
         // flattened the whole error through sanitizeForLog into a
         // single string, which dropped the status code.
+        // SEC-1: sanitize dynamic error fields before they reach the
+        // log pipeline. ``errorType`` is a constructor name (already
+        // safe) but pass through sanitizer for symmetry.
         log.error('Failed to load agents', {
-          errorType: err instanceof Error ? err.constructor.name : typeof err,
+          errorType: sanitizeForLog(
+            err instanceof Error ? err.constructor.name : typeof err,
+          ),
           statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
-          error: getErrorMessage(err),
+          error: sanitizeForLog(getErrorMessage(err)),
         })
         if (!cancelled) {
           setError(getErrorMessage(err))

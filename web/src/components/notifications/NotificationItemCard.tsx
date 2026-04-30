@@ -53,10 +53,23 @@ export function NotificationItemCard({
   const navigate = useNavigate()
   const Icon = SEVERITY_ICONS[item.severity]
 
+  // ``safeHref`` mirrors the URL-validation that ``handleClick`` was
+  // doing inline (only navigate to internal paths starting with a
+  // single slash). ``isActionable`` decides whether the main button
+  // does anything at all: an already-read notification with no valid
+  // internal href would otherwise become a focusable-but-inert
+  // keyboard stop.
+  const safeHref =
+    item.href && item.href.startsWith('/') && !item.href.startsWith('//')
+      ? item.href
+      : null
+  const isActionable = !item.read || safeHref !== null
+
   function handleClick() {
+    if (!isActionable) return
     if (!item.read) onMarkRead(item.id)
-    if (item.href && item.href.startsWith('/') && !item.href.startsWith('//')) {
-      void navigate(item.href)
+    if (safeHref) {
+      void navigate(safeHref)
     }
   }
 
@@ -75,14 +88,19 @@ export function NotificationItemCard({
           semantics, and the right role for screen readers. The click
           handler still does the mark-as-read + optional navigate; the
           per-action icons (Mark / Dismiss) live as sibling buttons
-          outside this one to avoid invalid nested-button HTML. */}
+          outside this one to avoid invalid nested-button HTML.
+          ``disabled`` + ``tabIndex=-1`` keep the button out of the
+          keyboard tab order when the row has nothing actionable to do
+          (already read with no valid href). */}
       <button
         type="button"
         onClick={handleClick}
+        disabled={!isActionable}
+        tabIndex={isActionable ? 0 : -1}
         aria-label={`${item.severity} notification: ${item.title}`}
         className={cn(
           'flex flex-1 items-start gap-3 text-left -m-px',
-          item.href ? 'cursor-pointer' : 'cursor-default',
+          isActionable ? 'cursor-pointer' : 'cursor-default',
         )}
       >
         <Icon

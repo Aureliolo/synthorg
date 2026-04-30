@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { getPasswordStrength } from '@/utils/password-strength'
 import { getSetupStatus } from '@/api/endpoints/setup'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { cn } from '@/lib/utils'
 
 const log = createLogger('setup')
@@ -27,6 +28,15 @@ export function AccountStep() {
   const authSetup = useAuthStore((s) => s.setup)
   const setAccountCreated = useSetupWizardStore((s) => s.setAccountCreated)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
+
+  // Cancellation flag for ``fetchPolicy``: the effect below sets this
+  // ref to ``true`` on unmount so the timed-out / mid-retry response
+  // handler can no-op instead of writing setState into a torn-down
+  // component (matches the pattern used by CoordinationMetricsPage /
+  // MetaAnalyticsPage etc.). Stored in a ref so the
+  // ``useCallback``-memoised ``fetchPolicy`` reads the same flag the
+  // effect's cleanup mutates without being re-created on every render.
+  const cancelledRef = useRef(false)
 
   // Read backend-configured min password length. Surfaced as an error so
   // users cannot submit under the default policy if the server has a stricter
@@ -55,29 +65,37 @@ export function AccountStep() {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       try {
         const status = await withTimeout(getSetupStatus())
+        if (cancelledRef.current) return
         setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
         setPolicyLoading(false)
         return
       } catch (err) {
+        if (cancelledRef.current) return
         lastErr = err
         attemptErrors.push(getErrorMessage(err))
       }
     }
+    if (cancelledRef.current) return
     // Log a single error after the loop with every attempt's message
     // in a structured ``attempts`` array. The previous form logged
     // attempt 1 at WARN and the final failure at ERROR, which split
     // the retry sequence across two log levels and made diagnosis
     // harder for operators tailing the ERROR stream.
+    // SEC-1: dynamic strings (``attemptErrors`` entries, ``lastErr``
+    // message) go through sanitizeForLog before reaching the log
+    // pipeline.
     log.error('Failed to fetch setup status after retries', {
-      attempts: attemptErrors,
-      error: getErrorMessage(lastErr),
+      attempts: attemptErrors.map((entry) => sanitizeForLog(entry)),
+      error: sanitizeForLog(getErrorMessage(lastErr)),
     })
     setPolicyError(getErrorMessage(lastErr))
     setPolicyLoading(false)
   }, [])
 
   useEffect(() => {
+    cancelledRef.current = false
     void fetchPolicy()
+    return () => { cancelledRef.current = true }
   }, [fetchPolicy])
 
   const strength = getPasswordStrength(password)

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SectionCard } from '@/components/ui/section-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -99,26 +100,48 @@ export default function EscalationQueuePage() {
     <div className="flex flex-col gap-section-gap">
       <ListHeader title="Escalation queue" count={visibleEscalations.length} />
 
-      <div className="flex flex-wrap gap-grid-gap">
-        <SegmentedControl
-          label="Filter by status"
-          value={statusFilter ?? 'all'}
-          onChange={(value) => {
-            setStatusFilter(value === 'all' ? null : (value as EscalationStatus))
-          }}
-          options={STATUS_OPTIONS}
-          size="sm"
-        />
-        <SegmentedControl
-          label="Filter by priority"
-          value={priorityFilter}
-          onChange={(value) => {
-            setPriorityFilter(value as PriorityBucket | 'all')
-          }}
-          options={PRIORITY_OPTIONS}
-          size="sm"
-        />
-      </div>
+      {/* Status + priority filters wrapped in the shared
+          SearchFilterSort layout primitive so the escalation queue
+          aligns with the rest of the dashboard's list pages. */}
+      <SearchFilterSort
+        filters={
+          <>
+            <SegmentedControl
+              label="Filter by status"
+              value={statusFilter ?? 'all'}
+              onChange={(value) => {
+                // Validate against the option set before casting; a
+                // malformed value (e.g. injected via a stale URL
+                // fragment) drops to ``null`` instead of being
+                // forwarded as an EscalationStatus that downstream
+                // code does not handle.
+                if (value === 'all') {
+                  setStatusFilter(null)
+                  return
+                }
+                const allowed = STATUS_OPTIONS.some((option) => option.value === value)
+                if (allowed) {
+                  setStatusFilter(value as EscalationStatus)
+                }
+              }}
+              options={STATUS_OPTIONS}
+              size="sm"
+            />
+            <SegmentedControl
+              label="Filter by priority"
+              value={priorityFilter}
+              onChange={(value) => {
+                const allowed = PRIORITY_OPTIONS.some((option) => option.value === value)
+                if (allowed) {
+                  setPriorityFilter(value as PriorityBucket | 'all')
+                }
+              }}
+              options={PRIORITY_OPTIONS}
+              size="sm"
+            />
+          </>
+        }
+      />
 
       {error && (
         <ErrorBanner

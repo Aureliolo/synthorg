@@ -443,7 +443,13 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   },
 
   handleWsEvent: (event) => {
-    const { payload } = event
+    // Guard the envelope first: ``event.payload`` is typed as
+    // ``Record<string, unknown>`` on the wire but a malformed broker
+    // could still send ``null`` or a non-object, in which case
+    // reading ``.approval`` off it would throw. Drop those frames
+    // silently rather than letting the WS pipeline crash.
+    if (!isObject(event.payload)) return
+    const payload = event.payload
     // ``isObject`` narrows in one step instead of the inline hand-rolled
     // ``typeof === 'object' && !== null && !Array.isArray`` chain
     // followed by a downstream ``as`` cast.

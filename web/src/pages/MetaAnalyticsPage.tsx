@@ -17,6 +17,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { getSignals, listProposals } from '@/api/endpoints/meta'
 import type { ProposalSummary, SignalsResponse } from '@/api/endpoints/meta'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { formatNumber } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
 
@@ -49,14 +50,16 @@ export default function MetaAnalyticsPage() {
         setSignals(signalsRes.value)
       } else {
         const message = getErrorMessage(signalsRes.reason)
-        log.error('getSignals failed', { error: message })
+        // SEC-1: sanitize before structured logging; UI keeps the raw
+        // message because the user-facing ErrorBanner is human-authored.
+        log.error('getSignals failed', { error: sanitizeForLog(message) })
         setSignalsError(message)
       }
       if (proposalsRes.status === 'fulfilled') {
         setProposals(proposalsRes.value)
       } else {
         const message = getErrorMessage(proposalsRes.reason)
-        log.error('listProposals failed', { error: message })
+        log.error('listProposals failed', { error: sanitizeForLog(message) })
         setProposalsError(message)
       }
       setLoading(false)
@@ -131,7 +134,12 @@ export default function MetaAnalyticsPage() {
               </ul>
             </SectionCard>
           ) : (
-            !loading && (
+            // Suppress the empty state when the signals fetch failed
+            // (signalsError != null). The ErrorBanner above already
+            // tells the operator what happened; rendering "No meta
+            // signals yet" alongside "Could not load meta signals"
+            // would be misleading.
+            !loading && signalsError === null && (
               <EmptyState
                 title="No meta signals yet"
                 description="Signals appear here once the meta-analysis loop has run at least once."

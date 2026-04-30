@@ -107,17 +107,25 @@ describe('useDetailNavigation', () => {
     expect(result.current.position).toBeNull()
   })
 
-  it('uses a custom getId when items do not have an id field', () => {
+  it('uses a custom getId when items have a non-id key field', () => {
     currentInitialPath = '/items/alice'
-    type Custom = { name: string }
-    const customItems: readonly Custom[] = [{ name: 'alice' }, { name: 'bob' }]
+    // ``T extends { id: string }`` on the hook means we keep ``id`` for
+    // the constraint; ``getId`` then projects a different field as the
+    // logical key. ``id`` here is the URL slug; ``name`` is the lookup
+    // value tests assert against. Mirrors a real surface where the
+    // route uses a slug but the backend list keys by ``name``.
+    type Custom = { id: string; name: string }
+    const customItems: readonly Custom[] = [
+      { id: 'alice-slug', name: 'alice' },
+      { id: 'bob-slug', name: 'bob' },
+    ]
     const { result } = renderHook(
       () =>
-        useDetailNavigation({
-          items: customItems as readonly { id: string }[] & readonly Custom[],
+        useDetailNavigation<Custom>({
+          items: customItems,
           currentId: 'alice',
-          getId: (item: { name?: string; id?: string }) => item.name ?? item.id ?? '',
-          routeFor: (item: { id: string }) => `/items/${item.id}`,
+          getId: (item) => item.name,
+          routeFor: (item) => `/items/${item.id}`,
         }),
       { wrapper: RouterWrapper },
     )

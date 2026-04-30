@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { AgentsStep } from '@/pages/setup/AgentsStep'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
@@ -80,9 +80,16 @@ describe('AgentsStep: unresolved-agent detection', () => {
 
     const banner = findBanner()
     expect(within(banner).getByText(/Alice/)).toBeInTheDocument()
-    expect(
-      within(banner).getByRole('button', { name: /Go back to Providers step/i }),
-    ).toBeInTheDocument()
+    const action = within(banner).getByRole('button', {
+      name: /Go back to Providers step/i,
+    })
+    expect(action).toBeInTheDocument()
+
+    // Clicking the action moves the wizard back to the providers step.
+    // Without this assertion, a future refactor could swap the
+    // ``onClick`` to a no-op and the test would still pass.
+    fireEvent.click(action)
+    expect(useSetupWizardStore.getState().currentStep).toBe('providers')
   })
 
   it('shows the banner when an agent references a missing model on a configured provider', () => {

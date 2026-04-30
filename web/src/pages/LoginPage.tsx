@@ -6,6 +6,7 @@ import { useLoginLockout } from '@/hooks/useLoginLockout'
 import { getSetupStatus } from '@/api/endpoints/setup'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
 
 const log = createLogger('LoginPage')
@@ -46,8 +47,11 @@ export default function LoginPage() {
       })
       .catch((err: unknown) => {
         if (cancelled) return
+        // Wrap the dynamic error string with sanitizeForLog before
+        // embedding in the structured log payload (SEC-1: never let
+        // attacker-controlled bytes reach the log pipeline raw).
         log.error('LoginPage setup-status check failed', {
-          error: getErrorMessage(err),
+          error: sanitizeForLog(getErrorMessage(err)),
           statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
         })
         setMode('login')

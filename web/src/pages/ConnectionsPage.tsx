@@ -60,7 +60,11 @@ export default function ConnectionsPage() {
     <div className="flex flex-col gap-section-gap">
       <ListHeader
         title="Connections"
-        count={connections.length}
+        // ``totalItems`` is the count after filters, which matches
+        // what pagination paginates and what the user actually sees
+        // in the grid. Showing the raw connections.length here would
+        // diverge from the table contents the moment a filter is set.
+        count={totalItems}
         primaryAction={
           <Button size="sm" onClick={() => setModal({ kind: 'create' })}>
             <Plus aria-hidden="true" />

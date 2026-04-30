@@ -16,6 +16,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { ROUTES } from '@/router/routes'
 import { formatDateTime } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
@@ -41,19 +42,35 @@ export default function WorkflowExecutionsPage() {
   const [pendingCancel, setPendingCancel] = useState<string | null>(null)
   const addToast = useToastStore((s) => s.add)
 
+  // ``reload`` captures the workflow id it was issued for. When the
+  // operator navigates between workflows quickly (URL changes drive
+  // ``id``), an in-flight response for the previous workflow could
+  // otherwise land in the new workflow's table; the captured-id
+  // guard drops stale responses by comparing ``requestedFor`` to the
+  // current ``id`` state when the await resumes. ``setExecutions([])``
+  // also clears the previous workflow's rows immediately so the
+  // operator sees a clean transition instead of stale data + spinner.
   const reload = useCallback(async () => {
     if (!id) return
+    const requestedFor = id
+    setExecutions([])
     setLoading(true)
     setError(null)
     try {
-      const rows = await listWorkflowExecutions(id)
+      const rows = await listWorkflowExecutions(requestedFor)
+      if (requestedFor !== id) return
       setExecutions(rows)
     } catch (err) {
+      if (requestedFor !== id) return
       const message = getErrorMessage(err)
-      log.error('listWorkflowExecutions failed', { workflowId: id, error: message })
+      // SEC-1: workflowId is URL-controlled, sanitize.
+      log.error('listWorkflowExecutions failed', {
+        workflowId: sanitizeForLog(requestedFor),
+        error: sanitizeForLog(message),
+      })
       setError(message)
     } finally {
-      setLoading(false)
+      if (requestedFor === id) setLoading(false)
     }
   }, [id])
 
@@ -68,7 +85,10 @@ export default function WorkflowExecutionsPage() {
       void reload()
     } catch (err) {
       const message = getErrorMessage(err)
-      log.error('cancelWorkflowExecution failed', { executionId, error: message })
+      log.error('cancelWorkflowExecution failed', {
+        executionId: sanitizeForLog(executionId),
+        error: sanitizeForLog(message),
+      })
       addToast({
         variant: 'error',
         title: 'Could not cancel execution',

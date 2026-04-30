@@ -6,7 +6,7 @@
  * and the page surfaces every received event with its status,
  * payload size, and any backend-captured error.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -17,6 +17,7 @@ import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SelectField } from '@/components/ui/select-field'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { ROUTES } from '@/router/routes'
 import { formatDateTime } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
@@ -49,19 +50,39 @@ export default function WebhookReceiptsPage() {
     return () => { cancelled = true }
   }, [connections, selected])
 
+  // ``reload`` captures the connection it was issued for. If the
+  // operator changes the selection mid-flight, the older request's
+  // response is dropped: the captured ``requestedFor`` no longer
+  // matches the currently-selected value when the await resolves.
+  // Without this guard, switching from connection A to B during a
+  // slow A response would render A's receipts under B's label.
   const reload = useCallback(async () => {
     if (!selected) return
+    const requestedFor = selected
     setLoading(true)
     setError(null)
     try {
-      const rows = await listWebhookActivity(selected)
+      const rows = await listWebhookActivity(requestedFor)
+      // Latest-write wins guard: the stale-response race compares the
+      // captured ``requestedFor`` against the ``selected`` state at
+      // settle-time. The setState callback reads the same ``prev``
+      // closure for ``selected`` as a defensive belt-and-braces
+      // (``selected`` is also read directly because React state is
+      // already up-to-date by the time await resumes).
+      if (requestedFor !== selected) return
       setEntries(rows)
     } catch (err) {
+      if (requestedFor !== selected) return
       const message = getErrorMessage(err)
-      log.error('listWebhookActivity failed', { connectionName: selected, error: message })
+      // SEC-1: connectionName is operator-controlled (URL / dropdown
+      // value); sanitize before structured logging.
+      log.error('listWebhookActivity failed', {
+        connectionName: sanitizeForLog(requestedFor),
+        error: sanitizeForLog(message),
+      })
       setError(message)
     } finally {
-      setLoading(false)
+      if (requestedFor === selected) setLoading(false)
     }
   }, [selected])
 
@@ -69,7 +90,13 @@ export default function WebhookReceiptsPage() {
     void reload()
   }, [reload])
 
-  const options = connections.map((c) => ({ value: c.name, label: c.name }))
+  // Memoise so a parent re-render that produces a new ``connections``
+  // identity (without value-level changes) does not force the
+  // SelectField underneath to re-render against a fresh array.
+  const options = useMemo(
+    () => connections.map((c) => ({ value: c.name, label: c.name })),
+    [connections],
+  )
 
   return (
     <div className="space-y-section-gap">

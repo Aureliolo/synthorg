@@ -137,10 +137,19 @@ export default function UsersPage() {
             <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
-      ) : users.length === 0 ? (
+      ) : sortedUsers.length === 0 ? (
+        // Use ``sortedUsers`` (the post-search-filter view) so an
+        // active query that yields nothing renders a search-empty
+        // message instead of a blank list. ``users.length === 0``
+        // would only fire on the truly-empty roster case and was
+        // hiding the "no matches" state behind a search.
         <EmptyState
-          title="No users"
-          description="Human users with dashboard access will appear here once they're provisioned."
+          title={searchQuery ? 'No matching users' : 'No users'}
+          description={
+            searchQuery
+              ? 'Try a different search term or clear the field above.'
+              : "Human users with dashboard access will appear here once they're provisioned."
+          }
         />
       ) : (
         <ul className="flex flex-col gap-grid-gap">

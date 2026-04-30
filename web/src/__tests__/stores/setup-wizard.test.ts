@@ -385,8 +385,10 @@ describe('setup wizard store', () => {
       // company creation.
       let inflightCount = 0
       let observedConcurrent = 0
+      let totalCalls = 0
       server.use(
         http.post('/api/v1/setup/company', async () => {
+          totalCalls += 1
           inflightCount += 1
           observedConcurrent = Math.max(observedConcurrent, inflightCount)
           await new Promise((resolve) => setTimeout(resolve, 20))
@@ -414,7 +416,13 @@ describe('setup wizard store', () => {
         useSetupWizardStore.getState().submitCompany(),
         useSetupWizardStore.getState().submitCompany(),
       ])
+      // ``observedConcurrent`` alone is satisfied if a serial test
+      // runner happens to schedule the three calls one-after-another
+      // (no real concurrency to block). ``totalCalls`` pins the
+      // contract: only one POST must reach the server even when
+      // three calls are issued in the same tick.
       expect(observedConcurrent).toBe(1)
+      expect(totalCalls).toBe(1)
     })
   })
 

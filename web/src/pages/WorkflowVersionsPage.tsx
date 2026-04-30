@@ -11,6 +11,7 @@
 import { useMemo } from 'react'
 import { useParams } from 'react-router'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import { createVersionHistoryClient } from '@/api/endpoints/version-history'
@@ -34,7 +35,11 @@ export default function WorkflowVersionsPage() {
     return (
       <div className="space-y-section-gap">
         <Breadcrumbs items={[{ label: 'Workflows', to: ROUTES.WORKFLOWS }, { label: 'Versions' }]} />
-        <p className="text-sm text-muted-foreground">Missing workflow id in URL.</p>
+        <ErrorBanner
+          severity="error"
+          title="Missing workflow id in URL"
+          description="Open the version history through the workflows list so the URL carries the right id."
+        />
       </div>
     )
   }

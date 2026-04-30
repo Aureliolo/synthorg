@@ -11,7 +11,7 @@ export type ErrorCategory =
   | 'internal'
 
 export type ErrorCode =
-  | 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007
+  | 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009
   | 2000 | 2001 | 2002 | 2003 | 2004
   | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012
   | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007
@@ -40,3 +40,9 @@ export interface ErrorDetail {
  * above.
  */
 export const ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT: ErrorCode = 2004
+
+/** 401 emitted when the request had no session cookie / bearer token. */
+export const ERROR_CODE_SESSION_NO_TOKEN: ErrorCode = 1008
+
+/** 401 emitted when the supplied session cookie / JWT was rejected as expired or invalid. */
+export const ERROR_CODE_SESSION_EXPIRED: ErrorCode = 1009

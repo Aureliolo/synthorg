@@ -632,6 +632,7 @@ class TestExceptionHandlers:
             resp = client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
+            assert "expired" in body["error"].lower()
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.SESSION_EXPIRED,

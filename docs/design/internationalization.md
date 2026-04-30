@@ -1,10 +1,10 @@
 # Internationalization
 
-SynthOrg's UI is **English-only**. Translation, localization, and right-to-left layout support are not currently planned.
+SynthOrg's UI text is shipped in **International / British English**. UI text translation and right-to-left (RTL) layout support are not currently planned. Locale-aware **display** of numbers, dates, times, currencies, and units is unaffected by this decision: those still flow through `Intl` and resolve via the operator's user / company / browser / system fallback (see [Regional Defaults in CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md)).
 
 ## Decision
 
-This was confirmed on 2026-04-30. The dashboard ships in International / British English (`colour`, `behaviour`, `organise`, `centred`, `analyse`). Strings are inline in components; there is no `t()` resolver, no message catalog, and no locale switcher.
+This was confirmed on 2026-04-30. The dashboard ships UI copy in International / British English (`colour`, `behaviour`, `organise`, `centred`, `analyse`). Strings are inline in components; there is no `t()` resolver, no message catalog, and no locale switcher. Currency / date / time / number formatting continues to be locale-resolved at runtime through the existing helpers; only the UI text variant is fixed.
 
 ## What this means in practice
 

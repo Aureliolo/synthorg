@@ -15,6 +15,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { getOverviewMetrics } from '@/api/endpoints/analytics'
 import type { OverviewMetrics } from '@/api/types/analytics'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { formatNumber } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
 
@@ -41,7 +42,10 @@ export default function CoordinationMetricsPage() {
       } catch (err) {
         if (cancelled) return
         const message = getErrorMessage(err)
-        log.error('getOverviewMetrics failed', { error: message })
+        // SEC-1: sanitize before structured logging; UI keeps the raw
+        // message because the user-facing ErrorBanner wants the
+        // backend-authored string verbatim.
+        log.error('getOverviewMetrics failed', { error: sanitizeForLog(message) })
         setError(message)
       } finally {
         if (!cancelled) setLoading(false)
