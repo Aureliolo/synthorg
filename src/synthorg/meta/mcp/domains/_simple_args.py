@@ -18,9 +18,10 @@ Heavy-cardinality domains (``agents``, ``communication``,
 left so we don't ship a dozen tiny files.
 """
 
-from typing import Literal
+from datetime import datetime
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
@@ -29,6 +30,25 @@ from synthorg.meta.mcp.domains._common_args import (
     PaginationFields,
     _ArgsBase,
 )
+
+
+def _check_time_window_ordering(since: str | None, until: str | None) -> None:
+    """Reject ``since > until`` on time-window filter args.
+
+    Used by ``MetricsGetHistoryArgs`` and ``CoordinationMetricsListArgs``
+    where both ``since`` and ``until`` are optional ``IsoDatetimeStr``
+    values (already validated as timezone-aware ISO 8601).  Returns
+    ``None`` on success; callers should ``return self`` after invoking
+    this helper from their ``model_validator(mode="after")``.
+    """
+    if since is None or until is None:
+        return
+    start = datetime.fromisoformat(since)
+    end = datetime.fromisoformat(until)
+    if start > end:
+        msg = f"since must be on or before until; got since={since!r}, until={until!r}"
+        raise ValueError(msg)
+
 
 # ── meta ────────────────────────────────────────────────────────────
 
@@ -128,6 +148,12 @@ class MetricsGetHistoryArgs(_ArgsBase):
         description="End datetime (ISO 8601, timezone-aware)",
     )
 
+    @model_validator(mode="after")
+    def _since_before_until(self) -> Self:
+        """Reject reversed time windows (``since > until``)."""
+        _check_time_window_ordering(self.since, self.until)
+        return self
+
 
 class ReportsListArgs(PaginationFields):
     """Args for ``reports.list``."""
@@ -169,6 +195,12 @@ class CoordinationMetricsListArgs(PaginationFields):
     until: IsoDatetimeStr | None = Field(
         default=None, description="End datetime (ISO 8601, timezone-aware)"
     )
+
+    @model_validator(mode="after")
+    def _since_before_until(self) -> Self:
+        """Reject reversed time windows (``since > until``)."""
+        _check_time_window_ordering(self.since, self.until)
+        return self
 
 
 class ScalingListDecisionsArgs(PaginationFields):

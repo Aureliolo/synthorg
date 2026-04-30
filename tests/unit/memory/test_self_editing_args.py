@@ -224,6 +224,28 @@ class TestParseSelfEditingArgs:
                 {"content": "x", "smuggled": "field"},
             )
 
+    @pytest.mark.unit
+    def test_multiple_errors_returned(self) -> None:
+        """A payload that violates multiple fields surfaces every error.
+
+        Locks in the "complete validation errors" contract: a single
+        ``parse_self_editing_args`` call must not stop after the first
+        failure -- callers (LLMs, MCP clients) need every problem at
+        once so they can correct in a single iteration.
+        """
+        with pytest.raises(ValidationError) as exc_info:
+            parse_self_editing_args(
+                "archival_memory_write",
+                # ``content`` blank AND ``category`` missing AND
+                # ``smuggled`` is an extra field -- three independent
+                # violations.
+                {"content": "   ", "smuggled": "field"},
+            )
+        errors = exc_info.value.errors()
+        assert len(errors) >= 2, (
+            f"expected multiple errors, got {len(errors)}: {errors}"
+        )
+
 
 class TestSelfEditingUnion:
     """Union covers exactly the six tools."""

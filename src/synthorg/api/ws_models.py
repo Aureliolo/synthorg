@@ -187,16 +187,27 @@ class WsEvent(BaseModel):
         """Validate ``payload`` against the typed :data:`WsEventPayload` union.
 
         Every :class:`WsEventType` has a corresponding frozen Pydantic
-        model in :mod:`synthorg.api.ws_payloads`; this validator merges
-        the envelope ``event_type`` over the payload dict and runs it
-        through the discriminated union adapter.  Spreading the
-        envelope's ``event_type`` *last* makes it authoritative, so a
-        caller cannot smuggle a conflicting ``payload["event_type"]``
-        and have the union pick the wrong variant.  A shape mismatch
-        (missing required field, wrong type, extra field) raises
-        :class:`pydantic.ValidationError` at construction so the bad
-        event never reaches a subscriber.
+        model in :mod:`synthorg.api.ws_payloads`.  This validator
+        first rejects a caller-supplied ``payload["event_type"]`` that
+        disagrees with the envelope (smuggled discriminator) -- the
+        ``WsEvent`` is frozen so we cannot rewrite ``self.payload`` in
+        place, and merely overwriting the merged copy still leaves the
+        smuggled value in ``self.payload`` at serialisation time.  A
+        mismatched event type therefore fails fast with a clear
+        message.  Once that's clean, the merged dict is run through
+        the discriminated union adapter and a shape mismatch (missing
+        required field, wrong type, extra field) raises
+        :class:`pydantic.ValidationError` so the bad event never
+        reaches a subscriber.
         """
+        nested = self.payload.get("event_type")
+        if nested is not None and nested != self.event_type.value:
+            msg = (
+                f"payload['event_type']={nested!r} does not match "
+                f"envelope event_type={self.event_type.value!r}; "
+                "remove the nested key or use the envelope value"
+            )
+            raise ValueError(msg)
         adapter = _get_payload_adapter()
         adapter.validate_python({**self.payload, "event_type": self.event_type.value})
         return self

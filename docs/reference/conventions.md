@@ -136,8 +136,9 @@ inline with the consumer. Examples:
   `_remaining_args.py`).
 * `src/synthorg/memory/self_editing_args.py` for the six
   self-editing-memory tools.
-* `src/synthorg/api/ws_payloads.py` for the WebSocket payload
-  discriminated union.
+* `src/synthorg/api/ws_payloads/` for the WebSocket payload
+  discriminated union (split across `_lifecycle.py` and `_domain.py`
+  with the union exported from `__init__.py`).
 * `src/synthorg/a2a/rpc_params.py` for the A2A JSON-RPC param
   discriminated union.
 
@@ -162,7 +163,7 @@ validates against a frozen Pydantic args model:
   RPC method, joined into `A2ARpcParams` discriminated union via the
   `method` literal. The gateway calls `parse_rpc_params(rpc_request)`
   before dispatching.
-* **WebSocket events** (`src/synthorg/api/ws_payloads.py`): one model
+* **WebSocket events** (`src/synthorg/api/ws_payloads/`): one model
   per `WsEventType` value, joined into `WsEventPayload` discriminated
   union via `event_type`. `WsEvent` runs every constructed payload
   through the union adapter so shape drift is rejected at construction.

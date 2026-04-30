@@ -264,6 +264,39 @@ class TestMCPToolInvokerArgsModelValidation:
         assert result.is_error is False
         assert captured == [{"name": "alice", "count": 7}]
 
+    async def test_handler_receives_normalized_args_with_defaults(self) -> None:
+        """The Phase 4 contract: defaults / coercions reach the handler.
+
+        ``_SampleArgs.count`` defaults to ``1``.  When the caller omits
+        it, the handler must still see ``count=1`` because the invoker
+        forwards the validated ``model_dump(mode="python")``, not the
+        raw caller dict.  A regression that re-passes the raw input
+        would silently strip the default and let handlers re-implement
+        defaulting, defeating the typed-boundary promise.
+        """
+        tool = self._tool_with_args_model()
+        registry = registry_with(tool)
+        captured: list[dict[str, object]] = []
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            captured.append(dict(arguments))
+            return json.dumps({"ok": True})
+
+        invoker = MCPToolInvoker(registry, {"synthorg_test_validated": handler})
+        # Caller omits ``count`` -- handler should still see the default.
+        result = await invoker.invoke(
+            "synthorg_test_validated",
+            {"name": "alice"},
+            app_state=None,
+        )
+        assert result.is_error is False
+        assert captured == [{"name": "alice", "count": 1}]
+
     async def test_invalid_args_skip_handler_and_return_error_envelope(
         self,
     ) -> None:
