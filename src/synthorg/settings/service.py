@@ -30,7 +30,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_VERSION_CONFLICT,
 )
 from synthorg.settings.config_bridge import extract_from_config
-from synthorg.settings.enums import SettingSource, SettingType
+from synthorg.settings.enums import SettingsImportSource, SettingSource, SettingType
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingReadOnlyError,
@@ -715,6 +715,7 @@ class SettingsService:
         value: str,
         *,
         expected_updated_at: str | None = None,
+        import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> SettingEntry:
         """Validate, encrypt, and persist a setting value with optional CAS.
 
@@ -722,6 +723,12 @@ class SettingsService:
         Raises ``VersionConflictError`` on CAS miss,
         ``SettingNotFoundError`` / ``SettingValidationError`` /
         ``SettingsEncryptionError`` on preflight failures.
+
+        ``import_source`` distinguishes how this write entered the
+        service so ``SETTINGS_VALIDATION_FAILED`` log records show
+        whether a malformed value came from an API body, file
+        upload, config merge, or direct set.  Defaults to
+        ``DIRECT_SET`` for in-process callers.
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
@@ -734,7 +741,12 @@ class SettingsService:
         try:
             _validate_value(definition, value)
         except SettingValidationError:
-            logger.warning(SETTINGS_VALIDATION_FAILED, namespace=namespace, key=key)
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                import_source=import_source.value,
+            )
             raise
 
         store_value = self._encrypt_if_sensitive(definition, value)

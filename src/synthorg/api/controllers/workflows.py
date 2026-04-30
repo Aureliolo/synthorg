@@ -54,6 +54,7 @@ from synthorg.engine.workflow.validation import (
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import WORKFLOW_DEFINITION_CHANGED
 from synthorg.observability.events.blueprint import (
     BLUEPRINT_INSTANTIATE_START,
     BLUEPRINT_INSTANTIATE_SUCCESS,
@@ -340,6 +341,18 @@ class WorkflowController(Controller):
         # Snapshot recording is handled inside ``WorkflowService`` via the
         # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
 
+        # Audit-chain entry covers schema-level mutations (create /
+        # update / delete).  Workflow execution is already
+        # well-instrumented; this captures the upstream definition
+        # changes that operators need for forensic reconstruction.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=definition.id,
+            action="create",
+            actor=creator,
+            version_after=definition.version,
+        )
+
         return Response(
             content=ApiResponse[WorkflowDefinition](data=definition),
             status_code=201,
@@ -444,6 +457,15 @@ class WorkflowController(Controller):
         # Snapshot recording is handled inside ``WorkflowService`` via the
         # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
 
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=updated.id,
+            action="update",
+            actor=updater,
+            version_before=existing.version,
+            version_after=updated.version,
+        )
+
         return Response(
             content=ApiResponse[WorkflowDefinition](data=updated),
         )
@@ -458,6 +480,7 @@ class WorkflowController(Controller):
     )
     async def delete_workflow(
         self,
+        request: Request[Any, Any, Any],
         state: State,
         workflow_id: PathId,
     ) -> None:
@@ -470,6 +493,12 @@ class WorkflowController(Controller):
             )
             msg = "Workflow definition not found"
             raise NotFoundError(msg)
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=workflow_id,
+            action="delete",
+            actor=get_auth_user_id(request),
+        )
 
     @post("/validate-draft", guards=[require_read_access], status_code=200)
     async def validate_draft(

@@ -173,9 +173,22 @@ VALID_WORKFLOW_EXECUTION_STATUSES: Final[frozenset[str]] = frozenset(
 # Unknown exceptions fall into ``"other"`` rather than inflating cardinality.
 # Derived from the ``ProviderErrorLabel`` Literal so the two stay in
 # lockstep -- adding a new label in one place is enough.
+#
+# Transient vs non-transient mapping for SLO queries:
+#   transient: rate_limit, timeout, connection, internal
+#   non-transient: invalid_request, auth, content_filter, not_found, other
+# PromQL example for transient-error rate:
+#   sum(rate(synthorg_provider_errors_total{
+#       error_class=~"rate_limit|timeout|connection|internal"}[5m]))
 VALID_PROVIDER_ERROR_CLASSES: Final[frozenset[str]] = frozenset(
     get_args(ProviderErrorLabel)
 )
+TRANSIENT_PROVIDER_ERROR_CLASSES: Final[frozenset[str]] = frozenset(
+    {"rate_limit", "timeout", "connection", "internal"},
+)
+"""Subset of :data:`VALID_PROVIDER_ERROR_CLASSES` that mark transient
+failures (caller should retry).  Mirrors
+``ProviderError.is_retryable=True`` in :mod:`synthorg.providers.errors`."""
 # In-process cache names that emit ``synthorg_cache_operations_total``.
 # Expanding this set requires adding a new cache + its record call.
 VALID_CACHE_NAMES: Final[frozenset[str]] = frozenset({"mcp_result", "reranker"})

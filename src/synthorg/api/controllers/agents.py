@@ -44,6 +44,8 @@ from synthorg.hr.performance.summary import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    AGENT_DELETED_AUDIT,
+    AGENT_IDENTITY_MODIFIED,
     API_AGENT_ACTIVITY_QUERIED,
     API_AGENT_HEALTH_QUERIED,
     API_AGENT_HEALTH_TREND_MISSING,
@@ -302,6 +304,17 @@ class AgentController(Controller):
             data,
             if_match=if_match,
         )
+        # Audit-chain entry: identity-bearing fields (name, role,
+        # department, level, model, autonomy) just changed. The actor
+        # is the request principal; the field set is what the request
+        # body declared explicitly via Pydantic ``model_fields_set``.
+        actor = getattr(getattr(request, "user", None), "username", "api")
+        logger.info(
+            AGENT_IDENTITY_MODIFIED,
+            agent_name=agent_name,
+            fields_changed=tuple(data.model_fields_set),
+            actor=actor,
+        )
         publish_ws_event(
             request,
             WsEventType.AGENT_UPDATED,
@@ -342,6 +355,16 @@ class AgentController(Controller):
             agent_name: Agent name.
         """
         app_state: AppState = state.app_state
+        # Audit-chain entry fires BEFORE the persistence delete so the
+        # security audit captures intent even if the delete itself
+        # fails (the trail then holds the operator's request and the
+        # subsequent error log shows the failure).
+        actor = getattr(getattr(request, "user", None), "username", "api")
+        logger.info(
+            AGENT_DELETED_AUDIT,
+            agent_name=agent_name,
+            actor=actor,
+        )
         await app_state.org_mutation_service.delete_agent(agent_name)
         publish_ws_event(
             request,

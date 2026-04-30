@@ -24,6 +24,7 @@ from synthorg.observability.events.async_task import (
     ASYNC_TASK_LISTED,
     ASYNC_TASK_START_FAILED,
     ASYNC_TASK_STARTED,
+    ASYNC_TASK_STATUS_TRANSITIONED,
     ASYNC_TASK_UPDATED,
 )
 
@@ -141,6 +142,16 @@ class AsyncTaskService:
             agent_id=task_spec.agent_id,
             supervisor_id=supervisor_id,
         )
+        # Async task lifecycle starts in RUNNING from the supervisor's
+        # perspective once the underlying TaskEngine assignment lands.
+        # ``from_status`` is None to mark the absent-to-running hop and
+        # complete the audit-stream contract for non-terminal hops.
+        logger.info(
+            ASYNC_TASK_STATUS_TRANSITIONED,
+            task_id=task.id,
+            from_status=None,
+            to_status=AsyncTaskStatus.RUNNING.value,
+        )
         return task.id
 
     async def check_async_task(self, task_id: str) -> AsyncTaskStatus:
@@ -249,6 +260,10 @@ class AsyncTaskService:
         Returns:
             Updated status (should be CANCELLED).
         """
+        prior_task = await self._engine.get_task(task_id)
+        prior_status = (
+            self._map_status(prior_task.status) if prior_task is not None else None
+        )
         task = await self._engine.cancel_task(
             task_id,
             requested_by=supervisor_id,
@@ -260,6 +275,13 @@ class AsyncTaskService:
             task_id=task_id,
             supervisor_id=supervisor_id,
         )
+        if prior_status != status:
+            logger.info(
+                ASYNC_TASK_STATUS_TRANSITIONED,
+                task_id=task_id,
+                from_status=prior_status.value if prior_status is not None else None,
+                to_status=status.value,
+            )
         return status
 
     def _map_status(self, task_status: TaskStatus) -> AsyncTaskStatus:

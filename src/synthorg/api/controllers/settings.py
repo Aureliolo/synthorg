@@ -50,7 +50,7 @@ from synthorg.observability.sink_config_builder import (
     build_log_config_from_settings,
 )
 from synthorg.security.config import SecurityConfig
-from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.enums import SettingNamespace, SettingsImportSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingsEncryptionError,
@@ -416,6 +416,7 @@ class SettingsController(Controller):
                 key,
                 data.value,
                 expected_updated_at=expected_updated_at,
+                import_source=SettingsImportSource.API_BODY,
             )
         except SettingNotFoundError as exc:
             raise NotFoundException(str(exc)) from exc

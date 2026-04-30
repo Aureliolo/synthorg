@@ -55,6 +55,7 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_STOP_REJECTED,
     TASK_ENGINE_STOPPED,
 )
+from synthorg.observability.tracing.instrumentation import get_tracer
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -65,6 +66,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 
 class TaskEngine(TaskEngineLoopsMixin):
@@ -417,37 +419,52 @@ class TaskEngine(TaskEngineLoopsMixin):
             TaskEngineNotRunningError: If the engine is not running.
             TaskEngineQueueFullError: If the queue is at capacity.
         """
-        # Use ``_admission_lock`` (hot-path) -- not ``_lifecycle_lock``
-        # -- so new submits are not serialized against an in-flight
-        # ``stop()`` drain, which can hold ``_lifecycle_lock`` for up
-        # to the hard-deadline budget. ``stop()`` briefly takes
-        # ``_admission_lock`` to publish ``_running=False``, so any
-        # racing submit either sees the flag and fast-fails or wins
-        # the race and lands cleanly in the queue before drain.
-        async with self._admission_lock:
-            if not self._running:
-                logger.warning(
-                    TASK_ENGINE_NOT_RUNNING,
-                    mutation_type=mutation.mutation_type,
-                    request_id=mutation.request_id,
-                )
-                msg = "TaskEngine is not running"
-                raise TaskEngineNotRunningError(msg)
+        with _tracer.start_as_current_span(
+            "task_engine.mutation",
+            attributes={
+                "mutation.type": mutation.mutation_type,
+                "mutation.request_id": mutation.request_id,
+                "task.id": getattr(mutation, "task_id", "")
+                or getattr(getattr(mutation, "task_data", None), "id", "")
+                or "",
+            },
+        ) as span:
+            # Use ``_admission_lock`` (hot-path) -- not
+            # ``_lifecycle_lock`` -- so new submits are not serialized
+            # against an in-flight ``stop()`` drain, which can hold
+            # ``_lifecycle_lock`` for up to the hard-deadline budget.
+            # ``stop()`` briefly takes ``_admission_lock`` to publish
+            # ``_running=False``, so any racing submit either sees the
+            # flag and fast-fails or wins the race and lands cleanly
+            # in the queue before drain.
+            async with self._admission_lock:
+                if not self._running:
+                    logger.warning(
+                        TASK_ENGINE_NOT_RUNNING,
+                        mutation_type=mutation.mutation_type,
+                        request_id=mutation.request_id,
+                    )
+                    msg = "TaskEngine is not running"
+                    raise TaskEngineNotRunningError(msg)
 
-            envelope = _MutationEnvelope(mutation=mutation)
-            try:
-                self._queue.put_nowait(envelope)
-            except asyncio.QueueFull:
-                logger.warning(
-                    TASK_ENGINE_QUEUE_FULL,
-                    mutation_type=mutation.mutation_type,
-                    request_id=mutation.request_id,
-                    queue_size=self._queue.qsize(),
-                )
-                msg = "TaskEngine queue is full"
-                raise TaskEngineQueueFullError(msg) from None
+                envelope = _MutationEnvelope(mutation=mutation)
+                try:
+                    self._queue.put_nowait(envelope)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        TASK_ENGINE_QUEUE_FULL,
+                        mutation_type=mutation.mutation_type,
+                        request_id=mutation.request_id,
+                        queue_size=self._queue.qsize(),
+                    )
+                    msg = "TaskEngine queue is full"
+                    raise TaskEngineQueueFullError(msg) from None
 
-        return await envelope.future
+            result = await envelope.future
+            span.set_attribute("mutation.success", result.success)
+            if result.task is not None:
+                span.set_attribute("task.status", result.task.status.value)
+            return result
 
     async def create_task(
         self,
