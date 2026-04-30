@@ -138,16 +138,26 @@ Convergence holds when ALL true:
 
 If converged:
 - Append history `{round, action: "converged", checks_passed: N}`.
+- **Squash-merge immediately.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Run:
+
+  ```bash
+  gh pr merge N --squash --auto
+  ```
+
+  `--auto` is harmless if branch protection is already satisfied (squashes immediately) and is the right behaviour if a final required check is still queueing (queues the merge for when checks pass). Capture the resolved state from `gh pr view N --json state,mergedAt` after the call. If the merge is queued, ScheduleWakeup at the standard cadence so the next tick lands in Phase 2's terminal-state branch and prints the `MERGED` line. If the merge fails (e.g. branch protection requires a human-only review approval, or a CODEOWNERS rule the bot cannot satisfy), append history `{round, action: "merge_blocked", reason: "<gh stderr>"}` and fall through to the print-and-stop branch below; do NOT retry merge silently in subsequent ticks until the user weighs in.
+- Append history `{round, action: "merged", method: "squash"}` once the PR shows `state: MERGED`.
 - Write state.
 - Resolve the PR's web URL via `gh pr view N --json url --jq .url` (or pull it from the JSON fetched in Phase 1 if you already requested `url` there).
 - Print TWO lines, in this exact order so the URL renders as a clickable link in the user's terminal:
 
   ```text
-  babysit-pr round R: CONVERGED (CI green, 0 actionable, no new feedback). Ready for human review/merge.
+  babysit-pr round R: CONVERGED + SQUASH-MERGED. Done.
   https://github.com/OWNER/REPO/pull/N
   ```
 
-- **Do NOT** ScheduleWakeup.
+  If the merge was blocked rather than completed, print the older `CONVERGED` line plus a `merge blocked: <reason>` follow-up so the user can unblock manually.
+
+- **Do NOT** ScheduleWakeup once the PR is `MERGED` (Phase 2's terminal exit covers re-entry).
 
 ## Phase 4: CodeRabbit rate-limit dance
 
