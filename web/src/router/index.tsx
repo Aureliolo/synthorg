@@ -35,7 +35,16 @@ const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage'))
 const ArtifactDetailPage = lazy(() => import('@/pages/ArtifactDetailPage'))
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'))
 const WorkflowEditorPage = lazy(() => import('@/pages/WorkflowEditorPage'))
+const WorkflowExecutionsPage = lazy(() => import('@/pages/WorkflowExecutionsPage'))
+const WorkflowVersionsPage = lazy(() => import('@/pages/WorkflowVersionsPage'))
 const SubworkflowsPage = lazy(() => import('@/pages/SubworkflowsPage'))
+const WebhookReceiptsPage = lazy(() => import('@/pages/WebhookReceiptsPage'))
+const CoordinationMetricsPage = lazy(() => import('@/pages/CoordinationMetricsPage'))
+const MetaAnalyticsPage = lazy(() => import('@/pages/MetaAnalyticsPage'))
+const PersonalitiesAdminPage = lazy(() => import('@/pages/PersonalitiesAdminPage'))
+const BudgetVersionsPage = lazy(() => import('@/pages/BudgetVersionsPage'))
+const CompanyVersionsPage = lazy(() => import('@/pages/CompanyVersionsPage'))
+const EvaluationVersionsPage = lazy(() => import('@/pages/EvaluationVersionsPage'))
 const FineTuningPage = lazy(() => import('@/pages/FineTuningPage'))
 const ClientListPage = lazy(() => import('@/pages/ClientListPage'))
 const ClientDetailPage = lazy(() => import('@/pages/ClientDetailPage'))
@@ -149,7 +158,16 @@ export const router = createBrowserRouter([
               { path: 'artifacts/:artifactId', element: <ArtifactDetailPage /> },
               { path: 'workflows', element: <WorkflowsPage /> },
               { path: 'workflows/editor', element: <WorkflowEditorPage /> },
+              { path: 'workflows/:id/executions', element: <WorkflowExecutionsPage /> },
+              { path: 'workflows/:id/versions', element: <WorkflowVersionsPage /> },
               { path: 'subworkflows', element: <SubworkflowsPage /> },
+              { path: 'integrations/webhooks/receipts', element: <WebhookReceiptsPage /> },
+              { path: 'analytics/coordination', element: <CoordinationMetricsPage /> },
+              { path: 'analytics/meta', element: <MetaAnalyticsPage /> },
+              { path: 'admin/personalities', element: <PersonalitiesAdminPage /> },
+              { path: 'budget/versions', element: <BudgetVersionsPage /> },
+              { path: 'org/versions', element: <CompanyVersionsPage /> },
+              { path: 'evaluation/versions', element: <EvaluationVersionsPage /> },
               { path: 'clients', element: <ClientListPage /> },
               { path: 'clients/requests', element: <RequestQueuePage /> },
               { path: 'clients/simulations', element: <SimulationDashboardPage /> },

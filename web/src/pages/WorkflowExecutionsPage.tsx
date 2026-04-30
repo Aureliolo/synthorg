@@ -1,0 +1,164 @@
+/**
+ * Workflow executions list.
+ *
+ * Lists recent runs for a single workflow definition with a Cancel
+ * action for executions still in flight.
+ */
+import { useCallback, useEffect, useState } from 'react'
+import { useParams } from 'react-router'
+import { Loader2 } from 'lucide-react'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
+import { SectionCard } from '@/components/ui/section-card'
+import { useToastStore } from '@/stores/toast'
+import { createLogger } from '@/lib/logger'
+import { ROUTES } from '@/router/routes'
+import { formatDateTime } from '@/utils/format'
+import { getErrorMessage } from '@/utils/errors'
+import {
+  cancelWorkflowExecution,
+  listWorkflowExecutions,
+  type WorkflowExecution,
+} from '@/api/endpoints/workflow-executions'
+
+const log = createLogger('WorkflowExecutionsPage')
+
+const TERMINAL_STATUSES = new Set<WorkflowExecution['status']>([
+  'succeeded',
+  'failed',
+  'cancelled',
+])
+
+export default function WorkflowExecutionsPage() {
+  const { id } = useParams<{ id: string }>()
+  const [executions, setExecutions] = useState<readonly WorkflowExecution[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [pendingCancel, setPendingCancel] = useState<string | null>(null)
+  const addToast = useToastStore((s) => s.add)
+
+  const reload = useCallback(async () => {
+    if (!id) return
+    setLoading(true)
+    setError(null)
+    try {
+      const rows = await listWorkflowExecutions(id)
+      setExecutions(rows)
+    } catch (err) {
+      const message = getErrorMessage(err)
+      log.error('listWorkflowExecutions failed', { workflowId: id, error: message })
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  const handleCancel = useCallback(async (executionId: string) => {
+    try {
+      await cancelWorkflowExecution(executionId)
+      addToast({ variant: 'success', title: 'Cancellation requested' })
+      void reload()
+    } catch (err) {
+      const message = getErrorMessage(err)
+      log.error('cancelWorkflowExecution failed', { executionId, error: message })
+      addToast({
+        variant: 'error',
+        title: 'Could not cancel execution',
+        description: message,
+      })
+    }
+  }, [addToast, reload])
+
+  if (!id) {
+    return (
+      <div className="space-y-section-gap">
+        <Breadcrumbs items={[{ label: 'Workflows', to: ROUTES.WORKFLOWS }, { label: 'Executions' }]} />
+        <ErrorBanner severity="error" title="Missing workflow id in URL" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-section-gap">
+      <Breadcrumbs items={[{ label: 'Workflows', to: ROUTES.WORKFLOWS }, { label: id }, { label: 'Executions' }]} />
+      <ListHeader title="Workflow executions" count={executions.length} />
+
+      {error && (
+        <ErrorBanner
+          severity="error"
+          title="Could not load executions"
+          description={error}
+          onRetry={() => void reload()}
+        />
+      )}
+
+      {loading && executions.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="size-6 animate-spin text-text-muted" />
+        </div>
+      ) : executions.length === 0 ? (
+        <EmptyState
+          title="No executions yet"
+          description="Trigger this workflow to see its run history here."
+        />
+      ) : (
+        <SectionCard title="Recent runs">
+          <ul className="divide-y divide-border">
+            {executions.map((row) => {
+              const inFlight = !TERMINAL_STATUSES.has(row.status)
+              return (
+                <li key={row.id} className="flex items-center gap-4 py-2">
+                  <span className="font-mono text-xs text-foreground">{row.id.slice(0, 8)}</span>
+                  <span className="rounded-md border border-border bg-card px-2 py-0.5 text-xs uppercase tracking-wide text-text-secondary">
+                    {row.status}
+                  </span>
+                  <span className="flex-1 text-xs text-text-secondary">
+                    {row.started_at ? `Started ${formatDateTime(row.started_at)}` : 'Pending'}
+                  </span>
+                  {row.error_message && (
+                    <span className="truncate text-xs text-danger" title={row.error_message}>
+                      {row.error_message}
+                    </span>
+                  )}
+                  {inFlight && (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      onClick={() => setPendingCancel(row.id)}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </SectionCard>
+      )}
+
+      <ConfirmDialog
+        open={pendingCancel !== null}
+        title="Cancel execution?"
+        description="The execution will stop at the next available checkpoint. This is best-effort and not always immediate."
+        variant="destructive"
+        confirmLabel="Cancel run"
+        onOpenChange={(next) => { if (!next) setPendingCancel(null) }}
+        onConfirm={async () => {
+          if (pendingCancel) {
+            await handleCancel(pendingCancel)
+            setPendingCancel(null)
+          }
+        }}
+      />
+    </div>
+  )
+}
