@@ -14,6 +14,8 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr
+
 # WebSocket first-message auth handshake timeout bounds. Exposed as
 # module constants so the ``set_ws_auth_timeout_seconds`` setter on
 # ``AppState`` can validate against the same bounds as the Pydantic
@@ -86,8 +88,8 @@ class NotificationsBridgeConfig(BaseModel):
     slack_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     ntfy_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     email_smtp_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
-    ntfy_default_url: str = Field(
-        default="https://ntfy.sh",
+    ntfy_default_url: NotBlankStr = Field(
+        default=NotBlankStr("https://ntfy.sh"),
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
 
@@ -131,16 +133,16 @@ class ObservabilityBridgeConfig(BaseModel):
     http_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     http_max_retries: int = Field(default=3, ge=0, le=10)
     audit_chain_signing_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
-    tsa_endpoint_freetsa: str = Field(
-        default="https://freetsa.org/tsr",
+    tsa_endpoint_freetsa: NotBlankStr = Field(
+        default=NotBlankStr("https://freetsa.org/tsr"),
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
-    tsa_endpoint_digicert: str = Field(
-        default="http://timestamp.digicert.com",
+    tsa_endpoint_digicert: NotBlankStr = Field(
+        default=NotBlankStr("http://timestamp.digicert.com"),
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
-    tsa_endpoint_sectigo: str = Field(
-        default="http://timestamp.sectigo.com",
+    tsa_endpoint_sectigo: NotBlankStr = Field(
+        default=NotBlankStr("http://timestamp.sectigo.com"),
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
 

@@ -72,8 +72,8 @@ _r.register(
         type=SettingType.STRING,
         default="nats://nats:4222",
         description=(
-            "[Bootstrap-only -- read at process start; this entry exists"
-            " for /settings discoverability only.] NATS server URL."
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] NATS server URL."
             " Sourced from SYNTHORG_NATS_URL env > YAML"
             " (communication.nats.url) > default. The bus driver opens"
             " its connection once at boot, so a runtime change requires"

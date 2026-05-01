@@ -38,12 +38,13 @@ _DEFAULT_PRESET_URLS: MappingProxyType[TsaPreset, str] = MappingProxyType(
         TsaPreset.SECTIGO: "http://timestamp.sectigo.com",
     }
 )
-"""Documented defaults that mirror the ``observability.tsa_endpoint_*``
-settings.  Production callers should resolve via the registry-backed
-``ObservabilityBridgeConfig`` and pass the resolved mapping into
-:func:`resolve_tsa_url`; this constant is the documented baseline and
-the resolver's last-resort fallback when the bridge config is not
-available (early boot / test stubs)."""
+"""Hardcoded baseline URLs for each non-CUSTOM TSA preset, kept in sync
+with the ``observability.tsa_endpoint_*`` registry entries.  Production
+callers must resolve the operator-tunable values via
+``ObservabilityBridgeConfig`` and pass them into
+:func:`resolve_tsa_url` as ``preset_urls``; this constant is the
+last-resort fallback used only when no bridge config is threaded
+through (early boot, test stubs, partial preset overrides)."""
 
 
 def resolve_tsa_url(
@@ -74,7 +75,15 @@ def resolve_tsa_url(
         return tsa_url
     if tsa_url is not None:
         return tsa_url
-    return (preset_urls or _DEFAULT_PRESET_URLS)[preset]
+    urls = preset_urls if preset_urls is not None else _DEFAULT_PRESET_URLS
+    if preset not in urls:
+        # An incomplete ``preset_urls`` mapping is a caller bug: the
+        # bridge composer is expected to provide every non-CUSTOM
+        # preset.  Fall back to the documented default so a partial
+        # override (e.g. operator unset only one preset) does not
+        # raise a KeyError mid-request.
+        return _DEFAULT_PRESET_URLS[preset]
+    return urls[preset]
 
 
 class AuditChainConfig(BaseModel):

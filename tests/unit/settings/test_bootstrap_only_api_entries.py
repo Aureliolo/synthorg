@@ -1,0 +1,107 @@
+"""Coverage for the bootstrap-only API entries.
+
+These settings are read at process start via ``RootConfig`` and held
+for the lifetime of the running process; the registry entry exists for
+``/settings`` discoverability only.  ``read_only_post_init=True`` makes
+``SettingsService.set()`` reject mutation, and the resolver's
+read-only-post-init branch collapses the chain to env > YAML > default
+(the DB row is never consulted).
+"""
+
+from unittest.mock import AsyncMock
+
+import pytest
+from pydantic import BaseModel, ConfigDict
+
+from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.settings import definitions as _settings_definitions  # noqa: F401
+from synthorg.settings.errors import SettingReadOnlyError
+from synthorg.settings.registry import get_registry
+from synthorg.settings.service import SettingsService
+
+pytestmark = pytest.mark.unit
+
+
+class _FakeConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+@pytest.fixture
+def service() -> SettingsService:
+    repo = AsyncMock(spec=SettingsRepository)
+    repo.get.return_value = None
+    repo.get_namespace.return_value = ()
+    repo.get_all.return_value = ()
+    return SettingsService(
+        repository=repo,
+        registry=get_registry(),
+        config=_FakeConfig(),
+    )
+
+
+# (namespace, key, expected_default).  The five API entries that the
+# audit flagged as misleading were marked ``read_only_post_init=True``
+# in this PR; this matrix locks the contract so a future refactor can't
+# silently flip them back to runtime-mutable.
+_BOOTSTRAP_ONLY_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
+    ("api", "api_prefix", "/api/v1"),
+    ("api", "server_host", "127.0.0.1"),
+    ("api", "server_port", "3001"),
+    ("api", "cors_allowed_origins", "[]"),
+    ("api", "trusted_proxies", "[]"),
+)
+
+
+@pytest.mark.parametrize(
+    ("namespace", "key", "expected_default"),
+    _BOOTSTRAP_ONLY_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+)
+def test_bootstrap_only_entry_carries_read_only_post_init(
+    namespace: str,
+    key: str,
+    expected_default: str,
+) -> None:
+    """The registry entry must advertise itself as read-only-post-init."""
+    defn = get_registry().get(namespace, key)
+    assert defn is not None, f"setting {namespace}.{key} missing from registry"
+    assert defn.read_only_post_init is True, (
+        f"{namespace}.{key} must be read_only_post_init=True"
+    )
+    assert defn.restart_required is True, (
+        f"{namespace}.{key} must be restart_required=True (implied by"
+        " read_only_post_init)"
+    )
+    assert defn.default == expected_default
+
+
+@pytest.mark.parametrize(
+    ("namespace", "key", "_expected_default"),
+    _BOOTSTRAP_ONLY_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+)
+async def test_bootstrap_only_entry_set_rejects(
+    namespace: str,
+    key: str,
+    _expected_default: str,
+    service: SettingsService,
+) -> None:
+    """``service.set()`` must raise ``SettingReadOnlyError`` on bootstrap entries."""
+    with pytest.raises(SettingReadOnlyError):
+        await service.set(namespace, key, "ignored")
+
+
+@pytest.mark.parametrize(
+    ("namespace", "key", "expected_default"),
+    _BOOTSTRAP_ONLY_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+)
+async def test_bootstrap_only_entry_default_resolves(
+    namespace: str,
+    key: str,
+    expected_default: str,
+    service: SettingsService,
+) -> None:
+    """With no env/YAML override, the entry resolves to its documented default."""
+    result = await service.get(namespace, key)
+    assert result.value == expected_default

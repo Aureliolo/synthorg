@@ -36,3 +36,5 @@ WORKSPACE_DISK_EXCEEDED: Final[str] = "workspace.disk.exceeded"
 WORKSPACE_DISK_CLEANUP: Final[str] = "workspace.disk.cleanup"
 WORKSPACE_DISK_TRAVERSAL_ERROR: Final[str] = "workspace.disk.traversal.error"
 WORKSPACE_DISK_CHECK_ERROR: Final[str] = "workspace.disk.check.error"
+
+WORKSPACE_CONFIG_INVALID: Final[str] = "workspace.config.invalid"

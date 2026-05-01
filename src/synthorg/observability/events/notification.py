@@ -30,3 +30,4 @@ NOTIFICATION_EMAIL_PARTIAL_CREDENTIALS: Final[str] = (
 NOTIFICATION_BUDGET_EXHAUSTED_SEND: Final[str] = "notification.budget_exhausted.send"
 NOTIFICATION_ESCALATION_SEND: Final[str] = "notification.escalation.send"
 NOTIFICATION_SEND_FAILED: Final[str] = "notification.send.failed"
+NOTIFICATION_SINK_DEFAULT_FALLBACK: Final[str] = "notification.sink.default_fallback"

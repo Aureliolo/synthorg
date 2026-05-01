@@ -33,6 +33,7 @@ from synthorg.observability.events.client import (
     SIMULATION_RUN_CANCELLED,
     SIMULATION_RUN_FAILED,
 )
+from synthorg.settings.errors import SettingNotFoundError
 
 logger = get_logger(__name__)
 
@@ -117,10 +118,34 @@ async def _run_in_background(
             )
         return
     resolver = app_state.config_resolver
-    task_timeout_sec = await resolver.get_float("simulations", "task_timeout_seconds")
-    review_timeout_sec = await resolver.get_float(
-        "simulations", "review_timeout_seconds"
-    )
+    try:
+        task_timeout_sec = await resolver.get_float(
+            "simulations", "task_timeout_seconds"
+        )
+        review_timeout_sec = await resolver.get_float(
+            "simulations", "review_timeout_seconds"
+        )
+    except (SettingNotFoundError, ValueError) as exc:
+        # The resolver already logs at WARNING for both branches; emit a
+        # simulation-scoped failure event so the operator sees the
+        # specific simulation_id that aborted, then mark the run failed
+        # with a precise reason instead of letting the broad
+        # ``except Exception`` below collapse it into "failed
+        # unexpectedly".
+        logger.warning(
+            SIMULATION_RUN_FAILED,
+            simulation_id=record.simulation_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            stage="config_resolution",
+        )
+        with contextlib.suppress(ValueError):
+            await sim_state.simulation_store.update_status(
+                record.simulation_id,
+                status="failed",
+                error="Simulation timeout configuration error",
+            )
+        return
     runner = SimulationRunner(
         config=SimulationRunnerConfig(
             max_concurrent_tasks=4,

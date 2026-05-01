@@ -232,6 +232,42 @@ class TestConcurrentBurstAgainstAgentsCreate:
             assert int(resp.headers["Retry-After"]) >= 1
 
 
+class TestRateLimitMetaTriggerCycle:
+    """``meta.trigger_cycle`` is the tightest registered policy at (1, 60).
+
+    A regression in the sliding-window middleware that loosened the cap
+    here would silently let operators DOS the improvement-cycle compute.
+    Fire two sequential POSTs and assert the second one is denied.
+    """
+
+    def test_second_request_is_denied(
+        self,
+        authed_client: TestClient[Any],
+    ) -> None:
+        first = authed_client.post("/api/v1/meta/cycle")
+        # The first call should pass the guard; whether the body returns
+        # 200 or some downstream error (e.g. cycle service not wired in
+        # the test app) is not what this test cares about -- what matters
+        # is that the GUARD admits the first call and denies the second.
+        assert first.status_code != 429, (
+            f"First call hit the rate limiter unexpectedly: {first.status_code} "
+            f"{first.text}"
+        )
+
+        second = authed_client.post("/api/v1/meta/cycle")
+        assert second.status_code == 429, (
+            f"Expected 429 on the second call within the 60 s window, got "
+            f"{second.status_code} {second.text}"
+        )
+        body = second.json()
+        assert body["success"] is False
+        assert body["error_detail"]["error_category"] == "rate_limit"
+        assert body["error_detail"]["error_code"] == 5001
+        assert body["error_detail"]["retryable"] is True
+        assert "Retry-After" in second.headers
+        assert int(second.headers["Retry-After"]) >= 1
+
+
 class TestConcurrencyGuardAgainstFinetunePreflight:
     """5 concurrent POSTs to a concurrency-guarded op yield 1 ok + 4 denied."""
 

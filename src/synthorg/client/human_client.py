@@ -12,6 +12,7 @@ from synthorg.client.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
+    CLIENT_CONFIG_INVALID,
     CLIENT_REQUEST_SUBMITTED,
     CLIENT_REVIEW_STARTED,
 )
@@ -52,6 +53,12 @@ class HumanClient:
         """
         if not math.isfinite(timeout) or timeout <= 0:
             msg = f"timeout must be a finite positive number, got {timeout}"
+            logger.warning(
+                CLIENT_CONFIG_INVALID,
+                error=msg,
+                param="timeout",
+                value=timeout,
+            )
             raise ValueError(msg)
         self._profile = profile
         self._queue = queue

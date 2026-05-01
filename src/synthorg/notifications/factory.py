@@ -17,6 +17,7 @@ from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_CONFIG_INVALID,
+    NOTIFICATION_SINK_DEFAULT_FALLBACK,
     NOTIFICATION_SINK_DISABLED,
     NOTIFICATION_SINK_UNKNOWN_TYPE,
 )
@@ -150,6 +151,18 @@ def _create_ntfy_sink(
         )
 
         default_url = NotificationsBridgeConfig().ntfy_default_url
+        # Fallback signal for operators reading boot logs: the runtime
+        # bridge config was unavailable, so the documented default
+        # mirroring ``notifications.ntfy_default_url`` was used in its
+        # place.  Reaching this branch in production means
+        # ``NotificationsBridgeConfig`` was not threaded through the
+        # caller and the registry override (if any) was bypassed.
+        logger.debug(
+            NOTIFICATION_SINK_DEFAULT_FALLBACK,
+            sink_type="ntfy",
+            reason="bridge_config_unavailable",
+            default_url=default_url,
+        )
     server_url = params.get("server_url") or default_url
     token = params.get("token")
     if bridge_config is None:

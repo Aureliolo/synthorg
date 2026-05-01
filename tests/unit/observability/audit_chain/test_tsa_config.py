@@ -145,3 +145,47 @@ def test_resolve_tsa_url_helper(
 ) -> None:
     """``resolve_tsa_url`` applies preset/override semantics per case."""
     assert resolve_tsa_url(preset, override) == expected
+
+
+def test_resolve_tsa_url_with_explicit_preset_urls() -> None:
+    """An injected ``preset_urls`` mapping overrides the documented default."""
+    from types import MappingProxyType
+
+    custom_urls = MappingProxyType(
+        {
+            TsaPreset.FREETSA: "https://tsa.example.com/tsr",
+            TsaPreset.DIGICERT: "https://timestamp.digicert.example.com",
+            TsaPreset.SECTIGO: "https://timestamp.sectigo.example.com",
+        }
+    )
+    assert (
+        resolve_tsa_url(TsaPreset.FREETSA, None, preset_urls=custom_urls)
+        == "https://tsa.example.com/tsr"
+    )
+
+
+def test_resolve_tsa_url_falls_back_when_preset_urls_none() -> None:
+    """``preset_urls=None`` falls back to the documented baseline."""
+    assert (
+        resolve_tsa_url(TsaPreset.DIGICERT, None, preset_urls=None)
+        == "http://timestamp.digicert.com"
+    )
+
+
+def test_resolve_tsa_url_incomplete_preset_urls_falls_back() -> None:
+    """A partial mapping must not raise; missing presets fall back to the default."""
+    from types import MappingProxyType
+
+    partial = MappingProxyType(
+        {TsaPreset.FREETSA: "https://only-freetsa.example.com/tsr"}
+    )
+    # FREETSA is in the override; takes precedence.
+    assert (
+        resolve_tsa_url(TsaPreset.FREETSA, None, preset_urls=partial)
+        == "https://only-freetsa.example.com/tsr"
+    )
+    # DIGICERT is missing; falls back to documented default rather than KeyError.
+    assert (
+        resolve_tsa_url(TsaPreset.DIGICERT, None, preset_urls=partial)
+        == "http://timestamp.digicert.com"
+    )

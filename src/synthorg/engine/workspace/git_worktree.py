@@ -31,6 +31,7 @@ from synthorg.engine.workspace.models import (
 from synthorg.engine.workspace.semantic_git_ops import run_semantic_analysis
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
+    WORKSPACE_CONFIG_INVALID,
     WORKSPACE_LIMIT_REACHED,
     WORKSPACE_MERGE_ABORT_FAILED,
     WORKSPACE_MERGE_COMPLETE,
@@ -139,6 +140,12 @@ class PlannerWorktreeStrategy:
         """
         if cmd_timeout <= 0:
             msg = f"cmd_timeout must be positive, got {cmd_timeout!r}"
+            logger.warning(
+                WORKSPACE_CONFIG_INVALID,
+                error=msg,
+                param="cmd_timeout",
+                value=cmd_timeout,
+            )
             raise ValueError(msg)
         self._config = config
         self._repo_root = repo_root

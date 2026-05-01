@@ -84,6 +84,16 @@ class ImmediateCancelStrategy:
     """
 
     def __init__(self, *, cleanup_seconds: float = 5.0) -> None:
+        """Initialize the strategy.
+
+        Args:
+            cleanup_seconds: Grace window for the post-cancel cleanup
+                callbacks before they themselves are timed out.  Must
+                be positive.
+
+        Raises:
+            ValueError: If ``cleanup_seconds`` is non-positive.
+        """
         if cleanup_seconds <= 0:
             msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
             logger.warning(
@@ -177,9 +187,21 @@ class FinishCurrentToolStrategy:
         tool_timeout_seconds: float,
         cleanup_seconds: float = 5.0,
     ) -> None:
-        # ``tool_timeout_seconds`` is operator-tunable; resolve via
-        # ``ConfigResolver.get_float("engine",
-        # "shutdown_tool_timeout_seconds")`` at the call site.
+        """Initialize the strategy.
+
+        Args:
+            tool_timeout_seconds: Per-tool grace window before the
+                running invocation is force-cancelled.  Must be
+                positive.  Operator-tunable; resolve via
+                ``ConfigResolver.get_float("engine",
+                "shutdown_tool_timeout_seconds")`` at the call site.
+            cleanup_seconds: Grace window for the post-cancel cleanup
+                callbacks before they themselves are timed out.  Must
+                be positive.
+
+        Raises:
+            ValueError: If either parameter is non-positive.
+        """
         if tool_timeout_seconds <= 0:
             msg = f"tool_timeout_seconds must be positive, got {tool_timeout_seconds}"
             logger.warning(
@@ -328,6 +350,23 @@ class CheckpointAndStopStrategy:
         cleanup_seconds: float = 5.0,
         checkpoint_saver: CheckpointSaver | None = None,
     ) -> None:
+        """Initialize the strategy.
+
+        Args:
+            grace_seconds: Cooperative-cancel window before stragglers
+                are checkpointed and force-cancelled.  Must be positive.
+            cleanup_seconds: Grace window for the post-cancel cleanup
+                callbacks before they themselves are timed out.  Must
+                be positive.
+            checkpoint_saver: Optional callback that persists a task's
+                resumable state when it is checkpointed.  When ``None``
+                tasks beyond the grace window are reported as
+                ``tasks_interrupted`` rather than ``tasks_suspended``.
+
+        Raises:
+            ValueError: If ``grace_seconds`` or ``cleanup_seconds`` is
+                non-positive.
+        """
         if grace_seconds <= 0:
             msg = f"grace_seconds must be positive, got {grace_seconds}"
             logger.warning(

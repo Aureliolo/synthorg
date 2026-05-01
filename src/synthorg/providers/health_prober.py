@@ -68,13 +68,22 @@ def _build_ping_url(
         base_url: Provider base URL.
         litellm_provider: LiteLLM provider identifier for path selection.
         ollama_port: Port used to detect a self-hosted Ollama provider
-            when ``litellm_provider`` is not set explicitly.  Resolve
-            via ``ConfigResolver.get_int("providers",
-            "ollama_default_port")`` at the call site.
+            when ``litellm_provider`` is not set explicitly.  Must be a
+            valid TCP port (1-65535).  Resolve via
+            ``ConfigResolver.get_int("providers",
+            "ollama_default_port")`` at the call site; the registry
+            entry validates the bounds at write time, so a value out
+            of range cannot reach this function via the resolver path.
 
     Returns:
         URL to ping.
+
+    Raises:
+        ValueError: ``ollama_port`` is outside the valid TCP-port range.
     """
+    if not 1 <= ollama_port <= 65535:  # noqa: PLR2004 -- TCP port range
+        msg = f"ollama_port must be in 1-65535, got {ollama_port!r}"
+        raise ValueError(msg)
     stripped = base_url.rstrip("/")
     is_ollama = litellm_provider == "ollama" or urlparse(stripped).port == ollama_port
     if is_ollama:
