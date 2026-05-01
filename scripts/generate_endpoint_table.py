@@ -261,7 +261,23 @@ def _table_for_section(
         tags_in_section, key=lambda x: TAG_DISPLAY.get(x[0], x[0])
     ):
         display = TAG_DISPLAY.get(tag, tag)
-        base = _common_base_path(paths) or TAG_BASE_PATH_FALLBACK.get(tag, "")
+        common_base = _common_base_path(paths)
+        if not common_base:
+            # Disjoint roots -- caller MUST have a fallback entry, else
+            # the table cell would render empty (a documentation bug
+            # we refuse to ship silently).
+            if tag not in TAG_BASE_PATH_FALLBACK:
+                msg = (
+                    f"Tag {tag!r} has disjoint endpoint paths "
+                    f"({sorted(paths)!r}) but no entry in "
+                    f"TAG_BASE_PATH_FALLBACK; add a manual base-path "
+                    f"mapping in scripts/generate_endpoint_table.py "
+                    f"before regenerating docs/openapi/index.md."
+                )
+                raise KeyError(msg)
+            base = TAG_BASE_PATH_FALLBACK[tag]
+        else:
+            base = common_base
         purpose = _purpose_for_tag(tag, paths)
         lines.append(f"| {display} | `{base}` | {purpose} |")
     lines.append("")

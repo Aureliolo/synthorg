@@ -36,6 +36,17 @@ class TestStripPrefix:
     def test_passes_through_unprefixed(self) -> None:
         assert gen._strip_prefix("/healthz") == "/healthz"
 
+    def test_does_not_strip_api_v10_prefix(self) -> None:
+        # Regression: ``str.removeprefix`` would have stripped this to
+        # ``/0/agents``, corrupting any future ``/api/v10`` routes.
+        assert gen._strip_prefix("/api/v10/agents") == "/api/v10/agents"
+
+    def test_does_not_strip_api_v1foo_prefix(self) -> None:
+        # Regression: only exact ``/api/v1`` (full segment boundary) is
+        # stripped; near-prefixes like ``/api/v1foo`` pass through
+        # untouched.
+        assert gen._strip_prefix("/api/v1foo/agents") == "/api/v1foo/agents"
+
 
 class TestCommonBasePath:
     """Tests for ``_common_base_path``."""

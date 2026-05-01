@@ -144,6 +144,14 @@ class DriftDetectionService:
                 # task-group teardown and let the cooperative-cancellation
                 # contract degrade silently.
                 raise result
+            if isinstance(result, (MemoryError, RecursionError)):
+                # ``MemoryError`` / ``RecursionError`` are ``Exception``
+                # subclasses in Python, so without this explicit branch
+                # they would hit the entity-failure log below and the
+                # scan would continue running on a process that just
+                # ran out of stack or memory.  Project convention:
+                # propagate fatal builtins.
+                raise result
             if isinstance(result, Exception):
                 logger.error(
                     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,

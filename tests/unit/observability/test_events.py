@@ -346,6 +346,15 @@ class TestEventConstants:
         assert ANALYTICS_FORECAST_QUERIED == "analytics.forecast.queried"
         assert ANALYTICS_OVERVIEW_QUERIED == "analytics.overview.queried"
 
+    def test_resilience_events_exist(self) -> None:
+        # Event names are part of the public observability contract;
+        # asserting the literal value protects against silent renames.
+        from synthorg.observability.events.resilience import (
+            CORE_RESILIENCE_INVALID_CONFIG,
+        )
+
+        assert CORE_RESILIENCE_INVALID_CONFIG == "core.resilience.invalid_config"
+
     def test_config_events_exist(self) -> None:
         assert CONFIG_LOADED == "config.load.success"
         assert CONFIG_PARSE_FAILED == "config.parse.failed"

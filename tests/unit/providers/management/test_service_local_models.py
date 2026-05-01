@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from synthorg.api.dto import CreateFromPresetRequest
 from synthorg.config.schema import ProviderModelConfig
@@ -209,7 +210,7 @@ class TestCreateFromPresetLocalSkipsLitellm:
             request = CreateFromPresetRequest(
                 preset_name="openrouter",
                 name="my-openrouter",
-                api_key="sk-test-key",
+                api_key=SecretStr("sk-test-key"),
             )
             result = await service.create_from_preset(request)
 

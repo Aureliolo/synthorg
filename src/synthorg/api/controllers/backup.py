@@ -46,7 +46,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_FAILED,
     BACKUP_NOT_FOUND,
@@ -118,13 +118,16 @@ class BackupController(Controller):
             except BackupInProgressError as exc:
                 logger.warning(
                     BACKUP_FAILED,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                raise ConflictError(str(exc)) from exc
+                msg_in_progress = "A backup operation is already in progress"
+                raise ConflictError(msg_in_progress) from exc
             except BackupError as exc:
                 logger.error(
                     BACKUP_FAILED,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     exc_info=True,
                 )
                 msg = "Backup operation failed"
@@ -281,7 +284,7 @@ class BackupController(Controller):
         Raises:
             ValidationError: If confirm is false or manifest invalid (422).
             ConflictError: If a backup is in progress (409).
-            NotFoundException: If the backup does not exist.
+            NotFoundError: If the backup does not exist (404).
             InternalServerException: If the restore fails.
         """
         if not data.confirm:
@@ -310,21 +313,27 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=data.backup_id,
             )
-            raise NotFoundError(str(exc)) from exc
+            raise NotFoundError(safe_error_description(exc)) from exc
         except ManifestError as exc:
             logger.warning(
                 BACKUP_RESTORE_FAILED,
                 backup_id=data.backup_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         except BackupInProgressError as exc:
+            # Use BACKUP_RESTORE_FAILED (not BACKUP_FAILED) so restore
+            # failures are tracked separately from create-backup
+            # failures in the audit stream and dashboards.
             logger.warning(
-                BACKUP_FAILED,
+                BACKUP_RESTORE_FAILED,
                 backup_id=data.backup_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise ConflictError(str(exc)) from exc
+            msg_in_progress = "A backup operation is already in progress"
+            raise ConflictError(msg_in_progress) from exc
         except RestoreError as exc:
             logger.error(
                 BACKUP_RESTORE_FAILED,

@@ -106,7 +106,11 @@ class AsyncTaskService:
                 data,
                 requested_by=supervisor_id,
             )
-            await self._engine.transition_task(
+            # ``transition_task`` returns ``tuple[Task, TaskStatus | None]``;
+            # capture the post-transition Task so subsequent logs read
+            # the actual persisted status (TaskStatus.ASSIGNED) instead
+            # of the stale create-time status (TaskStatus.CREATED).
+            task, _prior_status = await self._engine.transition_task(
                 task.id,
                 TaskStatus.ASSIGNED,
                 requested_by=supervisor_id,

@@ -174,6 +174,14 @@ class GeneralRetryHandler:
         for attempt in range(self._max_attempts):
             try:
                 return await op()
+            except MemoryError, RecursionError:
+                # System-fatal builtins are ``Exception`` subclasses
+                # in Python; re-raise them before the broad retry
+                # handler so process-fatal conditions cannot be run
+                # through the retryable predicate, logged, or slept
+                # on.  Project convention: every long-running retry
+                # loop carries this carve-out.
+                raise
             except Exception as exc:
                 if not self._retryable(exc):
                     raise

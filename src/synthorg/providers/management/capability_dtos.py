@@ -196,7 +196,11 @@ class RateLimitsUpdateRequest(BaseModel):
             unset to leave unchanged.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     requests_per_minute: int | None = Field(default=None, ge=0)
     concurrent_requests: int | None = Field(default=None, ge=0)
@@ -290,7 +294,11 @@ class PresetOverrideUpdateRequest(BaseModel):
         base_url: New base URL, or ``None`` to clear.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     default_models: tuple[ProviderModelConfig, ...] | None = None
     supported_auth_types: tuple[AuthType, ...] | None = None
@@ -316,7 +324,11 @@ class PresetOverrideUpdateRequest(BaseModel):
 class _ApiKeyRotation(BaseModel):
     """Discriminated-union variant: rotate an API-key provider."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     auth_type: Literal[AuthType.API_KEY]
     api_key: SecretStr = Field(min_length=8)
@@ -325,7 +337,11 @@ class _ApiKeyRotation(BaseModel):
 class _SubscriptionRotation(BaseModel):
     """Discriminated-union variant: rotate a subscription-token provider."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     auth_type: Literal[AuthType.SUBSCRIPTION]
     subscription_token: SecretStr = Field(min_length=8)
@@ -335,7 +351,11 @@ class _SubscriptionRotation(BaseModel):
 class _CustomHeaderRotation(BaseModel):
     """Discriminated-union variant: rotate a custom-header provider."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     auth_type: Literal[AuthType.CUSTOM_HEADER]
     custom_header_name: NotBlankStr = Field(max_length=200)
@@ -345,7 +365,11 @@ class _CustomHeaderRotation(BaseModel):
 class _OAuthRotation(BaseModel):
     """Discriminated-union variant: rotate an OAuth provider."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     auth_type: Literal[AuthType.OAUTH]
     oauth_token_url: NotBlankStr
@@ -382,7 +406,11 @@ class AddModelRequest(BaseModel):
         model: The model spec to add.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     model: ProviderModelConfig = Field(description="Model spec to add")
 
@@ -402,7 +430,11 @@ class SyncModelsRequest(BaseModel):
             for endpoint-shape selection (Ollama vs standard /models).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     replace_existing: bool = Field(
         default=True,

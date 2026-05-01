@@ -42,7 +42,10 @@ from synthorg.memory.service import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
+    MEMORY_CHECKPOINT_DEPLOY_FAILED,
+    MEMORY_CHECKPOINT_NOT_FOUND,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
@@ -108,6 +111,11 @@ def _build_memory_service(
             msg = (
                 "Fine-tune admin endpoints are not supported by the "
                 "active persistence backend."
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise FeatureNotImplementedError(msg) from exc
     return MemoryService(
@@ -192,6 +200,11 @@ class MemoryAdminController(Controller):
         )
         if not app_state.has_fine_tune_orchestrator:
             msg = "Fine-tuning is not available"
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                operation="start",
+                reason="orchestrator_not_configured",
+            )
             raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator
         try:
@@ -235,6 +248,12 @@ class MemoryAdminController(Controller):
         app_state: AppState = state.app_state
         if not app_state.has_fine_tune_orchestrator:
             msg = "Fine-tuning is not available"
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                operation="resume",
+                run_id=run_id,
+                reason="orchestrator_not_configured",
+            )
             raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator
         try:
@@ -292,6 +311,11 @@ class MemoryAdminController(Controller):
         app_state: AppState = state.app_state
         if not app_state.has_fine_tune_orchestrator:
             msg = "Fine-tuning is not available"
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                operation="cancel",
+                reason="orchestrator_not_configured",
+            )
             raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator
         await orchestrator.cancel()
@@ -390,8 +414,22 @@ class MemoryAdminController(Controller):
         try:
             updated = await service.deploy_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
+            logger.warning(
+                MEMORY_CHECKPOINT_NOT_FOUND,
+                checkpoint_id=checkpoint_id,
+                operation="deploy",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(safe_error_description(exc)) from exc
         except QueryError as exc:
+            logger.warning(
+                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                checkpoint_id=checkpoint_id,
+                operation="deploy",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = "Failed to update embedder settings"
             raise ConflictError(msg) from exc
         return ApiResponse(data=updated)
@@ -429,12 +467,35 @@ class MemoryAdminController(Controller):
         try:
             updated = await service.rollback_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
+            logger.warning(
+                MEMORY_CHECKPOINT_NOT_FOUND,
+                checkpoint_id=checkpoint_id,
+                operation="rollback",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(safe_error_description(exc)) from exc
         except CheckpointRollbackUnavailableError as exc:
             # Operator-error / corrupt backup conditions; 422 better
             # reflects "rollback target invalid" than a generic 400.
+            logger.warning(
+                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                checkpoint_id=checkpoint_id,
+                operation="rollback",
+                reason="rollback_unavailable",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise ValidationError(safe_error_description(exc)) from exc
         except CheckpointRollbackCorruptError as exc:
+            logger.warning(
+                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                checkpoint_id=checkpoint_id,
+                operation="rollback",
+                reason="rollback_corrupt",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=updated)
 
@@ -467,8 +528,22 @@ class MemoryAdminController(Controller):
         try:
             await service.delete_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
+            logger.warning(
+                MEMORY_CHECKPOINT_NOT_FOUND,
+                checkpoint_id=checkpoint_id,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(safe_error_description(exc)) from exc
         except QueryError as exc:
+            logger.warning(
+                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                checkpoint_id=checkpoint_id,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise ConflictError(safe_error_description(exc)) from exc
         return ApiResponse(data=None)
 

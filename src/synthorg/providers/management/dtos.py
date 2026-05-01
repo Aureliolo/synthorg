@@ -7,7 +7,14 @@ import re
 from typing import TYPE_CHECKING, Self
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.config.schema import (  # noqa: TC001
     LocalModelParams,
@@ -145,22 +152,26 @@ class CreateProviderRequest(BaseModel):
         models: Pre-configured model definitions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     name: NotBlankStr = Field(max_length=64)
     driver: NotBlankStr = "litellm"
     litellm_provider: NotBlankStr | None = None
     auth_type: AuthType = AuthType.API_KEY
-    api_key: NotBlankStr | None = None
-    subscription_token: NotBlankStr | None = None
+    api_key: SecretStr | None = None
+    subscription_token: SecretStr | None = None
     tos_accepted: bool = False
     base_url: NotBlankStr | None = None
     oauth_token_url: NotBlankStr | None = None
     oauth_client_id: NotBlankStr | None = None
-    oauth_client_secret: NotBlankStr | None = None
+    oauth_client_secret: SecretStr | None = None
     oauth_scope: NotBlankStr | None = None
     custom_header_name: NotBlankStr | None = None
-    custom_header_value: NotBlankStr | None = None
+    custom_header_value: SecretStr | None = None
     models: tuple[ProviderModelConfig, ...] = ()
     preset_name: NotBlankStr | None = None
 
@@ -183,23 +194,27 @@ class UpdateProviderRequest(BaseModel):
     ``False`` and ``None`` are no-ops (cannot be retracted).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     driver: NotBlankStr | None = None
     litellm_provider: NotBlankStr | None = None
     auth_type: AuthType | None = None
-    api_key: NotBlankStr | None = None
+    api_key: SecretStr | None = None
     clear_api_key: bool = False
-    subscription_token: NotBlankStr | None = None
+    subscription_token: SecretStr | None = None
     clear_subscription_token: bool = False
     tos_accepted: bool | None = None
     base_url: NotBlankStr | None = None
     oauth_token_url: NotBlankStr | None = None
     oauth_client_id: NotBlankStr | None = None
-    oauth_client_secret: NotBlankStr | None = None
+    oauth_client_secret: SecretStr | None = None
     oauth_scope: NotBlankStr | None = None
     custom_header_name: NotBlankStr | None = None
-    custom_header_value: NotBlankStr | None = None
+    custom_header_value: SecretStr | None = None
     models: tuple[ProviderModelConfig, ...] | None = None
 
     @field_validator("base_url")
@@ -228,7 +243,11 @@ class TestConnectionRequest(BaseModel):
         model: Model to test (defaults to first model in config).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     model: NotBlankStr | None = None
 
@@ -320,13 +339,17 @@ class CreateFromPresetRequest(BaseModel):
         base_url: Override the preset's default base URL (optional).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     preset_name: NotBlankStr
     name: NotBlankStr = Field(max_length=64)
     auth_type: AuthType | None = None
-    api_key: NotBlankStr | None = None
-    subscription_token: NotBlankStr | None = None
+    api_key: SecretStr | None = None
+    subscription_token: SecretStr | None = None
     tos_accepted: bool = False
     base_url: NotBlankStr | None = None
     models: tuple[ProviderModelConfig, ...] | None = None
@@ -536,7 +559,11 @@ class PullModelRequest(BaseModel):
         model_name: Model identifier to pull (e.g. ``"test-local-001:latest"``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     model_name: NotBlankStr = Field(
         max_length=256,
@@ -562,6 +589,10 @@ class UpdateModelConfigRequest(BaseModel):
         local_params: New launch parameters for the model.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
 
     local_params: LocalModelParams
