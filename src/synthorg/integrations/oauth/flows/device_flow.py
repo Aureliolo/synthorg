@@ -105,10 +105,21 @@ class DeviceFlow:
         if http_timeout_seconds <= 0:
             msg = f"http_timeout_seconds must be > 0, got {http_timeout_seconds}"
             raise ValueError(msg)
-        if default_poll_interval_seconds <= 0:
+        # Strictly positive ``int`` only.  Reject ``bool`` (which is an
+        # ``int`` subclass: ``True == 1`` and ``False == 0`` would pass
+        # the comparison silently) and reject ``float`` because the
+        # response-parser default uses ``_positive_int`` which already
+        # rejects floats; an inconsistent fallback would shadow that
+        # boundary check.
+        if (
+            not isinstance(default_poll_interval_seconds, int)
+            or isinstance(default_poll_interval_seconds, bool)
+            or default_poll_interval_seconds <= 0
+        ):
             msg = (
-                "default_poll_interval_seconds must be > 0,"
-                f" got {default_poll_interval_seconds}"
+                "default_poll_interval_seconds must be a positive int"
+                f" (not bool/float), got {default_poll_interval_seconds!r}"
+                f" of type {type(default_poll_interval_seconds).__name__}"
             )
             raise ValueError(msg)
         self._http_timeout_seconds = http_timeout_seconds
@@ -285,15 +296,23 @@ class DeviceFlow:
             "client_id": client_id,
             "device_code": device_code,
         }
-        deadline = self._clock.now() + timedelta(seconds=max_wait_seconds)
+        # Use the monotonic clock for the polling deadline + remaining-
+        # budget math: a wall-clock jump (NTP correction, manual time
+        # change, container clock skew) would otherwise either
+        # short-circuit the loop early or extend it past the caller's
+        # ``max_wait_seconds`` budget.  ``self._clock.now()`` (UTC
+        # wall-clock) is still used downstream for ``token.expires_at``
+        # because that field is a persisted absolute timestamp the
+        # operator inspects.
+        monotonic_deadline = self._clock.monotonic() + max_wait_seconds
         poll_interval = interval
 
-        while self._clock.now() < deadline:
+        while self._clock.monotonic() < monotonic_deadline:
             # Clamp the sleep to the remaining budget so the loop never
             # overshoots the deadline by up to ``poll_interval`` seconds
             # (and never makes one extra token-endpoint POST after the
             # caller's max_wait_seconds is exhausted).
-            remaining = (deadline - self._clock.now()).total_seconds()
+            remaining = monotonic_deadline - self._clock.monotonic()
             if remaining <= 0:
                 break
             sleep_seconds = min(poll_interval, remaining)
@@ -305,7 +324,7 @@ class DeviceFlow:
             # on the next iteration. Without this break the current
             # iteration still issues the token-endpoint POST after the
             # caller's budget has expired.
-            if self._clock.now() >= deadline:
+            if self._clock.monotonic() >= monotonic_deadline:
                 break
 
             try:

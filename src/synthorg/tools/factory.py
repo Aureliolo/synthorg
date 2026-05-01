@@ -7,6 +7,7 @@ extracts parameters from a ``RootConfig``).  Both return
 in a ``ToolRegistry``.
 """
 
+import math
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ToolCategory
@@ -390,10 +391,24 @@ def build_default_tools(  # noqa: PLR0913
         Sorted tuple of ``BaseTool`` instances.
 
     Raises:
-        ValueError: If *workspace* is not an absolute path.
+        ValueError: If *workspace* is not an absolute path or if
+            ``web_request_timeout`` is non-positive.
     """
     if not workspace.is_absolute():
         msg = f"workspace must be an absolute path, got: {workspace}"
+        logger.warning(TOOL_FACTORY_ERROR, error=msg)
+        raise ValueError(msg)
+
+    # Boundary validation for the resolved registry value: a caller
+    # passing 0, a negative, or NaN here would either disable web
+    # tools entirely or surface as opaque ``httpx`` errors mid-request.
+    # Fail fast so the misconfiguration is visible at startup, not at
+    # the first web call.
+    if not math.isfinite(web_request_timeout) or web_request_timeout <= 0:
+        msg = (
+            "web_request_timeout must be a finite positive float,"
+            f" got {web_request_timeout!r}"
+        )
         logger.warning(TOOL_FACTORY_ERROR, error=msg)
         raise ValueError(msg)
 
