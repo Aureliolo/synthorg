@@ -70,9 +70,11 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        # Both records show up unfiltered.
+        # Both records show up unfiltered.  Assert the exact seeded
+        # task_id set rather than ``len >= 2`` so duplicated or
+        # unexpected rows still fail the test.
         assert isinstance(body["data"], list)
-        assert len(body["data"]) >= 2
+        assert {row.get("task_id") for row in body["data"]} == {"task-1", "task-2"}
 
     def test_filter_by_task_id(
         self,

@@ -133,9 +133,11 @@ class TestAuditController:
         assert len(body["data"]) == 2
         assert {entry["id"] for entry in body["data"]} == {"e-1", "e-2"}
         for entry in body["data"]:
-            raw_ts = entry.get("created_at") or entry.get("timestamp")
-            assert raw_ts is not None
-            entry_dt = parse_iso_utc(raw_ts)
+            # Require ``timestamp`` strictly so a wire-contract regression
+            # that drops the field (or renames it) cannot be masked by
+            # the previous ``created_at`` fallback.
+            assert "timestamp" in entry
+            entry_dt = parse_iso_utc(entry["timestamp"])
             assert t1 <= entry_dt <= t2
 
     def test_pagination_offset_limit(
