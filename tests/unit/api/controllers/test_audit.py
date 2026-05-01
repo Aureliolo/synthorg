@@ -121,7 +121,17 @@ class TestAuditController:
             headers=_HEADERS,
         )
         assert resp.status_code == 200
-        resp.json()
+        body = resp.json()
+        # Filter is applied -- only entries within [t1, t2] come back.
+        # Compare as datetimes (not strings) so the wire's ``Z`` suffix
+        # and ``isoformat()``'s ``+00:00`` suffix don't string-compare
+        # to different values for the same instant.
+        assert isinstance(body["data"], list)
+        for entry in body["data"]:
+            raw_ts = entry.get("created_at") or entry.get("timestamp")
+            assert raw_ts is not None
+            entry_dt = datetime.fromisoformat(raw_ts)
+            assert t1 <= entry_dt <= t2
 
     def test_pagination_offset_limit(
         self,

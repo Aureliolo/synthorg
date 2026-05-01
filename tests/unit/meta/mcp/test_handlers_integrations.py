@@ -224,10 +224,15 @@ class TestArtifacts:
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
-        await INTEGRATION_HANDLERS["synthorg_artifacts_list"](
+        listed = await INTEGRATION_HANDLERS["synthorg_artifacts_list"](
             app_state=fake_app_state,
             arguments={},
         )
+        list_payload = json.loads(listed)
+        assert list_payload["status"] == "ok"
+        # The artifact we just created should round-trip through list.
+        assert isinstance(list_payload.get("data"), list)
+        assert len(list_payload["data"]) >= 1
 
     async def test_delete_guardrails(self, fake_app_state: SimpleNamespace) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_artifacts_delete"]

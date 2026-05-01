@@ -180,7 +180,10 @@ class TestWorkflowController:
 
         resp = test_client.get("/api/v1/workflows")
         assert resp.status_code == 200
-        resp.json()
+        body = resp.json()
+        assert isinstance(body["data"], list)
+        names = {item.get("name") for item in body["data"]}
+        assert {"wf-alpha", "wf-beta"} <= names
 
     def test_list_workflows_filter_by_type(self, test_client: TestClient[Any]) -> None:
         _create_workflow(

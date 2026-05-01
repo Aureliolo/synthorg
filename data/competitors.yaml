@@ -1033,7 +1033,7 @@ competitors:
       tool_use: { support: full, note: "No-code tool builder, 1000+ app integrations, custom API calls, webhooks" }
       human_in_loop: { support: full, note: "Approvals and Escalations with per-edge config, timeout actions, escalation paths" }
       budget_tracking: { support: partial, note: "Credit system with usage counters and auto top-up; no project-level allocation" }
-      security_model: { support: full, note: "SOC 2 Type II, HIPAA, AES-256, RBAC, SSO/MFA, prompt injection protections" }
+      security_model: {support: full, note: "SOC 2 Type II, HIPAA, AES-256, RBAC, SSO/MFA, prompt injection protections"}
       observability: { support: full, note: "LLM judges, analytics dashboards, OTEL streaming, audit logs, Agent Alerts" }
       web_dashboard: { support: full, note: "Agent builder, workforce designer, knowledge mgmt, analytics, marketplace" }
       cli: { support: none, note: "" }

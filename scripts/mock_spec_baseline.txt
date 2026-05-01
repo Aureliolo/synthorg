@@ -536,8 +536,6 @@ tests/unit/api/test_lifecycle_cleanup_kill_switch.py:183:55
 tests/unit/api/test_lifecycle_cleanup_kill_switch.py:185:28
 tests/unit/api/test_lifecycle_cleanup_kill_switch.py:187:56
 tests/unit/api/test_lifecycle_cleanup_kill_switch.py:206:28
-tests/unit/api/test_oauth_state_cleanup_wiring.py:33:24
-tests/unit/api/test_oauth_state_cleanup_wiring.py:45:24
 tests/unit/api/test_personality_trim_notifier_factory.py:41:19
 tests/unit/api/test_personality_trim_notifier_factory.py:42:27
 tests/unit/api/test_personality_trim_notifier_factory.py:66:19
@@ -566,10 +564,8 @@ tests/unit/api/test_state.py:312:19
 tests/unit/api/test_state.py:323:19
 tests/unit/api/test_state.py:343:19
 tests/unit/api/test_state.py:350:19
-tests/unit/api/test_webhook_receipt_cleanup_loop.py:51:16
-tests/unit/api/test_webhook_receipt_cleanup_loop.py:68:46
-tests/unit/api/test_webhook_receipt_cleanup_loop.py:222:16
-tests/unit/api/test_webhook_receipt_cleanup_loop.py:252:17
+tests/unit/api/test_webhook_receipt_cleanup_loop.py:69:46
+tests/unit/api/test_webhook_receipt_cleanup_loop.py:223:16
 tests/unit/backup/test_scheduler.py:14:14
 tests/unit/backup/test_scheduler.py:15:28
 tests/unit/backup/test_service.py:21:14

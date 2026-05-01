@@ -175,11 +175,28 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
             failure_message="Periodic lockout cleanup failed",
         )
     if app_state.has_persistence:
-        await _run_cleanup_step(
-            app_state.persistence.oauth_states.cleanup_expired,
-            event=PERSISTENCE_OAUTH_STATE_CLEANUP,
-            failure_message="Periodic OAuth-state cleanup failed",
-        )
+        # OAuth state cleanup is invoked directly (not via _run_cleanup_step)
+        # so we can surface the per-tick removed-row count at the lifecycle
+        # observability boundary -- the repo-level log only fires when
+        # ``removed > 0`` (silent on no-op), so a lifecycle log gives
+        # operators an unconditional "sweep ran" signal.
+        try:
+            oauth_removed = await app_state.persistence.oauth_states.cleanup_expired()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PERSISTENCE_OAUTH_STATE_CLEANUP,
+                error="Periodic OAuth-state cleanup failed",
+                error_type=type(exc).__name__,
+                error_desc=safe_error_description(exc),
+            )
+        else:
+            logger.info(
+                PERSISTENCE_OAUTH_STATE_CLEANUP,
+                note="oauth state sweep completed",
+                removed=oauth_removed,
+            )
         await _run_cleanup_step(
             app_state.idempotency_service.cleanup_expired,
             event=IDEMPOTENCY_CLEANUP,

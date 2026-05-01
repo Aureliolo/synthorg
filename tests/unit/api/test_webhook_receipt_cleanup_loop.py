@@ -11,7 +11,7 @@ sweep + failure isolation), not the wall-clock loop scheduling.
 import asyncio
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -21,6 +21,8 @@ from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
     WebhookReceiptRepository,
 )
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -47,9 +49,8 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
     list_all_side_effect: type[BaseException] | BaseException | None = None,
 ) -> SimpleNamespace:
     """Build a minimal AppState stand-in for the cleanup loop."""
-    config_resolver = SimpleNamespace(
-        get_int=AsyncMock(return_value=default_retention_days),
-    )
+    config_resolver = AsyncMock(spec=ConfigResolver)
+    config_resolver.get_int.return_value = default_retention_days
     connections_repo = AsyncMock(spec=ConnectionRepository)
     if list_all_side_effect is not None:
         connections_repo.list_all.side_effect = list_all_side_effect
@@ -234,25 +235,19 @@ async def test_resolve_falls_back_on_resolver_error() -> None:
 async def test_loop_drives_tick_at_each_iteration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Drive the loop deterministically via a counting ``asyncio.sleep`` stub."""
-    real_sleep = asyncio.sleep
-    remaining = 2
+    """Drive the loop deterministically via :class:`FakeClock`.
 
-    async def _deterministic_sleep(_: float) -> None:
-        nonlocal remaining
-        if remaining <= 0:
-            raise asyncio.CancelledError
-        remaining -= 1
-        await real_sleep(0)
-
-    monkeypatch.setattr(
-        "synthorg.api.webhook_cleanup.asyncio.sleep",
-        _deterministic_sleep,
-    )
-    tick_calls = MagicMock()
+    Uses the project's standard ``Clock`` seam (``synthorg.core.clock``)
+    rather than monkey-patching ``asyncio.sleep`` so the test exercises
+    the same injection path production code uses for time-driven
+    behaviour.
+    """
+    clock = FakeClock()
+    tick_count = 0
 
     async def _stub_tick(_app_state: Any) -> None:
-        tick_calls()
+        nonlocal tick_count
+        tick_count += 1
 
     monkeypatch.setattr(
         "synthorg.api.webhook_cleanup._webhook_receipt_cleanup_tick",
@@ -261,9 +256,18 @@ async def test_loop_drives_tick_at_each_iteration(
 
     app_state = _build_app_state()
     task = asyncio.create_task(
-        webhook_cleanup._webhook_receipt_cleanup_loop(app_state),  # type: ignore[arg-type]
+        webhook_cleanup._webhook_receipt_cleanup_loop(
+            app_state,  # type: ignore[arg-type]
+            clock=clock,
+        ),
     )
+    # Allow the first tick to run, then drive two cycles of sleep.
+    await asyncio.sleep(0)
+    assert tick_count == 1
+    await clock.advance_async(webhook_cleanup._WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)
+    assert tick_count == 2
+    await clock.advance_async(webhook_cleanup._WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)
+    assert tick_count == 3
+    task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    # 2 sleeps + final cancellation -> ticked twice + once before final sleep.
-    assert tick_calls.call_count == 3

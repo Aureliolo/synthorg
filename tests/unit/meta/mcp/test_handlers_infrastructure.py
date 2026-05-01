@@ -405,10 +405,15 @@ class TestTemplatePacks:
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
-        await INFRASTRUCTURE_HANDLERS["synthorg_template_packs_list"](
+        listed = await INFRASTRUCTURE_HANDLERS["synthorg_template_packs_list"](
             app_state=fake_app_state,
             arguments={},
         )
+        list_payload = json.loads(listed)
+        assert list_payload["status"] == "ok"
+        # The pack we just installed should appear in the list.
+        names = {item.get("name") for item in list_payload.get("data", [])}
+        assert "p" in names
 
     async def test_uninstall_guardrails(
         self,

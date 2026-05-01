@@ -70,7 +70,11 @@ class TestArtifactController:
         )
         resp = test_client.get("/api/v1/artifacts")
         assert resp.status_code == 200
-        resp.json()
+        body = resp.json()
+        assert isinstance(body["data"], list)
+        # Whatever was just created should appear in the listing.
+        assert len(body["data"]) >= 1
+        assert any(item.get("task_id") == "task-1" for item in body["data"])
 
     def test_list_artifacts_filter_by_task_id(
         self, test_client: TestClient[Any]

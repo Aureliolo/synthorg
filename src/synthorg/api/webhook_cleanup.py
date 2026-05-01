@@ -15,6 +15,7 @@ Per-connection retention semantics follow ``Connection.webhook_receipt_retention
 import asyncio
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
+from synthorg.core.clock import SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
@@ -24,6 +25,7 @@ from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.core.clock import Clock
     from synthorg.integrations.connections.models import Connection
 
 
@@ -222,7 +224,11 @@ granularity.  Operators tune the *window* (per-connection or global
 *cadence*."""
 
 
-async def _webhook_receipt_cleanup_loop(app_state: AppState) -> None:
+async def _webhook_receipt_cleanup_loop(
+    app_state: AppState,
+    *,
+    clock: Clock | None = None,
+) -> None:
     """Daily sweep that prunes webhook receipts per connection.
 
     Mirrors :func:`synthorg.api.lifecycle_helpers._audit_retention_loop`:
@@ -230,7 +236,14 @@ async def _webhook_receipt_cleanup_loop(app_state: AppState) -> None:
     (sessions / lockouts / OAuth states / idempotency keys) because
     receipt retention is durable (days, weeks, months) rather than
     transient (seconds, minutes).
+
+    ``clock`` is the time-injection seam: production wires
+    :class:`SystemClock` (which delegates to ``asyncio.sleep``) and
+    tests inject ``FakeClock`` so the loop is driven deterministically
+    via ``clock.advance_async()`` rather than via ``asyncio.sleep``
+    monkey-patching.
     """
+    effective_clock: Clock = clock if clock is not None else SystemClock()
     while True:
         await _webhook_receipt_cleanup_tick(app_state)
-        await asyncio.sleep(_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)
+        await effective_clock.sleep(_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)

@@ -68,7 +68,10 @@ class TestCoordinationMetricsController:
             headers=_HEADERS,
         )
         assert resp.status_code == 200
-        resp.json()
+        body = resp.json()
+        # Both records show up unfiltered.
+        assert isinstance(body["data"], list)
+        assert len(body["data"]) >= 2
 
     def test_filter_by_task_id(
         self,
@@ -107,7 +110,11 @@ class TestCoordinationMetricsController:
             headers=_HEADERS,
         )
         assert resp.status_code == 200
-        resp.json()
+        body = resp.json()
+        # Filter is honoured: every returned row carries agent_id="alice".
+        assert isinstance(body["data"], list)
+        assert len(body["data"]) >= 1
+        assert all(row.get("agent_id") == "alice" for row in body["data"])
 
     def test_filter_by_time_range(
         self,
@@ -135,7 +142,12 @@ class TestCoordinationMetricsController:
             headers=_HEADERS,
         )
         assert resp.status_code == 200
-        resp.json()
+        body = resp.json()
+        # Time window includes t1 and t2 but excludes t3; verify no t3
+        # record leaks through.
+        assert isinstance(body["data"], list)
+        task_ids = {row.get("task_id") for row in body["data"]}
+        assert "task-3" not in task_ids
 
     def test_pagination(
         self,
@@ -210,7 +222,15 @@ class TestCoordinationMetricsController:
             headers=_HEADERS,
         )
         assert resp.status_code == 200
-        resp.json()
+        body = resp.json()
+        # Combined filter (agent + since) honoured: only alice's
+        # records, none from before t1.
+        assert isinstance(body["data"], list)
+        assert all(row.get("agent_id") == "alice" for row in body["data"])
+        assert all(
+            row.get("timestamp", t1.isoformat()) >= t1.isoformat()
+            for row in body["data"]
+        )
 
     def test_rejects_inverted_time_window(
         self,

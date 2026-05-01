@@ -18,6 +18,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.api import lifecycle_helpers
+from synthorg.api.auth.ticket_store import WsTicketStore
+from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.persistence.connection_protocol import OAuthStateRepository
 
 pytestmark = pytest.mark.unit
@@ -29,21 +31,17 @@ def _build_app_state(
     oauth_cleanup_side_effect: type[BaseException] | None = None,
 ) -> SimpleNamespace:
     """Build a minimal ``AppState`` stand-in with stub stores + persistence."""
-    ticket_store = SimpleNamespace(
-        cleanup_expired=MagicMock(return_value=None),
-    )
+    ticket_store = MagicMock(spec=WsTicketStore)
+    ticket_store.cleanup_expired.return_value = None
     if oauth_cleanup_side_effect is None:
-        oauth_states = AsyncMock(
-            spec=OAuthStateRepository,
-        )
+        oauth_states = AsyncMock(spec=OAuthStateRepository)
         oauth_states.cleanup_expired.return_value = 0
     else:
         oauth_states = AsyncMock(spec=OAuthStateRepository)
         oauth_states.cleanup_expired.side_effect = oauth_cleanup_side_effect
     persistence = SimpleNamespace(oauth_states=oauth_states)
-    idempotency_service = SimpleNamespace(
-        cleanup_expired=AsyncMock(return_value=None),
-    )
+    idempotency_service = AsyncMock(spec=IdempotencyService)
+    idempotency_service.cleanup_expired.return_value = None
     return SimpleNamespace(
         ticket_store=ticket_store,
         persistence=persistence,

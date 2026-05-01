@@ -155,12 +155,21 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
           cursor: state.nextCursor,
         })
         if (token !== listRequestToken) return
-        set((s) => ({
-          escalations: [...s.escalations, ...page.data],
-          nextCursor: page.nextCursor,
-          hasMore: page.hasMore,
-          loadingMore: false,
-        }))
+        set((s) => {
+          const merged = [...s.escalations, ...page.data]
+          return {
+            escalations: merged,
+            // Keep ``total`` consistent with the store's cursor-only
+            // pagination: it is the in-memory display count, recomputed
+            // after every append rather than carried over from the
+            // initial fetch (which would go stale once more pages
+            // landed).
+            total: merged.length,
+            nextCursor: page.nextCursor,
+            hasMore: page.hasMore,
+            loadingMore: false,
+          }
+        })
       } catch (err) {
         log.warn('Failed to fetch more escalations:', getErrorMessage(err))
         if (token !== listRequestToken) return
