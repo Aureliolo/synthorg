@@ -14,6 +14,7 @@ import type {
   TemplateInfoResponse,
 } from '@/api/types/setup'
 import type { CurrencyCode } from '@/utils/currencies'
+import type { ErrorCode } from '@/api/types/errors'
 
 export type WizardStep =
   | 'account'
@@ -74,7 +75,25 @@ export interface CompanySlice {
   budgetCap: number | null
   companyResponse: SetupCompanyResponse | null
   companyLoading: boolean
+  /**
+   * Human-readable error message from the most recent ``submitCompany``
+   * failure. Cleared on the next attempt. The dashboard surfaces this
+   * verbatim in an ``ErrorBanner``.
+   */
   companyError: string | null
+  /**
+   * RFC 9457 ``error_detail.error_code`` from the most recent failure,
+   * or ``null`` when the envelope did not carry one. Used by
+   * ``CompanyStep`` to discriminate actionable failures (e.g.
+   * ``ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT`` -> route the
+   * operator back to the providers step) from generic retryable errors.
+   *
+   * Lifecycle: ephemeral. Cleared by ``submitCompany`` at the start
+   * of the next attempt and never read after success; on a successful
+   * response both this field and ``companyError`` are reset to
+   * ``null`` together.
+   */
+  companyErrorCode: ErrorCode | null
   setCompanyName: (name: string) => void
   setCompanyDescription: (desc: string) => void
   setCurrency: (currency: CurrencyCode) => void

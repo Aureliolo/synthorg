@@ -1,5 +1,6 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { EmptyState } from '@/components/ui/empty-state'
 import { MessageSquare } from 'lucide-react'
 import { getPhaseLabel } from '@/utils/meetings'
 import { ContributionBubble } from './ContributionBubble'
@@ -32,6 +33,18 @@ function groupByPhase(contributions: readonly MeetingContribution[]): PhaseGroup
 
 export function MeetingContributions({ contributions, className }: MeetingContributionsProps) {
   const groups = groupByPhase(contributions)
+
+  if (groups.length === 0) {
+    return (
+      <SectionCard title="Contributions" icon={MessageSquare} className={className}>
+        <EmptyState
+          icon={MessageSquare}
+          title="No contributions recorded"
+          description="Per-agent contributions across the meeting phases will appear here once the conversation begins."
+        />
+      </SectionCard>
+    )
+  }
 
   return (
     <SectionCard title="Contributions" icon={MessageSquare} className={className}>

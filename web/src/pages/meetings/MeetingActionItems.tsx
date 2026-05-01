@@ -1,6 +1,7 @@
 import { ClipboardList } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { SectionCard } from '@/components/ui/section-card'
+import { EmptyState } from '@/components/ui/empty-state'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { formatLabel } from '@/utils/format'
 import type { ActionItem } from '@/api/types/meetings'
@@ -11,7 +12,17 @@ interface MeetingActionItemsProps {
 }
 
 export function MeetingActionItems({ actionItems, className }: MeetingActionItemsProps) {
-  if (actionItems.length === 0) return null
+  if (actionItems.length === 0) {
+    return (
+      <SectionCard title="Action Items" icon={ClipboardList} className={className}>
+        <EmptyState
+          icon={ClipboardList}
+          title="No action items recorded"
+          description="Action items extracted from this meeting will appear here."
+        />
+      </SectionCard>
+    )
+  }
 
   return (
     <SectionCard title="Action Items" icon={ClipboardList} className={className}>

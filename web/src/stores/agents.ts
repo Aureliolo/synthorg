@@ -3,6 +3,7 @@ import { listAgents, getAgent, getAgentPerformance, getAgentActivity, getAgentHi
 import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { isObject } from '@/utils/type-guards'
 import { createLogger } from '@/lib/logger'
 import { sanitizeWsString } from '@/stores/notifications'
 import type {
@@ -269,16 +270,16 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   updateFromWsEvent: (event) => {
     // Runtime null-guard: `event.payload` is typed as `Record<string, unknown>`
     // on the wire, but a malformed broker could still send `null` or a
-    // non-object.  The `as` cast below would not catch that, so we filter
-    // here once and treat every invalid envelope as a dropped event.
-    if (typeof event.payload !== 'object' || event.payload === null) {
+    // non-object.  The shared isObject narrows in one step instead of
+    // a hand-rolled typeof check + a downstream `as` cast.
+    if (!isObject(event.payload)) {
       log.warn('WS event dropped: payload is not an object', {
         event_type: sanitizeForLog(event.event_type),
       })
       return
     }
     if (event.event_type === 'agent.status_changed') {
-      const payload = event.payload as Record<string, unknown>
+      const payload = event.payload
       // Run the wire agent_id through the canonical WS sanitizer so
       // it can't carry control/bidi chars into ``runtimeStatuses`` as
       // a key -- a malformed frame would otherwise create an unusable

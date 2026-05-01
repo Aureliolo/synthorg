@@ -7,6 +7,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { useConnectionsStore } from '@/stores/connections'
 import { TunnelCard } from './connections/TunnelCard'
@@ -43,11 +46,25 @@ export default function ConnectionsPage() {
 
   const hasData = connections.length > 0 || filteredConnections.length > 0
 
+  // URL-persisted pagination over the client-filtered list.
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedConnections,
+    setPage,
+    setPageSize,
+  } = useListPagination({ items: filteredConnections, namespace: 'connections' })
+
   return (
     <div className="flex flex-col gap-section-gap">
       <ListHeader
         title="Connections"
-        count={connections.length}
+        // ``totalItems`` is the count after filters, which matches
+        // what pagination paginates and what the user actually sees
+        // in the grid. Showing the raw connections.length here would
+        // diverge from the table contents the moment a filter is set.
+        count={totalItems}
         primaryAction={
           <Button size="sm" onClick={() => setModal({ kind: 'create' })}>
             <Plus aria-hidden="true" />
@@ -62,7 +79,9 @@ export default function ConnectionsPage() {
         <ErrorBanner severity="error" title="Could not load connections" description={error} />
       )}
 
-      <ConnectionFilters />
+      {/* Wrap the existing filter component in SearchFilterSort so the
+          layout matches the rest of the dashboard's list pages. */}
+      <SearchFilterSort filters={<ConnectionFilters />} />
 
       {loading && !hasData ? (
         <ConnectionsSkeleton />
@@ -76,13 +95,20 @@ export default function ConnectionsPage() {
       ) : (
         <ErrorBoundary level="section">
           <ConnectionGridView
-            connections={filteredConnections}
+            connections={pagedConnections}
             healthMap={healthMap}
             checkingHealth={checkingHealth}
             onRunHealthCheck={(name) => void runHealthCheck(name)}
             onEdit={(conn) => setModal({ kind: 'edit', connection: conn })}
             onDelete={(conn) => setPendingDelete(conn)}
             onCreate={() => setModal({ kind: 'create' })}
+          />
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
           />
         </ErrorBoundary>
       )}

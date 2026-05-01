@@ -6,8 +6,12 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 import { downloadArtifactContent } from '@/api/endpoints/artifacts'
 import { downloadArtifactFile } from '@/utils/download'
-import { getErrorMessage } from '@/utils/errors'
+import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { Artifact } from '@/api/types/artifacts'
+
+const log = createLogger('ArtifactContentPreview')
 
 interface ArtifactContentPreviewProps {
   artifact: Artifact
@@ -51,7 +55,23 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
       })
       .catch((err: unknown) => {
         if (revoked) return
-        setImageError(getErrorMessage(err))
+        const message = getErrorMessage(err)
+        // Structured log so an operator chasing missing previews can
+        // tell whether this is a 404 (artifact gone), a 5xx (storage
+        // backend issue), or a network failure. Don't include the
+        // artifact path; it can carry user-content that might be
+        // sensitive in logs.
+        // SEC-1: every dynamic string passed into the structured log
+        // payload goes through sanitizeForLog. artifact.id /
+        // artifact.content_type can carry user-controlled bytes; the
+        // statusCode path is bounded to a number or null.
+        log.error('artifact image preview failed to load', {
+          artifactId: sanitizeForLog(artifact.id),
+          contentType: sanitizeForLog(artifact.content_type),
+          statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
+          error: sanitizeForLog(message),
+        })
+        setImageError(message)
       })
     return () => {
       revoked = true
@@ -62,7 +82,7 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
         imageSrcRef.current = null
       }
     }
-  }, [artifact.id, isImage, artifact.size_bytes])
+  }, [artifact.id, isImage, artifact.size_bytes, artifact.content_type])
 
   if (artifact.size_bytes === 0) {
     return (
@@ -113,9 +133,17 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
   if (isImage && imageSrc) {
     return (
       <SectionCard title="Content Preview">
+        {/* width / height attributes set so the browser reserves space
+            before the image decodes; without them the layout shifts
+            on first paint and Lighthouse flags the page as having a
+            high CLS. The image is constrained by max-h-96 + object-
+            contain so the intrinsic dimensions only steer aspect-ratio
+            reservation, not final size. */}
         <img
           src={imageSrc}
           alt={`Preview of ${artifact.path}`}
+          width={800}
+          height={600}
           className="max-h-96 rounded-md border border-border object-contain"
         />
       </SectionCard>

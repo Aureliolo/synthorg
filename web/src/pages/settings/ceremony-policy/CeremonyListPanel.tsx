@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { ChevronDown, ChevronRight, List } from 'lucide-react'
 import type { CeremonyPolicyConfig, CeremonyStrategyType } from '@/api/types/ceremony-policy'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
@@ -24,17 +24,19 @@ export interface CeremonyListPanelProps {
   saving?: boolean
 }
 
-function CeremonyRow({
-  name,
-  policy,
-  onOverrideChange,
-  saving,
-}: {
+interface CeremonyRowProps {
   name: string
   policy: CeremonyPolicyConfig | null
   onOverrideChange: (name: string, policy: CeremonyPolicyConfig | null) => void
   saving?: boolean
-}) {
+}
+
+const CeremonyRow = memo(function CeremonyRow({
+  name,
+  policy,
+  onOverrideChange,
+  saving,
+}: CeremonyRowProps) {
   const [expanded, setExpanded] = useState(false)
   const hasOverride = policy != null
   const strategy = policy?.strategy ?? 'task_driven'
@@ -117,7 +119,7 @@ function CeremonyRow({
       )}
     </div>
   )
-}
+})
 
 export function CeremonyListPanel({
   overrides,

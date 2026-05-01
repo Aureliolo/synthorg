@@ -28,6 +28,7 @@ from litestar.exceptions import (
     ValidationException,
 )
 
+from synthorg.api.auth_response_discriminator import discriminate_unauthorized
 from synthorg.api.cursor import InvalidCursorError
 from synthorg.api.dto import ApiResponse, ErrorDetail, ProblemDetail
 from synthorg.backup.errors import (
@@ -709,12 +710,22 @@ def handle_not_authorized(
     request: Request[Any, Any, Any],
     exc: NotAuthorizedException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``NotAuthorizedException`` to 401."""
+    """Map ``NotAuthorizedException`` to 401 with a discriminated error_code.
+
+    Reads ``exc.detail`` to distinguish "no session token" (fresh page
+    load) from "expired session" so the dashboard can choose between a
+    silent redirect to /login (no_token) and a redirect plus
+    informational toast (expired). The auth middleware in
+    ``synthorg.api.auth.middleware`` is the only producer of these
+    detail strings; see :func:`discriminate_unauthorized` in
+    :mod:`synthorg.api.auth_response_discriminator` for the mapping.
+    """
     _log_error(request, exc, status=401)
+    error_code, detail = discriminate_unauthorized(exc.detail)
     return _build_response(
         request,
-        detail="Authentication required",
-        error_code=ErrorCode.UNAUTHORIZED,
+        detail=detail,
+        error_code=error_code,
         error_category=ErrorCategory.AUTH,
         status_code=401,
     )

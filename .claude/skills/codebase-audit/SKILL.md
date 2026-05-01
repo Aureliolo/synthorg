@@ -639,13 +639,18 @@ and missing error boundaries around async content. Severity: medium.
 
 ```
 
-**Agent 37: hardcoded-frontend-strings** (sonnet)
-File: `_audit/latest/findings/37-hardcoded-frontend-strings.md`
+**Agent 37: long-duplicated-error-strings** (sonnet)
+File: `_audit/latest/findings/37-long-duplicated-error-strings.md`
 
 ```text
-Find user-facing strings hardcoded directly in TSX files. Look for text
-content in JSX elements that should be centralized for i18n readiness.
-Skip component prop names and technical strings. Severity: info.
+Find long error / banner messages (>=80 characters) that appear
+verbatim in three or more TSX files. Those are deduplication
+candidates for a small shared `errors.ts` module. SynthOrg ships
+in International / British English with no translation framework
+(see `docs/design/internationalization.md`); do NOT flag short
+button labels, placeholders, headings, or empty-state copy as
+"i18n readiness" -- centralization for i18n's sake is out of
+scope. Severity: info.
 
 ```
 

@@ -21,7 +21,12 @@ from synthorg.api.controllers.setup_models import (
 )
 from synthorg.api.guards import HumanRole
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    ProviderTierCoverageInsufficientError,
+    ValidationError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_FAILED,
@@ -409,22 +414,26 @@ def _validate_tier_coverage(providers: Mapping[str, Any]) -> None:
             ``provider_management.list_providers()``.
 
     Raises:
-        ValidationError: When NO models are available across the
-            registered providers.
+        ProviderTierCoverageInsufficientError: When NO models are
+            available across the registered providers. The frontend
+            reads ``error_detail.error_code`` (2004) to surface a
+            "Go back to Providers step" affordance instead of a
+            generic Retry button.
     """
     total_models = sum(len(getattr(cfg, "models", ())) for cfg in providers.values())
     if total_models > 0:
         return
     msg = (
-        "Configured providers expose no models. Add at least one "
-        "model to a provider before creating agents."
+        "No configured provider exposes any models. Go back to the "
+        "Providers step, add at least one model to a provider, then "
+        "return here to apply the template."
     )
     logger.warning(
         SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
         provider_count=len(providers),
         total_model_count=0,
     )
-    raise ValidationError(msg)
+    raise ProviderTierCoverageInsufficientError(msg)
 
 
 async def auto_create_template_agents(

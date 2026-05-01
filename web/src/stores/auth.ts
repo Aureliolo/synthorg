@@ -46,6 +46,22 @@ const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
   ? { id: 'dev-user', username: 'developer', role: 'ceo', must_change_password: false, org_roles: ['owner'], scoped_departments: [] }
   : null
 
+// ── One-shot redirect guard ─────────────────────────────────
+//
+// On reload with no session cookie, multiple inflight requests can
+// land 401 in the same tick. Each invokes ``handleUnauthorized`` via
+// the response interceptor, which previously meant N concurrent
+// ``window.location.href = '/login'`` assignments and N concurrent
+// websocket disconnects -- a flicker that the audit's "auth-on-reload
+// glitch" report calls out. The guard ensures the redirect path runs
+// at most once per page load; ``login()`` resets it on success so a
+// later session expiry still works.
+let unauthorizedRedirectInFlight = false
+
+export function _resetUnauthorizedRedirectGuardForTests(): void {
+  unauthorizedRedirectInFlight = false
+}
+
 // ── Store ───────────────────────────────────────────────────
 
 export const useAuthStore = create<AuthState>()((set, get) => {
@@ -57,6 +73,10 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     set({ loading: true })
     try {
       await authFn()
+      // A fresh authentication attempt clears the one-shot redirect
+      // guard so a future session expiry can still drive a clean
+      // redirect, not no-op against a stale "already redirecting" flag.
+      unauthorizedRedirectInFlight = false
       // Cookie is set by the server. Fetch user profile to confirm session.
       try {
         await get().fetchUser()
@@ -136,6 +156,13 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     },
 
     handleUnauthorized() {
+      // One-shot guard against concurrent 401s during a single page
+      // load. Without this, a burst of inflight requests each schedule
+      // their own redirect + websocket disconnect, producing the
+      // flicker the audit calls out. The guard resets on a successful
+      // login so a later session expiry still triggers cleanly.
+      if (unauthorizedRedirectInFlight) return
+      unauthorizedRedirectInFlight = true
       set({ authStatus: 'unauthenticated', user: null })
       // Tear down WebSocket transport so it stops reconnecting.
       import('@/stores/websocket').then(({ useWebSocketStore }) => {

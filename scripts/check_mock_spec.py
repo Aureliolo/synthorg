@@ -276,14 +276,20 @@ def _scan_all_for_baseline() -> list[str]:
     would let the gate suppress every bare mock in that file going
     forward, which is exactly the kind of silent failure the gate
     exists to prevent.
+
+    Sort key sorts by (path, lineno, col) numerically. Plain string
+    sort would lexicographically order ``"...:1169:..."`` before
+    ``"...:754:..."`` because ``'1' < '7'``, producing a baseline
+    block where the same file's entries jump backwards mid-block.
     """
-    entries: list[str] = []
+    entries: list[tuple[str, int, int]] = []
     for test_path in _iter_test_files():
         hits = _scan_file(test_path)
         rel = _rel(test_path)
         for lineno, col in hits:
-            entries.append(_format_entry(rel, lineno, col))
-    return sorted(entries)
+            entries.append((rel, lineno, col))
+    entries.sort()
+    return [_format_entry(rel, lineno, col) for rel, lineno, col in entries]
 
 
 def cmd_update() -> int:

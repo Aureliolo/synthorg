@@ -5,7 +5,7 @@ import { Columns2, FileCode } from 'lucide-react'
 import type { SettingEntry } from '@/api/types/settings'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { CodeMirrorEditor } from '@/components/ui/code-mirror-editor'
+import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   diffGutterExtension,
@@ -262,7 +262,7 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
         {splitView && (
           <div className="space-y-1">
             <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Current</span>
-            <CodeMirrorEditor
+            <LazyCodeMirrorEditor
               value={serverText}
               onChange={() => {}}
               language={format}
@@ -275,7 +275,7 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
           {splitView && (
             <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Edited</span>
           )}
-          <CodeMirrorEditor
+          <LazyCodeMirrorEditor
             value={text}
             onChange={handleChange}
             language={format}
