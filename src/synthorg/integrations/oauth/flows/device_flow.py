@@ -1,11 +1,11 @@
 """OAuth 2.1 device authorization flow (RFC 8628)."""
 
-import asyncio
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.models import OAuthToken
 from synthorg.integrations.errors import (
     DeviceFlowTimeoutError,
@@ -89,6 +89,10 @@ class DeviceFlow:
             setting; resolve at the construction site and pass through.
             The IETF dynamic ``slow_down`` widening (``+5`` per response)
             in ``poll_for_token`` is preserved.
+        clock: Time / cooperative-sleep source. Defaults to
+            ``SystemClock``; tests inject ``FakeClock`` from
+            ``tests/_shared/fake_clock.py`` to make the polling loop
+            deterministic without real waits.
     """
 
     def __init__(
@@ -96,6 +100,7 @@ class DeviceFlow:
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
         default_poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         if http_timeout_seconds <= 0:
             msg = f"http_timeout_seconds must be > 0, got {http_timeout_seconds}"
@@ -108,6 +113,7 @@ class DeviceFlow:
             raise ValueError(msg)
         self._http_timeout_seconds = http_timeout_seconds
         self._default_poll_interval_seconds = default_poll_interval_seconds
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def grant_type(self) -> str:
@@ -264,18 +270,27 @@ class DeviceFlow:
             DeviceFlowTimeoutError: If the user does not authorize
                 within the timeout.
             TokenExchangeFailedError: On unexpected errors.
+            ValueError: If ``interval`` or ``max_wait_seconds`` is
+                non-positive (would cause a tight loop / immediate
+                timeout).
         """
+        if interval <= 0:
+            msg = f"interval must be > 0, got {interval}"
+            raise ValueError(msg)
+        if max_wait_seconds <= 0:
+            msg = f"max_wait_seconds must be > 0, got {max_wait_seconds}"
+            raise ValueError(msg)
         payload = {
             "grant_type": self.grant_type,
             "client_id": client_id,
             "device_code": device_code,
         }
-        deadline = datetime.now(UTC) + timedelta(seconds=max_wait_seconds)
+        deadline = self._clock.now() + timedelta(seconds=max_wait_seconds)
         poll_interval = interval
 
-        while datetime.now(UTC) < deadline:
+        while self._clock.now() < deadline:
             logger.debug(OAUTH_DEVICE_FLOW_POLLING, interval=poll_interval)
-            await asyncio.sleep(poll_interval)
+            await self._clock.sleep(poll_interval)
 
             try:
                 async with httpx.AsyncClient(
@@ -346,7 +361,7 @@ class DeviceFlow:
                     )
                     and expires_in > 0
                 ):
-                    expires_at = datetime.now(UTC) + timedelta(
+                    expires_at = self._clock.now() + timedelta(
                         seconds=expires_in,
                     )
                 refresh_raw = data.get("refresh_token")

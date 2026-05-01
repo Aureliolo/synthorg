@@ -23,7 +23,7 @@ pytestmark = pytest.mark.unit
 
 
 class _FakeConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
 
 @pytest.fixture
@@ -52,6 +52,12 @@ _BOOTSTRAP_ONLY_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
     ("api", "server_port", "3001"),
     ("api", "cors_allowed_origins", "[]"),
     ("api", "trusted_proxies", "[]"),
+    # TLS paths: uvicorn bakes resolved file paths into the server at
+    # construction; runtime ``set()`` cannot retroactively swap the
+    # cert on the listening socket.
+    ("api", "ssl_certfile", ""),
+    ("api", "ssl_keyfile", ""),
+    ("api", "ssl_ca_certs", ""),
 )
 
 
