@@ -67,6 +67,16 @@ class CompositeGuard:
                 reason=decision.reason,
             )
             if not decision.approved:
+                # Chain-level decision emit so
+                # ``EVOLUTION_GUARD_DECISION`` carries both per-guard
+                # rows (above) AND the composite outcome (this row),
+                # matching the constant's documented semantics.
+                logger.debug(
+                    EVOLUTION_GUARD_DECISION,
+                    guard_name=self.name,
+                    approved=decision.approved,
+                    reason=decision.reason,
+                )
                 logger.info(
                     EVOLUTION_GUARDS_REJECTED,
                     proposal_id=str(proposal.id),
@@ -76,6 +86,14 @@ class CompositeGuard:
                 return decision
             last_decision = decision
 
+        # Chain-level pass row: same constant covers per-guard plus
+        # composite so dashboards can chart either partition.
+        logger.debug(
+            EVOLUTION_GUARD_DECISION,
+            guard_name=self.name,
+            approved=last_decision.approved,
+            reason=last_decision.reason,
+        )
         logger.info(
             EVOLUTION_GUARDS_PASSED,
             proposal_id=str(proposal.id),

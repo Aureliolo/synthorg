@@ -19,7 +19,7 @@ from synthorg.core.domain_errors import ConflictError, NotFoundError, Validation
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- Pydantic field type at runtime
 )
-from synthorg.integrations.connections.catalog import _UNSET
+from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
@@ -252,10 +252,10 @@ class ConnectionsController(Controller):
         # when the field was omitted we forward ``_UNSET`` to keep the
         # catalog's existing value.  All three mutable fields use the
         # same semantic so client behaviour is uniform.
-        base_url: str | None | object = (
+        base_url: str | None | _UnsetType = (
             data.base_url if "base_url" in data.model_fields_set else _UNSET
         )
-        metadata: dict[str, str] | None | object
+        metadata: dict[str, str] | None | _UnsetType
         if "metadata" in data.model_fields_set:
             # Defensively deepcopy when provided; same reasoning as
             # ``create_connection`` (catalog briefly holds the mapping
@@ -265,7 +265,7 @@ class ConnectionsController(Controller):
             )
         else:
             metadata = _UNSET
-        health_check_enabled: bool | None | object = (
+        health_check_enabled: bool | None | _UnsetType = (
             data.health_check_enabled
             if "health_check_enabled" in data.model_fields_set
             else _UNSET

@@ -46,7 +46,17 @@ from synthorg.persistence.secret_backends.protocol import (
 
 logger = get_logger(__name__)
 
-_UNSET = object()
+
+class _UnsetType:
+    """Sentinel type for omitted PATCH fields.
+
+    Defining a dedicated type lets ``mypy`` narrow ``value is _UNSET``
+    properly; the previous ``| object`` annotation accepted any value
+    and defeated narrowing in strict mode.
+    """
+
+
+_UNSET = _UnsetType()
 """Sentinel value to distinguish 'not provided' from None."""
 
 
@@ -263,9 +273,9 @@ class ConnectionCatalog:
         self,
         name: str,
         *,
-        base_url: str | None | object = _UNSET,
-        metadata: dict[str, str] | None | object = _UNSET,
-        health_check_enabled: bool | None | object = _UNSET,
+        base_url: str | None | _UnsetType = _UNSET,
+        metadata: dict[str, str] | None | _UnsetType = _UNSET,
+        health_check_enabled: bool | None | _UnsetType = _UNSET,
     ) -> Connection:
         """Update a connection's mutable fields.
 

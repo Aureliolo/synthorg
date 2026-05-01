@@ -35,7 +35,27 @@ class RollbackGuard:
                 trigger rollback.  Default 0.1 = 10% quality drop;
                 tighter than humans typically notice but loose enough
                 to absorb evaluation-noise without thrashing.
+
+        Raises:
+            ValueError: If ``regression_threshold`` is non-finite
+                (``NaN`` / ``+inf`` / ``-inf``) or outside ``[0, 1]``.
+                A non-finite threshold silently disables the guard;
+                an out-of-range threshold inverts its meaning -- both
+                surface here.
         """
+        import math  # noqa: PLC0415
+
+        if not math.isfinite(regression_threshold):
+            msg = (
+                f"regression_threshold must be a finite number in "
+                f"[0, 1], got {regression_threshold!r}"
+            )
+            raise ValueError(msg)
+        if regression_threshold < 0.0 or regression_threshold > 1.0:
+            msg = (
+                f"regression_threshold must be in [0, 1], got {regression_threshold!r}"
+            )
+            raise ValueError(msg)
         self._window_tasks = window_tasks
         self._regression_threshold = regression_threshold
 
