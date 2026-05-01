@@ -136,7 +136,21 @@ def _create_ntfy_sink(
             error="topic is required",
         )
         return None
-    server_url = params.get("server_url", "https://ntfy.sh")
+    # ``server_url`` falls back to the operator-tunable
+    # ``notifications.ntfy_default_url`` setting (carried on
+    # ``bridge_config``) so a self-hosted ntfy deployment can avoid
+    # leaking topic names to the public ntfy.sh instance.  When
+    # bridge_config is unavailable (early boot / test stub) the
+    # documented default lives on ``NotificationsBridgeConfig``.
+    if bridge_config is not None:
+        default_url = bridge_config.ntfy_default_url
+    else:
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            NotificationsBridgeConfig,
+        )
+
+        default_url = NotificationsBridgeConfig().ntfy_default_url
+    server_url = params.get("server_url") or default_url
     token = params.get("token")
     if bridge_config is None:
         return NtfyNotificationSink(

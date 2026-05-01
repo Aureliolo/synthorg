@@ -21,6 +21,12 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 _DEFAULT_API_URL = "https://api.github.com"
+"""Documented default that mirrors the ``integrations.github_api_url``
+setting.  Production callers inject the resolved value via
+:meth:`GitHubHealthCheck.__init__` so a GitHub Enterprise connection
+without its own ``base_url`` falls through to the operator-configured
+endpoint rather than the public GitHub API."""
+
 _TIMEOUT = 10.0
 _HTTP_OK = 200
 
@@ -63,8 +69,19 @@ def _is_allowed_github_host(api_url: str) -> bool:
 class GitHubHealthCheck:
     """Health check via ``GET /user`` on the GitHub API."""
 
-    def __init__(self, catalog: ConnectionCatalog | None = None) -> None:
+    def __init__(
+        self,
+        catalog: ConnectionCatalog | None = None,
+        *,
+        default_api_url: str = _DEFAULT_API_URL,
+    ) -> None:
+        # ``default_api_url`` is operator-tunable; resolve via
+        # ``ConfigResolver.get_str("integrations", "github_api_url")``
+        # at the call site to support GitHub Enterprise installations
+        # whose connections were registered without an explicit
+        # ``base_url``.
         self._catalog = catalog
+        self._default_api_url = default_api_url
 
     def bind_catalog(self, catalog: ConnectionCatalog) -> None:
         """Bind a catalog after construction (see prober registry)."""
@@ -119,7 +136,7 @@ class GitHubHealthCheck:
                 checked_at=now,
             )
 
-        api_url = connection.base_url or _DEFAULT_API_URL
+        api_url = connection.base_url or self._default_api_url
         if not _is_allowed_github_host(api_url):
             # Fail closed: a custom ``base_url`` pointing at a non-
             # GitHub host would otherwise have the bearer token

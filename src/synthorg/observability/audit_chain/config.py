@@ -31,16 +31,27 @@ class TsaPreset(StrEnum):
     CUSTOM = "custom"
 
 
-_PRESET_URLS: MappingProxyType[TsaPreset, str] = MappingProxyType(
+_DEFAULT_PRESET_URLS: MappingProxyType[TsaPreset, str] = MappingProxyType(
     {
         TsaPreset.FREETSA: "https://freetsa.org/tsr",
         TsaPreset.DIGICERT: "http://timestamp.digicert.com",
         TsaPreset.SECTIGO: "http://timestamp.sectigo.com",
     }
 )
+"""Documented defaults that mirror the ``observability.tsa_endpoint_*``
+settings.  Production callers should resolve via the registry-backed
+``ObservabilityBridgeConfig`` and pass the resolved mapping into
+:func:`resolve_tsa_url`; this constant is the documented baseline and
+the resolver's last-resort fallback when the bridge config is not
+available (early boot / test stubs)."""
 
 
-def resolve_tsa_url(preset: TsaPreset, tsa_url: str | None) -> str | None:
+def resolve_tsa_url(
+    preset: TsaPreset,
+    tsa_url: str | None,
+    *,
+    preset_urls: MappingProxyType[TsaPreset, str] | None = None,
+) -> str | None:
     """Return the effective TSA URL for a preset + override.
 
     ``CUSTOM`` uses :attr:`AuditChainConfig.tsa_url`. Any other
@@ -48,6 +59,14 @@ def resolve_tsa_url(preset: TsaPreset, tsa_url: str | None) -> str | None:
     :attr:`AuditChainConfig.tsa_url` (when set) overrides the
     preset's default so operators can point at a staging TSA for
     testing.
+
+    Args:
+        preset: Selected TSA preset.
+        tsa_url: Optional explicit URL override.
+        preset_urls: Resolved preset URLs (typically built from the
+            ``observability.tsa_endpoint_*`` settings via
+            ``ObservabilityBridgeConfig``).  When ``None``, falls back
+            to the documented defaults in :data:`_DEFAULT_PRESET_URLS`.
     """
     if preset == TsaPreset.NONE:
         return None
@@ -55,7 +74,7 @@ def resolve_tsa_url(preset: TsaPreset, tsa_url: str | None) -> str | None:
         return tsa_url
     if tsa_url is not None:
         return tsa_url
-    return _PRESET_URLS[preset]
+    return (preset_urls or _DEFAULT_PRESET_URLS)[preset]
 
 
 class AuditChainConfig(BaseModel):

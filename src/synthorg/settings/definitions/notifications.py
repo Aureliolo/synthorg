@@ -57,3 +57,23 @@ _r.register(
         yaml_path="notifications.email.smtp_timeout_seconds",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.NOTIFICATIONS,
+        key="ntfy_default_url",
+        type=SettingType.STRING,
+        default="https://ntfy.sh",
+        description=(
+            "Default ntfy server URL when a notification sink does not"
+            " specify one explicitly. Override to a self-hosted ntfy"
+            " endpoint to avoid leaking topic names to the public"
+            " ntfy.sh instance."
+        ),
+        group="ntfy",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        yaml_path="notifications.ntfy.default_url",
+    )
+)

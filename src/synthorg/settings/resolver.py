@@ -928,6 +928,7 @@ class ConfigResolver:
                 ("slack_webhook_timeout_seconds", "float"),
                 ("ntfy_webhook_timeout_seconds", "float"),
                 ("email_smtp_timeout_seconds", "float"),
+                ("ntfy_default_url", "str"),
             ),
         )
         return NotificationsBridgeConfig(**values)
@@ -966,6 +967,9 @@ class ConfigResolver:
                 ("http_timeout_seconds", "float"),
                 ("http_max_retries", "int"),
                 ("audit_chain_signing_timeout_seconds", "float"),
+                ("tsa_endpoint_freetsa", "str"),
+                ("tsa_endpoint_digicert", "str"),
+                ("tsa_endpoint_sectigo", "str"),
             ),
         )
         return ObservabilityBridgeConfig(**values)

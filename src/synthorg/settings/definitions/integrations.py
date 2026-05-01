@@ -114,3 +114,22 @@ _r.register(
         yaml_path="integrations.oauth_device_flow_poll_interval_seconds",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="github_api_url",
+        type=SettingType.STRING,
+        default="https://api.github.com",
+        description=(
+            "GitHub API base URL.  Override for GitHub Enterprise"
+            " installations (e.g. ``https://github.example.com/api/v3``)"
+            " or self-hosted GitHub-compatible services."
+        ),
+        group="GitHub",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        yaml_path="integrations.github_api_url",
+    )
+)

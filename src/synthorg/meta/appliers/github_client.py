@@ -64,6 +64,10 @@ class HttpGitHubClient:
         repo: Repository in ``owner/repo`` format.
         base_branch: Default branch to create feature branches from.
         timeout: HTTP request timeout in seconds.
+        api_base_url: GitHub API base URL.  Resolve via
+            ``ConfigResolver.get_str("integrations", "github_api_url")``
+            at the call site to support GitHub Enterprise installations
+            (e.g. ``https://github.example.com/api/v3``).
     """
 
     def __init__(
@@ -71,6 +75,7 @@ class HttpGitHubClient:
         *,
         token: str,
         repo: str,
+        api_base_url: str,
         base_branch: str = "main",
         timeout: int = _DEFAULT_TIMEOUT,
     ) -> None:
@@ -78,6 +83,7 @@ class HttpGitHubClient:
         self._repo = repo
         self._base_branch = base_branch
         self._timeout = timeout
+        self._api_base_url = api_base_url
         # Lazily created to avoid deepcopy issues (RLock inside
         # httpx.AsyncClient is not picklable, and the meta factory
         # deep-copies the appliers registry).
@@ -88,7 +94,7 @@ class HttpGitHubClient:
         """Lazily create the httpx client on first use."""
         if self.__client is None:
             self.__client = httpx.AsyncClient(
-                base_url="https://api.github.com",
+                base_url=self._api_base_url,
                 headers={
                     "Authorization": f"Bearer {self._token}",
                     "Accept": "application/vnd.github+json",

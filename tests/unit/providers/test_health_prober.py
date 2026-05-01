@@ -53,6 +53,7 @@ def _make_prober(
     config_resolver.get_provider_configs = AsyncMock(
         return_value=configs or {"test-local": _make_local_config()},
     )
+    config_resolver.get_int = AsyncMock(return_value=11434)
     prober = ProviderHealthProber(
         trk,
         config_resolver,
