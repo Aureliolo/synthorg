@@ -384,6 +384,15 @@ file, not 200+ handler methods.
   `src/synthorg/persistence/postgres/<domain>_repo.py`.
 * Both backends MUST conform to the same protocol; dual-backend
   conformance is enforced via `tests/conformance/persistence/`.
+* Every new repository MUST be exposed on `PersistenceBackend`
+  (`src/synthorg/persistence/protocol.py`) as a property so
+  controllers and services can resolve it through the same
+  backend handle they already hold; concrete backends
+  (`SQLitePersistenceBackend`, `PostgresPersistenceBackend`) fill
+  in the property by constructing the per-backend repo with the
+  shared connection pool.  Without this exposure, the new repo is
+  unreachable through the canonical service-layer access path
+  and must be hand-wired at every call site.
 * The naming consistency lets `glob`-based test discovery and
   contributor onboarding find the right files without grepping.
 

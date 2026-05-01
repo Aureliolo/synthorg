@@ -49,33 +49,31 @@ class TestCommonBasePath:
         )
         assert result == "/agents"
 
-    def test_disjoint_paths_collapse_to_first_segment(self) -> None:
+    def test_disjoint_paths_return_empty(self) -> None:
         result = gen._common_base_path(
             ["/api/v1/agents", "/api/v1/tasks"],
         )
-        # No common prefix beyond "/" -- falls back to first path's
-        # first segment.
-        assert result == "/agents"
+        # No common prefix beyond "/" -- caller must consult
+        # ``TAG_BASE_PATH_FALLBACK`` rather than rendering one of the
+        # paths as if both lived under it.
+        assert result == ""
 
     def test_empty_input_returns_empty(self) -> None:
         assert gen._common_base_path([]) == ""
 
 
 class TestSectionForTag:
-    """Tests for ``_section_for_tag`` (writes warning for unknown tags)."""
+    """Tests for ``_section_for_tag`` (raises on unknown tags)."""
 
     def test_known_tag_returns_section(self) -> None:
         assert gen._section_for_tag("agents") == "Organization and agents"
 
-    def test_unknown_tag_falls_back_to_operations(
-        self,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        result = gen._section_for_tag("brand-new-domain")
-        captured = capsys.readouterr()
-        assert result == "Operations and platform"
-        assert "brand-new-domain" in captured.err
-        assert "TAG_TO_SECTION" in captured.err
+    def test_unknown_tag_raises(self) -> None:
+        # An unmapped tag is a documentation bug, not a recoverable
+        # condition: failing fast forces the contributor to map the
+        # new controller before the rendered table ships.
+        with pytest.raises(KeyError, match="brand-new-domain"):
+            gen._section_for_tag("brand-new-domain")
 
 
 class TestBuildTable:

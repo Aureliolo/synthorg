@@ -402,6 +402,16 @@ class ProbeLocalResponse(BaseModel):
         (lands in ``errors``); both at once is a service-layer bug.
         Validating here moves the invariant from prose to type and
         catches misconstruction at the API boundary.
+
+        ``frozen=True`` on the model blocks attribute reassignment but
+        not mutation of the dict's contents -- in theory a caller
+        could ``response.results["new"] = ...``.  We do not wrap
+        ``results``/``errors`` in :class:`MappingProxyType` because
+        Pydantic's msgspec serializer rejects ``mappingproxy`` at
+        wire-encode time.  In practice the response is constructed in
+        a single controller, returned through Litestar (which freezes
+        nothing on the way out), and never re-handled by callers, so
+        the dict-mutation hole is a theoretical-only concern.
         """
         overlap = set(self.results) & set(self.errors)
         if overlap:

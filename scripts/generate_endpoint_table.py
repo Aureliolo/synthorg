@@ -183,7 +183,12 @@ def _common_base_path(paths: Iterable[str]) -> str:
 
     Trims to the first segment that contains no path parameter; if all
     paths start with the same parameterised prefix, returns that
-    prefix.  Empty when no path is supplied.
+    prefix.  Empty when no path is supplied OR when the supplied
+    paths share only the root (``/``) -- callers must fall back to
+    ``TAG_BASE_PATH_FALLBACK`` for tags whose endpoints sit at
+    disjoint roots (e.g. ``/healthz`` + ``/readyz``); silently
+    returning the first path would render misleadingly as if the
+    whole tag lived under that one path.
     """
     paths_list = sorted({_strip_prefix(p) for p in paths})
     if not paths_list:
@@ -200,26 +205,29 @@ def _common_base_path(paths: Iterable[str]) -> str:
         else:
             break
     base = "/".join(base_segments) or "/"
-    if base in {"", "/"} and paths_list:
-        # All paths share only "/" -- pick the first path's prefix down
-        # to the second segment (e.g. "/agents" from "/agents/{id}").
-        sample = paths_list[0]
-        parts = sample.split("/")
-        if len(parts) >= 2:  # noqa: PLR2004
-            return f"/{parts[1]}"
-        return sample
+    if base in {"", "/"}:
+        # Disjoint roots: caller must use TAG_BASE_PATH_FALLBACK.
+        return ""
     return base
 
 
 def _section_for_tag(tag: str) -> str:
+    """Map an OpenAPI tag onto its rendered section heading.
+
+    Fail loudly when a tag is missing from ``TAG_TO_SECTION`` so that
+    a new controller surfaces in CI instead of silently landing in
+    "Operations and platform" -- the rendered table is the
+    public-facing endpoint inventory and a misclassified entry is a
+    documentation bug we want a human to resolve before the page
+    ships.
+    """
     if tag not in TAG_TO_SECTION:
-        print(
-            f"WARNING: tag {tag!r} has no section mapping; "
-            f"assigning to 'Operations and platform'.  "
-            f"Add an entry to TAG_TO_SECTION in scripts/generate_endpoint_table.py.",
-            file=sys.stderr,
+        msg = (
+            f"OpenAPI tag {tag!r} has no entry in TAG_TO_SECTION. "
+            f"Add the tag to scripts/generate_endpoint_table.py "
+            f"before regenerating docs/openapi/index.md."
         )
-        return "Operations and platform"
+        raise KeyError(msg)
     return TAG_TO_SECTION[tag]
 
 

@@ -48,6 +48,9 @@ from typing import TYPE_CHECKING, Final, TypeVar
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
+from synthorg.observability.events.resilience import (
+    CORE_RESILIENCE_INVALID_CONFIG,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -102,7 +105,7 @@ class GeneralRetryHandler:
         if max_attempts < 1:
             msg = f"max_attempts must be >= 1, got {max_attempts}"
             logger.error(
-                "core.resilience.invalid_config",
+                CORE_RESILIENCE_INVALID_CONFIG,
                 retry_event=event,
                 parameter="max_attempts",
                 value=max_attempts,
@@ -112,7 +115,7 @@ class GeneralRetryHandler:
         if base < 0:
             msg = f"base must be >= 0, got {base}"
             logger.error(
-                "core.resilience.invalid_config",
+                CORE_RESILIENCE_INVALID_CONFIG,
                 retry_event=event,
                 parameter="base",
                 value=base,
@@ -122,7 +125,7 @@ class GeneralRetryHandler:
         if cap < base:
             msg = f"cap ({cap}) must be >= base ({base})"
             logger.error(
-                "core.resilience.invalid_config",
+                CORE_RESILIENCE_INVALID_CONFIG,
                 retry_event=event,
                 parameter="cap",
                 value=cap,

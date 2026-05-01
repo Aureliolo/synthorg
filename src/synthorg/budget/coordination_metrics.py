@@ -289,13 +289,15 @@ _DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO: Final[float] = 2.0
 class TokenSpeedupRatio(BaseModel):
     """Token cost vs latency speedup ratio.
 
-    Alerts when tokens scale faster than speedup (ratio > 2.0).
+    Alerts when tokens scale faster than speedup -- the threshold lives
+    in :data:`_DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO` so it stays uniform
+    across this module and the alert helper.
 
     Attributes:
         token_multiplier: ``tokens_mas / tokens_sas``.
         latency_speedup: ``duration_sas / duration_mas``.
         ratio: ``token_multiplier / latency_speedup`` (computed).
-        alert: Whether ratio exceeds 2.0 threshold (computed).
+        alert: Whether ratio exceeds the alert threshold (computed).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -664,7 +666,8 @@ def compute_token_speedup_ratio(
         duration_sas: Wall-clock duration for single-agent (seconds).
 
     Returns:
-        Token speedup ratio model (alerts when ratio > 2.0).
+        Token speedup ratio model (alerts when ratio exceeds
+        :data:`_DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO`).
 
     Raises:
         ValueError: If any input is non-finite, zero, or negative.

@@ -328,6 +328,9 @@ class TestEventConstants:
             # StrategyRegistry and the persistence/memory backend
             # registries that consolidate factory dispatch.
             "registry",
+            # Added in #1688 for ``GeneralRetryHandler`` constructor
+            # validation logs (max_attempts / base / cap rejection).
+            "resilience",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

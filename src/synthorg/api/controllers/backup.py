@@ -289,7 +289,14 @@ class BackupController(Controller):
             # Missing required precondition is a validation failure, not
             # a generic 400.  ValidationError maps to 422 via
             # EXCEPTION_HANDLERS, matching the rest of the codebase's
-            # input-shape errors.
+            # input-shape errors.  Emit a warning before raising so the
+            # rejection is observable in the audit stream the same way
+            # every other restore-failure branch is.
+            logger.warning(
+                BACKUP_RESTORE_FAILED,
+                backup_id=data.backup_id,
+                reason="confirm_false",
+            )
             raise ValidationError(msg)
 
         app_state: AppState = state.app_state

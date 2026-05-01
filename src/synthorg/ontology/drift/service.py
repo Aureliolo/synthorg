@@ -91,12 +91,6 @@ class DriftDetectionService:
                 recommendation=report.recommendation.value,
             )
 
-        logger.info(
-            ONTOLOGY_DRIFT_CHECK_COMPLETED,
-            entity_name=entity_name,
-            divergence_score=report.divergence_score,
-        )
-
         if self._store is not None:
             try:
                 await self._store.store_report(report)
@@ -108,6 +102,15 @@ class DriftDetectionService:
                     exc_info=True,
                 )
                 raise
+
+        # Emitted AFTER the optional persistence write so a storage
+        # failure cannot leave the audit stream advertising a
+        # completed scan that was never durably recorded.
+        logger.info(
+            ONTOLOGY_DRIFT_CHECK_COMPLETED,
+            entity_name=entity_name,
+            divergence_score=report.divergence_score,
+        )
 
         return report
 
@@ -134,14 +137,19 @@ class DriftDetectionService:
 
         reports: list[DriftReport] = []
         for i, result in enumerate(results):
-            if isinstance(result, BaseException):
+            if isinstance(result, BaseException) and not isinstance(result, Exception):
+                # ``BaseException`` non-``Exception`` (CancelledError,
+                # KeyboardInterrupt, SystemExit) propagates -- swallowing
+                # cancellation as a "drift check failed" log would mask
+                # task-group teardown and let the cooperative-cancellation
+                # contract degrade silently.
+                raise result
+            if isinstance(result, Exception):
                 logger.error(
                     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
                     entity_name=entities[i].name,
                     error_type=type(result).__name__,
-                    error=safe_error_description(result)
-                    if isinstance(result, Exception)
-                    else type(result).__name__,
+                    error=safe_error_description(result),
                 )
             else:
                 reports.append(result)

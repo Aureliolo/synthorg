@@ -421,7 +421,7 @@ class ArtifactController(Controller):
         """
         artifact = await _service(state).get(artifact_id)
         if artifact is None:
-            msg = "Artifact not found"
+            msg = f"Artifact {artifact_id!r} not found"
             raise NotFoundError(msg)
 
         storage = state.app_state.artifact_storage
@@ -432,7 +432,7 @@ class ArtifactController(Controller):
                 PERSISTENCE_ARTIFACT_CONTENT_MISSING,
                 artifact_id=artifact_id,
             )
-            msg = "Artifact content not found"
+            msg = f"Artifact content for {artifact_id!r} not found"
             raise NotFoundError(msg) from exc
 
         raw_ct = artifact.content_type or "application/octet-stream"

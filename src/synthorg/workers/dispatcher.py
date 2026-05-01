@@ -15,7 +15,7 @@ reacts to successful mutations and publishes the enqueue signal.
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.resilience import GeneralRetryHandler
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_DISPATCHER_CLAIM_ENQUEUED,
     WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
@@ -161,16 +161,18 @@ class DistributedDispatcher:
             # from permanent failures (auth, malformed config) that
             # the broad ``retryable=lambda _exc: True`` predicate
             # cannot distinguish on its own.
-            logger.exception(
+            logger.warning(
                 WORKERS_DISPATCHER_PUBLISH_FAILED,
                 task_id=task_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             logger.error(  # noqa: TRY400
                 WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
                 task_id=task_id,
                 attempts=_PUBLISH_MAX_ATTEMPTS,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         else:

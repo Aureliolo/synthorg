@@ -390,7 +390,7 @@ class MemoryAdminController(Controller):
         try:
             updated = await service.deploy_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundError(str(exc)) from exc
+            raise NotFoundError(safe_error_description(exc)) from exc
         except QueryError as exc:
             msg = "Failed to update embedder settings"
             raise ConflictError(msg) from exc
@@ -429,13 +429,13 @@ class MemoryAdminController(Controller):
         try:
             updated = await service.rollback_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundError(str(exc)) from exc
+            raise NotFoundError(safe_error_description(exc)) from exc
         except CheckpointRollbackUnavailableError as exc:
             # Operator-error / corrupt backup conditions; 422 better
             # reflects "rollback target invalid" than a generic 400.
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         except CheckpointRollbackCorruptError as exc:
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=updated)
 
     @delete(
@@ -467,9 +467,9 @@ class MemoryAdminController(Controller):
         try:
             await service.delete_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundError(str(exc)) from exc
+            raise NotFoundError(safe_error_description(exc)) from exc
         except QueryError as exc:
-            raise ConflictError(str(exc)) from exc
+            raise ConflictError(safe_error_description(exc)) from exc
         return ApiResponse(data=None)
 
     # -- Memory entries (GDPR) ---------------------------------------

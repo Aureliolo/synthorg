@@ -115,10 +115,15 @@ class AsyncTaskService:
                 parent_task_id=task_spec.parent_task_id,
             )
         except Exception as exc:
+            # Include ``task_id`` when the create succeeded so this
+            # primary failure log can be correlated with the rollback
+            # warning below (which already carries it).  ``None`` when
+            # ``create_task`` raised before any row was created.
             logger.warning(
                 ASYNC_TASK_START_FAILED,
                 supervisor_id=supervisor_id,
                 title=task_spec.title,
+                task_id=task.id if task is not None else None,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -266,6 +271,18 @@ class AsyncTaskService:
         Returns:
             Updated status (should be CANCELLED).
         """
+        # ``get_task`` reads persistence directly and bypasses the
+        # mutation queue, while ``cancel_task`` goes through the
+        # sequential actor; under concurrent mutation the
+        # ``prior_status`` captured here may not reflect the value
+        # that ``cancel_task`` actually transitioned from.  The
+        # downstream ``ASYNC_TASK_STATUS_TRANSITIONED`` event therefore
+        # carries best-effort audit data, not a strict happens-before
+        # guarantee.  The right durable fix is to expose a
+        # ``cancel_task`` variant on ``TaskEngine`` that returns both
+        # ``old_status`` and ``new_status`` from inside the actor lock;
+        # tracked separately from this controller change so the engine
+        # API churn is atomic.
         prior_task = await self._engine.get_task(task_id)
         prior_status = (
             self._map_status(prior_task.status) if prior_task is not None else None

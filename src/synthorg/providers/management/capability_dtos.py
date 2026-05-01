@@ -440,7 +440,7 @@ class SyncModelsResponse(BaseModel):
     models: tuple[ProviderModelConfig, ...]
 
 
-__all__ = (
+__all__ = [
     "AddModelRequest",
     "CredentialsRotateRequest",
     "PresetOverride",
@@ -452,4 +452,4 @@ __all__ = (
     "RateLimitsUpdateRequest",
     "SyncModelsRequest",
     "SyncModelsResponse",
-)
+]

@@ -326,13 +326,17 @@ class AgentIdentityVersionController(Controller):
             # evolve_identity raises ValueError when immutable fields
             # (id/name/department) differ between the current registry entry
             # and the restored snapshot.  Surface as 422 (validation), not
-            # 500.
+            # 500.  Use ``safe_error_description`` and avoid interpolating
+            # ``exc`` into the user-facing message so identity values from
+            # the mismatched snapshot cannot leak through logs or the API
+            # response.
             logger.warning(
                 AGENT_IDENTITY_ROLLBACK_FAILED,
                 agent_id=agent_id,
-                error=f"immutable field mismatch: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = f"Cannot rollback: {exc}"
+            msg = "Cannot rollback: immutable field mismatch"
             raise ValidationError(msg) from exc
         except MemoryError, RecursionError:
             raise
