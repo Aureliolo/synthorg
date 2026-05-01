@@ -13,6 +13,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowEdge,
     WorkflowNode,
 )
+from synthorg.observability.events.api import WORKFLOW_DEFINITION_CHANGED
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Minimal valid graph data (dicts for HTTP payloads) ───────────
@@ -240,8 +241,12 @@ class TestWorkflowController:
         upstream of the well-instrumented execution layer."""
         with structlog.testing.capture_logs() as events:
             _create_workflow(test_client, name="audited-workflow")
+        # Use the event constant (resolved to its current string) so
+        # renaming the constant in events/api.py automatically updates
+        # this assertion -- protects against silent drift between the
+        # controller's emitted event and the test's expected name.
         audit_events = [
-            e for e in events if e.get("event") == "audit.workflow_definition.changed"
+            e for e in events if e.get("event") == WORKFLOW_DEFINITION_CHANGED
         ]
         assert len(audit_events) == 1
         entry = audit_events[0]

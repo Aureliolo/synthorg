@@ -20,6 +20,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import DecisionOutcome
 from synthorg.core.task import Task
+from synthorg.engine.decisions import DecisionRecord
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence import atlas
@@ -185,7 +186,7 @@ class TestCharterVersionInDecisionRecord:
         async def _capture(**kwargs: object) -> object:
             nonlocal captured_metadata
             captured_metadata = kwargs.get("metadata")  # type: ignore[assignment]
-            record = MagicMock()
+            record = MagicMock(spec=DecisionRecord)
             record.decision = DecisionOutcome.APPROVED
             record.version = 1
             return record
@@ -237,7 +238,7 @@ class TestCharterVersionInDecisionRecord:
         async def _capture(**kwargs: object) -> object:
             nonlocal captured_metadata
             captured_metadata = kwargs.get("metadata")  # type: ignore[assignment]
-            record = MagicMock()
+            record = MagicMock(spec=DecisionRecord)
             record.decision = DecisionOutcome.APPROVED
             record.version = 1
             return record
@@ -282,7 +283,7 @@ class TestCharterVersionInDecisionRecord:
         async def _capture(**kwargs: object) -> object:
             nonlocal captured_metadata
             captured_metadata = kwargs.get("metadata")  # type: ignore[assignment]
-            record = MagicMock()
+            record = MagicMock(spec=DecisionRecord)
             record.decision = DecisionOutcome.APPROVED
             record.version = 1
             return record

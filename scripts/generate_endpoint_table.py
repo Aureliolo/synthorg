@@ -165,8 +165,17 @@ API_PREFIX: Final[str] = "/api/v1"
 
 
 def _strip_prefix(path: str) -> str:
-    """Remove the ``/api/v1`` prefix for display."""
-    return path.removeprefix(API_PREFIX) or "/"
+    """Remove the ``/api/v1`` prefix for display.
+
+    Only strips when ``path`` matches ``/api/v1`` exactly or starts
+    with ``/api/v1/``; ``str.removeprefix`` would otherwise incorrectly
+    strip ``/api/v10`` or ``/api/v1foo`` and corrupt rendered routes.
+    """
+    if path == API_PREFIX:
+        return "/"
+    if path.startswith(API_PREFIX + "/"):
+        return path[len(API_PREFIX) :]
+    return path
 
 
 def _common_base_path(paths: Iterable[str]) -> str:

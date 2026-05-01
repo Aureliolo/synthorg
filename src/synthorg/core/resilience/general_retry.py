@@ -43,10 +43,10 @@ transient-failure retry with temporal backoff.
   there.  Bootstrap-tier code keeps its own retry loop.
 """
 
-import asyncio
 import random
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Final, TypeVar
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -55,6 +55,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 T = TypeVar("T")
+
+# Reserved log-record kwargs that ``execute()`` injects on every retry
+# attempt.  ``log_ctx`` keys are renamed with the ``ctx_`` prefix on
+# collision so caller-supplied context cannot silently overwrite the
+# handler's own diagnostic fields.
+_RESERVED_LOG_KWARGS: Final[frozenset[str]] = frozenset(
+    {"attempt", "max_attempts", "backoff_seconds", "error_type"}
+)
 
 
 class GeneralRetryHandler:
@@ -80,24 +88,47 @@ class GeneralRetryHandler:
             ``cap < base``.
     """
 
-    def __init__(  # noqa: PLR0913 -- 6 named params is the irreducible config surface
+    def __init__(  # noqa: PLR0913 -- 7 named params is the irreducible config surface
         self,
         *,
-        retryable: Callable[[BaseException], bool],
+        retryable: Callable[[Exception], bool],
         max_attempts: int,
         base: float,
         cap: float,
         event: str,
         jitter: bool = True,
+        clock: Clock | None = None,
     ) -> None:
         if max_attempts < 1:
             msg = f"max_attempts must be >= 1, got {max_attempts}"
+            logger.error(
+                "core.resilience.invalid_config",
+                retry_event=event,
+                parameter="max_attempts",
+                value=max_attempts,
+                reason=msg,
+            )
             raise ValueError(msg)
         if base < 0:
             msg = f"base must be >= 0, got {base}"
+            logger.error(
+                "core.resilience.invalid_config",
+                retry_event=event,
+                parameter="base",
+                value=base,
+                reason=msg,
+            )
             raise ValueError(msg)
         if cap < base:
             msg = f"cap ({cap}) must be >= base ({base})"
+            logger.error(
+                "core.resilience.invalid_config",
+                retry_event=event,
+                parameter="cap",
+                value=cap,
+                base=base,
+                reason=msg,
+            )
             raise ValueError(msg)
         self._retryable = retryable
         self._max_attempts = max_attempts
@@ -105,6 +136,7 @@ class GeneralRetryHandler:
         self._cap = cap
         self._event = event
         self._jitter = jitter
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def max_attempts(self) -> int:
@@ -121,14 +153,25 @@ class GeneralRetryHandler:
         ``op`` is called on every attempt.  If it raises and
         ``retryable(exc)`` is True and attempts remain, sleep then
         retry.  Otherwise the exception propagates with type
-        intact (no wrapping).
+        intact (no wrapping).  ``except Exception`` (NOT
+        ``BaseException``) so ``asyncio.CancelledError``,
+        ``KeyboardInterrupt``, and ``SystemExit`` propagate
+        immediately without being run through ``self._retryable``.
 
         Returns the return value of the first successful attempt.
         """
+        # Caller-provided ``log_ctx`` keys that collide with the
+        # handler's own diagnostic fields are renamed (e.g.
+        # ``attempt`` -> ``ctx_attempt``) so they don't overwrite the
+        # handler-emitted retry metadata in the structured log record.
+        safe_ctx = {
+            (f"ctx_{k}" if k in _RESERVED_LOG_KWARGS else k): v
+            for k, v in log_ctx.items()
+        }
         for attempt in range(self._max_attempts):
             try:
                 return await op()
-            except BaseException as exc:
+            except Exception as exc:
                 if not self._retryable(exc):
                     raise
                 if attempt == self._max_attempts - 1:
@@ -140,10 +183,10 @@ class GeneralRetryHandler:
                     max_attempts=self._max_attempts,
                     backoff_seconds=delay,
                     error_type=type(exc).__name__,
-                    **log_ctx,
+                    **safe_ctx,
                 )
                 if delay > 0:
-                    await asyncio.sleep(delay)
+                    await self._clock.sleep(delay)
         msg = "GeneralRetryHandler exited the loop without raising or returning"
         raise AssertionError(msg)
 

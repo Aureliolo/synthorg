@@ -27,7 +27,7 @@ from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
     SecretRetrievalError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
@@ -193,7 +193,8 @@ class ConnectionsController(Controller):
             logger.warning(
                 API_RESOURCE_CONFLICT,
                 connection=name,
-                reason=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ConflictError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
@@ -201,7 +202,8 @@ class ConnectionsController(Controller):
                 API_VALIDATION_FAILED,
                 connection=name,
                 field="auth_method",
-                reason=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ValidationError(str(exc)) from exc
         return ApiResponse(data=conn)
@@ -250,7 +252,13 @@ class ConnectionsController(Controller):
                 health_check_enabled=health_check_enabled,
             )
         except ConnectionNotFoundError as exc:
-            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=str(exc))
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                connection=name,
+                operation="update",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=conn)
 
@@ -273,7 +281,13 @@ class ConnectionsController(Controller):
         try:
             await catalog.delete(name)
         except ConnectionNotFoundError as exc:
-            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=str(exc))
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                connection=name,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=None)
 
@@ -296,7 +310,13 @@ class ConnectionsController(Controller):
         try:
             report = await check_connection_health(catalog, name)
         except ConnectionNotFoundError as exc:
-            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=str(exc))
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                connection=name,
+                operation="health_check",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(str(exc)) from exc
         await catalog.update_health(
             name,
@@ -343,7 +363,8 @@ class ConnectionsController(Controller):
                 SECRET_RETRIEVAL_FAILED,
                 connection_name=name,
                 field=field,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 exc_info=True,
             )
             raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc

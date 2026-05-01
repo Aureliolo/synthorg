@@ -402,14 +402,20 @@ class HttpAnalyticsEmitter:
         event_count = len(events)
 
         async def post_once() -> None:
-            """One POST attempt; raises ``_TransientPostError`` on retry."""
+            """One POST attempt; raises ``_TransientPostError`` on retry.
+
+            Only ``httpx.HTTPError`` (and subclasses) is wrapped as
+            transient -- programming errors (TypeError, AttributeError,
+            etc.) propagate so real bugs surface instead of being
+            retried as transient network failures.
+            """
             try:
                 response = await self._client.post(
                     url,
                     json=payload,
                     headers={"Content-Type": "application/json"},
                 )
-            except Exception as exc:
+            except httpx.HTTPError as exc:
                 raise _TransientPostError(None) from exc
 
             if _SUCCESS_MIN <= response.status_code < _SUCCESS_MAX:

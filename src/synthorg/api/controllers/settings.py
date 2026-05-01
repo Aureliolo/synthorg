@@ -189,6 +189,11 @@ def _validate_namespace(namespace: str) -> None:
     """Raise 404 if namespace is not a known SettingNamespace member."""
     if namespace not in _VALID_NAMESPACES:
         msg = f"Unknown namespace: {namespace!r}"
+        logger.warning(
+            SETTINGS_NOT_FOUND,
+            namespace=namespace,
+            reason="unknown_namespace",
+        )
         raise NotFoundError(msg)
 
 
@@ -212,7 +217,7 @@ async def _check_setting_etag(
         when no ``If-Match`` header is provided.
 
     Raises:
-        NotFoundException: If the setting does not exist.
+        NotFoundError: If the setting does not exist (HTTP 404).
         VersionConflictError: If the ETag does not match.
     """
     if_match = request.headers.get("if-match")
@@ -224,6 +229,12 @@ async def _check_setting_etag(
             key,
         )
     except SettingNotFoundError as exc:
+        logger.warning(
+            SETTINGS_NOT_FOUND,
+            namespace=namespace,
+            key=key,
+            operation="etag_check",
+        )
         raise NotFoundError(str(exc)) from exc
     current_etag = compute_etag(
         current.value,
@@ -372,6 +383,12 @@ class SettingsController(Controller):
         try:
             entry = await app_state.settings_service.get_entry(namespace, key)
         except SettingNotFoundError as exc:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+                operation="read",
+            )
             raise NotFoundError(str(exc)) from exc
         etag = compute_etag(
             entry.value,
@@ -417,6 +434,12 @@ class SettingsController(Controller):
                 import_source=SettingsImportSource.API_BODY,
             )
         except SettingNotFoundError as exc:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+                operation="update",
+            )
             raise NotFoundError(str(exc)) from exc
         except SettingValidationError as exc:
             raise DomainValidationError(str(exc)) from exc
@@ -464,6 +487,12 @@ class SettingsController(Controller):
         try:
             await app_state.settings_service.delete(namespace, key)
         except SettingNotFoundError as exc:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+                operation="delete",
+            )
             raise NotFoundError(str(exc)) from exc
 
     # ── Observability sink endpoints ──────────────────────────────

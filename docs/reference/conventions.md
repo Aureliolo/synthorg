@@ -334,23 +334,27 @@ separate DEBUG "attempting transition" log alongside.
 ## 14. Repository CRUD method names
 
 Persistence repositories share a CRUD vocabulary that's uniform
-across 100+ implementations:
+across 100+ implementations.  This section expands on §1 with the
+extra semantic detail (return-value contracts, immutability of
+collection returns, where ``NotFoundError`` belongs).
 
 | Method | Signature | Semantics |
 |--------|-----------|-----------|
-| `save` | `async def save(entity) -> None` | Insert or update; idempotent. Used for every persist (no separate `create` / `update`). |
+| `save` | `async def save(entity) -> None` | Insert or update; idempotent. One persist verb (no separate `create` / `update`). |
 | `get` | `async def get(id) -> Entity \| None` | Single-entity fetch. Returns `None` on miss, never raises `NotFoundError`. |
-| `delete` | `async def delete(id) -> None` | Removal. `None` is the success signal. |
-| `list_all` | `async def list_all() -> tuple[Entity, ...]` | Full scan. |
-| `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query. |
+| `delete` | `async def delete(id) -> bool` | Removal.  `True` if a row was removed, `False` if the id did not exist. Same return type used in §1. |
+| `list_items` / `list_all` | `async def list_items(...) -> tuple[Entity, ...]` | Full scan / paginated list.  Older repositories used `list_all()`; new repositories prefer `list_items(*, limit, offset, **filters)` so callers can paginate without defensive slicing. |
+| `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query when the filter set diverges from a single canonical `list_items`. |
 
 Query methods always return `tuple[T, ...]`, never `list[T]`. This
 matches the immutability default for collection returns and lets
 callers safely share results without defensive copies.
 
 `NotFoundError` is raised by the **service** layer (after a `get`
-returns `None`), never by the repository. This keeps the repository
-boundary side-effect-free for reads.
+returns `None` or after `delete` returns `False`), never by the
+repository. This keeps the repository boundary side-effect-free for
+reads and lets services own the audit trail (`logger.warning(...)`
++ raise).
 
 ## 15. MCP handler logging centralization
 

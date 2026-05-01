@@ -145,15 +145,18 @@ class AsyncTaskService:
             agent_id=task_spec.agent_id,
             supervisor_id=supervisor_id,
         )
-        # Async task lifecycle starts in RUNNING from the supervisor's
-        # perspective once the underlying TaskEngine assignment lands.
-        # ``from_status`` is None to mark the absent-to-running hop and
-        # complete the audit-stream contract for non-terminal hops.
+        # ``transition_task`` lands the row in ``TaskStatus.ASSIGNED``,
+        # which maps to ``AsyncTaskStatus.PENDING`` (see
+        # ``_STATUS_MAP``).  Logging ``RUNNING`` here would record a
+        # status the database never actually held.  Use the mapped
+        # value of the persisted status so the audit stream stays
+        # consistent with the row-level state machine.
+        persisted_status = self._map_status(task.status)
         logger.info(
             ASYNC_TASK_STATUS_TRANSITIONED,
             task_id=task.id,
             from_status=None,
-            to_status=AsyncTaskStatus.RUNNING.value,
+            to_status=persisted_status.value,
         )
         return task.id
 

@@ -18,7 +18,7 @@ class UpdateCompanyRequest(BaseModel):
     validate input without importing from ``synthorg.api.dto_org``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     company_name: NotBlankStr | None = Field(
         default=None,

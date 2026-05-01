@@ -16,9 +16,6 @@ tests/integration/api/test_per_op_rate_limit_concurrent.py:111:17
 tests/integration/api/test_per_op_rate_limit_concurrent.py:114:27
 tests/integration/api/test_per_op_rate_limit_concurrent.py:128:16
 tests/integration/api/test_per_op_rate_limit_concurrent.py:129:31
-tests/integration/engine/identity/test_identity_versioning.py:188:21
-tests/integration/engine/identity/test_identity_versioning.py:240:21
-tests/integration/engine/identity/test_identity_versioning.py:285:21
 tests/integration/engine/test_coordination_wiring.py:156:17
 tests/integration/engine/test_coordination_wiring.py:181:17
 tests/integration/engine/test_coordination_wiring.py:255:22

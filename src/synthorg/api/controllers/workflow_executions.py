@@ -42,13 +42,21 @@ logger = get_logger(__name__)
 
 
 def _extract_username(request: Request[Any, Any, Any]) -> str:
-    """Extract username from the request, falling back to ``"api"``."""
+    """Extract username from the request, falling back to ``"api"``.
+
+    Treats ``None`` and empty-string usernames as missing so the
+    fallback warning fires for those cases too -- ``str(None)`` would
+    otherwise persist the literal string ``"None"`` as the actor on
+    workflow audit entries.
+    """
     user = getattr(request, "user", None)
-    if user and hasattr(user, "username"):
-        return str(user.username)
+    if user is not None:
+        username = getattr(user, "username", None)
+        if username:
+            return str(username)
     logger.warning(
         WORKFLOW_EXECUTION_USERNAME_FALLBACK,
-        note="request has no user or username attribute, using 'api'",
+        note="request has no usable username, using 'api'",
         path=str(request.url),
     )
     return "api"

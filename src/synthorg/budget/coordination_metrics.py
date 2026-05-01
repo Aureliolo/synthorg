@@ -273,6 +273,19 @@ class StragglerGap(BaseModel):
         return self.gap_seconds / self.mean_duration_seconds
 
 
+# Alerts trigger when the token-to-speedup ratio exceeds this value:
+# paying twice as many tokens for the same wall-clock win is the
+# empirical "diminishing returns" point operators care about,
+# regardless of agent count.
+#
+# Module-level (not class-level) so the ``alert`` computed_field does
+# not pay a Pydantic field-table lookup per instance -- a class-level
+# float annotation is otherwise picked up by Pydantic's model-fields
+# inspection and adds measurable overhead (~26µs per call observed on
+# the CodSpeed benchmark).
+_DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO: Final[float] = 2.0
+
+
 class TokenSpeedupRatio(BaseModel):
     """Token cost vs latency speedup ratio.
 
@@ -304,19 +317,13 @@ class TokenSpeedupRatio(BaseModel):
         """Token multiplier divided by latency speedup."""
         return self.token_multiplier / self.latency_speedup
 
-    # Alerts trigger when the token-to-speedup ratio exceeds this
-    # value: paying twice as many tokens for the same wall-clock win
-    # is the empirical "diminishing returns" point operators care
-    # about, regardless of agent count.
-    _DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO: float = 2.0
-
     @computed_field(  # type: ignore[prop-decorator]
         description="Alert when ratio exceeds the alert threshold",
     )
     @property
     def alert(self) -> bool:
         """True when paying disproportionately more tokens than speed gained."""
-        return self.ratio > self._DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO
+        return self.ratio > _DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO
 
 
 class MessageOverhead(BaseModel):

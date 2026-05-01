@@ -46,6 +46,7 @@ from synthorg.hr.performance.summary import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,
+    AGENT_DELETION_REQUESTED,
     AGENT_IDENTITY_MODIFIED,
     API_AGENT_ACTIVITY_QUERIED,
     API_AGENT_HEALTH_QUERIED,
@@ -356,16 +357,25 @@ class AgentController(Controller):
             agent_name: Agent name.
         """
         app_state: AppState = state.app_state
-        # Audit-chain entry fires BEFORE the persistence delete so the
-        # security audit captures intent even if the delete itself
-        # fails (the trail then holds the operator's request and the
-        # subsequent error log shows the failure).
+        actor = get_auth_user_id(request)
+        # Pre-delete intent log -- fires BEFORE persistence so the
+        # forensic audit chain captures the operator's request even if
+        # the delete itself fails. ``AGENT_DELETED_AUDIT`` below confirms
+        # actual successful deletion.
+        logger.info(
+            AGENT_DELETION_REQUESTED,
+            agent_name=agent_name,
+            actor=actor,
+        )
+        await app_state.org_mutation_service.delete_agent(agent_name)
+        # Post-delete confirmation -- emitted only on persistence
+        # success so the audit stream cannot record a "deleted" hop for
+        # an agent that the database still holds.
         logger.info(
             AGENT_DELETED_AUDIT,
             agent_name=agent_name,
-            actor=get_auth_user_id(request),
+            actor=actor,
         )
-        await app_state.org_mutation_service.delete_agent(agent_name)
         publish_ws_event(
             request,
             WsEventType.AGENT_DELETED,

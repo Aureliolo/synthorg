@@ -197,13 +197,16 @@ class TestDeleteAgent:
         resp = test_client.delete("/api/v1/agents/nonexistent")
         assert resp.status_code == 404
 
-    def test_delete_agent_emits_audit_before_persist(
+    def test_delete_agent_emits_audit_pair(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """delete_agent fires AGENT_DELETED_AUDIT BEFORE the persistence
-        delete so the audit captures intent even if the delete fails.
-        Verify the event is emitted on a happy-path delete."""
+        """``delete_agent`` emits ``audit.agent.deletion_requested`` BEFORE
+        the persistence delete and ``audit.agent.deleted`` AFTER it
+        succeeds.  Verify both events fire in the correct order on a
+        happy-path delete so the audit trail captures intent on
+        failure AND confirmation only on actual success.
+        """
         test_client.post(
             "/api/v1/departments",
             json={"name": "eng"},
@@ -220,11 +223,26 @@ class TestDeleteAgent:
         with structlog.testing.capture_logs() as events:
             resp = test_client.delete("/api/v1/agents/alice")
         assert resp.status_code == 204
-        deleted_events = [e for e in events if e.get("event") == "audit.agent.deleted"]
-        assert len(deleted_events) == 1
-        entry = deleted_events[0]
-        assert entry["agent_name"] == "alice"
-        assert entry["actor"]
+
+        # Filter to the two audit events of interest (order in
+        # ``events`` reflects emission order, which is what the
+        # before-then-after contract demands).
+        audit_events = [
+            e
+            for e in events
+            if e.get("event")
+            in ("audit.agent.deletion_requested", "audit.agent.deleted")
+        ]
+        assert len(audit_events) == 2
+        assert audit_events[0]["event"] == "audit.agent.deletion_requested"
+        assert audit_events[1]["event"] == "audit.agent.deleted"
+        # Both entries carry the same identifying context so an
+        # operator inspecting the audit trail can pair the
+        # request with its confirmation without joining on
+        # timestamps.
+        for entry in audit_events:
+            assert entry["agent_name"] == "alice"
+            assert entry["actor"]
 
     def test_delete_c_suite_agent_409(
         self,

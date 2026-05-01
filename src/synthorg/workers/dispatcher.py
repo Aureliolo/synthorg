@@ -146,6 +146,11 @@ class DistributedDispatcher:
 
         try:
             await self._retry.execute(publish, task_id=task_id)
+        except MemoryError, RecursionError:
+            # System-fatal exceptions must propagate so the process can
+            # crash deliberately rather than silently turning into a
+            # ``False`` retry-exhaustion result that hides the cause.
+            raise
         except Exception as exc:
             # Preserve the original, less-severe event on the final
             # failure so downstream monitoring that still filters on

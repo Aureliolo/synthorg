@@ -41,6 +41,7 @@ from synthorg.meta.rules.custom import (
 )
 from synthorg.meta.rules.service import CustomRuleNotFoundError, CustomRulesService
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 
 logger = get_logger(__name__)
 
@@ -233,6 +234,12 @@ class CustomRuleController(Controller):
         rule = await _service(state).get(rule_id)
         if rule is None:
             msg = f"Custom rule {rule_id} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="custom_rule",
+                rule_id=rule_id,
+                operation="read",
+            )
             raise NotFoundError(msg)
         return ApiResponse[dict[str, Any]](data=rule_to_dict(rule))
 
@@ -307,6 +314,12 @@ class CustomRuleController(Controller):
                 data.model_dump(exclude_none=True),
             )
         except CustomRuleNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="custom_rule",
+                rule_id=rule_id,
+                operation="update",
+            )
             raise NotFoundError(str(exc)) from exc
         except ConstraintViolationError as exc:
             raise ConflictError(str(exc)) from exc
@@ -336,6 +349,12 @@ class CustomRuleController(Controller):
         try:
             await _service(state).delete(NotBlankStr(rule_id))
         except CustomRuleNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="custom_rule",
+                rule_id=rule_id,
+                operation="delete",
+            )
             raise NotFoundError(str(exc)) from exc
 
     @post(
@@ -362,6 +381,12 @@ class CustomRuleController(Controller):
         try:
             toggled = await _service(state).toggle(NotBlankStr(rule_id))
         except CustomRuleNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="custom_rule",
+                rule_id=rule_id,
+                operation="toggle",
+            )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(toggled),

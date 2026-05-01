@@ -98,7 +98,12 @@ def _env_var_name(namespace: str, key: str) -> str:
     return f"SYNTHORG_{namespace.upper()}_{key.upper()}"
 
 
-def _reject_if_read_only(definition: SettingDefinition, *, action: str) -> None:
+def _reject_if_read_only(
+    definition: SettingDefinition,
+    *,
+    action: str,
+    import_source: SettingsImportSource | None = None,
+) -> None:
     """Raise ``SettingReadOnlyError`` for read-only-post-init settings.
 
     The registry entry exists for discoverability via the /settings
@@ -107,16 +112,22 @@ def _reject_if_read_only(definition: SettingDefinition, *, action: str) -> None:
     ``delete``, ``delete_namespace``) must reject so an operator does
     not believe the override took effect when the running process keeps
     the boot-time value.
+
+    ``import_source`` is included in the validation log when supplied
+    so the every ``set()`` rejection path carries the same tag the
+    happy path emits, keeping the log tagging contract consistent.
     """
     if not definition.read_only_post_init:
         return
-    logger.warning(
-        SETTINGS_VALIDATION_FAILED,
-        namespace=definition.namespace,
-        key=definition.key,
-        reason="read_only_post_init",
-        action=action,
-    )
+    payload: dict[str, object] = {
+        "namespace": definition.namespace,
+        "key": definition.key,
+        "reason": "read_only_post_init",
+        "action": action,
+    }
+    if import_source is not None:
+        payload["import_source"] = import_source.value
+    logger.warning(SETTINGS_VALIDATION_FAILED, **payload)
     msg = (
         f"Setting {definition.namespace}/{definition.key} is sourced"
         f" from env / YAML at startup and cannot be modified at runtime"
@@ -736,7 +747,11 @@ class SettingsService:
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
-        _reject_if_read_only(definition, action="set")
+        _reject_if_read_only(
+            definition,
+            action="set",
+            import_source=import_source,
+        )
 
         try:
             _validate_value(definition, value)

@@ -18,6 +18,7 @@ from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.providers.errors import ProviderErrorLabel
 
 __all__ = [
+    "TRANSIENT_PROVIDER_ERROR_CLASSES",
     "VALID_API_ERROR_CATEGORIES",
     "VALID_AUDIT_APPEND_STATUSES",
     "VALID_CACHE_NAMES",
