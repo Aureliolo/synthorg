@@ -6,7 +6,6 @@ from types import MappingProxyType
 from typing import Any, Final
 from urllib.parse import urlparse
 
-from synthorg.api.dto import CreateProviderRequest, UpdateProviderRequest  # noqa: TC001
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -16,6 +15,10 @@ from synthorg.observability.events.provider import (
     PROVIDER_LITELLM_MODELS_LOADED,
 )
 from synthorg.providers.enums import AuthType
+from synthorg.providers.management.dtos import (  # noqa: TC001
+    CreateProviderRequest,
+    UpdateProviderRequest,
+)
 
 logger = get_logger(__name__)
 

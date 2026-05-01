@@ -16,13 +16,13 @@ override at read time is a follow-on task tracked in #1642.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.api.dto_provider_capabilities import (
+from synthorg.observability import get_logger
+from synthorg.providers.errors import ProviderValidationError
+from synthorg.providers.management.capability_dtos import (
     PresetOverride,
     PresetOverrideUpdateRequest,
     ProviderAuditActor,
 )
-from synthorg.observability import get_logger
-from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.presets import CloudPreset, LocalPreset, get_preset
 
 if TYPE_CHECKING:

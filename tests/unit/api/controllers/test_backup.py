@@ -10,10 +10,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from litestar.exceptions import (
-    ClientException,
-    InternalServerException,
-)
+from litestar.exceptions import InternalServerException
 from litestar.testing import TestClient
 
 from synthorg.api.controllers.backup import BackupController
@@ -32,7 +29,7 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -114,7 +111,7 @@ class TestCreateBackup:
         )
 
         ctrl = _controller()
-        with pytest.raises(ClientException) as exc_info:
+        with pytest.raises(ConflictError) as exc_info:
             await ctrl.create_backup.fn(ctrl, state=state)
 
         assert exc_info.value.status_code == 409
@@ -252,7 +249,7 @@ class TestRestoreBackup:
             components=components,
         )
 
-    async def test_restore_raises_400_without_confirm(self) -> None:
+    async def test_restore_raises_422_without_confirm(self) -> None:
         state, _service = _make_state_and_service()
         request = RestoreRequest(
             backup_id="abc123def456",
@@ -260,10 +257,10 @@ class TestRestoreBackup:
         )
 
         ctrl = _controller()
-        with pytest.raises(ClientException) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.status_code == 422
 
     async def test_restore_raises_404_on_not_found(self) -> None:
         state, service = _make_state_and_service()
@@ -290,7 +287,7 @@ class TestRestoreBackup:
             confirm=True,
         )
         ctrl = _controller()
-        with pytest.raises(ClientException) as exc_info:
+        with pytest.raises(ConflictError) as exc_info:
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
         assert exc_info.value.status_code == 409
@@ -306,7 +303,7 @@ class TestRestoreBackup:
             confirm=True,
         )
         ctrl = _controller()
-        with pytest.raises(ClientException) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
         assert exc_info.value.status_code == 422
@@ -340,7 +337,7 @@ class TestRestoreConfirmGate:
         )
 
         ctrl = _controller()
-        with pytest.raises(ClientException):
+        with pytest.raises(ValidationError):
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
         # Service must never be called when confirm is false

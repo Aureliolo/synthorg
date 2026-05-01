@@ -17,8 +17,10 @@ import json
 import re
 from typing import TYPE_CHECKING, Any
 
-from synthorg.api.rate_limits.config import PerOpRateLimitConfig
-from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
+from synthorg.config.rate_limits import (
+    PerOpConcurrencyConfig,
+    PerOpRateLimitConfig,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,

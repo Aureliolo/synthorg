@@ -19,6 +19,7 @@ from synthorg.core.domain_errors import (
     ArtifactRejectedTooLargeError,
     ArtifactStorageRejectedFullError,
     NotFoundError,
+    ValidationError,
 )
 from synthorg.core.enums import ArtifactType
 from synthorg.core.persistence_errors import (
@@ -151,7 +152,7 @@ class ArtifactController(Controller):
         task_id: TaskIdFilter = None,
         created_by: CreatedByFilter = None,
         type: TypeFilter = None,  # noqa: A002
-    ) -> PaginatedResponse[Artifact] | Response[ApiResponse[None]]:
+    ) -> PaginatedResponse[Artifact]:
         """List artifacts with optional filters.
 
         Args:
@@ -169,16 +170,10 @@ class ArtifactController(Controller):
         if type is not None:
             try:
                 parsed_type = ArtifactType(type)
-            except ValueError:
+            except ValueError as exc:
                 valid = ", ".join(e.value for e in ArtifactType)
-                return Response(
-                    content=ApiResponse[None](
-                        error=(
-                            f"Invalid artifact type: {type!r}. Valid values: {valid}"
-                        ),
-                    ),
-                    status_code=400,
-                )
+                msg = f"Invalid artifact type: {type!r}. Valid values: {valid}"
+                raise ValidationError(msg) from exc
 
         artifacts = await _service(state).list_artifacts(
             task_id=task_id,
@@ -198,7 +193,7 @@ class ArtifactController(Controller):
         self,
         state: State,
         artifact_id: PathId,
-    ) -> Response[ApiResponse[Artifact]]:
+    ) -> ApiResponse[Artifact]:
         """Get an artifact by ID.
 
         Args:
@@ -206,28 +201,24 @@ class ArtifactController(Controller):
             artifact_id: Artifact identifier.
 
         Returns:
-            The artifact metadata, or 404 if not found.
+            The artifact metadata.
+
+        Raises:
+            NotFoundError: If the artifact does not exist (HTTP 404).
         """
         artifact = await _service(state).get(artifact_id)
         if artifact is None:
-            return Response(
-                content=ApiResponse[Artifact](
-                    error=f"Artifact {artifact_id!r} not found",
-                ),
-                status_code=404,
-            )
-        return Response(
-            content=ApiResponse[Artifact](data=artifact),
-            status_code=200,
-        )
+            msg = f"Artifact {artifact_id!r} not found"
+            raise NotFoundError(msg)
+        return ApiResponse[Artifact](data=artifact)
 
-    @post(guards=[require_write_access])
+    @post(guards=[require_write_access], status_code=201)
     async def create_artifact(
         self,
         request: Request[Any, Any, Any],
         state: State,
         data: CreateArtifactRequest,
-    ) -> Response[ApiResponse[Artifact]]:
+    ) -> ApiResponse[Artifact]:
         """Create a new artifact.
 
         Args:
@@ -258,10 +249,7 @@ class ArtifactController(Controller):
                 "type": artifact.type.value,
             },
         )
-        return Response(
-            content=ApiResponse[Artifact](data=artifact),
-            status_code=201,
-        )
+        return ApiResponse[Artifact](data=artifact)
 
     @delete(
         "/{artifact_id:str}",
@@ -273,7 +261,7 @@ class ArtifactController(Controller):
         request: Request[Any, Any, Any],
         state: State,
         artifact_id: PathId,
-    ) -> Response[ApiResponse[None]]:
+    ) -> ApiResponse[None]:
         """Delete an artifact and its stored content.
 
         Args:
@@ -282,17 +270,16 @@ class ArtifactController(Controller):
             artifact_id: Artifact identifier.
 
         Returns:
-            200 on success, 404 if not found.
+            ``ApiResponse`` with ``data=None`` on success.
+
+        Raises:
+            NotFoundError: If the artifact does not exist (HTTP 404).
         """
         service = _service(state)
         artifact = await service.get(artifact_id)
         if artifact is None:
-            return Response(
-                content=ApiResponse[None](
-                    error=f"Artifact {artifact_id!r} not found",
-                ),
-                status_code=404,
-            )
+            msg = f"Artifact {artifact_id!r} not found"
+            raise NotFoundError(msg)
         # Delete storage content first -- if this fails, metadata still
         # exists so the inconsistency is detectable (vs. the reverse
         # order where metadata is gone but orphaned blob is invisible).
@@ -312,10 +299,7 @@ class ArtifactController(Controller):
             CHANNEL_ARTIFACTS,
             {"artifact_id": artifact_id, "task_id": artifact.task_id},
         )
-        return Response(
-            content=ApiResponse[None](data=None),
-            status_code=200,
-        )
+        return ApiResponse[None](data=None)
 
     @put(
         "/{artifact_id:str}/content",
@@ -334,7 +318,7 @@ class ArtifactController(Controller):
             bytes,
             Body(media_type=RequestEncodingType.MULTI_PART),
         ],
-    ) -> Response[ApiResponse[Artifact]]:
+    ) -> ApiResponse[Artifact]:
         """Upload binary content for an artifact.
 
         Validates size limits before storing.
@@ -404,10 +388,7 @@ class ArtifactController(Controller):
                 "content_type": updated.content_type,
             },
         )
-        return Response(
-            content=ApiResponse[Artifact](data=updated),
-            status_code=200,
-        )
+        return ApiResponse[Artifact](data=updated)
 
     @get(
         "/{artifact_id:str}/content",
@@ -421,35 +402,38 @@ class ArtifactController(Controller):
     ) -> Response:  # type: ignore[type-arg]
         """Download binary content for an artifact.
 
+        Both 404 branches raise ``NotFoundError`` *before* any binary
+        bytes are streamed, so the central exception handler can swap
+        the response shape from ``application/octet-stream`` to the
+        RFC 9457 JSON envelope without colliding with already-sent
+        headers.
+
         Args:
             state: Application state.
             artifact_id: Artifact identifier.
 
         Returns:
-            Binary content with appropriate content type, or JSON
-            error on 404.
+            Binary content with appropriate content type.
+
+        Raises:
+            NotFoundError: If the artifact metadata or content is
+                missing (HTTP 404).
         """
         artifact = await _service(state).get(artifact_id)
         if artifact is None:
-            return Response(
-                content=ApiResponse[None](error="Artifact not found"),
-                status_code=404,
-                media_type="application/json",
-            )
+            msg = "Artifact not found"
+            raise NotFoundError(msg)
 
         storage = state.app_state.artifact_storage
         try:
             content = await storage.retrieve(artifact_id)
-        except RecordNotFoundError:
+        except RecordNotFoundError as exc:
             logger.warning(
                 PERSISTENCE_ARTIFACT_CONTENT_MISSING,
                 artifact_id=artifact_id,
             )
-            return Response(
-                content=ApiResponse[None](error="Artifact content not found"),
-                status_code=404,
-                media_type="application/json",
-            )
+            msg = "Artifact content not found"
+            raise NotFoundError(msg) from exc
 
         raw_ct = artifact.content_type or "application/octet-stream"
         fallback = "application/octet-stream"

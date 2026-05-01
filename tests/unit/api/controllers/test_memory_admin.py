@@ -328,10 +328,10 @@ class TestDeleteMemoryEntryEndpoint:
         from unittest.mock import AsyncMock
 
         from litestar.datastructures import State
-        from litestar.exceptions import ClientException
 
         from synthorg.api.controllers import memory as memory_module
         from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.core.domain_errors import FeatureNotImplementedError
         from synthorg.memory.fine_tune_plan import BackendUnsupportedError
 
         fake_service = SimpleNamespace(
@@ -351,7 +351,7 @@ class TestDeleteMemoryEntryEndpoint:
         original_build = memory_module._build_memory_service
         memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
         try:
-            with pytest.raises(ClientException) as exc_info:
+            with pytest.raises(FeatureNotImplementedError) as exc_info:
                 await controller.delete_memory_entry.fn(
                     controller,
                     state=State({"app_state": SimpleNamespace()}),

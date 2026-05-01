@@ -159,7 +159,7 @@ class TestAuditController:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """since > until returns 400."""
+        """since > until is a validation failure (HTTP 422)."""
         t1 = datetime(2026, 4, 1, tzinfo=UTC)
         t2 = t1 - timedelta(hours=1)
         resp = test_client.get(
@@ -167,7 +167,7 @@ class TestAuditController:
             params={"since": t1.isoformat(), "until": t2.isoformat()},
             headers=_HEADERS,
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
 
     def test_combined_filters_and(
         self,

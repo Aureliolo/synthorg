@@ -6,10 +6,7 @@ from typing import TYPE_CHECKING, Any, Self
 
 from litestar import Controller, Request, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import (
-    ClientException,
-    InternalServerException,
-)
+from litestar.exceptions import InternalServerException
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import (
     AwareDatetime,
@@ -29,6 +26,7 @@ from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
@@ -421,7 +419,7 @@ class SettingsController(Controller):
         except SettingNotFoundError as exc:
             raise NotFoundError(str(exc)) from exc
         except SettingValidationError as exc:
-            raise ClientException(str(exc), status_code=422) from exc
+            raise DomainValidationError(str(exc)) from exc
         except SettingsEncryptionError:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
@@ -617,7 +615,8 @@ class SettingsController(Controller):
             The validated and persisted config.
 
         Raises:
-            ClientException: If the config fails validation.
+            DomainValidationError: If the config fails validation
+                (HTTP 422).
         """
         app_state: AppState = state.app_state
         try:
@@ -628,7 +627,7 @@ class SettingsController(Controller):
                 error=str(exc),
             )
             msg = f"Invalid security config: {exc}"
-            raise ClientException(msg) from exc
+            raise DomainValidationError(msg) from exc
 
         await _persist_security_settings(
             app_state.settings_service,

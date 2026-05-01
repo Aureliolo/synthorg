@@ -10,7 +10,6 @@ from typing import Any
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,7 +17,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
@@ -274,10 +273,7 @@ class CustomRuleController(Controller):
         try:
             saved = await _service(state).create(definition)
         except ConstraintViolationError as exc:
-            raise ClientException(
-                detail=str(exc),
-                status_code=409,
-            ) from exc
+            raise ConflictError(str(exc)) from exc
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(saved),
         )
@@ -313,10 +309,7 @@ class CustomRuleController(Controller):
         except CustomRuleNotFoundError as exc:
             raise NotFoundError(str(exc)) from exc
         except ConstraintViolationError as exc:
-            raise ClientException(
-                detail=str(exc),
-                status_code=409,
-            ) from exc
+            raise ConflictError(str(exc)) from exc
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(updated),
         )

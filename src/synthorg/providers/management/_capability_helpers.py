@@ -8,15 +8,15 @@ discriminated-union DTO and the system-actor constant is a sentinel.
 
 from datetime import UTC, datetime
 
-from synthorg.api.dto_provider_capabilities import (
-    CredentialsRotateRequest,
-    ProviderAuditActor,
-)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
 from synthorg.persistence._shared import format_iso_utc
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
+from synthorg.providers.management.capability_dtos import (
+    CredentialsRotateRequest,
+    ProviderAuditActor,
+)
 
 logger = get_logger(__name__)
 

@@ -11,10 +11,7 @@ if TYPE_CHECKING:
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import (
-    ClientException,
-    InternalServerException,
-)
+from litestar.exceptions import InternalServerException
 from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
@@ -43,7 +40,11 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.backup import (
@@ -119,10 +120,7 @@ class BackupController(Controller):
                     BACKUP_FAILED,
                     error=str(exc),
                 )
-                raise ClientException(
-                    str(exc),
-                    status_code=409,
-                ) from exc
+                raise ConflictError(str(exc)) from exc
             except BackupError as exc:
                 logger.error(
                     BACKUP_FAILED,
@@ -146,7 +144,7 @@ class BackupController(Controller):
                     endpoint="backup.create",
                 )
                 msg = "Concurrent in-flight backup with this idempotency key"
-                raise ClientException(msg, status_code=409)
+                raise ConflictError(msg)
             return ApiResponse(data=BackupManifest.model_validate(cached))
 
         manifest = await _do_backup()
@@ -281,14 +279,18 @@ class BackupController(Controller):
             Restore response with safety backup ID.
 
         Raises:
-            ClientException: If confirm is false (400), backup in
-                progress (409), or manifest invalid (422).
+            ValidationError: If confirm is false or manifest invalid (422).
+            ConflictError: If a backup is in progress (409).
             NotFoundException: If the backup does not exist.
             InternalServerException: If the restore fails.
         """
         if not data.confirm:
             msg = "Restore requires confirm=true"
-            raise ClientException(msg, status_code=400)
+            # Missing required precondition is a validation failure, not
+            # a generic 400.  ValidationError maps to 422 via
+            # EXCEPTION_HANDLERS, matching the rest of the codebase's
+            # input-shape errors.
+            raise ValidationError(msg)
 
         app_state: AppState = state.app_state
         try:
@@ -308,14 +310,14 @@ class BackupController(Controller):
                 backup_id=data.backup_id,
                 error=str(exc),
             )
-            raise ClientException(str(exc), status_code=422) from exc
+            raise ValidationError(str(exc)) from exc
         except BackupInProgressError as exc:
             logger.warning(
                 BACKUP_FAILED,
                 backup_id=data.backup_id,
                 error=str(exc),
             )
-            raise ClientException(str(exc), status_code=409) from exc
+            raise ConflictError(str(exc)) from exc
         except RestoreError as exc:
             logger.error(
                 BACKUP_RESTORE_FAILED,

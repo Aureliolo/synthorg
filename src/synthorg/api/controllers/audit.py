@@ -14,7 +14,6 @@ from typing import Annotated
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException
 from litestar.params import Parameter
 
 from synthorg.api.dto import PaginatedResponse
@@ -25,6 +24,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
+from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUDIT_QUERIED,
@@ -132,8 +132,8 @@ class AuditController(Controller):
             Paginated audit entries.
 
         Raises:
-            ClientException: If *since* > *until* or JSONB params
-                on non-Postgres backend.
+            ValidationError: If *since* > *until* or JSONB params
+                on non-Postgres backend (HTTP 422).
         """
         self._validate_timestamps(since, until)
 
@@ -197,9 +197,8 @@ class AuditController(Controller):
                 since=str(since),
                 until=str(until),
             )
-            raise ClientException(
-                detail="'since' and 'until' must be timezone-aware",
-            )
+            msg = "'since' and 'until' must be timezone-aware"
+            raise ValidationError(msg)
         if since is not None and until is not None and since > until:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -207,9 +206,8 @@ class AuditController(Controller):
                 since=str(since),
                 until=str(until),
             )
-            raise ClientException(
-                detail="'since' must not be after 'until'",
-            )
+            msg = "'since' must not be after 'until'"
+            raise ValidationError(msg)
 
     @staticmethod
     async def _jsonb_query(  # noqa: PLR0913
@@ -240,20 +238,16 @@ class AuditController(Controller):
                 API_VALIDATION_FAILED,
                 reason="jsonb_query_unsupported_backend",
             )
-            raise ClientException(
-                status_code=422,
-                detail="JSONB queries require the Postgres backend",
-            )
+            msg = "JSONB queries require the Postgres backend"
+            raise ValidationError(msg)
 
         if jsonb_contains is not None and jsonb_key_exists is not None:
             logger.warning(
                 API_VALIDATION_FAILED,
                 reason="multiple_jsonb_predicates",
             )
-            raise ClientException(
-                status_code=422,
-                detail="Provide only one of jsonb_contains or jsonb_key_exists",
-            )
+            msg = "Provide only one of jsonb_contains or jsonb_key_exists"
+            raise ValidationError(msg)
 
         column = "matched_rules"
         audit_cap = await _resolve_audit_cap(state)
@@ -269,17 +263,15 @@ class AuditController(Controller):
                     input_length=len(jsonb_contains),
                     input_preview=preview,
                 )
-                raise ClientException(
-                    detail="Invalid JSON in jsonb_contains parameter",
-                ) from exc
+                msg = "Invalid JSON in jsonb_contains parameter"
+                raise ValidationError(msg) from exc
             if not isinstance(value, (list, dict)):
                 logger.warning(
                     API_VALIDATION_FAILED,
                     reason="jsonb_contains_not_collection",
                 )
-                raise ClientException(
-                    detail="jsonb_contains must be a JSON array or object",
-                )
+                msg = "jsonb_contains must be a JSON array or object"
+                raise ValidationError(msg)
             entries, _ = await repo.query_jsonb_contains(
                 column,
                 value,
@@ -302,7 +294,8 @@ class AuditController(Controller):
                 API_VALIDATION_FAILED,
                 reason="no_jsonb_filter",
             )
-            raise ClientException(detail="No JSONB filter provided")
+            msg = "No JSONB filter provided"
+            raise ValidationError(msg)
 
         filtered = _apply_standard_filters(
             entries,

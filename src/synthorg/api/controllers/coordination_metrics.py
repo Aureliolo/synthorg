@@ -10,7 +10,6 @@ from typing import Annotated
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException
 from litestar.params import Parameter
 
 from synthorg.api.dto import PaginatedResponse
@@ -22,6 +21,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
+from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_COORDINATION_METRICS_QUERIED,
@@ -111,7 +111,7 @@ class CoordinationMetricsController(Controller):
             Paginated coordination metrics.
 
         Raises:
-            ClientException: If *since* > *until*.
+            ValidationError: If *since* > *until* (HTTP 422).
         """
         if (since is not None and since.tzinfo is None) or (
             until is not None and until.tzinfo is None
@@ -122,9 +122,8 @@ class CoordinationMetricsController(Controller):
                 since=str(since),
                 until=str(until),
             )
-            raise ClientException(
-                detail="'since' and 'until' must be timezone-aware",
-            )
+            msg = "'since' and 'until' must be timezone-aware"
+            raise ValidationError(msg)
         if since is not None and until is not None and since > until:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -132,9 +131,8 @@ class CoordinationMetricsController(Controller):
                 since=str(since),
                 until=str(until),
             )
-            raise ClientException(
-                detail="'since' must not be after 'until'",
-            )
+            msg = "'since' must not be after 'until'"
+            raise ValidationError(msg)
         app_state = state.app_state
         metrics_cap = await _resolve_metrics_cap(state)
         entries, total_matches = app_state.coordination_metrics_store.query(
