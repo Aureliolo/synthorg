@@ -314,9 +314,14 @@ class TestSlidingWindowRateLimiterRaceConditions:
             await barrier.wait()
             return await limiter.take("agent-A")
 
-        results = await asyncio.gather(
-            *(attempt_take() for _ in range(n_callers)),
-        )
+        # CLAUDE.md async-concurrency rule: prefer ``asyncio.TaskGroup``
+        # for fan-out/fan-in. Each task body is the ``attempt_take``
+        # helper; the limiter's lock guarantees per-call atomicity, so
+        # no task can raise an unrelated error that would unwind the
+        # group.
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(attempt_take()) for _ in range(n_callers)]
+        results = [task.result() for task in tasks]
         # The non-None handles are the granted admissions.
         granted = [r for r in results if r is not None]
         assert len(granted) == max_events
@@ -340,9 +345,12 @@ class TestSlidingWindowRateLimiterRaceConditions:
         assert await limiter.take("agent-A") is None
 
         # Release all admissions concurrently using their handles.
-        await asyncio.gather(
-            *(limiter.release("agent-A", handle) for handle in handles),
-        )
+        # ``asyncio.TaskGroup`` per CLAUDE.md async-concurrency rule;
+        # the bodies are infallible (limiter.release returns None on
+        # missing-handle), so no task can unwind the group.
+        async with asyncio.TaskGroup() as tg:
+            for handle in handles:
+                tg.create_task(limiter.release("agent-A", handle))
 
         # All slots should be free again.
         n_callers = 20
@@ -352,9 +360,9 @@ class TestSlidingWindowRateLimiterRaceConditions:
             await barrier.wait()
             return await limiter.take("agent-A")
 
-        results = await asyncio.gather(
-            *(attempt_take() for _ in range(n_callers)),
-        )
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(attempt_take()) for _ in range(n_callers)]
+        results = [task.result() for task in tasks]
         granted = [r for r in results if r is not None]
         assert len(granted) == max_events
 
