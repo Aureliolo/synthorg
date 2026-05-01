@@ -6,7 +6,7 @@ the probe is wrapped in :func:`cost_recording_scope`. This module is the
 regression guard for that contract.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -69,7 +69,7 @@ class TestProbeCostRecording:
         with patch.object(
             LiteLLMDriver,
             "_do_complete",
-            new_callable=AsyncMock,
+            autospec=True,
             return_value=_build_completion_response(),
         ):
             result = await service.test_connection(
@@ -109,7 +109,7 @@ class TestProbeCostRecording:
         with patch.object(
             LiteLLMDriver,
             "_do_complete",
-            new_callable=AsyncMock,
+            autospec=True,
             return_value=_build_completion_response(),
         ):
             result = await service.test_connection(
@@ -138,7 +138,7 @@ class TestProbeCostRecording:
         with patch.object(
             LiteLLMDriver,
             "_do_complete",
-            new_callable=AsyncMock,
+            autospec=True,
             side_effect=AuthenticationError("Invalid key"),
         ):
             result = await service.test_connection(
@@ -150,6 +150,58 @@ class TestProbeCostRecording:
         await drain_pending_cost_records()
         records = await tracker.get_records()
         assert records == ()
+
+    async def test_probe_retry_exhausted_records_signal(
+        self,
+        app_state: AppState,
+    ) -> None:
+        """A ``RetryExhaustedError`` raised inside the probe surfaces
+        through ``_do_test_connection``'s explicit ``except`` clause
+        and tags ``retry_exhausted=True`` on the warning event. Locks
+        the contract so the retry-exhaustion signal isn't silently
+        merged into the generic ProviderError path."""
+        import structlog
+
+        from synthorg.providers.errors import ProviderTimeoutError
+        from synthorg.providers.resilience.errors import RetryExhaustedError
+
+        tracker = CostTracker(
+            budget_config=BudgetConfig(currency="USD"),
+        )
+        service = _make_service_with_tracker(app_state, tracker)
+        await service.create_provider(make_create_request())
+
+        # RetryExhaustedError wraps the last retryable provider error
+        # the RetryHandler tried and gave up on.
+        with (
+            patch.object(
+                LiteLLMDriver,
+                "_do_complete",
+                autospec=True,
+                side_effect=RetryExhaustedError(
+                    ProviderTimeoutError("upstream timed out"),
+                ),
+            ),
+            structlog.testing.capture_logs() as events,
+        ):
+            result = await service.test_connection(
+                "test-provider",
+                ConnTestRequest(),
+            )
+
+        assert result.success is False
+        assert result.error is not None
+        # No CostRecord: the exception bypasses the chokepoint.
+        await drain_pending_cost_records()
+        assert await tracker.get_records() == ()
+
+        # Verify the WARNING fired with retry_exhausted=True. structlog
+        # captures the event_dict directly; assert on the structured
+        # field rather than substring-matching the rendered output.
+        retry_events = [e for e in events if e.get("retry_exhausted") is True]
+        assert retry_events, (
+            f"expected at least one event carrying retry_exhausted=True; got: {events}"
+        )
 
     async def test_probe_propagates_provider_exception(
         self,
@@ -181,7 +233,7 @@ class TestProbeCostRecording:
             patch.object(
                 LiteLLMDriver,
                 "_do_complete",
-                new_callable=AsyncMock,
+                autospec=True,
                 side_effect=AuthenticationError("Invalid key"),
             ),
             pytest.raises(AuthenticationError, match="Invalid key"),

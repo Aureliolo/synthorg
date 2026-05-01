@@ -92,18 +92,22 @@ logger = get_logger(__name__)
 
 
 def _safe_task_id_segment(value: str) -> str:
-    """Strip control / whitespace characters from a task-id segment.
+    """Strip control / whitespace / colon characters from a task-id segment.
 
-    The probe ``task_id`` is built from a user-supplied provider name.
-    ``NotBlankStr`` rejects empty input but permits control characters
-    (newlines, NUL, vertical tab, ...) that would corrupt downstream
-    log parsers, audit-trail task-id splitters, or plaintext log
-    rendering. Unicode is preserved -- only the C0/C1 control range,
-    ASCII delete, and whitespace get replaced with ``_``. Returns
-    ``"_"`` if every character was filtered (preserves ``NotBlankStr``).
+    The probe ``task_id`` is built from a user-supplied provider name
+    embedded in a colon-delimited template
+    (``system:providers:test_connection:{name}``). ``NotBlankStr``
+    rejects empty input but permits control characters (newlines, NUL,
+    vertical tab, ...) AND colons, both of which would corrupt
+    downstream log parsers and task-id segment splitters that rely on
+    ``:`` as the canonical separator. Unicode is preserved -- only the
+    C0/C1 control range, ASCII delete, whitespace, and ``:`` itself
+    get replaced with ``_``. Returns ``"_"`` if every character was
+    filtered (preserves ``NotBlankStr``).
     """
     cleaned = "".join(
-        ch if ch.isprintable() and not ch.isspace() else "_" for ch in value
+        ch if ch.isprintable() and not ch.isspace() and ch != ":" else "_"
+        for ch in value
     )
     return cleaned or "_"
 

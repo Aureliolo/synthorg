@@ -505,13 +505,24 @@ class TestAuditChainSinkFailurePaths:
 
         assert len(sink.chain.entries) == 1
 
-    def test_unknown_record_shape_drops_silently(
-        self,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
+    def test_unknown_record_shape_drops_silently(self) -> None:
         """A record whose ``msg`` shape doesn't match any known pattern
         is dropped from the chain AND emits a warning under the
-        non-recursive ``audit_chain.*`` prefix so operators can debug."""
+        non-recursive ``audit_chain.*`` prefix so operators can debug.
+
+        Asserts both halves of the contract: the chain stays untouched,
+        AND the AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN warning fires. Uses
+        ``structlog.testing.capture_logs`` since the diagnostic log is
+        emitted via ``synthorg.observability.get_logger`` (structlog),
+        not stdlib -- the bridge to stdlib isn't wired in this unit
+        test process.
+        """
+        import structlog
+
+        from synthorg.observability.events.audit_chain import (
+            AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN,
+        )
+
         sink = self._make_sink(signer=_make_mock_signer())
         record = logging.LogRecord(
             name="synthorg.test",
@@ -523,7 +534,11 @@ class TestAuditChainSinkFailurePaths:
             exc_info=None,
         )
 
-        with caplog.at_level(logging.WARNING):
+        with structlog.testing.capture_logs() as events:
             sink.emit(record)
 
         assert len(sink.chain.entries) == 0
+        emitted = [e["event"] for e in events]
+        assert AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN in emitted, (
+            f"expected AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN warning, got: {emitted}"
+        )

@@ -18,6 +18,7 @@ on the real HTTP path.
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -208,17 +209,17 @@ class TestConnectionsController:
         assert "vault" not in str(exc_info.value).lower()
 
 
-def _make_audit_state(catalog: object) -> dict[str, MagicMock]:
+def _make_audit_state(catalog: object) -> dict[str, object]:
     """Build a minimal ``state`` mapping that pins ``connection_catalog``.
 
-    ``MagicMock(spec=AppState)`` would force every attribute access to
-    declare in the spec; the controller only reads ``connection_catalog``
-    so a focused mock keeps the test surface small while still passing
-    the mock-spec gate (``spec=`` is supplied via the catalog parameter).
+    Uses ``SimpleNamespace`` instead of ``MagicMock`` so we don't need
+    a Mock-spec declaration just to satisfy the ``state["app_state"]
+    .connection_catalog`` attribute access -- ``SimpleNamespace`` is
+    typed and accepts arbitrary attributes by construction. The
+    controller only reads ``connection_catalog``; nothing else needs
+    to exist on the namespace.
     """
-    app_state = MagicMock()
-    app_state.connection_catalog = catalog
-    return {"app_state": app_state}
+    return {"app_state": SimpleNamespace(connection_catalog=catalog)}
 
 
 def _capture_emission(
