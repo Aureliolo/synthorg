@@ -74,12 +74,19 @@ class DriftDetectionService:
 
         try:
             report = await self._strategy.detect(entity_name, agent_ids)
-        except Exception:
-            logger.error(
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # ``exc_info=True`` would attach the full traceback to the
+            # log record and bypass ``safe_error_description``; that
+            # reintroduces secret / PII leakage on this error path.
+            # SEC-1.
+            logger.error(  # noqa: TRY400
                 ONTOLOGY_DRIFT_DETECT_FAILED,
                 entity_name=entity_name,
                 agent_count=len(agent_ids),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -94,12 +101,17 @@ class DriftDetectionService:
         if self._store is not None:
             try:
                 await self._store.store_report(report)
-            except Exception:
-                logger.error(
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # SEC-1: full traceback on a persistence-error path can
+                # leak backend metadata; stick to the redacted form.
+                logger.error(  # noqa: TRY400
                     ONTOLOGY_DRIFT_STORE_FAILED,
                     entity_name=entity_name,
                     divergence_score=report.divergence_score,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 
@@ -124,14 +136,22 @@ class DriftDetectionService:
             agent_ids: Agent IDs to sample per entity.
 
         Returns:
-            Drift reports for all entities.
+            Drift reports for all entities, in the same order as
+            ``self._ontology.list_entities()`` returned them.  Entities
+            whose check raised a non-fatal ``Exception`` are dropped from
+            the result; fatal builtins propagate via the surrounding
+            TaskGroup teardown.
         """
         import asyncio  # noqa: PLC0415
 
         entities = await self._ontology.list_entities()
-        reports: list[DriftReport] = []
+        # Preallocate to keep ``index``-aligned writes deterministic;
+        # without this the append order matches task completion order
+        # and a flaky downstream backend can permute ``reports`` even
+        # though the entity list is stable.
+        slots: list[DriftReport | None] = [None] * len(entities)
 
-        async def _check_one(entity_name: NotBlankStr) -> None:
+        async def _check_one(index: int, entity_name: NotBlankStr) -> None:
             """Run one entity's drift check; capture non-fatal failures.
 
             Wrapping each ``check_entity`` invocation in this helper lets
@@ -156,12 +176,12 @@ class DriftDetectionService:
                     error=safe_error_description(exc),
                 )
                 return
-            reports.append(report)
+            slots[index] = report
 
         async with asyncio.TaskGroup() as tg:
-            for entity in entities:
-                tg.create_task(_check_one(entity.name))
-        return tuple(reports)
+            for index, entity in enumerate(entities):
+                tg.create_task(_check_one(index, entity.name))
+        return tuple(report for report in slots if report is not None)
 
     @property
     def threshold(self) -> float:

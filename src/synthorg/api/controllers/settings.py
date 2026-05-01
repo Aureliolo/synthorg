@@ -651,16 +651,18 @@ class SettingsController(Controller):
         try:
             validated = SecurityConfig.model_validate(data.config)
         except ValidationError as exc:
-            # Redact: ``str(exc)`` includes rejected input values from
-            # the import payload, which can hold secrets or
-            # operator-sensitive configuration.  ``safe_error_description``
-            # plus ``error_type`` is the SEC-1 substitute.
+            # Redact: ``str(exc)`` (and the f-string substitution below)
+            # would surface rejected input values from the import payload,
+            # which can hold secrets or operator-sensitive configuration.
+            # The 422 response keeps a generic message; full diagnostic
+            # detail stays on the server-side warning stream via
+            # ``safe_error_description``.  SEC-1.
             logger.warning(
                 API_SECURITY_CONFIG_IMPORT_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Invalid security config: {exc}"
+            msg = "Invalid security config"
             raise DomainValidationError(msg) from exc
 
         await _persist_security_settings(

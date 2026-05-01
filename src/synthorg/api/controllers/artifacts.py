@@ -490,6 +490,21 @@ class ArtifactController(Controller):
             )
             msg = f"Artifact content for {artifact_id!r} not found"
             raise NotFoundError(msg) from exc
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Catch-all so any backend / storage failure on the
+            # download path leaves an operator-visible breadcrumb
+            # alongside the standardized error path; the original
+            # exception still propagates with type intact.
+            logger.error(  # noqa: TRY400
+                PERSISTENCE_ARTIFACT_CONTENT_MISSING,
+                artifact_id=artifact_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="artifact_retrieve_unexpected",
+            )
+            raise
 
         raw_ct = artifact.content_type or "application/octet-stream"
         fallback = "application/octet-stream"

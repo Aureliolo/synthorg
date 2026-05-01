@@ -173,14 +173,7 @@ class GeneralRetryHandler:
 
         Returns the return value of the first successful attempt.
         """
-        # Caller-provided ``log_ctx`` keys that collide with the
-        # handler's own diagnostic fields are renamed (e.g.
-        # ``attempt`` -> ``ctx_attempt``) so they don't overwrite the
-        # handler-emitted retry metadata in the structured log record.
-        safe_ctx = {
-            (f"ctx_{k}" if k in _RESERVED_LOG_KWARGS else k): v
-            for k, v in log_ctx.items()
-        }
+        safe_ctx = self._safe_log_ctx(log_ctx)
         for attempt in range(self._max_attempts):
             try:
                 return await op()
@@ -189,54 +182,71 @@ class GeneralRetryHandler:
                 # in Python; re-raise them before the broad retry
                 # handler so process-fatal conditions cannot be run
                 # through the retryable predicate, logged, or slept
-                # on.  Project convention: every long-running retry
-                # loop carries this carve-out.
+                # on.  Project convention.
                 raise
             except Exception as exc:
                 if not self._retryable(exc):
-                    # Non-retryable exceptions propagate immediately;
-                    # log first so the terminal outcome is visible
-                    # even when upstream callers don't log failures
-                    # consistently.
-                    logger.warning(
-                        self._event,
-                        attempt=attempt + 1,
-                        max_attempts=self._max_attempts,
-                        backoff_seconds=0.0,
-                        error_type=type(exc).__name__,
-                        retry_decision="not_retryable",
-                        **safe_ctx,
+                    self._log_attempt(
+                        attempt,
+                        0.0,
+                        "not_retryable",
+                        exc,
+                        safe_ctx,
                     )
                     raise
                 if attempt == self._max_attempts - 1:
-                    # Retries exhausted; log the terminal failure with
-                    # the same context every retry attempt logs so
-                    # downstream dashboards can chart "exhausted"
-                    # alongside the per-attempt rate.
-                    logger.warning(
-                        self._event,
-                        attempt=attempt + 1,
-                        max_attempts=self._max_attempts,
-                        backoff_seconds=0.0,
-                        error_type=type(exc).__name__,
-                        retry_decision="exhausted",
-                        **safe_ctx,
+                    self._log_attempt(
+                        attempt,
+                        0.0,
+                        "exhausted",
+                        exc,
+                        safe_ctx,
                     )
                     raise
                 delay = self._compute_delay(attempt)
-                logger.warning(
-                    self._event,
-                    attempt=attempt + 1,
-                    max_attempts=self._max_attempts,
-                    backoff_seconds=delay,
-                    error_type=type(exc).__name__,
-                    retry_decision="retrying",
-                    **safe_ctx,
-                )
+                self._log_attempt(attempt, delay, "retrying", exc, safe_ctx)
                 if delay > 0:
                     await self._clock.sleep(delay)
         msg = "GeneralRetryHandler exited the loop without raising or returning"
         raise AssertionError(msg)
+
+    @staticmethod
+    def _safe_log_ctx(log_ctx: dict[str, object]) -> dict[str, object]:
+        """Rename caller keys that collide with handler-injected fields.
+
+        Reserved keys (``attempt`` / ``max_attempts`` / ``backoff_seconds``
+        / ``error_type`` / ``retry_decision``) get a ``ctx_`` prefix so
+        the handler's own diagnostic fields cannot be silently
+        overwritten in the structured log record.
+        """
+        return {
+            (f"ctx_{k}" if k in _RESERVED_LOG_KWARGS else k): v
+            for k, v in log_ctx.items()
+        }
+
+    def _log_attempt(
+        self,
+        attempt: int,
+        backoff_seconds: float,
+        retry_decision: str,
+        exc: BaseException,
+        safe_ctx: dict[str, object],
+    ) -> None:
+        """Emit one structured retry-attempt warning with shared shape.
+
+        Centralised so the three call sites in :meth:`execute` carry
+        identical telemetry shape; downstream dashboards can chart
+        ``retry_decision`` partitions without per-call-site drift.
+        """
+        logger.warning(
+            self._event,
+            attempt=attempt + 1,
+            max_attempts=self._max_attempts,
+            backoff_seconds=backoff_seconds,
+            error_type=type(exc).__name__,
+            retry_decision=retry_decision,
+            **safe_ctx,
+        )
 
     def _compute_delay(self, attempt: int) -> float:
         """Compute exponential-backoff delay for retry iteration ``attempt``.

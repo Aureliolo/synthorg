@@ -7,7 +7,7 @@ rate-limit middleware both consume these from the config layer so the
 144 layer violation).
 """
 
-from typing import Any, Literal, Self
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -120,26 +120,34 @@ class PerOpConcurrencyConfig(BaseModel):
     backend: Literal["memory"] = "memory"
     overrides: dict[NotBlankStr, int] = Field(default_factory=dict)
 
-    @model_validator(mode="after")
-    def _validate_override_values(self) -> Self:
-        """Reject negative override values.
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_override_values(cls, data: Any) -> Any:
+        """Reject malformed-shape and negative override values.
 
-        Zero is allowed and means "disable this operation" -- the
-        middleware short-circuits when the override is ``0``.  Bad
-        configs are logged at WARNING before the ValueError is raised
-        so operator-facing config errors surface with context.
+        Run BEFORE Pydantic coercion so non-int / mis-typed overrides
+        surface through this branch with operator-facing context: with
+        ``mode="after"`` the ``dict[NotBlankStr, int]`` type would
+        already have rejected mis-shaped inputs with a generic
+        ``ValidationError`` and our log line would never fire.  Zero
+        is allowed and means "disable this operation".
         """
-        for operation, value in self.overrides.items():
-            if value < 0:
+        if not isinstance(data, dict):
+            return data
+        overrides = data.get("overrides")
+        if not isinstance(overrides, dict):
+            return data
+        for operation, value in overrides.items():
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 msg = (
-                    f"overrides[{operation!r}]={value!r} has negative value; "
-                    "use 0 to disable an operation"
+                    f"overrides[{operation!r}]={value!r} must be a "
+                    "non-negative integer; use 0 to disable an operation"
                 )
                 logger.warning(
                     API_APP_STARTUP,
                     operation=operation,
-                    override=value,
+                    override=str(value),
                     error=msg,
                 )
                 raise ValueError(msg)
-        return self
+        return data

@@ -248,9 +248,10 @@ class BackupController(Controller):
 
         Raises:
             NotFoundError: If backup does not exist (404).
-            HTTPException: 409 if a backup operation is already in
-                progress (mapped centrally from
-                ``BackupInProgressError`` via ``handle_backup_error``).
+            ConflictError: If a backup operation is already in progress
+                (409); mirrors ``create_backup`` / ``restore_backup``
+                so all three backup-mutation endpoints share the same
+                domain-error mapping.
         """
         app_state: AppState = state.app_state
         try:
@@ -262,6 +263,16 @@ class BackupController(Controller):
             )
             msg = "Backup not found"
             raise NotFoundError(msg) from exc
+        except BackupInProgressError as exc:
+            logger.warning(
+                BACKUP_FAILED,
+                backup_id=backup_id,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg_in_progress = "A backup operation is already in progress"
+            raise ConflictError(msg_in_progress) from exc
 
     @post(
         "/restore",

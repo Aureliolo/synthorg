@@ -138,11 +138,26 @@ class AsyncTaskService:
             )
             if task is not None:
                 try:
-                    await self._engine.cancel_task(
-                        task.id,
-                        requested_by=supervisor_id,
-                        reason="assignment_failed",
-                    )
+                    # If ``transition_task`` raised, the row is still in
+                    # ``CREATED`` -- ``CREATED -> CANCELLED`` is rejected
+                    # by the task-state machine (see
+                    # ``test_task_engine_mutations.py::test_cancel_from_created_fails``)
+                    # so calling ``cancel_task`` would orphan the row.
+                    # Use ``delete_task`` for the still-CREATED case and
+                    # fall back to ``cancel_task`` for any later-state
+                    # rollback (e.g. transition succeeded but a
+                    # subsequent step failed in the future).
+                    if task.status is TaskStatus.CREATED:
+                        await self._engine.delete_task(
+                            task.id,
+                            requested_by=supervisor_id,
+                        )
+                    else:
+                        await self._engine.cancel_task(
+                            task.id,
+                            requested_by=supervisor_id,
+                            reason="assignment_failed",
+                        )
                 except MemoryError, RecursionError:
                     # Same carve-out as the outer scope: process-fatal
                     # builtins propagate without further logging or

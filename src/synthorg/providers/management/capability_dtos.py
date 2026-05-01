@@ -64,12 +64,23 @@ UTCDatetime = Annotated[AwareDatetime, AfterValidator(_require_utc)]
 def _recursively_freeze(value: Any) -> Any:
     """Return an immutable equivalent of ``value`` for audit-payload safety.
 
-    Walks the structure and produces ``MappingProxyType`` for dicts,
-    ``tuple`` for lists/tuples, and ``frozenset`` for sets; scalars
-    pass through unchanged.  ``MappingProxyType`` instances re-enter
-    the recursion so nested already-frozen mappings are normalised
-    against the outer wrap.
+    Walks the structure and produces ``MappingProxyType`` for dicts and
+    ``tuple`` for lists/tuples; scalars pass through unchanged.
+    ``MappingProxyType`` instances re-enter the recursion so nested
+    already-frozen mappings are normalised against the outer wrap.
+
+    Sets and frozensets are explicitly rejected: an audit row needs a
+    deterministic on-disk JSON shape so callers can diff and replay it,
+    and Python's set iteration order is not stable across runs.  Senders
+    that need set semantics in the payload should pass a sorted tuple
+    instead.
     """
+    if isinstance(value, (set, frozenset)):
+        msg = (
+            f"audit payload disallows {type(value).__name__} for determinism; "
+            "use a sorted tuple instead"
+        )
+        raise TypeError(msg)
     if isinstance(value, MappingProxyType):
         # Re-freeze recursively so nested values inserted prior to
         # wrapping still get the same treatment.
@@ -82,26 +93,33 @@ def _recursively_freeze(value: Any) -> Any:
         )
     if isinstance(value, (list, tuple)):
         return tuple(_recursively_freeze(item) for item in value)
-    if isinstance(value, (set, frozenset)):
-        return frozenset(_recursively_freeze(item) for item in value)
     return value
 
 
 def _recursively_thaw(value: Any) -> Any:
     """Inverse of :func:`_recursively_freeze` for JSON serialisation.
 
-    Pydantic-core / msgspec cannot encode ``MappingProxyType`` or
-    ``frozenset`` directly, so each immutable container is converted
-    back to its mutable JSON-friendly counterpart (``dict`` / ``list``).
-    Tuples become lists for the same reason.
+    Pydantic-core / msgspec cannot encode ``MappingProxyType`` directly,
+    so each immutable container is converted back to its mutable
+    JSON-friendly counterpart (``dict`` / ``list``).  Tuples become
+    lists for the same reason.  Sets / frozensets are rejected by
+    :func:`_recursively_freeze` so the inverse never sees them either,
+    but keep the explicit rejection here so a caller that bypasses
+    ``_freeze_payload`` (e.g. by mutating the model after construction)
+    fails fast at serialise time rather than emitting a non-deterministic
+    audit row.
     """
+    if isinstance(value, (set, frozenset)):
+        msg = (
+            f"audit payload disallows {type(value).__name__} for determinism; "
+            "use a sorted tuple instead"
+        )
+        raise TypeError(msg)
     if isinstance(value, MappingProxyType):
         return {k: _recursively_thaw(v) for k, v in value.items()}
     if isinstance(value, dict):
         return {k: _recursively_thaw(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_recursively_thaw(item) for item in value]
-    if isinstance(value, (set, frozenset)):
         return [_recursively_thaw(item) for item in value]
     return value
 

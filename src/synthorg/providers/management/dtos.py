@@ -124,16 +124,29 @@ def _validate_provider_name(v: str) -> str:
 
 
 def _validate_http_url(v: str | None, *, field: str) -> str | None:
-    """Validate that ``v`` is an http/https URL with a host, or ``None``."""
+    """Validate that ``v`` is an http/https URL with a host, or ``None``.
+
+    Beyond the scheme check, requires ``parsed.hostname`` to be present
+    (rejects host-less inputs like ``http:///path``) and force-resolves
+    ``parsed.port`` so malformed ports like ``https://api.example.com:bad``
+    raise here instead of surfacing as a generic socket error at use
+    time.  ``urlparse(...).port`` raises ``ValueError`` lazily on bad
+    input, so accessing the property is the canonical pre-flight check.
+    """
     if v is None:
         return v
     parsed = urlparse(v)
     if parsed.scheme not in ("http", "https"):
         msg = f"{field} must use http or https scheme, got {parsed.scheme!r}"
         raise ValueError(msg)
-    if not parsed.netloc:
+    if not parsed.hostname:
         msg = f"{field} must include a host"
         raise ValueError(msg)
+    try:
+        _ = parsed.port  # raises ValueError on a malformed ``host:bad`` port
+    except ValueError as exc:
+        msg = f"{field} has malformed port: {exc}"
+        raise ValueError(msg) from exc
     return v
 
 

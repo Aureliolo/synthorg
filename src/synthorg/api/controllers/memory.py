@@ -116,6 +116,7 @@ def _build_memory_service(
             )
             logger.warning(
                 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                backend=type(backend).__name__,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -206,6 +207,7 @@ class MemoryAdminController(Controller):
                 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
                 operation="start",
                 reason="orchestrator_not_configured",
+                backend=type(app_state.persistence).__name__,
             )
             raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator
@@ -256,6 +258,7 @@ class MemoryAdminController(Controller):
                 operation="resume",
                 run_id=run_id,
                 reason="orchestrator_not_configured",
+                backend=type(app_state.persistence).__name__,
             )
             raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator
@@ -320,6 +323,7 @@ class MemoryAdminController(Controller):
                 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
                 operation="cancel",
                 reason="orchestrator_not_configured",
+                backend=type(app_state.persistence).__name__,
             )
             raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator

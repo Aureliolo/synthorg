@@ -143,12 +143,15 @@ class OrgAgentMutationsMixin:
 
         await CASRetryHandler(resource="org_mutation").execute(read, write)
 
+        # Log post-commit values (the persisted model can normalise /
+        # coerce input, e.g. case-folding the name); the request-payload
+        # values can drift from stored truth.
         agent = captured["agent"]
         logger.info(
             API_AGENT_CREATED,
-            agent=data.name,
-            department=data.department,
-            level=data.level.value,
+            agent=agent.name,
+            department=agent.department,
+            level=agent.level.value,
         )
         return agent
 
@@ -246,21 +249,21 @@ class OrgAgentMutationsMixin:
 
         await CASRetryHandler(resource="org_mutation").execute(read, write)
 
-        # Use the post-commit name when ``name`` was among the updated
-        # fields so the audit log reflects the authoritative identifier
-        # the row now carries, not the pre-rename one supplied by the
-        # caller.
+        # Always log the post-commit canonical name; the row's stored
+        # identifier is authoritative even when the request didn't
+        # rename it (the persisted model can still normalise case /
+        # whitespace) and the conditional form added no benefit.
         committed_agent = captured["updated"]
-        agent_for_log = committed_agent.name if "name" in captured_updates else name
         logger.info(
             API_AGENT_UPDATED,
-            agent=agent_for_log,
+            agent=committed_agent.name,
             updated_fields=list(captured_updates.keys()),
         )
         return committed_agent
 
     async def delete_agent(self, name: str, *, saved_by: str = "api") -> None:
         """Delete an agent from the org config."""
+        captured: dict[str, AgentConfig] = {}
 
         async def read() -> tuple[tuple[AgentConfig, ...], str]:
             _, version = await self._read_setting_versioned("company", "agents")
@@ -279,12 +282,13 @@ class OrgAgentMutationsMixin:
                 logger.warning(
                     API_RESOURCE_CONFLICT,
                     reason=msg,
-                    agent=name,
+                    agent=existing.name,
                     level=existing.level.value,
                     role=existing.role,
                 )
                 raise ConflictError(msg)
 
+            captured["resolved"] = existing
             new_agents = tuple(a for a in agents if a.name.lower() != name.lower())
             return new_agents, version
 
@@ -296,7 +300,13 @@ class OrgAgentMutationsMixin:
             await self._snapshot_company(saved_by=saved_by)
 
         await CASRetryHandler(resource="org_mutation").execute(read, write)
-        logger.info(API_AGENT_DELETED, agent=name)
+        # Log the resolved agent's persisted identifier rather than the
+        # caller-supplied ``name``; the lookup is case-insensitive so
+        # the two can differ in case / whitespace, and audit consistency
+        # benefits from always emitting the canonical row id.
+        resolved = captured.get("resolved")
+        agent_for_log = resolved.name if resolved is not None else name
+        logger.info(API_AGENT_DELETED, agent=agent_for_log)
 
     async def reorder_agents(
         self,

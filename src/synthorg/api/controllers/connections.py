@@ -46,7 +46,53 @@ from synthorg.observability.events.integrations import (
 # information about what connections exist and which fields are set.
 _REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 
+# Boundary allowlists for the two free-form ``dict[str, Any]`` payloads
+# this controller still accepts.  The catalog only consumes these keys;
+# any extra key in the request body is a client-side bug (typo, stale
+# field, fabricated capability) and rejecting it at the boundary means
+# the API never silently ACKs payloads it did not actually accept.
+_CREATE_CONNECTION_KEYS: frozenset[str] = frozenset(
+    {
+        "name",
+        "connection_type",
+        "auth_method",
+        "credentials",
+        "base_url",
+        "metadata",
+        "health_check_enabled",
+    },
+)
+_UPDATE_CONNECTION_KEYS: frozenset[str] = frozenset(
+    {
+        "base_url",
+        "metadata",
+        "health_check_enabled",
+    },
+)
+
 logger = get_logger(__name__)
+
+
+def _reject_unknown_keys(
+    data: dict[str, Any],
+    allowed: frozenset[str],
+) -> None:
+    """Raise ``ValidationError`` if ``data`` contains keys outside ``allowed``.
+
+    Centralised so create / update share the same shape: log
+    ``API_VALIDATION_FAILED`` with the unknown keys before raising so
+    operators can spot client-side schema drift early.
+    """
+    unknown = sorted(set(data) - allowed)
+    if not unknown:
+        return
+    msg = f"Unsupported field(s): {', '.join(repr(k) for k in unknown)}"
+    logger.warning(
+        API_VALIDATION_FAILED,
+        unknown_fields=tuple(unknown),
+        reason=msg,
+    )
+    raise ValidationError(msg)
 
 
 class ConnectionsController(Controller):
@@ -125,6 +171,7 @@ class ConnectionsController(Controller):
         delegating to the catalog so clients get a structured
         400 instead of a 500 on malformed payloads.
         """
+        _reject_unknown_keys(data, _CREATE_CONNECTION_KEYS)
         name = data.get("name")
         if not isinstance(name, str) or not name.strip():
             msg = "Field 'name' is required and must be a non-empty string"
@@ -223,17 +270,33 @@ class ConnectionsController(Controller):
         data: dict[str, Any],
     ) -> ApiResponse[Connection]:
         """Update mutable fields of a connection."""
+        _reject_unknown_keys(data, _UPDATE_CONNECTION_KEYS)
         # Validate PATCH field types at the boundary so malformed
         # payloads surface as a structured 400 instead of failing
-        # inside the catalog / Pydantic model layer.
+        # inside the catalog / Pydantic model layer.  Each branch logs
+        # ``API_VALIDATION_FAILED`` with the offending field before
+        # raising so malformed PATCH requests are visible alongside
+        # equivalent 4xx paths in this controller.
         if "base_url" in data:
             base_url_value = data["base_url"]
             if base_url_value is not None and not isinstance(base_url_value, str):
                 msg = "Field 'base_url' must be a string or null"
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    connection_name=name,
+                    field="base_url",
+                    reason=msg,
+                )
                 raise ValidationError(msg)
         metadata = data.get("metadata")
         if metadata is not None and not isinstance(metadata, dict):
             msg = "Field 'metadata' must be an object if provided"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                connection_name=name,
+                field="metadata",
+                reason=msg,
+            )
             raise ValidationError(msg)
         health_check_enabled = data.get("health_check_enabled")
         if health_check_enabled is not None and not isinstance(
@@ -241,6 +304,12 @@ class ConnectionsController(Controller):
             bool,
         ):
             msg = "Field 'health_check_enabled' must be a boolean if provided"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                connection_name=name,
+                field="health_check_enabled",
+                reason=msg,
+            )
             raise ValidationError(msg)
 
         catalog = state["app_state"].connection_catalog
