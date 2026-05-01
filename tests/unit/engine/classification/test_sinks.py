@@ -407,3 +407,18 @@ class TestSlidingWindowRateLimiterRaceConditions:
         # were still in place, ``second`` would have been popped
         # earlier and this take would unexpectedly succeed.
         assert await limiter.take("agent-A") is None
+
+        # Final disambiguation: explicitly release ``second`` and
+        # confirm a slot reopens. Under the buggy "pop newest"
+        # release, ``second`` would already have been popped during
+        # the earlier ``release(first)`` call, so this second
+        # release would be a no-op and the next take would still
+        # return None. Under the correct "remove this exact handle"
+        # logic, ``second`` is still in the events table and the
+        # release frees its slot, so a fresh handle is granted.
+        await limiter.release("agent-A", second)
+        fourth = await limiter.take("agent-A")
+        assert fourth is not None
+        assert fourth is not first
+        assert fourth is not second
+        assert fourth is not third

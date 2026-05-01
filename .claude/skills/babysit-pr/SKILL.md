@@ -129,6 +129,7 @@ If `state` is `MERGED` or `CLOSED`:
   https://github.com/OWNER/REPO/pull/N
   ```
 
+- **Increment `round` (after the print)** and re-write the state file to persist the bump. Per the round-counter rule above, the increment runs at the very end of every tick including terminal exits; cached IDs (`last_review_id` / `last_pr_comment_id` / `last_issue_comment_id`) MUST stay frozen on this path.
 - **Do NOT** ScheduleWakeup. Loop ends.
 
 ## Phase 3: convergence check (success exit, no reschedule)
@@ -153,6 +154,7 @@ If converged:
   https://github.com/OWNER/REPO/pull/N
   ```
 
+- **Increment `round` (after the print)** and re-write the state file to persist the bump. Per the round-counter rule above, the increment runs at the very end of every tick including the convergence terminal exit; cached IDs MUST stay frozen on this path so a future tick re-opening the PR can use them as the watermark from the last triage.
 - **Do NOT** ScheduleWakeup.
 
 ## Phase 4: CodeRabbit rate-limit dance
@@ -189,10 +191,12 @@ There is NO upper bound on `rate_limit_pings`. The user explicitly said 10x with
 Compute deltas vs. cached IDs:
 
 - `new_commits` = current `headRefOid` != `state.last_head_sha`
-- `new_reviews` = `max(review.id) > state.last_review_id` AND review author is not self/synthorg-repo-bot
-- `new_pr_comments` = `max(pr_comment.id) > state.last_pr_comment_id` AND author is not self
-- `new_issue_comments` = `max(issue_comment.id) > state.last_issue_comment_id` AND comment is not self-authored AND body is not `@coderabbitai review` (our own pings)
+- `new_reviews` = `max(r.id for r in reviews if r.author != self_login and r.author != "synthorg-repo-bot[bot]") > state.last_review_id`
+- `new_pr_comments` = `max(c.id for c in pr_comments if c.author != self_login) > state.last_pr_comment_id`
+- `new_issue_comments` = `max(c.id for c in issue_comments if c.author != self_login and c.body != "@coderabbitai review") > state.last_issue_comment_id`
 - `ci_state_change` = current overall CI state differs from cached state
+
+The `max()` MUST be computed over the *filtered* set, not over the full set with the filter applied as a separate predicate. If the implementation took `max(id)` over all reviews and then said "and author is not self", a review whose id is the highest but happens to be from `self_login` would never advance past the filter (the comparison is `max > cached`, but the max itself was excluded), so you would miss that bot/human reviewers below it had advanced. Compute the filter first, then `max()` over the filtered set, then compare. Empty filtered set short-circuits the check to `False`.
 
 If NONE of these AND no rate-limit dance fired in Phase 4:
 - `state.last_action_at = <ISO-now>` (heartbeat)
@@ -341,7 +345,7 @@ Failure handling: if a gate fails, fix the failure in this round (don't push bro
 1. Update `state.json` (success path only: Phase 8 fixes triaged AND pushed). The state write is **read-modify-write**: read the existing state.json (Phase 0 already did this), preserve every field not on the modify-list verbatim, modify only the fields below, and write the merged object back. Do NOT re-emit a fresh template object as the write source; that would zero unrelated fields like `rate_limit_pings` / `scanners_available` / `history` / `self_login`.
    - `round += 1`
    - `last_head_sha = current_head_sha`
-   - **Watermark bump (cached IDs).** `last_review_id = max(id for id in Phase6_working_set, default=last_review_id)` where `Phase6_working_set` is the Phase 6 triage working set *after exclusions* (drop self/`synthorg-repo-bot[bot]` items and your own `@coderabbitai review` pings, before max). Apply the same `max(...)` bump to `last_pr_comment_id` and `last_issue_comment_id` against their respective Phase 6 streams. Bumping over the entire working set (not just the patched-or-marked-valid subset) is what guarantees an item factually-disproved-and-skipped this round doesn't re-surface as new feedback next round. Cached IDs are bumped **only here**, never in Phase 3 convergence exit, Phase 4 / Phase 5 / Phase 6b dismissals.
+   - **Watermark bump (cached IDs).** `last_review_id = max(id for id in Phase6_working_set_after_exclusions, default=last_review_id)` where `Phase6_working_set_after_exclusions` is the Phase 6 triage working set with the same author/body filters applied as Phase 5 (drop `self_login`, `synthorg-repo-bot[bot]`, and your own `@coderabbitai review` pings, then take max). Apply the same `max(...)` bump to `last_pr_comment_id` and `last_issue_comment_id` against their respective Phase 6 streams. Bumping over the entire post-exclusion working set (NOT just the patched subset, NOT just the items marked Valid?=true) guarantees an item factually-disproved-and-skipped this round (Valid?=false in the triage table) doesn't re-surface as new feedback next round. Items get advanced regardless of the triage verdict; what matters is that they were OBSERVED in Phase 6, not whether they were fixed. Cached IDs are bumped **only here**, never in Phase 3 convergence exit, Phase 4 / Phase 5 / Phase 6b dismissals.
    - `last_ci_state = current_ci_state`
    - `last_action_at = <ISO-now>`
    - Append history `{round, action: "fixed_and_pushed", findings: M, sources: {...}}`

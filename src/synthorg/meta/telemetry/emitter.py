@@ -98,6 +98,17 @@ class HttpAnalyticsEmitter:
         # the orphan would continue running and call ``flush`` /
         # ``self._client`` after the client had been closed.
         self._lifecycle_lock = asyncio.Lock()
+        # Dedicated send lock serialises in-flight ``_send_batch`` calls
+        # with ``aclose``'s ``self._client.aclose()``. Without it,
+        # ``aclose`` can close the httpx client mid-POST: the public
+        # ``flush()`` releases ``self._lock`` before calling
+        # ``_send_batch`` (so concurrent emit_* keep enqueuing while
+        # the network round-trip runs), which means there is no
+        # mutual exclusion between an in-flight POST and a racing
+        # ``aclose``. ``aclose`` acquires this lock around its
+        # ``self._client.aclose()`` so any in-flight send finishes
+        # against a live client; the close then proceeds.
+        self._send_lock = asyncio.Lock()
         self._last_flush_at = time.monotonic()
         self._closed = False
         self._flush_task: asyncio.Task[None] | None = None
@@ -180,6 +191,11 @@ class HttpAnalyticsEmitter:
         the periodic task) we re-stage the cleared batch onto the front
         of the buffer so the subsequent ``aclose().flush()`` retries it
         instead of silently dropping the batch.
+
+        ``self._send_lock`` is held across ``_send_batch`` so a
+        concurrent ``aclose`` cannot close ``self._client`` while a
+        POST is mid-flight; ``aclose`` acquires the same lock around
+        its ``self._client.aclose()`` call.
         """
         async with self._lock:
             if not self._buffer:
@@ -188,7 +204,8 @@ class HttpAnalyticsEmitter:
             self._buffer.clear()
             self._last_flush_at = time.monotonic()
         try:
-            await self._send_batch(batch)
+            async with self._send_lock:
+                await self._send_batch(batch)
         except asyncio.CancelledError:
             async with self._lock:
                 # Prepend so chronological order is preserved relative
@@ -250,7 +267,14 @@ class HttpAnalyticsEmitter:
             except Exception as exc:
                 if deferred_exc is None:
                     deferred_exc = exc
-            await self._client.aclose()
+            # Hold ``_send_lock`` over ``_client.aclose()`` so any
+            # in-flight ``_send_batch`` (which holds the same lock
+            # while POSTing) finishes against a live client. The
+            # final ``flush`` above already drained the buffer
+            # serially, but a concurrent caller of the public
+            # ``flush()`` could still be mid-POST when we get here.
+            async with self._send_lock:
+                await self._client.aclose()
             logger.info(XDEPLOY_EMITTER_CLOSED)
             if deferred_exc is not None:
                 raise deferred_exc

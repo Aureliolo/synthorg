@@ -129,39 +129,56 @@ class TestSQLiteDecisionRepositoryAppendAndGet:
 
 @pytest.mark.unit
 class TestSQLiteDecisionRepositoryListByTask:
-    async def test_list_by_task_returns_oldest_first(
+    async def test_list_by_task_returns_oldest_first_with_backfill(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """list_by_task returns records ordered (recorded_at ASC, id ASC).
 
-        Records are inserted with monotonically increasing
-        ``recorded_at`` (each ``_append`` resolves
-        ``datetime.now(UTC)`` afresh), so ``[1, 2, 3]`` versions are
-        the expected reading even with the protocol's chronological
-        ordering instead of the previous ``version ASC``. This test
-        catches regressions where the SQL drifts back to
-        ``ORDER BY version`` (which would mis-position a backfilled
-        decision).
+        Pins the protocol's chronological-ordering contract by inserting
+        a backfilled decision LAST in real time but with the EARLIEST
+        ``recorded_at``: under the previous ``ORDER BY version`` shape,
+        the backfill would sort to position 3 (highest version); under
+        the new ``ORDER BY recorded_at ASC, id ASC`` shape, it sorts to
+        position 1. The version-list assertion ``[3, 1, 2]`` therefore
+        fails the old query and passes the new one, which is the
+        regression the test exists to catch.
         """
         repo = SQLiteDecisionRepository(migrated_db)
-        await _append(repo, record_id="dr-1", task_id="task-A")
+        anchor = datetime(2026, 1, 1, tzinfo=UTC)
+        # Two regular decisions, recorded_at increasing in line with
+        # version assignment (the normal happy path).
+        await _append(
+            repo,
+            record_id="dr-1",
+            task_id="task-A",
+            recorded_at=anchor + timedelta(seconds=10),
+        )
         await _append(
             repo,
             record_id="dr-2",
             task_id="task-A",
             reviewer_agent_id="carol",
+            recorded_at=anchor + timedelta(seconds=20),
         )
+        # Backfill: inserted LAST so it gets ``version=3``, but its
+        # ``recorded_at`` is BEFORE the others.
         await _append(
             repo,
-            record_id="dr-3",
+            record_id="dr-backfill",
             task_id="task-A",
             reviewer_agent_id="dave",
+            recorded_at=anchor,
         )
+        # Unrelated record under a different task to confirm task
+        # filter is independent of the ordering change.
         await _append(repo, record_id="dr-4", task_id="task-B")
 
         results = await repo.list_by_task("task-A")
         assert len(results) == 3
-        assert [r.version for r in results] == [1, 2, 3]
+        # Chronological order must place the backfill first even
+        # though it has the highest version.
+        assert [r.id for r in results] == ["dr-backfill", "dr-1", "dr-2"]
+        assert [r.version for r in results] == [3, 1, 2]
 
     async def test_list_by_task_empty(self, migrated_db: aiosqlite.Connection) -> None:
         """list_by_task returns empty tuple for unknown task."""

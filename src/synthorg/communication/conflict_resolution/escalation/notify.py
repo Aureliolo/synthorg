@@ -222,6 +222,12 @@ class PostgresEscalationNotifySubscriber:
                     await task
                 except asyncio.CancelledError:
                     pass
+                except MemoryError, RecursionError:
+                    # Catastrophic interpreter-level errors must
+                    # surface to the caller; never log-and-swallow
+                    # because that hides loss-of-process conditions
+                    # behind a "clean shutdown" log line.
+                    raise
                 except Exception as exc:
                     logger.warning(
                         CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
@@ -269,6 +275,11 @@ class PostgresEscalationNotifySubscriber:
             try:
                 await self._listen_once()
             except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                # Match ``_drain``: surface catastrophic
+                # interpreter-level errors instead of looping past
+                # them at WARNING.
                 raise
             except Exception as exc:
                 logger.warning(

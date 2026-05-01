@@ -161,6 +161,12 @@ class EscalationExpirationSweeper:
                 except asyncio.CancelledError:
                     # Expected: we just cancelled the task.
                     pass
+                except MemoryError, RecursionError:
+                    # Catastrophic interpreter-level errors must
+                    # surface to the caller; never log-and-swallow
+                    # because that hides loss-of-process conditions
+                    # behind a "clean shutdown" log line.
+                    raise
                 except Exception as exc:
                     # Best-effort shutdown: never propagate, but elevate
                     # to WARNING so real failures surface in production
@@ -208,6 +214,11 @@ class EscalationExpirationSweeper:
             try:
                 await self._sweep_once()
             except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                # Match the ``_drain`` shape: surface catastrophic
+                # interpreter-level errors instead of looping past
+                # them at WARNING.
                 raise
             except Exception as exc:
                 logger.warning(
