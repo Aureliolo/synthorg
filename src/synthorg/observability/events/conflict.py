@@ -28,6 +28,16 @@ CONFLICT_ESCALATION_QUEUED: Final[str] = "conflict.escalation.queued"
 CONFLICT_ESCALATION_RESOLVED: Final[str] = "conflict.escalation.resolved"
 CONFLICT_ESCALATION_CANCELLED: Final[str] = "conflict.escalation.cancelled"
 CONFLICT_ESCALATION_EXPIRED: Final[str] = "conflict.escalation.expired"
+CONFLICT_ESCALATION_STATUS_TRANSITIONED: Final[str] = (
+    "conflict.escalation.status_transitioned"
+)
+"""Escalation status transition (any persisted hop).
+
+Emitted AFTER the in-memory or persistent store write succeeds,
+carrying ``from_status`` / ``to_status`` / ``escalation_id``.  The
+terminal events (``CONFLICT_ESCALATION_RESOLVED`` / ``_CANCELLED`` /
+``_EXPIRED``) stay on the terminal hop as caller-facing markers;
+the transition event is the cross-hop audit-stream signal."""
 CONFLICT_ESCALATION_TIMEOUT: Final[str] = "conflict.escalation.timeout"
 CONFLICT_ESCALATION_SWEEPER_STARTED: Final[str] = "conflict.escalation.sweeper_started"
 CONFLICT_ESCALATION_SWEEPER_STOPPED: Final[str] = "conflict.escalation.sweeper_stopped"

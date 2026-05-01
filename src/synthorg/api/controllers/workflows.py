@@ -54,6 +54,10 @@ from synthorg.engine.workflow.validation import (
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import (
+    WORKFLOW_DEFINITION_CHANGE_REQUESTED,
+    WORKFLOW_DEFINITION_CHANGED,
+)
 from synthorg.observability.events.blueprint import (
     BLUEPRINT_INSTANTIATE_START,
     BLUEPRINT_INSTANTIATE_SUCCESS,
@@ -206,17 +210,16 @@ class WorkflowController(Controller):
             # Duplicate id hit at the SQL level in ``create_if_absent``.
             # Surface as HTTP 409 so clients retrying a failed create do
             # not see a 500.
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,
                 definition_id=definition.id,
                 reason="duplicate_id",
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=scrubbed,
             )
             return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=str(exc),
-                ),
+                content=ApiResponse[WorkflowDefinition](error=scrubbed),
                 status_code=409,
             )
 
@@ -320,28 +323,49 @@ class WorkflowController(Controller):
                 status_code=422,
             )
 
+        # Pre-persist intent log -- captures the operator's request
+        # even if the write itself fails. ``WORKFLOW_DEFINITION_CHANGED``
+        # below confirms actual success.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGE_REQUESTED,
+            definition_id=definition.id,
+            action="create",
+            actor=creator,
+            version_after=definition.version,
+        )
+
         try:
             await _service(state).create_definition(definition, saved_by=creator)
         except WorkflowDefinitionExistsError as exc:
             # The service raises this when ``create_if_absent`` hits a
             # duplicate id at the SQL level. Map to HTTP 409 so clients
             # retrying a failed create do not see a 500.
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,
                 definition_id=definition.id,
                 reason="duplicate_id",
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=scrubbed,
             )
             return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=str(exc),
-                ),
+                content=ApiResponse[WorkflowDefinition](error=scrubbed),
                 status_code=409,
             )
 
         # Snapshot recording is handled inside ``WorkflowService`` via the
         # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
+
+        # Post-persist confirmation -- emitted only after the write
+        # succeeds so the audit stream cannot record a "changed" hop
+        # for a definition the database never accepted.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=definition.id,
+            action="create",
+            actor=creator,
+            version_after=definition.version,
+        )
 
         return Response(
             content=ApiResponse[WorkflowDefinition](data=definition),
@@ -376,7 +400,7 @@ class WorkflowController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 ),
                 status_code=404,
             )
@@ -416,6 +440,17 @@ class WorkflowController(Controller):
             )
 
         updater = get_auth_user_id(request)
+        # Pre-persist intent log -- captures the operator's request
+        # even if the update fails. ``WORKFLOW_DEFINITION_CHANGED``
+        # below confirms actual success.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGE_REQUESTED,
+            definition_id=updated.id,
+            action="update",
+            actor=updater,
+            version_before=existing.version,
+            version_after=updated.version,
+        )
         try:
             await service.update_definition(updated, saved_by=updater)
         except WorkflowDefinitionNotFoundError as exc:
@@ -428,7 +463,9 @@ class WorkflowController(Controller):
                 operation="update_workflow",
             )
             return Response(
-                content=ApiResponse[WorkflowDefinition](error=str(exc)),
+                content=ApiResponse[WorkflowDefinition](
+                    error=safe_error_description(exc),
+                ),
                 status_code=404,
             )
         except VersionConflictError as exc:
@@ -448,6 +485,17 @@ class WorkflowController(Controller):
         # Snapshot recording is handled inside ``WorkflowService`` via the
         # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
 
+        # Post-persist confirmation -- emitted only after the update
+        # actually lands.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=updated.id,
+            action="update",
+            actor=updater,
+            version_before=existing.version,
+            version_after=updated.version,
+        )
+
         return Response(
             content=ApiResponse[WorkflowDefinition](data=updated),
         )
@@ -462,10 +510,20 @@ class WorkflowController(Controller):
     )
     async def delete_workflow(
         self,
+        request: Request[Any, Any, Any],
         state: State,
         workflow_id: PathId,
     ) -> None:
         """Delete a workflow definition and its version history."""
+        actor = get_auth_user_id(request)
+        # Pre-delete intent log -- captures the operator's request even
+        # if the delete itself fails.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGE_REQUESTED,
+            definition_id=workflow_id,
+            action="delete",
+            actor=actor,
+        )
         deleted = await _service(state).delete_definition(workflow_id)
         if not deleted:
             logger.warning(
@@ -474,6 +532,13 @@ class WorkflowController(Controller):
             )
             msg = "Workflow definition not found"
             raise NotFoundError(msg)
+        # Post-delete confirmation -- emitted only on persistence success.
+        logger.info(
+            WORKFLOW_DEFINITION_CHANGED,
+            definition_id=workflow_id,
+            action="delete",
+            actor=actor,
+        )
 
     @post("/validate-draft", guards=[require_read_access], status_code=200)
     async def validate_draft(
@@ -582,14 +647,15 @@ class WorkflowController(Controller):
         try:
             yaml_str = export_workflow_yaml(definition)
         except ValueError as exc:
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=scrubbed,
             )
             return Response(
                 content=ApiResponse[None](
-                    error=f"Export failed: {exc}",
+                    error=f"Export failed: {scrubbed}",
                 ),
                 status_code=422,
             )

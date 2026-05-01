@@ -63,15 +63,6 @@ Emitted on the 409 path so audit / telemetry counters do not conflate
 failed cancel attempts with successful cancellations.
 """
 
-WORKFLOW_EXEC_USERNAME_FALLBACK: Final[str] = "workflow.execution.username_fallback"
-"""Request reached a workflow execution endpoint without a recognised user.
-
-Emitted at WARNING when the username extractor falls back to ``"api"``
-because the request scope had no ``user`` attribute (or the user lacked
-a ``username``). Useful for spotting auth-middleware regressions that
-silently drop the user identity.
-"""
-
 WORKFLOW_EXEC_STATUS_TRANSITIONED: Final[str] = "workflow.execution.status_transitioned"
 """Workflow execution status transitioned -- emitted on every persisted hop.
 
@@ -116,3 +107,9 @@ WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED: Final[str] = (
     "workflow.execution.subworkflow.node_completed"
 )
 """A SUBWORKFLOW node finished walking its child graph."""
+
+WORKFLOW_EXECUTION_USERNAME_FALLBACK: Final[str] = (
+    "workflow.execution.username_fallback"
+)
+"""Workflow-execution caller resolved to a username fallback when the
+session principal lacked a stable identifier."""

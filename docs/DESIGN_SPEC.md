@@ -27,6 +27,8 @@ The design specification has been split into focused documentation pages for bet
 | [Providers](design/providers.md) | Provider abstraction, routing | LLM provider layer, LiteLLM integration, multi-provider resolution |
 | [Budget & Cost](design/budget.md) | Budget hierarchy, cost tracking, CFO, reporting | Per-agent cost enforcement, quota degradation, risk budget, PTE |
 | [Tools & Capabilities](design/tools.md) | Tool categories, sandboxing, MCP, trust | Layered sandbox, progressive disclosure, action types, access levels |
+| [Integrations](design/integrations.md) | OAuth flows, MCP catalog, webhooks, tunnel, health | External service integrations: OAuth provider connections, MCP server catalog + install, outbound webhooks, ngrok-style tunnel, integration-health rollups |
+| [A2A Protocol](design/a2a-protocol.md) | Agent-to-agent transport | Agent Card discovery, capability negotiation, signed envelope, well-known JWKS, gateway authentication |
 | [Security & Approval](design/security.md) | Approval workflow, autonomy, output scanning, policy engine | Fail-closed rule engine, review gates, credential isolation, A2A auth |
 | [Observability](design/observability.md) | Performance tracking, structured logging, correlation, event taxonomy | 11 default sinks, Prometheus / OTLP export, runtime-editable levels |
 | [Notifications](design/notifications.md) | NotificationSink protocol, dispatcher, adapters | Console / ntfy / Slack / email adapters, severity filtering |

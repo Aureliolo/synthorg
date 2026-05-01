@@ -144,8 +144,9 @@ class TestAsyncTaskServiceUpdate:
 class TestAsyncTaskServiceCancel:
     async def test_cancel_calls_engine(self) -> None:
         service, engine, _bus = _make_service()
-        engine.cancel_task.return_value = _make_task(
-            status=TaskStatus.CANCELLED,
+        engine.cancel_task.return_value = (
+            _make_task(status=TaskStatus.CANCELLED),
+            TaskStatus.IN_PROGRESS,
         )
         status = await service.cancel_async_task(
             task_id="task-100",

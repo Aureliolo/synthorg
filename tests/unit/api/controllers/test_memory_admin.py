@@ -239,9 +239,9 @@ class TestRecommendBatchSize:
         assert args[0] == MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED
         assert kwargs.get("error_type") == "RuntimeError"
         assert "CUDA driver unavailable" in kwargs.get("error", "")
-        # ``logger.warning(..., error=str(exc), exc_info=True)`` is
-        # a leak vector; ``exc_info=True`` is dropped so traceback
-        # frame-locals never reach the structured log record.
+        # ``exc_info`` is intentionally NOT set: the full traceback
+        # bypasses ``safe_error_description`` and can leak environment
+        # paths / backend metadata; SEC-1.
         assert "exc_info" not in kwargs
 
 
@@ -292,10 +292,10 @@ class TestDeleteMemoryEntryEndpoint:
         from unittest.mock import AsyncMock
 
         from litestar.datastructures import State
-        from litestar.exceptions import NotFoundException
 
         from synthorg.api.controllers import memory as memory_module
         from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.core.domain_errors import NotFoundError
 
         fake_service = SimpleNamespace(
             delete_memory_entry=AsyncMock(return_value=False),
@@ -312,7 +312,7 @@ class TestDeleteMemoryEntryEndpoint:
         original_build = memory_module._build_memory_service
         memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
         try:
-            with pytest.raises(NotFoundException):
+            with pytest.raises(NotFoundError):
                 await controller.delete_memory_entry.fn(
                     controller,
                     state=State({"app_state": SimpleNamespace()}),
@@ -331,10 +331,10 @@ class TestDeleteMemoryEntryEndpoint:
         from unittest.mock import AsyncMock
 
         from litestar.datastructures import State
-        from litestar.exceptions import ClientException
 
         from synthorg.api.controllers import memory as memory_module
         from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.core.domain_errors import FeatureNotImplementedError
         from synthorg.memory.fine_tune_plan import BackendUnsupportedError
 
         fake_service = SimpleNamespace(
@@ -354,7 +354,7 @@ class TestDeleteMemoryEntryEndpoint:
         original_build = memory_module._build_memory_service
         memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
         try:
-            with pytest.raises(ClientException) as exc_info:
+            with pytest.raises(FeatureNotImplementedError) as exc_info:
                 await controller.delete_memory_entry.fn(
                     controller,
                     state=State({"app_state": SimpleNamespace()}),

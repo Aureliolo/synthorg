@@ -741,6 +741,15 @@ class ProviderController(Controller):
         svc = app_state.provider_management
 
         async def _event_stream() -> AsyncIterator[dict[str, str]]:
+            # Carve-out: SSE responses cannot raise domain exceptions
+            # to the central RFC 9457 handler because the response
+            # headers (``Content-Type: text/event-stream``, etc.) are
+            # already on the wire by the time the first event yields.
+            # Errors emitted after stream start MUST use this in-stream
+            # ``event: error`` schema; ``sse_error()`` produces the
+            # documented payload shape so clients can discriminate
+            # in-stream errors from connection failures.  The same
+            # applies to ``except ProviderValidationError`` below.
             try:
                 async for event in svc.pull_model(name, data.model_name):
                     if event.done and event.error:

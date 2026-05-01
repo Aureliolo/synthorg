@@ -33,6 +33,9 @@ from synthorg.engine.assignment.rankers import (
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.observability import get_logger
+from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_REGISTRY_BUILD,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -122,7 +125,7 @@ def build_strategy_map(
     effective_scorer = scorer if scorer is not None else _DEFAULT_SCORER
 
     logger.debug(
-        "task_assignment.registry.build",
+        TASK_ASSIGNMENT_REGISTRY_BUILD,
         has_hierarchy=hierarchy is not None,
         custom_scorer=scorer is not None,
     )

@@ -269,6 +269,12 @@ PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED: Final[str] = (
 PERSISTENCE_ARTIFACT_CONTENT_MISSING: Final[str] = (
     "persistence.artifact_storage.content_missing"
 )
+PERSISTENCE_ARTIFACT_METADATA_MISSING: Final[str] = (
+    "persistence.artifact.metadata_missing"
+)
+PERSISTENCE_ARTIFACT_DELETE_NO_STORAGE: Final[str] = (
+    "persistence.artifact.delete_no_storage"
+)
 
 # Project events
 PERSISTENCE_PROJECT_SAVED: Final[str] = "persistence.project.saved"

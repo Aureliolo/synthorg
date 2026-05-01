@@ -9,14 +9,18 @@ from typing import Final
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException, NotFoundException
-from litestar.status_codes import HTTP_409_CONFLICT, HTTP_501_NOT_IMPLEMENTED
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import HumanRole, require_roles
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import (
+    ConflictError,
+    FeatureNotImplementedError,
+    NotFoundError,
+    ValidationError,
+)
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
@@ -38,7 +42,12 @@ from synthorg.memory.service import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
+    MEMORY_CHECKPOINT_DELETE_FAILED,
+    MEMORY_CHECKPOINT_DEPLOY_FAILED,
+    MEMORY_CHECKPOINT_NOT_FOUND,
+    MEMORY_CHECKPOINT_ROLLBACK_FAILED,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
@@ -83,14 +92,15 @@ def _build_memory_service(
         app_state: Active application state.
         require_fine_tune: When ``True`` (default), eagerly resolve
             ``fine_tune_checkpoints`` / ``fine_tune_runs`` and raise
-            :class:`ClientException` (HTTP 501) when they are absent.
-            When ``False``, leave the repos as ``None`` so the service
-            constructs cleanly for memory-only endpoints.
+            :class:`FeatureNotImplementedError` (HTTP 501) when they
+            are absent.  When ``False``, leave the repos as ``None``
+            so the service constructs cleanly for memory-only
+            endpoints.
 
     Raises:
-        ClientException: When ``require_fine_tune`` is ``True`` and the
-            backend does not implement the fine-tune repositories
-            (HTTP 501).
+        FeatureNotImplementedError: When ``require_fine_tune`` is
+            ``True`` and the backend does not implement the fine-tune
+            repositories (HTTP 501).
     """
     backend = app_state.persistence
     checkpoint_repo: FineTuneCheckpointRepository | None = None
@@ -100,13 +110,17 @@ def _build_memory_service(
             checkpoint_repo = backend.fine_tune_checkpoints
             run_repo = backend.fine_tune_runs
         except NotImplementedError as exc:
-            raise ClientException(
-                detail=(
-                    "Fine-tune admin endpoints are not supported by the "
-                    "active persistence backend."
-                ),
-                status_code=HTTP_501_NOT_IMPLEMENTED,
-            ) from exc
+            msg = (
+                "Fine-tune admin endpoints are not supported by the "
+                "active persistence backend."
+            )
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                backend=type(backend).__name__,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise FeatureNotImplementedError(msg) from exc
     return MemoryService(
         checkpoint_repo=checkpoint_repo,
         run_repo=run_repo,
@@ -188,7 +202,14 @@ class MemoryAdminController(Controller):
             base_model=data.base_model,
         )
         if not app_state.has_fine_tune_orchestrator:
-            raise ClientException(detail="Fine-tuning is not available")
+            msg = "Fine-tuning is not available"
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                operation="start",
+                reason="orchestrator_not_configured",
+                backend=type(app_state.persistence).__name__,
+            )
+            raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator
         try:
             run = await orchestrator.start(data)
@@ -198,10 +219,8 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ClientException(
-                detail="A fine-tuning run is already active",
-                status_code=HTTP_409_CONFLICT,
-            ) from exc
+            msg = "A fine-tuning run is already active"
+            raise ConflictError(msg) from exc
         return ApiResponse(
             data=FineTuneStatus(
                 run_id=run.id,
@@ -233,7 +252,15 @@ class MemoryAdminController(Controller):
         """Resume a failed/cancelled pipeline run."""
         app_state: AppState = state.app_state
         if not app_state.has_fine_tune_orchestrator:
-            raise ClientException(detail="Fine-tuning is not available")
+            msg = "Fine-tuning is not available"
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                operation="resume",
+                run_id=run_id,
+                reason="orchestrator_not_configured",
+                backend=type(app_state.persistence).__name__,
+            )
+            raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator
         try:
             run = await orchestrator.resume(run_id)
@@ -244,10 +271,8 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ClientException(
-                detail="A fine-tuning run is already active",
-                status_code=HTTP_409_CONFLICT,
-            ) from exc
+            msg = "A fine-tuning run is already active"
+            raise ConflictError(msg) from exc
         except ValueError as exc:
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,
@@ -255,9 +280,8 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ClientException(
-                detail="Run not found or not resumable",
-            ) from exc
+            msg = "Run not found or not resumable"
+            raise NotFoundError(msg) from exc
         return ApiResponse(
             data=FineTuneStatus(
                 run_id=run.id,
@@ -294,7 +318,14 @@ class MemoryAdminController(Controller):
         """Cancel the active pipeline run."""
         app_state: AppState = state.app_state
         if not app_state.has_fine_tune_orchestrator:
-            raise ClientException(detail="Fine-tuning is not available")
+            msg = "Fine-tuning is not available"
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                operation="cancel",
+                reason="orchestrator_not_configured",
+                backend=type(app_state.persistence).__name__,
+            )
+            raise FeatureNotImplementedError(msg)
         orchestrator = app_state.fine_tune_orchestrator
         await orchestrator.cancel()
         status = await orchestrator.get_status()
@@ -392,12 +423,28 @@ class MemoryAdminController(Controller):
         try:
             updated = await service.deploy_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundException(detail=str(exc)) from exc
+            logger.warning(
+                MEMORY_CHECKPOINT_NOT_FOUND,
+                checkpoint_id=checkpoint_id,
+                operation="deploy",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            # Controller-authored 4xx message so the response body
+            # never echoes backend exception class names / wording;
+            # full diagnostic detail stays in the warning log above.
+            msg = "Checkpoint not found"
+            raise NotFoundError(msg) from exc
         except QueryError as exc:
-            raise ClientException(
-                detail="Failed to update embedder settings",
-                status_code=HTTP_409_CONFLICT,
-            ) from exc
+            logger.warning(
+                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                checkpoint_id=checkpoint_id,
+                operation="deploy",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Failed to deploy checkpoint"
+            raise ConflictError(msg) from exc
         return ApiResponse(data=updated)
 
     @post(
@@ -423,21 +470,49 @@ class MemoryAdminController(Controller):
 
         Exception mapping:
 
-        - ``CheckpointNotFoundError`` -> HTTP 404
+        - ``CheckpointNotFoundError`` -> HTTP 404 via ``NotFoundError``
         - ``CheckpointRollbackUnavailableError``,
-          ``CheckpointRollbackCorruptError`` -> HTTP 400 via
-          ``ClientException`` (operator error / corrupt backup)
+          ``CheckpointRollbackCorruptError`` -> HTTP 422 via
+          ``ValidationError`` (operator error / corrupt backup)
         - Any other exception propagates as HTTP 500
         """
         service = _build_memory_service(state.app_state)
         try:
             updated = await service.rollback_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundException(detail=str(exc)) from exc
+            logger.warning(
+                MEMORY_CHECKPOINT_NOT_FOUND,
+                checkpoint_id=checkpoint_id,
+                operation="rollback",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Checkpoint not found"
+            raise NotFoundError(msg) from exc
         except CheckpointRollbackUnavailableError as exc:
-            raise ClientException(detail=str(exc)) from exc
+            # Operator-error / corrupt backup conditions; 422 better
+            # reflects "rollback target invalid" than a generic 400.
+            logger.warning(
+                MEMORY_CHECKPOINT_ROLLBACK_FAILED,
+                checkpoint_id=checkpoint_id,
+                operation="rollback",
+                reason="rollback_unavailable",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Checkpoint rollback is unavailable"
+            raise ValidationError(msg) from exc
         except CheckpointRollbackCorruptError as exc:
-            raise ClientException(detail=str(exc)) from exc
+            logger.warning(
+                MEMORY_CHECKPOINT_ROLLBACK_FAILED,
+                checkpoint_id=checkpoint_id,
+                operation="rollback",
+                reason="rollback_corrupt",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Checkpoint rollback data is corrupt"
+            raise ValidationError(msg) from exc
         return ApiResponse(data=updated)
 
     @delete(
@@ -469,12 +544,28 @@ class MemoryAdminController(Controller):
         try:
             await service.delete_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise NotFoundException(detail=str(exc)) from exc
+            logger.warning(
+                MEMORY_CHECKPOINT_NOT_FOUND,
+                checkpoint_id=checkpoint_id,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Checkpoint not found"
+            raise NotFoundError(msg) from exc
         except QueryError as exc:
-            raise ClientException(
-                detail=str(exc),
-                status_code=HTTP_409_CONFLICT,
-            ) from exc
+            logger.warning(
+                MEMORY_CHECKPOINT_DELETE_FAILED,
+                checkpoint_id=checkpoint_id,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            # Use a controller-authored message so backend exception
+            # text doesn't leak into the 409 response.  Detail stays in
+            # the warning log above for operator triage.
+            msg = "Failed to delete checkpoint"
+            raise ConflictError(msg) from exc
         return ApiResponse(data=None)
 
     # -- Memory entries (GDPR) ---------------------------------------
@@ -517,16 +608,16 @@ class MemoryAdminController(Controller):
             # ``MEMORY_ENTRY_DELETE_FAILED`` for this branch, so the
             # controller stays in the layering role of HTTP
             # translation only and does not double-record the event.
-            raise ClientException(
-                detail=str(exc),
-                status_code=HTTP_501_NOT_IMPLEMENTED,
+            raise FeatureNotImplementedError(
+                safe_error_description(exc),
             ) from exc
         if not deleted:
             # ``MemoryService.delete_memory_entry`` emits
             # ``MEMORY_ENTRY_DELETE_FAILED`` with ``reason="not_found"``
             # for this branch, so the controller stays in the layering
             # role of HTTP translation only.
-            raise NotFoundException(detail=f"memory entry {memory_id!r} not found")
+            msg = f"memory entry {memory_id!r} not found"
+            raise NotFoundError(msg)
         return ApiResponse(data=None)
 
     # -- Run history -------------------------------------------------
@@ -591,11 +682,16 @@ class MemoryAdminController(Controller):
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                # Re-raise after logging instead of silently
+                # swallowing -- a settings-service failure here would
+                # otherwise look like "no embedder configured" to the
+                # caller, masking the broken backend.
                 logger.warning(
                     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+                raise
         return ApiResponse(data=result)
 
 
@@ -739,10 +835,13 @@ def _recommend_batch_size() -> int | None:
         # torch is optional -- absence is expected on CPU-only installs.
         return None
     except Exception as exc:
+        # SEC-1: drop ``exc_info=True``.  The full traceback bypasses
+        # ``safe_error_description`` and can leak environment paths /
+        # backend metadata; the redacted form is sufficient for triage.
         logger.warning(
             MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
-            error=safe_error_description(exc),
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 

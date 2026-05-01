@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+import structlog.testing
 from litestar.testing import TestClient
 
 from tests.unit.api.conftest import make_auth_headers
@@ -131,6 +132,41 @@ class TestUpdateAgent:
         )
         assert resp.status_code == 404
 
+    def test_update_agent_emits_audit_identity_modified(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """update_agent fires AGENT_IDENTITY_MODIFIED audit event with the
+        actor and changed-field set so forensic investigators can
+        reconstruct identity edits."""
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "eng"},
+        )
+        test_client.post(
+            "/api/v1/agents",
+            json={
+                "name": "alice",
+                "role": "dev",
+                "department": "eng",
+                "level": "mid",
+            },
+        )
+        with structlog.testing.capture_logs() as events:
+            resp = test_client.patch(
+                "/api/v1/agents/alice",
+                json={"level": "senior"},
+            )
+        assert resp.status_code == 200
+        identity_events = [
+            e for e in events if e.get("event") == "audit.agent.identity_modified"
+        ]
+        assert len(identity_events) == 1
+        entry = identity_events[0]
+        assert entry["agent_name"] == "alice"
+        assert "level" in entry["fields_changed"]
+        assert entry["actor"]  # non-empty
+
 
 @pytest.mark.unit
 class TestDeleteAgent:
@@ -160,6 +196,53 @@ class TestDeleteAgent:
     ) -> None:
         resp = test_client.delete("/api/v1/agents/nonexistent")
         assert resp.status_code == 404
+
+    def test_delete_agent_emits_audit_pair(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """``delete_agent`` emits ``audit.agent.deletion_requested`` BEFORE
+        the persistence delete and ``audit.agent.deleted`` AFTER it
+        succeeds.  Verify both events fire in the correct order on a
+        happy-path delete so the audit trail captures intent on
+        failure AND confirmation only on actual success.
+        """
+        test_client.post(
+            "/api/v1/departments",
+            json={"name": "eng"},
+        )
+        test_client.post(
+            "/api/v1/agents",
+            json={
+                "name": "alice",
+                "role": "dev",
+                "department": "eng",
+                "level": "mid",
+            },
+        )
+        with structlog.testing.capture_logs() as events:
+            resp = test_client.delete("/api/v1/agents/alice")
+        assert resp.status_code == 204
+
+        # Filter to the two audit events of interest (order in
+        # ``events`` reflects emission order, which is what the
+        # before-then-after contract demands).
+        audit_events = [
+            e
+            for e in events
+            if e.get("event")
+            in ("audit.agent.deletion_requested", "audit.agent.deleted")
+        ]
+        assert len(audit_events) == 2
+        assert audit_events[0]["event"] == "audit.agent.deletion_requested"
+        assert audit_events[1]["event"] == "audit.agent.deleted"
+        # Both entries carry the same identifying context so an
+        # operator inspecting the audit trail can pair the
+        # request with its confirmation without joining on
+        # timestamps.
+        for entry in audit_events:
+            assert entry["agent_name"] == "alice"
+            assert entry["actor"]
 
     def test_delete_c_suite_agent_409(
         self,

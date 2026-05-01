@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
+    EVOLUTION_GUARD_INVALID_CONFIG,
     EVOLUTION_ROLLBACK_TRIGGERED,
 )
 
@@ -31,10 +32,94 @@ class RollbackGuard:
 
         Args:
             window_tasks: Number of tasks to observe post-adaptation.
-            regression_threshold: Quality drop threshold (0-1) to trigger rollback.
+            regression_threshold: Quality drop threshold (0-1) to
+                trigger rollback.  Default 0.1 = 10% quality drop;
+                tighter than humans typically notice but loose enough
+                to absorb evaluation-noise without thrashing.
+
+        Raises:
+            ValueError: If ``window_tasks`` is not a positive integer
+                (``bool`` rejected explicitly because ``isinstance(True,
+                int)`` is True), or if ``regression_threshold`` is
+                non-finite (``NaN`` / ``+inf`` / ``-inf``) or outside
+                ``[0, 1]``.  A non-positive window silently disables
+                rollback monitoring; a non-finite threshold disables
+                the guard; an out-of-range threshold inverts its
+                meaning -- all three surface here.
         """
+        import math  # noqa: PLC0415
+
+        if not isinstance(window_tasks, int) or isinstance(window_tasks, bool):
+            self._raise_invalid_config(
+                field="window_tasks",
+                value=window_tasks,
+                constraint="must be int (not bool)",
+                msg=f"window_tasks must be an integer, got {window_tasks!r}",
+            )
+        if window_tasks <= 0:
+            self._raise_invalid_config(
+                field="window_tasks",
+                value=window_tasks,
+                constraint="must be > 0",
+                msg=f"window_tasks must be > 0, got {window_tasks!r}",
+            )
+        if not isinstance(regression_threshold, int | float) or isinstance(
+            regression_threshold, bool
+        ):
+            self._raise_invalid_config(
+                field="regression_threshold",
+                value=regression_threshold,
+                constraint="must be real number (not bool)",
+                msg=(
+                    f"regression_threshold must be a real number in "
+                    f"[0, 1], got {regression_threshold!r}"
+                ),
+            )
+        if not math.isfinite(regression_threshold):
+            self._raise_invalid_config(
+                field="regression_threshold",
+                value=regression_threshold,
+                constraint="must be finite",
+                msg=(
+                    f"regression_threshold must be a finite number in "
+                    f"[0, 1], got {regression_threshold!r}"
+                ),
+            )
+        if regression_threshold < 0.0 or regression_threshold > 1.0:
+            self._raise_invalid_config(
+                field="regression_threshold",
+                value=regression_threshold,
+                constraint="must be in [0, 1]",
+                msg=(
+                    f"regression_threshold must be in [0, 1], "
+                    f"got {regression_threshold!r}"
+                ),
+            )
         self._window_tasks = window_tasks
         self._regression_threshold = regression_threshold
+
+    @staticmethod
+    def _raise_invalid_config(
+        *,
+        field: str,
+        value: object,
+        constraint: str,
+        msg: str,
+    ) -> None:
+        """Log + raise on invalid construction arg.
+
+        Centralises the warning + ValueError pattern so __init__ stays
+        readable as a sequence of preconditions rather than a stack of
+        repeated five-line blocks.
+        """
+        logger.warning(
+            EVOLUTION_GUARD_INVALID_CONFIG,
+            guard_name="rollback",
+            field=field,
+            value=str(value),
+            constraint=constraint,
+        )
+        raise ValueError(msg)
 
     @property
     def name(self) -> str:

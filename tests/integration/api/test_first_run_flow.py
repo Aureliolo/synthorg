@@ -18,9 +18,10 @@ import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
 from synthorg.api.auth.service import AuthService
 from synthorg.budget.tracker import CostTracker
-from synthorg.config.schema import RootConfig
+from synthorg.config.schema import ProviderConfig, RootConfig
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
@@ -82,10 +83,12 @@ def integration_client(
 
     # Wire up mock provider management so agent creation can
     # validate the provider + model pair.
-    mock_model = MagicMock()
+    from synthorg.core.agent import ModelConfig
+
+    mock_model = MagicMock(spec=ModelConfig)
     mock_model.id = "test-small-001"
     mock_model.alias = None
-    mock_provider_config = MagicMock()
+    mock_provider_config = MagicMock(spec=ProviderConfig)
     mock_provider_config.models = [mock_model]
 
     app = create_app(
@@ -101,7 +104,7 @@ def integration_client(
 
     # Wire mock provider management onto the app state after creation.
     app_state = app.state["app_state"]
-    mock_mgmt = MagicMock()
+    mock_mgmt = MagicMock(spec=ProviderManagementService)
     mock_mgmt.list_providers = AsyncMock(
         return_value={"test-provider": mock_provider_config},
     )

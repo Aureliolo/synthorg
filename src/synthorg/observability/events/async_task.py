@@ -13,6 +13,14 @@ ASYNC_TASK_CANCEL_FAILED: Final[str] = "async_task.cancel_failed"
 ASYNC_TASK_LISTED: Final[str] = "async_task.listed"
 ASYNC_TASK_STATE_CHANNEL_UPDATED: Final[str] = "async_task.state_channel.updated"
 
+ASYNC_TASK_STATUS_TRANSITIONED: Final[str] = "async_task.status_transitioned"
+"""Async task status transition (any persisted hop).
+
+Emitted on every persisted state change (start -> running -> complete
+/ failed / cancelled), not just terminal failures.  Carries
+``task_id`` / ``from_status`` / ``to_status`` / ``execution_time_sec``
+when the timing is available."""
+
 # Tool-layer failures (separate from service-layer events above)
 ASYNC_TASK_TOOL_START_FAILED: Final[str] = "async_task.tool.start_failed"
 ASYNC_TASK_TOOL_CHECK_FAILED: Final[str] = "async_task.tool.check_failed"

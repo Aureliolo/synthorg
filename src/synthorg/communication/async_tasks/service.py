@@ -15,15 +15,18 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message, TextPart
 from synthorg.core.enums import TaskStatus, TaskType
+from synthorg.core.task import Task  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.task_engine_models import CreateTaskData
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
+    ASYNC_TASK_CANCEL_FAILED,
     ASYNC_TASK_CANCELLED,
     ASYNC_TASK_CHECKED,
     ASYNC_TASK_LISTED,
     ASYNC_TASK_START_FAILED,
     ASYNC_TASK_STARTED,
+    ASYNC_TASK_STATUS_TRANSITIONED,
     ASYNC_TASK_UPDATED,
 )
 
@@ -105,7 +108,11 @@ class AsyncTaskService:
                 data,
                 requested_by=supervisor_id,
             )
-            await self._engine.transition_task(
+            # ``transition_task`` returns ``tuple[Task, TaskStatus | None]``;
+            # capture the post-transition Task so subsequent logs read
+            # the actual persisted status (TaskStatus.ASSIGNED) instead
+            # of the stale create-time status (TaskStatus.CREATED).
+            task, _prior_status = await self._engine.transition_task(
                 task.id,
                 TaskStatus.ASSIGNED,
                 requested_by=supervisor_id,
@@ -113,35 +120,146 @@ class AsyncTaskService:
                 assigned_to=task_spec.agent_id,
                 parent_task_id=task_spec.parent_task_id,
             )
-        except Exception:
-            logger.exception(
+        except MemoryError, RecursionError:
+            # Process-fatal builtins propagate before any logging /
+            # rollback work runs -- project convention for system-error
+            # propagation.
+            raise
+        except Exception as exc:
+            # Include ``task_id`` when the create succeeded so this
+            # primary failure log can be correlated with the rollback
+            # warning below (which already carries it).  ``None`` when
+            # ``create_task`` raised before any row was created.
+            logger.warning(
                 ASYNC_TASK_START_FAILED,
                 supervisor_id=supervisor_id,
                 title=task_spec.title,
+                task_id=task.id if task is not None else None,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             if task is not None:
-                try:
-                    await self._engine.cancel_task(
-                        task.id,
-                        requested_by=supervisor_id,
-                        reason="assignment_failed",
-                    )
-                except Exception:
-                    logger.warning(
-                        ASYNC_TASK_START_FAILED,
-                        task_id=task.id,
-                        error="rollback cancel also failed",
-                        exc_info=True,
-                    )
+                await self._rollback_after_failed_start(task, supervisor_id)
             raise
 
+        self._emit_start_audit(task, task_spec, supervisor_id)
+        return task.id
+
+    async def _rollback_after_failed_start(
+        self,
+        task: Task,
+        supervisor_id: str,
+    ) -> None:
+        """Compensating rollback after a failed start_async_task.
+
+        Re-queries persisted state (``transition_task`` may have
+        committed before raising), then ``delete_task`` for the
+        still-CREATED row or ``cancel_task`` for any later state.
+        ``CREATED -> CANCELLED`` is rejected by the task-state
+        machine, so branching on the in-memory ``task.status`` would
+        orphan the row.  Cancellation uses ``cancel_task``'s
+        lock-captured previous-status return for the transition
+        audit (a stale ``get_task`` snapshot would drift).
+        """
+        rollback_action = "unknown"
+        try:
+            persisted_task = await self._engine.get_task(task.id)
+            rollback_status = (
+                persisted_task.status if persisted_task is not None else None
+            )
+            if rollback_status is TaskStatus.CREATED:
+                rollback_action = "delete"
+                await self._engine.delete_task(
+                    task.id,
+                    requested_by=supervisor_id,
+                )
+            elif rollback_status is not None:
+                rollback_action = "cancel"
+                cancelled_task, rollback_prior = await self._engine.cancel_task(
+                    task.id,
+                    requested_by=supervisor_id,
+                    reason="assignment_failed",
+                )
+                self._emit_rollback_cancel_audit(
+                    task,
+                    supervisor_id,
+                    cancelled_task,
+                    rollback_prior,
+                )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as cancel_exc:
+            logger.warning(
+                ASYNC_TASK_START_FAILED,
+                task_id=task.id,
+                error_type=type(cancel_exc).__name__,
+                reason=f"rollback {rollback_action} also failed",
+                error=safe_error_description(cancel_exc),
+            )
+
+    def _emit_rollback_cancel_audit(
+        self,
+        task: Task,
+        supervisor_id: str,
+        cancelled_task: Task,
+        rollback_prior: TaskStatus | None,
+    ) -> None:
+        """Emit the rollback-path cancel + transition logs.
+
+        Mirrors ``cancel_async_task``'s post-persist logs so the
+        supervisor-facing audit stream records the compensating
+        transition.
+        """
+        rollback_to_status = self._map_status(cancelled_task.status)
+        rollback_from_status = (
+            self._map_status(rollback_prior) if rollback_prior is not None else None
+        )
+        logger.info(
+            ASYNC_TASK_CANCELLED,
+            task_id=task.id,
+            supervisor_id=supervisor_id,
+            reason="assignment_failed",
+        )
+        if rollback_from_status != rollback_to_status:
+            logger.info(
+                ASYNC_TASK_STATUS_TRANSITIONED,
+                task_id=task.id,
+                from_status=(
+                    rollback_from_status.value
+                    if rollback_from_status is not None
+                    else None
+                ),
+                to_status=rollback_to_status.value,
+            )
+
+    def _emit_start_audit(
+        self,
+        task: Task,
+        task_spec: TaskSpec,
+        supervisor_id: str,
+    ) -> None:
+        """Emit ASYNC_TASK_STARTED + ASYNC_TASK_STATUS_TRANSITIONED.
+
+        ``transition_task`` lands the row in ``TaskStatus.ASSIGNED``,
+        which maps to ``AsyncTaskStatus.PENDING`` (see
+        ``_STATUS_MAP``).  Logging ``RUNNING`` here would record a
+        status the database never actually held.  Use the mapped
+        value of the persisted status so the audit stream stays
+        consistent with the row-level state machine.
+        """
         logger.info(
             ASYNC_TASK_STARTED,
             task_id=task.id,
             agent_id=task_spec.agent_id,
             supervisor_id=supervisor_id,
         )
-        return task.id
+        persisted_status = self._map_status(task.status)
+        logger.info(
+            ASYNC_TASK_STATUS_TRANSITIONED,
+            task_id=task.id,
+            from_status=None,
+            to_status=persisted_status.value,
+        )
 
     async def check_async_task(self, task_id: str) -> AsyncTaskStatus:
         """Project TaskEngine state to AsyncTaskStatus.
@@ -249,10 +367,32 @@ class AsyncTaskService:
         Returns:
             Updated status (should be CANCELLED).
         """
-        task = await self._engine.cancel_task(
-            task_id,
-            requested_by=supervisor_id,
-            reason="ASYNC_CANCEL",
+        # ``cancel_task`` returns the previous status captured INSIDE
+        # the actor lock, so the transition log below carries
+        # happens-before-correct audit data even under concurrent
+        # mutation -- no second ``get_task`` round trip needed.
+        try:
+            task, prior_task_status = await self._engine.cancel_task(
+                task_id,
+                requested_by=supervisor_id,
+                reason="ASYNC_CANCEL",
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                ASYNC_TASK_CANCEL_FAILED,
+                task_id=task_id,
+                supervisor_id=supervisor_id,
+                reason="ASYNC_CANCEL",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        prior_status = (
+            self._map_status(prior_task_status)
+            if prior_task_status is not None
+            else None
         )
         status = self._map_status(task.status)
         logger.info(
@@ -260,6 +400,13 @@ class AsyncTaskService:
             task_id=task_id,
             supervisor_id=supervisor_id,
         )
+        if prior_status != status:
+            logger.info(
+                ASYNC_TASK_STATUS_TRANSITIONED,
+                task_id=task_id,
+                from_status=prior_status.value if prior_status is not None else None,
+                to_status=status.value,
+            )
         return status
 
     def _map_status(self, task_status: TaskStatus) -> AsyncTaskStatus:

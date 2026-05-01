@@ -30,31 +30,38 @@ from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_execution import (
-    WORKFLOW_EXEC_CANCEL_CONFLICT,
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NOT_FOUND,
     WORKFLOW_EXEC_PERSISTENCE_FAILED,
-    WORKFLOW_EXEC_USERNAME_FALLBACK,
+    WORKFLOW_EXECUTION_USERNAME_FALLBACK,
 )
 
 logger = get_logger(__name__)
 
 
 def _extract_username(request: Request[Any, Any, Any]) -> str:
-    """Extract username from the request, falling back to ``"api"``."""
+    """Extract username from the request, falling back to ``"api"``.
+
+    Treats ``None`` and empty-string usernames as missing so the
+    fallback warning fires for those cases too -- ``str(None)`` would
+    otherwise persist the literal string ``"None"`` as the actor on
+    workflow audit entries.
+    """
     user = getattr(request, "user", None)
-    if user and hasattr(user, "username"):
-        return str(user.username)
-    # Log only the route path (``url.path``) rather than
-    # ``str(request.url)`` which embeds the query string -- some
-    # workflow callbacks pass auth tokens as query parameters and
-    # those would otherwise land in the warning log.
+    if user is not None:
+        username = getattr(user, "username", None)
+        if isinstance(username, str):
+            stripped = username.strip()
+            if stripped:
+                return stripped
+        elif username:
+            return str(username)
     logger.warning(
-        WORKFLOW_EXEC_USERNAME_FALLBACK,
-        note="request has no user or username attribute, using 'api'",
-        path=request.url.path,
+        WORKFLOW_EXECUTION_USERNAME_FALLBACK,
+        note="request has no usable username, using 'api'",
+        path=str(request.url),
     )
     return "api"
 
@@ -108,32 +115,27 @@ class WorkflowExecutionController(Controller):
             msg = f"Workflow definition {workflow_id!r} not found"
             raise NotFoundError(msg) from None
         except WorkflowDefinitionInvalidError as exc:
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 WORKFLOW_EXEC_INVALID_DEFINITION,
                 workflow_id=workflow_id,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=scrubbed,
             )
-            # Keep the scrubbed exception text in the warning log
-            # only; client-facing ``error`` field stays generic so
-            # internal details don't reach the API caller.
             return Response(
-                content=ApiResponse[WorkflowExecution](
-                    error="Invalid workflow definition.",
-                ),
+                content=ApiResponse[WorkflowExecution](error=scrubbed),
                 status_code=422,
             )
         except WorkflowConditionEvalError as exc:
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
                 workflow_id=workflow_id,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=scrubbed,
             )
             return Response(
-                content=ApiResponse[WorkflowExecution](
-                    error="Workflow condition evaluation failed.",
-                ),
+                content=ApiResponse[WorkflowExecution](error=scrubbed),
                 status_code=422,
             )
         except PersistenceError as exc:
@@ -266,23 +268,16 @@ class WorkflowExecutionController(Controller):
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
         except (WorkflowExecutionError, VersionConflictError) as exc:
-            # ``WORKFLOW_EXEC_CANCEL_CONFLICT`` is the dedicated
-            # 409 event; ``WORKFLOW_EXEC_CANCELLED`` is reserved for
-            # the success path below so audit/telemetry counters
-            # don't conflate failed cancels with successful ones.
+            scrubbed = safe_error_description(exc)
             logger.warning(
-                WORKFLOW_EXEC_CANCEL_CONFLICT,
+                WORKFLOW_EXEC_CANCELLED,
                 execution_id=execution_id,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=scrubbed,
                 note="cancel conflict",
             )
-            # Generic client-facing message; scrubbed detail stays
-            # in the warning log above.
             return Response(
-                content=ApiResponse[WorkflowExecution](
-                    error="Workflow execution cancel conflict.",
-                ),
+                content=ApiResponse[WorkflowExecution](error=scrubbed),
                 status_code=409,
             )
         except PersistenceError as exc:
@@ -300,14 +295,6 @@ class WorkflowExecutionController(Controller):
                 status_code=500,
             )
 
-        # WORKFLOW_EXEC_CANCELLED is emitted only after the
-        # persistence write succeeds; the conflict path above uses
-        # WORKFLOW_EXEC_CANCEL_CONFLICT to avoid counter pollution.
-        logger.info(
-            WORKFLOW_EXEC_CANCELLED,
-            execution_id=execution_id,
-            cancelled_by=cancelled_by,
-        )
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
         )

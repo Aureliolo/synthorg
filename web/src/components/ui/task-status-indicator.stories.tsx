@@ -30,6 +30,15 @@ export const Pulsing: StatusStory = {
   args: { status: 'in_progress', label: true, pulse: true },
 }
 
+// `announce` toggles a live region (aria-live="polite") so screen
+// readers receive the status change when a task transitions in real
+// time over WebSocket.  The visible output is identical to
+// WithLabel; this story exists so the live-region capability is
+// discoverable in Storybook navigation alongside the other variants.
+export const Announce: StatusStory = {
+  args: { status: 'in_progress', label: true, announce: true },
+}
+
 export const AllStatuses: StatusStory = {
   args: { status: 'created', label: true },
   render: () => (

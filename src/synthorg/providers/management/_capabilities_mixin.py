@@ -10,16 +10,6 @@ the contract for mypy strict.
 import asyncio  # noqa: TC003 -- used in TYPE_CHECKING attribute hints
 from typing import TYPE_CHECKING, Protocol
 
-from synthorg.api.dto_provider_capabilities import (
-    AddModelRequest,
-    CredentialsRotateRequest,
-    ProviderAuditActor,
-    ProviderAuditEventType,
-    RateLimitsResponse,
-    RateLimitsUpdateRequest,
-    SyncModelsRequest,
-    SyncModelsResponse,
-)
 from synthorg.config.schema import (  # noqa: TC001 -- runtime use in return types
     ProviderConfig,
     ProviderModelConfig,
@@ -43,6 +33,16 @@ from synthorg.providers.errors import (
 from synthorg.providers.management._capability_helpers import (
     SYSTEM_ACTOR,
     credentials_update_fields,
+)
+from synthorg.providers.management.capability_dtos import (
+    AddModelRequest,
+    CredentialsRotateRequest,
+    ProviderAuditActor,
+    ProviderAuditEventType,
+    RateLimitsResponse,
+    RateLimitsUpdateRequest,
+    SyncModelsRequest,
+    SyncModelsResponse,
 )
 
 if TYPE_CHECKING:

@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from synthorg.api.dto import (
     CreateFromPresetRequest,
@@ -278,7 +279,7 @@ class TestCreateFromPreset:
         request = CreateFromPresetRequest(
             preset_name="test-provider",
             name="my-provider",
-            api_key="test-key",
+            api_key=SecretStr("test-key"),
         )
         with pytest.raises(ProviderValidationError, match="requires a base URL"):
             await service.create_from_preset(request)
@@ -339,7 +340,7 @@ class TestClearApiKey:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="mutually exclusive"):
-            UpdateProviderRequest(api_key="new-key", clear_api_key=True)
+            UpdateProviderRequest(api_key=SecretStr("new-key"), clear_api_key=True)
 
 
 @pytest.mark.unit
@@ -434,7 +435,7 @@ class TestAuthTypeTransitions:
         update = UpdateProviderRequest(
             auth_type=AuthType.CUSTOM_HEADER,
             custom_header_name="X-Auth",
-            custom_header_value="header-val",
+            custom_header_value=SecretStr("header-val"),
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.CUSTOM_HEADER
@@ -460,7 +461,7 @@ class TestAuthTypeTransitions:
         # Switch to api_key but also provide an explicit key
         update = UpdateProviderRequest(
             auth_type=AuthType.API_KEY,
-            api_key="sk-new-explicit-key",
+            api_key=SecretStr("sk-new-explicit-key"),
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.API_KEY
@@ -484,7 +485,7 @@ class TestAuthTypeTransitions:
         )
         update = UpdateProviderRequest(
             auth_type=AuthType.API_KEY,
-            api_key="sk-new-key",
+            api_key=SecretStr("sk-new-key"),
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.API_KEY
@@ -505,7 +506,7 @@ class TestAuthTypeTransitions:
         )
         update = UpdateProviderRequest(
             auth_type=AuthType.SUBSCRIPTION,
-            subscription_token="test-subscription-token",
+            subscription_token=SecretStr("test-subscription-token"),
             tos_accepted=True,
         )
         result = await service.update_provider("test-provider", update)

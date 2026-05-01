@@ -30,7 +30,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_VERSION_CONFLICT,
 )
 from synthorg.settings.config_bridge import extract_from_config
-from synthorg.settings.enums import SettingSource, SettingType
+from synthorg.settings.enums import SettingsImportSource, SettingSource, SettingType
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingReadOnlyError,
@@ -98,7 +98,12 @@ def _env_var_name(namespace: str, key: str) -> str:
     return f"SYNTHORG_{namespace.upper()}_{key.upper()}"
 
 
-def _reject_if_read_only(definition: SettingDefinition, *, action: str) -> None:
+def _reject_if_read_only(
+    definition: SettingDefinition,
+    *,
+    action: str,
+    import_source: SettingsImportSource | None = None,
+) -> None:
     """Raise ``SettingReadOnlyError`` for read-only-post-init settings.
 
     The registry entry exists for discoverability via the /settings
@@ -107,16 +112,22 @@ def _reject_if_read_only(definition: SettingDefinition, *, action: str) -> None:
     ``delete``, ``delete_namespace``) must reject so an operator does
     not believe the override took effect when the running process keeps
     the boot-time value.
+
+    ``import_source`` is included in the validation log when supplied
+    so the every ``set()`` rejection path carries the same tag the
+    happy path emits, keeping the log tagging contract consistent.
     """
     if not definition.read_only_post_init:
         return
-    logger.warning(
-        SETTINGS_VALIDATION_FAILED,
-        namespace=definition.namespace,
-        key=definition.key,
-        reason="read_only_post_init",
-        action=action,
-    )
+    payload: dict[str, object] = {
+        "namespace": definition.namespace,
+        "key": definition.key,
+        "reason": "read_only_post_init",
+        "action": action,
+    }
+    if import_source is not None:
+        payload["import_source"] = import_source.value
+    logger.warning(SETTINGS_VALIDATION_FAILED, **payload)
     msg = (
         f"Setting {definition.namespace}/{definition.key} is sourced"
         f" from env / YAML at startup and cannot be modified at runtime"
@@ -263,6 +274,11 @@ class SettingsService:
         # awaits between the membership test and the set mutation),
         # so no lock is required for cooperative concurrency.
         self._resolution_logged: set[tuple[str, str]] = set()
+
+    @property
+    def registry(self) -> SettingsRegistry:
+        """Read-only access to the registry for callers that need definitions."""
+        return self._registry
 
     def _emit_resolved(
         self,
@@ -715,6 +731,7 @@ class SettingsService:
         value: str,
         *,
         expected_updated_at: str | None = None,
+        import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> SettingEntry:
         """Validate, encrypt, and persist a setting value with optional CAS.
 
@@ -722,6 +739,12 @@ class SettingsService:
         Raises ``VersionConflictError`` on CAS miss,
         ``SettingNotFoundError`` / ``SettingValidationError`` /
         ``SettingsEncryptionError`` on preflight failures.
+
+        ``import_source`` distinguishes how this write entered the
+        service so ``SETTINGS_VALIDATION_FAILED`` log records show
+        whether a malformed value came from an API body, file
+        upload, config merge, or direct set.  Defaults to
+        ``DIRECT_SET`` for in-process callers.
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
@@ -729,12 +752,22 @@ class SettingsService:
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
-        _reject_if_read_only(definition, action="set")
+        _reject_if_read_only(
+            definition,
+            action="set",
+            import_source=import_source,
+        )
 
         try:
             _validate_value(definition, value)
-        except SettingValidationError:
-            logger.warning(SETTINGS_VALIDATION_FAILED, namespace=namespace, key=key)
+        except SettingValidationError as exc:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                import_source=import_source.value,
+                reason=safe_error_description(exc),
+            )
             raise
 
         store_value = self._encrypt_if_sensitive(definition, value)
@@ -779,6 +812,7 @@ class SettingsService:
         items: Sequence[tuple[str, str, str]],
         *,
         expected_updated_at_map: Mapping[tuple[str, str], str],
+        import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> str:
         """Atomically persist multiple setting values with per-key CAS.
 
@@ -792,13 +826,27 @@ class SettingsService:
         on CAS miss (whole transaction rolled back),
         ``SettingNotFoundError`` / ``SettingValidationError`` /
         ``SettingsEncryptionError`` on preflight failures.
+
+        ``import_source`` is forwarded to validation-failure logs so
+        bulk-import audit trails carry the same attribution as the
+        per-key ``set`` path.
         """
         if not items:
             msg = "set_many requires at least one item"
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                action="set_many",
+                reason="empty_batch",
+                import_source=import_source.value,
+            )
             raise ValueError(msg)
 
         updated_at = _now_iso()
-        prepared, definitions = self._prepare_set_many(items, updated_at)
+        prepared, definitions = self._prepare_set_many(
+            items,
+            updated_at,
+            import_source=import_source,
+        )
 
         written = await self._repository.set_many(
             prepared,
@@ -834,6 +882,8 @@ class SettingsService:
         self,
         items: Sequence[tuple[str, str, str]],
         updated_at: str,
+        *,
+        import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> tuple[
         list[tuple[NotBlankStr, NotBlankStr, str, str]],
         list[tuple[str, str, SettingDefinition]],
@@ -852,6 +902,14 @@ class SettingsService:
             pair = (namespace, key)
             if pair in seen:
                 msg = f"Duplicate setting in batch: {namespace}/{key}"
+                logger.warning(
+                    SETTINGS_VALIDATION_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    action="set_many",
+                    reason="duplicate_setting_in_batch",
+                    import_source=import_source.value,
+                )
                 raise SettingValidationError(msg)
             seen.add(pair)
             definition = self._registry.get(namespace, key)
@@ -860,12 +918,22 @@ class SettingsService:
                 msg = f"Unknown setting: {namespace}/{key}"
                 raise SettingNotFoundError(msg)
 
-            _reject_if_read_only(definition, action="set_many")
+            _reject_if_read_only(
+                definition,
+                action="set_many",
+                import_source=import_source,
+            )
 
             try:
                 _validate_value(definition, value)
-            except SettingValidationError:
-                logger.warning(SETTINGS_VALIDATION_FAILED, namespace=namespace, key=key)
+            except SettingValidationError as exc:
+                logger.warning(
+                    SETTINGS_VALIDATION_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    import_source=import_source.value,
+                    reason=safe_error_description(exc),
+                )
                 raise
 
             store_value = self._encrypt_if_sensitive(definition, value)

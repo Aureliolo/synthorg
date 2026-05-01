@@ -57,62 +57,84 @@ Passwords are hashed with Argon2id. The server performs a constant-time dummy ve
 
 The API is organised into resource controllers. Every controller is mounted under the `/api/v1` prefix.
 
+The table below is **auto-generated** from the OpenAPI export by
+`scripts/generate_endpoint_table.py`. Edit the controller (its
+`tags` attribute and class docstring) to change what shows up here;
+run the generator after `scripts/export_openapi.py` to refresh.
+
+<!-- BEGIN: auto-generated endpoint table -->
+
 ### Identity and users
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Auth | `/auth` | Setup, login, password, sessions, WebSocket tickets |
-| Users | `/users` | Human user CRUD (CEO-only), role assignment |
+| Auth | `/auth` | 8 routes under Auth. |
+| Users | `/users` | 4 routes under Users. |
 
 ### Organization and agents
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Company | `/company` | Top-level company identity and config |
-| Departments | `/departments` | Department CRUD, membership, policy overrides |
-| Agents | `/agents` | Agent CRUD, hiring/firing, personality assignment |
-| Agent Autonomy | `/agents/{id}/autonomy` | Per-agent autonomy level and trust policy |
-| Agent Collaboration | `/agents/{id}/collaboration` | Peer collaboration rules |
-| Agent Quality | `/agents/{id}/quality` | Quality score overrides (L3 human layer) |
-| Activities | `/activities` | Activity timeline (lifecycle events, cost events, promotions) |
-| Personalities | `/personalities` | Personality preset CRUD |
+| Activities | `/activities` | Activities endpoint. |
+| Agent Autonomy | `/agents/{agent_id}/autonomy` | Agent Autonomy endpoint. |
+| Agent Collaboration | `/agents/{agent_id}/collaboration` | 3 routes under Agent Collaboration. |
+| Agent Quality | `/agents/{agent_id}/quality/override` | Agent Quality endpoint. |
+| Agents | `/agents` | 10 routes under Agents. |
+| Clients | `/clients` | 3 routes under Clients. |
+| Company | `/company` | 5 routes under Company. |
+| Departments | `/departments` | 8 routes under Departments. |
+| Evaluation | `/evaluation/config/versions` | 2 routes under Evaluation. |
+| Ontology | `/ontology` | 10 routes under Ontology. |
+| Personalities | `/personalities` | 3 routes under Personalities. |
+| Roles | `/roles/{role_name}/versions` | 2 routes under Roles. |
+| Scaling | `/scaling` | 6 routes under Scaling. |
 
 ### Work and coordination
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Projects | `/projects` | Project CRUD, status, artifacts |
-| Tasks | `/tasks` | Task CRUD, assignment, lifecycle transitions |
-| Task Coordination | `/tasks/{id}/coordinate` | Multi-agent coordination actions |
-| Messages | `/messages` | Inter-agent message bus access |
-| Meetings | `/meetings` | Meeting scheduling, participation, minutes |
-| Approvals | `/approvals` | Approval gate queue and decisions |
-| Artifacts | `/artifacts` | Artifact content storage and retrieval |
+| Approvals | `/approvals` | 4 routes under Approvals. |
+| Artifacts | `/artifacts` | 3 routes under Artifacts. |
+| Escalations | `/conflicts/escalations` | 4 routes under Escalations. |
+| Meetings | `/meetings` | 3 routes under Meetings. |
+| Messages | `/messages` | 3 routes under Messages. |
+| Projects | `/projects` | 2 routes under Projects. |
+| Reviews | `/reviews/{task_id}` | 2 routes under Reviews. |
+| Tasks | `/tasks` | 4 routes under Tasks. |
 
 ### Workflows
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Workflows | `/workflows` | Visual workflow definition CRUD, validation, YAML export |
-| Workflow Versions | `/workflows/{id}/versions` | Version history, diff, rollback |
-| Workflow Executions | `/workflow-executions` | Activate, list, get, cancel executions |
-| Template Packs | `/template-packs` | Additive team pack listing and live application |
-| Setup | `/setup` | First-run wizard endpoints (template selection, personality seeding) |
+| Setup | `/setup` | 13 routes under Setup. |
+| Subworkflows | `/subworkflows` | 5 routes under Subworkflows. |
+| Template Packs | `/template-packs` | 2 routes under Template Packs. |
+| Workflow Executions | `/workflow-executions` | 4 routes under Workflow Executions. |
+| Workflows | `/workflows` | 11 routes under Workflows. |
 
 ### Operations and platform
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Liveness | `/healthz` | Process-alive probe (always 200) |
-| Readiness | `/readyz` | Dependency probe (200 healthy, 503 otherwise) |
-| Providers | `/providers` | LLM provider runtime CRUD, model auto-discovery, health |
-| Budget | `/budget` | Cost tracking, spend reports, budget enforcement, risk budget |
-| Analytics | `/analytics` | Aggregated metrics across agents, tasks, and providers |
-| Reports | `/reports` | On-demand report generation (`POST /generate`) and period listing (`GET /periods`) |
-| Memory Admin | `/admin/memory` | Fine-tuning pipeline, checkpoint management, embedder queries |
-| Backups | `/admin/backups` | Backup orchestration, scheduling, retention |
-| Settings | `/settings` | Runtime-editable settings (DB > env > YAML > code) |
-| Ceremony Policy | `/ceremony-policy` | Project and per-department ceremony policy resolution |
+| Admin | `/admin` | 15 routes under Admin. |
+| Analytics | `/analytics` | 3 routes under Analytics. |
+| Backups | `/admin/backups` | 3 routes under Backups. |
+| Budget | `/budget` | 5 routes under Budget. |
+| Ceremony Policy | `/ceremony-policy` | 3 routes under Ceremony Policy. |
+| Coordination | `/coordination` | 2 routes under Coordination. |
+| Event Stream | `/events` | 2 routes under Event Stream. |
+| Health | `/healthz` | 2 routes under Health. |
+| Integrations | `/connections` | 19 routes under Integrations. |
+| Interrupts | `/interrupts` | 2 routes under Interrupts. |
+| Memory Admin | `/admin/memory` | 12 routes under Memory Admin. |
+| Meta | `/meta` | 15 routes under Meta. |
+| Meta Analytics | `/meta/analytics` | 3 routes under Meta Analytics. |
+| Metrics | `/metrics` | Metrics endpoint. |
+| Providers | `/providers` | 20 routes under Providers. |
+| Security | `/security/audit` | Security endpoint. |
+| Settings | `/settings` | 9 routes under Settings. |
+
+<!-- END: auto-generated endpoint table -->
 
 Full request/response schemas for every endpoint are in the **[interactive reference](reference.html)**.
 

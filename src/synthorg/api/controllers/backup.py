@@ -11,11 +11,7 @@ if TYPE_CHECKING:
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import (
-    ClientException,
-    InternalServerException,
-    NotFoundException,
-)
+from litestar.exceptions import InternalServerException
 from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
@@ -43,6 +39,11 @@ from synthorg.backup.models import (
     BackupTrigger,
     RestoreRequest,
     RestoreResponse,
+)
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    ValidationError,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -120,29 +121,25 @@ class BackupController(Controller):
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                raise ClientException(
-                    str(exc),
-                    status_code=409,
-                ) from exc
+                msg_in_progress = "A backup operation is already in progress"
+                raise ConflictError(msg_in_progress) from exc
             except BackupError as exc:
-                logger.error(  # noqa: TRY400
+                logger.error(
                     BACKUP_FAILED,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
+                    exc_info=True,
                 )
                 msg = "Backup operation failed"
                 raise InternalServerException(msg) from exc
 
         if idempotency_key:
-            outcome = await app_state.idempotency_service.run_idempotent(
+            cached, _fresh = await app_state.idempotency_service.run_idempotent(
                 scope=NotBlankStr("backup"),
                 key=NotBlankStr(idempotency_key),
                 callback=lambda: _do_backup_as_dict(_do_backup),
             )
-            if outcome.timed_out:
-                # ``timed_out`` is the discriminated 409 path; it
-                # cannot be confused with a callback that
-                # legitimately returned ``None``.
+            if cached is None:
                 logger.warning(
                     IDEMPOTENCY_CLAIM_IN_FLIGHT,
                     scope="backup",
@@ -150,8 +147,8 @@ class BackupController(Controller):
                     endpoint="backup.create",
                 )
                 msg = "Concurrent in-flight backup with this idempotency key"
-                raise ClientException(msg, status_code=409)
-            return ApiResponse(data=BackupManifest.model_validate(outcome.result))
+                raise ConflictError(msg)
+            return ApiResponse(data=BackupManifest.model_validate(cached))
 
         manifest = await _do_backup()
         return ApiResponse(data=manifest)
@@ -231,7 +228,10 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=backup_id,
             )
-            raise NotFoundException(str(exc)) from exc
+            # Controller-authored message (not the raw service text)
+            # so the 404 response cannot leak backend internals.
+            msg = "Backup not found"
+            raise NotFoundError(msg) from exc
         return ApiResponse(data=manifest)
 
     @delete("/{backup_id:str}", status_code=HTTP_204_NO_CONTENT)
@@ -247,10 +247,11 @@ class BackupController(Controller):
             backup_id: Backup identifier.
 
         Raises:
-            NotFoundException: If backup does not exist (404).
-            HTTPException: 409 if a backup operation is already in
-                progress (mapped centrally from
-                ``BackupInProgressError`` via ``handle_backup_error``).
+            NotFoundError: If backup does not exist (404).
+            ConflictError: If a backup operation is already in progress
+                (409); mirrors ``create_backup`` / ``restore_backup``
+                so all three backup-mutation endpoints share the same
+                domain-error mapping.
         """
         app_state: AppState = state.app_state
         try:
@@ -260,7 +261,18 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=backup_id,
             )
-            raise NotFoundException(str(exc)) from exc
+            msg = "Backup not found"
+            raise NotFoundError(msg) from exc
+        except BackupInProgressError as exc:
+            logger.warning(
+                BACKUP_FAILED,
+                backup_id=backup_id,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg_in_progress = "A backup operation is already in progress"
+            raise ConflictError(msg_in_progress) from exc
 
     @post(
         "/restore",
@@ -285,14 +297,25 @@ class BackupController(Controller):
             Restore response with safety backup ID.
 
         Raises:
-            ClientException: If confirm is false (400), backup in
-                progress (409), or manifest invalid (422).
-            NotFoundException: If the backup does not exist.
+            ValidationError: If confirm is false or manifest invalid (422).
+            ConflictError: If a backup is in progress (409).
+            NotFoundError: If the backup does not exist (404).
             InternalServerException: If the restore fails.
         """
         if not data.confirm:
             msg = "Restore requires confirm=true"
-            raise ClientException(msg, status_code=400)
+            # Missing required precondition is a validation failure, not
+            # a generic 400.  ValidationError maps to 422 via
+            # EXCEPTION_HANDLERS, matching the rest of the codebase's
+            # input-shape errors.  Emit a warning before raising so the
+            # rejection is observable in the audit stream the same way
+            # every other restore-failure branch is.
+            logger.warning(
+                BACKUP_RESTORE_FAILED,
+                backup_id=data.backup_id,
+                reason="confirm_false",
+            )
+            raise ValidationError(msg)
 
         app_state: AppState = state.app_state
         try:
@@ -305,7 +328,8 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=data.backup_id,
             )
-            raise NotFoundException(str(exc)) from exc
+            msg = "Backup not found"
+            raise NotFoundError(msg) from exc
         except ManifestError as exc:
             logger.warning(
                 BACKUP_RESTORE_FAILED,
@@ -313,21 +337,30 @@ class BackupController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ClientException(str(exc), status_code=422) from exc
+            # Controller-authored 4xx message so the response body
+            # never echoes raw manifest-parse internals; full diagnostic
+            # detail stays in the warning log.
+            msg = "Invalid backup manifest"
+            raise ValidationError(msg) from exc
         except BackupInProgressError as exc:
+            # Use BACKUP_RESTORE_FAILED (not BACKUP_FAILED) so restore
+            # failures are tracked separately from create-backup
+            # failures in the audit stream and dashboards.
             logger.warning(
-                BACKUP_FAILED,
-                backup_id=data.backup_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ClientException(str(exc), status_code=409) from exc
-        except RestoreError as exc:
-            logger.error(  # noqa: TRY400
                 BACKUP_RESTORE_FAILED,
                 backup_id=data.backup_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+            )
+            msg_in_progress = "A backup operation is already in progress"
+            raise ConflictError(msg_in_progress) from exc
+        except RestoreError as exc:
+            logger.error(
+                BACKUP_RESTORE_FAILED,
+                backup_id=data.backup_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                exc_info=True,
             )
             msg = "Restore operation failed"
             raise InternalServerException(msg) from exc

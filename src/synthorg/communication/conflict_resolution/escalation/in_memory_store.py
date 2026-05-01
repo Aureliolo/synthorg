@@ -25,7 +25,9 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_EXPIRED,
     CONFLICT_ESCALATION_QUEUED,
     CONFLICT_ESCALATION_RESOLVED,
+    CONFLICT_ESCALATION_STATUS_TRANSITIONED,
 )
+from synthorg.persistence._shared import parse_iso_utc
 
 logger = get_logger(__name__)
 
@@ -158,6 +160,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
                     note="not_pending",
                 )
                 raise ValueError(msg)
+            prior_status = row.status
             updated = row.model_copy(
                 update={
                     "status": EscalationStatus.DECIDED,
@@ -167,6 +170,12 @@ class InMemoryEscalationStore(EscalationQueueStore):
                 },
             )
             self._rows[escalation_id] = updated
+        logger.info(
+            CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+            escalation_id=escalation_id,
+            from_status=prior_status.value,
+            to_status=EscalationStatus.DECIDED.value,
+        )
         logger.info(
             CONFLICT_ESCALATION_RESOLVED,
             escalation_id=escalation_id,
@@ -195,6 +204,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
                     note="not_pending",
                 )
                 raise ValueError(msg)
+            prior_status = row.status
             updated = row.model_copy(
                 update={
                     "status": EscalationStatus.CANCELLED,
@@ -203,6 +213,12 @@ class InMemoryEscalationStore(EscalationQueueStore):
                 },
             )
             self._rows[escalation_id] = updated
+        logger.info(
+            CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+            escalation_id=escalation_id,
+            from_status=prior_status.value,
+            to_status=EscalationStatus.CANCELLED.value,
+        )
         logger.info(
             CONFLICT_ESCALATION_CANCELLED,
             escalation_id=escalation_id,
@@ -217,8 +233,11 @@ class InMemoryEscalationStore(EscalationQueueStore):
         can distinguish sweeper-driven expiry from operator actions
         (mirrors the SQLite/Postgres backends).
         """
-        now_dt = datetime.fromisoformat(now_iso)
-        expired_ids: list[str] = []
+        # ``parse_iso_utc`` rejects naive datetimes -- ``EscalationRow.expires_at``
+        # is UTC-aware, so a naive ``fromisoformat`` parse would raise
+        # ``TypeError`` on the ``<=`` compare and silently break expiry sweeps.
+        now_dt = parse_iso_utc(now_iso)
+        expired_pairs: list[tuple[str, EscalationStatus]] = []
         async with self._lock:
             for key, row in list(self._rows.items()):
                 if (
@@ -226,6 +245,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
                     and row.expires_at is not None
                     and row.expires_at <= now_dt
                 ):
+                    prior_status = row.status
                     self._rows[key] = row.model_copy(
                         update={
                             "status": EscalationStatus.EXPIRED,
@@ -233,7 +253,18 @@ class InMemoryEscalationStore(EscalationQueueStore):
                             "decided_by": "system:expiry",
                         },
                     )
-                    expired_ids.append(key)
+                    expired_pairs.append((key, prior_status))
+        # Per-escalation transition log so each PENDING -> EXPIRED hop
+        # appears in the audit stream with from_status / to_status, not
+        # just the bulk count summary below.
+        for escalation_id, expired_from in expired_pairs:
+            logger.info(
+                CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+                escalation_id=escalation_id,
+                from_status=expired_from.value,
+                to_status=EscalationStatus.EXPIRED.value,
+            )
+        expired_ids = [eid for eid, _ in expired_pairs]
         if expired_ids:
             logger.info(
                 CONFLICT_ESCALATION_EXPIRED,

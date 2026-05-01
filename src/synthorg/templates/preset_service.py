@@ -12,7 +12,6 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.api.dto_personalities import PresetSource
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
@@ -28,6 +27,7 @@ from synthorg.observability.events.preset import (
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
+from synthorg.templates.preset_models import PresetSource
 from synthorg.templates.presets import PERSONALITY_PRESETS
 
 logger = get_logger(__name__)
@@ -434,11 +434,16 @@ async def fetch_custom_presets_map(
         key = str(row.name).strip().lower()
         try:
             decoded = json.loads(row.config_json)
-        except json.JSONDecodeError:
-            logger.exception(
+        except json.JSONDecodeError as exc:
+            # SEC-1: bind the exception and use the structured-warning
+            # form (matches the pattern at lines 151-159 in this file)
+            # so the full traceback doesn't bypass redaction.
+            logger.warning(
                 PRESET_VALIDATION_FAILED,
                 preset_name=row.name,
                 reason="corrupt_json_in_fetch_map",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             continue
         if not isinstance(decoded, dict):

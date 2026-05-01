@@ -347,7 +347,10 @@ class TestSecurityConfigExportImport:
             json={"config": {"enabled": "not-a-bool"}},
             headers=auth_headers,
         )
-        assert resp.status_code == 400
+        # Domain ``ValidationError`` maps to 422 via the central
+        # exception handler, not the legacy 400 the manual
+        # ``ClientException`` site emitted.
+        assert resp.status_code == 422
 
     def test_import_requires_ceo_or_manager(
         self,

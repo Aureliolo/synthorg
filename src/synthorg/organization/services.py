@@ -21,7 +21,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
-from synthorg.api.dto_org import UpdateCompanyRequest
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
@@ -34,6 +33,7 @@ from synthorg.observability.events.company import (
     TEAM_DELETED_VIA_MCP,
     TEAM_UPDATED_VIA_MCP,
 )
+from synthorg.organization.models import UpdateCompanyRequest
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

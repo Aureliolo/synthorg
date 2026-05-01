@@ -43,3 +43,8 @@ TASK_ASSIGNMENT_REASON_REWRITER_FAILED: Final[str] = (
 TASK_ASSIGNMENT_HIERARCHY_LOOKUP_FAILED: Final[str] = (
     "task_assignment.hierarchy.lookup_failed"
 )
+
+# Assignment-strategy registry built at startup.  Build payload
+# (``has_hierarchy``, ``custom_scorer``) lets operators confirm
+# configuration parity across deployments.
+TASK_ASSIGNMENT_REGISTRY_BUILD: Final[str] = "task_assignment.registry.build"

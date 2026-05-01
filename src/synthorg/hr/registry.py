@@ -21,6 +21,7 @@ from synthorg.hr.errors import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
+    HR_AGENT_STATUS_TRANSITIONED,
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
     HR_REGISTRY_CLEARED,
@@ -291,6 +292,13 @@ class AgentRegistryService:
     ) -> AgentIdentity:
         """Update an agent's lifecycle status.
 
+        Emits ``HR_AGENT_STATUS_TRANSITIONED`` AFTER the registry
+        write succeeds, carrying ``from_status`` / ``to_status`` /
+        ``agent_id`` so observers can audit every persisted hop on
+        the agent lifecycle.  No-op transitions (status unchanged)
+        skip the transition event but still log
+        ``HR_REGISTRY_STATUS_UPDATED`` for the write itself.
+
         Args:
             agent_id: The agent identifier.
             status: New status.
@@ -312,6 +320,7 @@ class AgentRegistryService:
                     error=msg,
                 )
                 raise AgentNotFoundError(msg)
+            from_status = identity.status
             updated = identity.model_copy(update={"status": status})
             self._agents[key] = updated
 
@@ -320,6 +329,13 @@ class AgentRegistryService:
             agent_id=key,
             status=status.value,
         )
+        if from_status != status:
+            logger.info(
+                HR_AGENT_STATUS_TRANSITIONED,
+                agent_id=key,
+                from_status=from_status.value,
+                to_status=status.value,
+            )
         return updated
 
     # Allowlist of fields that may be updated via update_identity.

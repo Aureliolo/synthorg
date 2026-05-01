@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+import structlog.testing
 from litestar.testing import TestClient
 
 from synthorg.core.enums import WorkflowNodeType, WorkflowType
@@ -12,6 +13,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowEdge,
     WorkflowNode,
 )
+from synthorg.observability.events.api import WORKFLOW_DEFINITION_CHANGED
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Minimal valid graph data (dicts for HTTP payloads) ───────────
@@ -229,6 +231,28 @@ class TestWorkflowController:
         assert data["is_subworkflow"] is False
         assert len(data["nodes"]) == 3
         assert len(data["edges"]) == 2
+
+    def test_create_workflow_emits_audit_event(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """create_workflow fires WORKFLOW_DEFINITION_CHANGED with action
+        ``create`` so the audit chain captures schema-level mutations
+        upstream of the well-instrumented execution layer."""
+        with structlog.testing.capture_logs() as events:
+            _create_workflow(test_client, name="audited-workflow")
+        # Use the event constant (resolved to its current string) so
+        # renaming the constant in events/api.py automatically updates
+        # this assertion -- protects against silent drift between the
+        # controller's emitted event and the test's expected name.
+        audit_events = [
+            e for e in events if e.get("event") == WORKFLOW_DEFINITION_CHANGED
+        ]
+        assert len(audit_events) == 1
+        entry = audit_events[0]
+        assert entry["action"] == "create"
+        assert entry["actor"]
+        assert entry["definition_id"].startswith("wfdef-")
 
     def test_create_workflow_minimal_graph(self, test_client: TestClient[Any]) -> None:
         """START + END only, no edges."""

@@ -10,6 +10,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
+from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (  # noqa: TC001
     CreateAgentOrgRequest,
@@ -44,6 +45,9 @@ from synthorg.hr.performance.summary import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    AGENT_DELETED_AUDIT,
+    AGENT_DELETION_REQUESTED,
+    AGENT_IDENTITY_MODIFIED,
     API_AGENT_ACTIVITY_QUERIED,
     API_AGENT_HEALTH_QUERIED,
     API_AGENT_HEALTH_TREND_MISSING,
@@ -302,6 +306,20 @@ class AgentController(Controller):
             data,
             if_match=if_match,
         )
+        # Audit-chain entry: identity-bearing fields (name, role,
+        # department, level, model, autonomy) just changed. The actor
+        # is the request principal (stable user_id, matching the
+        # workflows.py audit pattern); the field set is what the
+        # request body declared via Pydantic ``model_fields_set``.
+        # Log the persisted name (rename requests change it) and sort
+        # the field set so the audit row is deterministic.
+        logger.info(
+            AGENT_IDENTITY_MODIFIED,
+            agent_name=updated.name,
+            previous_agent_name=agent_name,
+            fields_changed=tuple(sorted(data.model_fields_set)),
+            actor=get_auth_user_id(request),
+        )
         publish_ws_event(
             request,
             WsEventType.AGENT_UPDATED,
@@ -342,7 +360,25 @@ class AgentController(Controller):
             agent_name: Agent name.
         """
         app_state: AppState = state.app_state
+        actor = get_auth_user_id(request)
+        # Pre-delete intent log -- fires BEFORE persistence so the
+        # forensic audit chain captures the operator's request even if
+        # the delete itself fails. ``AGENT_DELETED_AUDIT`` below confirms
+        # actual successful deletion.
+        logger.info(
+            AGENT_DELETION_REQUESTED,
+            agent_name=agent_name,
+            actor=actor,
+        )
         await app_state.org_mutation_service.delete_agent(agent_name)
+        # Post-delete confirmation -- emitted only on persistence
+        # success so the audit stream cannot record a "deleted" hop for
+        # an agent that the database still holds.
+        logger.info(
+            AGENT_DELETED_AUDIT,
+            agent_name=agent_name,
+            actor=actor,
+        )
         publish_ws_event(
             request,
             WsEventType.AGENT_DELETED,

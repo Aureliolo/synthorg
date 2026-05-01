@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
+    EVOLUTION_GUARD_DECISION,
     EVOLUTION_GUARDS_PASSED,
     EVOLUTION_GUARDS_REJECTED,
 )
@@ -57,27 +58,54 @@ class CompositeGuard:
             reason="All guards approved",
         )
 
+        proposal_id = str(proposal.id)
         for guard in self._guards:
             decision = await guard.evaluate(proposal)
             logger.debug(
-                "evolution.guard.decision",
+                EVOLUTION_GUARD_DECISION,
+                proposal_id=proposal_id,
                 guard_name=guard.name,
                 approved=decision.approved,
                 reason=decision.reason,
             )
             if not decision.approved:
+                # Chain-level decision emit so
+                # ``EVOLUTION_GUARD_DECISION`` carries both per-guard
+                # rows (above) AND the composite outcome (this row),
+                # matching the constant's documented semantics.
+                logger.debug(
+                    EVOLUTION_GUARD_DECISION,
+                    proposal_id=proposal_id,
+                    guard_name=self.name,
+                    approved=decision.approved,
+                    reason=decision.reason,
+                )
                 logger.info(
                     EVOLUTION_GUARDS_REJECTED,
-                    proposal_id=str(proposal.id),
+                    proposal_id=proposal_id,
                     guard_name=guard.name,
                     reason=decision.reason,
                 )
                 return decision
             last_decision = decision
 
+        # Chain-level pass row: same constant covers per-guard plus
+        # composite so dashboards can chart either partition.  The
+        # reason is composite-level ("All guards approved"), not the
+        # last individual guard's reason -- pulling
+        # ``last_decision.reason`` would mislabel the chain outcome
+        # with one guard's bookkeeping text.  ``proposal_id`` is on
+        # every row so concurrent guard evaluations stay correlatable.
+        logger.debug(
+            EVOLUTION_GUARD_DECISION,
+            proposal_id=proposal_id,
+            guard_name=self.name,
+            approved=last_decision.approved,
+            reason="All guards approved",
+        )
         logger.info(
             EVOLUTION_GUARDS_PASSED,
-            proposal_id=str(proposal.id),
+            proposal_id=proposal_id,
             guards_count=len(self._guards),
         )
         return last_decision

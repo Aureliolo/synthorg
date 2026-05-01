@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 
 from synthorg.api.dto import UpdateProviderRequest
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
@@ -75,7 +76,7 @@ class TestApplyCredentialUpdates:
         updates: dict[str, Any] = {}
         request = UpdateProviderRequest(
             auth_type=AuthType.API_KEY,
-            api_key="sk-new",
+            api_key=SecretStr("sk-new"),
         )
         _apply_credential_updates(updates, request, AuthType.API_KEY)
         assert updates["api_key"] == "sk-new"
@@ -86,7 +87,7 @@ class TestApplyCredentialUpdates:
         """Switching to subscription sets subscription_token when provided."""
         updates: dict[str, Any] = {}
         request = UpdateProviderRequest(
-            subscription_token="test-subscription-token",
+            subscription_token=SecretStr("test-subscription-token"),
         )
         _apply_credential_updates(updates, request, AuthType.SUBSCRIPTION)
         assert updates["subscription_token"] == "test-subscription-token"
@@ -127,7 +128,7 @@ class TestApplyUpdateAuthTransitions:
         )
         request = UpdateProviderRequest(
             auth_type=AuthType.API_KEY,
-            api_key="sk-new-key",
+            api_key=SecretStr("sk-new-key"),
         )
         result = apply_update(existing, request)
         assert result.auth_type == AuthType.API_KEY
@@ -145,7 +146,7 @@ class TestApplyUpdateAuthTransitions:
         )
         request = UpdateProviderRequest(
             auth_type=AuthType.SUBSCRIPTION,
-            subscription_token="test-subscription-token",
+            subscription_token=SecretStr("test-subscription-token"),
             tos_accepted=True,
         )
         result = apply_update(existing, request)

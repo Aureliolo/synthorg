@@ -17,8 +17,11 @@ from synthorg.communication.async_tasks.models import (
     TaskSpec,
 )
 from synthorg.communication.async_tasks.service import AsyncTaskService
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.citation.manager import CitationManager
 from synthorg.core.enums import TaskStatus
+from synthorg.core.task import Task
+from synthorg.engine.task_engine import TaskEngine
 
 
 def _make_task(
@@ -30,7 +33,7 @@ def _make_task(
     created_by: str = "supervisor-1",
 ) -> MagicMock:
     """Build a minimal mock Task object."""
-    task = MagicMock()
+    task = MagicMock(spec=Task)
     task.id = task_id
     task.status = status
     task.parent_task_id = parent_task_id
@@ -45,8 +48,8 @@ class TestAsyncTaskSupervisorFlow:
 
     async def test_supervisor_starts_three_tasks(self) -> None:
         """Supervisor starts 3 async tasks, all get unique IDs."""
-        engine = AsyncMock()
-        bus = AsyncMock()
+        engine = AsyncMock(spec=TaskEngine)
+        bus = AsyncMock(spec=MessageBus)
         service = AsyncTaskService(task_engine=engine, message_bus=bus)
 
         task_mocks = [
@@ -74,8 +77,8 @@ class TestAsyncTaskSupervisorFlow:
 
     async def test_list_returns_all_child_tasks(self) -> None:
         """list_async_tasks returns all 3 child tasks with identities."""
-        engine = AsyncMock()
-        bus = AsyncMock()
+        engine = AsyncMock(spec=TaskEngine)
+        bus = AsyncMock(spec=MessageBus)
         service = AsyncTaskService(task_engine=engine, message_bus=bus)
 
         child_tasks = [

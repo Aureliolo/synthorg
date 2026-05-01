@@ -9,16 +9,6 @@ import json
 import time
 from typing import TYPE_CHECKING
 
-from synthorg.api.dto import (
-    CreateFromPresetRequest,
-    CreateProviderRequest,
-    TestConnectionRequest,
-    TestConnectionResponse,
-    UpdateProviderRequest,
-)
-from synthorg.api.dto_provider_capabilities import (
-    ProviderAuditActor,  # noqa: TC001 -- runtime use in default values
-)
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -60,6 +50,16 @@ from synthorg.providers.management._helpers import (
     serialize_providers,
 )
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
+from synthorg.providers.management.capability_dtos import (
+    ProviderAuditActor,  # noqa: TC001 -- runtime use in default values
+)
+from synthorg.providers.management.dtos import (
+    CreateFromPresetRequest,
+    CreateProviderRequest,
+    TestConnectionRequest,
+    TestConnectionResponse,
+    UpdateProviderRequest,
+)
 from synthorg.providers.models import ChatMessage
 from synthorg.providers.presets import (
     CloudPreset,

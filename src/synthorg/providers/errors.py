@@ -227,21 +227,46 @@ class DriverFactoryNotFoundError(ProviderError):
 
 
 class ProviderAlreadyExistsError(ProviderError):
-    """A provider with this name already exists."""
+    """A provider with this name already exists.
+
+    409 Conflict: provider name uniqueness violation, not a 502
+    upstream failure.  Override the parent's 502 default so the
+    domain handler maps directly without a controller-level catch +
+    re-raise as ``ConflictError``.
+    """
 
     is_retryable = False
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
 
 
 class ProviderNotFoundError(ProviderError):
-    """A provider with this name does not exist."""
+    """A provider with this name does not exist.
+
+    404 Not Found: provider does not exist locally, not a 502
+    upstream failure.  Override the parent's 502 default so the
+    domain handler maps directly.
+    """
 
     is_retryable = False
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
 
 
 class ProviderValidationError(ProviderError):
-    """Provider configuration failed validation."""
+    """Provider configuration failed validation.
+
+    422 Unprocessable Entity: input shape is wrong, not a 502
+    upstream failure.  Override the parent's 502 default so the
+    domain handler maps directly.
+    """
 
     is_retryable = False
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
 
 
 _ERROR_CLASS_MAP: Final[dict[type[BaseException], ProviderErrorLabel]] = {

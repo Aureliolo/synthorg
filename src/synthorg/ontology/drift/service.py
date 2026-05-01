@@ -10,7 +10,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_DETECT_FAILED,
     ONTOLOGY_DRIFT_DETECTED,
     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
-    ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
+    ONTOLOGY_DRIFT_STORE_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -75,10 +75,13 @@ class DriftDetectionService:
 
         try:
             report = await self._strategy.detect(entity_name, agent_ids)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            # Drop exc_info + use the canonical event constant
-            # instead of a string literal.
-            logger.error(  # noqa: TRY400 -- fail-loud, no traceback
+            # ``exc_info=True`` would attach the full traceback to
+            # the log record and bypass ``safe_error_description``,
+            # reintroducing secret / PII leakage on this error path.
+            logger.error(  # noqa: TRY400
                 ONTOLOGY_DRIFT_DETECT_FAILED,
                 entity_name=entity_name,
                 agent_count=len(agent_ids),
@@ -95,24 +98,31 @@ class DriftDetectionService:
                 recommendation=report.recommendation.value,
             )
 
-        logger.info(
-            ONTOLOGY_DRIFT_CHECK_COMPLETED,
-            entity_name=entity_name,
-            divergence_score=report.divergence_score,
-        )
-
         if self._store is not None:
             try:
                 await self._store.store_report(report)
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
+                # SEC-1: full traceback on a persistence-error path can
+                # leak backend metadata; stick to the redacted form.
                 logger.error(  # noqa: TRY400
-                    ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
+                    ONTOLOGY_DRIFT_STORE_FAILED,
                     entity_name=entity_name,
                     divergence_score=report.divergence_score,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 raise
+
+        # Emitted AFTER the optional persistence write so a storage
+        # failure cannot leave the audit stream advertising a
+        # completed scan that was never durably recorded.
+        logger.info(
+            ONTOLOGY_DRIFT_CHECK_COMPLETED,
+            entity_name=entity_name,
+            divergence_score=report.divergence_score,
+        )
 
         return report
 
@@ -126,43 +136,52 @@ class DriftDetectionService:
             agent_ids: Agent IDs to sample per entity.
 
         Returns:
-            Drift reports for all entities.
+            Drift reports for all entities, in the same order as
+            ``self._ontology.list_entities()`` returned them.  Entities
+            whose check raised a non-fatal ``Exception`` are dropped from
+            the result; fatal builtins propagate via the surrounding
+            TaskGroup teardown.
         """
         entities = await self._ontology.list_entities()
+        # Preallocate to keep ``index``-aligned writes deterministic;
+        # without this the append order matches task completion order
+        # and a flaky downstream backend can permute ``reports`` even
+        # though the entity list is stable.
+        slots: list[DriftReport | None] = [None] * len(entities)
 
-        results = await asyncio.gather(
-            *(self.check_entity(entity.name, agent_ids) for entity in entities),
-            return_exceptions=True,
-        )
+        async def _check_one(index: int, entity_name: NotBlankStr) -> None:
+            """Run one entity's drift check; capture non-fatal failures.
 
-        reports: list[DriftReport] = []
-        for i, result in enumerate(results):
-            if isinstance(result, BaseException):
-                # System-level failures and cancellation must
-                # propagate so the caller can unwind cleanly.
-                # ``asyncio.CancelledError`` is a ``BaseException``
-                # but NOT an ``Exception``; logging-and-continuing
-                # would silently break shutdown.
-                if isinstance(
-                    result,
-                    (MemoryError, RecursionError, asyncio.CancelledError),
-                ):
-                    raise result
-                if isinstance(result, Exception):
-                    logger.error(
-                        ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
-                        entity_name=entities[i].name,
-                        error_type=type(result).__name__,
-                        error=safe_error_description(result),
-                    )
-                else:
-                    # Any other ``BaseException`` subclass (e.g.
-                    # ``SystemExit``, future stdlib additions) must
-                    # propagate.
-                    raise result
-            else:
-                reports.append(result)
-        return tuple(reports)
+            Wrapping each ``check_entity`` invocation in this helper
+            lets us re-raise fatal builtins (``MemoryError`` /
+            ``RecursionError``) and ``BaseException`` non-
+            ``Exception`` (cancellation / shutdown signals)
+            immediately so the surrounding ``TaskGroup`` tears down
+            the scan instead of buffering until every other entity
+            completes -- the failure mode that
+            ``asyncio.gather(return_exceptions=True)`` could not
+            avoid. Ordinary ``Exception`` is logged per-entity and
+            dropped so a single bad entity does not cancel the whole
+            scan.
+            """
+            try:
+                report = await self.check_entity(entity_name, agent_ids)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(  # noqa: TRY400
+                    ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
+                    entity_name=entity_name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                return
+            slots[index] = report
+
+        async with asyncio.TaskGroup() as tg:
+            for index, entity in enumerate(entities):
+                tg.create_task(_check_one(index, entity.name))
+        return tuple(report for report in slots if report is not None)
 
     @property
     def threshold(self) -> float:

@@ -46,7 +46,7 @@ def task_app_state(task: SimpleNamespace) -> SimpleNamespace:
     engine.list_tasks.return_value = ((task,), 1)
     engine.get_task.return_value = task
     engine.update_task.return_value = task
-    engine.cancel_task.return_value = task
+    engine.cancel_task.return_value = (task, None)
     engine.delete_task.return_value = True
     engine.transition_task.return_value = (task, None)
     return SimpleNamespace(task_engine=engine)

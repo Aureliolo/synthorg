@@ -9,6 +9,7 @@ from litestar.testing import TestClient
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import SeniorityLevel
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.hr.registry import AgentRegistryService
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -180,8 +181,8 @@ class TestDiff:
     @pytest.mark.parametrize(
         ("from_version", "to_version", "expected_status"),
         [
-            pytest.param(1, 1, 400, id="same_versions_rejected"),
-            pytest.param(2, 1, 400, id="reversed_versions_rejected"),
+            pytest.param(1, 1, 422, id="same_versions_rejected"),
+            pytest.param(2, 1, 422, id="reversed_versions_rejected"),
             pytest.param(99, 100, 404, id="missing_from_version_returns_404"),
             pytest.param(1, 99, 404, id="missing_to_version_returns_404"),
         ],
@@ -204,6 +205,10 @@ class TestDiff:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == expected_status
+        if expected_status == 422:
+            assert (
+                resp.json()["error_detail"]["error_code"] == ErrorCode.VALIDATION_ERROR
+            )
 
 
 class TestRollback:
@@ -340,14 +345,22 @@ class TestRollback:
         assert "rollback to v1" in captured["rationale"].lower()
 
     @pytest.mark.unit
-    async def test_rollback_evolve_value_error_returns_400(
+    async def test_rollback_evolve_value_error_returns_422(
         self,
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``evolve_identity`` raising ``ValueError`` maps to a clean 400."""
+        """``evolve_identity`` raising ``ValueError`` maps to a clean 422.
+
+        Immutable-field mismatches are validation failures (the request
+        targets a snapshot whose immutable fields disagree with the
+        current registry entry), not generic 400-class client errors --
+        ValidationError is the correct domain exception, so the central
+        handler emits 422 with the RFC 9457 ``error_code``
+        ``VALIDATION_ERROR``.
+        """
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
@@ -363,8 +376,9 @@ class TestRollback:
             json={"target_version": 1},
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
         body = resp.json()
+        assert body["error_detail"]["error_code"] == ErrorCode.VALIDATION_ERROR
         assert "cannot rollback" in body["error"].lower()
         assert "immutable field mismatch" in body["error"].lower()
 
@@ -452,8 +466,14 @@ class TestReadEndpointsOwnership:
             if method == "get"
             else test_client.post(url, json=json_body, headers=headers)
         )
-        assert resp.status_code == 400
-        assert "different agent" in resp.json()["error"].lower()
+        # Cross-entity snapshots are validation failures (the snapshot's
+        # encoded owner disagrees with the path agent_id) -- 422 with the
+        # ``VALIDATION_ERROR`` ``error_code`` lets clients distinguish
+        # them from generic 4xx responses.
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["error_detail"]["error_code"] == ErrorCode.VALIDATION_ERROR
+        assert "different agent" in body["error"].lower()
 
     @pytest.mark.unit
     async def test_list_versions_drops_cross_entity_rows(

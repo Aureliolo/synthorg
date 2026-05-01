@@ -40,7 +40,7 @@ sources:
 
 ## Bottom line
 
-The market has converged on **API-key auth** as the dominant flow for SynthOrg-style third-party LLM clients. Anthropic remains the only mainstream provider whose consumer subscription (Claude Pro / Max) doubles as an API credential, and even that path is gated to first-party clients (`claude.ai`, Claude Code) by both technical (token prefix and rate-limit segregation) and reputational (account-sharing prohibition) means. No other major provider grants API access via consumer subscription as of April 2026.
+The market has converged on **API-key auth** as the dominant flow for SynthOrg-style third-party LLM clients. Anthropic remains the only mainstream provider whose consumer subscription (Claude Pro / Max) doubles as an API credential, and even that path is gated to first-party clients (`claude.ai`, Claude Code) by both technical (token prefix and rate-limit segregation) and reputational (account-sharing prohibition) means. No other major provider grants API access via consumer subscription (as of the 2026-04-27 survey).
 
 For SynthOrg this means:
 

@@ -40,6 +40,21 @@ export const WithBorder: Story = {
   args: { name: 'Alice Smith', borderColor: 'border-accent' },
 }
 
+// Discrete semantic-color variants so each value is independently
+// discoverable in Storybook navigation (the WithDepartmentBorders
+// composite below shows the matrix).
+export const BorderSuccess: Story = {
+  args: { name: 'Alice Smith', borderColor: 'border-success' },
+}
+
+export const BorderWarning: Story = {
+  args: { name: 'Alice Smith', borderColor: 'border-warning' },
+}
+
+export const BorderDanger: Story = {
+  args: { name: 'Alice Smith', borderColor: 'border-danger' },
+}
+
 export const AllSizes: Story = {
   args: { name: 'Alice Smith' },
   render: () => (

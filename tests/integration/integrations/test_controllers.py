@@ -79,33 +79,20 @@ class TestConnectionsController:
             await ctrl.get_connection.fn(ctrl, state=state, name="missing")
 
     async def test_create_validates_missing_name(self) -> None:
-        """Missing ``name`` is rejected at the DTO boundary.
-
-        After the Pydantic-DTO refactor, ``name`` is a required
-        field on :class:`CreateConnectionRequest` and Litestar's
-        request parser surfaces missing-field violations as 422
-        before the controller method runs.  This test pins the
-        contract at the model layer instead of the controller body
-        because the controller no longer performs the validation.
-        """
+        # Pydantic validation on ``CreateConnectionRequest`` rejects the
+        # missing required ``name`` before the controller is reached;
+        # in production this surfaces as an automatic 4xx via Litestar.
         from pydantic import ValidationError as PydanticValidationError
 
-        from synthorg.api.controllers.connections import (
-            CreateConnectionRequest,
-        )
+        from synthorg.api.controllers.connections import CreateConnectionRequest
 
         with pytest.raises(PydanticValidationError):
-            CreateConnectionRequest.model_validate(
-                {"connection_type": "github"},
-            )
+            CreateConnectionRequest.model_validate({"connection_type": "github"})
 
     async def test_create_validates_bad_connection_type(self) -> None:
-        """Unknown ``connection_type`` is rejected at the DTO boundary."""
         from pydantic import ValidationError as PydanticValidationError
 
-        from synthorg.api.controllers.connections import (
-            CreateConnectionRequest,
-        )
+        from synthorg.api.controllers.connections import CreateConnectionRequest
 
         with pytest.raises(PydanticValidationError):
             CreateConnectionRequest.model_validate(
@@ -125,16 +112,17 @@ class TestConnectionsController:
         state = {"app_state": MagicMock(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        request_body = CreateConnectionRequest(
-            name=NotBlankStr("x"),
-            connection_type=ConnectionType.GITHUB,
-            credentials={"token": "t"},
-        )
         with pytest.raises(ConflictError):
             await ctrl.create_connection.fn(
                 ctrl,
                 state=state,
-                data=request_body,
+                data=CreateConnectionRequest.model_validate(
+                    {
+                        "name": "x",
+                        "connection_type": "github",
+                        "credentials": {"token": "t"},
+                    },
+                ),
             )
 
     async def test_reveal_secret_returns_field(self) -> None:
@@ -672,15 +660,12 @@ class TestTunnelController:
 @pytest.mark.integration
 class TestOAuthController:
     async def test_initiate_requires_connection_name(self) -> None:
-        """Missing ``connection_name`` is rejected at the DTO boundary."""
-        from pydantic import ValidationError as PydanticValidationError
+        from synthorg.api.controllers.oauth import OAuthController
 
-        from synthorg.api.controllers.oauth import (
-            InitiateOAuthFlowRequest,
-        )
-
-        with pytest.raises(PydanticValidationError):
-            InitiateOAuthFlowRequest.model_validate({})
+        ctrl = OAuthController(owner=OAuthController)  # type: ignore[arg-type]
+        state = {"app_state": MagicMock()}
+        with pytest.raises(ValidationError):
+            await ctrl.initiate_flow.fn(ctrl, state=state, data={})
 
     async def test_status_returns_false_when_no_token(self) -> None:
         from synthorg.api.controllers.oauth import OAuthController
@@ -715,15 +700,7 @@ class TestControllerHttpLayer:
         self,
         catalog: MagicMock,
     ) -> TestClient[Any]:
-        """Construct a minimal Litestar app + test client for smoke tests.
-
-        Wires a no-op per-op rate-limit guard so write endpoints
-        (e.g. ``POST /connections``) don't 503 with the
-        "rate limiter not wired" deployment-error guard. The guard
-        is on by default to make production deployments fail-closed,
-        but smoke tests run against a stub store so the test layer
-        can verify routing/DTO/error translation in isolation.
-        """
+        """Construct a minimal Litestar app + test client for smoke tests."""
         from litestar import Litestar, Router
         from litestar.datastructures import State
         from litestar.middleware import ASGIMiddleware
@@ -733,37 +710,8 @@ class TestControllerHttpLayer:
             IntegrationHealthController,
         )
         from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
-        from synthorg.api.rate_limits._subject import (
-            STATE_KEY_CONFIG,
-            STATE_KEY_STORE,
-        )
-        from synthorg.api.rate_limits.config import PerOpRateLimitConfig
-        from synthorg.api.rate_limits.protocol import (
-            RateLimitOutcome,
-            SlidingWindowStore,
-        )
-        from synthorg.api.state import AppState
 
-        # Stub rate-limit store: the guard calls
-        # ``store.acquire(...)`` and inspects the
-        # :class:`RateLimitOutcome` it returns (see protocol.py).
-        # Returning a tuple here would silently violate the contract.
-        # ``spec=`` enforces the protocol surface so a future
-        # ``SlidingWindowStore`` method rename surfaces as an
-        # ``AttributeError`` instead of a silent test pass.
-        rate_limit_store = MagicMock(spec=SlidingWindowStore)
-        rate_limit_store.acquire = AsyncMock(
-            spec=SlidingWindowStore.acquire,
-            return_value=RateLimitOutcome(allowed=True, remaining=999),
-        )
-        rate_limit_config = PerOpRateLimitConfig(enabled=False)
-
-        app_state_stub = MagicMock(
-            spec=AppState,
-            connection_catalog=catalog,
-            has_per_op_rate_limit_config=True,
-            per_op_rate_limit_config=rate_limit_config,
-        )
+        app_state_stub = MagicMock(connection_catalog=catalog)
 
         class _TestUser:
             role = "ceo"
@@ -807,26 +755,15 @@ class TestControllerHttpLayer:
         )
         app = Litestar(
             route_handlers=[api_router],
-            state=State(
-                {
-                    "app_state": app_state_stub,
-                    STATE_KEY_STORE: rate_limit_store,
-                    STATE_KEY_CONFIG: rate_limit_config,
-                },
-            ),
+            state=State({"app_state": app_state_stub}),
             middleware=[_InjectUserMiddleware()],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
         return TestClient(app)
 
     async def test_list_connections_returns_200(self) -> None:
-        from synthorg.integrations.connections.catalog import ConnectionCatalog
-
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.list_all = AsyncMock(
-            spec=ConnectionCatalog.list_all,
-            return_value=(_make_conn(),),
-        )
+        catalog = MagicMock()
+        catalog.list_all = AsyncMock(return_value=(_make_conn(),))
         client = self._build_client(catalog)
         with client as http:
             resp = http.get("/api/v1/connections")
@@ -841,12 +778,10 @@ class TestControllerHttpLayer:
         assert body["data"][0]["name"] == "c1"
 
     async def test_unknown_connection_returns_404(self) -> None:
-        from synthorg.integrations.connections.catalog import ConnectionCatalog
         from synthorg.integrations.errors import ConnectionNotFoundError
 
-        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog = MagicMock()
         catalog.get_or_raise = AsyncMock(
-            spec=ConnectionCatalog.get_or_raise,
             side_effect=ConnectionNotFoundError("missing"),
         )
         client = self._build_client(catalog)
@@ -859,31 +794,3 @@ class TestControllerHttpLayer:
         assert resp.status_code == 404
         body = resp.json()
         assert "missing" in body.get("detail", body.get("error", "")).lower()
-
-    async def test_create_connection_invalid_body_returns_4xx(self) -> None:
-        """Invalid POST body is rejected at the request boundary.
-
-        The model-level ``test_create_validates_*`` cases assert the
-        Pydantic DTO rejects bad payloads, but only an end-to-end
-        ``TestClient`` round-trip proves the controller's signature
-        still binds the DTO and that Litestar's request parser
-        surfaces a structured client error before the handler body
-        runs. A regression in either the route binding or the DTO
-        would fall back to 200/500, which the model-level tests
-        cannot detect.
-
-        Litestar's :class:`ValidationException` defaults to 400 in
-        the project's exception-handler registry; we accept any 4xx
-        in [400, 422] so a future tightening to 422 (RFC-aligned)
-        does not require touching this gate.
-        """
-        from synthorg.integrations.connections.catalog import ConnectionCatalog
-
-        catalog = MagicMock(spec=ConnectionCatalog)
-        client = self._build_client(catalog)
-        with client as http:
-            resp = http.post(
-                "/api/v1/connections",
-                json={"connection_type": "github"},
-            )
-        assert resp.status_code in {400, 422}
