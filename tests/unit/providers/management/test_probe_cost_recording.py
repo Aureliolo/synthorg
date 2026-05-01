@@ -299,9 +299,12 @@ class TestSafeTaskIdSegment:
         assert _safe_task_id_segment("provider-日本") == "provider-日本"
 
     def test_all_unsafe_input_returns_underscore(self) -> None:
-        """If every character is filtered, the helper returns ``"_"``
+        """Every unsafe character is replaced with ``"_"`` individually,
+        so all-unsafe input becomes a string of underscores (one per
+        input character), not a single ``"_"``. The single-``"_"``
+        fallback only fires when the input is truly empty -- it exists
         so callers wrapping the result in ``NotBlankStr`` don't trip
-        the empty-string guard."""
+        the empty-string guard on the empty-string case."""
         from synthorg.providers.management.service import _safe_task_id_segment
 
         assert _safe_task_id_segment("\n\t\r") == "___"
