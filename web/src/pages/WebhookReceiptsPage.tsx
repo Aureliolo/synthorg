@@ -52,16 +52,20 @@ export default function WebhookReceiptsPage() {
   const [error, setError] = useState<string | null>(null)
 
   // Default the selector to the first connection that supports webhooks
-  // (we don't have that flag locally; just pick the first connection).
-  // The setState is deferred to a microtask so the effect body itself
-  // stays free of synchronous setState calls per the ESLint
-  // set-state-in-effect rule.
+  // (we don't have that flag locally; just pick the first connection),
+  // AND reconcile when the connections list changes so a previously-
+  // selected connection that has since been removed (renamed,
+  // deleted, retracted by the backend) doesn't leave the dropdown
+  // showing a stale name. The setState is deferred to a microtask so
+  // the effect body itself stays free of synchronous setState calls
+  // per the ESLint set-state-in-effect rule.
   useEffect(() => {
-    if (selected !== '' || connections.length === 0) return
+    const exists = selected !== '' && connections.some((c) => c.name === selected)
+    if (exists) return
     let cancelled = false
     void Promise.resolve().then(() => {
       if (cancelled) return
-      setSelected(connections[0]!.name)
+      setSelected(connections[0]?.name ?? '')
     })
     return () => { cancelled = true }
   }, [connections, selected])
@@ -219,7 +223,7 @@ export default function WebhookReceiptsPage() {
                       <span className="inline-flex items-center gap-1.5">
                         <StatusBadge
                           status={mapWebhookStatus(row.status)}
-                          ariaLabel={`Receipt status: ${row.status}`}
+                          decorative
                         />
                         <span className="text-xs uppercase text-text-secondary">
                           {row.status}

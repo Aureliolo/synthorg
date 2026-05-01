@@ -140,7 +140,11 @@ Convergence holds when ALL true:
 If converged:
 - Append history `{round, action: "converged", checks_passed: N}`.
 - **Squash-merge immediately, but only once per head SHA.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Before issuing the merge, compare the current `headRefOid` against `state.last_merge_attempt_headRefOid`:
-  - If they are equal, an earlier tick already attempted this exact head and the result is durably recorded in history (queued, blocked, or merged). Do NOT re-issue the merge call -- treat as "merge already in flight or already decided", append history `{round, action: "merge_already_attempted", head_sha}`, and fall through to the print branch using whatever the current PR state shows.
+  - If they are equal, an earlier tick already attempted this exact head. Do NOT re-issue the merge call -- the prior `--auto` request is still attached to this head and a second call would be redundant or worse. Instead, re-read the PR with `gh pr view N --json state,mergedAt` and decide based on the freshly-fetched state:
+    - `state == "MERGED"` (`mergedAt != null`): print the `CONVERGED + SQUASH-MERGED` line and exit, same as a normal merge-success path.
+    - `state == "OPEN"` and the prior attempt was queued: append history `{round, action: "merge_queued", head_sha}`, ScheduleWakeup at the standard cadence, exit. The next tick will land in Phase 2's terminal-state branch once the auto-merge fires.
+    - `state == "OPEN"` but the prior attempt was blocked (history entry `merge_blocked` already exists for this head): print the `CONVERGED, merge blocked: <reason>` line using the recorded reason, exit, no ScheduleWakeup. The user must unblock manually before another attempt.
+    - Append history `{round, action: "merge_already_attempted", head_sha, observed_state: "<state>"}` so the audit trail records that this tick re-checked instead of falling through silently.
   - Otherwise record `state.last_merge_attempt_headRefOid = current headRefOid` (and write state) BEFORE running the merge, so a crash mid-call still leaves the guard set. Then run:
 
     ```bash

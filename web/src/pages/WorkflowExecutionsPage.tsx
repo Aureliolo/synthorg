@@ -135,11 +135,21 @@ export default function WorkflowExecutionsPage() {
     return () => { cancelled = true }
   }, [id])
 
+  // Capture the workflow id at the moment the cancel was issued so
+  // ``handleCancel`` can detect navigation away from this view (the
+  // dialog Confirm callback can resolve after a route change). The
+  // toast still fires, but ``reload()`` is gated on the workflow id
+  // still matching ``latestIdRef.current``; otherwise we'd be
+  // refetching the previous workflow's executions while the
+  // operator is already looking at a different page.
   const handleCancel = useCallback(async (executionId: string) => {
+    const issuedFor = id
     try {
       await cancelWorkflowExecution(executionId)
       addToast({ variant: 'success', title: 'Cancellation requested' })
-      void reload()
+      if (latestIdRef.current === issuedFor) {
+        void reload()
+      }
     } catch (err) {
       const message = getErrorMessage(err)
       log.error('cancelWorkflowExecution failed', {
@@ -152,7 +162,7 @@ export default function WorkflowExecutionsPage() {
         description: message,
       })
     }
-  }, [addToast, reload])
+  }, [addToast, reload, id])
 
   if (!id) {
     return (
@@ -198,7 +208,7 @@ export default function WorkflowExecutionsPage() {
                   <span className="font-mono text-xs text-foreground">{row.id.slice(0, 8)}</span>
                   <StatusBadge
                     status={STATUS_BADGE_MAP[row.status]}
-                    ariaLabel={`Execution status: ${row.status}`}
+                    decorative
                   />
                   <span className="text-xs uppercase tracking-wide text-text-secondary">
                     {row.status}
