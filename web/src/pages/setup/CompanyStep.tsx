@@ -11,6 +11,7 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateCompanyStep } from '@/utils/setup-validation'
 import { CURRENCY_OPTIONS } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
+import { ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT } from '@/api/types/errors'
 import { TemplateVariables } from './TemplateVariables'
 
 export function CompanyStep() {
@@ -22,14 +23,25 @@ export function CompanyStep() {
   const companyResponse = useSetupWizardStore((s) => s.companyResponse)
   const companyLoading = useSetupWizardStore((s) => s.companyLoading)
   const companyError = useSetupWizardStore((s) => s.companyError)
+  const companyErrorCode = useSetupWizardStore((s) => s.companyErrorCode)
   const templateVariables = useSetupWizardStore((s) => s.templateVariables)
   const agents = useSetupWizardStore((s) => s.agents)
+  // Cross-step gate: derive whether at least one configured provider
+  // has at least one model. Without this the operator can click Apply
+  // Template and hit a backend tier-coverage error -- the same error
+  // the issue calls out as the user-reported "trapped state". The
+  // selector picks the boolean (not the providers map) so this
+  // component does not re-render on every per-provider model edit.
+  const hasUsableProvider = useSetupWizardStore((s) =>
+    Object.values(s.providers).some((p) => p.models.length > 0),
+  )
 
   const setCompanyName = useSetupWizardStore((s) => s.setCompanyName)
   const setCompanyDescription = useSetupWizardStore((s) => s.setCompanyDescription)
   const setCurrency = useSetupWizardStore((s) => s.setCurrency)
   const setTemplateVariable = useSetupWizardStore((s) => s.setTemplateVariable)
   const submitCompany = useSetupWizardStore((s) => s.submitCompany)
+  const setStep = useSetupWizardStore((s) => s.setStep)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
@@ -58,12 +70,46 @@ export function CompanyStep() {
     await submitCompany()
   }, [submitCompany])
 
+  const goToProvidersStep = useCallback(() => {
+    setStep('providers')
+  }, [setStep])
+
   // The Apply button is the affordance that moves `templateApplied` from
   // false -> true, so it must be enabled when `baseDetailsValid` holds (name
   // / description within limits) and a submit is not already in flight. The
   // validator's `baseDetailsValid` flag is the source of truth here -- no
   // string matching against the template-gate error message.
-  const applyDisabled = !validation.baseDetailsValid || companyLoading
+  // Additional cross-step gate: at least one provider must expose at
+  // least one model. Without this, clicking Apply would hit the
+  // backend ``ProviderTierCoverageInsufficientError`` (422) every
+  // time -- a guaranteed-fail click is worse UX than a disabled
+  // button with an inline explanation.
+  const applyDisabled =
+    !validation.baseDetailsValid || companyLoading || !hasUsableProvider
+
+  // When the cross-step provider gate is what's blocking submission
+  // (base details are valid, not loading, but no usable provider),
+  // surface an inline help banner above the button so the operator
+  // knows why it's disabled and can fix the upstream config in one
+  // click. Suppressed once the request has succeeded (preview is
+  // showing instead of the form).
+  const showProviderGateHelp =
+    !companyResponse
+    && validation.baseDetailsValid
+    && !companyLoading
+    && !hasUsableProvider
+
+  // When the most recent failure was the tier-coverage error, give
+  // the operator a direct affordance to fix the upstream config
+  // instead of a Retry-only banner that would always re-fail. The
+  // discriminator is the structured ``error_code`` (2004), not the
+  // human-readable message -- the message is locale-coupled, the
+  // code is the contract.
+  const tierCoverageInsufficient =
+    companyErrorCode === ERROR_CODE_PROVIDER_TIER_COVERAGE_INSUFFICIENT
+  const errorBannerAction = tierCoverageInsufficient
+    ? { label: 'Go back to Providers step', onClick: goToProvidersStep }
+    : undefined
 
   return (
     <div className="space-y-section-gap">
@@ -138,6 +184,23 @@ export function CompanyStep() {
         currency={currency}
       />
 
+      {/* Inline help when the cross-step provider gate is blocking submission.
+          Rendered above the Apply button so the operator sees the cause
+          before they have to click a disabled control to find out. */}
+      {showProviderGateHelp && (
+        <ErrorBanner
+          variant="inline"
+          severity="info"
+          title="Add a model before applying a template"
+          description={
+            'Apply Template stays disabled until at least one configured '
+            + 'provider exposes at least one model. Open the Providers step, '
+            + 'add a model, then return here.'
+          }
+          action={{ label: 'Go back to Providers step', onClick: goToProvidersStep }}
+        />
+      )}
+
       {/* Apply template button. */}
       {!companyResponse && (
         <Button
@@ -157,8 +220,17 @@ export function CompanyStep() {
           description={companyError}
           // Gate Retry by the same submit gate that controls the Apply button
           // so the user cannot retry while base details are invalid or while
-          // a submit is already in flight.
-          onRetry={applyDisabled ? undefined : () => void handleApplyTemplate()}
+          // a submit is already in flight. For the tier-coverage error
+          // specifically, hide Retry entirely -- it would always re-fail
+          // until upstream provider state is fixed -- and surface the
+          // "Go back to Providers step" action via the ``action`` prop
+          // instead.
+          onRetry={
+            tierCoverageInsufficient || applyDisabled
+              ? undefined
+              : () => void handleApplyTemplate()
+          }
+          action={errorBannerAction}
         />
       )}
 

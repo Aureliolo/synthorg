@@ -94,6 +94,8 @@ import { templatePacksHandlers } from './template-packs'
 import { trainingHandlers } from './training'
 import { tunnelDefaultHandlers } from './tunnel'
 import { usersHandlers } from './users'
+import { webhooksHandlers } from './webhooks'
+import { workflowExecutionsHandlers } from './workflow-executions'
 import { workflowsHandlers } from './workflows'
 
 /**
@@ -141,6 +143,8 @@ export const defaultHandlers = [
   ...trainingHandlers,
   ...tunnelDefaultHandlers,
   ...usersHandlers,
+  ...webhooksHandlers,
+  ...workflowExecutionsHandlers,
   ...workflowsHandlers,
 ]
 
@@ -185,6 +189,8 @@ export {
   trainingHandlers,
   tunnelDefaultHandlers,
   usersHandlers,
+  webhooksHandlers,
+  workflowExecutionsHandlers,
   workflowsHandlers,
 }
 

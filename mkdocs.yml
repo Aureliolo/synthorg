@@ -159,6 +159,7 @@ nav:
       - UX Research: design/ux-research.md
       - Ceremony Scheduling: design/ceremony-scheduling.md
       - Web HTTP Adapter: design/web-http-adapter.md
+      - Internationalization: design/internationalization.md
   - Architecture:
       - architecture/index.md
       - Tech Stack: architecture/tech-stack.md

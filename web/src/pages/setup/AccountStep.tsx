@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
@@ -29,25 +29,73 @@ export function AccountStep() {
   const setAccountCreated = useSetupWizardStore((s) => s.setAccountCreated)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
 
+  // Cancellation flag for ``fetchPolicy``: the effect below sets this
+  // ref to ``true`` on unmount so the timed-out / mid-retry response
+  // handler can no-op instead of writing setState into a torn-down
+  // component (matches the pattern used by CoordinationMetricsPage /
+  // MetaAnalyticsPage etc.). Stored in a ref so the
+  // ``useCallback``-memoised ``fetchPolicy`` reads the same flag the
+  // effect's cleanup mutates without being re-created on every render.
+  const cancelledRef = useRef(false)
+
   // Read backend-configured min password length. Surfaced as an error so
   // users cannot submit under the default policy if the server has a stricter
   // rule (otherwise the create-account POST would fail with a confusing error).
+  // The fetch is wrapped in a 5-second timeout and retries once on transient
+  // failure; otherwise a slow / hung server would block the entire setup
+  // wizard with the form disabled and no recovery path.
   const fetchPolicy = useCallback(async () => {
     setPolicyLoading(true)
     setPolicyError(null)
-    try {
-      const status = await getSetupStatus()
-      setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
-    } catch (err) {
-      log.error('Failed to fetch setup status:', sanitizeForLog(err))
-      setPolicyError(getErrorMessage(err))
-    } finally {
-      setPolicyLoading(false)
+    const POLICY_TIMEOUT_MS = 5_000
+    function withTimeout<T>(work: Promise<T>): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          reject(new Error('password-policy fetch timed out'))
+        }, POLICY_TIMEOUT_MS)
+        work.then(
+          (value) => { window.clearTimeout(timer); resolve(value) },
+          (err: unknown) => { window.clearTimeout(timer); reject(err instanceof Error ? err : new Error(String(err))) },
+        )
+      })
     }
+    let lastErr: unknown = null
+    const attemptErrors: string[] = []
+    const MAX_ATTEMPTS = 2
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const status = await withTimeout(getSetupStatus())
+        if (cancelledRef.current) return
+        setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
+        setPolicyLoading(false)
+        return
+      } catch (err) {
+        if (cancelledRef.current) return
+        lastErr = err
+        attemptErrors.push(getErrorMessage(err))
+      }
+    }
+    if (cancelledRef.current) return
+    // Log a single error after the loop with every attempt's message
+    // in a structured ``attempts`` array. The previous form logged
+    // attempt 1 at WARN and the final failure at ERROR, which split
+    // the retry sequence across two log levels and made diagnosis
+    // harder for operators tailing the ERROR stream.
+    // SEC-1: dynamic strings (``attemptErrors`` entries, ``lastErr``
+    // message) go through sanitizeForLog before reaching the log
+    // pipeline.
+    log.error('Failed to fetch setup status after retries', {
+      attempts: attemptErrors.map((entry) => sanitizeForLog(entry)),
+      error: sanitizeForLog(getErrorMessage(lastErr)),
+    })
+    setPolicyError(getErrorMessage(lastErr))
+    setPolicyLoading(false)
   }, [])
 
   useEffect(() => {
+    cancelledRef.current = false
     void fetchPolicy()
+    return () => { cancelledRef.current = true }
   }, [fetchPolicy])
 
   const strength = getPasswordStrength(password)

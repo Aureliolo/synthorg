@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ChannelSidebar } from '@/pages/messages/ChannelSidebar'
 import { makeChannel } from '../../helpers/factories'
@@ -16,28 +16,39 @@ describe('ChannelSidebar', () => {
     loading: false,
   }
 
+  // Below the lg breakpoint the same channel list renders inside a
+  // mobile Drawer trigger button (which surfaces the active channel
+  // name as its label). jsdom ignores Tailwind's responsive
+  // visibility, so both branches end up in the DOM. Scoping every
+  // query to the desktop ``nav`` landmark keeps the assertions
+  // unambiguous regardless of which branch the runner happens to
+  // measure first.
+  function desktop() {
+    return within(screen.getByRole('navigation', { name: 'Channels' }))
+  }
+
   it('renders channel names', () => {
     render(<ChannelSidebar {...defaultProps} />)
-    expect(screen.getByText('#engineering')).toBeInTheDocument()
-    expect(screen.getByText('#product')).toBeInTheDocument()
-    expect(screen.getByText('#dm-alice')).toBeInTheDocument()
+    expect(desktop().getByText('#engineering')).toBeInTheDocument()
+    expect(desktop().getByText('#product')).toBeInTheDocument()
+    expect(desktop().getByText('#dm-alice')).toBeInTheDocument()
   })
 
   it('groups channels by type', () => {
     render(<ChannelSidebar {...defaultProps} />)
-    expect(screen.getByText('Topics')).toBeInTheDocument()
-    expect(screen.getByText('Direct')).toBeInTheDocument()
+    expect(desktop().getByText('Topics')).toBeInTheDocument()
+    expect(desktop().getByText('Direct')).toBeInTheDocument()
   })
 
   it('highlights active channel', () => {
     render(<ChannelSidebar {...defaultProps} activeChannel="#engineering" />)
-    const active = screen.getByText('#engineering').closest('button')
+    const active = desktop().getByText('#engineering').closest('button')
     expect(active).toHaveAttribute('aria-current', 'page')
   })
 
   it('shows unread badge count', () => {
     render(<ChannelSidebar {...defaultProps} unreadCounts={{ '#product': 5 }} />)
-    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(desktop().getByText('5')).toBeInTheDocument()
   })
 
   it('hides unread badge when count is zero', () => {
@@ -51,7 +62,7 @@ describe('ChannelSidebar', () => {
     const onSelect = vi.fn()
     render(<ChannelSidebar {...defaultProps} onSelectChannel={onSelect} />)
 
-    await user.click(screen.getByText('#product'))
+    await user.click(desktop().getByText('#product'))
     expect(onSelect).toHaveBeenCalledWith('#product')
   })
 
@@ -62,6 +73,11 @@ describe('ChannelSidebar', () => {
 
   it('shows empty state when no channels', () => {
     render(<ChannelSidebar {...defaultProps} channels={[]} />)
-    expect(screen.getByText('No channels')).toBeInTheDocument()
+    // Scope to the desktop nav landmark so the assertion fails
+    // deterministically if the desktop branch ever stops rendering
+    // the empty state. ``getAllByText`` would have passed even if
+    // only the mobile-Drawer branch (which is also in the DOM under
+    // jsdom) rendered the message.
+    expect(desktop().getByText('No channels')).toBeInTheDocument()
   })
 })

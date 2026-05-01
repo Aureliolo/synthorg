@@ -16,7 +16,16 @@ import { SinkFormDrawer } from './settings/sinks/SinkFormDrawer'
 
 export default function SettingsSinksPage() {
   const navigate = useNavigate()
-  const { sinks, loading, error, fetchSinks, saveSink, testConfig } = useSinksStore()
+  // Per-field selectors instead of destructuring the whole store --
+  // the previous form (``const {...} = useSinksStore()``) re-rendered
+  // the page on every unrelated state change in the sinks store.
+  // Each selector below subscribes to exactly the slice it reads.
+  const sinks = useSinksStore((s) => s.sinks)
+  const loading = useSinksStore((s) => s.loading)
+  const error = useSinksStore((s) => s.error)
+  const fetchSinks = useSinksStore((s) => s.fetchSinks)
+  const saveSink = useSinksStore((s) => s.saveSink)
+  const testConfig = useSinksStore((s) => s.testConfig)
   const [editSinkId, setEditSinkId] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [isNewSink, setIsNewSink] = useState(false)

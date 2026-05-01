@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { Smile, Users } from 'lucide-react'
 
@@ -9,12 +9,18 @@ import {
   type SatisfactionHistory,
 } from '@/api/endpoints/clients'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
 import { ROUTES } from '@/router/routes'
+import {
+  useDetailNavigation,
+  useDetailNavigationCallbacks,
+} from '@/hooks/use-detail-navigation'
+import { useClientsData } from '@/hooks/useClientsData'
 
 const log = createLogger('ClientDetailPage')
 
@@ -33,6 +39,22 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [satisfactionError, setSatisfactionError] = useState<string | null>(null)
+
+  // Walk the parent client list so prev/next preserves the operator's
+  // filter context. ``client_id`` is the stable id used in routes.
+  const { clients } = useClientsData()
+  const routeForClient = useCallback(
+    (item: { id: string }) =>
+      ROUTES.CLIENT_DETAIL.replace(':clientId', encodeURIComponent(item.id)),
+    [],
+  )
+  const navItems = clients.map((c) => ({ id: c.client_id }))
+  const nav = useDetailNavigation({
+    items: navItems,
+    currentId: clientId,
+    routeFor: routeForClient,
+  })
+  const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
 
   useEffect(() => {
     if (!clientId) {
@@ -94,7 +116,16 @@ export default function ClientDetailPage() {
 
   return (
     <div className="space-y-section-gap">
-      <Breadcrumbs items={[{ label: 'Clients', to: ROUTES.CLIENTS }, { label: client.name }]} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Breadcrumbs items={[{ label: 'Clients', to: ROUTES.CLIENTS }, { label: client.name }]} />
+        <DetailNavBar
+          canPrev={nav.canPrev}
+          canNext={nav.canNext}
+          onPrev={goPrev}
+          onNext={goNext}
+          position={nav.position}
+        />
+      </div>
       <div>
         <h1 className="text-lg font-semibold text-foreground">{client.name}</h1>
         <p className="text-sm text-text-secondary">{client.client_id}</p>

@@ -228,7 +228,11 @@ function WorkflowEditorInner() {
 
 export default function WorkflowEditorPage() {
   return (
-    <div className="flex h-[calc(100vh-7rem)] flex-col gap-section-gap">
+    // Responsive height: phones / tablets get extra vertical budget
+    // (mobile browser chrome + on-screen keyboard eat ~9rem of viewport);
+    // desktop keeps the original 7rem allowance so the bottom toolbar
+    // stays visible inside the editor canvas.
+    <div className="flex h-[calc(100vh-9rem)] flex-col gap-section-gap md:h-[calc(100vh-7rem)]">
       <h1 className="text-lg font-semibold text-foreground">Workflow Editor</h1>
 
       <ErrorBoundary level="section">
