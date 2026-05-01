@@ -1,6 +1,6 @@
 ---
 description: "Watch a PR after creation. Polls CI + external reviewer state + open code-scanning/Dependabot/secret-scanning alerts, auto-fixes valid feedback (one push per round), dismisses justified security alerts via API with reason, handles CodeRabbit rate-limit by reposting `@coderabbitai review`, runs until convergence or merged. No local-agent invocation, no approval gate."
-argument-hint: "[PR# or blank] [cadence default 15m] [max-rounds default 12]"
+argument-hint: "[PR# or blank] [cadence default 15m] [max-rounds default 24]"
 allowed-tools:
   - Bash
   - Read

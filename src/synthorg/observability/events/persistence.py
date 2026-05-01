@@ -272,6 +272,9 @@ PERSISTENCE_ARTIFACT_CONTENT_MISSING: Final[str] = (
 PERSISTENCE_ARTIFACT_METADATA_MISSING: Final[str] = (
     "persistence.artifact.metadata_missing"
 )
+PERSISTENCE_ARTIFACT_DELETE_NO_STORAGE: Final[str] = (
+    "persistence.artifact.delete_no_storage"
+)
 
 # Project events
 PERSISTENCE_PROJECT_SAVED: Final[str] = "persistence.project.saved"

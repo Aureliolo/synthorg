@@ -341,7 +341,22 @@ class ArtifactController(Controller):
         # ``ArtifactService.delete_with_content`` for the full
         # contract (storage failure preserves the metadata row so the
         # inconsistency is detectable, etc.).
-        await service.delete_with_content(artifact_id)
+        deleted = await service.delete_with_content(artifact_id)
+        if not deleted:
+            # TOCTOU: the row was present at ``service.get`` above but
+            # vanished before ``delete_with_content`` ran (concurrent
+            # delete / cleanup job).  Do NOT publish the WS event --
+            # claiming a deletion that didn't happen here would mislead
+            # subscribers.  Surface as 404 so clients see the same
+            # outcome as if the row was missing on entry.
+            msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
+                artifact_id=artifact_id,
+                operation="delete",
+                note="concurrent_delete",
+            )
+            raise NotFoundError(msg)
         publish_ws_event(
             request,
             WsEventType.ARTIFACT_DELETED,

@@ -20,6 +20,34 @@ logger = get_logger(__name__)
 _OVERRIDE_TUPLE_LEN = 2
 
 
+def _warn_and_raise(msg: str, **ctx: object) -> None:
+    """Log ``API_APP_STARTUP`` warning with ``ctx`` then raise ValueError.
+
+    Centralised so both rate-limit and concurrency override validators
+    emit operator-facing context the same way before propagating the
+    failure as ``ValueError`` (Pydantic wraps it as ``ValidationError``).
+    """
+    logger.warning(API_APP_STARTUP, **ctx, error=msg)
+    raise ValueError(msg)
+
+
+def _check_operation_key(operation: object, override: object) -> None:
+    """Reject non-blank-string operation keys before coercion.
+
+    ``NotBlankStr`` only kicks in after coercion; mode="before" runs
+    first so without this guard ``None`` / ``42`` / ``""`` keys would
+    slip through with a generic Pydantic error instead of the
+    operator-context ``API_APP_STARTUP`` warning.
+    """
+    if not isinstance(operation, str) or not operation.strip():
+        msg = f"overrides key {operation!r} must be a non-blank string operation name"
+        _warn_and_raise(
+            msg,
+            operation=str(operation),
+            override=str(override),
+        )
+
+
 class PerOpRateLimitConfig(BaseModel):
     """Configuration for the per-operation rate limiter.
 
@@ -71,35 +99,16 @@ class PerOpRateLimitConfig(BaseModel):
                 "(max_requests, window_seconds), got "
                 f"{type(overrides).__name__}"
             )
-            logger.warning(API_APP_STARTUP, override=str(overrides), error=msg)
-            raise ValueError(msg)  # noqa: TRY004 -- Pydantic wraps ValueError as ValidationError
+
+            _warn_and_raise(msg, override=str(overrides))
         for operation, pair in overrides.items():
-            # Operation key must be a non-blank string before coercion;
-            # see the matching note on ``PerOpConcurrencyConfig`` below.
-            if not isinstance(operation, str) or not operation.strip():
-                msg = (
-                    f"overrides key {operation!r} must be a non-blank string "
-                    "operation name"
-                )
-                logger.warning(
-                    API_APP_STARTUP,
-                    operation=str(operation),
-                    override=str(pair),
-                    error=msg,
-                )
-                raise ValueError(msg)
+            _check_operation_key(operation, pair)
             if not isinstance(pair, (tuple, list)) or len(pair) != _OVERRIDE_TUPLE_LEN:
                 msg = (
                     f"overrides[{operation!r}]={pair!r} must be a "
                     "(max_requests, window_seconds) 2-tuple"
                 )
-                logger.warning(
-                    API_APP_STARTUP,
-                    operation=operation,
-                    override=str(pair),
-                    error=msg,
-                )
-                raise ValueError(msg)
+                _warn_and_raise(msg, operation=operation, override=str(pair))
             max_req, window = pair
             # ``isinstance(True, int)`` is True in Python (``bool`` is a
             # subclass of ``int``), so an explicit ``bool`` reject is
@@ -117,13 +126,7 @@ class PerOpRateLimitConfig(BaseModel):
                     f"overrides[{operation!r}]={pair!r} must contain non-negative "
                     "integers; use 0 to disable an operation"
                 )
-                logger.warning(
-                    API_APP_STARTUP,
-                    operation=operation,
-                    override=str(pair),
-                    error=msg,
-                )
-                raise ValueError(msg)
+                _warn_and_raise(msg, operation=operation, override=str(pair))
         return data
 
 
@@ -177,35 +180,14 @@ class PerOpConcurrencyConfig(BaseModel):
                 f"overrides must be a mapping of operation -> max_inflight, "
                 f"got {type(overrides).__name__}"
             )
-            logger.warning(API_APP_STARTUP, override=str(overrides), error=msg)
-            raise ValueError(msg)  # noqa: TRY004 -- Pydantic wraps ValueError as ValidationError
+
+            _warn_and_raise(msg, override=str(overrides))
         for operation, value in overrides.items():
-            # Operation key must be a non-blank string.  ``NotBlankStr``
-            # only kicks in after coercion; mode="before" runs first
-            # and would otherwise let ``None`` / ``42`` / ``""`` slip
-            # through with a generic Pydantic error.
-            if not isinstance(operation, str) or not operation.strip():
-                msg = (
-                    f"overrides key {operation!r} must be a non-blank string "
-                    "operation name"
-                )
-                logger.warning(
-                    API_APP_STARTUP,
-                    operation=str(operation),
-                    override=str(value),
-                    error=msg,
-                )
-                raise ValueError(msg)
+            _check_operation_key(operation, value)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 msg = (
                     f"overrides[{operation!r}]={value!r} must be a "
                     "non-negative integer; use 0 to disable an operation"
                 )
-                logger.warning(
-                    API_APP_STARTUP,
-                    operation=operation,
-                    override=str(value),
-                    error=msg,
-                )
-                raise ValueError(msg)
+                _warn_and_raise(msg, operation=operation, override=str(value))
         return data

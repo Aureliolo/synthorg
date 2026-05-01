@@ -28,6 +28,7 @@ from synthorg.observability.events.api import (
     API_ARTIFACT_UPDATED,
 )
 from synthorg.observability.events.persistence import (
+    PERSISTENCE_ARTIFACT_DELETE_NO_STORAGE,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
 )
 
@@ -164,6 +165,14 @@ class ArtifactService:
             msg = (
                 "ArtifactService.delete_with_content called but the "
                 "service was constructed without a storage backend"
+            )
+            # Log before raising so the error path leaves a structured
+            # breadcrumb for operators (the controller helper that
+            # forgot to pass ``storage=`` is the typical cause).
+            logger.error(
+                PERSISTENCE_ARTIFACT_DELETE_NO_STORAGE,
+                artifact_id=artifact_id,
+                reason=msg,
             )
             raise RuntimeError(msg)
         try:

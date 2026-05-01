@@ -140,10 +140,23 @@ def apply_update(
     Returns:
         New ProviderConfig with updates applied.
     """
+    # ``model_fields_set`` distinguishes "field omitted" (no change)
+    # from "field explicitly set to ``None``" (clear).  Without this,
+    # the previous ``value is not None`` gate made it impossible to
+    # null out fields like ``litellm_provider`` / ``base_url`` /
+    # ``oauth_*`` / ``custom_header_*`` / ``models`` via PATCH.  The
+    # existing ``clear_api_key`` / ``clear_subscription_token`` flags
+    # on the request DTO retain their original semantic for those two
+    # SecretStr fields (handled in ``_apply_credential_updates``).
+    sent_fields = request.model_fields_set
     updates: dict[str, Any] = {}
     for field in _UPDATE_FIELDS:
+        if field not in sent_fields:
+            continue
         value = getattr(request, field)
-        if value is not None:
+        if value is None:
+            updates[field] = None
+        else:
             updates[field] = (
                 _unwrap_secret(value) if field in _UPDATE_SECRET_FIELDS else value
             )
