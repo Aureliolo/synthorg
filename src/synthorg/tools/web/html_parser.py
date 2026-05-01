@@ -157,7 +157,7 @@ class HtmlParserTool(BaseWebTool):
         """Initialize the HTML parser tool with no extra dependencies.
 
         The parser is stateless; HTML parsing safety (XXE, billion
-        laughs) is enforced by :class:`HTMLParseGuard` per SEC-1.
+        laughs) is enforced by :class:`HTMLParseGuard`.
         """
         super().__init__(
             name="html_parser",

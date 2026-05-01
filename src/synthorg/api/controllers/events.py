@@ -93,7 +93,7 @@ _SESSION_ID_PATTERN = r"^[a-zA-Z0-9_-]{1,128}$"
 
 # Maximum consecutive revalidation failures (transient persistence
 # blips) before the SSE stream terminates so the client can reconnect
-# against a healthy replica (#1599).
+# against a healthy replica.
 _SSE_REVALIDATE_MAX_FAILURES: int = 3
 
 
@@ -344,7 +344,7 @@ async def _run_revalidation_tick(
 
     Centralises the failure-counter / role-check / session-revocation
     decision tree so :func:`_sse_event_stream` does not exceed the
-    McCabe complexity ceiling (#1599). The caller advances its
+    McCabe complexity ceiling. The caller advances its
     ``next_revalidate_ts`` regardless of the verdict.
     """
     reason, ok = await _user_revocation_reason(
@@ -386,7 +386,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
     When ``app_state`` and ``user`` are supplied, the loop tracks an
     independent revalidation deadline (``SSE_REVALIDATE_INTERVAL_SECONDS``)
     and fires it even on busy streams that never hit a keepalive
-    timeout (#1599). On revocation, yields a final ``revoked`` event
+    timeout. On revocation, yields a final ``revoked`` event
     and terminates the stream. Tolerates ``_SSE_REVALIDATE_MAX_FAILURES``
     transient persistence errors before escalating.
     """
@@ -471,8 +471,9 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
         # Surface the underlying transport failure so an operator can
         # tell broken-pipe / TLS-reset / generator-misuse apart from
         # the routine ``cancelled`` path before the final disconnect
-        # log fires in the ``finally`` block. SEC-1: never embed
-        # ``str(exc)`` directly.
+        # log fires in the ``finally`` block. Never embed
+        # ``str(exc)`` directly -- transport errors can carry
+        # request-side credentials in their messages.
         logger.warning(
             EVENT_STREAM_CLIENT_DISCONNECTED,
             session_id=session_id,

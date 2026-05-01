@@ -393,7 +393,7 @@ class WorkflowVersionController(Controller):
             )
         except PersistenceError as exc:
             # Best-effort: a snapshot failure here does not block the
-            # rollback. Use a sanitized warning per SEC-1 instead of
+            # rollback. Use a sanitized warning instead of
             # ``logger.exception`` (which can leak locals).
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,

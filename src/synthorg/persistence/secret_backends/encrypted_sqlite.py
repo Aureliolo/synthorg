@@ -290,12 +290,12 @@ class EncryptedSqliteSecretBackend:
         except MemoryError, RecursionError:
             raise
         except Exception as rb_exc:
-            # SEC-1: wrap the scrub so a broken ``__str__`` on the
-            # rollback error cannot crash the rotation path silently
-            # (finding from silent-failure-hunter review).  Re-raise
-            # catastrophic interpreter state (``MemoryError`` /
-            # ``RecursionError``) so the process surfaces the failure
-            # rather than swallowing it under a scrubbed fallback.
+            # Wrap the scrub so a broken ``__str__`` on the rollback
+            # error cannot crash the rotation path silently.
+            # Re-raise catastrophic interpreter state
+            # (``MemoryError`` / ``RecursionError``) so the process
+            # surfaces the failure rather than swallowing it under a
+            # scrubbed fallback.
             try:
                 scrubbed = safe_error_description(rb_exc)
             except MemoryError, RecursionError:

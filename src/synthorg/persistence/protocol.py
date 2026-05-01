@@ -177,9 +177,9 @@ class PersistenceBackend(Protocol):
         webhook_receipts: Repository for webhook receipt log
             persistence.
         idempotency_keys: Repository for persistent idempotency keys
-            (#1599) -- atomic claim/complete/fail primitive shared by
-            webhook receivers, the backup endpoint, and any other
-            retry-prone surface that needs cross-restart deduplication.
+            -- atomic claim/complete/fail primitive shared by webhook
+            receivers, the backup endpoint, and any other retry-prone
+            surface that needs cross-restart deduplication.
         training_plans: Repository for training plan persistence.
         training_results: Repository for training result persistence.
         custom_rules: Repository for custom signal rule persistence.
@@ -424,7 +424,7 @@ class PersistenceBackend(Protocol):
 
     @property
     def idempotency_keys(self) -> IdempotencyRepository:
-        """Repository for persistent idempotency keys (#1599)."""
+        """Repository for persistent idempotency keys."""
         ...
 
     @property

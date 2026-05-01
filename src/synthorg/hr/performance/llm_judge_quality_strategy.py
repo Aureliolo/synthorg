@@ -210,8 +210,8 @@ class LlmJudgeQualityStrategy:
     ) -> tuple[str, str]:
         """Build the (system, user) prompt pair for the judge.
 
-        SEC-1: trusted instructions + ``untrusted_content_directive``
-        live in the SYSTEM message; the untrusted criteria payload is
+        Trusted instructions + ``untrusted_content_directive`` live
+        in the SYSTEM message; the untrusted criteria payload is
         fenced inside the USER message so adversarial criteria text
         cannot hijack the judge's instructions.
         """

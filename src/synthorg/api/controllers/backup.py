@@ -142,8 +142,7 @@ class BackupController(Controller):
             if outcome.timed_out:
                 # ``timed_out`` is the discriminated 409 path; it
                 # cannot be confused with a callback that
-                # legitimately returned ``None`` (#1682, CodeRabbit at
-                # idempotency_service.py:121).
+                # legitimately returned ``None``.
                 logger.warning(
                     IDEMPOTENCY_CLAIM_IN_FLIGHT,
                     scope="backup",

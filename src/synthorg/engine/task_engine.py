@@ -736,7 +736,7 @@ class TaskEngine(TaskEngineLoopsMixin):
         limit: int | None,
         offset: int,
     ) -> tuple[Task, ...]:
-        """Forward the filtered list to the repo with SEC-1-safe logging."""
+        """Forward the filtered list to the repo with sanitised logging."""
         try:
             return await self._persistence.tasks.list_tasks(
                 status=status,
@@ -763,7 +763,7 @@ class TaskEngine(TaskEngineLoopsMixin):
         assigned_to: str | None,
         project: str | None,
     ) -> int:
-        """Accurate total count with SEC-1-safe logging."""
+        """Accurate total count with sanitised logging."""
         try:
             return await self._persistence.tasks.count_tasks(
                 status=status,

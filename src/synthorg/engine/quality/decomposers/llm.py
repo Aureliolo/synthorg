@@ -113,11 +113,11 @@ def _encode_decomposer_payload(
     """Serialize the decomposer payload as a JSON string.
 
     Each criterion description is wrapped in a ``<criteria-json>``
-    fence before JSON encoding (SEC-1 / audit finding 92, item #8).
-    This is the tag explicitly reserved for the decomposer-criteria
-    surface in ``synthorg.engine.prompt_safety`` -- using the
-    site-specific tag (rather than the generic ``<task-data>``) keeps
-    the untrusted-content inventory unambiguous for the model.  A
+    fence before JSON encoding. This is the tag explicitly reserved
+    for the decomposer-criteria surface in
+    ``synthorg.engine.prompt_safety`` -- using the site-specific tag
+    (rather than the generic ``<task-data>``) keeps the
+    untrusted-content inventory unambiguous for the model. A
     description that contains structural JSON metacharacters
     (``{"description": "...","injected":"true"}``) still serialises
     cleanly through ``json.dumps``, but the fence means the model sees

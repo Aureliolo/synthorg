@@ -61,13 +61,12 @@ class AuthorityDeferenceConfig(BaseModel):
             try:
                 re.compile(pattern)
             except re.error as exc:
-                # SEC-1 (#1682, CodeRabbit at middleware_config.py:74):
-                # the *raw* pattern can quote a credential the operator
-                # accidentally embedded in their config; emitting it
-                # via ``pattern=`` or ``msg`` would defeat the SEC-1
-                # log scrub.  Surface only the index + length so an
-                # operator can locate the bad entry without us
-                # recording the bytes.
+                # The raw pattern can quote a credential the
+                # operator accidentally embedded in their config;
+                # emitting it via ``pattern=`` or ``msg`` would
+                # defeat the log scrub. Surface only the index +
+                # length so an operator can locate the bad entry
+                # without recording the bytes.
                 scrubbed = safe_error_description(exc)
                 msg = (
                     f"Invalid regex pattern at index {pattern_index} "
@@ -117,8 +116,7 @@ class ClarificationGateConfig(BaseModel):
                 re.compile(pattern)
             except re.error as exc:
                 scrubbed = safe_error_description(exc)
-                # SEC-1 (#1682, CodeRabbit at middleware_config.py:74):
-                # see ``_validate_patterns_compile`` for the rationale
+                # See ``_validate_patterns_compile`` for the rationale
                 # behind index+length-only logging.
                 msg = (
                     f"Invalid generic pattern at index {pattern_index} "

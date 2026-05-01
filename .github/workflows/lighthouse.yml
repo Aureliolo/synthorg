@@ -9,8 +9,8 @@ name: Lighthouse CI
 #   ``.github/branch_protection.yml``). A workflow-level ``paths:``
 #   filter would prevent the workflow from starting on PRs that
 #   don't touch ``web/`` / ``site/`` / ``docs/``, leaving the
-#   required check absent / pending and blocking unrelated merges
-#   (CodeRabbit, 2026-04-26). Same architecture as
+#   required check absent / pending and blocking unrelated merges.
+#   Same architecture as
 #   ``codspeed-web.yml``: workflow always triggers; the ``changes``
 #   gate job below detects whether dashboard / site files were
 #   touched and skips the heavy jobs otherwise; ``lighthouse-pass``
@@ -158,7 +158,7 @@ jobs:
             # Compose the preview URL once here; downstream steps
             # reuse via steps.pr.outputs.preview_url so the host
             # template never drifts across the wait loop and the
-            # LHCI invocation (CodeRabbit, 2026-04-26).
+            # LHCI invocation.
             echo "preview_url=https://pr-${PR_EVENT_NUMBER}.synthorg-pr-preview.pages.dev" >>"$GITHUB_OUTPUT"
             echo "skip=false" >>"$GITHUB_OUTPUT"
           fi
@@ -168,8 +168,8 @@ jobs:
         env:
           PREVIEW_URL: ${{ steps.pr.outputs.preview_url }}
           # Cloudflare Pages updates the same alias URL when a new
-          # commit lands on the PR branch (CodeRabbit, 2026-04-26).
-          # An HTTP-200 check alone races the previous deployment
+          # commit lands on the PR branch. An HTTP-200 check alone
+          # races the previous deployment
           # still serving on the alias and would cause LHCI to score
           # stale HTML against the wrong commit. Wait until the
           # banner injected by pages-preview.yml carries this PR
@@ -192,7 +192,7 @@ jobs:
             # to the SAME final resource. Without -L on STATUS, a
             # Cloudflare 308 alias-redirect would report 308 even
             # when BODY contains the matching banner, causing a
-            # false 5-minute timeout (CodeRabbit, 2026-04-26).
+            # false 5-minute timeout.
             BODY=$(curl -sS -L --max-time 15 "${PREVIEW_URL}" || true)
             STATUS=$(curl -sS -L --max-time 15 -o /dev/null -w "%{http_code}" "${PREVIEW_URL}" || echo "000")
             if [[ "${STATUS}" == "200" && "${BODY}" == *"${BANNER_NEEDLE}"* ]]; then

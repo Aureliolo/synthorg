@@ -112,10 +112,9 @@ class PerformanceTrackerSink:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1: never use logger.exception here -- the
-                # traceback can leak sensitive locals. Use the
-                # safe-warning shape that the dispatcher sink
-                # already follows.
+                # Never use logger.exception here -- the traceback
+                # can leak sensitive locals. Use the safe-warning
+                # shape that the dispatcher sink already follows.
                 logger.warning(
                     CLASSIFICATION_SINK_ERROR,
                     agent_id=result.agent_id,
@@ -176,9 +175,7 @@ class _SlidingWindowRateLimiter:
         # returned to the caller; ``release`` removes that exact entry
         # rather than popping the latest timestamp -- otherwise a slow
         # admission whose dispatch fails could refund a *later*
-        # admission's slot, leaving the failed admission counted (the
-        # bug CodeRabbit re-flagged on round 3 after seeing the trace
-        # of two same-agent in-flight notifications).
+        # admission's slot, leaving the failed admission counted.
         self._events: dict[str, list[tuple[object, float]]] = {}
         self._lock = asyncio.Lock()
 
@@ -341,8 +338,8 @@ class NotificationDispatcherSink:
             except Exception as exc:
                 # Best-effort path: refund the *exact* admission this
                 # iteration consumed (not the newest slot for the
-                # agent), and log a SEC-1-compliant warning instead
-                # of ``logger.exception``. ``logger.exception`` would
+                # agent), and log a sanitized warning instead of
+                # ``logger.exception``. ``logger.exception`` would
                 # attach a traceback that can leak sensitive locals;
                 # the structured warning carries the diagnostic
                 # context we actually need.

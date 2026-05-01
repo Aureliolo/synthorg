@@ -73,11 +73,10 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
             )
             return ctx
 
-        # Extract known facts from task description + criteria.  Each
+        # Extract known facts from task description + criteria. Each
         # fact is user-controllable content, so we wrap it in a
-        # ``<task-fact>`` fence (SEC-1 / audit finding 92): downstream
-        # prompts that render the ledger treat each fact as untrusted
-        # data, not instructions.
+        # ``<task-fact>`` fence: downstream prompts that render the
+        # ledger treat each fact as untrusted data, not instructions.
         known_facts: list[str] = []
         if task.description:
             known_facts.append(wrap_untrusted(TAG_TASK_FACT, task.description))
@@ -377,7 +376,7 @@ class ReplanMiddleware(BaseCoordinationMiddleware):
 
 
 class PlanReviewGateMiddleware(BaseCoordinationMiddleware):
-    """Gates dispatch based on autonomy level (#1257).
+    """Gates dispatch based on autonomy level.
 
     Per-autonomy-level gating:
 

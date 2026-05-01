@@ -1,12 +1,13 @@
-"""Tests for the four LLM call sites added to the SEC-1 wrap inventory.
+"""Tests for four LLM call sites added to the wrap inventory.
 
-Issue #1682: each of the four sites listed below now wraps the
-attacker-controllable payload via ``wrap_untrusted`` and appends the
-canonical ``untrusted_content_directive`` to its system prompt.
+Each of the four sites listed below wraps the attacker-controllable
+payload via ``wrap_untrusted`` and appends the canonical
+``untrusted_content_directive`` to its system prompt.
 
 These tests pin the contract at the prompt-building level so a
 regression that drops the wrap, removes the directive, or stops
-escaping a closing-tag breakout is caught before reaching production.
+escaping a closing-tag breakout is caught before reaching
+production.
 """
 
 from datetime import UTC, datetime
@@ -115,7 +116,7 @@ class TestMemoryConsolidationLLMStrategy:
         assert "<\\/memory-entry>" in prompt
 
     def test_system_prompt_appends_untrusted_directive(self) -> None:
-        """Base system prompt ends with the SEC-1 directive."""
+        """Base system prompt ends with the untrusted-content directive."""
         from synthorg.memory.consolidation.llm_strategy import _BASE_SYSTEM_PROMPT
 
         directive = untrusted_content_directive((TAG_MEMORY_ENTRY,))
@@ -184,7 +185,7 @@ class TestSuccessProposerWraps:
         assert "alpha, beta" in msg
 
     def test_system_prompt_appends_directive(self) -> None:
-        """Module-level system prompt ends with the SEC-1 directive."""
+        """Module-level system prompt ends with the untrusted-content directive."""
         from synthorg.memory.procedural.success_proposer import _SYSTEM_PROMPT
 
         directive = untrusted_content_directive((TAG_TASK_DATA,))
@@ -214,9 +215,9 @@ class TestLlmCalibrationSamplerWraps:
             recorded_at=_FIXED_TIME,
             interaction_summary="conversation summary text",
         )
-        # SEC-1: the user-prompt body carries the wrapped summary
-        # and the bounded metrics block; the directive itself lives
-        # in the SYSTEM message header (asserted separately below).
+        # The user-prompt body carries the wrapped summary and the
+        # bounded metrics block; the directive itself lives in the
+        # SYSTEM message header (asserted separately below).
         user_prompt = sampler._build_user_prompt(record)
         assert wrap_untrusted(TAG_TASK_DATA, "conversation summary text") in user_prompt
         assert "delegation_success: not observed" in user_prompt
@@ -224,7 +225,7 @@ class TestLlmCalibrationSamplerWraps:
         assert "{{" not in user_prompt
         assert "---BEGIN SUMMARY---" not in user_prompt
         # The directive is on the SYSTEM header constant, not on the
-        # user-prompt payload (CodeRabbit critical at #1682:55).
+        # user-prompt payload.
         assert untrusted_content_directive((TAG_TASK_DATA,)) not in user_prompt
         from synthorg.hr.performance.llm_calibration_sampler import (
             _SYSTEM_PROMPT_HEADER,
@@ -287,7 +288,7 @@ class TestSafetyClassifierWraps:
         assert "<task-data>" in user_content
         assert "</task-data>" in user_content
         assert "agent wants to call a dangerous tool" in user_content
-        # System prompt ends with the SEC-1 directive.
+        # System prompt ends with the untrusted-content directive.
         directive = untrusted_content_directive((TAG_TASK_DATA,))
         system_content = messages[0].content
         assert system_content is not None

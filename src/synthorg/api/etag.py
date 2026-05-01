@@ -1,4 +1,4 @@
-"""Conditional GET (ETag / If-None-Match / 304) ASGI middleware (#1600).
+"""Conditional GET (ETag / If-None-Match / 304) ASGI middleware.
 
 Implemented as a thin ASGI middleware so every read-only GET in
 the configured path-prefix allowlist gains weak-ETag + ``304 Not

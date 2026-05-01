@@ -45,7 +45,7 @@ _STRIP_TAGS = frozenset(
     }
 )
 
-# SEC-1 / audit finding 91: pre-parse rejection patterns for XXE.
+# Pre-parse rejection patterns for XXE.
 #
 # ``<!DOCTYPE foo SYSTEM "...">`` and the PUBLIC variant load external
 # entities which can reach internal network or filesystem resources.
@@ -358,8 +358,9 @@ class HTMLParseGuard:
 def _parse_html_safely(raw: str) -> Any:
     """Parse *raw* HTML with explicit XXE and entity-expansion defences.
 
-    Replaces the previous bare ``lxml.html.fromstring`` call
-    (SEC-1 / audit finding 91).
+    Replaces a bare ``lxml.html.fromstring`` call, which would
+    otherwise allow XXE / billion-laughs attacks against operator
+    input.
 
     Pipeline:
 

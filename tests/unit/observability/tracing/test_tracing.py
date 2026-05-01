@@ -1,4 +1,4 @@
-"""Unit tests for the tracing subsystem (#1385).
+"""Unit tests for the tracing subsystem.
 
 Covers:
 

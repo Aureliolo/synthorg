@@ -102,7 +102,7 @@ class TestPublish:
         mock_client: MagicMock,
         exc_type: type[BaseException],
     ) -> None:
-        """SEC-1 contract: catastrophic publish errors log via
+        """Catastrophic publish errors log via
         ``logger.error(..., exc_info=True, error=safe_error_description(exc))``
         and never via ``logger.exception`` or ``logger.warning``.
         """

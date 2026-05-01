@@ -65,7 +65,7 @@ class TestBuildTelemetryCollector:
             assert collector.enabled is True
             # ``start()`` performs the deployment-id load via
             # ``asyncio.to_thread``; the directory is materialised
-            # there, not in ``__init__`` (#1600).
+            # there, not in ``__init__``.
             await collector.start()
             assert (tmp_path / "telemetry").exists()
         finally:

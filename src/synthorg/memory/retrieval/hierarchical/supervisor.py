@@ -142,8 +142,8 @@ class SupervisorRouter:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
-            # SEC-1 (#1682): provider exceptions in str(exc) can
-            # carry the API key; scrub before logging.
+            # Provider exceptions in str(exc) can carry the API
+            # key; scrub before logging.
             logger.warning(
                 MEMORY_HIERARCHICAL_ROUTING,
                 action="fallback",
@@ -208,10 +208,11 @@ class SupervisorRouter:
         system_prompt = _ROUTING_SYSTEM_PROMPT.format(
             max_workers=self._max_workers,
         )
-        # SEC-1: ``query.text`` is operator-controlled but ultimately
-        # sourced from upstream agent reasoning that may have ingested
-        # untrusted content; wrap it in a ``<task-data>`` fence so the
-        # routing model treats it as data rather than instruction.
+        # ``query.text`` is operator-controlled but ultimately
+        # sourced from upstream agent reasoning that may have
+        # ingested untrusted content; wrap it in a ``<task-data>``
+        # fence so the routing model treats it as data rather than
+        # instruction.
         wrapped_query = wrap_untrusted(TAG_TASK_DATA, query.text)
         messages: list[ChatMessage] = [
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
@@ -271,10 +272,10 @@ class SupervisorRouter:
             count=len(result.candidates),
             avg_score=avg_score,
         )
-        # SEC-1: wrap the untrusted ``query.text`` so a malicious
-        # query body cannot inject instructions into the retry
-        # evaluator.  The candidate-count summary is fixed-format
-        # numeric data, so it stays outside the fence.
+        # Wrap the untrusted ``query.text`` so a malicious query
+        # body cannot inject instructions into the retry evaluator.
+        # The candidate-count summary is fixed-format numeric data,
+        # so it stays outside the fence.
         wrapped_query = wrap_untrusted(TAG_TASK_DATA, query.text)
         user_content = (
             f"Original query:\n{wrapped_query}\n"

@@ -25,7 +25,7 @@ from synthorg.observability.events.api import (
 )
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 
-# Persistence-boundary rule (#1599): SECURITY_AUTH_REFRESH_* events are
+# Persistence-boundary rule: SECURITY_AUTH_REFRESH_* events are
 # auth decisions, not storage facts. Repos must not emit them; the
 # service / controller layer that calls ``consume`` /
 # ``revoke_by_session`` / ``revoke_by_user`` is responsible for

@@ -1,4 +1,4 @@
-"""Human escalation queue REST endpoints (#1418).
+"""Human escalation queue REST endpoints.
 
 Operator-facing surface for listing pending conflict escalations and
 submitting decisions back to the awaiting

@@ -59,7 +59,7 @@ class SlackNotificationSink:
 
     The ``httpx.AsyncClient`` is created lazily inside ``start()``
     and closed inside ``close()`` so a never-started sink leaks
-    nothing (#1600). Both methods are idempotent under the
+    nothing. Both methods are idempotent under the
     ``_lifecycle_lock``: a second ``start()`` is a no-op, a
     ``close()`` before ``start()`` is a no-op, concurrent calls
     converge on a single client instance.

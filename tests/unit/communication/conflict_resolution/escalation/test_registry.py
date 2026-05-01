@@ -1,4 +1,4 @@
-"""Edge-case tests for :class:`PendingFuturesRegistry` (#1418)."""
+"""Edge-case tests for :class:`PendingFuturesRegistry`."""
 
 import asyncio
 

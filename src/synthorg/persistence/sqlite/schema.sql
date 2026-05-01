@@ -1217,7 +1217,7 @@ CREATE TABLE drift_reports (
 CREATE INDEX idx_dr_entity_created
     ON drift_reports(entity_name, created_at DESC);
 
--- Persistent idempotency keys for retry-prone endpoints (#1599).
+-- Persistent idempotency keys for retry-prone endpoints.
 -- A claim row goes through (in_flight) -> (completed | failed); the
 -- cached response_body lets a duplicate caller receive the same
 -- reply rather than 409. Rows older than expires_at are reaped by
@@ -1265,7 +1265,7 @@ CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
 -- on ``ProviderManagementService``.  ``id`` is monotonically assigned
 -- (AUTOINCREMENT) so it doubles as the keyset pagination cursor.
 -- ``payload`` is JSON-stringified event metadata; credentials
--- inside payload MUST be masked (``"prefix***last4"``) per SEC-1.
+-- inside payload MUST be masked (``"prefix***last4"``).
 -- Column name aligned with Postgres.
 CREATE TABLE provider_audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -290,11 +290,11 @@ class TestArchivalMemorySearchTool:
     ) -> None:
         """Non-integer limit values are rejected at the typed-args boundary.
 
-        The Phase 2 typed-args refactor (#1611) replaced the old silent
-        fallback with a Pydantic ``ValidationError`` that surfaces as an
-        ``ERROR_PREFIX`` envelope so the LLM gets a clear signal about
-        the malformed argument instead of silently truncating to the
-        config cap.  ``None`` is the valid "use the config default"
+        The typed-args boundary surfaces a Pydantic
+        ``ValidationError`` as an ``ERROR_PREFIX`` envelope so the
+        LLM gets a clear signal about the malformed argument
+        instead of silently truncating to the config cap. ``None``
+        is the valid "use the config default"
         signal and is covered by ``test_execute_uses_config_default_limit``.
         """
         strategy = _make_strategy(backend=_make_backend(entries=()))

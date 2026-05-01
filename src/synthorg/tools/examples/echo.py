@@ -3,8 +3,7 @@
 A minimal reference implementation of ``BaseTool`` useful for testing
 and as a starting point for new tool implementations.
 
-This tool follows the Phase 3 typed-args wiring (#1611): it sets
-``args_model = EchoArgs`` so the ``ToolInvoker`` validates
+It sets ``args_model = EchoArgs`` so the ``ToolInvoker`` validates
 ``arguments`` via Pydantic before :meth:`execute` is called.
 ``parameters_schema`` is derived from the model's
 ``model_json_schema`` so the schema sent to the LLM stays in sync

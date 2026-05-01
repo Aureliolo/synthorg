@@ -378,8 +378,7 @@ class SeparateAnalyzerProposer:
                 # Non-retryable provider failures must surface to
                 # operators with context before propagating; otherwise
                 # a downstream catch-and-translate would hide the
-                # error path entirely (#1682, CodeRabbit at
-                # separate_analyzer.py:379).
+                # error path entirely.
                 logger.error(  # noqa: TRY400
                     EVOLUTION_PROPOSER_PARSE_ERROR,
                     agent_id=str(agent_id),
@@ -389,8 +388,8 @@ class SeparateAnalyzerProposer:
                     is_retryable=False,
                 )
                 raise
-            # SEC-1 (#1682): drop exc_info + scrub the message --
-            # provider HTTPStatusError can carry the API key.
+            # Drop exc_info + scrub the message -- provider
+            # HTTPStatusError can carry the API key.
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,
                 agent_id=str(agent_id),

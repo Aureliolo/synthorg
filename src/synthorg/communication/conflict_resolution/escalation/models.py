@@ -1,4 +1,4 @@
-"""Escalation queue domain models (#1418)."""
+"""Escalation queue domain models."""
 
 from enum import StrEnum
 from typing import Annotated, Literal, Self

@@ -115,7 +115,7 @@ async def _probe_service(
         # ``exc_info=True`` would serialize frame locals from the probe
         # into the log record; persistence / bus probes carry connection
         # objects and partial auth state, so we emit only the sanitized
-        # description.  SEC-1 logging convention (see CLAUDE.md).
+        # description (see CLAUDE.md ``## Logging``).
         logger.warning(
             API_HEALTH_CHECK,
             component=component,
@@ -245,9 +245,10 @@ class ReadinessController(Controller):
             if fatal:
                 raise
             # ``logger.error`` (not ``logger.exception``) mirrors the
-            # SEC-1 pattern used in ``_probe_service`` above: we emit a
-            # sanitized description but never attach frame locals that
-            # could serialize connection state from the failing probe.
+            # pattern used in ``_probe_service`` above: emit a
+            # sanitized description but never attach frame locals
+            # that could serialize connection state from the failing
+            # probe.
             logger.error(  # noqa: TRY400
                 API_HEALTH_CHECK,
                 component="readiness",

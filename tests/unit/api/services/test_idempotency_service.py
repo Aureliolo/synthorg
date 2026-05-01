@@ -245,7 +245,7 @@ async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
     assert outcome.fresh is False
     # Discriminated timeout: ``timed_out`` is True so callers can
     # distinguish this from a callback that legitimately returned
-    # ``None`` (#1682, CodeRabbit at idempotency_service.py:121).
+    # ``None``.
     assert outcome.timed_out is True
     assert outcome.result is None
 

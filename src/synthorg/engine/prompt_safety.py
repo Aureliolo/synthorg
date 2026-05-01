@@ -1,12 +1,12 @@
 """Prompt-injection-safe delimiters for LLM call sites.
 
-SEC-1 / audit finding 92: LLM call sites interpolate attacker-
-controllable strings into prompts (task title/description,
-acceptance criteria, artifact payloads, tool results, tool
-arguments forwarded to a security evaluator, code diffs,
-strategic config fields). Without a tagged fence plus a system-
-prompt directive, the model cannot tell instructions from data,
-and the caller has a prompt-injection hole.
+LLM call sites interpolate attacker-controllable strings into
+prompts (task title/description, acceptance criteria, artifact
+payloads, tool results, tool arguments forwarded to a security
+evaluator, code diffs, strategic config fields). Without a tagged
+fence plus a system-prompt directive, the model cannot tell
+instructions from data, and the caller has a prompt-injection
+hole.
 
 This module ships two primitives:
 

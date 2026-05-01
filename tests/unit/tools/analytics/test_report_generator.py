@@ -146,12 +146,12 @@ class TestReportGeneratorTool:
             }
         )
         assert result.is_error
-        # SEC-1 (#1682): the tool result now surfaces a stable
-        # generic message; raw exception text would leak DB
-        # connection strings on real failures. Operators see the
-        # scrubbed detail in the ANALYTICS_TOOL_REPORT_FAILED log.
-        # Equality (not substring) so the gate fails if a future
-        # change appends raw exception text after the prefix.
+        # The tool result surfaces a stable generic message; raw
+        # exception text would leak DB connection strings on real
+        # failures. Operators see the scrubbed detail in the
+        # ANALYTICS_TOOL_REPORT_FAILED log. Equality (not substring)
+        # so the gate fails if a future change appends raw
+        # exception text after the prefix.
         assert result.content == "Report generation failed"
 
     async def test_execute_formatting_error(
@@ -161,12 +161,12 @@ class TestReportGeneratorTool:
     ) -> None:
         """Force ``_format_report`` to raise; assert the scrubbed branch.
 
-        Pre-PR review #1682 (CodeRabbit at test_report_generator.py:155):
         ``test_execute_provider_error`` covers the provider-query
         failure path, but the formatter exception branch (different
         ``except`` block in ``execute()``) had no exact-match gate.
-        A regression that re-introduced ``content=f"Report formatting
-        failed: {exc}"`` would slip past the provider-error test.
+        A regression that re-introduced ``content=f"Report
+        formatting failed: {exc}"`` would slip past the
+        provider-error test.
         """
         tool = ReportGeneratorTool(provider=mock_provider)
         monkeypatch.setattr(

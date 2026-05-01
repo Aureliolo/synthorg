@@ -77,8 +77,8 @@ def _publish_ws_event(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        # SEC-1 (#1682): drop exc_info -- channels_plugin internals
-        # can carry connection metadata; surface scrubbed type+msg.
+        # Drop exc_info -- channels_plugin internals can carry
+        # connection metadata; surface scrubbed type+msg.
         logger.warning(
             API_WS_SEND_FAILED,
             note="Failed to publish coordination WebSocket event",
@@ -188,9 +188,8 @@ class CoordinationController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            # SEC-1 (#1682): drop ``exc_info=True`` -- the
-            # config-resolver traceback can carry secret-store URLs
-            # in frame-locals.
+            # Drop ``exc_info=True`` -- the config-resolver traceback
+            # can carry secret-store URLs in frame-locals.
             logger.warning(
                 API_COORDINATION_FAILED,
                 error_type=type(exc).__name__,
@@ -279,9 +278,9 @@ class CoordinationController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            # SEC-1 (#1682): drop ``logger.exception`` -- frame-locals
-            # on the unexpected-coordination traceback can carry the
-            # full coordination context (task body, agent rosters).
+            # Drop ``logger.exception`` -- frame-locals on the
+            # unexpected-coordination traceback can carry the full
+            # coordination context (task body, agent rosters).
             logger.error(  # noqa: TRY400
                 API_COORDINATION_FAILED,
                 task_id=task_id,

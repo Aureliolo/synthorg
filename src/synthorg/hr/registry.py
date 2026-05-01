@@ -75,7 +75,7 @@ class AgentRegistryService:
         Holds the same ``self._lock`` as ``register`` / ``unregister``
         / ``update_*`` so a concurrent caller cannot observe a partial
         clear -- the registry is either fully empty or in the state
-        the contending writer claimed (#1599).
+        the contending writer claimed.
 
         New async test fixtures should call ``await registry.clear()``
         directly. The legacy sync entry point used to live on this

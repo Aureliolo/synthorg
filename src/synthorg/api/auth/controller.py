@@ -109,8 +109,8 @@ async def _record_failed_login(
 
     Extracted from :meth:`AuthController.login` so the parent stays
     under the McCabe-complexity ceiling. Per the persistence-boundary
-    rule (#1599) the repo no longer logs ``SECURITY_AUTH_ACCOUNT_LOCKED``;
-    this helper emits the signed audit event with the controller-side
+    rule the repo does not log ``SECURITY_AUTH_ACCOUNT_LOCKED``; this
+    helper emits the signed audit event with the controller-side
     context (threshold + duration) and raises ``AccountLockedError``
     so the caller's flow short-circuits before the generic
     ``invalid_credentials`` log line.

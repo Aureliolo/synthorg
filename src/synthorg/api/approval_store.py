@@ -123,7 +123,7 @@ class ApprovalStore:
 
         Holds the same ``self._lock`` as the CRUD methods so a
         concurrent ``save`` / ``get`` / ``list_items`` cannot observe
-        a partially-cleared cache (#1599). The generation counter is
+        a partially-cleared cache. The generation counter is
         bumped under the lock; in-flight saves that captured the old
         generation will refuse to repopulate ``_items`` after the
         clear lands. The ``_saves_in_flight`` markers are deliberately

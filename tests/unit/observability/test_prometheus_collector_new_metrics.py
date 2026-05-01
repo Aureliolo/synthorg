@@ -1,4 +1,4 @@
-"""Unit tests for the 7 new Prometheus metric families (#1384).
+"""Unit tests for the 7 new Prometheus metric families.
 
 Covers provider token/cost counters, API request histogram, task
 counters/histogram, tool counters/histogram, audit chain counters,
@@ -265,7 +265,7 @@ def test_all_new_metric_families_registered() -> None:
         assert f"# HELP {name}" in text, f"{name} not exposed"
 
 
-# -- Provider error metric (#1538) -------------------------------------------
+# -- Provider error metric ---------------------------------------------------
 
 
 def test_record_provider_error_increments_by_class() -> None:
@@ -305,7 +305,7 @@ def test_record_provider_error_rejects_unknown_class() -> None:
         )
 
 
-# -- Cache operation metric (#1538) ------------------------------------------
+# -- Cache operation metric --------------------------------------------------
 
 
 def test_record_cache_operation_partitions_by_name_and_outcome() -> None:
@@ -345,7 +345,7 @@ def test_record_cache_operation_rejects_unknown_outcome() -> None:
         collector.record_cache_operation(cache_name="mcp_result", outcome="done")
 
 
-# -- API error classification metric (#1538) ---------------------------------
+# -- API error classification metric -----------------------------------------
 
 
 def test_record_api_error_partitions_by_category_and_status_class() -> None:

@@ -70,8 +70,8 @@ def _build_synthesis_prompt(
     """Build a synthesis prompt from all position papers.
 
     Each paper is wrapped in its own ``<peer-contribution>`` fence
-    (SEC-1 / #1596) so a compromised paper-writer cannot break out and
-    inject instructions into the synthesizer's decision.
+    so a compromised paper-writer cannot break out and inject
+    instructions into the synthesizer's decision.
     """
     parts = [agenda_text, "", "Position papers submitted:"]
     for agent_id, content in papers:

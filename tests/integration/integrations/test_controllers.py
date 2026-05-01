@@ -79,7 +79,7 @@ class TestConnectionsController:
             await ctrl.get_connection.fn(ctrl, state=state, name="missing")
 
     async def test_create_validates_missing_name(self) -> None:
-        """Missing ``name`` is rejected at the DTO boundary (#1682).
+        """Missing ``name`` is rejected at the DTO boundary.
 
         After the Pydantic-DTO refactor, ``name`` is a required
         field on :class:`CreateConnectionRequest` and Litestar's
@@ -672,7 +672,7 @@ class TestTunnelController:
 @pytest.mark.integration
 class TestOAuthController:
     async def test_initiate_requires_connection_name(self) -> None:
-        """Missing ``connection_name`` is rejected at the DTO boundary (#1682)."""
+        """Missing ``connection_name`` is rejected at the DTO boundary."""
         from pydantic import ValidationError as PydanticValidationError
 
         from synthorg.api.controllers.oauth import (
@@ -747,9 +747,8 @@ class TestControllerHttpLayer:
         # Stub rate-limit store: the guard calls
         # ``store.acquire(...)`` and inspects the
         # :class:`RateLimitOutcome` it returns (see protocol.py).
-        # Returning a tuple here would silently violate the contract
-        # (#1682, CodeRabbit at integrations/test_controllers.py:755).
-        # ``spec=`` enforces the protocol surface (#1604) so a future
+        # Returning a tuple here would silently violate the contract.
+        # ``spec=`` enforces the protocol surface so a future
         # ``SlidingWindowStore`` method rename surfaces as an
         # ``AttributeError`` instead of a silent test pass.
         rate_limit_store = MagicMock(spec=SlidingWindowStore)
@@ -864,13 +863,12 @@ class TestControllerHttpLayer:
     async def test_create_connection_invalid_body_returns_4xx(self) -> None:
         """Invalid POST body is rejected at the request boundary.
 
-        Pre-PR review #1682 (CodeRabbit at integrations/test_controllers.py:113):
-        the model-level ``test_create_validates_*`` cases assert the
+        The model-level ``test_create_validates_*`` cases assert the
         Pydantic DTO rejects bad payloads, but only an end-to-end
         ``TestClient`` round-trip proves the controller's signature
         still binds the DTO and that Litestar's request parser
         surfaces a structured client error before the handler body
-        runs.  A regression in either the route binding or the DTO
+        runs. A regression in either the route binding or the DTO
         would fall back to 200/500, which the model-level tests
         cannot detect.
 

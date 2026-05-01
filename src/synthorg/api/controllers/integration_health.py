@@ -41,9 +41,9 @@ async def _safe_check(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        # SEC-1: connection health checks can surface exceptions whose
-        # str() embeds response bodies (including auth headers or OAuth
-        # refresh tokens from the connection catalog). Log via
+        # Connection health checks can surface exceptions whose
+        # str() embeds response bodies (including auth headers or
+        # OAuth refresh tokens from the connection catalog). Log via
         # safe_error_description + error_type; never attach exc_info
         # (frame-locals can carry credential material).
         logger.warning(

@@ -131,11 +131,10 @@ class CodeApplier:
         except MemoryError, RecursionError:
             raise
         except Exception as outer_exc:
-            # SEC-1 (#1682): drop ``logger.exception`` here -- the
-            # outer handler runs after the ``_write_changes`` /
-            # GitHub-client paths, and the traceback carries
-            # full proposal payload + branch / commit metadata
-            # in frame-locals.
+            # Drop ``logger.exception`` here -- the outer handler
+            # runs after the ``_write_changes`` / GitHub-client
+            # paths, and the traceback carries full proposal payload
+            # + branch / commit metadata in frame-locals.
             logger.error(  # noqa: TRY400
                 META_APPLY_FAILED,
                 altitude="code_modification",
@@ -169,7 +168,6 @@ class CodeApplier:
                     error_type=type(revert_exc).__name__,
                     error=safe_error_description(revert_exc),
                 )
-            # NOTE (#1682, CodeRabbit critical at code_applier.py:189):
             # Do NOT call ``self._github.delete_branch(branch)`` here.
             # This outer handler also runs when the failure happens
             # BEFORE ``create_branch()`` (e.g. lint / type-check /
@@ -264,8 +262,7 @@ class CodeApplier:
         # below still deletes it. ``branch_created`` tracks ownership
         # so we never call ``delete_branch`` for a branch this run
         # didn't actually create -- protects against retries hitting
-        # an existing branch from a prior aborted invocation
-        # (#1682, CodeRabbit at code_applier.py:260-289).
+        # an existing branch from a prior aborted invocation.
         branch_created = False
         try:
             await self._github.create_branch(branch)
@@ -290,8 +287,8 @@ class CodeApplier:
                 except MemoryError, RecursionError:
                     raise
                 except Exception as cleanup_exc:
-                    # SEC-1 (#1682): same scrub as the other GitHub-
-                    # client-error path above.
+                    # Same scrub as the other GitHub-client-error
+                    # path above.
                     logger.warning(
                         META_APPLY_FAILED,
                         altitude="code_modification",
@@ -453,14 +450,14 @@ class CodeApplier:
             except MemoryError, RecursionError:
                 raise
             except (OSError, RuntimeError) as exc:
-                # SEC-1 (#1682): the ``msg`` and chained-exception
-                # paths used to leak raw ``str(exc)`` into the
-                # PartialWriteError that the caller subsequently
-                # logs via ``logger.exception`` -- so the secret-log
-                # gate would be bypassed once the wrapper re-raised.
-                # Sanitize once via ``safe_error_description`` and
-                # break the chain with ``from None`` so the original
-                # exception cannot resurface.
+                # Without this, the ``msg`` and chained-exception
+                # paths leak raw ``str(exc)`` into the
+                # PartialWriteError that the caller logs via
+                # ``logger.exception``, bypassing the secret-log
+                # gate once the wrapper re-raises. Sanitize once via
+                # ``safe_error_description`` and break the chain with
+                # ``from None`` so the original exception cannot
+                # resurface.
                 scrubbed = safe_error_description(exc)
                 logger.warning(
                     META_APPLY_FAILED,

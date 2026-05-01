@@ -338,8 +338,8 @@ async def _reports_get(
             # via the centralized helper with the requested id as
             # correlation context so operators investigating a 404 can
             # tie it to the originating request without scraping client
-            # logs. Routes through safe_error_description (SEC-1) for
-            # the error message.
+            # logs. Routes through safe_error_description for the
+            # error message.
             log_handler_invoke_failed(
                 "synthorg_reports_get",
                 missing,

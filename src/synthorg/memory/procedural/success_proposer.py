@@ -200,7 +200,7 @@ class SuccessMemoryProposer:
             )
             return None
         except Exception as exc:
-            # SEC-1 (#1682): drop exc_info + scrub message.
+            # Drop exc_info + scrub message.
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
                 error_type=type(exc).__name__,

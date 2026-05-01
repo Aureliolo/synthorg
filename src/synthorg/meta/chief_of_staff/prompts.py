@@ -6,10 +6,10 @@ proposal generation, regression explanation, and natural
 language explanations of proposals, alerts, and signal
 interactions.
 
-SEC-1 / audit 92: templates that interpolate attacker-controllable
-content (proposal fields, alert fields, free-form user questions,
-signal snapshots) append an ``untrusted_content_directive`` so the
-model treats fenced fields as untrusted data.
+Templates that interpolate attacker-controllable content (proposal
+fields, alert fields, free-form user questions, signal snapshots)
+append an ``untrusted_content_directive`` so the model treats fenced
+fields as untrusted data.
 """
 
 from synthorg.engine.prompt_safety import (

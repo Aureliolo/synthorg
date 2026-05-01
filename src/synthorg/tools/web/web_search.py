@@ -138,8 +138,7 @@ class WebSearchTool(BaseWebTool):
             )
             # Stable, generic message: ``ToolExecutionResult.content``
             # is forwarded to the LLM, so interpolating ``exc`` would
-            # leak provider internals / API keys past the SEC-1 log
-            # scrub (#1682, CodeRabbit at web_search.py:141).
+            # leak provider internals / API keys past the log scrub.
             return ToolExecutionResult(
                 content="Web search failed. Please try again.",
                 is_error=True,
@@ -164,9 +163,9 @@ class WebSearchTool(BaseWebTool):
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1 (#1682): drop exc_info + scrub -- the
-                # malformed provider result might still be readable
-                # in frame-locals on the traceback.
+                # Drop exc_info + scrub -- the malformed provider
+                # result might still be readable in frame-locals on
+                # the traceback.
                 logger.warning(
                     WEB_SEARCH_FAILED,
                     query=query,

@@ -34,7 +34,7 @@ from synthorg.observability.events.integrations import SECRET_RETRIEVAL_FAILED
 
 logger = get_logger(__name__)
 
-# Length caps on attacker-controllable strings (#1682).
+# Length caps on attacker-controllable strings.
 _MAX_CONNECTION_NAME_LEN = 128
 _MAX_SCOPE_LEN = 256
 _MAX_OAUTH_CODE_LEN = 2048
@@ -45,7 +45,7 @@ class InitiateOAuthFlowRequest(BaseModel):
     """Body model for ``POST /oauth/initiate``.
 
     Replaces the prior ``data: dict[str, Any]`` shape so input
-    bounds are enforced by Pydantic at the boundary (#1682).
+    bounds are enforced by Pydantic at the boundary.
     """
 
     model_config = ConfigDict(
@@ -226,10 +226,10 @@ class OAuthController(Controller):
             credentials = await catalog.get_credentials(connection_name)
             has_access_token = bool(credentials.get("access_token"))
         except Exception as exc:
-            # SEC-1 (#1682): no traceback on a credential-lookup
-            # warning path -- frame-locals could carry decrypted
-            # secret material. Operators get the type + scrubbed
-            # message via ``safe_error_description``.
+            # No traceback on a credential-lookup warning path --
+            # frame-locals could carry decrypted secret material.
+            # Operators get the type + scrubbed message via
+            # ``safe_error_description``.
             logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 connection_name=connection_name,

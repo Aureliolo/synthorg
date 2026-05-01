@@ -1,4 +1,4 @@
-"""Tests for department policy configuration in built-in templates (#723)."""
+"""Tests for department policy configuration in built-in templates."""
 
 import pytest
 

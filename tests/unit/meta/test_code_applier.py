@@ -196,15 +196,14 @@ class TestCodeApplier:
         self,
         tmp_path: Path,
     ) -> None:
-        """``create_branch`` failure is a no-cleanup path (#1682).
+        """``create_branch`` failure is a no-cleanup path.
 
-        Pre-PR review #1693 (CodeRabbit critical at code_applier.py:189):
-        the outer exception handler used to call ``delete_branch``
-        unconditionally, which would clobber a stale remote branch
+        The outer exception handler must NOT call ``delete_branch``
+        unconditionally: that would clobber a stale remote branch
         from a previous run when ``create_branch()`` itself raised.
-        The fix removes the outer delete; ``_apply_pipeline`` keeps
-        owning orphan-branch cleanup along the push / draft-PR
-        paths where ``create_branch()`` is known to have run.
+        ``_apply_pipeline`` owns orphan-branch cleanup along the
+        push / draft-PR paths where ``create_branch()`` is known to
+        have run.
         """
         ci = _mock_ci_validator(_ci_pass())
         gh = _mock_github_client()
@@ -237,10 +236,9 @@ class TestCodeApplier:
         self,
         tmp_path: Path,
     ) -> None:
-        """``create_draft_pr`` failure cleans up the orphan branch (#1682).
+        """``create_draft_pr`` failure cleans up the orphan branch.
 
-        Pre-PR review #1693 (CodeRabbit at test_code_applier.py:195):
-        the only path that proves ``delete_branch`` fires when the
+        The only path that proves ``delete_branch`` fires when the
         branch IS owned by this invocation is the one where
         ``create_branch`` already succeeded but a downstream call
         (here ``create_draft_pr``) raises. Pinning that with an

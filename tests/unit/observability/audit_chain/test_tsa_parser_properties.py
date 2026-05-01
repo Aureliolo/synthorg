@@ -1,4 +1,4 @@
-"""Hypothesis property tests for the TSA response parser (#1412).
+"""Hypothesis property tests for the TSA response parser.
 
 Goal: random byte strings must either decode into a structured TSA
 response or raise a :class:`TsaError` subclass within a bounded

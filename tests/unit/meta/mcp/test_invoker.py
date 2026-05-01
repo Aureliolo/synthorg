@@ -218,7 +218,7 @@ class TestMCPToolInvoker:
 
 
 class TestMCPToolInvokerArgsModelValidation:
-    """Phase 4 typed-args validation at the invoker boundary (#1611)."""
+    """Typed-args validation at the invoker boundary."""
 
     @staticmethod
     def _tool_with_args_model() -> MCPToolDef:

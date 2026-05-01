@@ -1,4 +1,4 @@
-"""Protocols for the escalation queue backend and decision processor (#1418)."""
+"""Protocols for the escalation queue backend and decision processor."""
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 

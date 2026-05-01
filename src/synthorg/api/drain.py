@@ -1,4 +1,4 @@
-"""HTTP request-drain middleware (#1600).
+"""HTTP request-drain middleware.
 
 Purpose: when the Litestar app receives a shutdown signal, stop
 accepting new HTTP requests and let in-flight requests finish (up

@@ -1,4 +1,4 @@
-"""SQLite escalation queue repository tests (#1418)."""
+"""SQLite escalation queue repository tests."""
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta

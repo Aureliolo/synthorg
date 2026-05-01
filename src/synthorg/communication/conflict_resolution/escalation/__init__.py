@@ -1,4 +1,4 @@
-"""Human escalation approval queue (#1418).
+"""Human escalation approval queue.
 
 Pluggable backend for the :class:`HumanEscalationResolver` strategy:
 persistent queue of pending escalations, operator-facing REST decision

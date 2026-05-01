@@ -155,9 +155,9 @@ class MergeOrchestrator:
                         workspace=workspace,
                     )
                 except WorkspaceCleanupError as exc:
-                    # SEC-1 (#1682): cleanup errors can wrap
-                    # filesystem / DB exceptions whose str() embeds
-                    # paths or connection strings.
+                    # Cleanup errors can wrap filesystem / DB
+                    # exceptions whose str() embeds paths or
+                    # connection strings.
                     logger.warning(
                         WORKSPACE_TEARDOWN_FAILED,
                         workspace_id=workspace.workspace_id,

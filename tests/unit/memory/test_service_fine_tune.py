@@ -335,7 +335,7 @@ class TestRunPreflight:
     """Preflight is platform-agnostic; we mock the filesystem calls.
 
     ``FineTunePlan`` rejects backslashes and drive letters on purpose
-    (SEC-1 path-traversal guard), so we cannot use the OS tmpdir on
+    (path-traversal guard), so we cannot use the OS tmpdir on
     Windows. Mocking ``Path.exists`` / ``Path.is_dir`` keeps the test
     portable.
     """

@@ -579,10 +579,11 @@ const connectPromise = useWebSocketStore.getState().connect()
       // Single microtask yield ensures Zustand subscriber notifications
       // scheduled synchronously inside the auth_ok handler complete
       // before the test body advances fake timers. Do NOT use a real
-      // macrotask drain here (e.g. setImmediate) -- that opens a window
-      // for unrelated real-macrotask work to run between auth_ok and
-      // the heartbeat assertions, including stale MSW response-cleanup
-      // chains that can call close() on our brand-new socket (#1635).
+      // macrotask drain here (e.g. setImmediate) -- that opens a
+      // window for unrelated real-macrotask work to run between
+      // auth_ok and the heartbeat assertions, including stale MSW
+      // response-cleanup chains that can call close() on our
+      // brand-new socket.
       await Promise.resolve()
       expect(useWebSocketStore.getState().connected).toBe(true)
       return ws

@@ -16,10 +16,9 @@ import type { APIRoute } from "astro";
 
 export const prerender = true;
 
-// See install.sh.ts for the rationale: anchoring to ``import.meta.url``
-// avoids the cwd-dependent path resolution that caused gemini /
-// CodeRabbit reviewers to flag the previous resolve("../cli/...") form
-// as brittle in monorepos.
+// See install.sh.ts for the rationale: anchoring to
+// ``import.meta.url`` avoids cwd-dependent path resolution that
+// would otherwise be brittle in monorepos.
 const SCRIPT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../../../cli/scripts/install.ps1",

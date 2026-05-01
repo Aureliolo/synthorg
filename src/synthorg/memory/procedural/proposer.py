@@ -102,10 +102,10 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 def _build_user_message(payload: FailureAnalysisPayload) -> str:
     """Format the payload into a user message for the proposer LLM.
 
-    SEC-1: every attacker-controllable field (task title, description,
+    Every attacker-controllable field (task title, description,
     error message, termination reason, tool list) is wrapped in its
     appropriate ``TAG_*`` fence so the proposer LLM treats them as
-    data.  The matching ``untrusted_content_directive`` is appended
+    data. The matching ``untrusted_content_directive`` is appended
     to ``_SYSTEM_PROMPT``.
     """
     tools = ", ".join(payload.tool_calls_made) if payload.tool_calls_made else "none"
@@ -218,8 +218,8 @@ class ProceduralMemoryProposer:
             )
             return None
         except Exception as exc:
-            # SEC-1 (#1682): drop exc_info + scrub the message --
-            # provider exceptions can carry the API key in str(exc).
+            # Drop exc_info + scrub the message -- provider
+            # exceptions can carry the API key in str(exc).
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
                 task_id=payload.task_id,

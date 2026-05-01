@@ -99,10 +99,10 @@ def log_handler_argument_invalid(tool: str, exc: Exception) -> None:
 
     Called by handlers that catch ``ArgumentValidationError`` after
     typed-arg extraction or validation. The wire shape is fixed:
-    ``tool_name``, ``error_type``, ``error`` (sanitised). Error messages
-    are routed through :func:`safe_error_description` so secret-shaped
-    fragments (Authorization headers, Fernet ciphertexts, URI userinfo,
-    etc.) are scrubbed before logging (SEC-1).
+    ``tool_name``, ``error_type``, ``error`` (sanitised). Error
+    messages are routed through :func:`safe_error_description` so
+    secret-shaped fragments (Authorization headers, Fernet
+    ciphertexts, URI userinfo, etc.) are scrubbed before logging.
 
     Args:
         tool: Full ``synthorg_<domain>_<action>`` tool name.
@@ -129,8 +129,8 @@ def log_handler_invoke_failed(
     to the originating request rather than appearing as an anonymous
     "record missing" line in the audit log.
 
-    Error messages are routed through :func:`safe_error_description` so
-    secret-shaped fragments are scrubbed before logging (SEC-1). The
+    Error messages are routed through :func:`safe_error_description`
+    so secret-shaped fragments are scrubbed before logging. The
     ``**context`` kwargs are forwarded verbatim and are **not** scrubbed;
     callers must not pass credentials, tokens, or other secrets
     through ``context``. This function defensively rejects context keys

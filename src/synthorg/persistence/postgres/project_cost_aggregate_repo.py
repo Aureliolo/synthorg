@@ -215,7 +215,7 @@ class PostgresProjectCostAggregateRepository:
             return None
 
         # Inject the in-memory pinned currency before validation since
-        # the table column does not yet exist (#1597). When a process
+        # the table column does not yet exist. When a process
         # observes a project for the first time after restart, no pin
         # exists yet -- fall back to ``DEFAULT_CURRENCY`` so validation
         # succeeds; the next ``increment`` call carries the operator's
@@ -354,7 +354,7 @@ class PostgresProjectCostAggregateRepository:
                             raise QueryError(msg)
                         # Inject the in-memory pinned currency before
                         # validation since the table column does not
-                        # yet exist (#1597).
+                        # yet exist.
                         row.setdefault("currency", currency)
                         try:
                             aggregate = self._deserialize(

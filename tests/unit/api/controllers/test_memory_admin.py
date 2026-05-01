@@ -239,10 +239,9 @@ class TestRecommendBatchSize:
         assert args[0] == MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED
         assert kwargs.get("error_type") == "RuntimeError"
         assert "CUDA driver unavailable" in kwargs.get("error", "")
-        # SEC-1 / #1682: ``logger.warning(..., error=str(exc),
-        # exc_info=True)`` was a leak vector; the migration drops
-        # ``exc_info=True`` so traceback frame-locals never reach
-        # the structured log record.
+        # ``logger.warning(..., error=str(exc), exc_info=True)`` is
+        # a leak vector; ``exc_info=True`` is dropped so traceback
+        # frame-locals never reach the structured log record.
         assert "exc_info" not in kwargs
 
 

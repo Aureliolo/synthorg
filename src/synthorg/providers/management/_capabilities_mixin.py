@@ -321,9 +321,8 @@ class ProviderCapabilitiesMixin:
 
         Validates the request variant matches the provider's persisted
         ``auth_type``, applies the new secret, and hot-reloads the
-        registry.  The audit row carries ONLY the masked credential
-        prefix per the SEC-1 secret-log rule; plaintext is never
-        persisted to the audit log.
+        registry. The audit row carries ONLY the masked credential
+        prefix; plaintext is never persisted to the audit log.
         """
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()

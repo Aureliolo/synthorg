@@ -131,11 +131,10 @@ class TestUpdateConnectionRequest:
         """Verify the ``_UNSET`` sentinel is forwarded to the catalog
         only when ``base_url`` was omitted from the request body.
 
-        Pre-PR review finding (#1682, item #9): the three-way
-        omit / null / overwrite invariant on ``base_url`` is encoded
-        outside the type. This test pins the behaviour at the
-        controller layer so a future refactor that drops the
-        ``model_fields_set`` check would be caught.
+        The three-way omit / null / overwrite invariant on
+        ``base_url`` is encoded outside the type. This test pins the
+        behaviour at the controller layer so a future refactor that
+        drops the ``model_fields_set`` check would be caught.
         """
         from synthorg.integrations.connections.catalog import _UNSET
 

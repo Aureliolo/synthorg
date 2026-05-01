@@ -1,14 +1,15 @@
-"""Tests for webhook nonce-less idempotency dedup (#1682).
+"""Tests for webhook nonce-less idempotency dedup.
 
-Issue #1682: when a provider does not supply ``X-Nonce`` /
-``X-Request-Id``, the webhook handler must still dedupe redeliveries
-to prevent double-bus publishes. The handler hashes the request body
-with SHA-256 and feeds the digest into the existing durable
+When a provider does not supply ``X-Nonce`` / ``X-Request-Id``, the
+webhook handler must still dedupe redeliveries to prevent
+double-bus publishes. The handler hashes the request body with
+SHA-256 and feeds the digest into the existing durable
 ``IdempotencyService``.
 
 These tests pin the helper-level contract: the success log records
-``dedup_source`` and the durable-idempotency path is invoked for both
-the nonce and nonce-less branches with the appropriate key shape.
+``dedup_source`` and the durable-idempotency path is invoked for
+both the nonce and nonce-less branches with the appropriate key
+shape.
 """
 
 from typing import Any
@@ -183,12 +184,11 @@ class TestNoncelessWebhookKeyShape:
     def test_nonce_less_key_uses_sha256_not_truncated(self) -> None:
         """Real-body SHA-256 digest survives ``_build_idem_key`` unmangled.
 
-        Pre-PR review finding (#1682, item #11): assert that the helper
-        keeps the full 64-hex-char digest visible (or as a hash-of-key
-        when the composite is over the column cap), bounded under
-        ``_IDEMPOTENCY_KEY_MAX_LEN``. A regression that swapped to a
-        weaker hash or truncated the digest mid-key would otherwise
-        slip past the test surface.
+        Asserts that the helper keeps the full 64-hex-char digest
+        visible (or as a hash-of-key when the composite is over the
+        column cap), bounded under ``_IDEMPOTENCY_KEY_MAX_LEN``. A
+        regression that swapped to a weaker hash or truncated the
+        digest mid-key would otherwise slip past the test surface.
         """
         import hashlib
 
@@ -221,11 +221,10 @@ class TestNoncelessWebhookKeyShape:
     def test_nonce_less_key_at_column_cap_boundary(self) -> None:
         """Composite key sitting exactly at the DB cap is accepted.
 
-        Pre-PR review finding (#1682, item #11, boundary case): a
-        connection_name + event_type + ``sha256:`` prefix + 64-hex
-        digest crafted to land near the cap should still fit; pad up
-        to the boundary and confirm the helper does not truncate or
-        crash.
+        A connection_name + event_type + ``sha256:`` prefix + 64-hex
+        digest crafted to land near the cap should still fit; pad
+        up to the boundary and confirm the helper does not truncate
+        or crash.
         """
         # Pad connection_name so the full composite is right at the cap.
         digest = "0" * 64
@@ -249,13 +248,13 @@ class TestNoncelessWebhookKeyShape:
 class TestReceiveWebhookEndToEnd:
     """Controller-level: both branches flow through durable idempotency.
 
-    Pre-PR review finding (#1682, item #6): the helper-level tests
-    above mock ``publish_webhook_event`` and ``run_idempotent``, which
-    is enough for unit isolation but does not catch a regression where
-    the orchestrator drops the ``dedup_source`` plumbing or skips the
-    body-SHA256 derivation entirely. These tests invoke
-    :meth:`WebhooksController.receive_webhook` directly with a mocked
-    :class:`State` so the full branch logic runs.
+    The helper-level tests above mock ``publish_webhook_event`` and
+    ``run_idempotent``, which is enough for unit isolation but does
+    not catch a regression where the orchestrator drops the
+    ``dedup_source`` plumbing or skips the body-SHA256 derivation
+    entirely. These tests invoke
+    :meth:`WebhooksController.receive_webhook` directly with a
+    mocked :class:`State` so the full branch logic runs.
     """
 
     async def _invoke_branch(

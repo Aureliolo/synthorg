@@ -188,7 +188,6 @@ class InterruptStore:
        all pending interrupts and their resolutions are lost.  For
        production deployments that require durability, implement a
        persistent backend (e.g. SQL-backed) behind the same interface.
-       See also: ``A2A gateway implementation`` (#1164).
     """
 
     __slots__ = ("_events", "_lock", "_pending", "_results")

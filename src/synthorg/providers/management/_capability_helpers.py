@@ -49,9 +49,8 @@ def credentials_update_fields(
 ) -> tuple[dict[str, object], str]:
     """Build the ``ProviderConfig.model_copy(update=...)`` field map.
 
-    Returns ``(field_updates, masked_secret_for_audit)``.  The masked
-    secret is suitable for direct inclusion in audit-row payloads
-    per the SEC-1 secret-log rule.
+    Returns ``(field_updates, masked_secret_for_audit)``. The masked
+    secret is suitable for direct inclusion in audit-row payloads.
     """
     auth_type = request.auth_type
     if auth_type == AuthType.API_KEY:

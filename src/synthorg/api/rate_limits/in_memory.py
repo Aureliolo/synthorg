@@ -236,7 +236,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         CPython's GIL but fragile on alternative interpreters where
         ``dict.get`` is not guaranteed atomic, and the cost of one
         async-lock acquire per ``acquire()`` is negligible against the
-        bucket-mutation work that follows (#1599).
+        bucket-mutation work that follows.
 
         Increments ``_lock_refs[key]`` so a concurrent
         :meth:`_gc_cold_buckets` cannot evict the lock between this
@@ -304,7 +304,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 # ``safe_error_description`` scrubs attacker-controllable
                 # bytes from the serialised error so a misbehaving
                 # bucket-key or exception subclass cannot inject text
-                # that breaks the structured log stream (SEC-1).
+                # that breaks the structured log stream.
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="rate_limit_gc_failed",

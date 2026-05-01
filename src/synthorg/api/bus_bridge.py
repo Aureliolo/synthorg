@@ -128,10 +128,10 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._poll_timeout_fallback_logged:
-                # SEC-1 (#1682): no exc_info on a settings-resolver
-                # fallback path. ConfigResolver fetches can carry
-                # connection strings or API tokens in scope, and a
-                # traceback would serialise frame-locals into the log.
+                # No exc_info on a settings-resolver fallback path.
+                # ConfigResolver fetches can carry connection strings
+                # or API tokens in scope, and a traceback would
+                # serialise frame-locals into the log.
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     error=(
@@ -165,7 +165,7 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._drain_timeout_fallback_logged:
-                # SEC-1 (#1682): no exc_info on settings-resolver fallback.
+                # No exc_info on settings-resolver fallback.
                 logger.warning(
                     API_BUS_BRIDGE_DRAIN_RESOLVE_ERROR,
                     error=(
@@ -198,7 +198,7 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._max_errors_fallback_logged:
-                # SEC-1 (#1682): no exc_info on settings-resolver fallback.
+                # No exc_info on settings-resolver fallback.
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     error=(
@@ -502,13 +502,13 @@ class MessageBusBridge:
                     if isinstance(result, MemoryError | RecursionError):
                         raise result
                     if isinstance(result, BaseException):
-                        # SEC-1 (#1682): ``exc_info=<exception>`` emits
-                        # the same traceback frame-locals as
-                        # ``exc_info=True`` per the Python logging
-                        # contract, undoing the scrub from
-                        # ``safe_error_description``. Operators get
-                        # the type + scrubbed message; tracebacks are
-                        # not attached on shutdown-warning paths.
+                        # ``exc_info=<exception>`` emits the same
+                        # traceback frame-locals as ``exc_info=True``
+                        # per the Python logging contract, undoing
+                        # the scrub from ``safe_error_description``.
+                        # Operators get the type + scrubbed message;
+                        # tracebacks are not attached on
+                        # shutdown-warning paths.
                         logger.warning(
                             API_APP_SHUTDOWN,
                             component="bus_bridge",

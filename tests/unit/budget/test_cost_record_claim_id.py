@@ -172,12 +172,12 @@ class TestTrackerLruDedup:
     ) -> None:
         """Concurrent submissions of the same claim_id collapse to one record.
 
-        Pre-PR review finding (#1682, item #5): the LRU fast-path is
-        guarded by ``self._lock``. Two concurrent ``record(rec)`` calls
-        with the same ``claim_id`` must serialize through the lock and
-        leave exactly one entry in ``_records``. A future refactor that
-        moved the membership check outside the lock would silently
-        double-bill in production; this test catches that regression.
+        The LRU fast-path is guarded by ``self._lock``. Two
+        concurrent ``record(rec)`` calls with the same ``claim_id``
+        must serialize through the lock and leave exactly one entry
+        in ``_records``. A future refactor that moved the membership
+        check outside the lock would silently double-bill in
+        production; this test catches that regression.
         """
         rec = make_cost_record(cost=0.07)
         await asyncio.gather(

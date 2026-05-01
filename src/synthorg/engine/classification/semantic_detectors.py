@@ -224,9 +224,9 @@ class _BaseSemanticDetector:
         self._model_id = model_id
         self._budget_tracker = budget_tracker
         self._cost_tracker = cost_tracker
-        # SEC-1 fingerprint stability: pin temperature + max_tokens at
-        # construction so runs are reproducible across provider-default
-        # changes. Detection is deterministic by default (temperature=0.0).
+        # Pin temperature + max_tokens at construction so runs are
+        # reproducible across provider-default changes. Detection
+        # is deterministic by default (temperature=0.0).
         self._completion_config = CompletionConfig(
             temperature=temperature,
             max_tokens=max_tokens,

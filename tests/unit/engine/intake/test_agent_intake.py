@@ -1,9 +1,9 @@
-"""Unit tests for ``AgentIntake`` including SEC-1 fence + CompletionConfig.
+"""Unit tests for ``AgentIntake`` including the untrusted-content fence.
 
-SEC-1 / audit 92: the agent-intake triage prompt interpolates user-
-supplied ``TaskRequirement`` fields (title, description) directly into
-the LLM message, and previously invoked ``provider.complete`` without
-a pinned ``CompletionConfig``. These tests fix the contract.
+The agent-intake triage prompt interpolates user-supplied
+``TaskRequirement`` fields (title, description) directly into the
+LLM message and invokes ``provider.complete`` with a pinned
+``CompletionConfig``. These tests pin the contract.
 """
 
 from typing import cast
@@ -144,11 +144,11 @@ class TestAgentIntakeBaseline:
         assert task_engine.captured_data is None
 
 
-# -- SEC-1 fence + CompletionConfig contract (audit 92) --------------------
+# -- Untrusted-content fence + CompletionConfig contract -------------------
 
 
 class TestSec1AgentIntakeFences:
-    """SEC-1 contract on ``AgentIntake``."""
+    """Untrusted-content fence contract on ``AgentIntake``."""
 
     async def test_default_completion_config_pinned(self) -> None:
         provider = _StubProvider(content='{"accepted": true}')
@@ -243,9 +243,9 @@ class TestSec1AgentIntakeFences:
         assert hacked_desc not in user_msg.content
 
     async def test_custom_persona_without_directive_gets_normalized(self) -> None:
-        """SEC-1: a caller-supplied persona that lacks the untrusted-
-        content directive is normalized at ``__init__`` so the system
-        prompt still carries the directive.
+        """A caller-supplied persona that lacks the untrusted-content
+        directive is normalized at ``__init__`` so the system prompt
+        still carries the directive.
         """
         provider = _StubProvider(content='{"accepted": true}')
         custom_persona = "You are a minimalist triage agent. Return JSON only."
@@ -269,7 +269,7 @@ class TestSec1AgentIntakeFences:
         assert "<task-data>" in system_msg.content
 
     async def test_custom_persona_with_directive_not_duplicated(self) -> None:
-        """SEC-1 normalization is idempotent: if the caller already
+        """Normalization is idempotent: if the caller already
         appended the directive, it is not duplicated.
         """
         from synthorg.engine.prompt_safety import (

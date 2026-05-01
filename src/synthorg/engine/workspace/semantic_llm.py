@@ -237,10 +237,9 @@ class LlmSemanticAnalyzer:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            # SEC-1 (#1682): drop exc_info + scrub the message --
-            # provider HTTPStatusError can carry the API key in
-            # str(exc), and the traceback would re-emit it from
-            # frame-locals.
+            # Drop exc_info + scrub the message -- provider
+            # HTTPStatusError can carry the API key in str(exc), and
+            # the traceback would re-emit it from frame-locals.
             logger.warning(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 workspace_id=workspace.workspace_id,

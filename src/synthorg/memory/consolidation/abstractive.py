@@ -112,9 +112,9 @@ class AbstractiveSummarizer:
             Summary text.
         """
         try:
-            # SEC-1: ``content`` is the raw memory body, which may
-            # have absorbed adversarial peer/tool output upstream.
-            # Wrap it in a ``<untrusted-artifact>`` fence; the system
+            # ``content`` is the raw memory body, which may have
+            # absorbed adversarial peer/tool output upstream. Wrap
+            # it in a ``<untrusted-artifact>`` fence; the system
             # prompt carries the matching directive.
             messages = [
                 ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),

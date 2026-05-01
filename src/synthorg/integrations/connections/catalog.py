@@ -198,10 +198,9 @@ class ConnectionCatalog:
             try:
                 await self._repo.save(connection)
             except Exception as save_exc:
-                # SEC-1 (#1682, CodeRabbit at catalog.py:210): drop
-                # ``logger.exception`` on secret-bearing rollback
-                # paths -- the traceback frame-locals carry the
-                # secret_id and repo connection details. Use
+                # Drop ``logger.exception`` on secret-bearing
+                # rollback paths -- the traceback frame-locals carry
+                # the secret_id and repo connection details. Use
                 # structured warning + safe_error_description.
                 logger.warning(
                     CONNECTION_CREATED,
@@ -282,12 +281,11 @@ class ConnectionCatalog:
         * ``None`` clears the stored value.
         * Any other value overwrites the stored value.
 
-        Pre-PR review #1682 (CodeRabbit critical at connections.py:295):
-        ``metadata`` previously treated ``None`` as "skip", which made
-        explicit clearing impossible from the controller and let the
-        controller's ``_UNSET`` sentinel slip into the persistence
-        layer when the caller did pass it through. Aligning with
-        ``base_url`` makes both fields PATCH-compatible.
+        ``metadata`` honours the same three-way contract as
+        ``base_url``: ``_UNSET`` skips, ``None`` clears, anything
+        else overwrites. (Treating ``None`` as "skip" used to make
+        explicit clearing impossible from the controller and let
+        the controller's ``_UNSET`` sentinel slip into persistence.)
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -299,11 +297,10 @@ class ConnectionCatalog:
             # Explicit ``is None`` check matches the documented
             # three-way contract on ``UpdateConnectionRequest``:
             # ``_UNSET`` skips, ``None`` clears, anything else
-            # overwrites. The previous truthiness check (``if
-            # base_url else None``) silently coerced the empty
-            # string into a clear, contradicting the DTO doc that
-            # promises only ``null`` clears (#1682, CodeRabbit at
-            # catalog.py:276). The DTO's ``NotBlankStr`` guard
+            # overwrites. A truthiness check (``if base_url else
+            # None``) would silently coerce the empty string into a
+            # clear, contradicting the DTO doc that promises only
+            # ``null`` clears. The DTO's ``NotBlankStr`` guard
             # rejects ``""`` from API callers, but the catalog still
             # has to handle non-DTO callers correctly.
             if base_url is not _UNSET:
@@ -371,9 +368,9 @@ class ConnectionCatalog:
                             secret_id=ref.secret_id,
                         )
                 except Exception as exc:
-                    # SEC-1: secret backends carry credentials; raw
+                    # Secret backends carry credentials; raw
                     # exception strings via ``logger.exception`` can
-                    # leak backend details.  Use the structured
+                    # leak backend details. Use the structured
                     # safe_error_description path instead.
                     logger.warning(
                         CONNECTION_DELETED,
@@ -527,9 +524,8 @@ class ConnectionCatalog:
             try:
                 await self._repo.save(updated)
             except Exception as save_exc:
-                # SEC-1 (#1682, CodeRabbit at catalog.py:210): drop
-                # ``logger.exception`` on secret-bearing rollback;
-                # frame-locals on the traceback carry the
+                # Drop ``logger.exception`` on secret-bearing
+                # rollback; frame-locals on the traceback carry the
                 # ``new_secret_id`` and refresh-token bytes.
                 logger.warning(
                     OAUTH_TOKEN_EXCHANGED,
@@ -544,8 +540,8 @@ class ConnectionCatalog:
                 try:
                     await self._secret_backend.delete(new_secret_id)
                 except Exception as cleanup_exc:
-                    # SEC-1: see sibling handler -- avoid raw str(exc)
-                    # in case the secret backend's exception message
+                    # See sibling handler -- avoid raw str(exc) in
+                    # case the secret backend's exception message
                     # contains backend-internal credentials.
                     logger.warning(
                         OAUTH_TOKEN_EXCHANGED,
@@ -574,8 +570,7 @@ class ConnectionCatalog:
                             secret_id=old_ref.secret_id,
                         )
                 except Exception as del_exc:
-                    # SEC-1 (#1682, CodeRabbit at catalog.py:210):
-                    # secret-backend delete errors can carry the
+                    # Secret-backend delete errors can carry the
                     # backend's URL or internal token in the
                     # exception text; scrub via
                     # ``safe_error_description`` instead of raw

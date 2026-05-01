@@ -241,21 +241,21 @@ class TestSQLiteApiKeyRepository:
         assert await api_key_repo.get("key-del") is None
 
 
-# ── SEC-1 logger contract on persistence error paths ─────────────
+# ── Logger contract on persistence error paths ──────────────────
 
 
 @pytest.mark.unit
 class TestSec1LoggerContract:
-    """Pin the SEC-1 logger contract for persistence error paths.
+    """Pin the logger contract for persistence error paths.
 
-    Persistence repos catch ``aiosqlite.Error`` / ``sqlite3.Error`` and
-    log at WARNING with ``error_type=type(exc).__name__`` plus
+    Persistence repos catch ``aiosqlite.Error`` / ``sqlite3.Error``
+    and log at WARNING with ``error_type=type(exc).__name__`` plus
     ``error=safe_error_description(exc)``. A regression to
-    ``logger.exception(EVENT, error=str(exc))`` would re-introduce the
-    SEC-1 leak (postgres/sqlite connection strings, SQL fragments) the
-    pre-commit gate already blocks at the AST level. This test pins
-    the runtime contract so a CI-only mistake (e.g., a flag flip on
-    the gate) cannot mask it.
+    ``logger.exception(EVENT, error=str(exc))`` would re-introduce
+    the credential leak (postgres/sqlite connection strings, SQL
+    fragments) the pre-commit gate already blocks at the AST level.
+    This test pins the runtime contract so a CI-only mistake (e.g.,
+    a flag flip on the gate) cannot mask it.
     """
 
     async def test_get_db_error_logs_warning(
@@ -279,7 +279,7 @@ class TestSec1LoggerContract:
         call = mock_logger.warning.call_args
         # Positional EVENT constant is preserved.
         assert call.args, "expected EVENT constant as first positional arg"
-        # Structured kwargs follow the SEC-1 shape.
+        # Structured kwargs follow the safe-redaction shape.
         assert call.kwargs.get("error_type") == "Error"
         assert "error" in call.kwargs
         # Crucially: the error value must be the safe_error_description
@@ -294,11 +294,11 @@ class TestSec1LoggerContract:
     ) -> None:
         """Postgres-style URI userinfo in a DB error message is scrubbed.
 
-        End-to-end check: a credential-bearing exception message flows
-        through the SEC-1 conversion (``logger.warning`` +
-        ``safe_error_description``) and the captured log value has the
-        password masked. This pins the helper's scrub contract at the
-        persistence boundary, covering the scenario the original
+        End-to-end check: a credential-bearing exception message
+        flows through ``logger.warning`` +
+        ``safe_error_description`` and the captured log value has
+        the password masked. This pins the helper's scrub contract
+        at the persistence boundary, covering the scenario the
         ``logger.exception(EVENT, error=str(exc))`` pattern leaked.
         """
         leaky_message = (

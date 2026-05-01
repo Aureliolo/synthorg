@@ -1,5 +1,5 @@
 /**
- * Human escalation approval queue client (#1418).
+ * Human escalation approval queue client.
  *
  * Operators list pending escalations, inspect the originating conflict,
  * submit a decision (winner or reject), or cancel a stuck escalation.

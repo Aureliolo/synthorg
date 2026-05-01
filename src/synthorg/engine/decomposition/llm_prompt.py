@@ -139,9 +139,9 @@ def build_decomposition_tool() -> ToolDefinition:
 def build_system_message() -> ChatMessage:
     """Build the system prompt for decomposition.
 
-    The hand-rolled "treat <task-data> as untrusted" warning is replaced
-    by the canonical :func:`untrusted_content_directive` so the SEC-1
-    fingerprint test catches silent drift in the wording.
+    The hand-rolled "treat <task-data> as untrusted" warning is
+    replaced by the canonical :func:`untrusted_content_directive` so
+    the prompt-fingerprint test catches silent drift in the wording.
 
     Returns:
         A ``ChatMessage`` with ``MessageRole.SYSTEM``.

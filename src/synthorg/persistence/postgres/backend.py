@@ -724,7 +724,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
 
     @property
     def idempotency_keys(self) -> PostgresIdempotencyRepository:
-        """Repository for persistent idempotency keys (#1599)."""
+        """Repository for persistent idempotency keys."""
         return self._require_connected(
             self._idempotency_keys,
             "idempotency_keys",

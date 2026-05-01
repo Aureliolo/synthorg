@@ -74,7 +74,7 @@ _DOCS_CSP: Final[str] = (
 # no-cache, must-revalidate, and max-age=0 so legacy proxies and
 # browsers that ignore one directive still skip caching. Every API
 # response in this app is operator-authenticated and should never be
-# cached, so the strongest possible value applies globally (#1599).
+# cached, so the strongest possible value applies globally.
 _API_CACHE_CONTROL: Final[str] = "no-store, no-cache, must-revalidate, max-age=0"
 
 # Cache-Control for documentation paths -- OpenAPI spec and Scalar UI

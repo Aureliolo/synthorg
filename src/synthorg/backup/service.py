@@ -266,10 +266,10 @@ class BackupService(BackupServiceArchiveMixin):
         try:
             await self._retention.prune()
         except Exception as exc:
-            # SEC-1 (#1682): drop exc_info on retention failure so the
-            # filesystem path / connection details that ``str(exc)``
-            # would carry don't leak via the traceback frame-locals.
-            logger.error(  # noqa: TRY400 -- SEC-1 fail-loud, no traceback
+            # Drop exc_info on retention failure so the filesystem
+            # path / connection details that ``str(exc)`` would
+            # carry don't leak via the traceback frame-locals.
+            logger.error(  # noqa: TRY400 -- fail-loud, no traceback
                 BACKUP_RETENTION_FAILED,
                 backup_id=backup_id,
                 reason="retention_pruning_failed",

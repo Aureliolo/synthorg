@@ -332,7 +332,7 @@ class TestRoundRobinExecution:
 
 @pytest.mark.unit
 class TestRoundRobinInjectionDefense:
-    """SEC-1 / #1596: lateral prompt-injection defenses.
+    """Lateral prompt-injection defenses.
 
     The round-robin protocol exposes one of the strongest lateral
     injection paths in the system: each agent's prompt embeds the full
@@ -466,11 +466,11 @@ class TestRoundRobinInjectionDefense:
         ``RoundRobinProtocol.run()`` rebuilds the transcript from the
         collected ``contributions`` before passing it to ``_run_summary``;
         this is a SEPARATE code path from the per-turn transcript
-        build inside ``_run_discussion_rounds``.  If the summary-side
+        build inside ``_run_discussion_rounds``. If the summary-side
         rebuild were to drop the fence, an injected peer turn could
-        hijack the leader's decisions/action-items output.  This test
+        hijack the leader's decisions/action-items output. This test
         captures the leader's summary prompt and verifies the same
-        per-contribution fence shows up there too (#1596).
+        per-contribution fence shows up there too.
         """
         captured: list[tuple[str, str]] = []
         participant_ids = ("agent-a", "agent-b")

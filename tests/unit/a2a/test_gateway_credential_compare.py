@@ -1,15 +1,14 @@
 """Tests for the constant-time credential comparison in the A2A gateway.
 
-Issue #1682 / SEC-1: ``_verify_peer_credentials`` previously compared
-stored and presented credentials with ``!=``, which short-circuits on
-the first differing byte and leaks credential length plus the position
-of any matching prefix via wall-clock timing. The replacement uses
-``hmac.compare_digest`` via the module-private ``_credentials_match``
-helper.
+A naive ``!=`` short-circuits on the first differing byte and leaks
+credential length plus the position of any matching prefix via
+wall-clock timing. ``_verify_peer_credentials`` uses
+``hmac.compare_digest`` via the module-private
+``_credentials_match`` helper.
 
 These tests assert behavioural equivalence (matching vs mismatching
-strings, length mismatch handling, encoding stability) and act as the
-gate against future regressions back to ``!=``.
+strings, length mismatch handling, encoding stability) and act as
+the gate against future regressions back to ``!=``.
 """
 
 import ast
@@ -109,11 +108,11 @@ class TestCredentialsMatch:
     ) -> None:
         """Source uses `hmac.compare_digest`, not `==` or `!=`.
 
-        Pre-PR review #1682: AST-based check (was string heuristics
-        which can false-positive on docstrings or false-negative on
-        equivalent rewrites). Asserts that a real ``Call`` node
-        invokes ``compare_digest`` (either ``hmac.compare_digest`` or
-        the bare ``compare_digest`` name), AND that no
+        AST-based check rather than string heuristics, which can
+        false-positive on docstrings or false-negative on equivalent
+        rewrites. Asserts that a real ``Call`` node invokes
+        ``compare_digest`` (either ``hmac.compare_digest`` or the
+        bare ``compare_digest`` name), AND that no
         equality/inequality ``Compare`` nodes exist on the helper's
         body -- so a future regression replacing the call with
         ``stored == presented`` is caught even if the docstring
@@ -160,8 +159,7 @@ class TestGatewayUsesConstantTimeCompare:
     (or its swapped order, or an ``==``) would silently reopen the
     timing side-channel. AST-based detection catches every direct
     comparison between the credential name pairs, not just the two
-    literal spellings the original commit replaced (#1682,
-    CodeRabbit at test_gateway_credential_compare.py:179).
+    literal spellings the original commit replaced.
     """
 
     def test_no_direct_inequality_on_credentials(self) -> None:
@@ -191,12 +189,12 @@ class TestGatewayUsesConstantTimeCompare:
     def test_helper_is_used_at_least_twice(self) -> None:
         """Both API-key and OAuth-token paths route through the helper.
 
-        Pre-PR review #1682: AST-based check (was substring count
-        which would pass after a partial conversion if the symbol
-        appears only in docstrings). Walks the gateway module's
-        ``ast.Call`` nodes and counts every ``_credentials_match(...)``
-        invocation. Two call sites (API-key + OAuth-token) is the
-        floor; a regression to a single call site is caught.
+        AST-based check rather than a substring count, which would
+        pass after a partial conversion if the symbol appears only
+        in docstrings. Walks the gateway module's ``ast.Call`` nodes
+        and counts every ``_credentials_match(...)`` invocation. Two
+        call sites (API-key + OAuth-token) is the floor; a
+        regression to a single call site is caught.
         """
         tree = ast.parse(inspect.getsource(gateway))
         helper_calls = [

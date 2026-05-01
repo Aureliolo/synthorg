@@ -224,12 +224,12 @@ class PruningService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1 (#1682): the ``errors`` list lands on
+                # The ``errors`` list lands on
                 # ``PruningJobRun.errors`` and is later
-                # logged/persisted, so we must scrub the same way the
-                # warning below does. Raw ``str(exc)`` here would
-                # smuggle secret-bearing exception text past the
-                # SEC-1 log scrub via the persistence boundary.
+                # logged/persisted, so we must scrub the same way
+                # the warning below does. Raw ``str(exc)`` here
+                # would smuggle secret-bearing exception text past
+                # the log scrub via the persistence boundary.
                 # ``safe_error_description`` already returns
                 # ``"{ExcType}: {scrubbed}"`` so we don't prefix the
                 # type name a second time.
@@ -306,9 +306,9 @@ class PruningService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1 (#1682): same scrub as the eligibility loop --
-                # the ``errors`` list crosses the persistence
-                # boundary via ``PruningJobRun.errors``.
+                # Same scrub as the eligibility loop -- the
+                # ``errors`` list crosses the persistence boundary
+                # via ``PruningJobRun.errors``.
                 # ``safe_error_description`` already prefixes the
                 # exception type, so don't double it up.
                 errors.append(
@@ -566,11 +566,12 @@ class PruningService:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            # SEC-1 (#1682): drop ``logger.exception`` here -- the
+            # Drop ``logger.exception`` here -- the
             # ``FiringRequest`` carries agent identity / reason and
-            # frame-locals on the traceback could leak that to logs.
-            # Mirror the notification-callback pattern: error_type +
-            # safe_error_description(exc) without exc_info.
+            # frame-locals on the traceback could leak that to
+            # logs. Mirror the notification-callback pattern:
+            # error_type + safe_error_description(exc) without
+            # exc_info.
             logger.warning(
                 HR_PRUNING_POLICY_ERROR,
                 agent_id=agent_id,
@@ -632,9 +633,9 @@ class PruningService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1 (#1682): no traceback on the notification
-                # callback path -- frame-locals could carry the
-                # ``record`` body the callback was about to deliver.
+                # No traceback on the notification callback path --
+                # frame-locals could carry the ``record`` body the
+                # callback was about to deliver.
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=agent_id,
@@ -688,10 +689,10 @@ class PruningService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1 (#1682): drop ``logger.exception`` -- the
-                # scheduler-loop traceback can carry FiringRequest
-                # fields and policy state in frame-locals, both of
-                # which contain agent identity / reasoning text.
+                # Drop ``logger.exception`` -- the scheduler-loop
+                # traceback can carry FiringRequest fields and
+                # policy state in frame-locals, both of which
+                # contain agent identity / reasoning text.
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     reason="scheduler_loop_unexpected_error",

@@ -103,10 +103,9 @@ class WorkspaceIsolationService:
         except Exception as exc:
             # Catch ``Exception`` so any setup failure -- not just the
             # documented ``WorkspaceLimitError`` / ``WorkspaceSetupError``
-            # -- triggers rollback.  Without this fallback an
+            # -- triggers rollback. Without this fallback an
             # unexpected error after partial setup would leak the
-            # already-created workspaces (#1682, CodeRabbit at
-            # engine/workspace/service.py:97-112).
+            # already-created workspaces.
             logger.warning(
                 WORKSPACE_GROUP_SETUP_FAILED,
                 count=len(requests),
@@ -142,9 +141,9 @@ class WorkspaceIsolationService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1 (#1682): rollback cleanup errors can wrap
-                # filesystem / DB exceptions whose str() embeds
-                # paths or connection strings.
+                # Rollback cleanup errors can wrap filesystem / DB
+                # exceptions whose str() embeds paths or connection
+                # strings.
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,
                     workspace_id=ws.workspace_id,
@@ -211,11 +210,11 @@ class WorkspaceIsolationService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1 (#1682): the ``errors`` list flows into
-                # ``WorkspaceCleanupError`` which callers may log as a
-                # message; raw ``exc`` text could leak DB credentials
-                # or container ids. Use the same scrubbed string as
-                # the warning log below.
+                # The ``errors`` list flows into
+                # ``WorkspaceCleanupError`` which callers may log as
+                # a message; raw ``exc`` text could leak DB
+                # credentials or container ids. Use the same
+                # scrubbed string as the warning log below.
                 errors.append(
                     f"workspace {workspace.workspace_id}: "
                     f"{safe_error_description(exc)}",

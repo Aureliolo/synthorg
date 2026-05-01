@@ -215,8 +215,8 @@ class LLMQuerySpecificReranker:
             candidate_lines.append(
                 f"[{i}] score={c.combined_score:.2f} content={content_preview!r}",
             )
-        # SEC-1: both the query text and the candidate payload come
-        # from attacker-controllable storage (stored memories, user
+        # Both the query text and the candidate payload come from
+        # attacker-controllable storage (stored memories, user
         # queries) and must be fenced with ``wrap_untrusted`` so the
         # model cannot confuse data for instructions. The system
         # prompt appends ``untrusted_content_directive`` at import

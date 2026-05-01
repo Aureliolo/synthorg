@@ -584,8 +584,8 @@ class LLMRubricGrader:
         """Serialize + truncate the artifact payload; log when truncation fires.
 
         The serialized payload is wrapped in an ``<untrusted-artifact>``
-        fence (SEC-1 / audit finding 92) so the model cannot mistake
-        attacker-controlled artifact content for instructions.
+        fence so the model cannot mistake attacker-controlled
+        artifact content for instructions.
         """
         raw_payload = json.dumps(dict(artifact.payload), ensure_ascii=False)
         original_len = len(raw_payload)

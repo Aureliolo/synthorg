@@ -1,4 +1,4 @@
-"""SQLite-backed idempotency-key repository (#1599).
+"""SQLite-backed idempotency-key repository.
 
 Atomic claim semantics rely on ``INSERT OR IGNORE`` followed by an
 ``UPDATE`` of any pre-existing row that has expired or previously

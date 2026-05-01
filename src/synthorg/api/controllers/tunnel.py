@@ -46,10 +46,10 @@ class TunnelController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            # SEC-1 (#1682): the tunnel provider's exception text can
-            # carry ngrok URLs / auth-token fragments. Surface a
-            # stable generic message to the client; details land in
-            # the scrubbed log above.
+            # The tunnel provider's exception text can carry ngrok
+            # URLs / auth-token fragments. Surface a stable generic
+            # message to the client; details land in the scrubbed
+            # log above.
             client_msg = "Tunnel service is unavailable"
             raise ServiceUnavailableError(client_msg) from exc
         logger.info(
@@ -78,7 +78,7 @@ class TunnelController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            # SEC-1 (#1682): same client-facing redaction as ``start``.
+            # Same client-facing redaction as ``start``.
             client_msg = "Tunnel service is unavailable"
             raise ServiceUnavailableError(client_msg) from exc
         logger.info(TUNNEL_STOPPED)

@@ -4,9 +4,9 @@ Each function operates on explicit parameters (no ``self``), keeping
 loop implementations (ReAct, Plan-and-Execute, etc.) thin and focused
 on their control-flow logic.
 
-SEC-1 wrap-ownership note (#1682): this module is stateless control
-flow only. The :func:`wrap_untrusted` responsibility lives upstream
-of the loop:
+Wrap-ownership note: this module is stateless control flow only.
+The :func:`wrap_untrusted` responsibility lives upstream of the
+loop:
 
 - Tool-result wrapping is owned by
   :func:`synthorg.engine.loop_tool_execution._wrap_tool_result` (see
@@ -19,10 +19,9 @@ of the loop:
   :mod:`synthorg.engine.intake.strategies.agent_intake`.
 
 Editors of this module should NOT add ``wrap_untrusted`` calls here:
-those would re-wrap already-fenced payloads and weaken the SEC-1
-contract. Per the engine audit completed under #1682, every LLM
-message build site under ``src/synthorg/engine/`` is already covered
-by the upstream wrappers.
+those would re-wrap already-fenced payloads and weaken the
+untrusted-content fence contract. Every LLM message build site under
+``src/synthorg/engine/`` is already covered by the upstream wrappers.
 """
 
 import copy

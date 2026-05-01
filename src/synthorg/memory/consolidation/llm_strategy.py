@@ -578,7 +578,7 @@ class LLMConsolidationStrategy:
         agent_id: NotBlankStr,
         category: MemoryCategory,
     ) -> tuple[str, tuple[MemoryEntry, ...]]:
-        """Build the user prompt with SEC-1 untrusted-content fences.
+        """Build the user prompt with untrusted-content fences.
 
         Each entry is wrapped via :func:`wrap_untrusted` under the
         ``TAG_MEMORY_ENTRY`` tag so the consolidator LLM treats the

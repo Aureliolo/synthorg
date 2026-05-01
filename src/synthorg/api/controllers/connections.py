@@ -40,7 +40,7 @@ from synthorg.observability.events.integrations import (
 )
 
 # Length caps applied at the API boundary to prevent unbounded
-# string allocation on attacker-controllable inputs (#1682). The
+# string allocation on attacker-controllable inputs. The
 # credential / metadata key caps share the same value as the
 # connection-name cap, but the *names* are kept distinct so a future
 # tuner who needs to widen credential keys (e.g. for tokens with
@@ -54,11 +54,10 @@ _MAX_METADATA_KEY_LEN = 128
 _MAX_METADATA_VALUE_LEN = 4096
 # Map-entry caps complement the per-key/value length caps above so a
 # legitimate caller can't be tricked into receiving an
-# attacker-amplified payload of many small pairs (#1682, CodeRabbit
-# at connections.py:55). 128 entries is comfortably above the
-# largest realistic credential-bag (OAuth + provider metadata caps
-# at ~30 fields combined) without being so large it defeats the
-# point of bounding the input.
+# attacker-amplified payload of many small pairs. 128 entries is
+# comfortably above the largest realistic credential-bag (OAuth +
+# provider metadata caps at ~30 fields combined) without being so
+# large it defeats the point of bounding the input.
 _MAX_CRED_ITEMS = 128
 _MAX_METADATA_ITEMS = 128
 
@@ -68,7 +67,7 @@ class CreateConnectionRequest(BaseModel):
 
     Replaces the prior ``data: dict[str, Any]`` shape so input
     validation runs at the boundary and unbounded strings are
-    rejected before reaching the catalog (#1682).
+    rejected before reaching the catalog.
     """
 
     model_config = ConfigDict(
@@ -81,9 +80,9 @@ class CreateConnectionRequest(BaseModel):
     connection_type: ConnectionType
     auth_method: AuthMethod = AuthMethod.API_KEY
     # ``NotBlankStr`` keys reject ``""`` and whitespace-only strings
-    # so an attacker can't slip a blank-keyed credential past the DTO
-    # (#1682, CodeRabbit at connections.py:77). Empty credential keys
-    # are never legitimate -- the catalog later normalises by name.
+    # so an attacker can't slip a blank-keyed credential past the DTO.
+    # Empty credential keys are never legitimate -- the catalog later
+    # normalises by name.
     credentials: dict[
         Annotated[NotBlankStr, Field(max_length=_MAX_CRED_KEY_LEN)],
         Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
@@ -91,8 +90,7 @@ class CreateConnectionRequest(BaseModel):
     # ``NotBlankStr`` rejects ``""`` so a client can't send a blank
     # ``base_url`` as an undocumented "clear" signal -- ``null`` is the
     # only sanctioned clear operation, matching the DTO contract
-    # documented on :class:`UpdateConnectionRequest` (#1682, CodeRabbit
-    # at connections.py:82).
+    # documented on :class:`UpdateConnectionRequest`.
     base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
         dict[
@@ -129,8 +127,7 @@ class UpdateConnectionRequest(BaseModel):
     )
 
     # ``NotBlankStr`` rejects ``""`` so explicit-null is the only
-    # documented "clear" path; see ``CreateConnectionRequest`` (#1682,
-    # CodeRabbit at connections.py:82).
+    # documented "clear" path; see ``CreateConnectionRequest``.
     base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
         dict[
@@ -240,9 +237,8 @@ class ConnectionsController(Controller):
         # on the DTO does not deep-freeze nested dicts, so passing
         # ``data.credentials`` / ``data.metadata`` by reference would let
         # the catalog mutate the request DTO's storage in place and
-        # break the immutability contract (CodeRabbit at
-        # connections.py:231 + CLAUDE.md "Create new objects, never
-        # mutate existing ones").
+        # break the immutability contract (CLAUDE.md "Create new
+        # objects, never mutate existing ones").
         credentials = dict(data.credentials)
         metadata = None if data.metadata is None else dict(data.metadata)
         catalog = state["app_state"].connection_catalog
@@ -285,13 +281,10 @@ class ConnectionsController(Controller):
         ``base_url`` and ``metadata`` distinguish "omitted" (leave
         unchanged) from "explicitly null" (clear the field): we read
         ``data.model_fields_set`` to detect omission and forward the
-        sentinel ``_UNSET`` to the catalog.
-
-        Pre-PR review #1682 (CodeRabbit at connections.py:125):
-        ``metadata`` previously collapsed both shapes into ``None``
-        and always forwarded, so a PATCH that left ``metadata``
-        omitted would still wipe the stored value. The
-        ``_UNSET`` guard mirrors ``base_url``'s contract.
+        sentinel ``_UNSET`` to the catalog. The ``_UNSET`` guard
+        mirrors ``base_url``'s contract; without it a PATCH that
+        leaves ``metadata`` omitted would always forward ``None`` and
+        wipe the stored value.
         """
         catalog = state["app_state"].connection_catalog
         base_url_arg = data.base_url if "base_url" in data.model_fields_set else _UNSET
@@ -301,7 +294,7 @@ class ConnectionsController(Controller):
             metadata_arg = None
         else:
             # Defensive copy: see ``create_connection`` for the
-            # immutability rationale (#1682). ``frozen=True`` doesn't
+            # immutability rationale. ``frozen=True`` doesn't
             # deep-freeze the nested dict.
             metadata_arg = dict(data.metadata)
         try:

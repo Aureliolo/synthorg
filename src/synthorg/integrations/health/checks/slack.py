@@ -67,7 +67,7 @@ class SlackHealthCheck:
         # failures (``MemoryError`` / ``RecursionError``) are
         # intentionally re-raised below so they DO unwind the group;
         # they signal interpreter-wide problems that should not be
-        # masked as a single connection's "unhealthy" report (#1682).
+        # masked as a single connection's "unhealthy" report.
         try:
             credentials = await self._catalog.get_credentials(connection.name)
         except MemoryError, RecursionError:
@@ -75,12 +75,11 @@ class SlackHealthCheck:
             # TaskGroup can unwind cleanly; converting them to an
             # UNHEALTHY report would mask the real problem and leave
             # sibling probes running on a doomed process (project
-            # convention; #1682, CodeRabbit at slack.py:80).
+            # convention).
             raise
         except Exception as exc:
-            # SEC-1 (#1682): the secret-backend exception text can
-            # carry encrypted token blobs; scrub before logging /
-            # surfacing.
+            # The secret-backend exception text can carry encrypted
+            # token blobs; scrub before logging / surfacing.
             scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,

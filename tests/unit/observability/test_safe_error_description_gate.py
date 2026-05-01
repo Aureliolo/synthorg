@@ -1,4 +1,4 @@
-"""Tests for the extended secret-log gate (#1682).
+"""Tests for the extended secret-log gate.
 
 ``scripts/check_logger_exception_str_exc.py`` now flags
 ``logger.exception``, ``logger.warning``, and ``logger.error`` calls
@@ -6,9 +6,9 @@ that pass ``error=str(exc)``. The script's filename is preserved
 (historical pre-commit hook ID) but the method coverage has been
 broadened.
 
-These tests pin the gate's contract: the three SEC-1 method names
-trip; ``info`` / ``debug`` are unaffected; non-logger sites with the
-same shape are not flagged.
+These tests pin the gate's contract: the three credential-bearing
+method names trip; ``info`` / ``debug`` are unaffected; non-logger
+sites with the same shape are not flagged.
 """
 
 import ast
@@ -69,7 +69,7 @@ class TestExtendedGate:
             logger.warning("E", error=str(exc))
             """,
         )
-        assert hits, "logger.warning(..., error=str(exc)) must be flagged (#1682)"
+        assert hits, "logger.warning(..., error=str(exc)) must be flagged"
 
     def test_logger_error_str_exc_flagged(self) -> None:
         hits = _scan_source(
@@ -77,7 +77,7 @@ class TestExtendedGate:
             logger.error("E", error=str(exc))
             """,
         )
-        assert hits, "logger.error(..., error=str(exc)) must be flagged (#1682)"
+        assert hits, "logger.error(..., error=str(exc)) must be flagged"
 
     def test_logger_info_str_exc_not_flagged(self) -> None:
         hits = _scan_source(

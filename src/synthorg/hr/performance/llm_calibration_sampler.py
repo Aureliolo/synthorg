@@ -233,17 +233,13 @@ class LlmCalibrationSampler:
         rendered as a metadata block; the free-form
         ``interaction_summary`` (the only attacker-controllable field)
         is wrapped via :func:`wrap_untrusted` under
-        :data:`TAG_TASK_DATA`. The SEC-1 instructional directive
-        lives in the SYSTEM message (see :data:`_SYSTEM_PROMPT_HEADER`)
+        :data:`TAG_TASK_DATA`. The untrusted-content directive lives
+        in the SYSTEM message (see :data:`_SYSTEM_PROMPT_HEADER`)
         rather than the user payload so an attacker-controlled
-        summary cannot dilute the directive's authority.
-
-        Pre-PR review finding (#1682, CodeRabbit critical at
-        ``llm_calibration_sampler.py:55``): the prior implementation
-        prepended ``_SYSTEM_PROMPT_HEADER`` to the user message,
-        sending the SEC-1 directive at user-priority instead of
-        system-priority -- which left the call site prompt-injectable
-        even though the summary was fenced.
+        summary cannot dilute the directive's authority -- prepending
+        the directive to the user message would send it at
+        user-priority instead of system-priority, leaving the call
+        site prompt-injectable even with the summary fenced.
         """
 
         def _display(val: object) -> str:
@@ -357,10 +353,10 @@ class LlmCalibrationSampler:
         ):
             response = await self._provider.complete(
                 messages=[
-                    # SEC-1 (#1682): the untrusted-content directive
-                    # belongs in a SYSTEM-role message so the model
-                    # treats it as instruction with higher priority
-                    # than the USER-role payload that carries the
+                    # The untrusted-content directive belongs in a
+                    # SYSTEM-role message so the model treats it as
+                    # instruction with higher priority than the
+                    # USER-role payload that carries the
                     # attacker-controllable interaction summary.
                     ChatMessage(
                         role=MessageRole.SYSTEM,

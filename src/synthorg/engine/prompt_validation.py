@@ -113,8 +113,8 @@ def format_task_instruction(
     User-controllable fields (title, description, acceptance criteria,
     and the deadline string) are wrapped via ``wrap_untrusted()`` with
     the ``<task-data>`` fence so the system prompt can instruct the
-    model that their content is untrusted input (SEC-1 / audit finding
-    92). The budget marker stays outside the fence because it is a
+    model that their content is untrusted input. The budget marker
+    stays outside the fence because it is a
     numeric, non-string value -- strings are the only values the fence
     protects against breakout for. The deadline is ISO-8601 validated
     upstream but originates from an API payload, so it too lives
@@ -142,12 +142,13 @@ def format_task_instruction(
 
     if task.deadline:
         parts.append("")
-        # SEC-1: even though ``task.deadline`` passes strict
+        # Even though ``task.deadline`` passes strict
         # ``datetime.fromisoformat()`` validation upstream, it still
         # originates from an API request payload -- the coding
         # guideline is unambiguous that any string-typed
-        # attacker-controllable value interpolated into an LLM prompt
-        # must be wrapped.  Budget limit stays unwrapped because it is
+        # attacker-controllable value interpolated into an LLM
+        # prompt must be wrapped. Budget limit stays unwrapped
+        # because it is
         # a numeric type, not a string.
         parts.append(
             f"**Deadline:** {wrap_untrusted(TAG_TASK_DATA, str(task.deadline))}",
@@ -185,8 +186,8 @@ def resolve_template(custom_template: str | None) -> str:
     try:
         _SANDBOX_ENV.parse(custom_template)
     except TemplateSyntaxError as exc:
-        # SEC-1: syntax errors from an operator-supplied custom
-        # template can echo fragments of the attacker-controlled input;
+        # Syntax errors from an operator-supplied custom template
+        # can echo fragments of the attacker-controlled input;
         # scrub + drop traceback.
         logger.warning(
             PROMPT_CUSTOM_TEMPLATE_FAILED,
@@ -210,7 +211,7 @@ def render_template(template_str: str, context: dict[str, Any]) -> str:
         template = _SANDBOX_ENV.from_string(template_str)
         return template.render(**context)
     except Jinja2TemplateError as exc:
-        # Use the SEC-1 scrubbed pattern: a template-rendering error
+        # Use the scrubbed pattern: a template-rendering error
         # may carry user-supplied template fragments in its message.
         logger.warning(
             PROMPT_BUILD_ERROR,

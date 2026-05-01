@@ -73,10 +73,10 @@ export function ProviderFormModal({
   mode,
   provider,
   // ``null`` means "open in custom-endpoint mode"; explicit string
-  // means "open with that preset preselected".  Defaulting to ``null``
+  // means "open with that preset preselected". Defaulting to ``null``
   // (rather than leaving it ``undefined``) ensures that consumers who
   // omit the prop still land on a valid initial state instead of the
-  // blank-modal failure mode caught by CodeRabbit.
+  // blank-modal failure mode.
   initialPreset = null,
   overrides,
 }: ProviderFormModalProps) {
@@ -259,12 +259,11 @@ export function ProviderFormModal({
   }, [])
 
   // 5. Block 2 above always seeds ``selectedPreset`` on create-mode
-  //    open (mapping ``null`` -> ``__custom__``), so we no longer need
-  //    a render-phase ``resetForm()`` here -- block 4 (driven by the
-  //    selectedPreset transition) handles every field reset.  Keeping
-  //    this comment as a tombstone for the previous render-phase
-  //    reset, which ran into a setState-batching ordering bug
-  //    (CodeRabbit R1) and was removed.
+  //    open (mapping ``null`` -> ``__custom__``), so a render-phase
+  //    ``resetForm()`` here is unnecessary -- block 4 (driven by
+  //    the selectedPreset transition) handles every field reset.
+  //    A render-phase reset would race a setState-batching
+  //    ordering bug.
 
   const handleClose = useCallback(() => {
     resetForm()

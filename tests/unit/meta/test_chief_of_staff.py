@@ -71,7 +71,7 @@ class TestChiefOfStaffPrompts:
 
 
 class TestSec1ChiefOfStaffTemplatesCarryDirective:
-    """SEC-1: every Chief of Staff template that interpolates
+    """Every Chief of Staff template that interpolates
     attacker-controllable content (`company_name`, `signal_summary`,
     `snapshot_summary`, rule metadata, proposal fields, regression
     fields) must append ``untrusted_content_directive`` so the model

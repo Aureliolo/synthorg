@@ -121,8 +121,7 @@ class ProviderAuditEvent(BaseModel):
 
     ``payload`` is event-type-specific structured metadata. Senders
     MUST keep credentials masked (``"prefix***last4"``) -- the audit
-    row is read-only forever and any plaintext leak is permanent. The
-    SEC-1 secret-log rule applies here.
+    row is read-only forever and any plaintext leak is permanent.
 
     Attributes:
         id: Monotonic row identifier assigned by persistence on save.

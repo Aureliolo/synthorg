@@ -1,8 +1,8 @@
 """Verify the lazy ``prompt_safety`` import does not deadlock boot.
 
-Pre-PR review finding (#1682, item #7): ``security/safety_classifier.py``
-defers its ``synthorg.engine.prompt_safety`` import to runtime to break
-the boot cycle (``synthorg.engine.__init__`` -> ``AgentEngine`` ->
+``security/safety_classifier.py`` defers its
+``synthorg.engine.prompt_safety`` import to runtime to break the boot
+cycle (``synthorg.engine.__init__`` -> ``AgentEngine`` ->
 ``_security_factory`` -> ``SecOpsService`` -> ``service_safety`` ->
 ``safety_classifier``).
 
@@ -15,8 +15,8 @@ We verify the contract two ways:
 1. ``find_spec`` confirms each module is locatable (cheap, no side
    effects).
 2. ``_system_prompt()`` triggers the deferred ``prompt_safety`` import
-   at runtime and asserts the SEC-1 directive is reachable -- this is
-   the actual boot-time path the lazy import protects.
+   at runtime and asserts the untrusted-content directive is reachable
+   -- this is the actual boot-time path the lazy import protects.
 
 Running an isolated cold-import order check (e.g. import
 ``synthorg.engine`` and ``synthorg.security`` in a fresh subprocess)

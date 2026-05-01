@@ -1,10 +1,10 @@
 """Tests for the prompt-injection-safe delimiter helper.
 
-SEC-1 / audit finding 92: LLM call sites must wrap attacker-
-controllable content (task title/description, criteria, artifact
-payloads, tool results, code diffs, strategy config fields) inside
-tagged delimiters that the system prompt declares as untrusted
-input. This module tests the shared helper every call site uses.
+LLM call sites must wrap attacker-controllable content (task
+title/description, criteria, artifact payloads, tool results, code
+diffs, strategy config fields) inside tagged delimiters that the
+system prompt declares as untrusted input. This module tests the
+shared helper every call site uses.
 """
 
 import pytest
@@ -154,13 +154,13 @@ class TestWrapUntrustedBreakoutEscape:
     def test_double_wrap_only_outermost_closing_fence_remains(self) -> None:
         """Wrapping output of ``wrap_untrusted`` keeps a single live closer.
 
-        Pre-PR review finding (#1682, item #12): a defensive caller
-        that re-wraps already-fenced content must end up with EXACTLY
-        ONE legitimate ``</task-data>`` boundary (the outermost). Any
-        inner closing tags -- whether the attacker's original or the
-        inner wrap's own closer -- must be backslash-escaped so the
-        model cannot interpret them as fence boundaries. The escape
-        is single-pass per call: each ``wrap_untrusted`` invocation
+        A defensive caller that re-wraps already-fenced content must
+        end up with EXACTLY ONE legitimate ``</task-data>`` boundary
+        (the outermost). Any inner closing tags -- whether the
+        attacker's original or the inner wrap's own closer -- must
+        be backslash-escaped so the model cannot interpret them as
+        fence boundaries. The escape is single-pass per call: each
+        ``wrap_untrusted`` invocation
         neutralises every closing tag in its content payload, but
         does not double-escape an already-escaped form
         (``<\\/task-data>`` stays as one backslash, not two).
@@ -280,9 +280,9 @@ class TestUntrustedContentDirective:
 class TestTagToolArguments:
     """``TAG_TOOL_ARGUMENTS`` wraps tool-invocation argument payloads.
 
-    Used by ``LlmSecurityEvaluator`` (SEC-1 / audit 92) where an agent-
-    supplied tool-call payload must be fenced before it reaches the
-    model that decides whether to allow the call.
+    Used by ``LlmSecurityEvaluator`` where an agent-supplied
+    tool-call payload must be fenced before it reaches the model
+    that decides whether to allow the call.
     """
 
     def test_constant_value(self) -> None:

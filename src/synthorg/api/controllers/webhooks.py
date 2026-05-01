@@ -353,8 +353,8 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     )
     if outcome.timed_out:
         # Distinct from a callback that legitimately returned ``None``
-        # (#1682, CodeRabbit at idempotency_service.py:121); we only
-        # 409 on actual in-flight timeouts / leader-failure exhaustion.
+        # -- we only 409 on actual in-flight timeouts /
+        # leader-failure exhaustion.
         logger.warning(
             IDEMPOTENCY_CLAIM_IN_FLIGHT,
             scope=scope,
@@ -471,14 +471,14 @@ class WebhooksController(Controller):
             headers=headers,
         )
 
-        # CodeRabbit #1682: each candidate header is stripped
-        # individually before fallback selection. The earlier
-        # ``headers.get("x-nonce") or headers.get("x-request-id")``
-        # short-circuited on a whitespace-only ``x-nonce`` (truthy
-        # before ``.strip()``) and never tried ``x-request-id``,
-        # which routed real retries down the body-hash path and
-        # changed the idempotency key. Stripping each candidate
-        # first picks the first non-empty value, or ``None``.
+        # Strip each candidate header individually before fallback
+        # selection. ``headers.get("x-nonce") or
+        # headers.get("x-request-id")`` short-circuits on a
+        # whitespace-only ``x-nonce`` (truthy before ``.strip()``)
+        # and never tries ``x-request-id``, which routes real retries
+        # down the body-hash path and changes the idempotency key.
+        # Stripping each candidate first picks the first non-empty
+        # value, or ``None``.
         nonce = next(
             (
                 candidate

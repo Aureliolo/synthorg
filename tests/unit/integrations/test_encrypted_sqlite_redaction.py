@@ -1,9 +1,8 @@
 """Leak-sentinel tests for ``EncryptedSqliteSecretBackend``.
 
-SEC-1 regression guards: all error paths on the secret backend must
-log only scrubbed, safe metadata -- no raw exception strings, no
-tracebacks, no Fernet ciphertext bytes, no connection URIs with
-credentials. Audit source: ``_audit/findings/90-secrets-in-logs.md``.
+All error paths on the secret backend must log only scrubbed, safe
+metadata -- no raw exception strings, no tracebacks, no Fernet
+ciphertext bytes, no connection URIs with credentials.
 """
 
 from pathlib import Path
@@ -90,11 +89,12 @@ class TestEncryptedSqliteLogRedaction:
             ),
         ):
             await backend.store(NotBlankStr("sec-1"), b"value")
-        # SEC-1 leak guards for the driver-error path:
-        # * no `exc_info` field (we demoted ``logger.exception`` to
+        # Leak guards for the driver-error path:
+        # * no `exc_info` field (``logger.exception`` is demoted to
         #   ``warning`` everywhere).
-        # * the ``hunter2`` password embedded in the connection URI is
-        #   scrubbed by the URI userinfo pattern in `safe_error_description`.
+        # * the ``hunter2`` password embedded in the connection URI
+        #   is scrubbed by the URI userinfo pattern in
+        #   `safe_error_description`.
         # * `error_type` carries the taxonomy for triage.
         for event in events:
             assert "exc_info" not in event

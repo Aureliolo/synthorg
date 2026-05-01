@@ -3,8 +3,7 @@
 
 The pattern ``logger.<method>(EVENT, ..., error=str(exc))`` -- where
 ``<method>`` is one of ``exception``, ``warning``, or ``error`` -- is
-a known secret-exfiltration vector on credential-handling code paths
-(SEC-1 / audit findings 90 + #1682):
+a known secret-exfiltration vector on credential-handling code paths:
 
 * ``logger.exception`` attaches a full Python traceback; structlog
   serialises frame-local variables into the event, so any in-scope
@@ -246,7 +245,7 @@ def _report(violations: list[str]) -> int:
     for line in violations:
         print(line)
     print(
-        "\nSEC-1: `logger.<method>(..., error=str(exc))` leaks credential"
+        "\n`logger.<method>(..., error=str(exc))` leaks credential"
         " material via str(exc)-embedded URLs / form bodies (and via"
         " traceback frame-locals on ``logger.exception``)."
         "\nReplace with:"

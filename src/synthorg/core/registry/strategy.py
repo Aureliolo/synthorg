@@ -137,11 +137,12 @@ class StrategyRegistry[T]:
         try:
             instance = factory(*args, **kwargs)
         except Exception as exc:
-            # Use ``logger.warning`` + ``safe_error_description`` rather than
-            # ``logger.exception`` because factory closures used by
-            # ``PersistenceBackendRegistry`` may capture credentials in their
-            # bound arguments, and ``logger.exception``'s frame-locals capture
-            # would surface them in logs (SEC-1).
+            # Use ``logger.warning`` + ``safe_error_description``
+            # rather than ``logger.exception`` because factory
+            # closures used by ``PersistenceBackendRegistry`` may
+            # capture credentials in their bound arguments, and
+            # ``logger.exception``'s frame-locals capture would
+            # surface them in logs.
             logger.warning(
                 REGISTRY_FACTORY_FAILED,
                 kind=self._kind,

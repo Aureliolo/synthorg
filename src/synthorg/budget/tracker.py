@@ -131,15 +131,14 @@ class CostTracker(CostTrackerSummaryMixin):
         self._auto_prune_threshold = auto_prune_threshold
         self._project_cost_repo = project_cost_repo
         # Bounded LRU of finalised claim_ids the tracker has already
-        # appended.  Stored as ``OrderedDict[str, None]`` so re-
+        # appended. Stored as ``OrderedDict[str, None]`` so re-
         # submission moves the key to the tail in O(1) and the head
         # can be popped on capacity overflow without scanning.
         # In-flight reservations are kept in a separate set so the
         # capacity trim never evicts a claim that is still being
-        # processed -- pre-PR review #1682 (CodeRabbit critical at
-        # tracker.py:261) flagged that a single ``OrderedDict`` mixing
-        # both states could pop a still-running reservation, allowing
-        # a duplicate to slip past the membership check.
+        # processed; mixing both states in one ``OrderedDict`` would
+        # let the trim pop a still-running reservation and allow a
+        # duplicate to slip past the membership check.
         self._inflight_claims: set[str] = set()
         self._seen_claims: OrderedDict[str, None] = OrderedDict()
         self._claim_lru_capacity = claim_lru_capacity
@@ -202,8 +201,7 @@ class CostTracker(CostTrackerSummaryMixin):
         ):
             # Log at WARNING with full record + budget context BEFORE
             # raising so a downstream catch-and-translate cannot hide
-            # repeated mismatches from operators (pre-PR review #1682,
-            # CodeRabbit outside-diff at tracker.py:191-211).
+            # repeated mismatches from operators.
             logger.warning(
                 BUDGET_MIXED_CURRENCY_REJECTED,
                 agent_id=cost_record.agent_id,
@@ -239,8 +237,7 @@ class CostTracker(CostTrackerSummaryMixin):
         # entry and dedupes immediately. Keeping in-flight separate
         # from the LRU prevents the capacity trim from popping a
         # still-running reservation, which would let a duplicate
-        # slip past the membership check (#1682, CodeRabbit critical
-        # at tracker.py:261).
+        # slip past the membership check.
         async with self._lock:
             if (
                 cost_record.claim_id in self._inflight_claims
@@ -562,8 +559,7 @@ class CostTracker(CostTrackerSummaryMixin):
 
         Also resets ``_seen_claims`` and ``_inflight_claims`` so a
         reused ``claim_id`` on a fresh test does not get falsely
-        deduped (#1682 CodeRabbit minor at tracker.py:137 + critical
-        at tracker.py:261).
+        deduped.
         """
         cleared_count = len(self._records)
         self._records.clear()

@@ -47,8 +47,8 @@ def _extract_username(request: Request[Any, Any, Any]) -> str:
     user = getattr(request, "user", None)
     if user and hasattr(user, "username"):
         return str(user.username)
-    # SEC-1 (#1682): log only the route path (``url.path``) rather
-    # than ``str(request.url)`` which embeds the query string -- some
+    # Log only the route path (``url.path``) rather than
+    # ``str(request.url)`` which embeds the query string -- some
     # workflow callbacks pass auth tokens as query parameters and
     # those would otherwise land in the warning log.
     logger.warning(
@@ -114,9 +114,9 @@ class WorkflowExecutionController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            # SEC-1 (#1682): keep the scrubbed exception text in the
-            # warning log only; client-facing ``error`` field stays
-            # generic so internal details don't reach the API caller.
+            # Keep the scrubbed exception text in the warning log
+            # only; client-facing ``error`` field stays generic so
+            # internal details don't reach the API caller.
             return Response(
                 content=ApiResponse[WorkflowExecution](
                     error="Invalid workflow definition.",
@@ -269,8 +269,7 @@ class WorkflowExecutionController(Controller):
             # ``WORKFLOW_EXEC_CANCEL_CONFLICT`` is the dedicated
             # 409 event; ``WORKFLOW_EXEC_CANCELLED`` is reserved for
             # the success path below so audit/telemetry counters
-            # don't conflate failed cancels with successful ones
-            # (#1682, CodeRabbit at workflow_executions.py:267-279).
+            # don't conflate failed cancels with successful ones.
             logger.warning(
                 WORKFLOW_EXEC_CANCEL_CONFLICT,
                 execution_id=execution_id,
@@ -278,8 +277,8 @@ class WorkflowExecutionController(Controller):
                 error=safe_error_description(exc),
                 note="cancel conflict",
             )
-            # SEC-1 (#1682): generic client-facing message; scrubbed
-            # detail stays in the warning log above.
+            # Generic client-facing message; scrubbed detail stays
+            # in the warning log above.
             return Response(
                 content=ApiResponse[WorkflowExecution](
                     error="Workflow execution cancel conflict.",
@@ -303,8 +302,7 @@ class WorkflowExecutionController(Controller):
 
         # WORKFLOW_EXEC_CANCELLED is emitted only after the
         # persistence write succeeds; the conflict path above uses
-        # WORKFLOW_EXEC_CANCEL_CONFLICT to avoid counter pollution
-        # (#1682, CodeRabbit at workflow_executions.py:267-279).
+        # WORKFLOW_EXEC_CANCEL_CONFLICT to avoid counter pollution.
         logger.info(
             WORKFLOW_EXEC_CANCELLED,
             execution_id=execution_id,

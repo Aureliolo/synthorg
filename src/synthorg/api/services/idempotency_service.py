@@ -53,8 +53,7 @@ _IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS: float = 1.0
 #: row's lease was rotated by ``claim()``) or sees a new IN_FLIGHT
 #: leader and falls back to the polling/timeout path -- so capping at
 #: two protects against pathological churn while preserving the
-#: single retry that the redelivery contract calls for (#1682,
-#: CodeRabbit major at webhooks.py:525).
+#: single retry that the redelivery contract calls for.
 _MAX_LEADER_FAILED_RETRIES: int = 1
 
 
@@ -91,14 +90,13 @@ _LeaderFailedSentinel: object = object()
 class IdempotencyResult:
     """Disambiguated outcome of :meth:`IdempotencyService.run_idempotent`.
 
-    Pre-PR review #1682 (CodeRabbit major at idempotency_service.py:121):
-    a bare ``(result, fresh)`` tuple cannot tell three states apart --
+    A bare ``(result, fresh)`` tuple cannot tell three states apart --
     a callback that legitimately returned ``None``, a polling timeout
     on an in-flight claim, and a leader-failed-and-retry-exhausted --
-    all of which previously surfaced as ``cached is None`` at call
-    sites and got translated to 409 Conflict regardless of whether
-    the cached body was a real ``null``. A discriminated wrapper
-    forces callers to handle each case explicitly.
+    all of which would otherwise surface as ``cached is None`` at call
+    sites and translate to 409 Conflict regardless of whether the
+    cached body was a real ``null``. A discriminated wrapper forces
+    callers to handle each case explicitly.
 
     Attributes:
         result: The callback's (or cached) return value. May be
@@ -140,8 +138,7 @@ class IdempotencyService:
         # re-execute the callback concurrently. Enforcing
         # ``ttl_seconds > _IN_FLIGHT_POLL_TIMEOUT_SECONDS`` at
         # construction makes the invariant load-bearing instead of
-        # a runtime-time-of-check race (#1682, CodeRabbit major at
-        # idempotency_service.py:272).
+        # a runtime-time-of-check race.
         if ttl_seconds <= _IN_FLIGHT_POLL_TIMEOUT_SECONDS:
             msg = (
                 f"ttl_seconds={ttl_seconds} must exceed "
@@ -164,9 +161,8 @@ class IdempotencyService:
 
         Returns an :class:`IdempotencyResult` discriminated wrapper
         so callers can distinguish a legitimate ``None`` callback
-        return from an in-flight timeout (#1682, CodeRabbit major at
-        idempotency_service.py:121). Inspect ``timed_out`` first;
-        only trust ``result`` when ``timed_out`` is ``False``.
+        return from an in-flight timeout. Inspect ``timed_out``
+        first; only trust ``result`` when ``timed_out`` is ``False``.
 
         On ``IN_FLIGHT``: poll with exponential backoff up to
         :data:`_IN_FLIGHT_POLL_TIMEOUT_SECONDS`, then give up. The
@@ -317,10 +313,9 @@ class IdempotencyService:
         a successful in-flight resolution (``COMPLETED`` + cached
         body) from a leader failure (``LEADER_FAILED``, body always
         ``None``) and from polling exhaustion (``TIMED_OUT``, body
-        always ``None``).  Pre-PR review #1682 (CodeRabbit major at
-        webhooks.py:525): conflating leader-failure and timeout into
-        a single ``None`` made every retry after a failed leader 409,
-        defeating redelivery semantics.
+        always ``None``). Conflating leader-failure and timeout into
+        a single ``None`` would 409 every retry after a failed
+        leader, defeating redelivery semantics.
         """
         deadline = time.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
         backoff = _IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS

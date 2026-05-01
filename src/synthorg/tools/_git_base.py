@@ -328,9 +328,9 @@ class _BaseGitTool(BaseTool, ABC):
                 env=env,
             )
         except OSError as exc:
-            # SEC-1 (#1682): drop exc_info + scrub. Git OSError
-            # messages can carry the working-directory path which
-            # may include user namespaces / repo URLs.
+            # Drop exc_info + scrub. Git OSError messages can carry
+            # the working-directory path which may include user
+            # namespaces / repo URLs.
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
@@ -425,12 +425,11 @@ class _BaseGitTool(BaseTool, ABC):
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
         if returncode != 0:
-            # SEC-1 (#1682, CodeRabbit at _git_base.py:553-565): git
-            # auth-failure stderr commonly echoes the remote URL with
-            # embedded userinfo (``https://user:token@host/...``);
-            # ``_sanitize_stderr`` strips those tokens. Both the log
-            # field and the LLM-facing tool result must use the
-            # scrubbed copy.
+            # Git auth-failure stderr commonly echoes the remote URL
+            # with embedded userinfo
+            # (``https://user:token@host/...``); ``_sanitize_stderr``
+            # strips those tokens. Both the log field and the
+            # LLM-facing tool result must use the scrubbed copy.
             sanitized_stderr = _sanitize_stderr(stderr)
             sanitized_stdout = _sanitize_stderr(stdout)
             logger.warning(
@@ -488,9 +487,9 @@ class _BaseGitTool(BaseTool, ABC):
                 is_error=True,
             )
         if result.returncode != 0:
-            # SEC-1 (#1682): same scrub as ``_process_git_output`` --
-            # sandbox stderr/stdout can carry remote-URL userinfo on
-            # auth failure paths.
+            # Same scrub as ``_process_git_output`` -- sandbox
+            # stderr/stdout can carry remote-URL userinfo on auth
+            # failure paths.
             sanitized_stderr = _sanitize_stderr(result.stderr) if result.stderr else ""
             sanitized_stdout = _sanitize_stderr(result.stdout) if result.stdout else ""
             logger.warning(
@@ -572,7 +571,7 @@ class _BaseGitTool(BaseTool, ABC):
             )
             # Generic content -- ``ToolExecutionResult.content`` reaches
             # the LLM, so ``str(exc)`` would leak repo URLs / workspace
-            # paths past the SEC-1 log scrub above (#1682).
+            # paths past the log scrub above.
             return ToolExecutionResult(
                 content="Git command failed in sandbox",
                 is_error=True,

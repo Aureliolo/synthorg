@@ -75,9 +75,9 @@ class DriftDetectionService:
         try:
             report = await self._strategy.detect(entity_name, agent_ids)
         except Exception as exc:
-            # SEC-1 (#1682): drop exc_info + use the canonical event
-            # constant instead of a string literal.
-            logger.error(  # noqa: TRY400 -- SEC-1 fail-loud, no traceback
+            # Drop exc_info + use the canonical event constant
+            # instead of a string literal.
+            logger.error(  # noqa: TRY400 -- fail-loud, no traceback
                 ONTOLOGY_DRIFT_DETECT_FAILED,
                 entity_name=entity_name,
                 agent_count=len(agent_ids),
@@ -143,8 +143,7 @@ class DriftDetectionService:
                 # can unwind cleanly; converting them to a logged
                 # warning would hide e.g. an interpreter-level
                 # ``MemoryError`` from operators while the batch
-                # quietly produced fewer reports than expected (#1682,
-                # CodeRabbit at ontology/drift/service.py:147).
+                # quietly produced fewer reports than expected.
                 if isinstance(result, (MemoryError, RecursionError)):
                     raise result
                 logger.error(

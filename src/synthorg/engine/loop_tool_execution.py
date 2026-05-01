@@ -51,12 +51,11 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# SEC-1 / audit finding 92: common prompt-injection patterns that a
-# tool might return in an attempt to take over the next LLM turn.
-# Matches are flagged via ``TOOL_INJECTION_PATTERN_DETECTED`` for
-# telemetry; the tool result is still wrapped in the fence, not
-# rejected (rejection would break legitimate tools that echo user
-# text in responses).
+# Common prompt-injection patterns that a tool might return in an
+# attempt to take over the next LLM turn. Matches are flagged via
+# ``TOOL_INJECTION_PATTERN_DETECTED`` for telemetry; the tool result
+# is still wrapped in the fence, not rejected (rejection would
+# break legitimate tools that echo user text in responses).
 # Closing-tag look-alikes for every untrusted-content fence declared
 # in ``synthorg.engine.prompt_safety``.  Deriving the regex set from
 # the shared ``TAG_*`` constants keeps the advisory detector in sync
@@ -101,9 +100,10 @@ def _wrap_tool_result(result: ToolResult) -> ToolResult:
     for pattern in _INJECTION_PATTERNS:
         match = pattern.search(raw)
         if match is not None:
-            # SEC-1: scrub the telemetry sample before emitting -- if the
-            # attacker embedded a credential inside the injection payload,
-            # the raw ``sample=`` field would otherwise leak it into logs.
+            # Scrub the telemetry sample before emitting -- if the
+            # attacker embedded a credential inside the injection
+            # payload, the raw ``sample=`` field would otherwise
+            # leak it into logs.
             logger.warning(
                 TOOL_INJECTION_PATTERN_DETECTED,
                 tool_call_id=result.tool_call_id,
@@ -256,8 +256,8 @@ async def execute_tool_calls(  # noqa: PLR0913, C901
         return _build_error_result(ctx, turns, error_msg)
 
     for result in results:
-        # SEC-1: fence the tool output before it enters context so the
-        # next LLM turn cannot mistake tool content for instructions.
+        # Fence the tool output before it enters context so the next
+        # LLM turn cannot mistake tool content for instructions.
         wrapped = _wrap_tool_result(result)
         tool_msg = ChatMessage(
             role=MessageRole.TOOL,

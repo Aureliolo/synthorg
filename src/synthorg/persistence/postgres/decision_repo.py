@@ -478,8 +478,7 @@ class PostgresDecisionRepository:
                 # ordering ``list_by_agent`` uses (DESC there). A
                 # backfill that lands an old decision with a fresh
                 # high-numbered ``version`` would otherwise sort to
-                # the end under ``version ASC`` -- the exact scenario
-                # CodeRabbit flagged on round 4.
+                # the end under ``version ASC``.
                 await cur.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
                     "WHERE task_id = %s "

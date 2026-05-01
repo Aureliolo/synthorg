@@ -224,10 +224,11 @@ class TrainingService:
             try:
                 result = await self._run_pipeline(plan, started_at)
             except Exception as exc:
-                # SEC-1: prefer ``warning`` + ``safe_error_description`` over
-                # ``logger.exception(..., error=str(exc))`` so ``str(exc)``
-                # on provider / memory errors doesn't land credential text
-                # in the traceback-bearing frame-locals.
+                # Prefer ``warning`` + ``safe_error_description`` over
+                # ``logger.exception(..., error=str(exc))`` so
+                # ``str(exc)`` on provider / memory errors doesn't
+                # land credential text in the traceback-bearing
+                # frame-locals.
                 logger.warning(
                     HR_TRAINING_PLAN_FAILED,
                     plan_id=str(plan.id),
@@ -582,7 +583,7 @@ class TrainingService:
                 new_agent_level=plan.new_agent_level,
             )
         except Exception as exc:
-            # SEC-1: see comment at the top of ``_execute_locked``.
+            # See comment at the top of ``_execute_locked``.
             logger.warning(
                 HR_TRAINING_EXTRACTION_FAILED,
                 plan_id=str(plan.id),
@@ -606,7 +607,7 @@ class TrainingService:
                 content_type=ct,
             )
         except Exception as exc:
-            # SEC-1: see comment at the top of ``_execute_locked``.
+            # See comment at the top of ``_execute_locked``.
             logger.warning(
                 HR_TRAINING_CURATION_FAILED,
                 plan_id=str(plan.id),
@@ -697,7 +698,7 @@ class TrainingService:
                     plan=plan,
                 )
             except Exception as exc:
-                # SEC-1: see comment at the top of ``_execute_locked``.
+                # See comment at the top of ``_execute_locked``.
                 logger.warning(
                     HR_TRAINING_GUARD_FAILED,
                     plan_id=str(plan.id),

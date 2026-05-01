@@ -273,10 +273,10 @@ class TestBuildMeetingAgentCaller:
         assert "Communication style: neutral." in system_content
 
     async def test_system_prompt_carries_untrusted_directive(self) -> None:
-        """SEC-1 / #1596: every meeting LLM call carries the directive.
+        """Every meeting LLM call carries the untrusted-content directive.
 
         The agent_caller is the single place that renders the meeting
-        agent's system prompt.  Appending the canonical
+        agent's system prompt. Appending the canonical
         ``untrusted_content_directive`` here means every protocol
         (round_robin, structured_phases, position_papers) gets the
         directive for free, regardless of which one built the user

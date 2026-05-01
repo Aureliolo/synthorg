@@ -87,10 +87,10 @@ def build_strategic_prompt_sections(
     # Strategic context section.
     # Phase 1: reads context directly from config fields. Phase 2 will
     # wire build_context() to support memory/composite context providers.
-    # SEC-1 / audit finding 92: the context fields are admin-set but may
-    # carry per-tenant content in a multi-tenant deployment, so we wrap
-    # each value in a ``<config-value>`` fence and append a directive
-    # below telling the model those fences contain data, not commands.
+    # The context fields are admin-set but may carry per-tenant
+    # content in a multi-tenant deployment, so we wrap each value
+    # in a ``<config-value>`` fence and append a directive below
+    # telling the model those fences contain data, not commands.
     industry = wrap_untrusted(TAG_CONFIG_VALUE, config.context.industry)
     maturity = wrap_untrusted(TAG_CONFIG_VALUE, config.context.maturity_stage)
     position = wrap_untrusted(

@@ -285,9 +285,9 @@ class TestPositionPapersExecution:
 
 @pytest.mark.unit
 class TestPositionPapersInjectionDefense:
-    """SEC-1 / #1596: lateral prompt-injection defenses.
+    """Lateral prompt-injection defenses.
 
-    Position papers feed straight into the synthesizer's prompt.  A
+    Position papers feed straight into the synthesizer's prompt. A
     compromised paper-writer must not be able to break out of the
     ``<peer-contribution>`` fence and inject instructions into the
     synthesis decision.

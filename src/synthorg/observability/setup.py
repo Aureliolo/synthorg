@@ -84,14 +84,15 @@ _BASE_PROCESSORS: tuple[Any, ...] = (
     structlog.processors.TimeStamper(fmt="iso", utc=True),
     structlog.processors.StackInfoRenderer(),
     structlog.processors.UnicodeDecoder(),
-    # SEC-1: realise ``exc_info`` into a string under the ``exception``
-    # key BEFORE ``scrub_event_fields`` runs, so the scrubber also sees
-    # (and masks) any credential patterns embedded in the traceback.
-    # Without this, ``logger.exception(...)`` would skip the scrubber
-    # because ``exc_info`` is a tuple at that point, not a string.
+    # Realise ``exc_info`` into a string under the ``exception``
+    # key BEFORE ``scrub_event_fields`` runs, so the scrubber also
+    # sees (and masks) any credential patterns embedded in the
+    # traceback. Without this, ``logger.exception(...)`` would skip
+    # the scrubber because ``exc_info`` is a tuple at that point,
+    # not a string.
     structlog.processors.format_exc_info,
     sanitize_sensitive_fields,
-    # SEC-1: deep-scrub credential patterns out of every string value.
+    # Deep-scrub credential patterns out of every string value.
     # Runs after ``sanitize_sensitive_fields`` so already-redacted keys
     # stay redacted; this layer catches leaks via ``error=str(exc)`` and
     # the realised traceback string the field-name scrubber cannot reach.

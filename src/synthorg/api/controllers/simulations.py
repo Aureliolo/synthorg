@@ -155,9 +155,9 @@ async def _run_in_background(
             )
         return
     except Exception as exc:
-        # SEC-1 (#1682): logger.exception attaches the traceback;
-        # frame-locals on a simulation-run-failed path can carry the
-        # entire simulation config. Scrub + drop exc_info.
+        # logger.exception attaches the traceback; frame-locals on
+        # a simulation-run-failed path can carry the entire
+        # simulation config. Scrub + drop exc_info.
         logger.warning(
             SIMULATION_RUN_FAILED,
             simulation_id=record.simulation_id,
@@ -262,10 +262,10 @@ class SimulationController(Controller):
                 )
                 raise
             except Exception as exc:
-                # SEC-1 (#1682): drop ``logger.exception`` -- frame-
-                # locals on the simulation-run-failed traceback can
-                # carry the entire simulation config (matches the
-                # rationale documented in ``_run_in_background``).
+                # Drop ``logger.exception`` -- frame-locals on the
+                # simulation-run-failed traceback can carry the
+                # entire simulation config (matches the rationale
+                # documented in ``_run_in_background``).
                 logger.warning(
                     SIMULATION_RUN_FAILED,
                     simulation_id=record.simulation_id,

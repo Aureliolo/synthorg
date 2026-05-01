@@ -514,7 +514,7 @@ class TestCrossAgentNumericalDriftTaskTree:
 
         # Verify the prompt sent to the provider includes the
         # parent conversation content (proving the context loader
-        # and _build_conversation_text reached the LLM). SEC-1: the
+        # and _build_conversation_text reached the LLM). The
         # transcript is wrapped in <task-data>...</task-data> fences
         # by ``wrap_untrusted``.
         call_args = mock_provider.complete.call_args

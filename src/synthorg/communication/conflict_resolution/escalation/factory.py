@@ -1,4 +1,4 @@
-"""Factories for the escalation queue backend and decision processor (#1418)."""
+"""Factories for the escalation queue backend and decision processor."""
 
 from typing import TYPE_CHECKING
 

@@ -64,7 +64,7 @@ def registry_with(*tools: MCPToolDef) -> DomainToolRegistry:
     return registry
 
 
-@pytest.fixture  # lint-allow: orphan-fixture -- reserved for META-MCP-1 (#1524)
+@pytest.fixture  # lint-allow: orphan-fixture -- reserved for empty-registry tests
 def empty_registry() -> DomainToolRegistry:
     """Return a fresh empty frozen registry."""
     registry = DomainToolRegistry()

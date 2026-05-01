@@ -190,9 +190,9 @@ class NotificationSenderTool(BaseCommunicationTool):
                 timestamp=datetime.now(UTC),
             )
         except (ValueError, TypeError, ValidationError) as exc:
-            # SEC-1 (#1682): scrub the exception payload before
-            # logging or returning -- Pydantic's ValidationError can
-            # echo entire input dicts including secret-bearing fields.
+            # Scrub the exception payload before logging or returning
+            # -- Pydantic's ValidationError can echo entire input
+            # dicts including secret-bearing fields.
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
                 reason="invalid_notification_fields",
@@ -224,7 +224,7 @@ class NotificationSenderTool(BaseCommunicationTool):
             )
             # Generic content -- ``ToolExecutionResult.content`` reaches
             # the LLM, so ``exc`` text would leak sink/provider
-            # internals past the SEC-1 log scrub above (#1682).
+            # internals past the log scrub above.
             return ToolExecutionResult(
                 content="Notification dispatch failed",
                 is_error=True,

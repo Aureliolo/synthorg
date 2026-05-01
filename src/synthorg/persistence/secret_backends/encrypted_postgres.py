@@ -149,9 +149,9 @@ class EncryptedPostgresSecretBackend:
         except MasterKeyError:
             raise
         except psycopg.Error as exc:
-            # SEC-1: demote to ``warning`` + scrubbed description so the
-            # driver's ciphertext-bearing locals do not end up in the
-            # traceback frame. Mirrors ``encrypted_sqlite.py``.
+            # Demote to ``warning`` + scrubbed description so the
+            # driver's ciphertext-bearing locals do not end up in
+            # the traceback frame. Mirrors ``encrypted_sqlite.py``.
             logger.warning(
                 SECRET_STORAGE_FAILED,
                 secret_id=secret_id,
@@ -315,11 +315,12 @@ class EncryptedPostgresSecretBackend:
         try:
             await self.delete(new_id)
         except SecretStorageError as rb_exc:
-            # SEC-1: wrap the scrub + return-string construction so a
-            # broken ``__str__`` on the rollback error cannot crash the
-            # rotation path silently (finding from silent-failure-hunter).
-            # Re-raise catastrophic interpreter state (``MemoryError`` /
-            # ``RecursionError``) so the process surfaces the failure.
+            # Wrap the scrub + return-string construction so a
+            # broken ``__str__`` on the rollback error cannot crash
+            # the rotation path silently. Re-raise catastrophic
+            # interpreter state (``MemoryError`` /
+            # ``RecursionError``) so the process surfaces the
+            # failure.
             try:
                 scrubbed = safe_error_description(rb_exc)
             except MemoryError, RecursionError:

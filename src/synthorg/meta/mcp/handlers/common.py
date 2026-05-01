@@ -119,7 +119,7 @@ def err(
     """Build a domain-error envelope as a JSON string.
 
     ``message`` goes through ``safe_error_description`` so tracebacks
-    and frame-local state never leak into the envelope (SEC-1).
+    and frame-local state never leak into the envelope.
 
     Args:
         exc: The caught exception.

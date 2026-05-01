@@ -2,8 +2,7 @@
 
 The ``EventStreamConsumer`` protocol defines the interface for
 components that consume events from ``EventStreamHub``.  The AG-UI
-dashboard and the future A2A gateway (#1164) are the two primary
-consumers.
+dashboard and the A2A gateway are the two primary consumers.
 """
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -21,7 +20,7 @@ class EventStreamConsumer(Protocol):
 
     Implementations:
     - AG-UI projection (``projector.py``) -- internal dashboard
-    - A2A projection (#1164) -- external federation gateway
+    - A2A projection -- external federation gateway
     """
 
     def accepts(self, event: StreamEvent) -> bool:

@@ -124,9 +124,9 @@ class JetStreamMessageBus:
         Flush exceptions are logged at WARNING with typed error info
         and a scrubbed description so operators can distinguish
         broker-unreachable from client-logic bugs without leaking
-        credentials from the connection URL (SEC-1 -- the NATS url
-        can include user:pass and serialized traceback frame-locals
-        have been the documented leak vector).
+        credentials from the connection URL: the NATS url can
+        include user:pass and serialized traceback frame-locals are
+        a known leak vector.
         """
         state = self._state
         if not state.running:

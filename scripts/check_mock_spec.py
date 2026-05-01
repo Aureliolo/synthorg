@@ -344,7 +344,7 @@ def _report(violations: list[str]) -> int:
     for line in violations:
         print(line)
     print(
-        "\nMock drift (#1604): bare Mock()/AsyncMock()/MagicMock() in tests/"
+        "\nMock drift: bare Mock()/AsyncMock()/MagicMock() in tests/"
         " absorbs any attribute access. Production code can rename a method"
         " and no test fails.\n"
         "\nReplace with:"

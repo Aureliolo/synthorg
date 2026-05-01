@@ -1,4 +1,4 @@
-"""Integration tests for :class:`PostgresEscalationRepository` (#1418).
+"""Integration tests for :class:`PostgresEscalationRepository`.
 
 Requires a real Postgres via ``testcontainers``; runs under the
 ``integration`` marker.  Uses the shared ``postgres_backend`` fixture
