@@ -237,6 +237,16 @@ class TestCodeApplier:
         self,
         tmp_path: Path,
     ) -> None:
+        """``create_draft_pr`` failure cleans up the orphan branch (#1682).
+
+        Pre-PR review #1693 (CodeRabbit at test_code_applier.py:195):
+        the only path that proves ``delete_branch`` fires when the
+        branch IS owned by this invocation is the one where
+        ``create_branch`` already succeeded but a downstream call
+        (here ``create_draft_pr``) raises. Pinning that with an
+        explicit ``assert_awaited_once`` keeps the orphan-branch
+        cleanup contract from regressing.
+        """
         ci = _mock_ci_validator(_ci_pass())
         gh = _mock_github_client()
         gh.create_draft_pr = AsyncMock(
@@ -259,6 +269,9 @@ class TestCodeApplier:
 
         assert not result.success
         assert "Code apply failed" in (result.error_message or "")
+        # ``create_branch`` succeeded (branch_created=True) so the
+        # cleanup branch IS expected to fire on this orphan path.
+        gh.delete_branch.assert_awaited_once()
 
     async def test_dry_run_create_valid(self, tmp_path: Path) -> None:
         applier = CodeApplier(

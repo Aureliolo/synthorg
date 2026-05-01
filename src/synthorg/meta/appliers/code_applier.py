@@ -257,8 +257,19 @@ class CodeApplier:
             )
 
         # -- Remote push via GitHub API -----------------------------------
-        await self._github.create_branch(branch)
+        # ``create_branch`` lives INSIDE the cleanup-owned ``try`` so a
+        # client-level failure that nevertheless committed the ref
+        # remotely (POST returned with the new ref but the await
+        # raised) does not leak an orphan branch; the cleanup branch
+        # below still deletes it. ``branch_created`` tracks ownership
+        # so we never call ``delete_branch`` for a branch this run
+        # didn't actually create -- protects against retries hitting
+        # an existing branch from a prior aborted invocation
+        # (#1682, CodeRabbit at code_applier.py:260-289).
+        branch_created = False
         try:
+            await self._github.create_branch(branch)
+            branch_created = True
             await self._push_changes_via_api(
                 branch,
                 proposal,
@@ -271,23 +282,25 @@ class CodeApplier:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            # Partial push left an orphaned branch -- clean up.
-            try:
-                await self._github.delete_branch(branch)
-            except MemoryError, RecursionError:
-                raise
-            except Exception as cleanup_exc:
-                # SEC-1 (#1682): same scrub as the other GitHub-
-                # client-error path above.
-                logger.warning(
-                    META_APPLY_FAILED,
-                    altitude="code_modification",
-                    proposal_id=str(proposal.id),
-                    reason="branch_cleanup_after_push_failed",
-                    branch=branch,
-                    error_type=type(cleanup_exc).__name__,
-                    error=safe_error_description(cleanup_exc),
-                )
+            # Partial push left an orphaned branch -- clean up only
+            # when we know this invocation created it.
+            if branch_created:
+                try:
+                    await self._github.delete_branch(branch)
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as cleanup_exc:
+                    # SEC-1 (#1682): same scrub as the other GitHub-
+                    # client-error path above.
+                    logger.warning(
+                        META_APPLY_FAILED,
+                        altitude="code_modification",
+                        proposal_id=str(proposal.id),
+                        reason="branch_cleanup_after_push_failed",
+                        branch=branch,
+                        error_type=type(cleanup_exc).__name__,
+                        error=safe_error_description(cleanup_exc),
+                    )
             raise
 
         count = len(proposal.code_changes)
