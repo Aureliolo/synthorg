@@ -230,12 +230,10 @@ class PruningService:
                 # warning below does. Raw ``str(exc)`` here would
                 # smuggle secret-bearing exception text past the
                 # SEC-1 log scrub via the persistence boundary.
-                errors.append(
-                    NotBlankStr(
-                        f"{agent.id}: {type(exc).__name__}: "
-                        f"{safe_error_description(exc)}"
-                    )
-                )
+                # ``safe_error_description`` already returns
+                # ``"{ExcType}: {scrubbed}"`` so we don't prefix the
+                # type name a second time.
+                errors.append(NotBlankStr(f"{agent.id}: {safe_error_description(exc)}"))
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=str(agent.id),
@@ -311,11 +309,10 @@ class PruningService:
                 # SEC-1 (#1682): same scrub as the eligibility loop --
                 # the ``errors`` list crosses the persistence
                 # boundary via ``PruningJobRun.errors``.
+                # ``safe_error_description`` already prefixes the
+                # exception type, so don't double it up.
                 errors.append(
-                    NotBlankStr(
-                        f"approval {agent.id}: {type(exc).__name__}: "
-                        f"{safe_error_description(exc)}"
-                    )
+                    NotBlankStr(f"approval {agent.id}: {safe_error_description(exc)}")
                 )
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,

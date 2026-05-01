@@ -265,21 +265,33 @@ class ConnectionsController(Controller):
         """Update mutable fields of a connection.
 
         Pydantic enforces shape and length on the request body.
-        ``base_url`` distinguishes "omitted" (leave unchanged) from
-        "explicitly null" (clear the URL): we read
+        ``base_url`` and ``metadata`` distinguish "omitted" (leave
+        unchanged) from "explicitly null" (clear the field): we read
         ``data.model_fields_set`` to detect omission and forward the
         sentinel ``_UNSET`` to the catalog.
+
+        Pre-PR review #1682 (CodeRabbit at connections.py:125):
+        ``metadata`` previously collapsed both shapes into ``None``
+        and always forwarded, so a PATCH that left ``metadata``
+        omitted would still wipe the stored value. The
+        ``_UNSET`` guard mirrors ``base_url``'s contract.
         """
         catalog = state["app_state"].connection_catalog
         base_url_arg = data.base_url if "base_url" in data.model_fields_set else _UNSET
-        # Defensive copy: see ``create_connection`` for the
-        # immutability rationale (#1682).
-        metadata = None if data.metadata is None else dict(data.metadata)
+        if "metadata" not in data.model_fields_set:
+            metadata_arg = _UNSET
+        elif data.metadata is None:
+            metadata_arg = None
+        else:
+            # Defensive copy: see ``create_connection`` for the
+            # immutability rationale (#1682). ``frozen=True`` doesn't
+            # deep-freeze the nested dict.
+            metadata_arg = dict(data.metadata)
         try:
             conn = await catalog.update(
                 name,
                 base_url=base_url_arg,
-                metadata=metadata,
+                metadata=metadata_arg,
                 health_check_enabled=data.health_check_enabled,
             )
         except ConnectionNotFoundError as exc:
