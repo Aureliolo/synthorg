@@ -224,7 +224,18 @@ class PruningService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                errors.append(NotBlankStr(f"{agent.id}: {exc}"))
+                # SEC-1 (#1682): the ``errors`` list lands on
+                # ``PruningJobRun.errors`` and is later
+                # logged/persisted, so we must scrub the same way the
+                # warning below does. Raw ``str(exc)`` here would
+                # smuggle secret-bearing exception text past the
+                # SEC-1 log scrub via the persistence boundary.
+                errors.append(
+                    NotBlankStr(
+                        f"{agent.id}: {type(exc).__name__}: "
+                        f"{safe_error_description(exc)}"
+                    )
+                )
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=str(agent.id),
@@ -297,7 +308,15 @@ class PruningService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                errors.append(NotBlankStr(f"approval {agent.id}: {exc}"))
+                # SEC-1 (#1682): same scrub as the eligibility loop --
+                # the ``errors`` list crosses the persistence
+                # boundary via ``PruningJobRun.errors``.
+                errors.append(
+                    NotBlankStr(
+                        f"approval {agent.id}: {type(exc).__name__}: "
+                        f"{safe_error_description(exc)}"
+                    )
+                )
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=str(agent.id),

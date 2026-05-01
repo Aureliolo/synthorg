@@ -738,18 +738,25 @@ class TestControllerHttpLayer:
             STATE_KEY_STORE,
         )
         from synthorg.api.rate_limits.config import PerOpRateLimitConfig
+        from synthorg.api.rate_limits.protocol import SlidingWindowStore
+        from synthorg.api.state import AppState
 
         # Stub rate-limit store: the guard calls
         # ``store.acquire(operation, subject, max_requests, window)``
         # and treats a truthy result as "not throttled". Returning a
         # token with no retry-after is the cheapest safe stub.
-        rate_limit_store = MagicMock()
+        # ``spec=`` enforces the protocol surface (#1604) so a future
+        # SlidingWindowStore method rename surfaces as an
+        # ``AttributeError`` instead of a silent test pass.
+        rate_limit_store = MagicMock(spec=SlidingWindowStore)
         rate_limit_store.acquire = AsyncMock(
+            spec=SlidingWindowStore.acquire,
             return_value=(True, None),
         )
         rate_limit_config = PerOpRateLimitConfig(enabled=False)
 
         app_state_stub = MagicMock(
+            spec=AppState,
             connection_catalog=catalog,
             has_per_op_rate_limit_config=True,
             per_op_rate_limit_config=rate_limit_config,
@@ -810,8 +817,13 @@ class TestControllerHttpLayer:
         return TestClient(app)
 
     async def test_list_connections_returns_200(self) -> None:
-        catalog = MagicMock()
-        catalog.list_all = AsyncMock(return_value=(_make_conn(),))
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.list_all = AsyncMock(
+            spec=ConnectionCatalog.list_all,
+            return_value=(_make_conn(),),
+        )
         client = self._build_client(catalog)
         with client as http:
             resp = http.get("/api/v1/connections")
@@ -826,10 +838,12 @@ class TestControllerHttpLayer:
         assert body["data"][0]["name"] == "c1"
 
     async def test_unknown_connection_returns_404(self) -> None:
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
         from synthorg.integrations.errors import ConnectionNotFoundError
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_or_raise = AsyncMock(
+            spec=ConnectionCatalog.get_or_raise,
             side_effect=ConnectionNotFoundError("missing"),
         )
         client = self._build_client(catalog)
@@ -861,7 +875,9 @@ class TestControllerHttpLayer:
         in [400, 422] so a future tightening to 422 (RFC-aligned)
         does not require touching this gate.
         """
-        catalog = MagicMock()
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+
+        catalog = MagicMock(spec=ConnectionCatalog)
         client = self._build_client(catalog)
         with client as http:
             resp = http.post(

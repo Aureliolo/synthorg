@@ -223,7 +223,7 @@ class NotificationSenderTool(BaseCommunicationTool):
                 error=safe_error_description(exc),
             )
             # Generic content -- ``ToolExecutionResult.content`` reaches
-            # the LLM, so ``exc`` text would leak email/Slack sink
+            # the LLM, so ``exc`` text would leak sink/provider
             # internals past the SEC-1 log scrub above (#1682).
             return ToolExecutionResult(
                 content="Notification dispatch failed",

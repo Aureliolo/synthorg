@@ -154,6 +154,37 @@ class TestReportGeneratorTool:
         # change appends raw exception text after the prefix.
         assert result.content == "Report generation failed"
 
+    async def test_execute_formatting_error(
+        self,
+        mock_provider: MockAnalyticsProvider,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Force ``_format_report`` to raise; assert the scrubbed branch.
+
+        Pre-PR review #1682 (CodeRabbit at test_report_generator.py:155):
+        ``test_execute_provider_error`` covers the provider-query
+        failure path, but the formatter exception branch (different
+        ``except`` block in ``execute()``) had no exact-match gate.
+        A regression that re-introduced ``content=f"Report formatting
+        failed: {exc}"`` would slip past the provider-error test.
+        """
+        tool = ReportGeneratorTool(provider=mock_provider)
+        monkeypatch.setattr(
+            tool,
+            "_format_report",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("internal SQL: SELECT * FROM secrets"),
+            ),
+        )
+        result = await tool.execute(
+            arguments={
+                "report_type": "budget_summary",
+                "period": "7d",
+            }
+        )
+        assert result.is_error
+        assert result.content == "Report formatting failed"
+
     def test_parameters_schema_required_fields(
         self,
         mock_provider: MockAnalyticsProvider,

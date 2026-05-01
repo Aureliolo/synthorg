@@ -139,6 +139,14 @@ class DriftDetectionService:
         reports: list[DriftReport] = []
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
+                # System-level failures must propagate so the caller
+                # can unwind cleanly; converting them to a logged
+                # warning would hide e.g. an interpreter-level
+                # ``MemoryError`` from operators while the batch
+                # quietly produced fewer reports than expected (#1682,
+                # CodeRabbit at ontology/drift/service.py:147).
+                if isinstance(result, (MemoryError, RecursionError)):
+                    raise result
                 logger.error(
                     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
                     entity_name=entities[i].name,

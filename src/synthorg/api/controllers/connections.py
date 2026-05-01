@@ -219,15 +219,24 @@ class ConnectionsController(Controller):
         # "github" cannot become two distinct identities and so the
         # /{name} routes consistently address the stored row.
         name = data.name.strip()
+        # Defensive copies of the mutable mapping fields. ``frozen=True``
+        # on the DTO does not deep-freeze nested dicts, so passing
+        # ``data.credentials`` / ``data.metadata`` by reference would let
+        # the catalog mutate the request DTO's storage in place and
+        # break the immutability contract (CodeRabbit at
+        # connections.py:231 + CLAUDE.md "Create new objects, never
+        # mutate existing ones").
+        credentials = dict(data.credentials)
+        metadata = None if data.metadata is None else dict(data.metadata)
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.create(
                 name=name,
                 connection_type=data.connection_type,
                 auth_method=data.auth_method.value,
-                credentials=data.credentials,
+                credentials=credentials,
                 base_url=data.base_url,
-                metadata=data.metadata,
+                metadata=metadata,
                 health_check_enabled=data.health_check_enabled,
             )
         except DuplicateConnectionError as exc:
@@ -263,11 +272,14 @@ class ConnectionsController(Controller):
         """
         catalog = state["app_state"].connection_catalog
         base_url_arg = data.base_url if "base_url" in data.model_fields_set else _UNSET
+        # Defensive copy: see ``create_connection`` for the
+        # immutability rationale (#1682).
+        metadata = None if data.metadata is None else dict(data.metadata)
         try:
             conn = await catalog.update(
                 name,
                 base_url=base_url_arg,
-                metadata=data.metadata,
+                metadata=metadata,
                 health_check_enabled=data.health_check_enabled,
             )
         except ConnectionNotFoundError as exc:

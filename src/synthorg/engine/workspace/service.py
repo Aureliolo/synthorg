@@ -10,8 +10,6 @@ from uuid import uuid4
 
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
-    WorkspaceLimitError,
-    WorkspaceSetupError,
 )
 from synthorg.engine.workspace.merge import MergeOrchestrator
 from synthorg.engine.workspace.models import (
@@ -100,7 +98,15 @@ class WorkspaceIsolationService:
                     request=request,
                 )
                 workspaces.append(ws)
-        except (WorkspaceLimitError, WorkspaceSetupError) as exc:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Catch ``Exception`` so any setup failure -- not just the
+            # documented ``WorkspaceLimitError`` / ``WorkspaceSetupError``
+            # -- triggers rollback.  Without this fallback an
+            # unexpected error after partial setup would leak the
+            # already-created workspaces (#1682, CodeRabbit at
+            # engine/workspace/service.py:97-112).
             logger.warning(
                 WORKSPACE_GROUP_SETUP_FAILED,
                 count=len(requests),
@@ -133,6 +139,8 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=ws,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 # SEC-1 (#1682): rollback cleanup errors can wrap
                 # filesystem / DB exceptions whose str() embeds
@@ -200,6 +208,8 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=workspace,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 # SEC-1 (#1682): the ``errors`` list flows into
                 # ``WorkspaceCleanupError`` which callers may log as a

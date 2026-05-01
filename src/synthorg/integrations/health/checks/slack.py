@@ -59,11 +59,15 @@ class SlackHealthCheck:
                 checked_at=now,
             )
 
-        # ``get_credentials`` can raise (secret backend outage,
-        # malformed row, etc.). Treat those as an UNHEALTHY result
-        # instead of propagating out of the health check -- a raise
-        # here would cancel any sibling probes running in the same
-        # TaskGroup.
+        # ``get_credentials`` can raise. Domain / runtime failures
+        # (secret backend outage, malformed row, etc.) are converted
+        # to an UNHEALTHY health-check result rather than propagating
+        # out of the check, since a raise would cancel any sibling
+        # probes running in the same ``TaskGroup``. System-level
+        # failures (``MemoryError`` / ``RecursionError``) are
+        # intentionally re-raised below so they DO unwind the group;
+        # they signal interpreter-wide problems that should not be
+        # masked as a single connection's "unhealthy" report (#1682).
         try:
             credentials = await self._catalog.get_credentials(connection.name)
         except MemoryError, RecursionError:

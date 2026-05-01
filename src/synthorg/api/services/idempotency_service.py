@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -95,6 +95,26 @@ class IdempotencyService:
         *,
         ttl_seconds: int = DEFAULT_IDEMPOTENCY_TTL_SECONDS,
     ) -> None:
+        # Invariant: the configured TTL must outlive a polling cycle.
+        # The leader-failed takeover path in ``_wait_for_in_flight``
+        # treats a missing claim row as ``LEADER_FAILED`` (the leader
+        # has gone, so re-claim is safe). That is only sound if a
+        # legitimately in-flight claim cannot have its row deleted /
+        # expired during the poll window: otherwise a still-running
+        # leader could be observed as missing and a follower would
+        # re-execute the callback concurrently. Enforcing
+        # ``ttl_seconds > _IN_FLIGHT_POLL_TIMEOUT_SECONDS`` at
+        # construction makes the invariant load-bearing instead of
+        # a runtime-time-of-check race (#1682, CodeRabbit major at
+        # idempotency_service.py:272).
+        if ttl_seconds <= _IN_FLIGHT_POLL_TIMEOUT_SECONDS:
+            msg = (
+                f"ttl_seconds={ttl_seconds} must exceed "
+                f"_IN_FLIGHT_POLL_TIMEOUT_SECONDS="
+                f"{_IN_FLIGHT_POLL_TIMEOUT_SECONDS} so a still-running "
+                "leader cannot be observed as a missing row mid-poll."
+            )
+            raise ValueError(msg)
         self._repo = repository
         self._ttl_seconds = ttl_seconds
 
@@ -369,6 +389,7 @@ class IdempotencyService:
                 key=key,
                 note="fail_marker_persistence_error",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def cleanup_expired(self) -> int:

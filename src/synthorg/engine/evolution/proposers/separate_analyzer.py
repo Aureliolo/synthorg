@@ -375,6 +375,19 @@ class SeparateAnalyzerProposer:
             raise
         except ProviderError as exc:
             if not exc.is_retryable:
+                # Non-retryable provider failures must surface to
+                # operators with context before propagating; otherwise
+                # a downstream catch-and-translate would hide the
+                # error path entirely (#1682, CodeRabbit at
+                # separate_analyzer.py:379).
+                logger.error(  # noqa: TRY400
+                    EVOLUTION_PROPOSER_PARSE_ERROR,
+                    agent_id=str(agent_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    reason="provider_error_non_retryable",
+                    is_retryable=False,
+                )
                 raise
             # SEC-1 (#1682): drop exc_info + scrub the message --
             # provider HTTPStatusError can carry the API key.

@@ -425,15 +425,23 @@ class _BaseGitTool(BaseTool, ABC):
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
         if returncode != 0:
+            # SEC-1 (#1682, CodeRabbit at _git_base.py:553-565): git
+            # auth-failure stderr commonly echoes the remote URL with
+            # embedded userinfo (``https://user:token@host/...``);
+            # ``_sanitize_stderr`` strips those tokens. Both the log
+            # field and the LLM-facing tool result must use the
+            # scrubbed copy.
+            sanitized_stderr = _sanitize_stderr(stderr)
+            sanitized_stdout = _sanitize_stderr(stdout)
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
                 returncode=returncode,
-                stderr=stderr,
-                stdout=stdout,
+                stderr=sanitized_stderr,
+                stdout=sanitized_stdout,
             )
             return ToolExecutionResult(
-                content=stderr or stdout or "Unknown git error",
+                content=sanitized_stderr or sanitized_stdout or "Unknown git error",
                 is_error=True,
             )
         logger.debug(
@@ -480,15 +488,20 @@ class _BaseGitTool(BaseTool, ABC):
                 is_error=True,
             )
         if result.returncode != 0:
+            # SEC-1 (#1682): same scrub as ``_process_git_output`` --
+            # sandbox stderr/stdout can carry remote-URL userinfo on
+            # auth failure paths.
+            sanitized_stderr = _sanitize_stderr(result.stderr) if result.stderr else ""
+            sanitized_stdout = _sanitize_stderr(result.stdout) if result.stdout else ""
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
                 returncode=result.returncode,
-                stderr=result.stderr,
-                stdout=result.stdout,
+                stderr=sanitized_stderr,
+                stdout=sanitized_stdout,
             )
             return ToolExecutionResult(
-                content=(result.stderr or result.stdout or "Unknown git error"),
+                content=(sanitized_stderr or sanitized_stdout or "Unknown git error"),
                 is_error=True,
             )
         logger.debug(

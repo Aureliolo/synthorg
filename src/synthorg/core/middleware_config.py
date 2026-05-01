@@ -57,19 +57,26 @@ class AuthorityDeferenceConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_patterns_compile(self) -> Self:
         """Ensure all regex patterns are valid."""
-        for pattern in self.patterns:
+        for pattern_index, pattern in enumerate(self.patterns):
             try:
                 re.compile(pattern)
             except re.error as exc:
-                # SEC-1 (#1682): re.error.msg can include offending
-                # regex source which the operator-supplied pattern
-                # might quote a credential into; scrub before
-                # surfacing in the message field too.
+                # SEC-1 (#1682, CodeRabbit at middleware_config.py:74):
+                # the *raw* pattern can quote a credential the operator
+                # accidentally embedded in their config; emitting it
+                # via ``pattern=`` or ``msg`` would defeat the SEC-1
+                # log scrub.  Surface only the index + length so an
+                # operator can locate the bad entry without us
+                # recording the bytes.
                 scrubbed = safe_error_description(exc)
-                msg = f"Invalid regex pattern {pattern!r}: {scrubbed}"
+                msg = (
+                    f"Invalid regex pattern at index {pattern_index} "
+                    f"(length={len(pattern)}): {scrubbed}"
+                )
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
-                    pattern=pattern,
+                    pattern_index=pattern_index,
+                    pattern_length=len(pattern),
                     error_type=type(exc).__name__,
                     error=scrubbed,
                 )
@@ -105,21 +112,22 @@ class ClarificationGateConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_generic_patterns_compile(self) -> Self:
         """Ensure all generic patterns are valid regexes."""
-        for pattern in self.generic_patterns:
+        for pattern_index, pattern in enumerate(self.generic_patterns):
             try:
                 re.compile(pattern)
             except re.error as exc:
                 scrubbed = safe_error_description(exc)
-                # SEC-1 (#1682): include only the scrubbed exception
-                # text in both the human-readable ``message`` and the
-                # raised ``ValueError``; raw ``str(exc)`` interpolation
-                # could leak attacker-controlled regex content into
-                # operator logs.
-                msg = f"Invalid generic pattern {pattern!r}: {scrubbed}"
+                # SEC-1 (#1682, CodeRabbit at middleware_config.py:74):
+                # see ``_validate_patterns_compile`` for the rationale
+                # behind index+length-only logging.
+                msg = (
+                    f"Invalid generic pattern at index {pattern_index} "
+                    f"(length={len(pattern)}): {scrubbed}"
+                )
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
-                    message=msg,
-                    pattern=pattern,
+                    pattern_index=pattern_index,
+                    pattern_length=len(pattern),
                     error_type=type(exc).__name__,
                     error=scrubbed,
                 )
