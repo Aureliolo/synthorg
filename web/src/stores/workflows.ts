@@ -122,6 +122,12 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
 
   fetchWorkflows: async () => {
     const token = ++_listRequestToken
+    // Snapshot the existing pagination pair BEFORE resetting it so a
+    // transient refresh failure can restore them in the catch path
+    // -- otherwise an already-loaded list would be unable to fetch
+    // more pages until the next successful refresh.
+    const previousNextCursor = get().nextCursor
+    const previousHasMore = get().hasMore
     set({
       listLoading: true,
       listLoadingMore: false,
@@ -145,7 +151,12 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
     } catch (err) {
       if (isStaleListRequest(token)) return
       log.warn('Failed to fetch workflows', sanitizeForLog(err))
-      set({ listLoading: false, listError: getErrorMessage(err) })
+      set({
+        listLoading: false,
+        listError: getErrorMessage(err),
+        nextCursor: previousNextCursor,
+        hasMore: previousHasMore,
+      })
     }
   },
 

@@ -176,8 +176,11 @@ class TestCoordinationMetricsController:
             headers=_HEADERS,
         )
         assert resp1.status_code == 200
-        cursor = resp1.json()["pagination"]["next_cursor"]
+        body1 = resp1.json()
+        cursor = body1["pagination"]["next_cursor"]
         assert cursor is not None
+        page1_task_ids = {row["task_id"] for row in body1["data"]}
+        assert len(page1_task_ids) == 1
         resp = test_client.get(
             "/api/v1/coordination/metrics",
             params={"limit": 2, "cursor": cursor},
@@ -187,6 +190,12 @@ class TestCoordinationMetricsController:
         body = resp.json()
         assert body["pagination"]["limit"] == 2
         assert len(body["data"]) == 2
+        # Cursor-only contract: the second page must be disjoint from
+        # the first.  Without this assertion a backend that ignores the
+        # cursor and replays the first page (with the requested limit)
+        # would still pass on length alone.
+        page2_task_ids = {row["task_id"] for row in body["data"]}
+        assert page1_task_ids.isdisjoint(page2_task_ids)
 
     def test_message_overhead_is_quadratic_surfaced(
         self,
