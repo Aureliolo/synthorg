@@ -201,8 +201,15 @@ class ConnectionCatalog:
         credentials: dict[str, str],
         *,
         connection_name: str,
+        failure_event: str = CONNECTION_CREATE_FAILED,
     ) -> None:
-        """Store credentials via the secret backend with structured error log."""
+        """Store credentials via the secret backend with structured error log.
+
+        ``failure_event`` lets callers route store-failure logs to the
+        right operation taxonomy (``CONNECTION_CREATE_FAILED`` for the
+        create path, ``OAUTH_TOKEN_EXCHANGE_FAILED`` for the rotation
+        path) so dashboards keyed by event type stay consistent.
+        """
         try:
             await self._secret_backend.store(
                 secret_id,
@@ -212,7 +219,7 @@ class ConnectionCatalog:
             raise
         except Exception as exc:
             logger.warning(
-                CONNECTION_CREATE_FAILED,
+                failure_event,
                 connection_name=connection_name,
                 secret_id=secret_id,
                 note="secret_backend_store_failed",
@@ -514,14 +521,18 @@ class ConnectionCatalog:
                             secret_id=ref.secret_id,
                         )
                 except Exception as exc:
-                    # SEC-1: secret backends carry credentials; raw
-                    # exception strings via ``logger.exception`` can
-                    # leak backend details.  Use the structured
-                    # safe_error_description path instead.
+                    # The connection delete itself succeeded; a stale
+                    # secret cleanup failure is a secret-delete
+                    # problem, not a connection-delete problem -- use
+                    # the cleanup-scoped event so dashboards stop
+                    # overcounting successful connection deletions
+                    # when secret cleanup blows up.  SEC-1: redacted
+                    # error to keep backend internals out of logs.
                     logger.warning(
-                        CONNECTION_DELETED,
+                        SECRET_DELETE_FAILED,
                         connection_name=name,
                         secret_id=ref.secret_id,
+                        note="failed_to_delete_secret_after_connection_delete",
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
@@ -673,9 +684,14 @@ class ConnectionCatalog:
         could shadow the fresh token on the next resolve.
         """
         new_secret_id = str(uuid4())
-        await self._secret_backend.store(
+        # Route through ``_store_secret`` so a backend-store failure
+        # carries ``connection_name`` / ``secret_id`` context under the
+        # OAuth-scoped event before bubbling to the caller.
+        await self._store_secret(
             new_secret_id,
-            json.dumps(merged).encode("utf-8"),
+            merged,
+            connection_name=conn.name,
+            failure_event=OAUTH_TOKEN_EXCHANGE_FAILED,
         )
         ref = SecretRef(
             secret_id=NotBlankStr(new_secret_id),
