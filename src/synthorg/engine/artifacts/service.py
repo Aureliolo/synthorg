@@ -154,14 +154,17 @@ class ArtifactService:
         the persistence delete only runs after the blob is gone.
 
         Raises:
-            RuntimeError: If the service was constructed without a
-                ``storage`` dependency (controller helper bug).
+            ArtifactPersistenceNoStorageError: If the service was
+                constructed without a ``storage`` dependency
+                (controller helper bug, surfaces 500 with RFC 9457
+                metadata via the central exception handler).
             Exception: Any storage backend failure propagates with
                 type intact.
 
         Returns:
-            ``True`` if the metadata row was removed.  ``False`` only
-            when both the blob and the row were already absent.
+            ``True`` if either the blob or the metadata row was
+            successfully removed; ``False`` only when both were
+            already absent.
         """
         if self._storage is None:
             msg = (

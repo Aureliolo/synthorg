@@ -833,6 +833,12 @@ class SettingsService:
         """
         if not items:
             msg = "set_many requires at least one item"
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                action="set_many",
+                reason="empty_batch",
+                import_source=import_source.value,
+            )
             raise ValueError(msg)
 
         updated_at = _now_iso()
@@ -896,6 +902,14 @@ class SettingsService:
             pair = (namespace, key)
             if pair in seen:
                 msg = f"Duplicate setting in batch: {namespace}/{key}"
+                logger.warning(
+                    SETTINGS_VALIDATION_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    action="set_many",
+                    reason="duplicate_setting_in_batch",
+                    import_source=import_source.value,
+                )
                 raise SettingValidationError(msg)
             seen.add(pair)
             definition = self._registry.get(namespace, key)

@@ -170,6 +170,27 @@ class AsyncTaskService:
                             requested_by=supervisor_id,
                             reason="assignment_failed",
                         )
+                        # Mirror ``cancel_async_task``'s post-persist
+                        # logs so the supervisor-facing audit stream
+                        # records the compensating transition (the
+                        # rollback path was previously silent here).
+                        rollback_to_status = self._map_status(
+                            TaskStatus.CANCELLED,
+                        )
+                        rollback_from_status = self._map_status(rollback_status)
+                        logger.info(
+                            ASYNC_TASK_CANCELLED,
+                            task_id=task.id,
+                            supervisor_id=supervisor_id,
+                            reason="assignment_failed",
+                        )
+                        if rollback_from_status != rollback_to_status:
+                            logger.info(
+                                ASYNC_TASK_STATUS_TRANSITIONED,
+                                task_id=task.id,
+                                from_status=rollback_from_status.value,
+                                to_status=rollback_to_status.value,
+                            )
                 except MemoryError, RecursionError:
                     # Same carve-out as the outer scope: process-fatal
                     # builtins propagate without further logging or

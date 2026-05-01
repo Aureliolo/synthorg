@@ -193,17 +193,33 @@ class ConnectionCatalog:
                 backend=NotBlankStr(self._secret_backend.backend_name),
             )
             now = datetime.now(UTC)
-            connection = Connection(
-                name=NotBlankStr(name),
-                connection_type=connection_type,
-                auth_method=AuthMethod(auth_method),
-                base_url=NotBlankStr(base_url) if base_url else None,
-                secret_refs=(secret_ref,),
-                health_check_enabled=health_check_enabled,
-                metadata=metadata or {},
-                created_at=now,
-                updated_at=now,
-            )
+            try:
+                connection = Connection(
+                    name=NotBlankStr(name),
+                    connection_type=connection_type,
+                    auth_method=AuthMethod(auth_method),
+                    base_url=NotBlankStr(base_url) if base_url else None,
+                    secret_refs=(secret_ref,),
+                    health_check_enabled=health_check_enabled,
+                    metadata=metadata or {},
+                    created_at=now,
+                    updated_at=now,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # Surface ``connection_name`` context on model-construction
+                # failures (NotBlankStr / AuthMethod / Pydantic validators).
+                # Without this, the resulting 500 carries the exception's
+                # raw message but no resource attribution in the audit log.
+                logger.warning(
+                    CONNECTION_VALIDATION_FAILED,
+                    connection_name=name,
+                    connection_type=connection_type,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
 
             await self._secret_backend.store(
                 secret_id,
@@ -610,6 +626,12 @@ class ConnectionCatalog:
                         error=safe_error_description(cleanup_exc),
                     )
                 raise
+            # Invalidate cache BEFORE the stale-secret deletion loop:
+            # concurrent ``get()`` / ``get_credentials()`` callers
+            # would otherwise read the old ``secret_refs`` while we
+            # delete those secrets, and either return stale tokens or
+            # fail trying to resolve a secret that's gone.
+            self._invalidate_cache()
             # Repo save succeeded -- drop any previously-referenced
             # secrets from the backend now that the canonical merged
             # secret is persisted. Best effort: log failures but do
@@ -642,7 +664,6 @@ class ConnectionCatalog:
                         error_type=type(del_exc).__name__,
                         error=safe_error_description(del_exc),
                     )
-            self._invalidate_cache()
             logger.info(
                 OAUTH_TOKEN_EXCHANGED,
                 connection_name=name,

@@ -341,19 +341,23 @@ collection returns, where ``NotFoundError`` belongs).
 | Method | Signature | Semantics |
 |--------|-----------|-----------|
 | `save` | `async def save(entity) -> None` | Insert or update; idempotent. One persist verb (no separate `create` / `update`). |
-| `get` | `async def get(id) -> Entity \| None` | Single-entity fetch. Returns `None` on miss, never raises `NotFoundError`. |
-| `delete` | `async def delete(id) -> None` | Removal. Repositories stay side-effect-free on misses; callers do a preceding `get(...)` when they need 404 semantics. |
-| `list_all` | `async def list_all() -> tuple[Entity, ...]` | Full scan of all entities. |
-| `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query when the filter set diverges from a single canonical `list_all`. |
+| `get` | `async def get(id) -> Entity \| None` | Single-entity fetch. Returns `None` on miss, never raises. |
+| `delete` | `async def delete(id) -> bool` | Removal. ``True`` if a row was removed, ``False`` if the id did not exist; same return type used in §1. |
+| `list_items` | `async def list_items(...) -> tuple[Entity, ...]` | Full scan / paginated list. Some older repositories use `list_all()`; new repositories prefer `list_items(*, limit, offset, **filters)` so callers can paginate without defensive slicing. |
+| `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query when the filter set diverges from a single canonical `list_items`. |
 
 Query methods always return `tuple[T, ...]`, never `list[T]`. This
 matches the immutability default for collection returns and lets
 callers safely share results without defensive copies.
 
-`NotFoundError` is raised by the **service** layer after a `get`
-returns `None`, never by the repository. This keeps the repository
-boundary side-effect-free for reads and lets services own the audit
-trail (`logger.warning(...)` + raise).
+A handful of older repositories (notably ``OntologyEntityRepository``
+and ``ProjectRepository``) currently raise ``OntologyNotFoundError`` /
+``RecordNotFoundError`` directly from ``get()`` instead of returning
+``None``; this predates the canonical pattern and is tracked as a
+follow-up migration.  New repositories follow the
+``Entity | None`` shape so the service layer owns the
+``NotFoundError`` raise (with the ``logger.warning(...)`` + raise
+audit trail).
 
 ## 15. MCP handler logging centralization
 
