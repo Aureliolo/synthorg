@@ -35,7 +35,7 @@ from synthorg.api.auth.system_user import SYSTEM_USERNAME, is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import HumanRole
-from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import (
     AccountLockedError,
     ConflictError,
@@ -524,12 +524,7 @@ class AuthController(Controller):
         status_code=200,
         summary="Issue a one-time WebSocket connection ticket",
         guards=[
-            per_op_rate_limit(
-                "auth.ws_ticket",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("auth.ws_ticket", key="user"),
         ],
     )
     async def ws_ticket(

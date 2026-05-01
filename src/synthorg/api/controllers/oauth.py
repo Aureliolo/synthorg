@@ -96,10 +96,10 @@ class OAuthController(Controller):
         app_state = state["app_state"]
         resolver = app_state.config_resolver if app_state.has_config_resolver else None
         timeout = await resolve_oauth_http_timeout(resolver)
-        flow_kwargs: dict[str, float] = (
-            {"http_timeout_seconds": timeout} if timeout is not None else {}
-        )
-        flow = AuthorizationCodeFlow(**flow_kwargs)
+        if timeout is not None:
+            flow = AuthorizationCodeFlow(http_timeout_seconds=timeout)
+        else:
+            flow = AuthorizationCodeFlow()
         config = app_state.config.integrations.oauth
         if not config.redirect_uri_base:
             msg = "oauth.redirect_uri_base must be configured to initiate OAuth flows"

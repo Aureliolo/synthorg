@@ -229,6 +229,14 @@ class CodeModificationConfig(BaseModel):
             "Required when code_modification_enabled is True."
         ),
     )
+    github_api_url: NotBlankStr = Field(
+        default=NotBlankStr("https://api.github.com"),
+        description=(
+            "GitHub API base URL.  Override for GitHub Enterprise"
+            " installations; mirrors the"
+            " ``integrations.github_api_url`` registry setting."
+        ),
+    )
 
 
 class SelfImprovementConfig(BaseModel):

@@ -17,6 +17,7 @@ from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_CONFIG_INVALID,
+    NOTIFICATION_SINK_DEFAULT_FALLBACK,
     NOTIFICATION_SINK_DISABLED,
     NOTIFICATION_SINK_UNKNOWN_TYPE,
 )
@@ -136,7 +137,33 @@ def _create_ntfy_sink(
             error="topic is required",
         )
         return None
-    server_url = params.get("server_url", "https://ntfy.sh")
+    # ``server_url`` falls back to the operator-tunable
+    # ``notifications.ntfy_default_url`` setting (carried on
+    # ``bridge_config``) so a self-hosted ntfy deployment can avoid
+    # leaking topic names to the public ntfy.sh instance.  When
+    # bridge_config is unavailable (early boot / test stub) the
+    # documented default lives on ``NotificationsBridgeConfig``.
+    if bridge_config is not None:
+        default_url = bridge_config.ntfy_default_url
+    else:
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            NotificationsBridgeConfig,
+        )
+
+        default_url = NotificationsBridgeConfig().ntfy_default_url
+        # Fallback signal for operators reading boot logs: the runtime
+        # bridge config was unavailable, so the documented default
+        # mirroring ``notifications.ntfy_default_url`` was used in its
+        # place.  Reaching this branch in production means
+        # ``NotificationsBridgeConfig`` was not threaded through the
+        # caller and the registry override (if any) was bypassed.
+        logger.debug(
+            NOTIFICATION_SINK_DEFAULT_FALLBACK,
+            sink_type="ntfy",
+            reason="bridge_config_unavailable",
+            default_url=default_url,
+        )
+    server_url = params.get("server_url") or default_url
     token = params.get("token")
     if bridge_config is None:
         return NtfyNotificationSink(

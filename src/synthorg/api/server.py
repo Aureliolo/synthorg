@@ -71,12 +71,12 @@ def run_server(config: RootConfig) -> None:
 
     app = create_app(config=config)
     # Wrap the Litestar app in the request-drain middleware as the
-    # outermost ASGI layer (#1600 Phase 3). The wrap happens here
-    # rather than in ``create_app`` so unit tests retrieve a raw
-    # ``Litestar`` for ``TestClient``; production uvicorn always
-    # gets the drain wrapper. The drain middleware itself
-    # intercepts ``lifespan.shutdown`` and runs ``begin_drain``
-    # before forwarding the message to Litestar, so the per-service
+    # outermost ASGI layer.  The wrap happens here rather than in
+    # ``create_app`` so unit tests retrieve a raw ``Litestar`` for
+    # ``TestClient``; production uvicorn always gets the drain
+    # wrapper.  The drain middleware itself intercepts
+    # ``lifespan.shutdown`` and runs ``begin_drain`` before
+    # forwarding the message to Litestar, so the per-service
     # ``on_shutdown`` hooks only start once in-flight HTTP traffic
     # has drained.
     drain_app = RequestDrainMiddleware(
@@ -93,14 +93,17 @@ def run_server(config: RootConfig) -> None:
         ws_ping_timeout=ws_timeout,
         access_log=False,
         log_config=None,
-        # Pair with the in-process request-drain middleware budget
-        # (25 s) so uvicorn's graceful-shutdown window covers both
-        # the drain wait and the slowest service teardown step.
-        # Realistic worst case is ~51 s (drain + services), absolute
-        # worst case ~67 s if every per-service budget hits its cap;
-        # 75 s gives ~8 s headroom over the absolute worst case so
-        # the orchestrator's ``terminationGracePeriodSeconds: 75``
-        # never SIGKILLs the process mid-teardown. See
+        # Internal constant by design.  api/lifecycle.py per-service
+        # budgets sum to ~67 s worst case (25 s in-process drain +
+        # 42 s services, where the 25 s is already counted inside
+        # the 67 s total).  This 75 s uvicorn timeout matches the
+        # orchestrator's ``terminationGracePeriodSeconds: 75`` and
+        # leaves ~8 s of headroom (75 - 67) before SIGKILL fires
+        # mid-teardown.  Raising this without also raising the
+        # per-service budgets does not buy more time -- the
+        # orchestrator kills the process at the same instant.
+        # Lowering it surrenders the 8 s headroom back to SIGKILL.
+        # Not exposed to the settings registry; see
         # ``docs/design/deployment.md`` for the full math.
         timeout_graceful_shutdown=75,
         **ssl_kwargs,

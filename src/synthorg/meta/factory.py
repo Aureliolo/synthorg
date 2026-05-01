@@ -266,6 +266,7 @@ def build_appliers(
             github_client = HttpGitHubClient(
                 token=str(code_cfg.github_token),
                 repo=str(code_cfg.github_repo),
+                api_base_url=str(code_cfg.github_api_url),
                 base_branch=str(code_cfg.base_branch),
                 timeout=code_cfg.api_timeout_seconds,
             )

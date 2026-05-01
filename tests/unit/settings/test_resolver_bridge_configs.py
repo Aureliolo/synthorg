@@ -214,10 +214,12 @@ _HAPPY_CASES: tuple[
             ("notifications", "slack_webhook_timeout_seconds"): "15.0",
             ("notifications", "ntfy_webhook_timeout_seconds"): "10.0",
             ("notifications", "email_smtp_timeout_seconds"): "30.0",
+            ("notifications", "ntfy_default_url"): "https://ntfy.example.com",
         },
         {
             "slack_webhook_timeout_seconds": 15.0,
             "email_smtp_timeout_seconds": 30.0,
+            "ntfy_default_url": "https://ntfy.example.com",
         },
     ),
     (
@@ -249,11 +251,20 @@ _HAPPY_CASES: tuple[
             ("observability", "http_timeout_seconds"): "10.0",
             ("observability", "http_max_retries"): "5",
             ("observability", "audit_chain_signing_timeout_seconds"): "10.0",
+            ("observability", "tsa_endpoint_freetsa"): "https://tsa.example.com/tsr",
+            (
+                "observability",
+                "tsa_endpoint_digicert",
+            ): "http://timestamp.digicert.com",
+            ("observability", "tsa_endpoint_sectigo"): "http://timestamp.sectigo.com",
         },
         {
             "http_batch_size": 250,
             "http_max_retries": 5,
             "audit_chain_signing_timeout_seconds": 10.0,
+            "tsa_endpoint_freetsa": "https://tsa.example.com/tsr",
+            "tsa_endpoint_digicert": "http://timestamp.digicert.com",
+            "tsa_endpoint_sectigo": "http://timestamp.sectigo.com",
         },
     ),
     (

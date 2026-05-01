@@ -21,6 +21,7 @@ from synthorg.api.guards import (
     require_org_mutation,
     require_read_access,
 )
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.company import Department  # noqa: TC001
@@ -113,7 +114,14 @@ class CompanyController(Controller):
             headers={"ETag": new_etag},
         )
 
-    @post("/reorder-departments", guards=[require_org_mutation()], status_code=200)
+    @post(
+        "/reorder-departments",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("company.reorder_departments", key="user"),
+        ],
+        status_code=200,
+    )
     async def reorder_departments(
         self,
         request: Request[Any, Any, Any],

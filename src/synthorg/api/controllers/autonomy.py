@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import AutonomyLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -80,7 +81,13 @@ class AutonomyController(Controller):
             ),
         )
 
-    @post(guards=[require_ceo_or_manager], status_code=200)
+    @post(
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("agents.autonomy_change", key="user"),
+        ],
+        status_code=200,
+    )
     async def update_autonomy(
         self,
         state: State,

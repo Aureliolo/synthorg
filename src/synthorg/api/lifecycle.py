@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 
 # Per-service shutdown budgets (seconds). The total budget is bounded so
 # container orchestrators have headroom before SIGKILL kicks. The current
-# math (#1600 Phase 3):
+# Worst-case shutdown math:
 #
 #   drain (25)  +  task_engine outer (8 * 2 + 1 = 17)  +
 #   meeting (2) +  perf (2)  +  backup (5)  +  settings (2)  +
@@ -52,13 +52,17 @@ logger = get_logger(__name__)
 #     return well under their cap. Realistic headline budget is 25
 #     (drain) + ~26 s (services) = ~51 s.
 #
+# Internal constants by design: per-service shutdown budgets enforce a
+# fixed total worst-case drain of ~67 s (drain 25 s + services 42 s,
+# already inclusive of the drain budget below), matched in
+# api/server.py by Litestar's 75 s graceful_shutdown to reserve ~8 s
+# of headroom (75 - 67) before the orchestrator SIGKILLs the process.
 # Recommended ``terminationGracePeriodSeconds: 75`` per
-# ``docs/design/deployment.md`` -- 8 s headroom over the absolute
-# worst-case 67 s so the orchestrator never SIGKILLs the process
-# mid-teardown. Operators that consistently hit drain timeouts
-# should raise the grace and document the incident.
-# Raising any *individual* budget should come with a note explaining
-# which production incident motivated the change.
+# ``docs/design/deployment.md``. Raising any individual budget
+# narrows that 8 s headroom contract with the orchestrator and risks
+# SIGKILL mid-teardown; not exposed to the settings registry because
+# the shape of the contract -- not its operator-tunability -- is what
+# the orchestrator depends on.
 _TASK_ENGINE_SHUTDOWN_SECONDS: float = 8.0
 _MEETING_SCHEDULER_SHUTDOWN_SECONDS: float = 2.0
 _PERFORMANCE_TRACKER_SHUTDOWN_SECONDS: float = 2.0
@@ -385,11 +389,10 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
 
-            # Auth repositories are exposed directly on the persistence
-            # backend (A1 consolidation, issue #1457). Sessions and
-            # refresh tokens are properties; lockouts are built via
-            # ``build_lockouts(auth_config)`` because they need the
-            # operator's threshold/window/duration policy.
+            # Auth repositories live on the persistence backend.
+            # Sessions and refresh tokens are properties; lockouts are
+            # built via ``build_lockouts(auth_config)`` because they
+            # need the operator's threshold/window/duration policy.
             if not app_state.has_session_store:
                 session_store: SessionRepository = persistence.sessions
                 await session_store.load_revoked()

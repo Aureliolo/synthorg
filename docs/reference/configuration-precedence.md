@@ -75,6 +75,11 @@ from the env var or YAML at first read.
 | `observability.log_directory` | env (`SYNTHORG_LOG_DIR`) > YAML > unset | **Yes** | Read-only-post-init (DB bypassed on reads).  Path-traversal still rejected at boot. |
 | `communication.nats_url` | env (`SYNTHORG_NATS_URL`) > YAML > default | **Yes** | Read-only-post-init (DB bypassed on reads). |
 | `workers.count` | env (`SYNTHORG_WORKERS`) > YAML > default | **Yes** | Read-only-post-init (DB bypassed on reads). |
+| `api.api_prefix` | env (`SYNTHORG_API_API_PREFIX`) > YAML (`api.api_prefix`) > default (`/api/v1`) | **Yes** | Read-only-post-init.  Consumed via `RootConfig.api.api_prefix` at app construction; registry entry exists for /settings discoverability only. |
+| `api.server_host` | env (`SYNTHORG_API_SERVER_HOST`) > YAML (`api.server.host`) > default (`127.0.0.1`) | **Yes** | Read-only-post-init.  Consumed via `RootConfig.api.server.host` at boot; registry entry for discoverability only. |
+| `api.server_port` | env (`SYNTHORG_API_SERVER_PORT`) > YAML (`api.server.port`) > default (`3001`) | **Yes** | Read-only-post-init.  Consumed via `RootConfig.api.server.port` at boot; registry entry for discoverability only. |
+| `api.cors_allowed_origins` | env (`SYNTHORG_API_CORS_ALLOWED_ORIGINS`) > YAML (`api.cors.allowed_origins`) > default (`[]`) | **Yes** | Read-only-post-init.  Consumed via `RootConfig.api.cors` at app construction; registry entry for discoverability only. |
+| `api.trusted_proxies` | env (`SYNTHORG_API_TRUSTED_PROXIES`) > YAML (`api.server.trusted_proxies`) > default (`[]`) | **Yes** | Read-only-post-init.  Consumed via `RootConfig.api.server.trusted_proxies` at boot; registry entry for discoverability only. |
 | `telemetry.enabled` | env (`SYNTHORG_TELEMETRY_ENABLED`) > YAML (`telemetry.enabled`) > default (`false`) | No | Standard mutable.  Registered in `synthorg.settings.definitions.telemetry`; the `/settings` API can introspect and edit it.  The collector reads the env var at boot for the fast-path; runtime DB mutations take effect on the next process restart. |
 | SQLite path | env (`SYNTHORG_DB_PATH`) > YAML | **Yes** | **No registry entry.**  Init-time exception. |
 | Postgres URL | env (`SYNTHORG_DATABASE_URL`) > YAML | **Yes** | **No registry entry.**  Credentials; init-time exception. |

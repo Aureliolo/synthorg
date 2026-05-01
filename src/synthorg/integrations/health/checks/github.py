@@ -21,6 +21,12 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 _DEFAULT_API_URL = "https://api.github.com"
+"""Documented default that mirrors the ``integrations.github_api_url``
+setting.  Production callers inject the resolved value via
+:meth:`GitHubHealthCheck.__init__` so a GitHub Enterprise connection
+without its own ``base_url`` falls through to the operator-configured
+endpoint rather than the public GitHub API."""
+
 _TIMEOUT = 10.0
 _HTTP_OK = 200
 
@@ -30,20 +36,33 @@ _HTTP_OK = 200
 # list covers github.com (cloud) plus the generic ``ghe.``/``github.``
 # Enterprise prefixes we expect customers to use. Override by adding
 # specific hostnames through config, not by disabling the check.
-_ALLOWED_HOST_SUFFIXES: tuple[str, ...] = (
+_BUILTIN_ALLOWED_HOST_SUFFIXES: tuple[str, ...] = (
     "api.github.com",
     ".github.com",
     ".ghe.com",
 )
 
 
-def _is_allowed_github_host(api_url: str) -> bool:
+def _is_allowed_github_host(
+    api_url: str,
+    extra_allowed_hosts: tuple[str, ...] = (),
+) -> bool:
     """Return ``True`` iff ``api_url`` targets a trusted GitHub host.
 
     Rejects non-HTTPS schemes, empty hostnames, and hostnames that do
-    not match an entry in ``_ALLOWED_HOST_SUFFIXES``. A credentialed
-    bearer token must never leave the process for a host that failed
-    this check.
+    not match an entry in the built-in allowlist or the per-instance
+    ``extra_allowed_hosts``. A credentialed bearer token must never
+    leave the process for a host that failed this check.
+
+    Args:
+        api_url: Candidate URL whose host is checked against the
+            allowlist.
+        extra_allowed_hosts: Per-instance trusted hosts (typically the
+            operator-configured ``integrations.github_api_url`` host
+            for self-hosted GitHub Enterprise / GitHub-compatible
+            deployments).  Compared as exact host matches only -- no
+            suffix semantics, so ``git.example.com`` does not implicitly
+            trust ``evil.git.example.com``.
     """
     try:
         parsed = urlparse(api_url)
@@ -54,17 +73,56 @@ def _is_allowed_github_host(api_url: str) -> bool:
     host = (parsed.hostname or "").lower()
     if not host:
         return False
-    return any(
+    if any(
         host == suffix.lstrip(".") or host.endswith(suffix)
-        for suffix in _ALLOWED_HOST_SUFFIXES
-    )
+        for suffix in _BUILTIN_ALLOWED_HOST_SUFFIXES
+    ):
+        return True
+    return host in extra_allowed_hosts
 
 
 class GitHubHealthCheck:
     """Health check via ``GET /user`` on the GitHub API."""
 
-    def __init__(self, catalog: ConnectionCatalog | None = None) -> None:
+    def __init__(
+        self,
+        catalog: ConnectionCatalog | None = None,
+        *,
+        default_api_url: str = _DEFAULT_API_URL,
+    ) -> None:
+        # ``default_api_url`` is operator-tunable; resolve via
+        # ``ConfigResolver.get_str("integrations", "github_api_url")``
+        # at the call site to support GitHub Enterprise installations
+        # whose connections were registered without an explicit
+        # ``base_url``.
         self._catalog = catalog
+        self._default_api_url = default_api_url
+        # Pre-compute the per-instance trusted host set so the
+        # operator-configured GHE endpoint passes
+        # ``_is_allowed_github_host`` without forcing every connection
+        # to repeat the host as an explicit ``base_url``.
+        self._trusted_default_hosts: tuple[str, ...] = self._build_default_hosts(
+            default_api_url
+        )
+
+    @staticmethod
+    def _build_default_hosts(default_api_url: str) -> tuple[str, ...]:
+        """Extract the host of ``default_api_url`` for the instance allowlist.
+
+        Returns an empty tuple when the URL is the public default
+        (``https://api.github.com``) -- that host already passes the
+        built-in allowlist, so no per-instance entry is needed.
+        Returns an empty tuple as well when the URL is malformed; the
+        caller's allowlist falls back to the built-in suffixes only.
+        """
+        try:
+            parsed = urlparse(default_api_url)
+        except ValueError:
+            return ()
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return ()
+        return (host,)
 
     def bind_catalog(self, catalog: ConnectionCatalog) -> None:
         """Bind a catalog after construction (see prober registry)."""
@@ -119,8 +177,8 @@ class GitHubHealthCheck:
                 checked_at=now,
             )
 
-        api_url = connection.base_url or _DEFAULT_API_URL
-        if not _is_allowed_github_host(api_url):
+        api_url = connection.base_url or self._default_api_url
+        if not _is_allowed_github_host(api_url, self._trusted_default_hosts):
             # Fail closed: a custom ``base_url`` pointing at a non-
             # GitHub host would otherwise have the bearer token
             # exfiltrated to that host on the next request.

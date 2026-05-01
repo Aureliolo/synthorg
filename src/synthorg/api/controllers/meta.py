@@ -331,7 +331,13 @@ class MetaController(Controller):
             },
         )
 
-    @post("/cycle", guards=[require_org_mutation()])
+    @post(
+        "/cycle",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.trigger_cycle", key="user"),
+        ],
+    )
     async def trigger_cycle(
         self,
     ) -> ApiResponse[dict[str, Any]]:

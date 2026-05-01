@@ -665,20 +665,20 @@ class TestFinishCurrentToolProtocol:
     """FinishCurrentToolStrategy satisfies ShutdownStrategy protocol."""
 
     def test_is_runtime_checkable(self) -> None:
-        strategy = FinishCurrentToolStrategy()
+        strategy = FinishCurrentToolStrategy(tool_timeout_seconds=60.0)
         assert isinstance(strategy, ShutdownStrategy)
 
     def test_not_shutting_down_initially(self) -> None:
-        strategy = FinishCurrentToolStrategy()
+        strategy = FinishCurrentToolStrategy(tool_timeout_seconds=60.0)
         assert strategy.is_shutting_down() is False
 
     def test_request_sets_shutting_down(self) -> None:
-        strategy = FinishCurrentToolStrategy()
+        strategy = FinishCurrentToolStrategy(tool_timeout_seconds=60.0)
         strategy.request_shutdown()
         assert strategy.is_shutting_down() is True
 
     def test_get_strategy_type(self) -> None:
-        strategy = FinishCurrentToolStrategy()
+        strategy = FinishCurrentToolStrategy(tool_timeout_seconds=60.0)
         assert strategy.get_strategy_type() == "finish_tool"
 
 
@@ -718,7 +718,10 @@ class TestFinishCurrentToolExecute:
         assert result.tasks_interrupted == 1
 
     async def test_cleanup_runs(self) -> None:
-        strategy = FinishCurrentToolStrategy(cleanup_seconds=5.0)
+        strategy = FinishCurrentToolStrategy(
+            tool_timeout_seconds=60.0,
+            cleanup_seconds=5.0,
+        )
         ran = []
 
         async def cb() -> None:
@@ -732,7 +735,7 @@ class TestFinishCurrentToolExecute:
         assert result.cleanup_completed is True
 
     async def test_empty_tasks(self) -> None:
-        strategy = FinishCurrentToolStrategy()
+        strategy = FinishCurrentToolStrategy(tool_timeout_seconds=60.0)
         result = await strategy.execute_shutdown(
             running_tasks={},
             cleanup_callbacks=[],
@@ -751,7 +754,10 @@ class TestFinishCurrentToolValidation:
 
     def test_invalid_cleanup_seconds(self) -> None:
         with pytest.raises(ValueError, match="cleanup_seconds must be positive"):
-            FinishCurrentToolStrategy(cleanup_seconds=-1.0)
+            FinishCurrentToolStrategy(
+                tool_timeout_seconds=60.0,
+                cleanup_seconds=-1.0,
+            )
 
 
 # ── CheckpointAndStopStrategy ──────────────────────────────────

@@ -1,11 +1,12 @@
 """OAuth 2.1 device authorization flow (RFC 8628)."""
 
-import asyncio
 import json
-from datetime import UTC, datetime, timedelta
+import math
+from datetime import timedelta
 
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.models import OAuthToken
 from synthorg.integrations.errors import (
     DeviceFlowTimeoutError,
@@ -51,7 +52,7 @@ class DeviceFlowResult:
         user_code: str,
         verification_uri: str,
         verification_uri_complete: str = "",
-        interval: int = 5,
+        interval: int,
         expires_in: int = 600,
     ) -> None:
         self.device_code = device_code
@@ -65,6 +66,12 @@ class DeviceFlowResult:
 _DEFAULT_HTTP_TIMEOUT_SECONDS: float = 30.0
 """Fallback OAuth HTTP timeout used when no operator override is supplied."""
 
+_DEFAULT_POLL_INTERVAL_SECONDS: int = 5
+"""RFC 8628 baseline polling cadence (5 s) used when the server omits
+``interval`` from the device-authorization response. Operators tune this
+through the ``integrations.oauth_device_flow_poll_interval_seconds``
+setting; resolve at construction and pass into ``DeviceFlow``."""
+
 
 class DeviceFlow:
     """OAuth 2.1 device authorization flow (RFC 8628).
@@ -76,17 +83,64 @@ class DeviceFlow:
     Args:
         http_timeout_seconds: HTTP timeout for initiate + poll token
             calls (mirrors ``integrations.oauth_http_timeout_seconds``).
+        default_poll_interval_seconds: Fallback polling cadence used
+            when the device-authorization response omits ``interval``.
+            Mirrors the
+            ``integrations.oauth_device_flow_poll_interval_seconds``
+            setting; resolve at the construction site and pass through.
+            The IETF dynamic ``slow_down`` widening (``+5`` per response)
+            in ``poll_for_token`` is preserved.
+        clock: Time / cooperative-sleep source. Defaults to
+            ``SystemClock``; tests inject ``FakeClock`` from
+            ``tests/_shared/fake_clock.py`` to make the polling loop
+            deterministic without real waits.
     """
 
     def __init__(
         self,
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
+        default_poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
-        if http_timeout_seconds <= 0:
-            msg = f"http_timeout_seconds must be > 0, got {http_timeout_seconds}"
+        # Strict numeric + finite + positive: reject ``bool`` (which is
+        # an ``int`` subclass and would silently flow into
+        # ``httpx.AsyncClient(timeout=True)`` -> 1 s) and reject
+        # ``NaN`` / ``+Inf`` / ``-Inf`` so they cannot reach
+        # ``httpx`` where their behaviour is implementation-defined.
+        if (
+            isinstance(http_timeout_seconds, bool)
+            or not isinstance(http_timeout_seconds, (int, float))
+            or not math.isfinite(float(http_timeout_seconds))
+            or float(http_timeout_seconds) <= 0.0
+        ):
+            msg = (
+                "http_timeout_seconds must be a finite positive number,"
+                f" got {http_timeout_seconds!r}"
+                f" of type {type(http_timeout_seconds).__name__}"
+            )
             raise ValueError(msg)
-        self._http_timeout_seconds = http_timeout_seconds
+        # Strictly positive ``int`` only for the polling-cadence
+        # default.  Reject ``bool`` (which is an ``int`` subclass:
+        # ``True == 1`` and ``False == 0`` would pass
+        # the comparison silently) and reject ``float`` because the
+        # response-parser default uses ``_positive_int`` which already
+        # rejects floats; an inconsistent fallback would shadow that
+        # boundary check.
+        if (
+            not isinstance(default_poll_interval_seconds, int)
+            or isinstance(default_poll_interval_seconds, bool)
+            or default_poll_interval_seconds <= 0
+        ):
+            msg = (
+                "default_poll_interval_seconds must be a positive int"
+                f" (not bool/float), got {default_poll_interval_seconds!r}"
+                f" of type {type(default_poll_interval_seconds).__name__}"
+            )
+            raise ValueError(msg)
+        self._http_timeout_seconds = float(http_timeout_seconds)
+        self._default_poll_interval_seconds = default_poll_interval_seconds
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def grant_type(self) -> str:
@@ -198,7 +252,7 @@ class DeviceFlow:
                 raise TokenExchangeFailedError(msg)
             return raw
 
-        interval_value = _positive_int("interval", 5)
+        interval_value = _positive_int("interval", self._default_poll_interval_seconds)
         expires_in_value = _positive_int("expires_in", 600)
 
         # user_code is an active credential -- do not log it at
@@ -224,7 +278,7 @@ class DeviceFlow:
         token_url: str,
         client_id: str,
         device_code: str,
-        interval: int = 5,
+        interval: int,
         max_wait_seconds: int = 600,
     ) -> OAuthToken:
         """Poll the token endpoint until the user authorizes.
@@ -243,18 +297,68 @@ class DeviceFlow:
             DeviceFlowTimeoutError: If the user does not authorize
                 within the timeout.
             TokenExchangeFailedError: On unexpected errors.
+            ValueError: If ``interval`` or ``max_wait_seconds`` is
+                non-positive (would cause a tight loop / immediate
+                timeout).
         """
+        # Same strict ``int`` shape as ``DeviceFlow.__init__`` rejects
+        # for ``default_poll_interval_seconds``: ``bool`` is excluded
+        # (``True == 1`` would otherwise satisfy ``<= 0`` silently) and
+        # ``float`` is excluded so a caller passing e.g. ``1.5`` cannot
+        # smuggle a fractional sleep through what the type annotation
+        # advertises as an integer cadence.
+        if not isinstance(interval, int) or isinstance(interval, bool) or interval <= 0:
+            msg = (
+                "interval must be a positive int (not bool/float),"
+                f" got {interval!r} of type {type(interval).__name__}"
+            )
+            raise ValueError(msg)
+        if (
+            not isinstance(max_wait_seconds, int)
+            or isinstance(max_wait_seconds, bool)
+            or max_wait_seconds <= 0
+        ):
+            msg = (
+                "max_wait_seconds must be a positive int (not bool/float),"
+                f" got {max_wait_seconds!r}"
+                f" of type {type(max_wait_seconds).__name__}"
+            )
+            raise ValueError(msg)
         payload = {
             "grant_type": self.grant_type,
             "client_id": client_id,
             "device_code": device_code,
         }
-        deadline = datetime.now(UTC) + timedelta(seconds=max_wait_seconds)
+        # Use the monotonic clock for the polling deadline + remaining-
+        # budget math: a wall-clock jump (NTP correction, manual time
+        # change, container clock skew) would otherwise either
+        # short-circuit the loop early or extend it past the caller's
+        # ``max_wait_seconds`` budget.  ``self._clock.now()`` (UTC
+        # wall-clock) is still used downstream for ``token.expires_at``
+        # because that field is a persisted absolute timestamp the
+        # operator inspects.
+        monotonic_deadline = self._clock.monotonic() + max_wait_seconds
         poll_interval = interval
 
-        while datetime.now(UTC) < deadline:
-            logger.debug(OAUTH_DEVICE_FLOW_POLLING, interval=poll_interval)
-            await asyncio.sleep(poll_interval)
+        while self._clock.monotonic() < monotonic_deadline:
+            # Clamp the sleep to the remaining budget so the loop never
+            # overshoots the deadline by up to ``poll_interval`` seconds
+            # (and never makes one extra token-endpoint POST after the
+            # caller's max_wait_seconds is exhausted).
+            remaining = monotonic_deadline - self._clock.monotonic()
+            if remaining <= 0:
+                break
+            sleep_seconds = min(poll_interval, remaining)
+            logger.debug(OAUTH_DEVICE_FLOW_POLLING, interval=sleep_seconds)
+            await self._clock.sleep(sleep_seconds)
+            # Re-check after waking: ``FakeClock.sleep`` and a real
+            # ``asyncio.sleep`` both advance time to (or just past)
+            # the deadline, and the surrounding ``while`` only re-runs
+            # on the next iteration. Without this break the current
+            # iteration still issues the token-endpoint POST after the
+            # caller's budget has expired.
+            if self._clock.monotonic() >= monotonic_deadline:
+                break
 
             try:
                 async with httpx.AsyncClient(
@@ -325,7 +429,7 @@ class DeviceFlow:
                     )
                     and expires_in > 0
                 ):
-                    expires_at = datetime.now(UTC) + timedelta(
+                    expires_at = self._clock.now() + timedelta(
                         seconds=expires_in,
                     )
                 refresh_raw = data.get("refresh_token")

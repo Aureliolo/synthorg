@@ -57,12 +57,15 @@ class ApprovalTimeoutScheduler:
         *,
         approval_store: ApprovalStoreProtocol,
         timeout_checker: TimeoutChecker,
-        interval_seconds: float = 60.0,
+        interval_seconds: float,
         on_timeout_resolve: (
             Callable[[ApprovalItem, TimeoutAction], Awaitable[None]] | None
         ) = None,
         notification_dispatcher: NotificationDispatcher | None = None,
     ) -> None:
+        # ``interval_seconds`` is operator-tunable; resolve via
+        # ``ConfigResolver.get_float("security",
+        # "timeout_check_interval_seconds")`` at the call site.
         if interval_seconds <= 0:
             msg = f"interval_seconds must be positive, got {interval_seconds}"
             raise ValueError(msg)

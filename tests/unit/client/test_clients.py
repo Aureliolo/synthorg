@@ -131,7 +131,7 @@ class TestAIClient:
 class TestHumanClient:
     def test_protocol_compatible(self) -> None:
         queue = InMemoryHumanInputQueue()
-        human = HumanClient(profile=_profile(), queue=queue)
+        human = HumanClient(profile=_profile(), queue=queue, timeout=60.0)
         assert isinstance(human, ClientInterface)
 
     def test_rejects_non_positive_timeout(self) -> None:

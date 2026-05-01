@@ -127,3 +127,24 @@ _r.register(
         yaml_path="security.auth_token_bytes",
     )
 )
+
+# ── Approval-timeout scheduler ──────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="timeout_check_interval_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=(
+            "Interval at which the approval-timeout scheduler scans for"
+            " pending approvals and applies the timeout policy"
+            " (approve, deny, or escalate)."
+        ),
+        group="Timeouts",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=600.0,
+        yaml_path="security.timeout_check_interval_seconds",
+    )
+)

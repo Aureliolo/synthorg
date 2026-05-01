@@ -60,3 +60,24 @@ _r.register(
         level=SettingLevel.ADVANCED,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="ollama_default_port",
+        type=SettingType.INTEGER,
+        default="11434",
+        description=(
+            "Default port used to detect a self-hosted Ollama provider when"
+            " its ``litellm_provider`` field is not set explicitly."
+            " The health prober treats a base URL bound to this port as"
+            " an Ollama endpoint and pings the root URL (which returns a"
+            " liveness string) instead of ``/models``."
+        ),
+        group="Ollama",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=65535,
+        yaml_path="providers.ollama_default_port",
+    )
+)

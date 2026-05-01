@@ -45,6 +45,9 @@ FailureAttribution = Literal[
     "quality_gate",
 ]
 
+# Internal constant by design: defensive truncation of evidence text
+# attached to failure attributions; prevents oversized error-evidence
+# payloads.  Not exposed to the settings registry.
 _MAX_EVIDENCE_LENGTH = 500
 
 # Map FailureCategory -> FailureAttribution for error-based outcomes.

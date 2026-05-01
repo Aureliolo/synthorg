@@ -220,3 +220,64 @@ _r.register(
         yaml_path="logging.console_level",
     )
 )
+
+# ── TSA preset endpoints (RFC 3161) ──────────────────────────────
+# Each preset's canonical URL is registered as a setting so operators
+# can pin a vendor-controlled hostname change or stand up a private
+# TSA without a code patch.  Consumed via ``ObservabilityBridgeConfig``.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="tsa_endpoint_freetsa",
+        type=SettingType.STRING,
+        default="https://freetsa.org/tsr",
+        description=(
+            "RFC 3161 Time-Stamp Authority endpoint URL for the FreeTSA"
+            " preset.  Override only if FreeTSA changes its endpoint or"
+            " an operator stands up a private mirror with the same trust"
+            " anchors."
+        ),
+        group="Audit Chain",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        yaml_path="logging.audit_chain.tsa_endpoint_freetsa",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="tsa_endpoint_digicert",
+        type=SettingType.STRING,
+        default="http://timestamp.digicert.com",
+        description=(
+            "RFC 3161 Time-Stamp Authority endpoint URL for the DigiCert"
+            " preset.  Override only if DigiCert changes its endpoint."
+        ),
+        group="Audit Chain",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        yaml_path="logging.audit_chain.tsa_endpoint_digicert",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="tsa_endpoint_sectigo",
+        type=SettingType.STRING,
+        default="http://timestamp.sectigo.com",
+        description=(
+            "RFC 3161 Time-Stamp Authority endpoint URL for the Sectigo"
+            " preset.  Override only if Sectigo changes its endpoint."
+        ),
+        group="Audit Chain",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        yaml_path="logging.audit_chain.tsa_endpoint_sectigo",
+    )
+)

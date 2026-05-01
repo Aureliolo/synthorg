@@ -100,7 +100,7 @@ class PostgresEscalationNotifySubscriber:
         registry: PendingFuturesRegistry,
         *,
         channel: str,
-        reconnect_delay_seconds: float = 1.0,
+        reconnect_delay_seconds: float,
     ) -> None:
         """Initialise the subscriber.
 
@@ -115,7 +115,10 @@ class PostgresEscalationNotifySubscriber:
             registry: Process-local registry whose futures should wake.
             channel: LISTEN/NOTIFY channel name.
             reconnect_delay_seconds: Seconds to wait before reconnecting
-                after a connection failure.  Must be positive.
+                after a connection failure.  Must be positive.  Resolve
+                via ``ConfigResolver.get_float("communication",
+                "escalation_subscriber_reconnect_delay_seconds")`` at
+                the call site.
         """
         if reconnect_delay_seconds <= 0:
             msg = "reconnect_delay_seconds must be > 0"

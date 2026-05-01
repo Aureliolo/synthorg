@@ -34,3 +34,5 @@ CLIENT_REQUEST_TRANSITION_INVALID: Final[str] = "client.request.transition_inval
 CLIENT_REQUEST_TRANSITION_CONFIG_ERROR: Final[str] = (
     "client.request.transition_config_error"
 )
+
+CLIENT_CONFIG_INVALID: Final[str] = "client.config.invalid"

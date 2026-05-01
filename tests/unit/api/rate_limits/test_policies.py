@@ -132,3 +132,45 @@ class TestMetaChatPolicy:
         # exact callable shape is an implementation detail -- asserting
         # that it exists confirms the policy registration is consistent.
         assert callable(guard)
+
+
+# Documented defaults for write/coordination endpoints whose decorators
+# call ``per_op_rate_limit_from_policy``.  Listed here so a future
+# tuning change updates one line, not the assertions in three tests.
+_EXPENSIVE_ENDPOINT_POLICY_DEFAULTS: dict[str, tuple[int, int]] = {
+    "a2a.gateway": (120, 60),
+    "agents.autonomy_change": (10, 60),
+    "artifacts.create": (60, 60),
+    "auth.ws_ticket": (20, 60),
+    "clients.create": (10, 60),
+    "collaboration.override": (20, 60),
+    "company.reorder_departments": (10, 60),
+    "interrupts.resume": (60, 60),
+    "meta.ingest_events": (60, 60),
+    "meta.trigger_cycle": (1, 60),
+    "simulations.cancel": (30, 60),
+    "tasks.coordinate": (10, 60),
+}
+
+
+@pytest.mark.parametrize(
+    ("operation", "bounds"),
+    sorted(_EXPENSIVE_ENDPOINT_POLICY_DEFAULTS.items()),
+)
+class TestExpensiveEndpointPolicies:
+    """Each guarded write/coordination endpoint resolves through the registry."""
+
+    def test_registered_with_documented_default(
+        self,
+        operation: str,
+        bounds: tuple[int, int],
+    ) -> None:
+        # All three invariants live in one test because parametrize
+        # already produces one node per case; splitting into three
+        # methods just multiplies node count without adding signal.
+        assert operation in RATE_LIMIT_POLICIES, (
+            f"Expected {operation!r} in the policy registry."
+        )
+        assert RATE_LIMIT_POLICIES[operation] == bounds
+        guard = per_op_rate_limit_from_policy(operation, key="user")
+        assert callable(guard)

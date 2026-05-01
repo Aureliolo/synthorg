@@ -13,12 +13,12 @@ On-demand reference. The short rule in `CLAUDE.md` is: no default may privilege 
 |---|---|
 | Currency (backend) | `budget.currency` runtime setting > `DEFAULT_CURRENCY` from `synthorg.budget.currency` |
 | Currency (frontend) | `useSettingsStore().currency` > `DEFAULT_CURRENCY` from `@/utils/currencies` |
-| Locale (backend) | `display.locale` runtime setting > neutral `'en'` |
+| Locale (backend) | `Intl` with the system locale; no operator-tunable backend locale setting (the company `name_locales` list controls procedural-name generation, not number / date formatting) |
 | Locale (frontend) | `getLocale()` from `@/utils/locale` > browser default > `'en'` |
 | Timezone | UTC stored everywhere; render via `Intl` without passing a `timeZone` option (browser tz wins) |
 | Number / date format | `Intl` with the resolved locale; never hand-rolled templates |
 | Units | Metric only |
-| Spelling | American English (`color`, `initialize`); document deviations |
+| Spelling | International / British English UI default (`colour`, `behaviour`, `organise`, `centred`, `analyse`, `cancelled`); document deviations |
 
 ## What's enforced
 

@@ -41,6 +41,7 @@ from synthorg.integrations.oauth.pkce import (
     encrypt_pkce_verifier,
     generate_code_verifier,
 )
+from tests._shared.fake_clock import FakeClock
 
 
 def _mock_token_response(
@@ -295,7 +296,11 @@ class TestClientCredentialsFlow:
 @pytest.mark.integration
 class TestDeviceFlow:
     async def test_device_flow_polling_grants_token(self) -> None:
-        flow = DeviceFlow()
+        # FakeClock keeps the polling loop deterministic: each
+        # ``sleep`` call advances virtual time and returns immediately,
+        # so the three queued ``client_mock.post`` responses fire
+        # back-to-back without a real 1 s wait per iteration.
+        flow = DeviceFlow(clock=FakeClock())
 
         start_resp = _mock_token_response(
             {
@@ -328,15 +333,9 @@ class TestDeviceFlow:
         async def _exit(self: Any, *_: Any) -> None:
             return None
 
-        with (
-            patch(
-                "synthorg.integrations.oauth.flows.device_flow.httpx.AsyncClient"
-            ) as client_cls,
-            patch(
-                "synthorg.integrations.oauth.flows.device_flow.asyncio.sleep",
-                new=AsyncMock(),
-            ),
-        ):
+        with patch(
+            "synthorg.integrations.oauth.flows.device_flow.httpx.AsyncClient"
+        ) as client_cls:
             client_cls.return_value.__aenter__ = _enter
             client_cls.return_value.__aexit__ = _exit
 
@@ -356,6 +355,78 @@ class TestDeviceFlow:
             )
         assert token.access_token == "dev-token"
         assert token.refresh_token == "dev-refresh"
+
+    @pytest.mark.parametrize("bad_interval", [0, -1, -60])
+    async def test_poll_for_token_rejects_non_positive_interval(
+        self, bad_interval: int
+    ) -> None:
+        # A non-positive ``interval`` would short-circuit the
+        # ``await self._clock.sleep(...)`` call and spin the polling
+        # loop into rapid token-endpoint requests; reject at the
+        # boundary instead.
+        flow = DeviceFlow(clock=FakeClock())
+        with pytest.raises(ValueError, match=r"interval must be a positive int"):
+            await flow.poll_for_token(
+                token_url="https://example.com/token",
+                client_id="cid",
+                device_code="dev-code",
+                interval=bad_interval,
+                max_wait_seconds=60,
+            )
+
+    @pytest.mark.parametrize("bad_interval", [True, False, 1.5, 0.0])
+    async def test_poll_for_token_rejects_bool_or_float_interval(
+        self, bad_interval: bool | float
+    ) -> None:
+        # ``True == 1`` and ``False == 0`` would silently satisfy a
+        # bare ``<= 0`` check; floats would smuggle fractional sleep
+        # cadence through the integer-typed parameter.  Reject both
+        # at the boundary so the type annotation matches runtime.
+        flow = DeviceFlow(clock=FakeClock())
+        with pytest.raises(ValueError, match=r"interval must be a positive int"):
+            await flow.poll_for_token(
+                token_url="https://example.com/token",
+                client_id="cid",
+                device_code="dev-code",
+                interval=bad_interval,  # type: ignore[arg-type]
+                max_wait_seconds=60,
+            )
+
+    @pytest.mark.parametrize("bad_max_wait", [0, -1, -60])
+    async def test_poll_for_token_rejects_non_positive_max_wait(
+        self, bad_max_wait: int
+    ) -> None:
+        # A non-positive ``max_wait_seconds`` would put the deadline at
+        # or before "now" so the loop body never runs and the call
+        # always raises ``DeviceFlowTimeoutError`` -- swap that for a
+        # clear ``ValueError`` at the boundary.
+        flow = DeviceFlow(clock=FakeClock())
+        with pytest.raises(
+            ValueError, match=r"max_wait_seconds must be a positive int"
+        ):
+            await flow.poll_for_token(
+                token_url="https://example.com/token",
+                client_id="cid",
+                device_code="dev-code",
+                interval=1,
+                max_wait_seconds=bad_max_wait,
+            )
+
+    @pytest.mark.parametrize("bad_max_wait", [True, False, 60.5, 0.0])
+    async def test_poll_for_token_rejects_bool_or_float_max_wait(
+        self, bad_max_wait: bool | float
+    ) -> None:
+        flow = DeviceFlow(clock=FakeClock())
+        with pytest.raises(
+            ValueError, match=r"max_wait_seconds must be a positive int"
+        ):
+            await flow.poll_for_token(
+                token_url="https://example.com/token",
+                client_id="cid",
+                device_code="dev-code",
+                interval=1,
+                max_wait_seconds=bad_max_wait,  # type: ignore[arg-type]
+            )
 
 
 # ── Leak-sentinel tests ──────────────────────────────────────────────

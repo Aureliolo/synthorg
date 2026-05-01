@@ -55,6 +55,7 @@ class TestPostgresSubscriberValidation:
                 repo,
                 registry,
                 channel=bad_channel,
+                reconnect_delay_seconds=1.0,
             )
 
     async def test_negative_reconnect_delay_rejected(self) -> None:

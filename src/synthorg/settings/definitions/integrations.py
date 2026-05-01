@@ -94,3 +94,42 @@ _r.register(
         yaml_path="integrations.webhooks.receipt_retention_days",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="oauth_device_flow_poll_interval_seconds",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Initial polling interval for the OAuth device-code flow."
+            " The IETF spec lets the server widen this dynamically with"
+            " a slow_down response (the dynamic widening is preserved);"
+            " this setting controls only the starting cadence."
+        ),
+        group="OAuth",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=60,
+        yaml_path="integrations.oauth.device_flow_poll_interval_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="github_api_url",
+        type=SettingType.STRING,
+        default="https://api.github.com",
+        description=(
+            "GitHub API base URL.  Override for GitHub Enterprise"
+            " installations (e.g. ``https://github.example.com/api/v3``)"
+            " or self-hosted GitHub-compatible services."
+        ),
+        group="GitHub",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        yaml_path="integrations.github_api_url",
+    )
+)

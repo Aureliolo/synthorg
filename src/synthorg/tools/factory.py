@@ -7,6 +7,7 @@ extracts parameters from a ``RootConfig``).  Both return
 in a ``ToolRegistry``.
 """
 
+import math
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ToolCategory
@@ -104,9 +105,14 @@ def _build_web_tools(
     network_policy: NetworkPolicy | None = None,
     search_provider: WebSearchProvider | None = None,
     max_response_bytes: int = 1_048_576,
-    request_timeout: float = 30.0,
+    request_timeout: float,
 ) -> tuple[BaseTool, ...]:
-    """Instantiate the built-in web tools."""
+    """Instantiate the built-in web tools.
+
+    ``request_timeout`` is operator-tunable; resolve via
+    ``ConfigResolver.get_float("tools", "web_request_timeout_seconds")``
+    at the call site or read from ``WebToolsConfig.request_timeout``.
+    """
     from synthorg.tools.web.web_search import WebSearchTool  # noqa: PLC0415
 
     tools: list[BaseTool] = [
@@ -317,6 +323,7 @@ def _build_analytics_tools(
 def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
+    web_request_timeout: float,
     git_clone_policy: GitCloneNetworkPolicy | None = None,
     sandbox: SandboxBackend | None = None,
     web_network_policy: NetworkPolicy | None = None,
@@ -340,6 +347,14 @@ def build_default_tools(  # noqa: PLR0913
 
     Args:
         workspace: Absolute path to the agent workspace root.
+        web_request_timeout: Maximum seconds an HTTP request issued by
+            a web tool may run before being cancelled.  Required;
+            callers MUST resolve the
+            ``tools.web_request_timeout_seconds`` setting via
+            ``ConfigResolver`` and pass the result so the registry's
+            DB > env > YAML > default precedence (and the
+            ``settings.value.resolved`` audit log) fire on the real
+            read instead of being papered over by a local default.
         git_clone_policy: Network policy for git clone SSRF
             prevention.  ``None`` uses the default (block all
             private IPs, empty hostname allowlist).
@@ -376,16 +391,33 @@ def build_default_tools(  # noqa: PLR0913
         Sorted tuple of ``BaseTool`` instances.
 
     Raises:
-        ValueError: If *workspace* is not an absolute path.
+        ValueError: If *workspace* is not an absolute path or if
+            ``web_request_timeout`` is non-positive.
     """
     if not workspace.is_absolute():
         msg = f"workspace must be an absolute path, got: {workspace}"
         logger.warning(TOOL_FACTORY_ERROR, error=msg)
         raise ValueError(msg)
 
+    # Boundary validation for the resolved registry value: a caller
+    # passing 0, a negative, or NaN here would either disable web
+    # tools entirely or surface as opaque ``httpx`` errors mid-request.
+    # Fail fast so the misconfiguration is visible at startup, not at
+    # the first web call.
+    if not math.isfinite(web_request_timeout) or web_request_timeout <= 0:
+        msg = (
+            "web_request_timeout must be a finite positive float,"
+            f" got {web_request_timeout!r}"
+        )
+        logger.warning(TOOL_FACTORY_ERROR, error=msg)
+        raise ValueError(msg)
+
     from synthorg.tools.context.compact_context import (  # noqa: PLC0415
         CompactContextTool,
     )
+
+    # ``web_request_timeout`` is mandatory above; the
+    # ``ConfigResolver`` boundary owns the resolution + audit log.
 
     all_tools: list[BaseTool] = [
         *_build_file_system_tools(workspace=workspace),
@@ -397,6 +429,7 @@ def build_default_tools(  # noqa: PLR0913
         *_build_web_tools(
             network_policy=web_network_policy,
             search_provider=web_search_provider,
+            request_timeout=web_request_timeout,
         ),
         CompactContextTool(),
     ]
@@ -470,6 +503,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     analytics_provider: AnalyticsProvider | None = None,
     metric_sink: MetricSink | None = None,
     async_task_service: AsyncTaskService | None = None,
+    web_request_timeout: float,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
 
@@ -498,6 +532,13 @@ def build_default_tools_from_config(  # noqa: PLR0913
         async_task_service: Optional ``AsyncTaskService`` backing the
             async task steering tools.  When ``None``, those tools are
             skipped.
+        web_request_timeout: Resolved
+            ``tools.web_request_timeout_seconds`` registry value
+            (required; callers resolve via ``ConfigResolver`` so the
+            DB > env > YAML > default chain and the
+            ``settings.value.resolved`` audit log fire on the real
+            read).  Overrides ``config.web.request_timeout`` when
+            both are supplied.
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -563,13 +604,20 @@ def build_default_tools_from_config(  # noqa: PLR0913
             ),
         )
 
-    # Extract web config
-    web_policy: NetworkPolicy | None = None
-    if config.web is not None:
-        web_policy = config.web.network_policy
+    # Trust the resolved ``web_request_timeout`` the caller passed;
+    # the registry resolution + ``settings.value.resolved`` audit log
+    # already fired upstream at the ``ConfigResolver`` boundary.
+    # ``config.web.request_timeout`` is the legacy YAML knob that the
+    # bridge composer still reads, but the registry value wins so a
+    # runtime tuning of the setting takes effect without needing the
+    # YAML edit.
+    web_policy: NetworkPolicy | None = (
+        config.web.network_policy if config.web is not None else None
+    )
 
     return build_default_tools(
         workspace=workspace,
+        web_request_timeout=web_request_timeout,
         git_clone_policy=config.git_clone,
         sandbox=vc_sandbox,
         web_network_policy=web_policy,

@@ -14,6 +14,8 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr
+
 # WebSocket first-message auth handshake timeout bounds. Exposed as
 # module constants so the ``set_ws_auth_timeout_seconds`` setter on
 # ``AppState`` can validate against the same bounds as the Pydantic
@@ -79,13 +81,17 @@ class MetaBridgeConfig(BaseModel):
 
 
 class NotificationsBridgeConfig(BaseModel):
-    """Operator-tunable timeouts for notification sink adapters."""
+    """Operator-tunable timeouts and defaults for notification sink adapters."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     slack_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     ntfy_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     email_smtp_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    ntfy_default_url: NotBlankStr = Field(
+        default=NotBlankStr("https://ntfy.sh"),
+        pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+    )
 
 
 class ToolsBridgeConfig(BaseModel):
@@ -116,7 +122,8 @@ class ToolsBridgeConfig(BaseModel):
 class ObservabilityBridgeConfig(BaseModel):
     """Operator-tunable values for the observability subsystem.
 
-    Covers HTTP log-handler defaults and audit-chain signing timeout.
+    Covers HTTP log-handler defaults, audit-chain signing timeout,
+    and the per-preset RFC 3161 Time-Stamp Authority endpoints.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -126,6 +133,18 @@ class ObservabilityBridgeConfig(BaseModel):
     http_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     http_max_retries: int = Field(default=3, ge=0, le=10)
     audit_chain_signing_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
+    tsa_endpoint_freetsa: NotBlankStr = Field(
+        default=NotBlankStr("https://freetsa.org/tsr"),
+        pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+    )
+    tsa_endpoint_digicert: NotBlankStr = Field(
+        default=NotBlankStr("http://timestamp.digicert.com"),
+        pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+    )
+    tsa_endpoint_sectigo: NotBlankStr = Field(
+        default=NotBlankStr("http://timestamp.sectigo.com"),
+        pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+    )
 
 
 class SettingsDispatcherBridgeConfig(BaseModel):

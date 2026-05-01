@@ -44,29 +44,48 @@ _DEFAULT_INTERVAL_SECONDS: Final[int] = 1800  # 30 minutes
 _PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
 _HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
 _MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
-_OLLAMA_DEFAULT_PORT: Final[int] = 11434
+_DEFAULT_OLLAMA_PORT: Final[int] = 11434
+"""Documented default that mirrors the ``providers.ollama_default_port``
+setting.  Production callers resolve via ``ConfigResolver`` and pass
+the value through; this constant is the documented baseline used by
+test stubs and as the resolver's last-resort fallback."""
 
 
-def _build_ping_url(base_url: str, litellm_provider: str | None) -> str:
+def _build_ping_url(
+    base_url: str,
+    litellm_provider: str | None,
+    *,
+    ollama_port: int = _DEFAULT_OLLAMA_PORT,
+) -> str:
     """Build a lightweight ping URL for a provider.
 
     Uses the cheapest possible endpoint -- no model loading.
     Providers whose ``litellm_provider`` is ``"ollama"`` (or whose
-    URL contains the default port ``:11434``) use the root URL;
-    all others append ``/models``.
+    URL is bound to ``ollama_port``) use the root URL; all others
+    append ``/models``.
 
     Args:
         base_url: Provider base URL.
         litellm_provider: LiteLLM provider identifier for path selection.
+        ollama_port: Port used to detect a self-hosted Ollama provider
+            when ``litellm_provider`` is not set explicitly.  Must be a
+            valid TCP port (1-65535).  Resolve via
+            ``ConfigResolver.get_int("providers",
+            "ollama_default_port")`` at the call site; the registry
+            entry validates the bounds at write time, so a value out
+            of range cannot reach this function via the resolver path.
 
     Returns:
         URL to ping.
+
+    Raises:
+        ValueError: ``ollama_port`` is outside the valid TCP-port range.
     """
+    if not 1 <= ollama_port <= 65535:  # noqa: PLR2004 -- TCP port range
+        msg = f"ollama_port must be in 1-65535, got {ollama_port!r}"
+        raise ValueError(msg)
     stripped = base_url.rstrip("/")
-    # Detect Ollama by provider name or default port (11434).
-    is_ollama = (
-        litellm_provider == "ollama" or urlparse(stripped).port == _OLLAMA_DEFAULT_PORT
-    )
+    is_ollama = litellm_provider == "ollama" or urlparse(stripped).port == ollama_port
     if is_ollama:
         return stripped  # Root URL returns a liveness string
     return f"{stripped}/models"
@@ -200,11 +219,16 @@ class ProviderHealthProber:
         policy: ProviderDiscoveryPolicy | None = None
         if self._discovery_policy_loader is not None:
             policy = await self._discovery_policy_loader()
+        ollama_port = await self._config_resolver.get_int(
+            "providers", "ollama_default_port"
+        )
         eligible: list[tuple[str, ProviderConfig]] = []
         for name, config in providers.items():
             if config.base_url is None:
                 continue  # cloud providers -- no lightweight ping available
-            url = _build_ping_url(config.base_url, config.litellm_provider)
+            url = _build_ping_url(
+                config.base_url, config.litellm_provider, ollama_port=ollama_port
+            )
             if policy is not None and not is_url_allowed(url, policy):
                 # Skip -- SSRF-blocked providers are in an indeterminate
                 # state, not a failed one.  UNKNOWN (zero records) is the
@@ -231,12 +255,16 @@ class ProviderHealthProber:
         if eligible:
             async with asyncio.TaskGroup() as tg:
                 for name, config in eligible:
-                    tg.create_task(self._safe_probe_one(name, config))
+                    tg.create_task(
+                        self._safe_probe_one(name, config, ollama_port=ollama_port)
+                    )
 
     async def _safe_probe_one(
         self,
         name: str,
         config: ProviderConfig,
+        *,
+        ollama_port: int,
     ) -> None:
         """Probe a single provider, isolating failures from peers.
 
@@ -247,9 +275,11 @@ class ProviderHealthProber:
         Args:
             name: Provider name.
             config: Provider configuration.
+            ollama_port: Resolved ``providers.ollama_default_port`` for
+                Ollama-detection in :func:`_build_ping_url`.
         """
         try:
-            await self._probe_one(name, config)
+            await self._probe_one(name, config, ollama_port=ollama_port)
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -264,16 +294,24 @@ class ProviderHealthProber:
         self,
         name: str,
         config: ProviderConfig,
+        *,
+        ollama_port: int,
     ) -> None:
         """Ping a single provider and record the result.
 
         Args:
             name: Provider name.
             config: Provider configuration.
+            ollama_port: Resolved ``providers.ollama_default_port`` for
+                Ollama-detection in :func:`_build_ping_url`.
         """
         # base_url is guaranteed non-None: _probe_all filters out
         # providers without it before calling _probe_one.
-        url = _build_ping_url(config.base_url, config.litellm_provider)  # type: ignore[arg-type]
+        url = _build_ping_url(
+            config.base_url,  # type: ignore[arg-type]
+            config.litellm_provider,
+            ollama_port=ollama_port,
+        )
         auth_type = str(config.auth_type)
         headers = _build_auth_headers(auth_type, config.api_key)
 

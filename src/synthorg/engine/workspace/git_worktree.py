@@ -5,6 +5,7 @@ directory backed by its own branch.
 """
 
 import asyncio
+import math
 import re
 import time
 from datetime import UTC, datetime
@@ -31,6 +32,7 @@ from synthorg.engine.workspace.models import (
 from synthorg.engine.workspace.semantic_git_ops import run_semantic_analysis
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
+    WORKSPACE_CONFIG_INVALID,
     WORKSPACE_LIMIT_REACHED,
     WORKSPACE_MERGE_ABORT_FAILED,
     WORKSPACE_MERGE_COMPLETE,
@@ -111,6 +113,7 @@ class PlannerWorktreeStrategy:
 
     __slots__ = (
         "_active_workspaces",
+        "_cmd_timeout",
         "_config",
         "_lock",
         "_repo_root",
@@ -122,10 +125,37 @@ class PlannerWorktreeStrategy:
         *,
         config: PlannerWorktreesConfig,
         repo_root: Path,
+        cmd_timeout: float,
         semantic_analyzer: SemanticAnalyzer | None = None,
     ) -> None:
+        """Initialize the strategy.
+
+        Args:
+            config: Strategy configuration.
+            repo_root: Root of the parent git repository.
+            cmd_timeout: Maximum seconds any git subprocess invocation
+                may run before it is cancelled.  Resolve via
+                ``ConfigResolver.get_float("tools",
+                "git_command_timeout_seconds")`` at the call site.
+            semantic_analyzer: Optional semantic conflict analyzer.
+        """
+        if not math.isfinite(cmd_timeout) or cmd_timeout <= 0:
+            # Reject NaN / +Inf / -Inf alongside zero and negatives:
+            # ``asyncio.wait_for(..., timeout=nan)`` would silently
+            # produce undefined wait behaviour, and a non-finite
+            # ``timedelta`` constructed downstream raises an opaque
+            # ``OverflowError`` mid-request.  Fail at the boundary.
+            msg = f"cmd_timeout must be a finite positive float, got {cmd_timeout!r}"
+            logger.warning(
+                WORKSPACE_CONFIG_INVALID,
+                error=msg,
+                param="cmd_timeout",
+                value=cmd_timeout,
+            )
+            raise ValueError(msg)
         self._config = config
         self._repo_root = repo_root
+        self._cmd_timeout = cmd_timeout
         self._active_workspaces: dict[str, Workspace] = {}
         self._lock = asyncio.Lock()
         self._semantic_analyzer = semantic_analyzer
@@ -133,18 +163,18 @@ class PlannerWorktreeStrategy:
     async def _run_git(
         self,
         *args: str,
-        cmd_timeout: float = 60.0,
         log_event: str = WORKSPACE_SETUP_FAILED,
     ) -> tuple[int, str, str]:
         """Run a git command in the repository root.
 
         Thin wrapper around :func:`run_git_subprocess` so this class
         stays focused on workflow orchestration rather than subprocess
-        plumbing.
+        plumbing.  The wall-clock cap comes from ``self._cmd_timeout``,
+        which is resolved from the
+        ``tools.git_command_timeout_seconds`` setting at construction.
 
         Args:
             *args: Git command arguments.
-            cmd_timeout: Maximum seconds to wait for the command.
             log_event: Event constant for timeout error logging.
 
         Returns:
@@ -153,7 +183,7 @@ class PlannerWorktreeStrategy:
         return await run_git_subprocess(
             self._repo_root,
             *args,
-            cmd_timeout=cmd_timeout,
+            cmd_timeout=self._cmd_timeout,
             log_event=log_event,
         )
 

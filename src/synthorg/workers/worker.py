@@ -39,12 +39,12 @@ from synthorg.workers.config import QueueConfig  # noqa: TC001
 logger = get_logger(__name__)
 
 _MAX_FETCH_POLL_SECONDS: Final[float] = 1.0
-"""Maximum seconds :meth:`Worker._run_once` waits inside a single ``next_claim`` call.
-
-Keeps ``stop()`` responsive: even with a 300s ack deadline, the claim
-loop wakes up at least once per second to check ``_stop_event`` rather
-than blocking for the full ``ack_wait`` window.
-"""
+"""Internal constant by design: maximum seconds
+:meth:`Worker._run_once` waits inside a single ``next_claim`` call.
+Keeps ``stop()`` responsive -- even with a 300s ack deadline, the
+claim loop wakes up at least once per second to check ``_stop_event``
+rather than blocking for the full ``ack_wait`` window.  Not exposed
+to the settings registry."""
 
 
 TaskExecutor = Callable[[TaskClaim], Awaitable[TaskClaimStatus]]

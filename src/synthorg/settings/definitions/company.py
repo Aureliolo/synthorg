@@ -87,20 +87,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMPANY,
-        key="graceful_shutdown_seconds",
-        type=SettingType.FLOAT,
-        default="30.0",
-        description="Seconds to wait for cooperative agent exit before force-cancel",
-        group="Shutdown",
-        min_value=1.0,
-        max_value=300.0,
-        yaml_path="graceful_shutdown.grace_seconds",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COMPANY,
         key="name_locales",
         type=SettingType.JSON,
         default='["__all__"]',

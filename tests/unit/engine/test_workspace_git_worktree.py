@@ -59,6 +59,7 @@ def _make_strategy(
     return PlannerWorktreeStrategy(
         config=config or _make_config(),
         repo_root=repo_root,
+        cmd_timeout=60.0,
         semantic_analyzer=semantic_analyzer,  # type: ignore[arg-type]
     )
 

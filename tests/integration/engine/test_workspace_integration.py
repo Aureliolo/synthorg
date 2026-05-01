@@ -118,6 +118,7 @@ def _make_strategy(
             worktree_base_dir=str(worktree_dir),
         ),
         repo_root=repo_path,
+        cmd_timeout=60.0,
     )
 
 

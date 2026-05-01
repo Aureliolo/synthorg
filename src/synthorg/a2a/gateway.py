@@ -39,7 +39,7 @@ from synthorg.a2a.rpc_params import (
 )
 from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
-from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_INBOUND_AUTH_FAILED,
@@ -64,11 +64,12 @@ _SUPPORTED_METHODS = frozenset(
     }
 )
 
-# Fallback maximum number of message parts in a single message/send
-# request when the resolver is unavailable.  Mirrors the registry
-# default for ``a2a.max_message_parts`` so a test harness or a boot
-# path that bypasses :class:`AppState` still enforces the documented
-# ceiling.
+# Internal constant by design: fallback maximum number of message
+# parts in a single message/send request when the resolver is
+# unavailable.  The canonical operator-tunable value is
+# ``a2a.max_message_parts``.  This constant mirrors that registry
+# default so a test harness or a boot path that bypasses
+# :class:`AppState` still enforces the documented ceiling.
 _MAX_MESSAGE_PARTS_FALLBACK = 100
 
 
@@ -168,12 +169,7 @@ class A2AGatewayController(Controller):
         ),
         status_code=200,
         guards=[
-            per_op_rate_limit(
-                "a2a.gateway",
-                max_requests=120,
-                window_seconds=60,
-                key="user_or_ip",
-            ),
+            per_op_rate_limit_from_policy("a2a.gateway", key="user_or_ip"),
         ],
     )
     async def handle_jsonrpc(  # noqa: PLR0911

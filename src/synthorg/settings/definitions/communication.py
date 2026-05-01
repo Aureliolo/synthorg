@@ -72,10 +72,11 @@ _r.register(
         type=SettingType.STRING,
         default="nats://nats:4222",
         description=(
-            "NATS server URL.  Sourced from SYNTHORG_NATS_URL env >"
-            " YAML (communication.nats.url) > default at process"
-            " start.  Read-only post-init: the bus driver opens its"
-            " connection once at boot, so a runtime change requires"
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] NATS server URL."
+            " Sourced from SYNTHORG_NATS_URL env > YAML"
+            " (communication.nats.url) > default. The bus driver opens"
+            " its connection once at boot, so a runtime change requires"
             " a process restart."
         ),
         group="NATS",
@@ -230,69 +231,6 @@ _r.register(
 # visibility; applied at protocol construction so changes take effect
 # on next restart.
 
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COMMUNICATION,
-        key="roundrobin_summary_reserve_fraction",
-        type=SettingType.FLOAT,
-        default="0.20",
-        description=(
-            "Fraction of token budget reserved for the summary phase in"
-            " round-robin meetings (default 20%)"
-        ),
-        group="Meetings",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path=(
-            "communication.meeting_protocol.round_robin.summary_reserve_fraction"
-        ),
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COMMUNICATION,
-        key="positionpapers_synthesis_reserve_fraction",
-        type=SettingType.FLOAT,
-        default="0.20",
-        description=(
-            "Fraction of token budget reserved for synthesis in"
-            " position-papers meetings (default 20%)"
-        ),
-        group="Meetings",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path=(
-            "communication.meeting_protocol.position_papers.synthesis_reserve_fraction"
-        ),
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COMMUNICATION,
-        key="structuredphases_synthesis_reserve_fraction",
-        type=SettingType.FLOAT,
-        default="0.20",
-        description=(
-            "Fraction of remaining token budget reserved for synthesis in"
-            " structured-phases meetings (default 20%)"
-        ),
-        group="Meetings",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path=(
-            "communication.meeting_protocol.structured_phases.synthesis_reserve_fraction"
-        ),
-    )
-)
-
 # ── Kill switches (CFG-1 audit) ──────────────────────────────────
 
 _r.register(
@@ -316,25 +254,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMMUNICATION,
-        key="escalation_default_result_limit",
-        type=SettingType.INTEGER,
-        default="50",
-        description=(
-            "Default row limit when querying the in-memory escalation"
-            " queue. Overridable per-call."
-        ),
-        group="Escalation",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=1,
-        max_value=1000,
-        yaml_path="communication.escalation_default_result_limit",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COMMUNICATION,
         key="escalation_sweeper_paused",
         type=SettingType.BOOLEAN,
         default="false",
@@ -346,5 +265,27 @@ _r.register(
         group="Escalation",
         level=SettingLevel.ADVANCED,
         yaml_path="communication.escalation_sweeper_paused",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="escalation_subscriber_reconnect_delay_seconds",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "[Bootstrap-only -- read via EscalationQueueConfig at startup;"
+            " this entry exists for /settings discoverability only.]"
+            " Delay before the Postgres LISTEN/NOTIFY escalation"
+            " subscriber retries after a connection drop."
+        ),
+        group="Escalation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=0.1,
+        max_value=60.0,
+        yaml_path="communication.escalation_subscriber_reconnect_delay_seconds",
     )
 )

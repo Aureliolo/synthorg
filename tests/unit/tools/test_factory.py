@@ -15,6 +15,7 @@ from synthorg.tools.factory import (
 from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
+from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
 
 _EXPECTED_TOOL_NAMES: tuple[str, ...] = (
     "compact_context",
@@ -45,7 +46,10 @@ class TestBuildDefaultTools:
         tmp_path: Path,
     ) -> None:
         """Factory returns all default built-in tools sorted by name."""
-        tools = build_default_tools(workspace=tmp_path)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
         names = tuple(t.name for t in tools)
         assert names == _EXPECTED_TOOL_NAMES
 
@@ -84,6 +88,7 @@ class TestBuildDefaultTools:
         """Network policy is correctly wired to clone tool."""
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             git_clone_policy=policy,
         )
         clone = next(t for t in tools if t.name == "git_clone")
@@ -94,14 +99,20 @@ class TestBuildDefaultTools:
     def test_rejects_relative_workspace(self) -> None:
         """Relative workspace path raises ValueError."""
         with pytest.raises(ValueError, match="absolute path"):
-            build_default_tools(workspace=Path("relative/path"))
+            build_default_tools(
+                workspace=Path("relative/path"),
+                web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            )
 
     def test_file_system_tools_receive_workspace(
         self,
         tmp_path: Path,
     ) -> None:
         """All file system tools have correct workspace_root."""
-        tools = build_default_tools(workspace=tmp_path)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
         fs_names = {
             "read_file",
             "write_file",
@@ -119,7 +130,10 @@ class TestBuildDefaultTools:
         tmp_path: Path,
     ) -> None:
         """All git tools have correct workspace path."""
-        tools = build_default_tools(workspace=tmp_path)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
         git_names = {
             "git_status",
             "git_log",
@@ -141,6 +155,7 @@ class TestBuildDefaultTools:
         mock_sandbox = MagicMock()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             sandbox=mock_sandbox,
         )
         git_names = {
@@ -158,7 +173,10 @@ class TestBuildDefaultTools:
 
     def test_returns_tuple(self, tmp_path: Path) -> None:
         """Factory returns a tuple, not a list or other sequence."""
-        tools = build_default_tools(workspace=tmp_path)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
         assert isinstance(tools, tuple)
 
     def test_all_tools_are_base_tool_instances(
@@ -166,7 +184,10 @@ class TestBuildDefaultTools:
         tmp_path: Path,
     ) -> None:
         """Every returned tool is a BaseTool subclass instance."""
-        tools = build_default_tools(workspace=tmp_path)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
         for tool in tools:
             assert isinstance(tool, BaseTool)
 
@@ -179,7 +200,11 @@ class TestBuildDesignTools:
         self,
         tmp_path: Path,
     ) -> None:
-        tools = build_default_tools(workspace=tmp_path, design_config=None)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            design_config=None,
+        )
         names = {t.name for t in tools}
         assert "image_generator" not in names
         assert "diagram_generator" not in names
@@ -194,6 +219,7 @@ class TestBuildDesignTools:
         config = DesignToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             design_config=config,
         )
         names = {t.name for t in tools}
@@ -216,6 +242,7 @@ class TestBuildDesignTools:
         config = DesignToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             design_config=config,
             image_provider=provider,
         )
@@ -235,6 +262,7 @@ class TestBuildCommunicationTools:
     ) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             communication_config=None,
         )
         names = {t.name for t in tools}
@@ -253,6 +281,7 @@ class TestBuildCommunicationTools:
         config = CommunicationToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             communication_config=config,
         )
         names = {t.name for t in tools}
@@ -285,6 +314,7 @@ class TestBuildCommunicationTools:
         config = CommunicationToolsConfig(email=email)
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             communication_config=config,
             communication_dispatcher=dispatcher,
         )
@@ -304,6 +334,7 @@ class TestBuildAnalyticsTools:
     ) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             analytics_config=None,
         )
         names = {t.name for t in tools}
@@ -320,6 +351,7 @@ class TestBuildAnalyticsTools:
         config = AnalyticsToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             analytics_config=config,
         )
         names = {t.name for t in tools}
@@ -345,6 +377,7 @@ class TestBuildAnalyticsTools:
         config = AnalyticsToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             analytics_config=config,
             analytics_provider=provider,
             metric_sink=sink,
@@ -369,6 +402,7 @@ class TestBuildAnalyticsTools:
         config = AnalyticsToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             analytics_config=config,
             analytics_provider=provider,
         )
@@ -390,6 +424,7 @@ class TestBuildAnalyticsTools:
         config = AnalyticsToolsConfig()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             analytics_config=config,
             metric_sink=sink,
         )
@@ -418,6 +453,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
@@ -436,6 +472,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
         )
         names = {t.name for t in tools}
         assert "diagram_generator" in names
@@ -464,6 +501,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
         )
         names = {t.name for t in tools}
         assert "email_sender" in names
@@ -484,6 +522,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
         )
         names = {t.name for t in tools}
         # Without backends, no analytics tools are created
@@ -500,6 +539,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
@@ -521,6 +561,7 @@ class TestBuildDefaultToolsFromConfig:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, _BaseGitTool)
@@ -548,6 +589,7 @@ class TestBuildAsyncTaskTools:
     ) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             async_task_service=None,
         )
         names = {t.name for t in tools}
@@ -564,6 +606,7 @@ class TestBuildAsyncTaskTools:
         service = MagicMock(spec=AsyncTaskService)
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             async_task_service=service,
         )
         names = {t.name for t in tools}
@@ -580,6 +623,7 @@ class TestBuildAsyncTaskTools:
         service = MagicMock(spec=AsyncTaskService)
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             async_task_service=service,
         )
         for tool in tools:
@@ -597,6 +641,7 @@ class TestBuildCodeExecutionTools:
     ) -> None:
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             code_execution_sandbox=None,
         )
         names = {t.name for t in tools}
@@ -609,6 +654,7 @@ class TestBuildCodeExecutionTools:
         mock_sandbox = MagicMock()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             code_execution_sandbox=mock_sandbox,
         )
         names = {t.name for t in tools}
@@ -623,6 +669,7 @@ class TestBuildCodeExecutionTools:
         mock_sandbox = MagicMock()
         tools = build_default_tools(
             workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             code_execution_sandbox=mock_sandbox,
         )
         runner = next(t for t in tools if t.name == "code_runner")
@@ -635,12 +682,18 @@ class TestEchoTool:
     """EchoTool is registered unconditionally as a reference tool."""
 
     def test_echo_always_present(self, tmp_path: Path) -> None:
-        tools = build_default_tools(workspace=tmp_path)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
         names = {t.name for t in tools}
         assert "echo" in names
 
     async def test_echo_executes(self, tmp_path: Path) -> None:
-        tools = build_default_tools(workspace=tmp_path)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+        )
         echo = next(t for t in tools if t.name == "echo")
         result = await echo.execute(arguments={"message": "hi"})
         assert result.content == "hi"

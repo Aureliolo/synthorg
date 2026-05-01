@@ -18,6 +18,7 @@ from synthorg.providers.health_prober import (
     _build_auth_headers,
     _build_ping_url,
 )
+from synthorg.settings.resolver import ConfigResolver
 
 
 def _make_local_config(
@@ -49,9 +50,14 @@ def _make_prober(
         Tuple of (prober, tracker) for assertion convenience.
     """
     trk = tracker or ProviderHealthTracker()
-    config_resolver = MagicMock()
+    config_resolver = MagicMock(spec=ConfigResolver)
     config_resolver.get_provider_configs = AsyncMock(
+        spec=ConfigResolver.get_provider_configs,
         return_value=configs or {"test-local": _make_local_config()},
+    )
+    config_resolver.get_int = AsyncMock(
+        spec=ConfigResolver.get_int,
+        return_value=11434,
     )
     prober = ProviderHealthProber(
         trk,
@@ -273,7 +279,7 @@ class TestProviderHealthProber:
     def test_invalid_interval_raises(self, invalid_interval: int) -> None:
         """interval_seconds < 1 raises ValueError."""
         tracker = ProviderHealthTracker()
-        config_resolver = MagicMock()
+        config_resolver = MagicMock(spec=ConfigResolver)
         with pytest.raises(ValueError, match=r"interval_seconds must be >= 1"):
             ProviderHealthProber(
                 tracker,
@@ -334,8 +340,11 @@ class TestProberLifecycle:
         call_count = 0
         done_event = asyncio.Event()
         tracker = ProviderHealthTracker()
-        config_resolver = MagicMock()
-        config_resolver.get_provider_configs = AsyncMock(return_value={})
+        config_resolver = MagicMock(spec=ConfigResolver)
+        config_resolver.get_provider_configs = AsyncMock(
+            spec=ConfigResolver.get_provider_configs,
+            return_value={},
+        )
 
         prober = ProviderHealthProber(
             tracker,
@@ -355,6 +364,7 @@ class TestProberLifecycle:
             return {}
 
         config_resolver.get_provider_configs = AsyncMock(
+            spec=ConfigResolver.get_provider_configs,
             side_effect=_counting_get,
         )
 

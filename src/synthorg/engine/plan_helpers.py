@@ -17,7 +17,9 @@ from synthorg.providers.enums import FinishReason, MessageRole
 logger = get_logger(__name__)
 
 _MAX_TASK_SUMMARY_LENGTH = 200
-"""Maximum character length for task summary strings."""
+"""Internal constant by design: maximum character length for task
+summary strings; defensive truncation prevents bloated summaries.
+Not exposed to the settings registry."""
 
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext

@@ -5,7 +5,7 @@ from pathlib import Path  # noqa: TC003
 from types import MappingProxyType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -31,16 +31,28 @@ class TsaPreset(StrEnum):
     CUSTOM = "custom"
 
 
-_PRESET_URLS: MappingProxyType[TsaPreset, str] = MappingProxyType(
+_DEFAULT_PRESET_URLS: MappingProxyType[TsaPreset, str] = MappingProxyType(
     {
         TsaPreset.FREETSA: "https://freetsa.org/tsr",
         TsaPreset.DIGICERT: "http://timestamp.digicert.com",
         TsaPreset.SECTIGO: "http://timestamp.sectigo.com",
     }
 )
+"""Hardcoded baseline URLs for each non-CUSTOM TSA preset, kept in sync
+with the ``observability.tsa_endpoint_*`` registry entries.  Production
+callers must resolve the operator-tunable values via
+``ObservabilityBridgeConfig`` and pass them into
+:func:`resolve_tsa_url` as ``preset_urls``; this constant is the
+last-resort fallback used only when no bridge config is threaded
+through (early boot, test stubs, partial preset overrides)."""
 
 
-def resolve_tsa_url(preset: TsaPreset, tsa_url: str | None) -> str | None:
+def resolve_tsa_url(
+    preset: TsaPreset,
+    tsa_url: str | None,
+    *,
+    preset_urls: MappingProxyType[TsaPreset, str] | None = None,
+) -> str | None:
     """Return the effective TSA URL for a preset + override.
 
     ``CUSTOM`` uses :attr:`AuditChainConfig.tsa_url`. Any other
@@ -48,6 +60,14 @@ def resolve_tsa_url(preset: TsaPreset, tsa_url: str | None) -> str | None:
     :attr:`AuditChainConfig.tsa_url` (when set) overrides the
     preset's default so operators can point at a staging TSA for
     testing.
+
+    Args:
+        preset: Selected TSA preset.
+        tsa_url: Optional explicit URL override.
+        preset_urls: Resolved preset URLs (typically built from the
+            ``observability.tsa_endpoint_*`` settings via
+            ``ObservabilityBridgeConfig``).  When ``None``, falls back
+            to the documented defaults in :data:`_DEFAULT_PRESET_URLS`.
     """
     if preset == TsaPreset.NONE:
         return None
@@ -55,7 +75,15 @@ def resolve_tsa_url(preset: TsaPreset, tsa_url: str | None) -> str | None:
         return tsa_url
     if tsa_url is not None:
         return tsa_url
-    return _PRESET_URLS[preset]
+    urls = preset_urls if preset_urls is not None else _DEFAULT_PRESET_URLS
+    if preset not in urls:
+        # An incomplete ``preset_urls`` mapping is a caller bug: the
+        # bridge composer is expected to provide every non-CUSTOM
+        # preset.  Fall back to the documented default so a partial
+        # override (e.g. operator unset only one preset) does not
+        # raise a KeyError mid-request.
+        return _DEFAULT_PRESET_URLS[preset]
+    return urls[preset]
 
 
 class AuditChainConfig(BaseModel):
@@ -175,12 +203,28 @@ class AuditChainConfig(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def effective_tsa_url(self) -> str | None:
+    def effective_tsa_url(
+        self,
+        *,
+        preset_urls: MappingProxyType[TsaPreset, str] | None = None,
+    ) -> str | None:
         """Return the concrete TSA URL for this config, or ``None``.
 
         ``None`` means audit events always use the local clock
         (preset=NONE or unresolved CUSTOM preset).
+
+        Args:
+            preset_urls: Resolved preset URLs (typically built from the
+                ``observability.tsa_endpoint_*`` settings via
+                ``ObservabilityBridgeConfig``).  When ``None``, falls
+                back to the documented defaults in
+                :data:`_DEFAULT_PRESET_URLS` -- this is the right path
+                for early-boot / test contexts but bypasses operator
+                overrides, so production callers should thread the
+                bridge-resolved mapping through.
         """
-        return resolve_tsa_url(self.tsa_preset, self.tsa_url)
+        return resolve_tsa_url(
+            self.tsa_preset,
+            self.tsa_url,
+            preset_urls=preset_urls,
+        )

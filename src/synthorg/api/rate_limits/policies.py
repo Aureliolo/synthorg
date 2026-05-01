@@ -36,9 +36,12 @@ if TYPE_CHECKING:
 # and sorted alphabetically so diffs stay focused and conflicts
 # (a typoed duplicate key) fail at import via ruff ``F601``.
 _POLICIES: Final[dict[str, tuple[int, int]]] = {
+    # a2a
+    "a2a.gateway": (120, 60),
     # admin (backup controller)
     "admin.backup_restore": (3, 3600),
     # agents
+    "agents.autonomy_change": (10, 60),
     "agents.create": (10, 60),
     "agents.delete": (5, 60),
     "agents.update": (20, 60),
@@ -47,7 +50,16 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "approvals.create": (20, 60),
     "approvals.reject": (100, 60),
     # artifacts
+    "artifacts.create": (60, 60),
     "artifacts.upload": (10, 60),
+    # auth
+    "auth.ws_ticket": (20, 60),
+    # clients
+    "clients.create": (10, 60),
+    # collaboration
+    "collaboration.override": (20, 60),
+    # company
+    "company.reorder_departments": (10, 60),
     # connections
     "connections.create": (20, 60),
     "connections.delete": (10, 60),
@@ -70,10 +82,14 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "escalations.decide": (30, 60),
     "escalations.get": (120, 60),
     "escalations.list": (120, 60),
+    # interrupts
+    "interrupts.resume": (60, 60),
     # meetings
     "meetings.create": (20, 60),
     # meta
     "meta.chat": (5, 60),
+    "meta.ingest_events": (60, 60),
+    "meta.trigger_cycle": (1, 60),
     # memory
     "memory.checkpoint_delete": (20, 60),
     "memory.checkpoint_deploy": (2, 3600),
@@ -137,9 +153,11 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # setup
     "setup.complete": (5, 3600),
     # simulations
+    "simulations.cancel": (30, 60),
     "simulations.create": (30, 3600),
     # tasks
     "tasks.cancel": (50, 60),
+    "tasks.coordinate": (10, 60),
     "tasks.create": (50, 60),
     "tasks.delete": (20, 60),
     "tasks.transition": (100, 60),
