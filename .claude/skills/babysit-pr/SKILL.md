@@ -67,6 +67,12 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
 
 ## Phase 1: fetch current PR state (cheap, parallel)
 
+**Hard rule -- never truncate `body` in jq queries used for triage.** No `body | .[0:N]`, no `.[0:500]`, no `head -c`. Any reviewer (bot or human) can bury actionable findings anywhere in a body that runs 50 KB or longer. The Phase 7 triage MUST see the full text. The bash batch below requests `body` verbatim; do NOT add a slice when adapting it. Bodies that look "huge" are fine -- they pass through to the working set unchanged.
+
+**Hard rule -- no reviewer-author allowlist.** Fetch every author unfiltered (no `select(.user.login == "...")` baked into the initial fetch). Bots vary per repo (review-bots, dependency-bots, security-bots, summarisation-bots, ...) and the user can add or rotate them at any time; human reviewers can show up at any time. Categorisation by author happens in Phase 7 from the response, never via an allowlist baked into this skill.
+
+**Hard rule -- round 1 reads every comment in full.** On the very first tick after PR creation (`state.round == 0`, cursors `last_review_id` / `last_pr_comment_id` / `last_issue_comment_id` all equal 0), every reviewer's full body across all three streams MUST be read end-to-end, not skimmed. The Phase 7 triage on round 1 builds the entire baseline working set; missing a buried finding here means the PR ships the first push with that finding still open. Subsequent rounds (`state.round >= 1`) only need the delta since the cached cursors -- Phase 5's diff-cache covers that and you can rely on it. The "read everything in full" obligation applies specifically to round 1; later rounds read only what's new.
+
 Run in one Bash batch (parallel `&` then `wait` is fine here, or sequential since each is sub-second):
 
 ```bash
@@ -77,12 +83,20 @@ gh pr view N --json state,headRefOid,statusCheckRollup,reviewDecision,mergeable,
 # canonical "this commit landed on the branch" timestamp.
 HEAD_SHA="$(gh pr view N --json headRefOid --jq .headRefOid)"
 HEAD_COMMIT_TIME="$(gh api "repos/OWNER/REPO/commits/$HEAD_SHA" --jq '.commit.committer.date')"
+# FULL bodies. Never truncate. ``body`` (not ``body | .[0:500]``) is
+# the only acceptable form here -- truncation hides actionable
+# findings buried past the cutoff (closing-line dispositions, embedded
+# outside-diff-range comments, multi-paragraph human asks, ...).
+# No author allowlist either: fetch every reviewer unfiltered, then
+# categorise in Phase 7 from the response.
 gh api repos/OWNER/REPO/pulls/N/reviews --paginate --jq '[.[] | {id, commit_id, author: .user.login, state, submitted_at, body}]'
-gh api repos/OWNER/REPO/pulls/N/comments --paginate --jq '[.[] | {id, author: .user.login, path, line, body, created_at}]'
+gh api repos/OWNER/REPO/pulls/N/comments --paginate --jq '[.[] | {id, in_reply_to_id, author: .user.login, path, line, body, created_at}]'
 gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | {id, author: .user.login, body, created_at, updated_at}]'
 ```
 
 `mergedAt` is the right field; `merged` does not exist on `gh pr view --json` and will fail. A non-null `mergedAt` (or `state == "MERGED"`) means merged. Cap each fetch at a reasonable size; CodeRabbit review bodies can be 50KB+, that's fine.
+
+`in_reply_to_id` is captured on the inline-comments fetch so threaded replies (e.g. CodeRabbit follow-ups, human reviewer back-and-forth, Socket Security `@socket-security ignore-rule` answers) are visible in the working set, not just the top-level comments.
 
 **Security alerts (additional fetches in the same batch):**
 
@@ -343,6 +357,40 @@ Conditional gates by file type touched:
   ```
 
 Failure handling: if a gate fails, fix the failure in this round (don't push broken code). If you can't, surface it via `AskUserQuestion` and pause the loop.
+
+## Phase 9b: pre-push completeness sweep (mandatory before EVERY push)
+
+Before staging or committing, re-run the Phase 1 fetches one more time to catch comments / reviews / alerts that landed in the **race window between Phase 1 (fetch) and Phase 9 (post-fix verification)** of this same tick. A single Phase 8 + Phase 9 cycle can take 5-15 minutes; reviewer bots typically retry on a 30-second to 2-minute cadence; human reviewers are unbounded. A comment that arrives during that race window MUST land in this push, not the next one -- otherwise the loop ships a known-stale view, the next tick re-runs the same fix cycle, and the PR thrashes.
+
+Applies to every push. The race-window risk is identical on round 1 and round 2+; only the **baseline cursor** for "what counts as new" differs:
+
+- **Round 1**: cursors are 0, so the Phase 1 working set IS the entire reviewer history; the sweep is checking whether anything appeared after that initial paginated read.
+- **Round 2+**: cursors carry the IDs from the previous tick; the Phase 1 working set is the delta since last push; the sweep is checking whether anything appeared after that delta-fetch.
+
+The sweep mechanic is uniform. The only thing that varies between rounds is the cursor baseline, which Phase 5's diff-cache already manages.
+
+Steps:
+
+1. **Re-fetch reviews / inline comments / issue comments / security alerts** with the same queries as Phase 1. Use `body` verbatim (no truncation) and no author allowlist; same hard rules as the initial fetch.
+
+2. **Diff against the working set** Phase 7 was triaged from. Compute:
+
+   - `new_reviews_since_phase1` = reviews whose `id` is greater than the maximum review id captured at Phase 1 fetch time.
+   - `new_inline_comments_since_phase1` = inline comments with id greater than the Phase 1 maximum.
+   - `new_issue_comments_since_phase1` = issue comments with id greater than the Phase 1 maximum, excluding self-pings (the same exclusions Phase 5 uses).
+   - `new_security_alerts_since_phase1` = open alerts (per scanner) whose `number` is not in the Phase 1 set.
+
+   Self-authored items (the cached `state.self_login` from Phase 0) and items the loop posted itself (e.g. rate-limit pings) are excluded the same way Phase 5 / Phase 6 exclude them. Bot items are NOT excluded -- bots are first-class reviewers.
+
+3. **Author roster verification.** Build a set of `(author_login, item_type)` tuples across the re-fetched data. Print this set as a one-line summary in the chat output so the operator can see which authors were considered before the push lands (e.g. `pre-push roster: [(<bot-A>, inline), (<bot-B>, review), (<human-X>, review), ...]`; do not hardcode names). If any author appears that was NOT in the Phase 1 roster, that's a signal new feedback arrived; treat it as new findings even if no specific item id grew (e.g. a reviewer dismissed and resubmitted).
+
+4. **If anything new is in scope:** loop back to Phase 7 (triage) with the additional items folded into the working set, then Phase 8 (fix), then Phase 9 (verify), then re-enter Phase 9b. Do NOT advance to Phase 10 with newly-arrived feedback unaddressed -- that's the exact failure mode this phase exists to prevent.
+
+5. **If nothing new arrived:** proceed to Phase 10. Append history `{round, action: "pre_push_sweep_clean", checked_at: <ISO-now>, authors: [...]}` so the audit trail records that the sweep ran.
+
+6. **Iteration cap.** If Phase 9b loops more than 3 times in a single round (i.e. every fix attempt races a new comment), stop and `AskUserQuestion`: "Pre-push sweep has loop-bounced 3 times on PR #N; reviewer is posting faster than fixes ship. Push current batch / wait / pause loop?" The user picks. This prevents pathological live-review situations from blocking the loop indefinitely.
+
+The sweep is read-only -- no API mutations, no commits, no pushes -- so it costs only the API budget of the four `gh api` calls already familiar from Phase 1. Time budget on a quiet PR: under 5 seconds.
 
 ## Phase 10: commit + push
 

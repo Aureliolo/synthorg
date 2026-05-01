@@ -244,3 +244,65 @@ class TestProbeCostRecording:
                 config,
                 "test-model-001",
             )
+
+
+@pytest.mark.unit
+class TestSafeTaskIdSegment:
+    """Direct unit tests for ``_safe_task_id_segment``.
+
+    The end-to-end path (provider creation -> probe -> task_id stamp)
+    can't exercise this sanitiser because ``CreateProviderRequest``'s
+    name validator rejects colons / control characters / whitespace
+    long before they reach the probe. The sanitiser exists as
+    defence-in-depth: if the validator regex is ever loosened, or if a
+    future caller bypasses ``CreateProviderRequest`` (a different
+    persistence path, a YAML-loaded provider, an admin-tool override),
+    the sanitiser still keeps task-id segments well-formed. These
+    direct tests pin that contract.
+    """
+
+    def test_colon_is_rewritten(self) -> None:
+        """Colons must be replaced; they're the task-id segment delimiter."""
+        from synthorg.providers.management.service import _safe_task_id_segment
+
+        assert _safe_task_id_segment("bad:provider") == "bad_provider"
+
+    def test_newline_and_other_controls_are_rewritten(self) -> None:
+        """Control characters (newline / tab / carriage return / NUL)
+        must be replaced so they can't break log line framing."""
+        from synthorg.providers.management.service import _safe_task_id_segment
+
+        assert _safe_task_id_segment("a\nb") == "a_b"
+        assert _safe_task_id_segment("a\tb") == "a_b"
+        assert _safe_task_id_segment("a\rb") == "a_b"
+        assert _safe_task_id_segment("a\x00b") == "a_b"
+
+    def test_whitespace_is_rewritten(self) -> None:
+        from synthorg.providers.management.service import _safe_task_id_segment
+
+        assert _safe_task_id_segment("a b") == "a_b"
+
+    def test_combined_unsafe_chars_all_rewritten(self) -> None:
+        """A single name carrying multiple unsafe characters has every
+        one of them replaced -- the most likely real-world abuse path."""
+        from synthorg.providers.management.service import _safe_task_id_segment
+
+        assert _safe_task_id_segment("bad:provider\nname") == "bad_provider_name"
+
+    def test_safe_unicode_preserved(self) -> None:
+        """Printable non-ASCII characters survive the sanitiser
+        unchanged -- the sanitiser is a security guard, not an
+        ASCII-only filter."""
+        from synthorg.providers.management.service import _safe_task_id_segment
+
+        assert _safe_task_id_segment("provider-é") == "provider-é"
+        assert _safe_task_id_segment("provider-日本") == "provider-日本"
+
+    def test_all_unsafe_input_returns_underscore(self) -> None:
+        """If every character is filtered, the helper returns ``"_"``
+        so callers wrapping the result in ``NotBlankStr`` don't trip
+        the empty-string guard."""
+        from synthorg.providers.management.service import _safe_task_id_segment
+
+        assert _safe_task_id_segment("\n\t\r") == "___"
+        assert _safe_task_id_segment(":::") == "___"

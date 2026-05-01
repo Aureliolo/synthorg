@@ -1,9 +1,8 @@
 """Tests for the audit chain module."""
 
-import asyncio
 import logging
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from hypothesis import given, settings
@@ -442,35 +441,69 @@ class TestAuditChainSinkFailurePaths:
             timestamp_provider=LocalClockProvider(),
         )
 
-    def test_signing_timeout_invokes_callback_with_error(self) -> None:
-        """A signer that hangs past the timeout fires the
-        ``status="error"`` callback path and does NOT append."""
-        signer = _make_mock_signer()
+    def test_signing_timeout_invokes_callback_with_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A signer whose future times out fires the ``status="error"``
+        callback AND emits AUDIT_CHAIN_EMIT_TIMEOUT.
 
-        async def _hang(_data: bytes) -> SignedPayload:
-            await asyncio.sleep(10.0)
-            msg = "unreachable"
-            raise RuntimeError(msg)
+        Deterministic via direct mock of the executor's future: the
+        previous implementation relied on a real 50 ms wall-clock
+        timeout which flaked under ``-n 8`` worker contention. Patching
+        ``_SIGNING_EXECUTOR.submit`` so its returned future raises
+        ``TimeoutError`` immediately removes the timing dependency.
+        """
+        import concurrent.futures
 
-        signer.sign.side_effect = _hang
-        sink = AuditChainSink(
-            signer=signer,
-            timestamp_provider=LocalClockProvider(),
-            signing_timeout_seconds=0.05,
+        import structlog
+
+        from synthorg.observability.audit_chain import sink as sink_module
+        from synthorg.observability.events.audit_chain import (
+            AUDIT_CHAIN_EMIT_TIMEOUT,
         )
+
+        fake_future = MagicMock(spec=concurrent.futures.Future)
+        fake_future.result.side_effect = concurrent.futures.TimeoutError()
+        monkeypatch.setattr(
+            sink_module._SIGNING_EXECUTOR,
+            "submit",
+            lambda *_args, **_kwargs: fake_future,
+        )
+
+        sink = self._make_sink(signer=_make_mock_signer())
         callback_calls: list[tuple[str, int, float]] = []
         sink.set_append_callback(
             lambda status, depth, ts: callback_calls.append((status, depth, ts)),
         )
 
-        sink.emit(_build_log_record("security.test.timeout"))
+        with structlog.testing.capture_logs() as events:
+            sink.emit(_build_log_record("security.test.timeout"))
 
         assert len(sink.chain.entries) == 0
         assert callback_calls == [("error", 0, 0.0)]
+        # Diagnostic-event contract: the sink MUST log the
+        # timeout-specific event so operators can distinguish a TSA /
+        # signer hang from a one-off serialization failure.
+        emitted = [e["event"] for e in events]
+        assert AUDIT_CHAIN_EMIT_TIMEOUT in emitted, (
+            f"expected AUDIT_CHAIN_EMIT_TIMEOUT, got {emitted}"
+        )
 
     def test_signer_exception_invokes_callback_with_error(self) -> None:
-        """A signer that raises a non-timeout exception still fires the
-        ``status="error"`` callback path."""
+        """A signer that raises a non-timeout exception fires the
+        ``status="error"`` callback AND emits AUDIT_CHAIN_EMIT_ERROR.
+
+        Deterministic by construction -- ``signer.sign`` raises
+        synchronously inside ``asyncio.run`` so no wall-clock waits
+        are involved.
+        """
+        import structlog
+
+        from synthorg.observability.events.audit_chain import (
+            AUDIT_CHAIN_EMIT_ERROR,
+        )
+
         signer = _make_mock_signer()
 
         async def _crash(_data: bytes) -> SignedPayload:
@@ -484,10 +517,19 @@ class TestAuditChainSinkFailurePaths:
             lambda status, depth, ts: callback_calls.append((status, depth, ts)),
         )
 
-        sink.emit(_build_log_record("security.test.crash"))
+        with structlog.testing.capture_logs() as events:
+            sink.emit(_build_log_record("security.test.crash"))
 
         assert len(sink.chain.entries) == 0
         assert callback_calls == [("error", 0, 0.0)]
+        # Diagnostic-event contract: the generic emit_error event is
+        # the only signal operators have for non-timeout signer
+        # failures; assert it fires so a refactor that drops the log
+        # (or routes it to the timeout branch) is caught.
+        emitted = [e["event"] for e in events]
+        assert AUDIT_CHAIN_EMIT_ERROR in emitted, (
+            f"expected AUDIT_CHAIN_EMIT_ERROR, got {emitted}"
+        )
 
     def test_callback_exception_does_not_break_chain(self) -> None:
         """If the append callback raises, the chain still appended

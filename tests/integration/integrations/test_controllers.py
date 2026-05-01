@@ -370,9 +370,14 @@ class TestConnectionAuditEvents:
         emission = _capture_emission(events, SECURITY_CONNECTION_SECRET_REVEALED)
         assert emission["connection"] == "gh"
         assert emission["field"] == "client_secret"
-        # Secret value never appears in the event payload.
-        for v in emission.values():
-            assert "real-secret-value" not in str(v)
+        # Secret value never appears in ANY captured log payload, not
+        # just the matched emission. A future refactor that splits the
+        # log call across multiple events MUST keep the secret out of
+        # every payload; iterating the full event stream catches the
+        # accidental leak that an emission-only check would miss.
+        for event in events:
+            for value in event.values():
+                assert "real-secret-value" not in str(value)
 
     @pytest.mark.parametrize(
         ("setup_side_effect", "expected_reason"),

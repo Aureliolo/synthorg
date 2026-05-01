@@ -395,6 +395,13 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 error=safe_error_description(exc),
                 model_tested=model_id,
             )
+        except MemoryError, RecursionError:
+            # Process-level failures must propagate, not collapse into
+            # a normal "probe failed" response. Placed before the
+            # ``except asyncio.CancelledError`` and ``except Exception``
+            # branches so the broad catch downstream cannot swallow
+            # them.
+            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
