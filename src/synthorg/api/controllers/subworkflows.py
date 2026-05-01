@@ -339,7 +339,8 @@ class SubworkflowController(Controller):
         except (ValueError, ValidationError) as exc:
             logger.warning(
                 SUBWORKFLOW_INVALID_REQUEST,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
@@ -352,7 +353,11 @@ class SubworkflowController(Controller):
         try:
             await registry.register(definition)
         except SubworkflowIOError as exc:
-            logger.warning(SUBWORKFLOW_INVALID_REQUEST, error=str(exc))
+            logger.warning(
+                SUBWORKFLOW_INVALID_REQUEST,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
                     error="Subworkflow I/O validation failed.",
@@ -360,7 +365,11 @@ class SubworkflowController(Controller):
                 status_code=422,
             )
         except DuplicateRecordError as exc:
-            logger.warning(SUBWORKFLOW_INVALID_REQUEST, error=str(exc))
+            logger.warning(
+                SUBWORKFLOW_INVALID_REQUEST,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
                     error="A subworkflow with this ID and version already exists.",
@@ -396,7 +405,11 @@ class SubworkflowController(Controller):
         try:
             await registry.delete(subworkflow_id, version)
         except SubworkflowIOError as exc:
-            logger.warning(SUBWORKFLOW_INVALID_REQUEST, error=str(exc))
+            logger.warning(
+                SUBWORKFLOW_INVALID_REQUEST,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return Response(
                 content=ApiResponse[None](
                     error="Cannot delete: version is still referenced.",

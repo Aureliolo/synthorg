@@ -1236,7 +1236,7 @@ class TestBuildResponseFallback:
         assert resp.status_code == 500
 
 
-# ── Domain error base class mappings (#1405) ────────────────────
+# ── Domain error base class mappings ─────────────────────────────
 
 
 class TestDomainErrorMapping:
@@ -1530,7 +1530,7 @@ class TestDomainErrorMapping:
             assert body["error_detail"]["retryable"] is True
 
 
-# ── Bare-Response fix tests (#1405) ─────────────────────────────
+# ── Bare-Response fix tests ──────────────────────────────────────
 
 
 class TestBareResponseFixes:

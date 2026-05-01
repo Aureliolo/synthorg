@@ -1,4 +1,4 @@
-"""Tests for the human escalation resolution strategy (#1418)."""
+"""Tests for the human escalation resolution strategy."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta

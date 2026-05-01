@@ -1,4 +1,4 @@
-"""Human escalation queue REST endpoints (#1418).
+"""Human escalation queue REST endpoints.
 
 Operator-facing surface for listing pending conflict escalations and
 submitting decisions back to the awaiting
@@ -35,7 +35,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_CANCELLED,
     CONFLICT_ESCALATION_RESOLVED,
@@ -274,7 +274,7 @@ class EscalationsController(Controller):
                 operator=operator,
                 decision_type=data.decision.type,
                 error_type="invalid_decision_shape",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise ValidationError(str(exc)) from exc
 
@@ -292,7 +292,7 @@ class EscalationsController(Controller):
                 operator=operator,
                 decision_type=data.decision.type,
                 error_type="apply_decision_not_found",
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="race_escalation_deleted_between_get_and_apply",
             )
             raise NotFoundError(msg) from exc
@@ -303,7 +303,7 @@ class EscalationsController(Controller):
                 operator=operator,
                 decision_type=data.decision.type,
                 error_type="apply_decision_invalid_transition",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise ConflictError(str(exc)) from exc
         woke_resolver = await registry.resolve(escalation_id, data.decision)
@@ -363,7 +363,7 @@ class EscalationsController(Controller):
                 escalation_id=escalation_id,
                 operator=operator,
                 error_type="cancel_not_found",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise NotFoundError(msg) from exc
         except ValueError as exc:
@@ -372,7 +372,7 @@ class EscalationsController(Controller):
                 escalation_id=escalation_id,
                 operator=operator,
                 error_type="cancel_invalid_transition",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise ConflictError(str(exc)) from exc
         await registry.cancel(escalation_id)

@@ -10,7 +10,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.integrations.errors import TunnelError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     TUNNEL_ERROR,
     TUNNEL_STARTED,
@@ -43,9 +43,15 @@ class TunnelController(Controller):
             logger.warning(
                 TUNNEL_ERROR,
                 action="start",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise ServiceUnavailableError(str(exc)) from exc
+            # The tunnel provider's exception text can carry ngrok
+            # URLs / auth-token fragments. Surface a stable generic
+            # message to the client; details land in the scrubbed
+            # log above.
+            client_msg = "Tunnel service is unavailable"
+            raise ServiceUnavailableError(client_msg) from exc
         logger.info(
             TUNNEL_STARTED,
             public_url=url,
@@ -69,9 +75,12 @@ class TunnelController(Controller):
             logger.warning(
                 TUNNEL_ERROR,
                 action="stop",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise ServiceUnavailableError(str(exc)) from exc
+            # Same client-facing redaction as ``start``.
+            client_msg = "Tunnel service is unavailable"
+            raise ServiceUnavailableError(client_msg) from exc
         logger.info(TUNNEL_STOPPED)
         return ApiResponse(data=None)
 

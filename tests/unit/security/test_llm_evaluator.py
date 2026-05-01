@@ -665,7 +665,7 @@ async def test_per_value_truncation_preserves_keys() -> None:
     assert "x" * 5000 not in user_msg.content
 
 
-# -- SEC-1 prompt-injection fence (audit 92) -------------------------------
+# -- Prompt-injection fence ------------------------------------------------
 
 
 @pytest.mark.unit
@@ -722,8 +722,8 @@ def test_system_prompt_carries_untrusted_content_directive() -> None:
 async def test_evaluate_pins_completion_config_temperature_zero() -> None:
     """``provider.complete`` receives ``CompletionConfig(temperature=0.0)``.
 
-    SEC-1 fingerprint: verify prompt-fingerprint stability at the call
-    boundary -- config + system prompt + wrapped args all asserted.
+    Verifies prompt-fingerprint stability at the call boundary --
+    config + system prompt + wrapped args all asserted.
     """
     from synthorg.providers.models import CompletionConfig
 

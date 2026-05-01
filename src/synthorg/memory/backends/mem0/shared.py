@@ -148,7 +148,7 @@ async def publish_shared(
         logger.warning(
             MEMORY_SHARED_PUBLISH_FAILED,
             agent_id=agent_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type="MemoryStoreError",
         )
         raise
@@ -165,7 +165,7 @@ async def publish_shared(
         logger.warning(
             MEMORY_SHARED_PUBLISH_FAILED,
             agent_id=agent_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
         )
         msg = f"Failed to publish shared memory: {exc}"
@@ -245,7 +245,7 @@ async def search_shared_memories(
     except MemoryRetrievalError as exc:
         logger.warning(
             MEMORY_SHARED_SEARCH_FAILED,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type="MemoryRetrievalError",
             query_text=query.text,
             exclude_agent=exclude_agent,
@@ -263,7 +263,7 @@ async def search_shared_memories(
     except Exception as exc:
         logger.warning(
             MEMORY_SHARED_SEARCH_FAILED,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
             query_text=query.text,
             exclude_agent=exclude_agent,
@@ -332,7 +332,7 @@ async def retract_shared(
             MEMORY_SHARED_RETRACT_FAILED,
             agent_id=agent_id,
             memory_id=memory_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
         )
         msg = f"Failed to retract shared memory {memory_id}: {exc}"

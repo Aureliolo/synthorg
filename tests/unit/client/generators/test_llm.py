@@ -28,8 +28,8 @@ class _StubProvider:
         self._content = content
         self.captured_messages: list[ChatMessage] | None = None
         self.captured_model: str | None = None
-        # SEC-1 fingerprint: capture CompletionConfig so tests can assert
-        # pinned temperature / max_tokens at the call boundary.
+        # Capture CompletionConfig so tests can assert pinned
+        # temperature / max_tokens at the call boundary.
         self.captured_config: CompletionConfig | None = None
 
     async def complete(
@@ -217,11 +217,11 @@ class TestLLMGenerator:
             await gen.generate(_ctx())
 
 
-# -- SEC-1 prompt-injection fence (audit 92) --------------------------------
+# -- Prompt-injection fence -------------------------------------------------
 
 
 class TestSec1LLMGeneratorFences:
-    """SEC-1 contract on LLMGenerator."""
+    """Prompt-injection fence contract on LLMGenerator."""
 
     async def test_default_completion_config_pinned(self) -> None:
         provider = _StubProvider(content="[]")
@@ -315,9 +315,9 @@ class TestSec1LLMGeneratorFences:
         assert hacked_domain not in user_msg.content
 
     async def test_custom_persona_without_directive_gets_normalized(self) -> None:
-        """SEC-1: a caller-supplied persona that lacks the untrusted-
-        content directive is normalized at ``__init__`` so the system
-        prompt still carries the directive.
+        """A caller-supplied persona that lacks the untrusted-content
+        directive is normalized at ``__init__`` so the system prompt
+        still carries the directive.
         """
         provider = _StubProvider(content="[]")
         custom_persona = "You are a terse assistant. Return JSON only."
@@ -340,7 +340,7 @@ class TestSec1LLMGeneratorFences:
         assert "<task-data>" in system_msg.content
 
     async def test_custom_persona_with_directive_not_duplicated(self) -> None:
-        """SEC-1 normalization is idempotent: if the caller already
+        """Normalization is idempotent: if the caller already
         appended the directive, it is not duplicated.
         """
         from synthorg.engine.prompt_safety import (

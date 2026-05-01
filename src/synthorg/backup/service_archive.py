@@ -18,7 +18,7 @@ from synthorg.backup.errors import (
     ManifestError,
 )
 from synthorg.backup.models import BackupInfo, BackupManifest
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_DELETED,
     BACKUP_FAILED,
@@ -143,7 +143,8 @@ class BackupServiceArchiveMixin:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         return m if m.backup_id == backup_id else None

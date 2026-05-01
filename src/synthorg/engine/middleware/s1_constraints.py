@@ -1,6 +1,6 @@
 """S1 constraint middleware implementations.
 
-Concrete middleware for the four S1 (#1254) risk mitigations:
+Concrete middleware for the four S1 risk mitigations:
 
 1. AuthorityDeferenceGuard -- strips authority cues from transcripts
 2. AssumptionViolationMiddleware -- detects broken assumptions

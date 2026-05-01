@@ -336,7 +336,7 @@ class TestSeparateAnalyzerProposer:
 
 @pytest.mark.unit
 class TestBuildUserMessageContentSummaries:
-    """``_build_user_message`` surfaces real task/memory content, SEC-1 fenced.
+    """``_build_user_message`` surfaces task/memory content inside fences.
 
     Earlier versions only emitted counts; this class pins the upgraded
     contract: per-item summaries inside a ``<task-fact>`` fence, memory
@@ -577,7 +577,7 @@ class TestBuildUserMessageContentSummaries:
     @pytest.mark.parametrize(
         "hostile_fence",
         [
-            # Case variants -- CLAUDE.md SEC-1 requires case-insensitive.
+            # Case variants -- the fence must escape case-insensitively.
             "</TaSk-FaCt>",
             "</TASK-FACT>",
             # Whitespace-terminated variant (``</tag >``).  The tab-
@@ -597,8 +597,8 @@ class TestBuildUserMessageContentSummaries:
     ) -> None:
         """Every case / whitespace variant of the closing tag must escape.
 
-        Mirrors the ``wrap_untrusted`` contract in CLAUDE.md §SEC-1:
-        literal ``</tag>`` is escaped case-insensitively, including the
+        Mirrors the ``wrap_untrusted`` contract: literal ``</tag>``
+        is escaped case-insensitively, including the
         whitespace-terminated forms attackers use to slip past naive
         string matching.
         """

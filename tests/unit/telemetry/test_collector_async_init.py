@@ -1,8 +1,8 @@
 """Async-init contract for ``TelemetryCollector``.
 
-Pins the resource-hygiene rule (#1600) that the collector's
-``__init__`` must perform zero filesystem syscalls; the deployment ID
-load is offloaded to a background thread inside ``start()``.
+Pins the resource-hygiene rule that the collector's ``__init__``
+must perform zero filesystem syscalls; the deployment ID load is
+offloaded to a background thread inside ``start()``.
 
 The bare-``open`` patches below intentionally trip on any builtin
 ``open`` call so the collector cannot accidentally cheat by routing
@@ -49,7 +49,7 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.unit
 class TestConstructorIsPureConstruction:
-    """``__init__`` must not touch the filesystem (#1600)."""
+    """``__init__`` must not touch the filesystem."""
 
     @pytest.mark.parametrize(
         ("patch_target", "label"),
@@ -62,7 +62,7 @@ class TestConstructorIsPureConstruction:
     def test_constructor_does_not_call_filesystem_syscall(
         self, tmp_path: Path, patch_target: str, label: str
     ) -> None:
-        """Constructor performs zero filesystem syscalls (#1600).
+        """Constructor performs zero filesystem syscalls.
 
         Patches the named syscall so any constructor-time call raises
         immediately. Each parameter exercises one syscall the prior
@@ -94,7 +94,7 @@ class TestConstructorIsPureConstruction:
 
 @pytest.mark.unit
 class TestStartLoadsDeploymentIdAsynchronously:
-    """``start()`` performs the load via ``asyncio.to_thread`` (#1600)."""
+    """``start()`` performs the load via ``asyncio.to_thread``."""
 
     async def test_start_populates_deployment_id(self, tmp_path: Path) -> None:
         """After ``start()``, ``deployment_id`` is a UUID4."""
@@ -122,7 +122,7 @@ class TestStartLoadsDeploymentIdAsynchronously:
             await collector.shutdown()
 
     async def test_start_uses_to_thread_for_blocking_io(self, tmp_path: Path) -> None:
-        """The deployment-id load goes through ``asyncio.to_thread`` (#1600).
+        """The deployment-id load goes through ``asyncio.to_thread``.
 
         Spies on ``asyncio.to_thread`` and asserts at least one call
         matched the load helper. We do not pin the exact call count
@@ -359,7 +359,7 @@ class TestDisabledCollectorPerformsNoIo:
 
 @pytest.mark.unit
 class TestStartLoadsExistingFileEmitsEvents:
-    """Event emission on the load + create paths (#1600).
+    """Event emission on the load + create paths.
 
     Pins the new ``TELEMETRY_DEPLOYMENT_ID_LOADED`` and
     ``TELEMETRY_DEPLOYMENT_ID_CREATED`` constants. Without these
@@ -478,7 +478,7 @@ class TestShutdownGuards:
 
 @pytest.mark.unit
 class TestCorruptDeploymentIdFile:
-    """Existing-but-corrupt ID file falls back to a new UUID (#1600)."""
+    """Existing-but-corrupt ID file falls back to a new UUID."""
 
     @pytest.mark.parametrize(
         "stored_content",

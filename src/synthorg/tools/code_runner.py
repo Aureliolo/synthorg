@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.code_runner import (
     CODE_RUNNER_EXECUTE_FAILED,
     CODE_RUNNER_EXECUTE_START,
@@ -106,7 +106,8 @@ class CodeRunnerTool(BaseTool):
             logger.warning(
                 CODE_RUNNER_EXECUTE_FAILED,
                 language=language,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=f"Sandbox error: {exc}",

@@ -146,7 +146,44 @@ class TestReportGeneratorTool:
             }
         )
         assert result.is_error
-        assert "query failed" in result.content
+        # The tool result surfaces a stable generic message; raw
+        # exception text would leak DB connection strings on real
+        # failures. Operators see the scrubbed detail in the
+        # ANALYTICS_TOOL_REPORT_FAILED log. Equality (not substring)
+        # so the gate fails if a future change appends raw
+        # exception text after the prefix.
+        assert result.content == "Report generation failed"
+
+    async def test_execute_formatting_error(
+        self,
+        mock_provider: MockAnalyticsProvider,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Force ``_format_report`` to raise; assert the scrubbed branch.
+
+        ``test_execute_provider_error`` covers the provider-query
+        failure path, but the formatter exception branch (different
+        ``except`` block in ``execute()``) had no exact-match gate.
+        A regression that re-introduced ``content=f"Report
+        formatting failed: {exc}"`` would slip past the
+        provider-error test.
+        """
+        tool = ReportGeneratorTool(provider=mock_provider)
+        monkeypatch.setattr(
+            tool,
+            "_format_report",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("internal SQL: SELECT * FROM secrets"),
+            ),
+        )
+        result = await tool.execute(
+            arguments={
+                "report_type": "budget_summary",
+                "period": "7d",
+            }
+        )
+        assert result.is_error
+        assert result.content == "Report formatting failed"
 
     def test_parameters_schema_required_fields(
         self,

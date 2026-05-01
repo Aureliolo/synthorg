@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Final
 import aiodocker
 
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CLEANUP,
     DOCKER_CONTAINER_REMOVE_FAILED,
@@ -49,10 +49,14 @@ class DockerSandboxLifecycleMixin:
         try:
             return await self._collect_logs(container_obj)
         except Exception as exc:
+            # aiodocker exceptions can carry the Docker socket path
+            # or registry auth header in str(exc).
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 container_id=container_id[:12],
-                error=f"Log collection failed: {exc}",
+                reason="log_collection_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ("", "")
 
@@ -125,7 +129,8 @@ class DockerSandboxLifecycleMixin:
             logger.warning(
                 DOCKER_CONTAINER_STOP_FAILED,
                 container_id=container_id[:12],
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @staticmethod
@@ -145,7 +150,8 @@ class DockerSandboxLifecycleMixin:
             logger.warning(
                 DOCKER_CONTAINER_REMOVE_FAILED,
                 container_id=container_id[:12],
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         return True
@@ -174,7 +180,9 @@ class DockerSandboxLifecycleMixin:
             except Exception as exc:
                 logger.warning(
                     DOCKER_CLEANUP,
-                    error=f"Docker client close failed: {exc}",
+                    reason="docker_client_close_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             finally:
                 self._docker = None
@@ -189,7 +197,8 @@ class DockerSandboxLifecycleMixin:
             logger.warning(
                 DOCKER_HEALTH_CHECK,
                 healthy=False,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         else:

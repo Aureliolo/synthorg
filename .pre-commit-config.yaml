@@ -156,21 +156,21 @@ repos:
         files: ^tests/.*\.py$
 
       - id: no-new-logger-exception-str-exc
-        name: block new logger.exception(..., error=str(exc)) sites (SEC-1)
+        name: block new logger.exception(..., error=str(exc)) sites
         entry: uv
         args: [run, python, scripts/check_logger_exception_str_exc.py]
         language: system
         files: ^src/synthorg/.*\.py$
 
       - id: no-new-bare-mock
-        name: block new bare Mock()/AsyncMock()/MagicMock() in tests/ (#1604)
+        name: block new bare Mock()/AsyncMock()/MagicMock() in tests/
         entry: uv
         args: [run, python, scripts/check_mock_spec.py]
         language: system
         files: ^tests/.*\.py$
 
       - id: no-release-please-token
-        name: forbid new RELEASE_PLEASE_TOKEN references (#1555)
+        name: forbid new RELEASE_PLEASE_TOKEN references
         entry: uv
         args: [run, python, scripts/check_no_release_please_token.py]
         language: system

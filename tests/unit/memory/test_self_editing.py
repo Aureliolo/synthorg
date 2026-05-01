@@ -352,7 +352,6 @@ class TestHandleToolCallDispatch:
         assert "UNIQUE constraint" not in result
 
 
-# NOTE: ``_extract_str`` was deleted along with its tests in the Phase 2
-# typed-args refactor (#1611) -- the same behaviours are now enforced by
-# the ``NotBlankStr`` field type in ``self_editing_args.py`` and exercised
-# by ``tests/unit/memory/test_self_editing_args.py``.
+# ``_extract_str`` is enforced via the ``NotBlankStr`` field type in
+# ``self_editing_args.py`` and exercised by
+# ``tests/unit/memory/test_self_editing_args.py``.

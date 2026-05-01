@@ -586,7 +586,8 @@ def _extract_numeric_config(
         logger.warning(
             TEMPLATE_RENDER_TYPE_ERROR,
             source=source_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise TemplateRenderError(msg) from exc
     return autonomy, budget_monthly
@@ -753,7 +754,8 @@ def _resolve_model_tier(agent: dict[str, Any]) -> str:
             logger.warning(
                 TEMPLATE_RENDER_TYPE_ERROR,
                 field="model",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise TemplateRenderError(msg) from exc
     return str(model_raw)

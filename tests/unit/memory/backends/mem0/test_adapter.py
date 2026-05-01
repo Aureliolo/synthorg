@@ -274,20 +274,21 @@ class TestLifecycle:
             await b.connect()
 
 
-# ── SEC-1 logger contract for catastrophic interpreter state ─────
+# ── Logger contract for catastrophic interpreter state ──────────
 
 
 @pytest.mark.unit
 class TestSystemErrorLogging:
-    """Pin the SEC-1 logger contract for ``MemoryError`` / ``RecursionError``.
+    """Pin the logger contract for ``MemoryError`` / ``RecursionError``.
 
     The mem0 adapter is the rare site where traceback exposure is
     justified for catastrophic interpreter state. The contract is:
     log at ERROR level via ``logger.error(EVENT, ..., exc_info=True,
     error_type=type(exc).__name__, error=safe_error_description(exc))``,
-    then re-raise. Regressing this back to ``logger.exception`` (which
-    serialises frame-locals) or to ``logger.warning`` (which loses the
-    traceback) is a SEC-1 violation; this test catches both directions.
+    then re-raise. Regressing this back to ``logger.exception``
+    (which serialises frame-locals) or to ``logger.warning`` (which
+    loses the traceback) is a regression; this test catches both
+    directions.
     """
 
     @pytest.mark.parametrize(
@@ -318,8 +319,8 @@ class TestSystemErrorLogging:
         # Crucially: the value must be safe_error_description(exc) output,
         # not str(exc); the helper prefixes the type name.
         assert call.kwargs["error"].startswith(f"{exc_type.__name__}:")
-        # And logger.exception / logger.warning must NOT be called for
-        # this path (regressions to either are SEC-1 violations).
+        # And logger.exception / logger.warning must NOT be called
+        # for this path (either is a regression).
         mock_logger.exception.assert_not_called()
         mock_logger.warning.assert_not_called()
 

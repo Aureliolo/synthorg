@@ -18,7 +18,7 @@ from synthorg.engine.workspace.models import (
     WorkspaceGroupResult,
     WorkspaceRequest,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_CLEANUP_COMPLETED,
     COORDINATION_CLEANUP_FAILED,
@@ -105,13 +105,19 @@ async def setup_workspaces(
             phase=phase_name,
             success=False,
             duration_seconds=elapsed,
-            error=str(exc),
+            # The error string is surfaced through
+            # ``CoordinationPhaseResult`` to upstream consumers and
+            # downstream logs; route through
+            # ``safe_error_description`` so URL/form-body credentials
+            # in HTTPStatusError-style messages are scrubbed at the
+            # source.
+            error=safe_error_description(exc),
         )
         logger.warning(
             COORDINATION_PHASE_FAILED,
             phase=phase_name,
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return (), phase
     else:
@@ -152,13 +158,15 @@ async def merge_workspaces(
             phase=phase_name,
             success=False,
             duration_seconds=elapsed,
-            error=str(exc),
+            # Same scrub-at-source rationale as the earlier
+            # ``setup_group`` failure handler.
+            error=safe_error_description(exc),
         )
         logger.warning(
             COORDINATION_PHASE_FAILED,
             phase=phase_name,
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None, phase
     else:
@@ -193,8 +201,8 @@ async def teardown_workspaces(
         logger.warning(
             COORDINATION_CLEANUP_FAILED,
             workspace_count=len(workspaces),
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
     else:
         logger.info(
@@ -278,8 +286,8 @@ async def execute_waves(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
                 wave_index=wave_idx,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             wave = CoordinationWave(
                 wave_index=wave_idx,
@@ -291,7 +299,8 @@ async def execute_waves(
                     phase=phase_name,
                     success=False,
                     duration_seconds=elapsed,
-                    error=str(exc),
+                    # Same scrub-at-source rationale.
+                    error=safe_error_description(exc),
                 )
             )
             if fail_fast:

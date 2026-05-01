@@ -1,4 +1,4 @@
-"""In-memory escalation queue store (#1418).
+"""In-memory escalation queue store.
 
 Process-local backend for the :class:`EscalationQueueStore` Protocol.
 Used for tests and ephemeral deployments; production deployments

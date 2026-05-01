@@ -1,10 +1,9 @@
 """XXE-hardening regression tests for ``HTMLParseGuard``.
 
-SEC-1 / audit finding 91: ``lxml.html.fromstring`` was called with
-default settings on attacker-controlled input.  The default parser
-processes ``<!DOCTYPE>`` declarations and can be coerced into
-external-entity resolution, exposing the host to XXE / SSRF /
-information-disclosure.
+A bare ``lxml.html.fromstring`` call with default settings on
+attacker-controlled input processes ``<!DOCTYPE>`` declarations
+and can be coerced into external-entity resolution, exposing the
+host to XXE / SSRF / information-disclosure.
 
 This module asserts that the new ``_parse_html_safely`` guard:
 * rejects DOCTYPE declarations that carry SYSTEM or PUBLIC identifiers,

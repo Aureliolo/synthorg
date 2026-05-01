@@ -353,7 +353,8 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
         logger.warning(
             API_SERVICE_UNAVAILABLE,
             service="settings",
-            error=str(first),
+            error_type=type(first).__name__,
+            error=safe_error_description(first),
         )
         msg = "Failed to fetch ceremony settings"
         raise ServiceUnavailableError(msg) from None

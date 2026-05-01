@@ -145,7 +145,7 @@ API_AUTH_REFRESH_CLEANUP: Final[str] = "api.auth.refresh_cleanup"
 # failure) -- NOT auth decisions -- so they stay under api.* and are
 # NOT signed by the audit chain. Repository code emits these on the
 # rollback branch to keep the operator-visible failure trail intact
-# without polluting the cryptographic decision record (#1599).
+# without polluting the cryptographic decision record.
 API_AUTH_REFRESH_PERSISTENCE_ERROR: Final[str] = "api.auth.refresh.persistence_error"
 API_AUTH_LOCKOUT_PERSISTENCE_ERROR: Final[str] = "api.auth.lockout.persistence_error"
 API_AUTH_SESSION_PERSISTENCE_ERROR: Final[str] = "api.auth.session.persistence_error"

@@ -986,7 +986,7 @@ class SQLitePersistenceBackend:
 
     @property
     def idempotency_keys(self) -> SQLiteIdempotencyRepository:
-        """Repository for persistent idempotency keys (#1599)."""
+        """Repository for persistent idempotency keys."""
         return self._require_connected(
             self._idempotency_keys,
             "idempotency_keys",

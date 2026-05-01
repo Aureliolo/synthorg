@@ -133,7 +133,7 @@ class TestSanitizeSensitiveFields:
 
 @pytest.mark.unit
 class TestScrubEventFields:
-    """Deep-scrub processor -- SEC-1 regression guards."""
+    """Deep-scrub processor -- secret-leak regression guards."""
 
     def test_scrubs_error_str_exc_leak(self) -> None:
         # Simulates ``logger.warning(EVENT, error=str(exc))`` where the
@@ -259,7 +259,7 @@ class TestScrubEventFieldsProcessorChain:
     """Guard: the processor must stay wired into the global pipeline.
 
     These tests catch regressions that would silently disable the
-    SEC-1 leak defence -- dropping the processor from
+    secret-leak defence -- dropping the processor from
     ``_BASE_PROCESSORS`` or reordering it before ``format_exc_info``
     (so tracebacks bypass the scrubber).
     """
@@ -269,7 +269,7 @@ class TestScrubEventFieldsProcessorChain:
 
         assert scrub_event_fields in _BASE_PROCESSORS, (
             "scrub_event_fields must be part of the base processor chain; "
-            "removing it would reopen the SEC-1 leak channel."
+            "removing it would reopen the credential-leak channel."
         )
 
     def test_processor_runs_after_format_exc_info(self) -> None:

@@ -551,7 +551,8 @@ class SettingsController(Controller):
         except ValueError as exc:
             logger.warning(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 sink_overrides=overrides_json,
                 custom_sinks=custom_json,
             )

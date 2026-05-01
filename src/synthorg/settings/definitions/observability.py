@@ -170,7 +170,7 @@ _r.register(
     )
 )
 
-# ── Multi-surface settings (#1613) ─────────────────────────────
+# ── Multi-surface settings ─────────────────────────────────────
 
 _r.register(
     SettingDefinition(

@@ -320,7 +320,7 @@ class TestPassThrough:
         assert returned is result
 
 
-# ── JSON parsing failure modes (#15) ────────────────────────────
+# ── JSON parsing failure modes ───────────────────────────────────
 
 
 @pytest.mark.unit
@@ -360,7 +360,7 @@ class TestExtractToolNameEdgeCases:
         assert name is None
 
 
-# ── Auto-unload threshold boundary (#16) ────────────────────────
+# ── Auto-unload threshold boundary ───────────────────────────────
 
 
 @pytest.mark.unit
@@ -404,7 +404,7 @@ class TestAutoUnloadBoundary:
         # 79.9% < 80% threshold: no unload
 
 
-# ── Metadata tuple validation (#17) ─────────────────────────────
+# ── Metadata tuple validation ────────────────────────────────────
 
 
 @pytest.mark.unit

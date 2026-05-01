@@ -928,7 +928,7 @@ class TestValidatorPattern:
             await svc.set("budget", "hostname", "INVALID HOST!")
 
 
-# ── Security Audit Emission Tests (#1599) ───────────────────────
+# ── Security Audit Emission Tests ────────────────────────────────
 
 
 def _install_logger_info_spy(

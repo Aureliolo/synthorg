@@ -516,7 +516,7 @@ class CeremonyScheduler:
             total_completions_this_sprint=self._total_completions,
             total_tasks_in_sprint=total_tasks,
             elapsed_seconds=time.monotonic() - self._activation_time,
-            # Budget integration is a follow-up (#972).
+            # Budget integration is a follow-up.
             budget_consumed_fraction=0.0,
             budget_remaining=0.0,
             velocity_history=self._velocity_history,
@@ -542,7 +542,7 @@ class CeremonyScheduler:
             total_completions_this_sprint=self._total_completions,
             total_tasks_in_sprint=total_tasks,
             elapsed_seconds=time.monotonic() - self._activation_time,
-            # Budget integration is a follow-up (#972).
+            # Budget integration is a follow-up.
             budget_consumed_fraction=0.0,
             budget_remaining=0.0,
             velocity_history=self._velocity_history,

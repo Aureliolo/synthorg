@@ -1,10 +1,9 @@
 """Per-call-site tests for the prompt-injection fence wrapping.
 
-SEC-1 / audit finding 92: the seven LLM call sites that interpolate
-attacker-controllable content into prompts must each wrap that
-content in tagged delimiters. This file has one focused test per
-site verifying the fence is present and breakout attempts are
-neutralised.
+The seven LLM call sites that interpolate attacker-controllable
+content into prompts must each wrap that content in tagged
+delimiters. This file has one focused test per site verifying the
+fence is present and breakout attempts are neutralised.
 """
 
 import json
@@ -345,7 +344,7 @@ class TestDecomposerCriteriaFence:
         assert "<criteria-json>" in _DECOMPOSER_SYSTEM_PROMPT
 
 
-# ── SEC-1 newly-fenced sites (audit 92 remediation) ─────────────────────
+# ── Newly-fenced sites ──────────────────────────────────────────────────
 
 
 @pytest.mark.unit

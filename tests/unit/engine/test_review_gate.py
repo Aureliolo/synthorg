@@ -286,9 +286,8 @@ class TestReviewGateServiceSelfReview:
     ) -> None:
         """Preflight still runs when persistence is None.
 
-        Regression guard for the CodeRabbit finding: gating
-        ``ReviewGateService`` construction on persistence would
-        disable the self-review / missing-task fail-fast in
+        Gating ``ReviewGateService`` construction on persistence
+        would disable the self-review / missing-task fail-fast in
         task-engine-only deployments.
         """
         task = _make_task(assigned_to="alice")

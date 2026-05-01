@@ -31,12 +31,10 @@ def _build_mock_provider_management() -> MagicMock:
 def mock_providers(test_client: TestClient[Any]) -> Iterator[Any]:
     """Patch ``app_state._provider_management`` with a stub for the test body.
 
-    The previous helper returned ``(app_state, original)`` and required
-    every caller to wrap the body in their own ``try/finally``. A
-    contextmanager makes restoration unconditional even when an
-    intermediate ``raise`` skips the manual finally block, fixing the
-    fragile state-restoration pattern flagged in the pre-PR review for
-    issue #1666.
+    Returning ``(app_state, original)`` would force every caller to
+    wrap the body in their own ``try/finally``. A contextmanager
+    makes restoration unconditional even when an intermediate
+    ``raise`` skips the manual finally block.
     """
     app_state = test_client.app.state.app_state
     original = app_state._provider_management

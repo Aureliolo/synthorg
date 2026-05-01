@@ -5,7 +5,7 @@ mutation entry points stay small.  The service is the canonical
 point that **every** provider mutation funnels through; controllers
 never call the repo directly.
 
-SEC-1: payload contents are constructed by the caller and must mask
+Payload contents are constructed by the caller and must mask
 credential fragments before reaching here (``"prefix***last4"``).  The
 service does not re-validate; it is the caller's contract to keep
 audit rows secret-free.

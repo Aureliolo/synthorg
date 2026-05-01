@@ -28,7 +28,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import ToolCategory
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.git import (
     GIT_COMMAND_FAILED,
     GIT_COMMAND_START,
@@ -328,14 +328,18 @@ class _BaseGitTool(BaseTool, ABC):
                 env=env,
             )
         except OSError as exc:
+            # Drop exc_info + scrub. Git OSError messages can carry
+            # the working-directory path which may include user
+            # namespaces / repo URLs.
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
-                error=f"subprocess start failed: {exc}",
-                exc_info=True,
+                reason="subprocess_start_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Failed to start git process: {exc}",
+                content="Failed to start git process",
                 is_error=True,
             )
 
@@ -421,15 +425,22 @@ class _BaseGitTool(BaseTool, ABC):
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
         if returncode != 0:
+            # Git auth-failure stderr commonly echoes the remote URL
+            # with embedded userinfo
+            # (``https://user:token@host/...``); ``_sanitize_stderr``
+            # strips those tokens. Both the log field and the
+            # LLM-facing tool result must use the scrubbed copy.
+            sanitized_stderr = _sanitize_stderr(stderr)
+            sanitized_stdout = _sanitize_stderr(stdout)
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
                 returncode=returncode,
-                stderr=stderr,
-                stdout=stdout,
+                stderr=sanitized_stderr,
+                stdout=sanitized_stdout,
             )
             return ToolExecutionResult(
-                content=stderr or stdout or "Unknown git error",
+                content=sanitized_stderr or sanitized_stdout or "Unknown git error",
                 is_error=True,
             )
         logger.debug(
@@ -476,15 +487,20 @@ class _BaseGitTool(BaseTool, ABC):
                 is_error=True,
             )
         if result.returncode != 0:
+            # Same scrub as ``_process_git_output`` -- sandbox
+            # stderr/stdout can carry remote-URL userinfo on auth
+            # failure paths.
+            sanitized_stderr = _sanitize_stderr(result.stderr) if result.stderr else ""
+            sanitized_stdout = _sanitize_stderr(result.stdout) if result.stdout else ""
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
                 returncode=result.returncode,
-                stderr=result.stderr,
-                stdout=result.stdout,
+                stderr=sanitized_stderr,
+                stdout=sanitized_stdout,
             )
             return ToolExecutionResult(
-                content=(result.stderr or result.stdout or "Unknown git error"),
+                content=(sanitized_stderr or sanitized_stdout or "Unknown git error"),
                 is_error=True,
             )
         logger.debug(
@@ -550,10 +566,14 @@ class _BaseGitTool(BaseTool, ABC):
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+            # Generic content -- ``ToolExecutionResult.content`` reaches
+            # the LLM, so ``str(exc)`` would leak repo URLs / workspace
+            # paths past the log scrub above.
             return ToolExecutionResult(
-                content=str(exc),
+                content="Git command failed in sandbox",
                 is_error=True,
             )
         return self._sandbox_result_to_execution_result(

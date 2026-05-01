@@ -156,11 +156,11 @@ class BackupService(BackupServiceArchiveMixin):
                 backup_dir=backup_dir,
             )
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_FAILED,
                 backup_id=backup_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             if backup_dir.exists():
                 await asyncio.to_thread(shutil.rmtree, backup_dir)
@@ -265,12 +265,16 @@ class BackupService(BackupServiceArchiveMixin):
 
         try:
             await self._retention.prune()
-        except Exception:
-            logger.error(
+        except Exception as exc:
+            # Drop exc_info on retention failure so the filesystem
+            # path / connection details that ``str(exc)`` would
+            # carry don't leak via the traceback frame-locals.
+            logger.error(  # noqa: TRY400 -- fail-loud, no traceback
                 BACKUP_RETENTION_FAILED,
                 backup_id=backup_id,
-                error="Retention pruning failed",
-                exc_info=True,
+                reason="retention_pruning_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def restore_from_backup(
@@ -326,11 +330,12 @@ class BackupService(BackupServiceArchiveMixin):
                 backup_dir=backup_dir,
                 safety_backup_id=safety_manifest.backup_id,
             )
-        except RestoreError:
-            logger.error(
+        except RestoreError as exc:
+            logger.error(  # noqa: TRY400
                 BACKUP_RESTORE_FAILED,
                 backup_id=backup_id,
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         finally:

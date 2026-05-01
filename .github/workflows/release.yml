@@ -272,7 +272,7 @@ jobs:
       # so ci.yml / codspeed-python.yml / codspeed-web.yml /
       # lighthouse.yml never auto-fire on release PRs.
       #
-      # The previous fix (#1593) used `gh workflow run ci.yml
+      # An earlier attempt used `gh workflow run ci.yml
       # --ref <release-branch>` to nudge ci.yml via
       # workflow_dispatch -- but workflow_dispatch runs produce a
       # check_suite with empty `pull_requests`, so the resulting

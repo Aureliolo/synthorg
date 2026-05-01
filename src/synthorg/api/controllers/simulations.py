@@ -27,7 +27,7 @@ from synthorg.client.runner import SimulationRunner
 from synthorg.client.store import SimulationRecord
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.client import (
     SIMULATION_RUN_CANCELLED,
@@ -145,7 +145,7 @@ async def _run_in_background(
             SIMULATION_RUN_FAILED,
             simulation_id=record.simulation_id,
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         with contextlib.suppress(ValueError):
             await sim_state.simulation_store.update_status(
@@ -155,10 +155,14 @@ async def _run_in_background(
             )
         return
     except Exception as exc:
-        logger.exception(
+        # logger.exception attaches the traceback; frame-locals on
+        # a simulation-run-failed path can carry the entire
+        # simulation config. Scrub + drop exc_info.
+        logger.warning(
             SIMULATION_RUN_FAILED,
             simulation_id=record.simulation_id,
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         with contextlib.suppress(ValueError):
             await sim_state.simulation_store.update_status(
@@ -258,10 +262,15 @@ class SimulationController(Controller):
                 )
                 raise
             except Exception as exc:
-                logger.exception(
+                # Drop ``logger.exception`` -- frame-locals on the
+                # simulation-run-failed traceback can carry the
+                # entire simulation config (matches the rationale
+                # documented in ``_run_in_background``).
+                logger.warning(
                     SIMULATION_RUN_FAILED,
                     simulation_id=record.simulation_id,
                     error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 try:
                     await sim_state.simulation_store.update_status(
@@ -269,11 +278,13 @@ class SimulationController(Controller):
                         status="failed",
                         error="Simulation failed unexpectedly",
                     )
-                except ValueError, KeyError:
-                    logger.exception(
+                except (ValueError, KeyError) as inner_exc:
+                    logger.warning(
                         SIMULATION_RUN_FAILED,
                         simulation_id=record.simulation_id,
                         stage="final_status_write",
+                        error_type=type(inner_exc).__name__,
+                        error=safe_error_description(inner_exc),
                     )
             try:
                 final = await sim_state.simulation_store.get(

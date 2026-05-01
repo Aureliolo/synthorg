@@ -28,7 +28,7 @@ from synthorg.budget.spending_summary import (
     SpendingSummary,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_CATEGORY_BREAKDOWN_QUERIED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
@@ -280,7 +280,7 @@ class CostTrackerSummaryMixin:
             logger.warning(
                 BUDGET_DEPARTMENT_RESOLVE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__qualname__,
             )
             return None

@@ -91,7 +91,7 @@ def _row_to_aggregate(
     Args:
         row: A single database row.
         currency: Currency to inject before validation since the
-            schema does not yet carry a ``currency`` column (#1597).
+            schema does not yet carry a ``currency`` column.
 
     Returns:
         Validated model instance.

@@ -105,10 +105,10 @@ class TestLogHandlerInvokeFailed:
         )
 
     def test_secret_shaped_error_text_is_redacted(self) -> None:
-        # SEC-1: secret-bearing exception messages must go through
+        # Secret-bearing exception messages must go through
         # safe_error_description so credential fragments never reach
-        # logs. We rely on the redactor's ``Authorization: Bearer`` rule
-        # to mask the token shape.
+        # logs. We rely on the redactor's ``Authorization: Bearer``
+        # rule to mask the token shape.
         exc = RuntimeError("Authorization: Bearer abcdef.token.value")
         with structlog.testing.capture_logs() as logs:
             log_handler_invoke_failed("tool", exc)

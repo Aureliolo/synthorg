@@ -35,7 +35,7 @@ from synthorg.memory.tools.knowledge_architect import (
 from synthorg.memory.tools.recall import RecallMemoryReadTool, RecallMemoryWriteTool
 from synthorg.memory.tools.recall_search import RecallMemoryTool
 from synthorg.memory.tools.search import SearchMemoryTool
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_FACTORY_BUILT,
     TOOL_MEMORY_AUGMENTATION_FAILED,
@@ -206,8 +206,8 @@ def registry_with_memory_tools(
                 TOOL_MEMORY_AUGMENTATION_FAILED,
                 source="registry_augmentation",
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return tool_registry
         logger.debug(
@@ -235,8 +235,8 @@ def registry_with_memory_tools(
             TOOL_MEMORY_AUGMENTATION_FAILED,
             source="registry_augmentation",
             agent_id=agent_id,
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return tool_registry
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_FS_ERROR,
     TOOL_FS_SIZE_EXCEEDED,
@@ -186,7 +186,12 @@ class WriteFileTool(BaseFileSystemTool):
                 is_error=True,
             )
         except OSError as exc:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error=str(exc))
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=f"OS error writing file: {user_path}",
                 is_error=True,

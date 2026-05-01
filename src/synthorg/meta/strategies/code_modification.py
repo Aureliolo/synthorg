@@ -30,7 +30,7 @@ from synthorg.meta.models import (
     RollbackPlan,
     RuleMatch,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CODE_GEN_COMPLETED,
     META_CODE_GEN_FAILED,
@@ -349,12 +349,12 @@ class CodeModificationStrategy:
         perf = snapshot.performance
         budget = snapshot.budget
         manifest = _build_file_manifest(self._code_config.allowed_paths)
-        # SEC-1 / audit 92: rule metadata (name, severity, description) is
-        # set by admins / custom-rule authors and reaches the LLM verbatim;
-        # signal_context values are rule-driven but may carry agent-shaped
-        # payloads. ``allowed_paths`` is config-driven and ``manifest``
-        # embeds file names from that config. All go inside untrusted
-        # fences declared by ``_SYSTEM_PROMPT``.
+        # Rule metadata (name, severity, description) is set by
+        # admins / custom-rule authors and reaches the LLM verbatim;
+        # signal_context values are rule-driven but may carry
+        # agent-shaped payloads. ``allowed_paths`` is config-driven
+        # and ``manifest`` embeds file names from that config. All
+        # go inside untrusted fences declared by ``_SYSTEM_PROMPT``.
         fenced_rule_name = wrap_untrusted(TAG_CONFIG_VALUE, rule_match.rule_name)
         fenced_severity = wrap_untrusted(
             TAG_CONFIG_VALUE,
@@ -468,7 +468,8 @@ def _parse_items(
                 rule=rule_name,
                 reason="invalid_change_item",
                 index=idx,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             continue
     return changes

@@ -1,4 +1,4 @@
-"""Unit tests for AuditChainConfig TSA preset coherence (#1412)."""
+"""Unit tests for AuditChainConfig TSA preset coherence."""
 
 from pathlib import Path
 from typing import Any

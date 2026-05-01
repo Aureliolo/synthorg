@@ -14,11 +14,16 @@ from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.memory.procedural.models import (
     ProceduralMemoryConfig,
     ProceduralMemoryProposal,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_LOW_CONFIDENCE,
     PROCEDURAL_MEMORY_PROPOSED,
@@ -49,7 +54,8 @@ _SYSTEM_PROMPT = (
     '(e.g. ["Step 1", "Step 2"]).\n'
     '- "confidence": Your confidence in this proposal (0.0-1.0).\n'
     '- "tags": List of semantic tags (e.g. ["efficient", "multi_tool"]).\n\n'
-    "Respond ONLY with the JSON object, no markdown fences or explanation."
+    "Respond ONLY with the JSON object, no markdown fences or explanation.\n\n"
+    + untrusted_content_directive((TAG_TASK_DATA,))
 )
 
 _JSON_FENCE_PATTERN = re.compile(
@@ -90,7 +96,11 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 def _build_user_message(execution_result: Any) -> str:
     """Format execution context into a user message for the proposer LLM.
 
-    Uses structural delimiters to prevent format confusion.
+    The execution context (turn count, tool names, outcome) is wrapped
+    via :func:`wrap_untrusted` under :data:`TAG_TASK_DATA` so the
+    proposer LLM treats the body as data; the system prompt's
+    ``untrusted_content_directive`` gives the model an explicit
+    instruction to ignore embedded directives.
     """
     # Collect all unique tools used across all turns
     all_tools = set()
@@ -98,13 +108,12 @@ def _build_user_message(execution_result: Any) -> str:
         all_tools.update(turn.tool_calls_made)
     tools_str = ", ".join(sorted(all_tools)) if all_tools else "none"
 
-    return (
-        "[BEGIN SUCCESS CONTEXT]\n"
+    body = (
         f"Turns completed: {len(execution_result.turns)}\n"
         f"Tools used: {tools_str}\n"
-        f"Outcome: SUCCESSFUL\n"
-        "[END SUCCESS CONTEXT]"
+        "Outcome: SUCCESSFUL"
     )
+    return wrap_untrusted(TAG_TASK_DATA, body)
 
 
 class SuccessMemoryProposer:
@@ -184,19 +193,20 @@ class SuccessMemoryProposer:
                 raise
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="retryable_provider_error",
                 is_retryable=True,
-                exc_info=True,
             )
             return None
         except Exception as exc:
+            # Drop exc_info + scrub message.
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="unexpected_error",
                 is_retryable=False,
-                exc_info=True,
             )
             return None
 
@@ -227,9 +237,9 @@ class SuccessMemoryProposer:
         except ValidationError as exc:
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="validation_failed",
-                exc_info=True,
             )
             return None
 

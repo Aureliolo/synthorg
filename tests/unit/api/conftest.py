@@ -489,8 +489,8 @@ def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # that clear() invokes) with a stub that raises or corrupts
         # state; we want the real ``clear`` implementation to run.
         _restore_instance_patches(svc)
-        # AgentRegistryService.clear and ApprovalStore.clear are async
-        # (#1599); use the sync test-only entry points so this sync
+        # AgentRegistryService.clear and ApprovalStore.clear are
+        # async; use the sync test-only entry points so this sync
         # fixture keeps its shape. AgentRegistryService no longer has
         # a sync reset method on its production surface; the
         # registry_testing module exposes one specifically for this

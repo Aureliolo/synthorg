@@ -18,7 +18,7 @@ from synthorg.memory.tool_retriever_helpers import (
     _parse_search_args,
 )
 from synthorg.memory.tool_retriever_reformulation import ToolBasedReformulationMixin
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_RETRIEVAL_COMPLETE,
     MEMORY_RETRIEVAL_DEGRADED,
@@ -359,17 +359,17 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
                 MEMORY_RETRIEVAL_DEGRADED,
                 source=SEARCH_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return SEARCH_UNAVAILABLE
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 MEMORY_RETRIEVAL_DEGRADED,
                 source=SEARCH_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return SEARCH_UNEXPECTED
 
@@ -422,17 +422,17 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
                 MEMORY_RETRIEVAL_DEGRADED,
                 source=RECALL_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return RECALL_UNAVAILABLE
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 MEMORY_RETRIEVAL_DEGRADED,
                 source=RECALL_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return RECALL_UNEXPECTED
 

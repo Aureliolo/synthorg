@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.models import MemoryQuery
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     WIKI_EXPORT_COMPLETE,
     WIKI_EXPORT_FAILED,
@@ -109,7 +109,8 @@ class WikiExporter:
                 WIKI_EXPORT_FAILED,
                 tier="setup",
                 export_root=self._config.export_root,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return WikiExportResult(
                 raw_count=0,
@@ -167,7 +168,8 @@ class WikiExporter:
                 WIKI_EXPORT_FAILED,
                 tier="raw",
                 agent_id=agent_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return 0
 
@@ -206,7 +208,8 @@ class WikiExporter:
                     WIKI_EXPORT_FAILED,
                     tier="raw",
                     entry_id=entry.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 continue
             exported += 1
@@ -234,7 +237,8 @@ class WikiExporter:
                 WIKI_EXPORT_FAILED,
                 tier="compressed",
                 agent_id=agent_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return 0
 
@@ -314,7 +318,8 @@ class WikiExporter:
                     WIKI_EXPORT_FAILED,
                     tier="compressed",
                     entry_id=entry.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 continue
             exported += 1
@@ -349,5 +354,6 @@ class WikiExporter:
             logger.warning(
                 WIKI_EXPORT_FAILED,
                 tier="index",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )

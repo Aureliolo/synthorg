@@ -284,8 +284,17 @@ async def _publish_webhook_event_and_log(
     connection_name: str,
     event_type: str,
     payload: Mapping[str, object],
+    dedup_source: str,
 ) -> dict[str, object]:
-    """Publish the event to the bus and emit ``WEBHOOK_ACCEPTED``."""
+    """Publish the event to the bus and emit ``WEBHOOK_ACCEPTED``.
+
+    ``dedup_source`` carries the provenance of the idempotency key
+    (``"nonce"`` for the standard ``X-Nonce`` / ``X-Request-Id`` path,
+    ``"body_sha256"`` for the nonce-less path that hashes the request
+    body). Surfacing the source on the success log lets operators
+    distinguish well-behaved providers from those without nonces and
+    spot redelivery patterns.
+    """
     await publish_webhook_event(
         bus=bus,
         connection_name=connection_name,
@@ -296,6 +305,7 @@ async def _publish_webhook_event_and_log(
         WEBHOOK_ACCEPTED,
         connection_name=connection_name,
         event_type=event_type,
+        dedup_source=dedup_source,
     )
     return {"status": "accepted", "event_type": event_type}
 
@@ -309,6 +319,7 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     connection_type: str,
     bus: Any,
     payload: Mapping[str, object],
+    dedup_source: str,
 ) -> dict[str, object]:
     """Run the publish under the durable :class:`IdempotencyService`.
 
@@ -332,14 +343,18 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
             connection_name=connection_name,
             event_type=event_type,
             payload=payload,
+            dedup_source=dedup_source,
         )
 
-    cached, _fresh = await state["app_state"].idempotency_service.run_idempotent(
+    outcome = await state["app_state"].idempotency_service.run_idempotent(
         scope=scope,
         key=idem_key,
         callback=_publish_and_accept,
     )
-    if cached is None:
+    if outcome.timed_out:
+        # Distinct from a callback that legitimately returned ``None``
+        # -- we only 409 on actual in-flight timeouts /
+        # leader-failure exhaustion.
         logger.warning(
             IDEMPOTENCY_CLAIM_IN_FLIGHT,
             scope=scope,
@@ -350,6 +365,7 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
         )
         msg = "Concurrent in-flight webhook delivery"
         raise ConflictError(msg)
+    cached = outcome.result
     # ``run_idempotent`` returns ``Any`` (the JSON-decoded cached
     # body); the only callbacks under this scope are
     # ``_publish_and_accept`` returning ``dict[str, object]``.
@@ -455,7 +471,25 @@ class WebhooksController(Controller):
             headers=headers,
         )
 
-        nonce = headers.get("x-nonce") or headers.get("x-request-id")
+        # Strip each candidate header individually before fallback
+        # selection. ``headers.get("x-nonce") or
+        # headers.get("x-request-id")`` short-circuits on a
+        # whitespace-only ``x-nonce`` (truthy before ``.strip()``)
+        # and never tries ``x-request-id``, which routes real retries
+        # down the body-hash path and changes the idempotency key.
+        # Stripping each candidate first picks the first non-empty
+        # value, or ``None``.
+        nonce = next(
+            (
+                candidate
+                for candidate in (
+                    (headers.get("x-nonce") or "").strip(),
+                    (headers.get("x-request-id") or "").strip(),
+                )
+                if candidate
+            ),
+            None,
+        )
         timestamp = _parse_timestamp(headers, connection_name=connection_name)
         _check_replay_or_freshness(
             state=state,
@@ -475,25 +509,33 @@ class WebhooksController(Controller):
         else:
             normalized_payload = {"data": payload}
 
+        # Both branches below publish through the durable
+        # idempotency service so JetStream redelivery / retried POSTs
+        # cannot double-bus the same event. When the provider
+        # supplies a nonce / request-id we use that directly;
+        # otherwise we synthesise one from the body's SHA-256 so
+        # byte-identical redeliveries collapse to a single publish.
+        # The ``dedup_source`` tag on the success log lets operators
+        # distinguish the two paths in audit traces.
         if nonce:
-            cached = await _publish_with_durable_idempotency(
-                state=state,
-                connection_name=connection_name,
-                event_type=event_type,
-                nonce=nonce,
-                connection_type=conn.connection_type,
-                bus=bus,
-                payload=normalized_payload,
-            )
-            return ApiResponse(data=cached)
+            idem_nonce = nonce
+            dedup_source = "nonce"
+        else:
+            body_digest = hashlib.sha256(body).hexdigest()
+            idem_nonce = f"sha256:{body_digest}"
+            dedup_source = "body_sha256"
 
-        accepted = await _publish_webhook_event_and_log(
-            bus=bus,
+        cached = await _publish_with_durable_idempotency(
+            state=state,
             connection_name=connection_name,
             event_type=event_type,
+            nonce=idem_nonce,
+            connection_type=conn.connection_type,
+            bus=bus,
             payload=normalized_payload,
+            dedup_source=dedup_source,
         )
-        return ApiResponse(data=accepted)
+        return ApiResponse(data=cached)
 
     @get(
         "/{connection_name:str}/activity",

@@ -1,4 +1,4 @@
-"""In-process registry of awaited escalation Futures (#1418).
+"""In-process registry of awaited escalation Futures.
 
 When :class:`HumanEscalationResolver` awaits a decision, it registers
 an ``asyncio.Future`` under the escalation ID.  The decision REST

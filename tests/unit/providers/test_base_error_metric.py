@@ -202,7 +202,7 @@ def test_provider_label_defaults_to_class_name() -> None:
     assert p._provider_label() == "_Unbranded"
 
 
-# -- classify_provider_error mapping coverage (#1538) -----------------------
+# -- classify_provider_error mapping coverage -------------------------------
 #
 # Covers every ProviderError subclass in ``_ERROR_CLASS_MAP`` plus the
 # fallback paths for unmapped ``ProviderError`` subclasses and entirely

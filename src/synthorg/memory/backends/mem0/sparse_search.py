@@ -20,7 +20,7 @@ from synthorg.memory.errors import (
     MemoryRetrievalError,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_SYSTEM_ERROR,
     MEMORY_ENTRY_RETRIEVAL_FAILED,
@@ -439,7 +439,7 @@ async def async_try_sparse_upsert(  # noqa: PLR0913
             MEMORY_SPARSE_UPSERT_FAILED,
             agent_id=agent_id,
             memory_id=memory_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
         )
 
@@ -502,7 +502,7 @@ async def async_retrieve_sparse(
         logger.warning(
             MEMORY_ENTRY_RETRIEVAL_FAILED,
             agent_id=agent_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
             source="sparse",
         )

@@ -135,25 +135,25 @@ class MCPClient:
                 raise
             except Exception as exc:
                 await stack.aclose()
-                # WARNING (not ERROR/EXCEPTION) per CLAUDE.md SEC-1:
-                # the policy prescribes ``logger.warning`` on
-                # credential-bearing paths so ``exc_info`` cannot
-                # re-bind ``str(exc)`` and bypass the
-                # ``safe_error_description`` scrub. The raise below
-                # propagates the failure for ops alerting on
-                # ``MCPConnectionError`` rather than relying on log
-                # severity to gate ops triage.
+                # WARNING (not ERROR/EXCEPTION) per CLAUDE.md
+                # ``## Logging``: the policy prescribes
+                # ``logger.warning`` on credential-bearing paths so
+                # ``exc_info`` cannot re-bind ``str(exc)`` and
+                # bypass the ``safe_error_description`` scrub. The
+                # raise below propagates the failure for ops
+                # alerting on ``MCPConnectionError`` rather than
+                # relying on log severity to gate ops triage.
                 logger.warning(
                     MCP_CLIENT_CONNECTION_FAILED,
                     server=self._config.name,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                # SEC-1: never embed raw ``str(exc)`` in error
-                # messages -- the same scrubbing applied to log
-                # output via ``safe_error_description`` must apply
-                # to the message text that propagates back to API
-                # surfaces. Raw exception args can leak credentials
+                # Never embed raw ``str(exc)`` in error messages --
+                # the same scrubbing applied to log output via
+                # ``safe_error_description`` must apply to the
+                # message text that propagates back to API surfaces.
+                # Raw exception args can leak credentials
                 # for OAuth-token / Bearer-header / connection-string
                 # paths.
                 msg = (

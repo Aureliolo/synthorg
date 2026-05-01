@@ -1,5 +1,5 @@
 /**
- * Escalation queue store (#1418).
+ * Escalation queue store.
  *
  * Mutations follow the canonical store error contract from
  * ``web/CLAUDE.md`` Zustand store error handling: log + error toast +

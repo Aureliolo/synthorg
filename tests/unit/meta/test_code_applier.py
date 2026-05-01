@@ -196,6 +196,15 @@ class TestCodeApplier:
         self,
         tmp_path: Path,
     ) -> None:
+        """``create_branch`` failure is a no-cleanup path.
+
+        The outer exception handler must NOT call ``delete_branch``
+        unconditionally: that would clobber a stale remote branch
+        from a previous run when ``create_branch()`` itself raised.
+        ``_apply_pipeline`` owns orphan-branch cleanup along the
+        push / draft-PR paths where ``create_branch()`` is known to
+        have run.
+        """
         ci = _mock_ci_validator(_ci_pass())
         gh = _mock_github_client()
         gh.create_branch = AsyncMock(
@@ -218,13 +227,24 @@ class TestCodeApplier:
 
         assert not result.success
         assert "Code apply failed" in (result.error_message or "")
-        # Cleanup was attempted.
-        gh.delete_branch.assert_awaited_once()
+        # ``create_branch`` raised -- no remote branch was created,
+        # so ``delete_branch`` MUST NOT fire (would clobber a stale
+        # branch from a previous run).
+        gh.delete_branch.assert_not_awaited()
 
     async def test_apply_pr_creation_failure(
         self,
         tmp_path: Path,
     ) -> None:
+        """``create_draft_pr`` failure cleans up the orphan branch.
+
+        The only path that proves ``delete_branch`` fires when the
+        branch IS owned by this invocation is the one where
+        ``create_branch`` already succeeded but a downstream call
+        (here ``create_draft_pr``) raises. Pinning that with an
+        explicit ``assert_awaited_once`` keeps the orphan-branch
+        cleanup contract from regressing.
+        """
         ci = _mock_ci_validator(_ci_pass())
         gh = _mock_github_client()
         gh.create_draft_pr = AsyncMock(
@@ -247,6 +267,9 @@ class TestCodeApplier:
 
         assert not result.success
         assert "Code apply failed" in (result.error_message or "")
+        # ``create_branch`` succeeded (branch_created=True) so the
+        # cleanup branch IS expected to fire on this orphan path.
+        gh.delete_branch.assert_awaited_once()
 
     async def test_dry_run_create_valid(self, tmp_path: Path) -> None:
         applier = CodeApplier(

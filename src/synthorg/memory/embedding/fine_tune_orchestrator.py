@@ -336,14 +336,14 @@ class FineTuneOrchestrator:
                 # ``get_status`` and the WS event don't return a FAILED
                 # run with stale progress or missing terminal timestamps.
                 now = datetime.now(UTC)
-                # The MemoryError/RecursionError carve-out above means
-                # persist_exc is guaranteed non-catastrophic at this
-                # point, so we deliberately omit ``exc_info=True``: the
-                # SEC-1 sanitised structured fields are the only thing
-                # that should land in the log record on this path.
-                # ``noqa: TRY400`` because SEC-1 forbids
-                # ``logger.exception`` (auto-attached traceback can
-                # carry credential-bearing frame locals).
+                # The MemoryError/RecursionError carve-out above
+                # means persist_exc is guaranteed non-catastrophic
+                # at this point, so we deliberately omit
+                # ``exc_info=True``: the sanitised structured fields
+                # are the only thing that should land in the log
+                # record on this path. ``noqa: TRY400`` because
+                # ``logger.exception`` would auto-attach a traceback
+                # whose frame-locals can carry credentials.
                 logger.error(  # noqa: TRY400
                     MEMORY_FINE_TUNE_FAILED,
                     run_id=run.id,
@@ -671,7 +671,8 @@ class FineTuneOrchestrator:
         if exc is not None:
             logger.error(
                 MEMORY_FINE_TUNE_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="unhandled exception in pipeline task",
             )
 

@@ -54,7 +54,7 @@ class Notification(BaseModel):
 
     Frozen Pydantic model delivered via registered sinks. The
     ``category`` and ``severity`` fields form the shared event
-    taxonomy with the frontend notification system (#1078).
+    taxonomy with the frontend notification system.
 
     Attributes:
         id: Unique notification identifier.

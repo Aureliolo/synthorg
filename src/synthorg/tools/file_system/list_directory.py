@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_FS_ERROR,
     TOOL_FS_GLOB_REJECTED,
@@ -63,7 +63,8 @@ def _classify_entry(
         logger.warning(
             TOOL_FS_STAT_FAILED,
             path=str(entry),
-            error=str(stat_exc),
+            error_type=type(stat_exc).__name__,
+            error=safe_error_description(stat_exc),
         )
         return f"[FILE] {display} (unknown bytes)"
     return f"[FILE] {display} ({size} bytes)"
@@ -110,7 +111,8 @@ def _list_sync(
             logger.warning(
                 TOOL_FS_ERROR,
                 path=str(entry),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             lines.append(f"[ERROR] {entry.name} ({exc})")
 
@@ -295,7 +297,12 @@ class ListDirectoryTool(BaseFileSystemTool):
                 is_error=True,
             )
         except OSError as exc:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error=str(exc))
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=f"OS error listing directory: {user_path}",
                 is_error=True,

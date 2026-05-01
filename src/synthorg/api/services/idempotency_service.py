@@ -13,10 +13,12 @@ import asyncio
 import hashlib
 import json
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -46,6 +48,76 @@ _IN_FLIGHT_POLL_TIMEOUT_SECONDS: float = 30.0
 _IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS: float = 0.05
 _IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS: float = 1.0
 
+#: Maximum number of full claim retries triggered by a leader-failed
+#: outcome.  In practice the second attempt either lands FRESH (the
+#: row's lease was rotated by ``claim()``) or sees a new IN_FLIGHT
+#: leader and falls back to the polling/timeout path -- so capping at
+#: two protects against pathological churn while preserving the
+#: single retry that the redelivery contract calls for.
+_MAX_LEADER_FAILED_RETRIES: int = 1
+
+
+class _PollOutcome(StrEnum):
+    """Discriminator for ``_wait_for_in_flight`` results.
+
+    ``COMPLETED`` -- a previous in-flight winner finished successfully
+    and the cached response body is in ``body``.
+
+    ``LEADER_FAILED`` -- the previous in-flight winner errored out and
+    flipped the row to FAILED.  ``run_idempotent`` re-claims so the
+    next caller can retry the work, rather than 409'ing the retry
+    away.
+
+    ``TIMED_OUT`` -- polling exhausted its budget without seeing the
+    leader resolve.  Caller surfaces this as 409 Conflict to keep the
+    semantics of "still in flight, try again later".
+    """
+
+    COMPLETED = "completed"
+    LEADER_FAILED = "leader_failed"
+    TIMED_OUT = "timed_out"
+
+
+#: Internal sentinel value returned by ``_run_idempotent_once`` to tell
+#: the outer ``run_idempotent`` retry loop "the in-flight leader
+#: failed; re-claim".  Distinct from ``None`` so a callback that
+#: legitimately returns ``None`` cannot be confused with the
+#: leader-failed signal.
+_LeaderFailedSentinel: object = object()
+
+
+@dataclass(frozen=True, slots=True)
+class IdempotencyResult:
+    """Disambiguated outcome of :meth:`IdempotencyService.run_idempotent`.
+
+    A bare ``(result, fresh)`` tuple cannot tell three states apart --
+    a callback that legitimately returned ``None``, a polling timeout
+    on an in-flight claim, and a leader-failed-and-retry-exhausted --
+    all of which would otherwise surface as ``cached is None`` at call
+    sites and translate to 409 Conflict regardless of whether the
+    cached body was a real ``null``. A discriminated wrapper forces
+    callers to handle each case explicitly.
+
+    Attributes:
+        result: The callback's (or cached) return value. May be
+            ``None`` for callbacks that legitimately return ``None``.
+            Treat as authoritative ONLY when ``timed_out`` is
+            ``False``; when ``timed_out`` is ``True`` the field is
+            always ``None`` and the caller must surface 409 / retry.
+        fresh: ``True`` when this call executed the callback;
+            ``False`` when it returned a cached prior result OR when
+            it timed out.
+        timed_out: ``True`` when the in-flight poll expired without
+            seeing the leader resolve, OR when leader-failed retries
+            were exhausted. The caller surfaces this as a 409
+            Conflict; the row in the repository may eventually
+            cleanup to FAILED via ``cleanup_expired``.
+    """
+
+    result: Any | None
+    fresh: bool
+    timed_out: bool
+
 
 class IdempotencyService:
     """Lifecycle wrapper around :class:`IdempotencyRepository`."""
@@ -56,6 +128,25 @@ class IdempotencyService:
         *,
         ttl_seconds: int = DEFAULT_IDEMPOTENCY_TTL_SECONDS,
     ) -> None:
+        # Invariant: the configured TTL must outlive a polling cycle.
+        # The leader-failed takeover path in ``_wait_for_in_flight``
+        # treats a missing claim row as ``LEADER_FAILED`` (the leader
+        # has gone, so re-claim is safe). That is only sound if a
+        # legitimately in-flight claim cannot have its row deleted /
+        # expired during the poll window: otherwise a still-running
+        # leader could be observed as missing and a follower would
+        # re-execute the callback concurrently. Enforcing
+        # ``ttl_seconds > _IN_FLIGHT_POLL_TIMEOUT_SECONDS`` at
+        # construction makes the invariant load-bearing instead of
+        # a runtime-time-of-check race.
+        if ttl_seconds <= _IN_FLIGHT_POLL_TIMEOUT_SECONDS:
+            msg = (
+                f"ttl_seconds={ttl_seconds} must exceed "
+                f"_IN_FLIGHT_POLL_TIMEOUT_SECONDS="
+                f"{_IN_FLIGHT_POLL_TIMEOUT_SECONDS} so a still-running "
+                "leader cannot be observed as a missing row mid-poll."
+            )
+            raise ValueError(msg)
         self._repo = repository
         self._ttl_seconds = ttl_seconds
 
@@ -65,19 +156,64 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
         callback: Callable[[], Awaitable[Any]],
-    ) -> tuple[Any, bool]:
+    ) -> IdempotencyResult:
         """Run *callback* exactly once for ``(scope, key)``.
 
-        Returns ``(result, fresh)``. ``fresh=True`` means the
-        callback executed in this call; ``fresh=False`` means the
-        cached prior result was returned.
+        Returns an :class:`IdempotencyResult` discriminated wrapper
+        so callers can distinguish a legitimate ``None`` callback
+        return from an in-flight timeout. Inspect ``timed_out``
+        first; only trust ``result`` when ``timed_out`` is ``False``.
 
         On ``IN_FLIGHT``: poll with exponential backoff up to
-        :data:`_IN_FLIGHT_POLL_TIMEOUT_SECONDS`, then give up. Caller
-        chooses whether to surface 409 or wait further.
+        :data:`_IN_FLIGHT_POLL_TIMEOUT_SECONDS`, then give up. The
+        wrapper surfaces ``timed_out=True`` so the caller can 409.
 
         On callback exception: mark the key as FAILED so the next
         retry can re-claim, and re-raise the original exception.
+
+        Leader-failed handling: if the in-flight leader fails while
+        we are polling, ``_wait_for_in_flight`` returns
+        ``LEADER_FAILED`` and we re-loop into ``claim()`` so this
+        caller can take over the work rather than receiving a 409
+        for an attempt that never actually published. Capped at
+        :data:`_MAX_LEADER_FAILED_RETRIES` to bound the worst-case
+        churn under sustained leader failures.
+        """
+        retries_after_leader_failure = 0
+        while True:
+            outcome_value, fresh, timed_out = await self._run_idempotent_once(
+                scope=scope,
+                key=key,
+                callback=callback,
+            )
+            if outcome_value is not _LeaderFailedSentinel:
+                return IdempotencyResult(
+                    result=outcome_value,
+                    fresh=fresh,
+                    timed_out=timed_out,
+                )
+            if retries_after_leader_failure >= _MAX_LEADER_FAILED_RETRIES:
+                # Repeated leader failures look like a sustained
+                # downstream outage; surface ``timed_out=True`` so
+                # the caller can back off / 409 rather than spinning.
+                return IdempotencyResult(result=None, fresh=False, timed_out=True)
+            retries_after_leader_failure += 1
+
+    async def _run_idempotent_once(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        callback: Callable[[], Awaitable[Any]],
+    ) -> tuple[Any, bool, bool]:
+        """Single attempt of the claim/run cycle.
+
+        Returns ``(result, fresh, timed_out)``. The first element is
+        :data:`_LeaderFailedSentinel` to tell the caller to re-claim
+        because the prior in-flight leader flipped the row to
+        ``FAILED``; any other value is the canonical callback result.
+        ``timed_out`` is ``True`` when the in-flight poll exhausted
+        its budget without observing a final state.
         """
         now = datetime.now(UTC)
         claim = await self._repo.claim(
@@ -96,7 +232,7 @@ class IdempotencyService:
             cached = (
                 json.loads(claim.cached_response) if claim.cached_response else None
             )
-            return cached, False
+            return cached, False, False
 
         if claim.outcome is IdempotencyOutcome.IN_FLIGHT:
             logger.info(
@@ -104,12 +240,19 @@ class IdempotencyService:
                 scope=scope,
                 key=key,
             )
-            cached = await self._wait_for_in_flight(scope=scope, key=key)
-            if cached is not None:
-                return cached, False
-            # Polling timed out -- caller will receive None and is
-            # expected to translate to 409 Conflict at the API layer.
-            return None, False
+            poll_outcome, body = await self._wait_for_in_flight(
+                scope=scope,
+                key=key,
+            )
+            if poll_outcome is _PollOutcome.COMPLETED:
+                return body, False, False
+            if poll_outcome is _PollOutcome.LEADER_FAILED:
+                # Tell the caller to re-claim. The repo's claim() has
+                # already rotated the lease for the FAILED row so the
+                # next call lands FRESH.
+                return _LeaderFailedSentinel, False, False
+            # TIMED_OUT -- caller surfaces 409 Conflict.
+            return None, False, True
 
         # FRESH -- execute the callback under the claim. The
         # ``claim_token`` is the lease this worker owns; ``complete``
@@ -152,19 +295,27 @@ class IdempotencyService:
         # caller would receive ``dict[str, object]`` while a replay
         # caller would receive whatever JSON-decoding produces, leaving
         # callers with type-unstable behaviour they cannot reason about.
-        return json.loads(body), True
+        return json.loads(body), True, False
 
     async def _wait_for_in_flight(
         self,
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-    ) -> Any | None:
+    ) -> tuple[_PollOutcome, Any | None]:
         """Poll until the in-flight claim resolves or timeout.
 
         Uses ``time.monotonic`` rather than wall-clock arithmetic so a
         clock skew, NTP adjustment, or VM suspend/resume cannot extend
         or short-circuit the polling deadline.
+
+        Returns ``(_PollOutcome, body)`` so the caller can distinguish
+        a successful in-flight resolution (``COMPLETED`` + cached
+        body) from a leader failure (``LEADER_FAILED``, body always
+        ``None``) and from polling exhaustion (``TIMED_OUT``, body
+        always ``None``). Conflating leader-failure and timeout into
+        a single ``None`` would 409 every retry after a failed
+        leader, defeating redelivery semantics.
         """
         deadline = time.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
         backoff = _IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS
@@ -173,7 +324,10 @@ class IdempotencyService:
             backoff = min(backoff * 2, _IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS)
             record = await self._repo.get(scope=scope, key=key)
             if record is None:
-                return None
+                # The leader's row was deleted (cleanup / TTL expiry).
+                # Treat as leader-failed so the caller re-claims and
+                # takes over rather than 409'ing.
+                return _PollOutcome.LEADER_FAILED, None
             if record.status is IdempotencyOutcome.COMPLETED:
                 logger.info(
                     IDEMPOTENCY_CLAIM_COMPLETED,
@@ -181,17 +335,18 @@ class IdempotencyService:
                     key=key,
                     note="resolved_after_in_flight_poll",
                 )
-                if record.response_body:
-                    return json.loads(record.response_body)
-                return None
+                body = (
+                    json.loads(record.response_body) if record.response_body else None
+                )
+                return _PollOutcome.COMPLETED, body
             if record.status is IdempotencyOutcome.FAILED:
                 logger.warning(
                     IDEMPOTENCY_CLAIM_FAILED_REPLAY,
                     scope=scope,
                     key=key,
                 )
-                return None
-        return None
+                return _PollOutcome.LEADER_FAILED, None
+        return _PollOutcome.TIMED_OUT, None
 
     async def _record_completion(
         self,
@@ -272,6 +427,7 @@ class IdempotencyService:
                 key=key,
                 note="fail_marker_persistence_error",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def cleanup_expired(self) -> int:

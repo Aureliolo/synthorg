@@ -112,7 +112,7 @@ class AuthenticatedUser(BaseModel):
             Long-lived connections (WS, SSE) consult
             ``session_store.is_revoked(session_id)`` periodically so an
             admin revocation kicks the connection out instead of
-            waiting for the access token to expire (#1599).
+            waiting for the access token to expire.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

@@ -17,7 +17,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_CUSTOM_RULE_LIST_FAILED
 
 
@@ -116,7 +116,8 @@ class MetaController(Controller):
         except (QueryError, NotImplementedError) as exc:
             logger.warning(
                 META_CUSTOM_RULE_LIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         else:
             rule_list.extend({**rule_to_dict(cr), "type": "custom"} for cr in custom)

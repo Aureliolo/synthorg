@@ -51,7 +51,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATED,
@@ -282,7 +282,7 @@ class HumanEscalationResolver:
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="notification_dispatch_failed",
             )
 
@@ -309,7 +309,7 @@ class HumanEscalationResolver:
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="registry_cancel_failed",
             )
         try:
@@ -352,7 +352,7 @@ class HumanEscalationResolver:
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="registry_cancel_failed",
             )
         try:
@@ -370,7 +370,7 @@ class HumanEscalationResolver:
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="store_cancel_failed",
             )
         logger.warning(
@@ -406,7 +406,7 @@ class HumanEscalationResolver:
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="late_decision_lookup_failed",
             )
             return None
@@ -426,7 +426,7 @@ class HumanEscalationResolver:
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="late_decision_registry_cancel_failed",
             )
         decided_by = row.decided_by or "human"
@@ -462,7 +462,7 @@ class HumanEscalationResolver:
                 CONFLICT_ESCALATION_RESOLVED,
                 escalation_id=escalation_id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="store_lookup_failed",
             )
             return "human"

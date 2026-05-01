@@ -472,9 +472,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
         raise RuntimeError(msg)
 
-    # Human escalation approval queue (#1418).  Builds the pluggable
-    # store + processor + Future registry and attaches them to
-    # ``AppState`` so the escalations controller and the
+    # Human escalation approval queue. Builds the pluggable store +
+    # processor + Future registry and attaches them to ``AppState``
+    # so the escalations controller and the
     # ``HumanEscalationResolver`` share a single instance.
     escalation_config = effective_config.communication.conflict_resolution.escalation
     _escalation_store = build_escalation_queue_store(
@@ -516,10 +516,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             interval_seconds=escalation_config.sweeper_interval_seconds,
         ),
     )
-    # Cross-instance wake-up subscriber (#1418).  No-op unless the
-    # queue backend is Postgres and ``cross_instance_notify`` is
-    # enabled; otherwise the sweeper and per-resolver timeout cover
-    # eventual consistency on their own.
+    # Cross-instance wake-up subscriber. No-op unless the queue
+    # backend is Postgres and ``cross_instance_notify`` is enabled;
+    # otherwise the sweeper and per-resolver timeout cover eventual
+    # consistency on their own.
     app_state.set_escalation_notify_subscriber(
         build_escalation_notify_subscriber(
             escalation_config,

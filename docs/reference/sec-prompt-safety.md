@@ -25,6 +25,7 @@ Task title / description, acceptance criteria, artifact payloads, tool results, 
 - `TAG_CONFIG_VALUE`
 - `TAG_CRITERIA_JSON`
 - `TAG_PEER_CONTRIBUTION`
+- `TAG_MEMORY_ENTRY`
 
 ### Fence breakout protection
 
@@ -49,6 +50,10 @@ This list is non-exhaustive; treat it as a navigational starting point for new S
 - `_BaseSemanticDetector._prompt` (four subclasses in `engine/classification/semantic_detectors.py`)
 - `LLMGenerator._build_prompt` (`client/generators/llm.py`)
 - `AgentIntake._build_prompt` (`engine/intake/strategies/agent_intake.py`)
+- `LLMConsolidationStrategy._build_user_prompt` and `._build_system_prompt` (`memory/consolidation/llm_strategy.py`): wraps each entry under `TAG_MEMORY_ENTRY`; trajectory-context entries reuse the same tag.
+- `LlmCalibrationSampler._build_prompt` (`hr/performance/llm_calibration_sampler.py`): wraps the free-form `interaction_summary` under `TAG_TASK_DATA`; bounded numeric metrics are emitted as plain text.
+- `SuccessMemoryProposer._build_user_message` and module `_SYSTEM_PROMPT` (`memory/procedural/success_proposer.py`): execution context is fenced under `TAG_TASK_DATA`.
+- `SafetyClassifier._build_messages` (`security/safety_classifier.py`): the action `description` (only attacker-controllable field) is fenced under `TAG_TASK_DATA`; bounded label fields (tool name, action type, risk level) stay `html.escape`d. The system prompt is computed lazily via `_system_prompt()` to avoid a circular import through `synthorg.engine.__init__`.
 - Meeting protocol prompt builders (peer-contribution wrapping):
     - `build_agenda_prompt` (`communication/meeting/_prompts.py`): wraps agenda title / context / items in `TAG_TASK_DATA`
     - `RoundRobinProtocol.run` and `RoundRobinProtocol._run_discussion_rounds` (`communication/meeting/round_robin.py`): both transcript-build paths wrap each turn's content via the shared `_format_transcript_entry` helper using `TAG_PEER_CONTRIBUTION`
@@ -75,16 +80,18 @@ Never call `lxml.html.fromstring` directly on attacker-controlled input. Use `HT
 
 ## Secret-log redaction
 
-NEVER use this pattern, anywhere in the codebase:
+NEVER use these patterns, anywhere in the codebase:
 
 ```python
 logger.exception(EVENT, error=str(exc))
+logger.warning(EVENT,   error=str(exc))
+logger.error(EVENT,     error=str(exc))
 ```
 
 The rule is unconditional. The risk is most acute on credential-bearing paths (OAuth flows, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), but the pattern is forbidden globally because:
 
 - `logger.exception` attaches a traceback whose serialized frame-locals can leak `client_secret` / `refresh_token` / Fernet ciphertext sitting on the stack at any call site.
-- `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / similar embeds URL or posted credential bodies into the message field.
+- `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / similar embeds URL or posted credential bodies into the message field. This last risk applies equally to `logger.warning` and `logger.error` (no traceback attached, but the embedded URL / form body still leaks); #1682 extended the gate to cover all three methods.
 
 A site that "doesn't handle credentials today" can be one refactor away from carrying a request body or connection string into its frame.
 
@@ -109,4 +116,4 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
 
 ### Pre-commit gate
 
-`scripts/check_logger_exception_str_exc.py` blocks every `logger.exception(..., error=str(exc))` site unconditionally (no allowlist, no baseline). The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions, so any new occurrence -- regardless of receiver shape -- is rejected.
+`scripts/check_logger_exception_str_exc.py` blocks every `logger.<method>(..., error=str(exc))` site unconditionally (no allowlist, no baseline) where `<method>` is one of `exception`, `warning`, or `error` (#1682 extended the gate from exception-only). The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions, so any new occurrence -- regardless of receiver shape -- is rejected. The script's filename is preserved (rather than renamed) so the pre-commit hook ID and historical CI references stay stable.

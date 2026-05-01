@@ -6,7 +6,7 @@ Delegates to strategy implementations.
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_DECISION_MADE,
     ROUTING_ROUTER_BUILT,
@@ -125,7 +125,7 @@ class ModelRouter:
                 ROUTING_SELECTION_FAILED,
                 strategy=self._strategy.name,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 agent_level=(
                     request.agent_level.value
                     if request.agent_level is not None

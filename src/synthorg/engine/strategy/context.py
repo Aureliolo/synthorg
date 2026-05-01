@@ -8,7 +8,7 @@ how lenses and principles are applied to agent recommendations.
 from typing import Protocol, runtime_checkable
 
 from synthorg.engine.strategy.models import StrategicContext, StrategyConfig
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import (
     STRATEGY_CONTEXT_BUILT,
     STRATEGY_CONTEXT_PROVIDER_FAILED,
@@ -111,7 +111,7 @@ class CompositeContextProvider:
                     provider_index=i,
                     provider_name=provider_name,
                     error_type=type(exc).__name__,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
                 last_exc = exc
                 continue

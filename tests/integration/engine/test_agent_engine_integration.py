@@ -211,8 +211,8 @@ class TestAgentEngineToolCallIntegration:
         assert result.duration_seconds > 0
 
         # Verify the tool was actually called (result in conversation).
-        # SEC-1: tool result content is wrapped in a ``<tool-result>``
-        # fence before entering the conversation so the model cannot
+        # Tool result content is wrapped in a ``<tool-result>`` fence
+        # before entering the conversation so the model cannot
         # mistake tool output for instructions.
         conversation = result.execution_result.context.conversation
         tool_results = [m for m in conversation if m.tool_result is not None]

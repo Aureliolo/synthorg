@@ -131,10 +131,16 @@ class CodeApplier:
         except MemoryError, RecursionError:
             raise
         except Exception as outer_exc:
-            logger.exception(
+            # Drop ``logger.exception`` here -- the outer handler
+            # runs after the ``_write_changes`` / GitHub-client
+            # paths, and the traceback carries full proposal payload
+            # + branch / commit metadata in frame-locals.
+            logger.error(  # noqa: TRY400
                 META_APPLY_FAILED,
                 altitude="code_modification",
                 proposal_id=str(proposal.id),
+                error_type=type(outer_exc).__name__,
+                error=safe_error_description(outer_exc),
             )
             # Revert ONLY the changes that were actually written. If
             # the failure surfaced from ``_write_changes`` it carries
@@ -162,16 +168,17 @@ class CodeApplier:
                     error_type=type(revert_exc).__name__,
                     error=safe_error_description(revert_exc),
                 )
-            try:
-                await self._github.delete_branch(branch)
-            except Exception:
-                logger.exception(
-                    META_APPLY_FAILED,
-                    altitude="code_modification",
-                    proposal_id=str(proposal.id),
-                    reason="cleanup_failed",
-                    branch=branch,
-                )
+            # Do NOT call ``self._github.delete_branch(branch)`` here.
+            # This outer handler also runs when the failure happens
+            # BEFORE ``create_branch()`` (e.g. lint / type-check /
+            # test failures during ``_apply_pipeline``), in which
+            # case ``branch`` only refers to a planned name -- the
+            # actual remote branch may belong to a previous run or
+            # an unrelated proposal that happens to hash-collide on
+            # the 8-char prefix. ``_apply_pipeline`` already owns
+            # orphan-branch cleanup along the push / draft-PR paths
+            # where ``create_branch()`` IS known to have run, so we
+            # leave that responsibility solely to the inner block.
             return ApplyResult(
                 success=False,
                 error_message="Code apply failed. Check logs for details.",
@@ -248,8 +255,18 @@ class CodeApplier:
             )
 
         # -- Remote push via GitHub API -----------------------------------
-        await self._github.create_branch(branch)
+        # ``create_branch`` lives INSIDE the cleanup-owned ``try`` so a
+        # client-level failure that nevertheless committed the ref
+        # remotely (POST returned with the new ref but the await
+        # raised) does not leak an orphan branch; the cleanup branch
+        # below still deletes it. ``branch_created`` tracks ownership
+        # so we never call ``delete_branch`` for a branch this run
+        # didn't actually create -- protects against retries hitting
+        # an existing branch from a prior aborted invocation.
+        branch_created = False
         try:
+            await self._github.create_branch(branch)
+            branch_created = True
             await self._push_changes_via_api(
                 branch,
                 proposal,
@@ -262,17 +279,25 @@ class CodeApplier:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            # Partial push left an orphaned branch -- clean up.
-            try:
-                await self._github.delete_branch(branch)
-            except Exception:
-                logger.exception(
-                    META_APPLY_FAILED,
-                    altitude="code_modification",
-                    proposal_id=str(proposal.id),
-                    reason="branch_cleanup_after_push_failed",
-                    branch=branch,
-                )
+            # Partial push left an orphaned branch -- clean up only
+            # when we know this invocation created it.
+            if branch_created:
+                try:
+                    await self._github.delete_branch(branch)
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as cleanup_exc:
+                    # Same scrub as the other GitHub-client-error
+                    # path above.
+                    logger.warning(
+                        META_APPLY_FAILED,
+                        altitude="code_modification",
+                        proposal_id=str(proposal.id),
+                        reason="branch_cleanup_after_push_failed",
+                        branch=branch,
+                        error_type=type(cleanup_exc).__name__,
+                        error=safe_error_description(cleanup_exc),
+                    )
             raise
 
         count = len(proposal.code_changes)
@@ -425,14 +450,27 @@ class CodeApplier:
             except MemoryError, RecursionError:
                 raise
             except (OSError, RuntimeError) as exc:
+                # Without this, the ``msg`` and chained-exception
+                # paths leak raw ``str(exc)`` into the
+                # PartialWriteError that the caller logs via
+                # ``logger.exception``, bypassing the secret-log
+                # gate once the wrapper re-raises. Sanitize once via
+                # ``safe_error_description`` and break the chain with
+                # ``from None`` so the original exception cannot
+                # resurface.
+                scrubbed = safe_error_description(exc)
                 logger.warning(
                     META_APPLY_FAILED,
                     reason="file_write_failed",
                     operation=change.operation.value,
                     file_path=change.file_path,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=scrubbed,
                 )
-                msg = f"{change.operation.value} failed for '{change.file_path}': {exc}"
+                msg = (
+                    f"{change.operation.value} failed for "
+                    f"'{change.file_path}': {scrubbed}"
+                )
                 # Wrap the underlying error so the caller can revert
                 # ONLY the changes that were successfully written
                 # before the failure -- avoids defensive-revert
@@ -440,7 +478,7 @@ class CodeApplier:
                 raise PartialWriteError(
                     msg,
                     applied=tuple(applied),
-                ) from exc
+                ) from None
             applied.append(change)
             changed.append(change.file_path)
             logger.debug(

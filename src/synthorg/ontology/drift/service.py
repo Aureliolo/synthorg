@@ -1,5 +1,6 @@
 """Drift detection background service."""
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger, safe_error_description
@@ -77,10 +78,9 @@ class DriftDetectionService:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            # ``exc_info=True`` would attach the full traceback to the
-            # log record and bypass ``safe_error_description``; that
-            # reintroduces secret / PII leakage on this error path.
-            # SEC-1.
+            # ``exc_info=True`` would attach the full traceback to
+            # the log record and bypass ``safe_error_description``,
+            # reintroducing secret / PII leakage on this error path.
             logger.error(  # noqa: TRY400
                 ONTOLOGY_DRIFT_DETECT_FAILED,
                 entity_name=entity_name,
@@ -142,8 +142,6 @@ class DriftDetectionService:
             the result; fatal builtins propagate via the surrounding
             TaskGroup teardown.
         """
-        import asyncio  # noqa: PLC0415
-
         entities = await self._ontology.list_entities()
         # Preallocate to keep ``index``-aligned writes deterministic;
         # without this the append order matches task completion order
@@ -154,15 +152,17 @@ class DriftDetectionService:
         async def _check_one(index: int, entity_name: NotBlankStr) -> None:
             """Run one entity's drift check; capture non-fatal failures.
 
-            Wrapping each ``check_entity`` invocation in this helper lets
-            us re-raise fatal builtins (``MemoryError`` / ``RecursionError``)
-            and ``BaseException`` non-``Exception`` (cancellation /
-            shutdown signals) immediately so the surrounding ``TaskGroup``
-            tears down the scan instead of buffering until every other
-            entity completes -- the failure mode that ``asyncio.gather(
-            return_exceptions=True)`` could not avoid.  Ordinary
-            ``Exception`` is logged per-entity and dropped so a single
-            bad entity does not cancel the whole scan.
+            Wrapping each ``check_entity`` invocation in this helper
+            lets us re-raise fatal builtins (``MemoryError`` /
+            ``RecursionError``) and ``BaseException`` non-
+            ``Exception`` (cancellation / shutdown signals)
+            immediately so the surrounding ``TaskGroup`` tears down
+            the scan instead of buffering until every other entity
+            completes -- the failure mode that
+            ``asyncio.gather(return_exceptions=True)`` could not
+            avoid. Ordinary ``Exception`` is logged per-entity and
+            dropped so a single bad entity does not cancel the whole
+            scan.
             """
             try:
                 report = await self.check_entity(entity_name, agent_ids)

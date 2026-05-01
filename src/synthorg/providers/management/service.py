@@ -326,23 +326,28 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 provider=name,
                 model=model_id,
                 success=False,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+            # The response error is consumed by the /providers/test
+            # endpoint and surfaced to the dashboard; scrub it so
+            # the API key embedded in HTTPStatusError messages does
+            # not round-trip back over HTTP.
             return TestConnectionResponse(
                 success=False,
-                error=str(exc),
+                error=safe_error_description(exc),
                 model_tested=model_id,
             )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 PROVIDER_CONNECTION_TESTED,
                 provider=name,
                 model=model_id,
                 success=False,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return TestConnectionResponse(
                 success=False,
@@ -650,13 +655,13 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             )
         except Exception as exc:
             msg = f"Failed to persist provider configuration: {type(exc).__name__}"
-            # SEC-1: ``error=str(exc)`` would leak credential material
-            # via exception text, so we redact via
-            # ``safe_error_description``.  ``exc_info=True`` would
+            # ``error=str(exc)`` would leak credential material via
+            # exception text, so we redact via
+            # ``safe_error_description``. ``exc_info=True`` would
             # re-introduce the leak path -- tracebacks attach the
             # exception args (which can include credentials when the
             # raise originated in a credential-bearing call) -- so we
-            # deliberately omit it.  The redacted error text plus
+            # deliberately omit it. The redacted error text plus
             # ``error_type`` is enough to triage; the full trace lives
             # only in the in-process exception object that
             # ``ProviderValidationError`` wraps via ``from exc``.
@@ -775,7 +780,8 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 PROVIDER_DISCOVERY_FAILED,
                 provider=name,
                 reason="post_delete_refresh_failed",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         await self._audit(
             provider_name=name,

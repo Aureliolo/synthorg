@@ -28,7 +28,7 @@ from synthorg.engine.workspace.semantic_llm_prompt import (
     build_system_message,
     parse_tool_call_response,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -236,14 +236,19 @@ class LlmSemanticAnalyzer:
                 )
         except asyncio.CancelledError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
+            # Drop exc_info + scrub the message -- provider
+            # HTTPStatusError can carry the API key in str(exc), and
+            # the traceback would re-emit it from frame-locals.
             logger.warning(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 workspace_id=workspace.workspace_id,
                 analyzer="llm",
                 reason="provider_error",
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ()
 
@@ -294,7 +299,8 @@ class LlmSemanticAnalyzer:
             workspace_id=workspace.workspace_id,
             analyzer="llm",
             reason="parse_exhausted",
-            error=str(error),
+            error_type=type(error).__name__,
+            error=safe_error_description(error),
         )
         return ()
 

@@ -27,7 +27,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import (
     EVOLUTION_PROPOSER_ANALYZE,
     EVOLUTION_PROPOSER_INIT,
@@ -375,24 +375,38 @@ class SeparateAnalyzerProposer:
             raise
         except ProviderError as exc:
             if not exc.is_retryable:
+                # Non-retryable provider failures must surface to
+                # operators with context before propagating; otherwise
+                # a downstream catch-and-translate would hide the
+                # error path entirely.
+                logger.error(  # noqa: TRY400
+                    EVOLUTION_PROPOSER_PARSE_ERROR,
+                    agent_id=str(agent_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    reason="provider_error_non_retryable",
+                    is_retryable=False,
+                )
                 raise
+            # Drop exc_info + scrub the message -- provider
+            # HTTPStatusError can carry the API key.
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,
                 agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="provider_error_retryable",
                 is_retryable=True,
-                exc_info=True,
             )
             return ()
         except Exception as exc:
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,
                 agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="provider_error",
                 is_retryable=False,
-                exc_info=True,
             )
             return ()
 
@@ -470,9 +484,9 @@ class SeparateAnalyzerProposer:
                     EVOLUTION_PROPOSER_PARSE_ERROR,
                     agent_id=str(agent_id),
                     proposal_index=idx,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     reason="validation_failed",
-                    exc_info=True,
                 )
                 continue
 

@@ -1,4 +1,4 @@
-"""Tests for the OTLP log handler's export callback hook (#1384).
+"""Tests for the OTLP log handler's export callback hook.
 
 The handler's ``set_export_callback`` lets startup wiring bridge
 export outcomes into the Prometheus collector without the handler

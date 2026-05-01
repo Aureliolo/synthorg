@@ -1,12 +1,12 @@
 """Prompt-injection-safe delimiters for LLM call sites.
 
-SEC-1 / audit finding 92: LLM call sites interpolate attacker-
-controllable strings into prompts (task title/description,
-acceptance criteria, artifact payloads, tool results, tool
-arguments forwarded to a security evaluator, code diffs,
-strategic config fields). Without a tagged fence plus a system-
-prompt directive, the model cannot tell instructions from data,
-and the caller has a prompt-injection hole.
+LLM call sites interpolate attacker-controllable strings into
+prompts (task title/description, acceptance criteria, artifact
+payloads, tool results, tool arguments forwarded to a security
+evaluator, code diffs, strategic config fields). Without a tagged
+fence plus a system-prompt directive, the model cannot tell
+instructions from data, and the caller has a prompt-injection
+hole.
 
 This module ships two primitives:
 
@@ -69,6 +69,24 @@ free-form natural-language outputs of upstream meeting turns.  The
 agent that produced the content may itself have been prompt-injected
 by an attacker-controlled task field, so each peer turn is treated as
 untrusted input by every downstream meeting prompt.
+"""
+
+TAG_MEMORY_ENTRY: Final[str] = "memory-entry"
+"""Wrap a stored memory or trajectory snippet flowing into an LLM call.
+
+Memory consolidation, success-proposer post-mortems, and HR
+calibration sampling all interpolate previously-stored content
+(memory entries, trajectory excerpts, prior interaction summaries)
+that was itself produced by attacker-controllable agent runs. Wrapping
+each entry under this tag keeps the consolidator / proposer / sampler
+LLMs from following instructions that an upstream attacker may have
+embedded in a stored entry.
+
+Distinct from :data:`TAG_TASK_DATA` (the task envelope from API
+input) because the directive listing the tag should explicitly point
+at *stored* data, not the active request: operators triaging a memory
+mishap need to trace the leak back to the consolidation pipeline, not
+the task itself.
 """
 
 _TAG_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{0,31}$")

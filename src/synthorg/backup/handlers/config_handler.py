@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_COMPLETED,
     BACKUP_COMPONENT_FAILED,
@@ -72,11 +72,11 @@ class ConfigComponentHandler:
                 config_dir,
             )
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to back up config file: {exc}"
             raise ComponentBackupError(msg) from exc
@@ -131,11 +131,11 @@ class ConfigComponentHandler:
                 self._config_path,
             )
         except Exception as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to restore config file: {exc}"
             raise ComponentBackupError(msg) from exc

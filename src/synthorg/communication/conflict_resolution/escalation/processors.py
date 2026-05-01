@@ -1,4 +1,4 @@
-"""Decision processor strategies for the escalation queue (#1418)."""
+"""Decision processor strategies for the escalation queue."""
 
 from datetime import UTC, datetime
 from uuid import uuid4

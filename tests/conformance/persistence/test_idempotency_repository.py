@@ -1,4 +1,4 @@
-"""Conformance tests for ``IdempotencyRepository`` (#1599).
+"""Conformance tests for ``IdempotencyRepository``.
 
 Runs once against SQLite and once against a real Postgres container
 via the parametrised ``backend`` fixture so the two implementations

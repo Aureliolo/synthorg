@@ -8,7 +8,7 @@ iteratively improve retrieval quality.
 import builtins
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_REFORMULATION_FAILED,
     MEMORY_SUFFICIENCY_CHECK_FAILED,
@@ -154,8 +154,8 @@ class LLMQueryReformulator:
             logger.warning(
                 MEMORY_REFORMULATION_FAILED,
                 original_query=original_query,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         response = response.strip()
@@ -218,8 +218,8 @@ class LLMSufficiencyChecker:
             logger.warning(
                 MEMORY_SUFFICIENCY_CHECK_FAILED,
                 query=query,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             # Default to sufficient to prevent infinite loops.
             return True

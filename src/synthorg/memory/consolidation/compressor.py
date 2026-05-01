@@ -194,8 +194,8 @@ class LLMExperienceCompressor:
             raw_artifact_parts.extend(reasoning_trace)
         raw_len = sum(len(part) for part in raw_artifact_parts)
 
-        # SEC-1: every untrusted field is wrapped in its tag so the
-        # compressor model treats them as data.  ``prompt`` is the
+        # Every untrusted field is wrapped in its tag so the
+        # compressor model treats them as data. ``prompt`` is the
         # operator-supplied task content; ``output`` and
         # ``verification_feedback`` may carry adversarial peer/tool
         # output; ``reasoning_trace`` carries arbitrary intermediate

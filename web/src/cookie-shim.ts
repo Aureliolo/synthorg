@@ -14,7 +14,7 @@
  *   * The shim has zero runtime dependencies. Importing it from
  *     ``bench-setup.ts`` does NOT pull in MSW, Motion mocks, the
  *     toast store, or anything else that would defeat the
- *     "benchmark setup must stay minimal" rule (CodeRabbit, 2026-04-26).
+ *     "benchmark setup must stay minimal" rule.
  *
  * Public surface:
  *   * ``installCookieShim(seedCsrf?)`` -- replaces the prototype

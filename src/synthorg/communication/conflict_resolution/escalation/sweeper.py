@@ -1,4 +1,4 @@
-"""Background task that expires stale escalations (#1418).
+"""Background task that expires stale escalations.
 
 Runs in the event loop at ``sweeper_interval_seconds`` cadence, calling
 :meth:`EscalationQueueStore.mark_expired` so PENDING rows past their
@@ -71,13 +71,11 @@ class EscalationExpirationSweeper:
         # ``asyncio.Lock`` / ``asyncio.Event`` are loop-agnostic until
         # first ``acquire()`` / ``set()``, so constructing them at
         # app-wire time (no loop yet) is safe; they bind to whichever
-        # loop calls ``start()`` first. The previous "lazy create in
-        # start()" shape published the lock attribute *before* the
-        # ``async with`` body ran, which let a racing ``stop()``
+        # loop calls ``start()`` first. Lazy-creating them inside
+        # ``start()`` would publish the lock attribute *before* the
+        # ``async with`` body ran, letting a racing ``stop()``
         # observe a fresh lock instance and operate on different
-        # primitives than the in-flight ``start()`` -- the bug
-        # CodeRabbit flagged on round 3 (notify.py / sweeper.py
-        # outside-diff).
+        # primitives than the in-flight ``start()``.
         self._stop_event: asyncio.Event = asyncio.Event()
         self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
         # Per ``docs/reference/lifecycle-sync.md``: a ``stop()`` drain

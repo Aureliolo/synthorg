@@ -22,7 +22,7 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     DUAL_MODE_ABSTRACTIVE_FALLBACK,
     DUAL_MODE_ABSTRACTIVE_SUMMARY,
@@ -112,9 +112,9 @@ class AbstractiveSummarizer:
             Summary text.
         """
         try:
-            # SEC-1: ``content`` is the raw memory body, which may
-            # have absorbed adversarial peer/tool output upstream.
-            # Wrap it in a ``<untrusted-artifact>`` fence; the system
+            # ``content`` is the raw memory body, which may have
+            # absorbed adversarial peer/tool output upstream. Wrap
+            # it in a ``<untrusted-artifact>`` fence; the system
             # prompt carries the matching directive.
             messages = [
                 ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
@@ -151,7 +151,7 @@ class AbstractiveSummarizer:
                 logger.warning(
                     DUAL_MODE_ABSTRACTIVE_FALLBACK,
                     content_length=len(content),
-                    error=str(exc),
+                    error=safe_error_description(exc),
                     error_type=type(exc).__name__,
                     retryable=False,
                 )
@@ -159,7 +159,7 @@ class AbstractiveSummarizer:
             logger.warning(
                 DUAL_MODE_ABSTRACTIVE_FALLBACK,
                 content_length=len(content),
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             return _truncate_fallback(content)
@@ -167,7 +167,7 @@ class AbstractiveSummarizer:
             logger.warning(
                 DUAL_MODE_ABSTRACTIVE_FALLBACK,
                 content_length=len(content),
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             return _truncate_fallback(content)

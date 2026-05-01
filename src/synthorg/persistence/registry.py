@@ -94,10 +94,11 @@ class PersistenceBackendRegistry:
         try:
             backend = factory(config)
         except Exception as exc:
-            # Persistence factories take a ``PersistenceConfig`` whose
-            # ``PostgresConfig`` carries ``SecretStr`` credentials.  Use
-            # ``logger.warning`` + ``safe_error_description`` so frame-locals
-            # are not captured in logs (SEC-1).
+            # Persistence factories take a ``PersistenceConfig``
+            # whose ``PostgresConfig`` carries ``SecretStr``
+            # credentials. Use ``logger.warning`` +
+            # ``safe_error_description`` so frame-locals are not
+            # captured in logs.
             logger.warning(
                 REGISTRY_FACTORY_FAILED,
                 kind=self._KIND,

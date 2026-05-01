@@ -210,11 +210,12 @@ class TestFormatTaskInstruction:
     def test_basic_format(self, sample_task_with_criteria: Task) -> None:
         result = format_task_instruction(sample_task_with_criteria)
 
-        # SEC-1: user-controlled task fields must be wrapped in a
+        # User-controlled task fields must be wrapped in a
         # ``<task-data>`` fence; the ``# Task`` heading is trusted
-        # framing.  Assert ordering so a formatter regression that
-        # moves any user-controlled string outside the fence fails the
-        # test, rather than silently passing on substring presence.
+        # framing. Assert ordering so a formatter regression that
+        # moves any user-controlled string outside the fence fails
+        # the test, rather than silently passing on substring
+        # presence.
         assert "# Task" in result
         open_idx = result.index("<task-data>")
         close_idx = result.index("</task-data>")
@@ -259,7 +260,7 @@ class TestFormatTaskInstruction:
         result = format_task_instruction(task)
 
         assert "# Task" in result
-        # SEC-1: title/description must be fenced in <task-data> so a
+        # Title/description must be fenced in <task-data> so a
         # prompt-injection regression that moved content outside the
         # fence would fail here instead of silently degrading.
         open_idx = result.index("<task-data>")

@@ -26,7 +26,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.participant import (
     ParticipantResolver,  # noqa: TC001
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.meeting import (
     MEETING_EVENT_COOLDOWN_SKIPPED,
@@ -288,12 +288,15 @@ class MeetingScheduler:
                         # need to diagnose a periodic-task shutdown
                         # failure that may have leaked a resource
                         # (connection, lock, file handle).
+                        # ``exc_info=<exception>`` emits the same
+                        # traceback as ``exc_info=True`` and would
+                        # re-leak credential frame-locals that
+                        # ``safe_error_description`` already scrubbed.
                         logger.error(
                             MEETING_SCHEDULER_ERROR,
                             note="periodic task error during shutdown",
-                            error=str(result),
                             error_type=type(result).__name__,
-                            exc_info=result,
+                            error=safe_error_description(result),
                         )
             self._tasks = []
             self._running = False

@@ -1,4 +1,4 @@
-"""Postgres-backed idempotency-key repository (#1599).
+"""Postgres-backed idempotency-key repository.
 
 The atomic claim primitive is ``INSERT ... ON CONFLICT DO NOTHING
 RETURNING`` -- the unique-PK constraint serialises competing FRESH

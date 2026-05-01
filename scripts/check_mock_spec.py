@@ -42,6 +42,7 @@ Usage
 
 import argparse
 import ast
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -232,16 +233,59 @@ def _iter_test_files() -> Iterable[Path]:
         yield path
 
 
+_BASELINE_ENTRY_PATTERN = re.compile(r"^.+:\d+:\d+$")
+
+
 def _load_baseline() -> set[str]:
-    """Return the set of allowlisted ``path:lineno:colno`` entries."""
+    """Return the set of allowlisted ``path:lineno:colno`` entries.
+
+    Validates each non-empty, non-comment line against the
+    ``path:lineno:colno`` shape and rejects duplicates. A corrupted
+    baseline (typo, manual merge artifact, accidentally-edited
+    binary) silently dropping entries would let real bare-mock
+    sites slip past the gate; failing loud at load time is the only
+    safe behaviour.
+    """
     if not _BASELINE_PATH.exists():
         return set()
     entries: set[str] = set()
-    for line in _BASELINE_PATH.read_text(encoding="utf-8").splitlines():
+    errors: list[str] = []
+    try:
+        rel_path = _rel(_BASELINE_PATH)
+    except ValueError:
+        # Baseline path is outside the repo (test fixture or
+        # custom relocation); fall back to the bare path so error
+        # messages still cite something useful.
+        rel_path = str(_BASELINE_PATH)
+    for lineno, line in enumerate(
+        _BASELINE_PATH.read_text(encoding="utf-8").splitlines(),
+        start=1,
+    ):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
+        if not _BASELINE_ENTRY_PATTERN.match(stripped):
+            errors.append(
+                f"{rel_path}:{lineno}: malformed entry (expected "
+                f"'path:lineno:colno', got {stripped!r})",
+            )
+            continue
+        if stripped in entries:
+            errors.append(
+                f"{rel_path}:{lineno}: duplicate entry {stripped!r}",
+            )
+            continue
         entries.add(stripped)
+    if errors:
+        for err in errors:
+            print(err, file=sys.stderr)
+        msg = (
+            f"{rel_path}: baseline failed validation "
+            f"({len(errors)} error{'s' if len(errors) != 1 else ''}); "
+            f"regenerate with 'uv run python scripts/check_mock_spec.py "
+            f"--update' or fix by hand."
+        )
+        raise ValueError(msg)
     return entries
 
 
@@ -344,7 +388,7 @@ def _report(violations: list[str]) -> int:
     for line in violations:
         print(line)
     print(
-        "\nMock drift (#1604): bare Mock()/AsyncMock()/MagicMock() in tests/"
+        "\nMock drift: bare Mock()/AsyncMock()/MagicMock() in tests/"
         " absorbs any attribute access. Production code can rename a method"
         " and no test fails.\n"
         "\nReplace with:"

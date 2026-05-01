@@ -15,7 +15,7 @@ from synthorg.engine.prompt import build_error_prompt
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import sync_to_task_engine
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.degradation import DEGRADATION_PROVIDER_SWAPPED
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -130,7 +130,8 @@ class AgentEngineErrorsMixin:
                 DEGRADATION_PROVIDER_SWAPPED,
                 original_provider=original,
                 fallback_provider=effective,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 result="failed",
             )
             msg = f"Fallback provider {effective!r} not found in registry"

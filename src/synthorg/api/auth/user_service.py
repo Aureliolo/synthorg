@@ -189,7 +189,7 @@ class UserService:
 
         Fails closed: if refresh-token revocation raises, the user
         delete is aborted so tokens are never left live alongside a
-        deleted user (SEC-1).
+        deleted user.
 
         Returns ``True`` when a user row was removed.
         """

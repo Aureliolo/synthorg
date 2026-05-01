@@ -1,4 +1,4 @@
-"""Escalation queue configuration (#1418)."""
+"""Escalation queue configuration."""
 
 import re
 from typing import Annotated, Literal

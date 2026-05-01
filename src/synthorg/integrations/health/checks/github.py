@@ -12,7 +12,7 @@ from synthorg.integrations.connections.models import (
     ConnectionStatus,
     HealthReport,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     HEALTH_CHECK_FAILED,
     HEALTH_CHECK_PASSED,
@@ -175,7 +175,8 @@ class GitHubHealthCheck:
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return HealthReport(
                 connection_name=connection.name,

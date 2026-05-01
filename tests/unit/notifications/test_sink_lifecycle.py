@@ -1,4 +1,4 @@
-"""Lifecycle contract tests for HTTP-bearing notification sinks (#1600).
+"""Lifecycle contract tests for HTTP-bearing notification sinks.
 
 Pins the resource-hygiene rule that ``SlackNotificationSink`` and
 ``NtfyNotificationSink``:
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 @pytest.mark.unit
 class TestSlackSinkLifecycle:
-    """SlackNotificationSink lazy lifecycle (#1600)."""
+    """SlackNotificationSink lazy lifecycle."""
 
     def test_constructor_does_not_create_http_client(self) -> None:
         """``__init__`` is pure construction; no ``httpx.AsyncClient``."""
@@ -114,7 +114,7 @@ class TestSlackSinkLifecycle:
 
 @pytest.mark.unit
 class TestNtfySinkLifecycle:
-    """NtfyNotificationSink lazy lifecycle (#1600)."""
+    """NtfyNotificationSink lazy lifecycle."""
 
     def test_constructor_does_not_create_http_client(self) -> None:
         sink = NtfyNotificationSink(
@@ -229,7 +229,7 @@ class _CloseFailingSink(_RecordingSink):
 
 @pytest.mark.unit
 class TestDispatcherLifecycle:
-    """NotificationDispatcher start / aclose contract (#1600)."""
+    """NotificationDispatcher start / aclose contract."""
 
     async def test_start_fans_out_to_all_sinks(self) -> None:
         a = _RecordingSink(name="a")

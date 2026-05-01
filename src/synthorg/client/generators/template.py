@@ -12,7 +12,7 @@ from synthorg.client.models import (
     TaskRequirement,
 )
 from synthorg.core.enums import Complexity, Priority, TaskType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 
 logger = get_logger(__name__)
@@ -104,7 +104,8 @@ class TemplateGenerator:
                     CLIENT_REQUIREMENT_GENERATED,
                     strategy="template",
                     skipped=True,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         logger.debug(
             CLIENT_REQUIREMENT_GENERATED,

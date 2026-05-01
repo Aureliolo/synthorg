@@ -7,6 +7,7 @@ catalog credentials.
 """
 
 import asyncio
+import hmac
 import json
 from typing import Any
 
@@ -331,9 +332,8 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
     except Exception as exc:
         # No ``exc_info=True``: a traceback attached here would
         # serialise frame-local variables (including the raw request
-        # body bytes) into the log event, exactly the leak channel
-        # SEC-1 is closing. ``error_type`` + scrubbed ``error``
-        # preserves triage detail without the stack walk.
+        # body bytes) into the log event. ``error_type`` + scrubbed
+        # ``error`` preserves triage detail without the stack walk.
         logger.warning(
             A2A_JSONRPC_PARSE_ERROR,
             reason="validation_error",
@@ -480,6 +480,42 @@ async def _dispatch_method(
         )
 
 
+def _credentials_match(stored: str, presented: str) -> bool:
+    """Constant-time comparison of two credential strings.
+
+    Wraps :func:`hmac.compare_digest` so the call sites read
+    ``_credentials_match(...)`` instead of repeated bytes-encoding +
+    HMAC plumbing. Both inputs are encoded to UTF-8 once before
+    comparison; this keeps the timing characteristic stable for
+    Unicode credentials and avoids ``compare_digest``'s
+    ``str``-vs-``bytes`` type sensitivity.
+
+    ``errors="replace"`` is used on both encodes (matching the
+    pattern used elsewhere in this codebase, e.g.
+    :func:`synthorg.api.controllers.webhooks._build_idem_key`) so a
+    presented credential that contains broken UTF-8 (mojibake,
+    unpaired surrogates from a misbehaving transport) does not
+    raise ``UnicodeEncodeError`` mid-comparison. The replacement
+    bytes still differ from any well-formed stored credential, so
+    the comparison correctly returns ``False`` rather than crashing
+    the auth path.
+
+    Length mismatches are tolerated: ``compare_digest`` returns
+    ``False`` in time proportional to the shorter input, which is
+    the closest constant-time behaviour available without
+    pre-padding (and pre-padding would itself leak the longer
+    input's length).
+
+    Callers MUST treat empty stored credentials as a missing-
+    credentials condition before calling here -- this helper is
+    purely byte-wise and reports two empty strings as equal.
+    """
+    return hmac.compare_digest(
+        stored.encode("utf-8", errors="replace"),
+        presented.encode("utf-8", errors="replace"),
+    )
+
+
 async def _verify_peer_credentials(  # noqa: PLR0911
     app_state: Any,
     request: Request[Any, Any, Any],
@@ -522,7 +558,7 @@ async def _verify_peer_credentials(  # noqa: PLR0911
                     reason="missing credentials in request",
                 )
                 return False
-            if stored_key and request_key != stored_key:
+            if stored_key and not _credentials_match(stored_key, request_key):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,
@@ -533,7 +569,7 @@ async def _verify_peer_credentials(  # noqa: PLR0911
             stored_token = credentials.get("access_token", "")
             auth_header = request.headers.get("authorization", "")
             request_token = auth_header.removeprefix("Bearer ").strip()
-            if stored_token and request_token != stored_token:
+            if stored_token and not _credentials_match(stored_token, request_token):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,
@@ -547,8 +583,8 @@ async def _verify_peer_credentials(  # noqa: PLR0911
         # Credential verification sits alongside ``request``,
         # ``credentials``, and raw auth headers in the local frame;
         # attaching ``exc_info=True`` would have structlog serialise
-        # those into the event and reintroduce the SEC-1 leak. Log
-        # the scrubbed type+message only.
+        # those into the event and reintroduce the credential leak.
+        # Log the scrubbed type+message only.
         logger.warning(
             A2A_INBOUND_AUTH_FAILED,
             peer_name=peer_name,

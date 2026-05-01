@@ -190,12 +190,13 @@ def _build_messages(
 def _render_system_prompt(identity: AgentIdentity) -> str:
     """Render a compact system prompt from an :class:`AgentIdentity`.
 
-    SEC-1 / #1596: appends the canonical ``untrusted_content_directive``
-    listing every fence the meeting protocols may emit (``<task-data>``
-    for the agenda payload, ``<peer-contribution>`` for upstream agent
-    turns).  The agent_caller is the single place that builds the
-    meeting agent's system prompt, so every protocol gets the directive
-    for free regardless of which one builds the user message.
+    Appends the canonical ``untrusted_content_directive`` listing
+    every fence the meeting protocols may emit (``<task-data>`` for
+    the agenda payload, ``<peer-contribution>`` for upstream agent
+    turns). The agent_caller is the single place that builds the
+    meeting agent's system prompt, so every protocol gets the
+    directive for free regardless of which one builds the user
+    message.
     """
     lines: list[str] = [
         f"You are {identity.name}, a {identity.role} "

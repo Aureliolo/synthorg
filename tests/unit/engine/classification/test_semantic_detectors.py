@@ -405,13 +405,13 @@ class TestSemanticDetectorBehavior:
         assert sent_model == "test-small-001"
         assert len(sent_messages) == 2
         assert sent_messages[0].role == MessageRole.SYSTEM
-        # SEC-1 / audit 92: conversation is wrapped in the ``<task-data>``
-        # fence (replaces the legacy ``===BEGIN CONVERSATION===`` marker).
+        # Conversation is wrapped in the ``<task-data>`` fence
+        # (replaces the legacy ``===BEGIN CONVERSATION===`` marker).
         assert "<task-data>" in sent_messages[0].content
         assert "</task-data>" in sent_messages[0].content
 
 
-# ── SEC-1 prompt-injection fence (audit 92) ───────────────────────
+# ── Prompt-injection fence ───────────────────────────────────────
 
 
 @pytest.mark.unit

@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_VERSION_SNAPSHOT_DESERIALIZATION_FAILED,
 )
@@ -33,7 +33,8 @@ def _safe_deserialize_snapshot_json(raw: str) -> EntityDefinition:
         msg = "Corrupted entity definition version snapshot"
         logger.warning(
             ONTOLOGY_VERSION_SNAPSHOT_DESERIALIZATION_FAILED,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise OntologyError(msg) from exc
 
@@ -46,7 +47,8 @@ def _safe_deserialize_snapshot_dict(data: object) -> EntityDefinition:
         msg = "Corrupted entity definition version snapshot"
         logger.warning(
             ONTOLOGY_VERSION_SNAPSHOT_DESERIALIZATION_FAILED,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise OntologyError(msg) from exc
 

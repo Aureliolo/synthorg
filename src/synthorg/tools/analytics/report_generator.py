@@ -11,7 +11,7 @@ from typing import Any, ClassVar, Final
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_PROVIDER_NOT_CONFIGURED,
     ANALYTICS_TOOL_REPORT_FAILED,
@@ -245,11 +245,17 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         except Exception as exc:
             logger.warning(
                 ANALYTICS_TOOL_REPORT_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 report_type=report_type,
             )
+            # The tool result is surfaced to the agent turn; raw
+            # exception text on persistence/database errors can
+            # carry connection strings. Use a stable generic
+            # message; the scrubbed log above carries operator
+            # detail.
             return ToolExecutionResult(
-                content=f"Report generation failed: {exc}",
+                content="Report generation failed",
                 is_error=True,
             )
 
@@ -260,11 +266,15 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         except Exception as exc:
             logger.warning(
                 ANALYTICS_TOOL_REPORT_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 report_type=report_type,
             )
+            # Generic content (mirrors the query-failure branch);
+            # ``ToolExecutionResult.content`` reaches the LLM so
+            # ``exc`` text would leak past the log scrub above.
             return ToolExecutionResult(
-                content=f"Report formatting failed: {exc}",
+                content="Report formatting failed",
                 is_error=True,
             )
 

@@ -1,12 +1,12 @@
 ---
-description: "Full codebase audit: launches 152 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
+description: "Full codebase audit: launches 155 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/latest/findings/, then triages with user"
 argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit: Full Codebase Audit
 
-Launch 152 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
+Launch 155 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
 
 ## Key Principles
 
@@ -25,10 +25,10 @@ Launch 152 specialized agents to audit the entire codebase (or a targeted scope)
 
 | Argument | Directories | Agents |
 |----------|-------------|-------------|
-| `full` (default) | All | All 152 agents |
-| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153 |
-| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150 |
-| `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142 |
+| `full` (default) | All | All 155 agents |
+| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-06, 09-15, 16-34, 39-42, 48-51, 55, 58-80, 87-100, 102-108, 110-123, 124-130, 132-135, 136-150, 153, 154-155 |
+| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 07-08, 13, 17, 35-38, 45-47, 52-54, 57-59, 97, 100-101, 107-109, 111-112, 120-121, 123, 126, 131, 137-138, 141-145, 147, 149-150, 154-155 |
+| `cli/` | `cli/` | 17, 18, 43-44, 56, 67, 78, 89, 107-108, 115-119, 122-123, 130, 134, 142, 154-155 |
 | `docs/` | `docs/`, `site/`, `src/synthorg/` | 17, 20, 42, 48-51, 73-86, 103-104, 107-108, 123 |
 
 Flags:
@@ -153,7 +153,7 @@ Rules:
 
 ### Batch Execution
 
-Launch agents in 17 batches (A-Q). Most batches are ~10 agents each; batches M (121-123), N (124-130), and Q (151-153) are smaller because they cap each section at 153. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
+Launch agents in 18 batches (A-R). Most batches are ~10 agents each; batches M (121-123), N (124-130), Q (151-153), and R (154-155) are smaller because they cap each section at 155. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
 
 | Batch | Agents |
 |-------|----------|
@@ -174,8 +174,9 @@ Launch agents in 17 batches (A-Q). Most batches are ~10 agents each; batches M (
 | O | 131-140 (Wave 27 + first half of Wave 28) |
 | P | 141-150 (second half of Wave 28) |
 | Q | 151-153 (Waves 29 + 30) |
+| R | 154-155 (Wave 31) |
 
-Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (152 for `full`, fewer for scoped runs).
+Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (155 for `full`, fewer for scoped runs).
 
 ---
 
@@ -2670,6 +2671,193 @@ completeness).
 
 ```
 
+### Wave 31: Comment Quality (2 agents)
+
+**Agent 154: reviewer-citation-rot** (sonnet)
+File: `_audit/latest/findings/154-reviewer-citation-rot.md`
+
+```text
+Find code comments, docstrings, test docstrings, log strings, and
+commit-message bodies (where visible in source) that violate the
+"comments explain WHY only, never origin/review/issue context"
+rule. The canonical statement of the rule lives in CLAUDE.md
+"Code Conventions" and the user-memory file
+`feedback_no_review_origin_in_code.md`.
+
+Forbidden patterns to flag:
+
+1. **Reviewer-origin citations** anywhere in src/, tests/, docstrings,
+   or comments:
+   - `pre-PR review #N` / `Pre-PR review finding (#N, ...)`
+   - `CodeRabbit at <file>:<line>` / `(#NNNN, CodeRabbit ...)`
+   - `Round-N review id NNNN` / `flagged on round N` /
+     `re-flagged on round N`
+   - `(CodeRabbit, YYYY-MM-DD)` (date-stamped reviewer attribution)
+   - `(CodeRabbit minor at ...)` / `(CodeRabbit critical at ...)`
+   - any `<reviewer> at <file>:<line>` shape
+
+2. **In-code issue / PR back-references**:
+   - `(#NNNN)` standalone (4-digit GitHub issue numbers)
+   - `(#NNNN, CodeRabbit ...)` composite
+   - `(GH-NNNN)` / `(see PR #NNNN)` / `(fixes #NNNN)`
+   - `as part of #NNNN` / `closes #NNNN` / `this commit closes #N`
+   - `(#1599)`, `(#1682)`, etc. -- any standalone issue tag in
+     a comment
+
+3. **Cryptic internal-taxonomy shorthand in src/ and tests/**:
+   - Naked `SEC-1` (without surrounding rationale that explains
+     what SEC-1 means) anywhere under `src/synthorg/` or `tests/`
+   - `SEC-1 / audit finding NN` in src/tests
+   - `(SEC-1)` parenthetical
+   - Tags like SEC-1 are fine in `docs/design/` and
+     `docs/reference/` (their canonical home); flag only when they
+     appear naked in `src/` or `tests/` where the reader cannot
+     follow the link.
+
+4. **Round / iteration narrative**:
+   - `round-N review surfaced this`
+   - `after round N`
+   - `the round-N CodeRabbit re-flag`
+   - `this iteration of the review`
+
+For each violation:
+- Quote the offending comment / docstring with file:line.
+- State which forbidden pattern bucket it falls into (1-4 above).
+- Propose a rewrite that explains the technical WHY without the
+  citation / back-reference / taxonomy shorthand. The rewrite
+  should be self-contained: the next reader must be able to verify
+  the rationale against the code without following any link.
+- If the WHY is genuinely already obvious from the code (e.g. the
+  comment was *only* a reviewer attribution with no technical
+  content), propose deletion.
+
+DO NOT flag:
+- Workflow / tooling files: `.claude/skills/*`, `.opencode/commands/*`,
+  `.claude/hookify.*.md`, `.github/workflows/*` if the reference
+  describes what the workflow protects against (e.g. CodeRabbit
+  cost in the push-throttle script). The rule targets stale
+  forensic narrative in code comments, not functional descriptions
+  of external systems.
+- `CLAUDE.md`, `docs/design/`, `docs/reference/`: these are the
+  canonical homes for SEC-1 / SEC-N taxonomy.
+- Auto-generated files (`CHANGELOG.md`, `release-please-manifest.json`).
+- Bug-tracker URLs to *third-party* projects (upstream bug
+  workarounds), which the rule explicitly preserves.
+- Stable URLs to public RFCs, OWASP findings, etc.
+
+Severity scale:
+- **medium**: any reviewer-origin citation in `src/`, `tests/`, or
+  any module docstring -- these go stale instantly when the review
+  is resolved or the line number shifts, and they leak the codebase's
+  internal review process into long-lived artifacts.
+- **medium**: in-code issue back-references in `src/` / `tests/`.
+  GitHub issue links belong in PR bodies, not in code.
+- **low**: naked `SEC-N` in `src/` / `tests/` where a reader cannot
+  decode the tag standing alone. Suggest spelling out the rationale.
+- **info**: round / iteration narrative ("round-3 fix").
+
+This audit is the long-term backstop for the
+`feedback_no_review_origin_in_code.md` rule: a one-shot scrub
+addresses the existing tree, but a future reviewer or contributor
+adding a fresh `pre-PR review #N` comment will reintroduce the
+pattern. Surface every new occurrence so the cleanup commit is the
+last cleanup commit.
+
+```
+
+**Agent 155: migration-framing-rot** (sonnet)
+File: `_audit/latest/findings/155-migration-framing-rot.md`
+
+```text
+Find code comments, docstrings, README sections, and commit-message
+bodies (where visible) that frame current code in terms of how it
+got there rather than what it does. The canonical statement of the
+rule lives in the user-memory file `feedback_no_migration_framing.md`
+and the "Comments explain WHY only" bullet in CLAUDE.md
+"Code Conventions".
+
+Forbidden phrasings to flag:
+
+1. **Port / rebrand framing**:
+   - `ported from <other-project>`
+   - `migrated from <old-name>`
+   - `renamed from <old-symbol>`
+   - `previously called <old-name>`
+   - `(was: <old-form>)`
+   - `replaces the old <X>` / `replaces the prior <X>` (when used
+     to describe a historical migration rather than a current
+     constraint)
+
+2. **Round / phase / wave framing**:
+   - `moved here in round N`
+   - `landed in phase 2`
+   - `Phase 2 typed-args refactor`
+   - `the wave-N rewrite`
+   - `as part of round 7`
+
+3. **Issue-driven implementation framing**:
+   - `implemented as part of #NNNN`
+   - `added in PR #NNNN`
+   - `delivered by issue #NNNN`
+   - `the original commit replaced X with Y` (when X no longer
+     exists; the comment is documenting an absent shape)
+
+4. **"We used to..." narratives**:
+   - `previously we did X`
+   - `originally this was X, now it is Y`
+   - `the old code did X` (when no old code remains)
+   - `the legacy <thing>` (when no non-legacy contrast exists)
+
+For each violation:
+- Quote the offending text with file:line.
+- State which phrasing bucket (1-4) it falls into.
+- Propose a rewrite that describes only the *current* shape and
+  the *technical* reason it is shaped that way. If the comment is
+  pure historical narrative with no current-state content, propose
+  deletion.
+
+DO NOT flag:
+- `re-exported from <module>` -- this is a current-state factual
+  description of where a symbol lives, not migration framing.
+- `extracted from <function>` when the comment is naming a code
+  organization choice ("extracted to keep the parent under the
+  complexity ceiling") rather than narrating history.
+- `inherits from <BaseClass>` / `subclasses <X>` -- structural
+  facts, not migration narrative.
+- Stable upstream-bug workaround comments that reference the
+  bug's resolution status (e.g. "remove once
+  github.com/foo/bar#123 is fixed").
+- Commit-message bodies in `git log` output (out of scope; the
+  rule targets long-lived artifacts).
+- `CLAUDE.md`, `docs/design/`, and `docs/reference/` migration
+  guides (e.g. `persistence-migrations.md`) where migration
+  framing is the entire subject.
+- Atlas migration files under `src/synthorg/persistence/*/revisions/`
+  (their purpose IS to record schema migrations).
+
+Severity scale:
+- **medium**: port / rebrand / "we used to" framing in `src/` or
+  `tests/`. These rot the moment the migration completes and
+  confuse new readers about whether the old form still exists
+  somewhere.
+- **medium**: round / phase / wave framing -- these tie the code's
+  documentation to internal process language that loses meaning
+  outside the original review window.
+- **low**: issue-driven implementation framing in code (`(#NNNN)`,
+  `as part of #NNNN`). The PR body is the canonical home for
+  origin links.
+
+Output should be deduplicated: when the same migration narrative
+appears across many files (e.g. a docstring fragment copy-pasted
+into ten test files), report it once with the full file:line
+list rather than ten separate findings.
+
+This audit is the long-term backstop for the
+`feedback_no_migration_framing.md` rule. Each finding either becomes
+a deletion or a "describe the current shape" rewrite.
+
+```
+
 ### Retired Agents
 
 These concerns are already enforced by hooks, linters, or external tooling today instead of an audit agent. Do NOT launch these agents; check the "Now enforced by" column if a related concern needs attention.
@@ -2708,7 +2896,7 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 **Required on every run.** Validation runs on all findings (critical, high, medium, low, and info) with no opt-out and no severity threshold. This skill is for huge audits; the false-positive filter must apply uniformly across severities so INDEX.md is not contaminated by un-validated noise.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (152 for `full`, fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (155 for `full`, fewer for scoped runs).
 
 ### Process
 
@@ -2936,7 +3124,7 @@ Also write `_audit/latest/findings.json` (machine-readable):
 {
   "run_id": "<run-id-timestamp>",
   "scope": "full",
-  "agents_launched": 152,
+  "agents_launched": 155,
   "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
   "findings": [
     {
@@ -3023,7 +3211,7 @@ Optional, best-effort. Each agent can have a golden-input test:
 
 A new command `/codebase-audit self-test` runs each agent against its golden input and verifies it finds the seeded issue. Catches prompt rot.
 
-Bootstrap: not all 152 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
+Bootstrap: not all 155 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
 
 If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 

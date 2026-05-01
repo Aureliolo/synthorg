@@ -16,7 +16,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_TOOL_NOTIFICATION_SEND_FAILED,
     COMM_TOOL_NOTIFICATION_SEND_START,
@@ -190,13 +190,17 @@ class NotificationSenderTool(BaseCommunicationTool):
                 timestamp=datetime.now(UTC),
             )
         except (ValueError, TypeError, ValidationError) as exc:
+            # Scrub the exception payload before logging or returning
+            # -- Pydantic's ValidationError can echo entire input
+            # dicts including secret-bearing fields.
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
-                error="invalid_notification_fields",
-                detail=str(exc),
+                reason="invalid_notification_fields",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Invalid notification fields: {exc}",
+                content="Invalid notification fields",
                 is_error=True,
             )
 
@@ -215,10 +219,14 @@ class NotificationSenderTool(BaseCommunicationTool):
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
                 notification_id=notification.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+            # Generic content -- ``ToolExecutionResult.content`` reaches
+            # the LLM, so ``exc`` text would leak sink/provider
+            # internals past the log scrub above.
             return ToolExecutionResult(
-                content=f"Notification dispatch failed: {exc}",
+                content="Notification dispatch failed",
                 is_error=True,
             )
 

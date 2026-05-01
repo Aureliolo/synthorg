@@ -367,11 +367,11 @@ class TestSlidingWindowRateLimiterRaceConditions:
         assert len(granted) == max_events
 
     async def test_release_targets_exact_admission_not_newest(self) -> None:
-        """Concrete regression for the round-3 CodeRabbit re-flag.
+        """``release`` refunds the exact admission, not the newest.
 
         Two same-agent admissions are alive concurrently. The OLDER
-        one fails after the NEWER one has already been granted; the
-        old code (``release`` pops the newest timestamp) would refund
+        one fails after the NEWER one has already been granted; a
+        ``release`` that pops the newest timestamp would refund
         the *newer* slot, leaving the failed admission counted and
         squatting on capacity.
 

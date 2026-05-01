@@ -18,7 +18,7 @@ from synthorg.versioning.models import VersionSnapshot
 
 
 def _make_repo() -> AsyncMock:
-    """Build a typed mock for the VersionRepository protocol (#1604).
+    """Build a typed mock for the VersionRepository protocol.
 
     Spec'ing against the protocol catches accidental rename / signature
     drift between the service and its repo dependency.

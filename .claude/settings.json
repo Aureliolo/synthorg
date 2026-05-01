@@ -16,6 +16,11 @@
           },
           {
             "type": "command",
+            "command": "bash scripts/check_ci_before_push.sh",
+            "timeout": 15000
+          },
+          {
+            "type": "command",
             "command": "bash scripts/check_no_throttle_override_creation.sh",
             "timeout": 5000
           },

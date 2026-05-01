@@ -252,8 +252,9 @@ class MessageDispatcher:
             # TaskGroup so sibling handlers cancel and the process can
             # surface the failure rather than silently degrading. Log
             # at ERROR with exc_info=True before re-raising so the
-            # traceback is captured for diagnostics, per the SEC-1
-            # carve-out for catastrophic interpreter state.
+            # traceback is captured for diagnostics, per the
+            # carve-out for catastrophic interpreter state in
+            # CLAUDE.md ``## Logging``.
             logger.error(
                 COMM_DISPATCH_HANDLER_ERROR,
                 agent_id=self._agent_id,

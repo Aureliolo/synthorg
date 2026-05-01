@@ -99,9 +99,10 @@ class MemoryBackendRegistry:
         try:
             backend = factory(config, embedder=embedder)
         except Exception as exc:
-            # Memory factories may close over an embedder containing API
-            # credentials.  Use ``logger.warning`` + ``safe_error_description``
-            # to avoid frame-local capture in logs (SEC-1, defensive).
+            # Memory factories may close over an embedder containing
+            # API credentials. Use ``logger.warning`` +
+            # ``safe_error_description`` to avoid frame-local capture
+            # in logs.
             logger.warning(
                 REGISTRY_FACTORY_FAILED,
                 kind=self._KIND,

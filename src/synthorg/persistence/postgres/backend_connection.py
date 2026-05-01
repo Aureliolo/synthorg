@@ -165,7 +165,7 @@ class PostgresConnectionMixin:
                 logger.warning(
                     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
                     host=self._config.host,
-                    error=str(cleanup_exc),
+                    error=safe_error_description(cleanup_exc),
                     error_type=type(cleanup_exc).__name__,
                     context="cleanup_after_connect_failure",
                 )
@@ -195,7 +195,7 @@ class PostgresConnectionMixin:
                 logger.warning(
                     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
                     host=self._config.host,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                     error_type=type(exc).__name__,
                 )
             finally:
@@ -232,7 +232,7 @@ class PostgresConnectionMixin:
             logger.warning(
                 PERSISTENCE_BACKEND_HEALTH_CHECK,
                 healthy=False,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             return False

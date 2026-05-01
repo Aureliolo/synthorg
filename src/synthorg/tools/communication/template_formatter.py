@@ -11,7 +11,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_TOOL_TEMPLATE_RENDER_FAILED,
     COMM_TOOL_TEMPLATE_RENDER_INVALID,
@@ -152,7 +152,8 @@ class TemplateFormatterTool(BaseCommunicationTool):
         except TemplateSyntaxError as exc:
             logger.warning(
                 COMM_TOOL_TEMPLATE_RENDER_INVALID,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=f"Invalid template syntax: {exc}",
@@ -166,7 +167,8 @@ class TemplateFormatterTool(BaseCommunicationTool):
         except Exception as exc:
             logger.warning(
                 COMM_TOOL_TEMPLATE_RENDER_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=f"Template rendering failed: {exc}",

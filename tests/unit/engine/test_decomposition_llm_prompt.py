@@ -168,11 +168,11 @@ class TestBuildSystemMessage:
 
     @pytest.mark.unit
     def test_system_includes_canonical_untrusted_directive(self) -> None:
-        """System message carries the canonical SEC-1 directive for <task-data>.
+        """System message carries the canonical directive for <task-data>.
 
-        Replaces the prior hand-rolled warning string.  The directive is
-        sourced from :func:`untrusted_content_directive` so a single
-        edit to the helper keeps every SEC-1 site in sync.
+        Replaces the prior hand-rolled warning string. The directive
+        is sourced from :func:`untrusted_content_directive` so a
+        single edit to the helper keeps every call site in sync.
         """
         from synthorg.engine.prompt_safety import (
             TAG_TASK_DATA,
@@ -202,9 +202,10 @@ class TestBuildTaskMessage:
 
         assert msg.role is MessageRole.USER
         assert msg.content is not None
-        # Task data wrapped in a single SEC-1 fence.  Constraints sit
-        # *outside* the fence -- only attacker-controllable strings need
-        # the wrap; numeric constraints carry no breakout vector.
+        # Task data wrapped in a single fence. Constraints sit
+        # *outside* the fence -- only attacker-controllable strings
+        # need the wrap; numeric constraints carry no breakout
+        # vector.
         assert msg.content.count("<task-data>") == 1
         assert msg.content.count("</task-data>") == 1
         # Task details
@@ -221,7 +222,7 @@ class TestBuildTaskMessage:
 
 @pytest.mark.unit
 class TestBuildTaskMessageInjectionDefense:
-    """SEC-1 / #1596: prompt-injection defenses for ``build_task_message``."""
+    """Prompt-injection defenses for ``build_task_message``."""
 
     def test_attacker_breakout_in_title_is_escaped(self) -> None:
         """A title with the literal closing fence cannot break out.

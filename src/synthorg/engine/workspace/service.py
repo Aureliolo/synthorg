@@ -10,15 +10,13 @@ from uuid import uuid4
 
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
-    WorkspaceLimitError,
-    WorkspaceSetupError,
 )
 from synthorg.engine.workspace.merge import MergeOrchestrator
 from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_GROUP_SETUP_COMPLETE,
     WORKSPACE_GROUP_SETUP_FAILED,
@@ -100,12 +98,20 @@ class WorkspaceIsolationService:
                     request=request,
                 )
                 workspaces.append(ws)
-        except (WorkspaceLimitError, WorkspaceSetupError) as exc:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Catch ``Exception`` so any setup failure -- not just the
+            # documented ``WorkspaceLimitError`` / ``WorkspaceSetupError``
+            # -- triggers rollback. Without this fallback an
+            # unexpected error after partial setup would leak the
+            # already-created workspaces.
             logger.warning(
                 WORKSPACE_GROUP_SETUP_FAILED,
                 count=len(requests),
                 created=len(workspaces),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             await self._rollback_workspaces(workspaces)
             raise
@@ -132,11 +138,18 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=ws,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
+                # Rollback cleanup errors can wrap filesystem / DB
+                # exceptions whose str() embeds paths or connection
+                # strings.
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,
                     workspace_id=ws.workspace_id,
-                    error=f"Rollback cleanup failed: {exc}",
+                    reason="rollback_cleanup_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     async def merge_group(
@@ -194,14 +207,23 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=workspace,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
+                # The ``errors`` list flows into
+                # ``WorkspaceCleanupError`` which callers may log as
+                # a message; raw ``exc`` text could leak DB
+                # credentials or container ids. Use the same
+                # scrubbed string as the warning log below.
                 errors.append(
-                    f"workspace {workspace.workspace_id}: {exc}",
+                    f"workspace {workspace.workspace_id}: "
+                    f"{safe_error_description(exc)}",
                 )
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,
                     workspace_id=workspace.workspace_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         logger.info(

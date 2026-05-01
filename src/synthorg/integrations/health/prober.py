@@ -159,10 +159,10 @@ class HealthProberService:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                # Routine probe-loop failure: log a redacted structured
-                # warning instead of ``logger.exception`` (SEC-1: full
-                # tracebacks are reserved for ``MemoryError`` /
-                # ``RecursionError`` per CLAUDE.md).
+                # Routine probe-loop failure: log a redacted
+                # structured warning instead of ``logger.exception``
+                # (full tracebacks are reserved for ``MemoryError``
+                # / ``RecursionError`` per CLAUDE.md ``## Logging``).
                 logger.warning(
                     HEALTH_CHECK_FAILED,
                     error_type=type(exc).__name__,
@@ -209,8 +209,8 @@ class HealthProberService:
         try:
             conn = await self._catalog.get(name)
         except Exception as exc:
-            # Routine catalog-load failure: redacted warning, not full
-            # traceback (SEC-1, see _probe_loop comment).
+            # Routine catalog-load failure: redacted warning, not
+            # full traceback (see _probe_loop comment).
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,
@@ -231,7 +231,7 @@ class HealthProberService:
             report = await checker.check(conn)
         except Exception as exc:
             # Routine checker failure: redacted warning, not full
-            # traceback (SEC-1, see _probe_loop comment).
+            # traceback (see _probe_loop comment).
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,
@@ -260,7 +260,7 @@ class HealthProberService:
             )
         except Exception as exc:
             # Routine catalog-write failure: redacted warning, not
-            # full traceback (SEC-1, see _probe_loop comment).
+            # full traceback (see _probe_loop comment).
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=name,

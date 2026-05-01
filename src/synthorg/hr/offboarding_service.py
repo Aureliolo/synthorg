@@ -20,7 +20,7 @@ from synthorg.hr.errors import (
     TaskReassignmentError,
 )
 from synthorg.hr.models import FiringRequest, OffboardingRecord
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_FIRING_ARCHIVAL_FAILED,
     HR_FIRING_COMPLETE,
@@ -189,11 +189,17 @@ class OffboardingService:
                 await self._task_repository.save(task)
             return tuple(t.id for t in interrupted)
         except (TaskReassignmentError, OSError, ValueError) as exc:
-            msg = f"Task reassignment failed for agent {agent_id!r}: {exc}"
-            logger.exception(
+            # logger.exception attaches the traceback whose
+            # frame-locals could carry the in-flight task payload;
+            # use the warning + scrubbed-error pattern instead.
+            scrubbed = safe_error_description(exc)
+            msg = f"Task reassignment failed for agent {agent_id!r}: {scrubbed}"
+            logger.warning(
                 HR_FIRING_REASSIGNMENT_FAILED,
                 agent_id=agent_id,
-                error=msg,
+                reason="task_reassignment_failed",
+                error_type=type(exc).__name__,
+                error=scrubbed,
             )
             raise OffboardingError(msg) from exc
 
@@ -232,11 +238,11 @@ class OffboardingService:
                 agent_seniority=identity.level,
             )
         except (MemoryArchivalError, OSError, ValueError) as exc:
-            msg = f"Memory archival failed for agent {agent_id!r}: {exc}"
             logger.warning(
                 HR_FIRING_ARCHIVAL_FAILED,
                 agent_id=agent_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             # Non-fatal: continue with offboarding.
             return default_result
@@ -286,7 +292,8 @@ class OffboardingService:
             logger.warning(
                 HR_FIRING_NOTIFICATION_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         else:
@@ -311,6 +318,12 @@ class OffboardingService:
                 warning="agent_not_found_during_termination",
             )
         except (OSError, ValueError) as exc:
-            msg = f"Failed to terminate agent {agent_id!r} in registry: {exc}"
-            logger.exception(HR_FIRING_COMPLETE, agent_id=agent_id, error=msg)
+            scrubbed = safe_error_description(exc)
+            msg = f"Failed to terminate agent {agent_id!r} in registry: {scrubbed}"
+            logger.error(  # noqa: TRY400
+                HR_FIRING_COMPLETE,
+                agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=scrubbed,
+            )
             raise OffboardingError(msg) from exc

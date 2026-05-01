@@ -25,7 +25,7 @@ from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
 from synthorg.hr.training.models import ContentType, TrainingItem  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_COMPLETE,
     HR_TRAINING_CURATION_FALLBACK,
@@ -124,8 +124,8 @@ class LLMCurated:
                 content_type=content_type,
             )
 
-        # SEC-1: split the trusted curator instructions (system) from
-        # the untrusted candidate-item payload (user, fenced).  The
+        # Split the trusted curator instructions (system) from the
+        # untrusted candidate-item payload (user, fenced). The
         # system prompt carries the canonical
         # ``untrusted_content_directive`` so a malicious item content
         # cannot hijack the curator's selection logic.
@@ -166,7 +166,8 @@ class LLMCurated:
                 strategy="llm_curated",
                 fallback="relevance",
                 reason="provider_error",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return await self._fallback.curate(
                 items,
@@ -180,7 +181,8 @@ class LLMCurated:
                 strategy="llm_curated",
                 fallback="relevance",
                 reason="parse_error",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return await self._fallback.curate(
                 items,
@@ -238,8 +240,8 @@ class LLMCurated:
     ) -> tuple[str, str]:
         """Build the (system, user) prompt pair for the curator LLM.
 
-        SEC-1: trusted curator instructions live in the system half;
-        the untrusted item-content payload is fenced inside a
+        Trusted curator instructions live in the system half; the
+        untrusted item-content payload is fenced inside a
         ``<untrusted-artifact>`` block in the user half so a
         malicious ``item.content`` can't hijack the selection.
         """
@@ -247,14 +249,14 @@ class LLMCurated:
             f"[{i}] (source: {item.source_agent_id}) {item.content[:200]}"
             for i, item in enumerate(items)
         )
-        # SEC-1: ``new_agent_role`` is operator-controlled (set when an
+        # ``new_agent_role`` is operator-controlled (set when an
         # agent is created via the API) and reaches this prompt
-        # untrusted -- keep it OUT of the SYSTEM message and route it
-        # through the same ``<untrusted-artifact>`` fence the items
-        # use.  ``new_agent_level`` is an enum and structurally bounded;
-        # ``content_type`` is also a closed enum -- both safe to keep
-        # in the SYSTEM template.  ``self._top_k`` is operator config
-        # (positive int, validated in ``__init__``).
+        # untrusted -- keep it OUT of the SYSTEM message and route
+        # it through the same ``<untrusted-artifact>`` fence the
+        # items use. ``new_agent_level`` is an enum and structurally
+        # bounded; ``content_type`` is also a closed enum -- both
+        # safe to keep in the SYSTEM template. ``self._top_k`` is
+        # operator config (positive int, validated in ``__init__``).
         system_prompt = (
             f"You are a training content curator for a new hire. "
             f"Select the {self._top_k} most valuable "

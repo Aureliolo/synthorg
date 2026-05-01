@@ -537,8 +537,8 @@ class TestWsTicketAuth:
 
         Litestar's DI misidentifies plugin params as query params
         for WebSocket handlers, causing a Litestar-internal 4500
-        close before the handler runs (#549).  The handler must
-        resolve the plugin from ``socket.app.plugins`` instead.
+        close before the handler runs. The handler must resolve the
+        plugin from ``socket.app.plugins`` instead.
         """
         import inspect
 

@@ -1,5 +1,5 @@
 /**
- * Escalation queue dashboard (#1418).
+ * Escalation queue dashboard.
  *
  * Lists pending / decided / expired / cancelled escalations with
  * cursor-paginated fetch, surfaces a status filter, and opens a

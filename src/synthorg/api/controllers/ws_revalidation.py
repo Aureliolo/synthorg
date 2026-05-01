@@ -48,7 +48,7 @@ async def _close_socket_safely(
     The socket may already be torn down (client disconnected, network
     blip), but we still want the revocation decision recorded AND the
     close failure logged so operators can diagnose half-open sockets
-    after a session-revocation event (#1599).
+    after a session-revocation event.
     """
     try:
         await socket.close(code=code, reason=reason)

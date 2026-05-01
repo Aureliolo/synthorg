@@ -13,8 +13,8 @@ class TestBuildAgendaPrompt:
     def test_minimal_agenda(self) -> None:
         agenda = MeetingAgenda(title="Sprint Planning")
         result = build_agenda_prompt(agenda)
-        # Title now lives inside the SEC-1 task-data fence; the bare
-        # "Meeting agenda:" header sits outside as model-trusted prose.
+        # Title sits inside the task-data fence; the bare
+        # "Meeting agenda:" header is outside as model-trusted prose.
         assert "Title: Sprint Planning" in result
         assert "<task-data>" in result
         assert result.endswith("</task-data>")
@@ -133,12 +133,12 @@ def _agenda_with_field(field: str, value: str) -> MeetingAgenda:
 
 @pytest.mark.unit
 class TestBuildAgendaPromptInjectionDefense:
-    """SEC-1 / #1596: prompt-injection defenses for ``build_agenda_prompt``.
+    """Prompt-injection defenses for ``build_agenda_prompt``.
 
-    Agenda fields (title, context, item title/description, presenter_id)
-    all originate from API request bodies and must be treated as
-    attacker-controllable.  Each must be inside a single SEC-1 fence
-    that escapes any in-content closing-tag breakout attempt.
+    Agenda fields (title, context, item title/description,
+    presenter_id) all originate from API request bodies and must be
+    treated as attacker-controllable. Each must be inside a single
+    fence that escapes any in-content closing-tag breakout attempt.
     """
 
     @pytest.mark.parametrize(

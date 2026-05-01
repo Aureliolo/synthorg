@@ -1,9 +1,7 @@
 """Tests for the secret-log redaction helpers.
 
-These helpers protect the structured log pipeline from leaking credential
-material embedded inside exception ``str(exc)`` output. The audit
-finding this module addresses is
-``_audit/findings/90-secrets-in-logs.md`` (SEC-1).
+These helpers protect the structured log pipeline from leaking
+credential material embedded inside exception ``str(exc)`` output.
 """
 
 import json

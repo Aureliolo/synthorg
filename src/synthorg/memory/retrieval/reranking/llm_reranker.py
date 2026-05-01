@@ -15,7 +15,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_RERANK_CACHE_MISS,
     MEMORY_RERANK_COMPLETE,
@@ -145,7 +145,8 @@ class LLMQuerySpecificReranker:
             except Exception as exc:
                 logger.warning(
                     MEMORY_RERANK_CACHE_MISS,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     reason="cache_get_failed",
                 )
                 cached_ids = None
@@ -173,7 +174,8 @@ class LLMQuerySpecificReranker:
             # still usable.
             logger.warning(
                 MEMORY_RERANK_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 candidate_count=len(candidates),
                 query_length=len(query.text),
             )
@@ -190,7 +192,8 @@ class LLMQuerySpecificReranker:
                 except Exception as exc:
                     logger.warning(
                         MEMORY_RERANK_CACHE_MISS,
-                        error=str(exc),
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                         reason="cache_put_failed",
                     )
             logger.info(
@@ -212,8 +215,8 @@ class LLMQuerySpecificReranker:
             candidate_lines.append(
                 f"[{i}] score={c.combined_score:.2f} content={content_preview!r}",
             )
-        # SEC-1: both the query text and the candidate payload come
-        # from attacker-controllable storage (stored memories, user
+        # Both the query text and the candidate payload come from
+        # attacker-controllable storage (stored memories, user
         # queries) and must be fenced with ``wrap_untrusted`` so the
         # model cannot confuse data for instructions. The system
         # prompt appends ``untrusted_content_directive`` at import

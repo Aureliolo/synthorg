@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_CLEANUP,
     SANDBOX_ENV_FILTERED,
@@ -379,7 +379,8 @@ class SubprocessSandbox:
                 logger.warning(
                     SANDBOX_KILL_FALLBACK,
                     pid=proc.pid,
-                    error=str(kill_exc),
+                    error_type=type(kill_exc).__name__,
+                    error=safe_error_description(kill_exc),
                 )
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
@@ -431,8 +432,8 @@ class SubprocessSandbox:
             logger.warning(
                 SANDBOX_SPAWN_FAILED,
                 command=command,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to start '{command}': {exc}"
             raise SandboxStartError(

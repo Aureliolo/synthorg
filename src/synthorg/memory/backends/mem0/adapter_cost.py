@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_EMBEDDING_COST_FAILED,
     BUDGET_EMBEDDING_COST_RECORDED,
@@ -119,7 +119,7 @@ class Mem0AdapterCostMixin:
                 BUDGET_EMBEDDING_COST_FAILED,
                 agent_id=agent_id,
                 operation=operation,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
                 reason="cost_tracking_failed",
             )

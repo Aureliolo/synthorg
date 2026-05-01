@@ -53,7 +53,7 @@ class TestEditFileExecution:
         assert result.is_error
         assert "Text not found" in result.content
         assert result.metadata["occurrences_found"] == 0
-        # Verify no file content snippet is leaked (#16)
+        # Verify no file content snippet is leaked.
         assert "Hello" not in result.content
 
     async def test_multiple_occurrences_replaces_first(

@@ -1,4 +1,4 @@
-"""Unit tests for the human escalation approval queue (#1418)."""
+"""Unit tests for the human escalation approval queue."""
 
 from datetime import UTC, datetime
 from typing import Any

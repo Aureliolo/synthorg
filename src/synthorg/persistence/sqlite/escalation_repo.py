@@ -1,4 +1,4 @@
-"""SQLite repository for the human escalation queue (#1418).
+"""SQLite repository for the human escalation queue.
 
 Mirrors the shape of :class:`SQLiteApprovalRepository`: a shared
 ``aiosqlite.Connection``, row-mapping helper, and async CRUD with

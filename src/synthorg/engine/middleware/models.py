@@ -246,7 +246,7 @@ class AssumptionViolationEvent(BaseModel):
     )
 
 
-# ── TaskLedger and ProgressLedger (#1257) ─────────────────────────
+# ── TaskLedger and ProgressLedger ────────────────────────────────
 
 
 class TaskLedger(BaseModel):

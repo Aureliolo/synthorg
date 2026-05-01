@@ -29,7 +29,7 @@ from synthorg.memory.retrieval.models import (  # noqa: TC001
     FinalRetrievalResult,
     RetrievalQuery,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_RETRY,
     MEMORY_HIERARCHICAL_ROUTING,
@@ -142,10 +142,14 @@ class SupervisorRouter:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            # Provider exceptions in str(exc) can carry the API
+            # key; scrub before logging.
             logger.warning(
                 MEMORY_HIERARCHICAL_ROUTING,
                 action="fallback",
-                reason=f"LLM routing failed: {exc}",
+                reason="llm_routing_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 query_length=len(query.text),
             )
             return WorkerRoutingDecision(
@@ -190,7 +194,9 @@ class SupervisorRouter:
             logger.warning(
                 MEMORY_HIERARCHICAL_RETRY,
                 action="eval_failed",
-                reason=f"LLM retry evaluation failed: {exc}",
+                reason="llm_retry_evaluation_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -202,10 +208,11 @@ class SupervisorRouter:
         system_prompt = _ROUTING_SYSTEM_PROMPT.format(
             max_workers=self._max_workers,
         )
-        # SEC-1: ``query.text`` is operator-controlled but ultimately
-        # sourced from upstream agent reasoning that may have ingested
-        # untrusted content; wrap it in a ``<task-data>`` fence so the
-        # routing model treats it as data rather than instruction.
+        # ``query.text`` is operator-controlled but ultimately
+        # sourced from upstream agent reasoning that may have
+        # ingested untrusted content; wrap it in a ``<task-data>``
+        # fence so the routing model treats it as data rather than
+        # instruction.
         wrapped_query = wrap_untrusted(TAG_TASK_DATA, query.text)
         messages: list[ChatMessage] = [
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
@@ -231,7 +238,8 @@ class SupervisorRouter:
                 MEMORY_HIERARCHICAL_ROUTING,
                 action="json_parse_failed",
                 content_length=len(response.content),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         workers = tuple(
@@ -264,10 +272,10 @@ class SupervisorRouter:
             count=len(result.candidates),
             avg_score=avg_score,
         )
-        # SEC-1: wrap the untrusted ``query.text`` so a malicious
-        # query body cannot inject instructions into the retry
-        # evaluator.  The candidate-count summary is fixed-format
-        # numeric data, so it stays outside the fence.
+        # Wrap the untrusted ``query.text`` so a malicious query
+        # body cannot inject instructions into the retry evaluator.
+        # The candidate-count summary is fixed-format numeric data,
+        # so it stays outside the fence.
         wrapped_query = wrap_untrusted(TAG_TASK_DATA, query.text)
         user_content = (
             f"Original query:\n{wrapped_query}\n"
@@ -297,7 +305,8 @@ class SupervisorRouter:
                 MEMORY_HIERARCHICAL_RETRY,
                 action="json_parse_failed",
                 content_length=len(response.content),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         if not parsed.get("retry", False):
@@ -316,7 +325,8 @@ class SupervisorRouter:
                 logger.debug(
                     MEMORY_HIERARCHICAL_RETRY,
                     action="corrected_query_invalid",
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     corrected_length=len(str(corrected_text)),
                 )
                 corrected_query = None

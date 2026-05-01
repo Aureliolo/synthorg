@@ -171,7 +171,7 @@ class TestDiskQuotaWatcher:
 
 @pytest.mark.integration
 class TestWorktreeIdCollisionRegression:
-    """Regression for sub-agent ID collision (#41010).
+    """Regression for sub-agent ID collision.
 
     Spawning a sub-agent with an ID that collides with the parent
     worktree name must NOT delete the parent's working directory.

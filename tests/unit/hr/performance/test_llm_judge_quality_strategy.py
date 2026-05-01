@@ -500,7 +500,7 @@ class TestPromptConstruction:
             acceptance_criteria=criteria,
         )
 
-        # SEC-1: criteria are routed through the USER message (fenced),
+        # Criteria are routed through the USER message (fenced),
         # not the SYSTEM message which carries trusted instructions.
         messages, *_ = provider.complete_calls[-1]
         user_text = messages[1].content
@@ -511,7 +511,7 @@ class TestPromptConstruction:
         assert "[NOT MET]" in user_text
 
     async def test_delimiters_in_prompt(self) -> None:
-        """SEC-1: criteria are USER-fenced and SYSTEM carries the directive."""
+        """Criteria are USER-fenced and SYSTEM carries the directive."""
         provider = _make_provider()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,

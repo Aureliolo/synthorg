@@ -74,9 +74,9 @@ fi
 # (``a && git push && b``) but require ``push`` to be followed by a
 # real command-token boundary -- whitespace, end-of-string, or one
 # of the shell separators ``| & ; )``. ``\b`` would treat ``-`` as
-# a boundary and falsely match ``git push-tag-helper`` (CodeRabbit,
-# 2026-04-26). The leading guard rejects ``foogit push`` while
-# allowing the same separators on the left.
+# a boundary and falsely match ``git push-tag-helper``. The leading
+# guard rejects ``foogit push`` while allowing the same separators
+# on the left.
 PUSH_REGEX='(^|[[:space:]]|[|&;(])git[[:space:]]+push([[:space:]]|$|[|&;)])'
 if [[ -z "$COMMAND" ]] || ! printf '%s\n' "$COMMAND" | grep -qE "${PUSH_REGEX}"; then
     exit 0
@@ -109,7 +109,7 @@ fi
 
 # Failing to create the runtime state dir is a tooling problem, not
 # a "user pushed too soon" problem. Fail OPEN -- a broken filesystem
-# state must never block a push (CodeRabbit, 2026-04-26).
+# state must never block a push.
 if ! mkdir -p "${STATE_DIR}" 2>/dev/null; then
     exit 0
 fi
@@ -148,9 +148,8 @@ fi
 # Guard against a future-dated LAST_TS (clock rollback or
 # corrupted state). Without this, ``DELTA = NOW - LAST_TS`` is
 # negative and the ``DELTA < THROTTLE_SEC`` test below succeeds
-# trivially, blocking the push instead of failing OPEN
-# (CodeRabbit, 2026-04-26). Reset to 0 so the gate behaves as if
-# this were a first push.
+# trivially, blocking the push instead of failing OPEN. Reset to 0
+# so the gate behaves as if this were a first push.
 if [[ "${LAST_TS}" -gt "${NOW}" ]]; then
     LAST_TS=0
 fi
@@ -181,10 +180,10 @@ fi
 # Successful authorisation: consume the override flag (one-shot).
 # ``rm -f`` can fail (read-only fs, permission edge cases); under
 # ``set -e`` that would terminate the script on an allow path and
-# turn it into an unintended deny. Tolerate the failure
-# (CodeRabbit, 2026-04-26) -- the worst case is the next push
-# inside the throttle window also bypasses the gate, which is
-# still strictly safer than spuriously blocking a push.
+# turn it into an unintended deny. Tolerate the failure -- the
+# worst case is the next push inside the throttle window also
+# bypasses the gate, which is still strictly safer than spuriously
+# blocking a push.
 if [[ "${OVERRIDE}" -eq 1 ]]; then
     rm -f "${OVERRIDE_FLAG}" 2>/dev/null || true
 fi

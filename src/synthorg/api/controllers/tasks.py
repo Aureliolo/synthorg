@@ -37,7 +37,7 @@ from synthorg.engine.errors import (
     TaskVersionConflictError,
 )
 from synthorg.engine.task_engine_models import CreateTaskData
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_FALLBACK,
     API_RESOURCE_NOT_FOUND,
@@ -110,7 +110,7 @@ def _map_task_engine_errors(
             API_TASK_MUTATION_FAILED,
             resource="task",
             task_id=task_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
         )
         return ServiceUnavailableError("Service temporarily unavailable")
@@ -119,7 +119,7 @@ def _map_task_engine_errors(
             API_TASK_MUTATION_FAILED,
             resource="task",
             task_id=task_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type="TaskInternalError",
         )
         return ServiceUnavailableError("Internal server error")
@@ -128,7 +128,7 @@ def _map_task_engine_errors(
             API_TASK_MUTATION_FAILED,
             resource="task",
             task_id=task_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type="TaskVersionConflictError",
         )
         return ConflictError(str(exc))
@@ -137,7 +137,7 @@ def _map_task_engine_errors(
             API_TASK_MUTATION_FAILED,
             resource="task",
             task_id=task_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type="TaskMutationError",
         )
         return ValidationError(str(exc))
@@ -146,7 +146,7 @@ def _map_task_engine_errors(
         API_TASK_MUTATION_FAILED,
         resource="task",
         task_id=task_id,
-        error=str(exc),
+        error=safe_error_description(exc),
         error_type=type(exc).__name__,
     )
     return ServiceUnavailableError("Unexpected engine error")

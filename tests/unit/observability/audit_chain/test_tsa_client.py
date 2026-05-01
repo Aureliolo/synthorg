@@ -1,4 +1,4 @@
-"""Unit tests for the RFC 3161 TSA client (#1412).
+"""Unit tests for the RFC 3161 TSA client.
 
 Covers:
 

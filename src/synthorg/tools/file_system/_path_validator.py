@@ -9,7 +9,7 @@ symlinks, or absolute paths outside the workspace.
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_FS_PARENT_NOT_FOUND,
     TOOL_FS_PATH_VIOLATION,
@@ -88,7 +88,8 @@ class PathValidator:
             logger.warning(
                 TOOL_FS_PATH_VIOLATION,
                 user_path=path,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Invalid path: {path} ({exc})"
             raise ValueError(msg) from exc

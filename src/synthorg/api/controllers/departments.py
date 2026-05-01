@@ -740,7 +740,8 @@ class DepartmentController(Controller):
             logger.warning(
                 API_REQUEST_ERROR,
                 endpoint="departments.ceremony_policy.update",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ValidationError(msg) from exc
 

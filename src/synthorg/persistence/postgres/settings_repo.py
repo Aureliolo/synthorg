@@ -276,8 +276,8 @@ class PostgresSettingsRepository:
         bad-timestamp incident has the full call-site context
         without having to grep for the raised :class:`QueryError`.
         The raw exception text is redacted via
-        :func:`safe_error_description` so SEC-1 secret-log invariants
-        hold even if the underlying ``ValueError`` carried a payload
+        :func:`safe_error_description` so secret-log invariants hold
+        even if the underlying ``ValueError`` carried a payload
         snippet.
         """
         try:

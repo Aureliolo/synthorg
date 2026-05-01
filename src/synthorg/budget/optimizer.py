@@ -172,7 +172,7 @@ class CostOptimizer:
         window_duration = total_duration / window_count
         window_starts = tuple(start + window_duration * i for i in range(window_count))
 
-        # Pre-group records by agent for O(N+M) complexity (#8)
+        # Pre-group records by agent for O(N+M) complexity.
         by_agent = _group_records_by_agent(records)
         agent_ids = sorted(by_agent)
         anomalies: list[SpendingAnomaly] = []
@@ -495,7 +495,7 @@ class CostOptimizer:
         )
         alert_level = _compute_alert_level(used_pct, cfg)
 
-        # Use projected alert level (after cost) for auto-deny check (#11)
+        # Use projected alert level (after cost) for auto-deny check.
         projected_cost = round(
             monthly_cost + estimated_cost,
             BUDGET_ROUNDING_PRECISION,

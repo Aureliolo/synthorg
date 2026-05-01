@@ -301,10 +301,11 @@ class SelfImprovementService:
         try:
             await applier.verify_github_token()
         except GitHubAPIError as exc:
-            # SEC-1: never let raw exception text leak into telemetry on
-            # credential-bearing paths -- the GitHub API client may include
-            # the bearer header in error messages. ``safe_error_description``
-            # is the project-wide redactor mandated by CLAUDE.md ``## Logging``.
+            # Never let raw exception text leak into telemetry on
+            # credential-bearing paths -- the GitHub API client may
+            # include the bearer header in error messages.
+            # ``safe_error_description`` is the project-wide redactor
+            # mandated by CLAUDE.md ``## Logging``.
             logger.warning(
                 META_CODE_GITHUB_CREDS_INVALID,
                 reason="token_verification_failed",

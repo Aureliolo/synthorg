@@ -65,12 +65,13 @@ class TestNatsBusHealthCheck:
         self,
         flush_exc: Exception,
     ) -> None:
-        # SEC-1: flush exceptions log ``error_type`` +
+        # Flush exceptions log ``error_type`` +
         # ``error=safe_error_description(exc)``; no ``exc_info=True``
         # because serialized traceback frame-locals can leak the
-        # credentials embedded in the NATS connection URL. The fix
-        # is exception-type-agnostic, so the assertion holds across
-        # timeout / connection / OS / generic runtime failures.
+        # credentials embedded in the NATS connection URL. The
+        # contract is exception-type-agnostic, so the assertion
+        # holds across timeout / connection / OS / generic runtime
+        # failures.
         bus = _make_bus()
         bus._state.running = True
         client = MagicMock()

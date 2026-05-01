@@ -30,7 +30,7 @@ class ApprovalStoreProtocol(Protocol):
     """
 
     async def clear(self) -> None:
-        """Reset all approval items, holding the store lock (#1599)."""
+        """Reset all approval items, holding the store lock."""
         ...
 
     async def add(self, item: ApprovalItem) -> None:

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_FAILED,
     TEMPLATE_MODEL_MATCH_FALLBACK,
@@ -120,7 +120,8 @@ def _resolve_agent_requirement(
                 TEMPLATE_MODEL_MATCH_SKIPPED,
                 agent_index=idx,
                 reason="invalid_model_requirement_dict",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         return req, req.tier
@@ -136,7 +137,8 @@ def _resolve_agent_requirement(
             tier=tier,
             preset=preset,
             reason="invalid_requirement",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     return req, tier

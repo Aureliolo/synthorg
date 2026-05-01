@@ -1,4 +1,4 @@
-"""Tests for :class:`EscalationExpirationSweeper` (#1418)."""
+"""Tests for :class:`EscalationExpirationSweeper`."""
 
 import asyncio
 import contextlib

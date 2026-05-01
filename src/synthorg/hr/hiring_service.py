@@ -509,5 +509,6 @@ class HiringService:
                 HR_HIRING_INSTANTIATED,
                 agent_id=str(identity.id),
                 warning="onboarding_failed",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )

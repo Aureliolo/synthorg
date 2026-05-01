@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PROVIDER_USAGE_ENRICHMENT_FAILED
 
 if TYPE_CHECKING:
@@ -52,7 +52,7 @@ async def enrich_with_usage(
         logger.warning(
             API_PROVIDER_USAGE_ENRICHMENT_FAILED,
             provider=name,
-            error=str(exc),
-            error_type=type(exc).__qualname__,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return summary

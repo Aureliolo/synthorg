@@ -219,8 +219,7 @@ class InMemoryInflightStore(InflightStore):
                 # ``safe_error_description`` strips attacker-controllable
                 # bytes from the serialised error so a misbehaving
                 # bucket-key or exception subclass cannot inject text
-                # that breaks the structured log stream.  Matches the
-                # SEC-1 hardened-log convention.
+                # that breaks the structured log stream.
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="inflight_gc_failed",

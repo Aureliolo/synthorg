@@ -1,4 +1,4 @@
-/** Conflict resolution & human escalation queue types (#1418). */
+/** Conflict resolution & human escalation queue types. */
 
 import type { SeniorityLevel } from './enums'
 

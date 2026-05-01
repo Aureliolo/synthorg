@@ -77,11 +77,12 @@ class AgentIntake:
             project: Project stamped on created tasks.
             requested_by: Identity recorded as the task creator.
             persona: System prompt persona for the triage agent. The
-                default ``_DEFAULT_PERSONA`` already carries the SEC-1
-                :func:`untrusted_content_directive`. If a caller supplies
-                a custom persona that lacks the directive, the directive
-                is appended automatically so ``<task-data>`` fences keep
-                their enforced-untrusted semantics.
+                default ``_DEFAULT_PERSONA`` already carries the
+                :func:`untrusted_content_directive`. If a caller
+                supplies a custom persona that lacks the directive,
+                the directive is appended automatically so
+                ``<task-data>`` fences keep their enforced-untrusted
+                semantics.
             temperature: Sampling temperature (default 0.0 -- triage
                 is classification, determinism wins over diversity).
             max_tokens: Maximum tokens in the triage response.
@@ -94,15 +95,15 @@ class AgentIntake:
         self._project = project
         self._requested_by = requested_by
         self._cost_tracker = cost_tracker
-        # SEC-1: normalize the persona to always carry the untrusted-
-        # content directive. A caller-supplied persona without it would
+        # Normalize the persona to always carry the untrusted-content
+        # directive. A caller-supplied persona without it would
         # silently weaken fence semantics.
         directive = untrusted_content_directive((TAG_TASK_DATA,))
         self._persona = (
             persona if directive in persona else f"{persona.rstrip()}\n\n{directive}"
         )
-        # SEC-1 fingerprint: pin temperature + max_tokens at construction
-        # so downstream tests can assert a stable call shape.
+        # Pin temperature + max_tokens at construction so downstream
+        # tests can assert a stable call shape.
         self._completion_config = CompletionConfig(
             temperature=temperature,
             max_tokens=max_tokens,
@@ -191,12 +192,13 @@ class AgentIntake:
         )
 
     def _build_prompt(self, requirement: TaskRequirement) -> list[ChatMessage]:
-        # SEC-1 / audit 92: ``title`` and ``description`` are user-supplied
-        # free-form strings that reach the model verbatim.  Wrap both in
-        # the ``<task-data>`` fence declared by ``_DEFAULT_PERSONA``.
-        # ``task_type`` / ``priority`` / ``estimated_complexity`` are typed
-        # enums that Pydantic validates at the model boundary, so their
-        # ``.value`` access yields a known-safe string (no wrap needed).
+        # ``title`` and ``description`` are user-supplied free-form
+        # strings that reach the model verbatim. Wrap both in the
+        # ``<task-data>`` fence declared by ``_DEFAULT_PERSONA``.
+        # ``task_type`` / ``priority`` / ``estimated_complexity`` are
+        # typed enums that Pydantic validates at the model boundary,
+        # so their ``.value`` access yields a known-safe string (no
+        # wrap needed).
         fenced_title = wrap_untrusted(TAG_TASK_DATA, requirement.title)
         fenced_description = wrap_untrusted(
             TAG_TASK_DATA,

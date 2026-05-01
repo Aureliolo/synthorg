@@ -11,7 +11,7 @@ from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa:
 from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.health.models import HealthReport
 from synthorg.integrations.health.prober import get_health_checker
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import HEALTH_CHECK_FAILED
 
 logger = get_logger(__name__)
@@ -66,8 +66,8 @@ async def check_connection_health(
         logger.warning(
             HEALTH_CHECK_FAILED,
             connection_name=name,
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return HealthReport(
             connection_name=conn.name,

@@ -22,7 +22,7 @@ from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 from synthorg.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_ARCHIVAL_ENTRY_FAILED,
     HR_FIRING_MEMORY_ARCHIVED,
@@ -102,7 +102,7 @@ class FullSnapshotStrategy:
                 HR_ARCHIVAL_ENTRY_FAILED,
                 agent_id=agent_id,
                 phase="retrieve",
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             raise MemoryArchivalError(msg) from exc
@@ -180,7 +180,8 @@ class FullSnapshotStrategy:
                     agent_id=agent_id,
                     memory_id=str(entry.id),
                     phase="archive",
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 continue
 
@@ -231,7 +232,8 @@ class FullSnapshotStrategy:
                     agent_id=agent_id,
                     memory_id=str(entry.id),
                     phase="promote",
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         return promoted_count
@@ -263,6 +265,7 @@ class FullSnapshotStrategy:
                     agent_id=agent_id,
                     memory_id=memory_id,
                     phase="delete",
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return hot_store_cleaned

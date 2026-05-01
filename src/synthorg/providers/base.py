@@ -144,13 +144,14 @@ class BaseCompletionProvider(ABC):
             else:
                 result = await _attempt()
         except Exception as exc:
-            # SEC-1: ``logger.exception`` (what TRY400 suggests) would
+            # ``logger.exception`` (what TRY400 suggests) would
             # attach a traceback whose serialized frame-locals can
-            # leak provider credentials (API keys in headers, connection
-            # URLs with user:pass).  Use ``logger.error`` with the
-            # structured ``error_type`` + scrubbed ``error`` fields
-            # instead -- traceback frames never reach any log sink.
-            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
+            # leak provider credentials (API keys in headers,
+            # connection URLs with user:pass). Use ``logger.error``
+            # with the structured ``error_type`` + scrubbed ``error``
+            # fields instead -- traceback frames never reach any log
+            # sink.
+            logger.error(  # noqa: TRY400 -- see rationale above
                 PROVIDER_CALL_ERROR,
                 model=model,
                 latency_ms=(time.monotonic() - t_start) * 1000.0,
@@ -257,10 +258,11 @@ class BaseCompletionProvider(ABC):
         try:
             return await self._resilient_execute(_attempt)
         except Exception as exc:
-            # SEC-1: see the ``complete`` sibling handler; ``logger.error``
-            # + scrubbed fields instead of ``logger.exception`` prevents
-            # traceback frame-locals from leaking provider credentials.
-            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
+            # See the ``complete`` sibling handler; ``logger.error``
+            # + scrubbed fields instead of ``logger.exception``
+            # prevents traceback frame-locals from leaking provider
+            # credentials.
+            logger.error(  # noqa: TRY400 -- see rationale above
                 PROVIDER_CALL_ERROR,
                 model=model,
                 error_type=type(exc).__name__,
@@ -305,14 +307,14 @@ class BaseCompletionProvider(ABC):
         try:
             return await self._resilient_execute(_attempt)
         except Exception as exc:
-            # SEC-1: ``logger.exception`` would attach a traceback
-            # whose frame-locals can leak provider credentials; use
+            # ``logger.exception`` would attach a traceback whose
+            # frame-locals can leak provider credentials; use
             # ``logger.error`` with the structured ``error_type`` +
             # scrubbed ``error`` fields, mirroring ``complete()`` /
-            # ``stream()``.  ``record_provider_error`` keeps the
+            # ``stream()``. ``record_provider_error`` keeps the
             # provider-error metric in sync with the other call paths
             # so dashboards do not under-count capability failures.
-            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
+            logger.error(  # noqa: TRY400 -- see rationale above
                 PROVIDER_CALL_ERROR,
                 model=model,
                 phase="get_model_capabilities",

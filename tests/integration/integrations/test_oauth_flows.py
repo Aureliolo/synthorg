@@ -359,7 +359,6 @@ class TestDeviceFlow:
 
 
 # ── Leak-sentinel tests ──────────────────────────────────────────────
-# Regression guards for SEC-1 (`_audit/findings/90-secrets-in-logs.md`):
 # OAuth error logs must not leak `client_secret`, `refresh_token`, or
 # `code_verifier` -- not through `str(exc)`, not through traceback
 # frame-locals. These tests construct an ``httpx.HTTPStatusError`` whose
@@ -410,7 +409,7 @@ def _leak_free(events: Sequence[Any]) -> None:
 
 @pytest.mark.integration
 class TestOAuthLogRedaction:
-    """SEC-1 regression guards for OAuth error-path logging.
+    """Regression guards for OAuth error-path logging.
 
     All three leak-sentinel cases (authorization-code exchange, refresh,
     client-credentials exchange) share the same sentinel setup and log

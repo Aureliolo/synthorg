@@ -12,7 +12,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
 logger = get_logger(__name__)
@@ -57,16 +57,27 @@ class AuthorityDeferenceConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_patterns_compile(self) -> Self:
         """Ensure all regex patterns are valid."""
-        for pattern in self.patterns:
+        for pattern_index, pattern in enumerate(self.patterns):
             try:
                 re.compile(pattern)
             except re.error as exc:
-                msg = f"Invalid regex pattern {pattern!r}: {exc}"
+                # The raw pattern can quote a credential the
+                # operator accidentally embedded in their config;
+                # emitting it via ``pattern=`` or ``msg`` would
+                # defeat the log scrub. Surface only the index +
+                # length so an operator can locate the bad entry
+                # without recording the bytes.
+                scrubbed = safe_error_description(exc)
+                msg = (
+                    f"Invalid regex pattern at index {pattern_index} "
+                    f"(length={len(pattern)}): {scrubbed}"
+                )
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
-                    message=msg,
-                    pattern=pattern,
-                    error=str(exc),
+                    pattern_index=pattern_index,
+                    pattern_length=len(pattern),
+                    error_type=type(exc).__name__,
+                    error=scrubbed,
                 )
                 raise ValueError(msg) from exc
         return self
@@ -100,16 +111,23 @@ class ClarificationGateConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_generic_patterns_compile(self) -> Self:
         """Ensure all generic patterns are valid regexes."""
-        for pattern in self.generic_patterns:
+        for pattern_index, pattern in enumerate(self.generic_patterns):
             try:
                 re.compile(pattern)
             except re.error as exc:
-                msg = f"Invalid generic pattern {pattern!r}: {exc}"
+                scrubbed = safe_error_description(exc)
+                # See ``_validate_patterns_compile`` for the rationale
+                # behind index+length-only logging.
+                msg = (
+                    f"Invalid generic pattern at index {pattern_index} "
+                    f"(length={len(pattern)}): {scrubbed}"
+                )
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
-                    message=msg,
-                    pattern=pattern,
-                    error=str(exc),
+                    pattern_index=pattern_index,
+                    pattern_length=len(pattern),
+                    error_type=type(exc).__name__,
+                    error=scrubbed,
                 )
                 raise ValueError(msg) from exc
         return self

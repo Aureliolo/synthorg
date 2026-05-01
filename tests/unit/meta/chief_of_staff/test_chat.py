@@ -270,7 +270,7 @@ class TestPromptTemplates:
             assert placeholder in CHAT_QUERY_PROMPT, placeholder
 
 
-# -- SEC-1 prompt-injection fence (audit 92) -------------------------------
+# -- Prompt-injection fence ------------------------------------------------
 
 
 class TestSec1TemplatesCarryDirective:

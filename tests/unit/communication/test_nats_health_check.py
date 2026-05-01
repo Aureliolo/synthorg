@@ -1,10 +1,10 @@
-"""Tests for ``JetStreamMessageBus.health_check`` SEC-1 compliance.
+"""Tests for ``JetStreamMessageBus.health_check`` log redaction.
 
 Flush exceptions on the health probe path must log at WARNING with
 ``error_type`` and a scrubbed ``error`` description -- never a raw
 traceback (``exc_info=True``) -- because the NATS connection URL
-can legitimately carry credentials and serialized frame-locals
-have been the documented SEC-1 leak vector.
+can legitimately carry credentials and serialized frame-locals are
+a known leak vector.
 """
 
 # mypy: disable-error-code="union-attr,method-assign"
@@ -49,7 +49,7 @@ def _build_bus() -> JetStreamMessageBus:
 
 
 class TestHealthCheckSec1Logging:
-    """``health_check`` flush failures log SEC-1-safe diagnostics."""
+    """``health_check`` flush failures log sanitised diagnostics."""
 
     async def test_flush_failure_logs_safe_description(self) -> None:
         """The warning carries ``error_type`` + ``error`` but no traceback frames."""
@@ -72,8 +72,8 @@ class TestHealthCheckSec1Logging:
         assert log["log_level"] == "warning"
         assert log["phase"] == "flush"
         assert log["error_type"] == "RuntimeError"
-        # SEC-1: the log entry must carry a redacted description, not
-        # a raw traceback. ``exc_info`` would surface frame-locals
+        # The log entry must carry a redacted description, not a
+        # raw traceback. ``exc_info`` would surface frame-locals
         # that can include the NATS URL's user:pass component.
         assert isinstance(log["error"], str)
         assert log["error"]

@@ -404,7 +404,7 @@ class TestCodeModificationStrategy:
             )
 
 
-# -- SEC-1 prompt-injection fence (audit 92) --------------------------------
+# -- Prompt-injection fence -------------------------------------------------
 
 
 class TestSec1CodeModificationFences:
@@ -477,7 +477,7 @@ class TestSec1CodeModificationFences:
         assert prompt.count("</task-data>") == 2
 
     def test_user_prompt_wraps_allowed_paths_and_manifest(self) -> None:
-        """SEC-1: ``allowed_paths`` and the file manifest are config-derived
+        """``allowed_paths`` and the file manifest are config-derived
         but still reach the model verbatim -- both go inside fences.
         """
         s = CodeModificationStrategy(

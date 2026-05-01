@@ -6,13 +6,13 @@
  * the whole UI.
  *
  * The benchmark targets ``resolveLocale``, the pure-compute resolver
- * extracted from ``getLocale``. Benching ``getLocale`` directly was
- * incorrect (CodeRabbit, 2026-04-26): it re-reads ``useSettingsStore``
- * state and ``navigator.language`` on every call, so the measurement
- * conflated three things -- store access, ``navigator`` access, and
- * the actual resolution work. The pure resolver lets the bench
- * isolate validation + trim + ``Intl.getCanonicalLocales`` over
- * three deterministic input shapes.
+ * extracted from ``getLocale``. Benching ``getLocale`` directly is
+ * incorrect: it re-reads ``useSettingsStore`` state and
+ * ``navigator.language`` on every call, so the measurement conflates
+ * three things -- store access, ``navigator`` access, and the actual
+ * resolution work. The pure resolver lets the bench isolate
+ * validation + trim + ``Intl.getCanonicalLocales`` over three
+ * deterministic input shapes.
  */
 import { bench, describe } from 'vitest'
 

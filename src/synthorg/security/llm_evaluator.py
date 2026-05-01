@@ -322,10 +322,11 @@ class LlmSecurityEvaluator:
     ) -> SecurityVerdict:
         """Handle unexpected LLM call errors."""
         duration_ms = (time.monotonic() - start) * 1000
-        # SEC-1: use ``logger.warning`` + ``safe_error_description``
-        # instead of ``logger.exception`` so we don't emit a traceback
-        # that could leak credential-bearing locals (provider auth
-        # headers, request bodies) on this credential-bearing path.
+        # Use ``logger.warning`` + ``safe_error_description``
+        # instead of ``logger.exception`` so we don't emit a
+        # traceback that could leak credential-bearing locals
+        # (provider auth headers, request bodies) on this
+        # credential-bearing path.
         logger.warning(
             SECURITY_LLM_EVAL_ERROR,
             tool_name=context.tool_name,
@@ -470,11 +471,12 @@ class LlmSecurityEvaluator:
     ) -> list[ChatMessage]:
         """Build the LLM prompt messages from the security context."""
         args_str = self._serialize_arguments(context.arguments)
-        # SEC-1 / audit 92: the serialised tool arguments are the only
-        # attacker-controllable field in this prompt -- wrap them in the
-        # ``<tool-arguments>`` fence declared by ``_SYSTEM_PROMPT`` so
-        # the model treats them as data, and a literal ``</tool-arguments>``
-        # inside ``args_str`` cannot break out of the fence.
+        # The serialised tool arguments are the only
+        # attacker-controllable field in this prompt -- wrap them in
+        # the ``<tool-arguments>`` fence declared by
+        # ``_SYSTEM_PROMPT`` so the model treats them as data, and a
+        # literal ``</tool-arguments>`` inside ``args_str`` cannot
+        # break out of the fence.
         fenced_args = wrap_untrusted(TAG_TOOL_ARGUMENTS, args_str)
 
         # Structural ``<action>...</action>`` framing groups the trusted

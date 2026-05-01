@@ -54,7 +54,14 @@ WORKFLOW_EXEC_FAILED: Final[str] = "workflow.execution.failed"
 """Workflow execution failed."""
 
 WORKFLOW_EXEC_CANCELLED: Final[str] = "workflow.execution.cancelled"
-"""Workflow execution cancelled by user."""
+"""Workflow execution cancelled by user (terminal success path)."""
+
+WORKFLOW_EXEC_CANCEL_CONFLICT: Final[str] = "workflow.execution.cancel_conflict"
+"""Cancellation rejected (already-terminal status / version conflict / etc.).
+
+Emitted on the 409 path so audit / telemetry counters do not conflate
+failed cancel attempts with successful cancellations.
+"""
 
 WORKFLOW_EXEC_STATUS_TRANSITIONED: Final[str] = "workflow.execution.status_transitioned"
 """Workflow execution status transitioned -- emitted on every persisted hop.

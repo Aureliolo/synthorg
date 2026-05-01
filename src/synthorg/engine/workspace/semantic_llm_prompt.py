@@ -93,8 +93,7 @@ def build_system_message() -> ChatMessage:
 
     The system prompt carries an explicit directive that
     ``<code-diff>`` fences wrap untrusted code content so the LLM
-    does not execute instructions embedded in reviewed source
-    (SEC-1 / audit finding 92).
+    does not execute instructions embedded in reviewed source.
 
     Returns:
         System message with review instructions.
@@ -137,9 +136,9 @@ def build_review_message(
     Returns:
         User message with code context for review.
     """
-    # SEC-1: every attacker-influenced string (diff summary, the file
+    # Every attacker-influenced string (diff summary, the file
     # paths in ``changed_files``, and the file contents themselves)
-    # must sit inside a ``<code-diff>`` fence.  Without the wrap, a
+    # must sit inside a ``<code-diff>`` fence. Without the wrap, a
     # malicious filename or diff-summary line could masquerade as
     # operator framing and escape the review intent.
     parts = [

@@ -15,7 +15,7 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
@@ -128,6 +128,10 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._poll_timeout_fallback_logged:
+                # No exc_info on a settings-resolver fallback path.
+                # ConfigResolver fetches can carry connection strings
+                # or API tokens in scope, and a traceback would
+                # serialise frame-locals into the log.
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     error=(
@@ -135,7 +139,6 @@ class MessageBusBridge:
                         " using fallback (logging suppressed until recovery)"
                     ),
                     poll_timeout=_POLL_TIMEOUT,
-                    exc_info=True,
                 )
                 self._poll_timeout_fallback_logged = True
             return _POLL_TIMEOUT
@@ -162,6 +165,7 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._drain_timeout_fallback_logged:
+                # No exc_info on settings-resolver fallback.
                 logger.warning(
                     API_BUS_BRIDGE_DRAIN_RESOLVE_ERROR,
                     error=(
@@ -169,7 +173,6 @@ class MessageBusBridge:
                         " using fallback (logging suppressed until recovery)"
                     ),
                     timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
-                    exc_info=True,
                 )
                 self._drain_timeout_fallback_logged = True
             return _STOP_DRAIN_TIMEOUT_SECONDS
@@ -195,6 +198,7 @@ class MessageBusBridge:
             raise
         except Exception:
             if not self._max_errors_fallback_logged:
+                # No exc_info on settings-resolver fallback.
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     error=(
@@ -202,7 +206,6 @@ class MessageBusBridge:
                         " using fallback (logging suppressed until recovery)"
                     ),
                     max_errors=_MAX_CONSECUTIVE_ERRORS,
-                    exc_info=True,
                 )
                 self._max_errors_fallback_logged = True
             return _MAX_CONSECUTIVE_ERRORS
@@ -499,11 +502,18 @@ class MessageBusBridge:
                     if isinstance(result, MemoryError | RecursionError):
                         raise result
                     if isinstance(result, BaseException):
+                        # ``exc_info=<exception>`` emits the same
+                        # traceback frame-locals as ``exc_info=True``
+                        # per the Python logging contract, undoing
+                        # the scrub from ``safe_error_description``.
+                        # Operators get the type + scrubbed message;
+                        # tracebacks are not attached on
+                        # shutdown-warning paths.
                         logger.warning(
                             API_APP_SHUTDOWN,
                             component="bus_bridge",
-                            error=str(result),
-                            exc_info=result,
+                            error_type=type(result).__name__,
+                            error=safe_error_description(result),
                         )
             self._tasks.clear()
             self._running = False

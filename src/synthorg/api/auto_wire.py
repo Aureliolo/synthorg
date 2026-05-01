@@ -25,7 +25,7 @@ from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -822,8 +822,7 @@ async def auto_wire_ontology(
         logger.warning(
             ONTOLOGY_AUTO_WIRE_FAILED,
             error_type=type(exc).__name__,
-            error=str(exc),
-            exc_info=True,
+            error=safe_error_description(exc),
         )
         return None
     else:

@@ -111,9 +111,9 @@ def scrub_event_fields(
 ) -> Mapping[str, Any]:
     """Deep-scrub credential patterns out of every string value.
 
-    Belt-and-braces defence against the ``error=str(exc)`` leak vector
-    (SEC-1 / audit finding 90): even when a caller embeds a stringified
-    exception (or response body) that carries ``client_secret=...``,
+    Belt-and-braces defence against the ``error=str(exc)`` leak
+    vector: even when a caller embeds a stringified exception (or
+    response body) that carries ``client_secret=...``,
     ``"access_token":"..."``, ``Authorization: Bearer ...``, or raw
     Fernet ciphertext, this processor rewrites the string so those
     substrings are masked before the renderer sees them.

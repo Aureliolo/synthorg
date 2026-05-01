@@ -11,7 +11,7 @@ from synthorg.integrations.connections.models import (
     ConnectionStatus,
     HealthReport,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     HEALTH_CHECK_FAILED,
     HEALTH_CHECK_PASSED,
@@ -59,23 +59,39 @@ class SlackHealthCheck:
                 checked_at=now,
             )
 
-        # ``get_credentials`` can raise (secret backend outage,
-        # malformed row, etc.). Treat those as an UNHEALTHY result
-        # instead of propagating out of the health check -- a raise
-        # here would cancel any sibling probes running in the same
-        # TaskGroup.
+        # ``get_credentials`` can raise. Domain / runtime failures
+        # (secret backend outage, malformed row, etc.) are converted
+        # to an UNHEALTHY health-check result rather than propagating
+        # out of the check, since a raise would cancel any sibling
+        # probes running in the same ``TaskGroup``. System-level
+        # failures (``MemoryError`` / ``RecursionError``) are
+        # intentionally re-raised below so they DO unwind the group;
+        # they signal interpreter-wide problems that should not be
+        # masked as a single connection's "unhealthy" report.
         try:
             credentials = await self._catalog.get_credentials(connection.name)
+        except MemoryError, RecursionError:
+            # System-level failures must propagate so the surrounding
+            # TaskGroup can unwind cleanly; converting them to an
+            # UNHEALTHY report would mask the real problem and leave
+            # sibling probes running on a doomed process (project
+            # convention).
+            raise
         except Exception as exc:
+            # The secret-backend exception text can carry encrypted
+            # token blobs; scrub before logging / surfacing.
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
-                error=f"credential resolution failed: {exc}",
+                reason="credential_resolution_failed",
+                error_type=type(exc).__name__,
+                error=scrubbed,
             )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
-                error_detail=f"credential resolution failed: {exc}",
+                error_detail=f"credential resolution failed: {scrubbed}",
                 checked_at=now,
             )
         token = credentials.get("token")
@@ -109,16 +125,18 @@ class SlackHealthCheck:
                 )
         except httpx.HTTPError as exc:
             elapsed = (time.monotonic() - start) * 1000
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=scrubbed,
             )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
                 latency_ms=elapsed,
-                error_detail=str(exc),
+                error_detail=scrubbed,
                 checked_at=datetime.now(UTC),
             )
 
@@ -143,7 +161,9 @@ class SlackHealthCheck:
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
-                error=f"invalid JSON: {exc}",
+                reason="invalid_json",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return HealthReport(
                 connection_name=connection.name,

@@ -216,10 +216,11 @@ class MCPToolInvoker:
             raise
         except Exception as exc:
             error_type = type(exc).__name__
-            # SEC-1: safe_error_description avoids leaking secrets that
-            # str(exc) would expose (httpx POST bodies, Fernet payloads,
-            # OAuth refresh tokens).  exc_info is intentionally omitted
-            # for the same reason -- frame locals can carry credentials.
+            # safe_error_description avoids leaking secrets that
+            # str(exc) would expose (httpx POST bodies, Fernet
+            # payloads, OAuth refresh tokens). exc_info is
+            # intentionally omitted for the same reason -- frame
+            # locals can carry credentials.
             logger.warning(
                 MCP_SERVER_INVOKE_FAILED,
                 tool_name=tool_name,

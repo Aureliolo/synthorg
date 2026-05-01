@@ -1,4 +1,4 @@
-"""AST-based regression guard for SEC-1 log redaction.
+"""AST-based regression guard for log redaction.
 
 The structlog processor chain (``scrub_event_fields`` +
 ``format_exc_info``) already closes the ``error=str(exc)`` leak

@@ -60,12 +60,11 @@ describe('useWebSocket', () => {
   })
 
   it('removes handlers AND unsubscribes channels on unmount', async () => {
-    // Contract (updated per CodeRabbit review on PR #1545): cleanup
-    // must remove per-handler registrations AND call wsStore.unsubscribe
-    // for the channels the hook subscribed to. Before the fix, cleanup
-    // only unwound handlers, leaking the channel subscriptions in the
-    // store's subscribedChannels set and keeping stale traffic routed
-    // to the unmounted view.
+    // Contract: cleanup must remove per-handler registrations AND
+    // call wsStore.unsubscribe for the channels the hook subscribed
+    // to. Without this, cleanup only unwinds handlers, leaking the
+    // channel subscriptions in the store's subscribedChannels set
+    // and keeping stale traffic routed to the unmounted view.
     useAuthStore.setState({ authStatus: 'authenticated' })
     useWebSocketStore.setState({ connected: true })
 

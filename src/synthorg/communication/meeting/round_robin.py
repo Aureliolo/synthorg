@@ -54,11 +54,11 @@ logger = get_logger(__name__)
 
 
 def _format_transcript_entry(agent_id: str, content: str) -> str:
-    """Render a single transcript entry with SEC-1 fencing.
+    """Render a single transcript entry with peer-contribution fencing.
 
     Centralises the security-critical formatting used by both the
-    discussion-round transcript build and the leader-summary transcript
-    rebuild so the two paths cannot drift out of sync (#1596).  The
+    discussion-round transcript build and the leader-summary
+    transcript rebuild so the two paths cannot drift out of sync. The
     ``[agent_id]:`` prefix sits outside the fence as model-trusted
     attribution; the agent's free-form output goes inside the fence.
     """
@@ -170,11 +170,12 @@ class RoundRobinProtocol:
         )
 
         turn_number = len(contributions)
-        # SEC-1: each transcript entry's content originates from another
-        # agent's free-form output and may itself have been prompt-
-        # injected upstream.  Wrap each contribution in its own
-        # ``<peer-contribution>`` fence so a literal closing tag in the
-        # content cannot inject into the leader's summary prompt (#1596).
+        # Each transcript entry's content originates from another
+        # agent's free-form output and may itself have been
+        # prompt-injected upstream. Wrap each contribution in its
+        # own ``<peer-contribution>`` fence so a literal closing tag
+        # in the content cannot inject into the leader's summary
+        # prompt.
         transcript = [
             _format_transcript_entry(c.agent_id, c.content) for c in contributions
         ]
@@ -316,10 +317,10 @@ class RoundRobinProtocol:
                     lens_assignments=lens_assignments,
                 )
                 contributions.append(contribution)
-                # SEC-1: each peer turn is wrapped in its own
+                # Each peer turn is wrapped in its own
                 # ``<peer-contribution>`` fence so a compromised
-                # contribution cannot escape and inject into downstream
-                # turns or the leader's summary prompt (#1596).
+                # contribution cannot escape and inject into
+                # downstream turns or the leader's summary prompt.
                 transcript.append(
                     _format_transcript_entry(
                         participant_id,

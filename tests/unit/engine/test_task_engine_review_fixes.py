@@ -1,7 +1,4 @@
-"""Tests for PR review fixes: race condition, immutability, validation wrapping.
-
-Covers fixes from Copilot, CodeRabbit, and Greptile review findings.
-"""
+"""Tests for race-condition, immutability, and validation invariants."""
 
 import asyncio
 import contextlib

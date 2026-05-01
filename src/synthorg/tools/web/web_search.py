@@ -11,7 +11,7 @@ from typing import Any, ClassVar, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_SEARCH_FAILED,
     WEB_SEARCH_START,
@@ -130,9 +130,17 @@ class WebSearchTool(BaseWebTool):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(WEB_SEARCH_FAILED, query=query, error=str(exc))
+            logger.warning(
+                WEB_SEARCH_FAILED,
+                query=query,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            # Stable, generic message: ``ToolExecutionResult.content``
+            # is forwarded to the LLM, so interpolating ``exc`` would
+            # leak provider internals / API keys past the log scrub.
             return ToolExecutionResult(
-                content=f"Web search failed: {exc}",
+                content="Web search failed. Please try again.",
                 is_error=True,
             )
 
@@ -154,12 +162,16 @@ class WebSearchTool(BaseWebTool):
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
+                # Drop exc_info + scrub -- the malformed provider
+                # result might still be readable in frame-locals on
+                # the traceback.
                 logger.warning(
                     WEB_SEARCH_FAILED,
                     query=query,
-                    error="malformed_provider_result",
-                    exc_info=True,
+                    reason="malformed_provider_result",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 continue
 

@@ -19,7 +19,7 @@ from synthorg.engine.strategy.models import (
     ConstitutionalPrincipleConfig,
     PrinciplePack,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import (
     STRATEGY_PACK_INVALID,
     STRATEGY_PACK_LOADED,
@@ -92,7 +92,8 @@ def _parse_pack_yaml(
         logger.warning(
             STRATEGY_PACK_INVALID,
             source=source_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise StrategyPackValidationError(msg) from exc
 
@@ -121,7 +122,8 @@ def _parse_pack_yaml(
         logger.warning(
             STRATEGY_PACK_INVALID,
             source=source_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise StrategyPackValidationError(msg) from exc
 
@@ -154,7 +156,8 @@ def _load_builtin(name: str) -> PrinciplePack:
         logger.warning(
             STRATEGY_PACK_NOT_FOUND,
             source=source_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise StrategyPackValidationError(msg) from exc
 
@@ -182,7 +185,8 @@ def _load_from_file(path: Path) -> PrinciplePack:
         logger.warning(
             STRATEGY_PACK_NOT_FOUND,
             path=str(path),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise StrategyPackValidationError(msg) from exc
     except UnicodeDecodeError as exc:
@@ -190,7 +194,8 @@ def _load_from_file(path: Path) -> PrinciplePack:
         logger.warning(
             STRATEGY_PACK_NOT_FOUND,
             path=str(path),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise StrategyPackValidationError(msg) from exc
 

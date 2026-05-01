@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.enums import ConflictEscalation, MergeOrder
 from synthorg.engine.errors import WorkspaceCleanupError, WorkspaceMergeError
 from synthorg.engine.workspace.models import MergeResult
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_GROUP_MERGE_COMPLETE,
     WORKSPACE_GROUP_MERGE_START,
@@ -107,7 +107,8 @@ class MergeOrchestrator:
                 logger.warning(
                     WORKSPACE_MERGE_FAILED,
                     workspace_id=workspace.workspace_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 result = MergeResult(
                     workspace_id=workspace.workspace_id,
@@ -154,10 +155,15 @@ class MergeOrchestrator:
                         workspace=workspace,
                     )
                 except WorkspaceCleanupError as exc:
+                    # Cleanup errors can wrap filesystem / DB
+                    # exceptions whose str() embeds paths or
+                    # connection strings.
                     logger.warning(
                         WORKSPACE_TEARDOWN_FAILED,
                         workspace_id=workspace.workspace_id,
-                        error=f"Post-merge cleanup failed: {exc}",
+                        reason="post_merge_cleanup_failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
         logger.info(

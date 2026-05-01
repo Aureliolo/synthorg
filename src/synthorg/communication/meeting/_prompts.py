@@ -17,9 +17,9 @@ def build_agenda_prompt(agenda: MeetingAgenda) -> str:
 
     Agenda fields (title, context, item title/description, presenter_id)
     originate from API request bodies and are attacker-controllable.
-    They are wrapped in a single SEC-1 ``<task-data>`` fence so a literal
+    They are wrapped in a single ``<task-data>`` fence so a literal
     closing tag in any field cannot break out and inject instructions
-    into downstream meeting agents (#1596).
+    into downstream meeting agents.
 
     Args:
         agenda: The meeting agenda to format.
@@ -60,7 +60,7 @@ def inject_lens_perspective(
     as a perspective instruction.  Otherwise the prompt is returned
     unchanged.
 
-    SEC-1: ``lens_name`` is interpolated unwrapped because
+    ``lens_name`` is interpolated unwrapped because
     ``lens_assignments`` originates from operator-controlled
     strategy config (e.g. ``MeetingsConfig.lens_assignments``), not
     from API request bodies or other agent output.  If a future change

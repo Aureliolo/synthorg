@@ -81,7 +81,7 @@ TOOL_HTML_PARSE_GAP_DETECTED: Final[str] = "tool.html_parse.gap_detected"
 TOOL_HTML_PARSE_ERROR: Final[str] = "tool.html_parse.error"
 TOOL_HTML_PARSE_XXE_DETECTED: Final[str] = "tool.html_parse.xxe_detected"
 
-# ── Prompt-injection detection events (SEC-1) ─────────────────────
+# ── Prompt-injection detection events ─────────────────────────────
 TOOL_INJECTION_PATTERN_DETECTED: Final[str] = "tool.injection_pattern.detected"
 
 # ── Registry integrity check events ──────────────────────────────

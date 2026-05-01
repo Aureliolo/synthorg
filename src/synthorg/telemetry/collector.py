@@ -269,8 +269,8 @@ class TelemetryCollector:
         -> parsed config). The constructor performs **zero filesystem
         I/O**; loading or creating the anonymous ``deployment_id`` is
         deferred to :meth:`start`. The load itself runs outside the
-        event loop's thread via ``asyncio.to_thread`` (#1600). A
-        disabled collector still leaves no on-disk trace.
+        event loop's thread via ``asyncio.to_thread``. A disabled
+        collector still leaves no on-disk trace.
 
         Args:
             config: Parsed telemetry configuration from
@@ -373,16 +373,16 @@ class TelemetryCollector:
     async def start(self) -> None:
         """Load the deployment ID and start the periodic heartbeat.
 
-        Performs the lifecycle transition deferred from ``__init__``:
-        the deployment-id load (previously synchronous in the
-        constructor) now runs here through ``asyncio.to_thread`` with
-        a hard deadline so the event loop's thread is never blocked
-        on filesystem I/O (#1600). Idempotent and safe under
-        concurrent callers: serialised by a lifecycle lock so the
-        load, the startup event, and heartbeat task creation happen
-        atomically. The load is wrapped in defence-in-depth try/
-        except so a contract violation in the sync helper or a
-        thread-pool timeout never crashes ``start()``.
+        Performs the lifecycle transition deferred from ``__init__``.
+        The deployment-id load runs here through
+        ``asyncio.to_thread`` with a hard deadline so the event
+        loop's thread is never blocked on filesystem I/O. Idempotent
+        and safe under concurrent callers: serialised by a lifecycle
+        lock so the load, the startup event, and heartbeat task
+        creation happen atomically. The load is wrapped in
+        defence-in-depth try/except so a contract violation in the
+        sync helper or a thread-pool timeout never crashes
+        ``start()``.
         """
         async with self._lifecycle_lock:
             if self._closed:
@@ -801,7 +801,7 @@ class TelemetryCollector:
 
         Offloads the entire path-validation + filesystem sequence to
         ``asyncio.to_thread`` so the event loop's thread never blocks
-        on disk (#1600). Single ``to_thread`` boundary keeps the
+        on disk. Single ``to_thread`` boundary keeps the
         read + atomic-create + peer-recover sequence on one OS
         thread so the ``O_CREAT|O_EXCL`` race semantics are
         preserved end-to-end; splitting the helper across multiple
@@ -831,7 +831,7 @@ def _load_or_create_deployment_id_sync(
     """Synchronous path-validate + load + atomic-create + peer-recover.
 
     Runs inside ``asyncio.to_thread`` so the event loop's thread is
-    never blocked on filesystem I/O (#1600). The full sequence
+    never blocked on filesystem I/O. The full sequence
     (path validation -> existence probe -> read -> ``O_CREAT|O_EXCL``
     create -> peer re-read on race, with retry on partial-write) lives
     in one helper so the OS-level race semantics are preserved

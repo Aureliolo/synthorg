@@ -4,19 +4,24 @@ Endpoints for initiating OAuth flows, handling callbacks,
 and checking token status.
 """
 
-from typing import Any
+from typing import Annotated, Any
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.types import (
+    NotBlankStr,  # noqa: TC001 -- Pydantic field annotation evaluated at runtime
+)
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     InvalidStateError,
+    SecretRetrievalError,
     TokenExchangeFailedError,
 )
 from synthorg.integrations.oauth.callback_handler import (
@@ -25,10 +30,38 @@ from synthorg.integrations.oauth.callback_handler import (
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import SECRET_RETRIEVAL_FAILED
 
 logger = get_logger(__name__)
+
+# Length caps on attacker-controllable strings.
+_MAX_CONNECTION_NAME_LEN = 128
+_MAX_SCOPE_LEN = 256
+_MAX_OAUTH_CODE_LEN = 2048
+_MAX_OAUTH_STATE_LEN = 512
+
+
+class InitiateOAuthFlowRequest(BaseModel):
+    """Body model for ``POST /oauth/initiate``.
+
+    Replaces the prior ``data: dict[str, Any]`` shape so input
+    bounds are enforced by Pydantic at the boundary.
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        extra="forbid",
+    )
+
+    connection_name: Annotated[
+        NotBlankStr,
+        Field(max_length=_MAX_CONNECTION_NAME_LEN),
+    ]
+    # Scope items are themselves NotBlankStr so an empty / whitespace
+    # element cannot be silently forwarded to the OAuth provider call.
+    scopes: tuple[Annotated[NotBlankStr, Field(max_length=_MAX_SCOPE_LEN)], ...] = ()
 
 
 class OAuthController(Controller):
@@ -45,24 +78,13 @@ class OAuthController(Controller):
     async def initiate_flow(
         self,
         state: State,
-        data: dict[str, Any],
+        data: InitiateOAuthFlowRequest,
     ) -> ApiResponse[dict[str, str]]:
         """Initiate an OAuth authorization code flow.
 
         Returns the authorization URL for the user to visit.
         """
-        connection_name = data.get("connection_name")
-        if not isinstance(connection_name, str) or not connection_name.strip():
-            msg = "Field 'connection_name' is required"
-            raise ValidationError(msg)
-
-        scopes_raw = data.get("scopes", [])
-        if not isinstance(scopes_raw, list) or not all(
-            isinstance(s, str) for s in scopes_raw
-        ):
-            msg = "Field 'scopes' must be a list of strings"
-            raise ValidationError(msg)
-
+        connection_name = data.connection_name
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.get_or_raise(connection_name)
@@ -99,7 +121,7 @@ class OAuthController(Controller):
             token_url=credentials.get("token_url", ""),
             client_id=credentials.get("client_id", ""),
             client_secret=credentials.get("client_secret", ""),
-            scopes=tuple(scopes_raw),
+            scopes=data.scopes,
             redirect_uri=redirect_uri,
         )
 
@@ -127,10 +149,14 @@ class OAuthController(Controller):
     async def callback(
         self,
         state: State,
-        code: str = Parameter(description="Authorization code"),
+        code: str = Parameter(
+            description="Authorization code",
+            max_length=_MAX_OAUTH_CODE_LEN,
+        ),
         state_param: str = Parameter(
             query="state",
             description="OAuth state token",
+            max_length=_MAX_OAUTH_STATE_LEN,
         ),
     ) -> ApiResponse[dict[str, Any]]:
         """Handle OAuth provider callback.
@@ -200,12 +226,21 @@ class OAuthController(Controller):
         try:
             credentials = await catalog.get_credentials(connection_name)
             has_access_token = bool(credentials.get("access_token"))
-        except Exception:
+        except SecretRetrievalError as exc:
+            # No traceback on a credential-lookup warning path --
+            # frame-locals could carry decrypted secret material.
+            # Operators get the type + scrubbed message via
+            # ``safe_error_description``. Narrow to
+            # ``SecretRetrievalError`` so an unexpected bug in
+            # ``catalog.get_credentials`` (KeyError, TypeError, etc.)
+            # surfaces as a 500 instead of being silently masked as
+            # "backend unavailable".
             logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 connection_name=connection_name,
-                error="credential lookup failed in /status",
-                exc_info=True,
+                reason="credential lookup failed in /status",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             has_access_token = None
         if has_access_token is None:

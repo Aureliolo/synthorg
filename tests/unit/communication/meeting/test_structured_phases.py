@@ -470,12 +470,12 @@ class TestStructuredPhasesConflictDetector:
 
 @pytest.mark.unit
 class TestStructuredPhasesInjectionDefense:
-    """SEC-1 / #1596: lateral prompt-injection defenses.
+    """Lateral prompt-injection defenses.
 
     Each of the three downstream prompt builders -- conflict check,
-    discussion, synthesis -- interpolates upstream agent contributions.
-    A compromised participant must not be able to break out of the
-    ``<peer-contribution>`` fence.
+    discussion, synthesis -- interpolates upstream agent
+    contributions. A compromised participant must not be able to
+    break out of the ``<peer-contribution>`` fence.
     """
 
     async def test_attacker_breakout_in_input_is_escaped(

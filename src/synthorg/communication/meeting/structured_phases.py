@@ -79,8 +79,8 @@ def _build_conflict_check_prompt(
     """Build a prompt for the leader to check for conflicts.
 
     Each participant input is wrapped in its own ``<peer-contribution>``
-    fence (SEC-1 / #1596) so a literal closing tag in any input cannot
-    inject instructions into the leader's reasoning.
+    fence so a literal closing tag in any input cannot inject
+    instructions into the leader's reasoning.
     """
     parts = [agenda_text, "", "Participant inputs:"]
     for agent_id, content in inputs:
@@ -108,7 +108,7 @@ def _build_discussion_prompt(
     which may itself contain prompt-injected content from upstream
     inputs) are wrapped in ``<peer-contribution>`` fences so a
     compromised upstream turn cannot escape and inject into this
-    participant's reasoning (#1596).
+    participant's reasoning.
     """
     parts = [agenda_text, "", "Previous inputs:"]
     for aid, content in inputs:
@@ -135,7 +135,7 @@ def _build_synthesis_prompt(
 
     Each input and discussion contribution is wrapped in its own
     ``<peer-contribution>`` fence so a compromised participant cannot
-    inject into the synthesis decision (#1596).
+    inject into the synthesis decision.
     """
     parts = [agenda_text, "", "Participant inputs:"]
     for agent_id, content in inputs:

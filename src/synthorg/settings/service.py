@@ -357,10 +357,10 @@ class SettingsService:
         try:
             return self._encryptor.decrypt(raw_value)
         except SettingsEncryptionError as exc:
-            # SEC-1: settings encryption is a credential-bearing path;
+            # Settings encryption is a credential-bearing path;
             # ``logger.exception`` would attach a traceback that may
             # leak the encrypted payload or the encryptor's internal
-            # state via the cryptography exception chain.  Use
+            # state via the cryptography exception chain. Use
             # ``logger.warning`` with ``safe_error_description`` per
             # CLAUDE.md ``## Logging``.
             logger.warning(
@@ -977,7 +977,7 @@ class SettingsService:
         try:
             return self._encryptor.encrypt(value)
         except SettingsEncryptionError as exc:
-            # SEC-1: same rationale as ``_decrypt_if_sensitive``.
+            # Same rationale as ``_decrypt_if_sensitive``.
             logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=definition.namespace,
@@ -1178,10 +1178,9 @@ class SettingsService:
         except Exception as exc:
             # Notification failure should not break settings writes.
             # Settings is a credential-bearing path so use the
-            # SEC-1-compliant ``safe_error_description`` redactor and
-            # do NOT pass exc_info=True -- the traceback could leak
-            # sensitive payload through the cryptography exception
-            # chain.
+            # ``safe_error_description`` redactor and do NOT pass
+            # exc_info=True -- the traceback could leak sensitive
+            # payload through the cryptography exception chain.
             logger.warning(
                 SETTINGS_NOTIFICATION_FAILED,
                 namespace=namespace,

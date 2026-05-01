@@ -27,7 +27,7 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
 )
 from synthorg.engine.errors import CoordinationPhaseError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_COORDINATION_AGENT_RESOLVE_FAILED,
     API_COORDINATION_COMPLETED,
@@ -76,12 +76,15 @@ def _publish_ws_event(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
+        # Drop exc_info -- channels_plugin internals can carry
+        # connection metadata; surface scrubbed type+msg.
         logger.warning(
             API_WS_SEND_FAILED,
             note="Failed to publish coordination WebSocket event",
             event_type=event_type.value,
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 
@@ -182,11 +185,16 @@ class CoordinationController(Controller):
         try:
             budget_cfg = await app_state.config_resolver.get_budget_config()
             currency = budget_cfg.currency
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Drop ``exc_info=True`` -- the config-resolver traceback
+            # can carry secret-store URLs in frame-locals.
             logger.warning(
                 API_COORDINATION_FAILED,
-                error="budget config unavailable, using default currency",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="budget config unavailable, using default currency",
             )
             currency = DEFAULT_CURRENCY
         return ApiResponse(
@@ -253,7 +261,8 @@ class CoordinationController(Controller):
                 API_COORDINATION_FAILED,
                 task_id=task_id,
                 phase=exc.phase,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             client_msg = f"Coordination failed at phase {exc.phase!r}"
             _publish_ws_event(
@@ -268,11 +277,15 @@ class CoordinationController(Controller):
             raise ValidationError(client_msg) from exc
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Drop ``logger.exception`` -- frame-locals on the
+            # unexpected-coordination traceback can carry the full
+            # coordination context (task body, agent rosters).
+            logger.error(  # noqa: TRY400
                 API_COORDINATION_FAILED,
                 task_id=task_id,
-                error="Unexpected exception during coordination",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             _publish_ws_event(
                 request,

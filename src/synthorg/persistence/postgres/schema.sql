@@ -1020,7 +1020,7 @@ CREATE UNIQUE INDEX idx_training_results_plan
 CREATE INDEX idx_training_results_agent
     ON training_results(new_agent_id, completed_at DESC);
 
--- ── Conflict escalations (#1418) ───────────────────────────────
+-- ── Conflict escalations ───────────────────────────────────────
 -- Human escalation approval queue: one row per conflict awaiting a
 -- human decision.  Matches the SQLite sibling ``conflict_escalations``
 -- but uses JSONB for payloads and TIMESTAMPTZ for timestamps.
@@ -1087,7 +1087,7 @@ CREATE INDEX idx_conflict_escalations_status_expires_at
 CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict
     ON conflict_escalations(conflict_id) WHERE status = 'pending';
 
--- LISTEN/NOTIFY wiring for cross-instance resolver wake-up (#1418)
+-- LISTEN/NOTIFY wiring for cross-instance resolver wake-up
 -- is emitted by the application (``PostgresEscalationRepository._
 -- publish_notify``) using ``EscalationQueueConfig.notify_channel``
 -- so operators can rename the channel without a schema change.  We
@@ -1096,7 +1096,7 @@ CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict
 -- notify channel, and double-publishing (trigger + app) would cause
 -- duplicate wake-ups.
 
--- ── Custom signal rules (#1443) ─────────────────────────────────
+-- ── Custom signal rules ─────────────────────────────────────────
 -- Mirror of the SQLite ``custom_rules`` table; existed on SQLite
 -- only until the parity sweep.  Boolean ``enabled`` uses native
 -- BOOLEAN; JSON target_altitudes uses JSONB.
@@ -1117,7 +1117,7 @@ CREATE TABLE custom_rules (
 CREATE UNIQUE INDEX custom_rules_name ON custom_rules (name);
 CREATE INDEX idx_custom_rules_enabled ON custom_rules(enabled);
 
--- ── Approvals (#1443) ───────────────────────────────────────────
+-- ── Approvals ───────────────────────────────────────────────────
 -- Mirror of the SQLite ``approvals`` table.  Boolean-ish checks
 -- express the same state-machine invariants; JSONB metadata +
 -- evidence_package replace TEXT blobs.
@@ -1224,7 +1224,7 @@ CREATE TABLE drift_reports (
 CREATE INDEX idx_dr_entity_created
     ON drift_reports (entity_name, created_at DESC);
 
--- Persistent idempotency keys for retry-prone endpoints (#1599).
+-- Persistent idempotency keys for retry-prone endpoints.
 -- A claim row goes through (in_flight) -> (completed | failed); the
 -- cached response_body lets a duplicate caller receive the same
 -- reply rather than 409. Rows older than expires_at are reaped by
@@ -1273,7 +1273,7 @@ CREATE INDEX idx_idempotency_expires ON idempotency_keys (expires_at);
 -- ``ProviderAuditService.record`` from every mutation entry point on
 -- ``ProviderManagementService``.  ``id`` is BIGSERIAL so it doubles
 -- as the keyset pagination cursor.  ``payload`` is JSONB; credentials
--- inside payload MUST be masked (``"prefix***last4"``) per SEC-1.
+-- inside payload MUST be masked (``"prefix***last4"``).
 CREATE TABLE provider_audit_events (
     id BIGSERIAL PRIMARY KEY,
     provider_name TEXT NOT NULL CHECK (length(trim(provider_name)) > 0),

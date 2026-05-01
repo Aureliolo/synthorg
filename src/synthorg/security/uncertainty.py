@@ -353,11 +353,11 @@ class UncertaintyChecker:
 
         Individual provider failures are logged and skipped.
 
-        SEC-1: ``prompt`` is the candidate text we're cross-checking
-        for uncertainty; it may have been seeded by an attacker
-        upstream.  We need each candidate provider to **answer** the
-        prompt (so we can compare answers for agreement) while still
-        treating the prompt body as data, not as instructions that
+        ``prompt`` is the candidate text we're cross-checking for
+        uncertainty; it may have been seeded by an attacker upstream.
+        We need each candidate provider to **answer** the prompt (so
+        we can compare answers for agreement) while still treating
+        the prompt body as data, not as instructions that
         could redirect the answer.  The split is:
 
         - SYSTEM = an explicit "answer the user prompt" instruction
@@ -429,10 +429,10 @@ class UncertaintyChecker:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1: ``logger.warning`` + ``safe_error_description``
-                # instead of ``logger.exception`` so the traceback (which
-                # can carry credential-bearing locals from provider
-                # auth) does not reach the log sink.
+                # ``logger.warning`` + ``safe_error_description``
+                # instead of ``logger.exception`` so the traceback
+                # (which can carry credential-bearing locals from
+                # provider auth) does not reach the log sink.
                 logger.warning(
                     SECURITY_UNCERTAINTY_CHECK_ERROR,
                     provider=candidate.provider_name,

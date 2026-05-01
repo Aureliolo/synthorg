@@ -21,7 +21,7 @@ from synthorg.engine.workspace.models import (
     WorkspaceGroupResult,
     WorkspaceRequest,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_FAILED,
     COORDINATION_WAVE_COMPLETED,
@@ -153,8 +153,8 @@ class ContextDependentDispatcher:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=f"workspace_setup_wave_{wave_idx}",
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             all_phases.append(
                 CoordinationPhaseResult(
@@ -265,8 +265,8 @@ class ContextDependentDispatcher:
                 COORDINATION_PHASE_FAILED,
                 phase=f"execute_wave_{wave_idx}",
                 wave_index=wave_idx,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             all_waves.append(
                 CoordinationWave(

@@ -30,7 +30,7 @@ from synthorg.hr.pruning.models import (
     PruningRequest,
     PruningServiceConfig,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_PRUNING_AGENT_ELIGIBLE,
     HR_PRUNING_APPROVAL_DEDUP_SKIP,
@@ -224,11 +224,21 @@ class PruningService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                errors.append(NotBlankStr(f"{agent.id}: {exc}"))
+                # The ``errors`` list lands on
+                # ``PruningJobRun.errors`` and is later
+                # logged/persisted, so we must scrub the same way
+                # the warning below does. Raw ``str(exc)`` here
+                # would smuggle secret-bearing exception text past
+                # the log scrub via the persistence boundary.
+                # ``safe_error_description`` already returns
+                # ``"{ExcType}: {scrubbed}"`` so we don't prefix the
+                # type name a second time.
+                errors.append(NotBlankStr(f"{agent.id}: {safe_error_description(exc)}"))
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=str(agent.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return eligible
 
@@ -296,11 +306,19 @@ class PruningService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                errors.append(NotBlankStr(f"approval {agent.id}: {exc}"))
+                # Same scrub as the eligibility loop -- the
+                # ``errors`` list crosses the persistence boundary
+                # via ``PruningJobRun.errors``.
+                # ``safe_error_description`` already prefixes the
+                # exception type, so don't double it up.
+                errors.append(
+                    NotBlankStr(f"approval {agent.id}: {safe_error_description(exc)}")
+                )
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=str(agent.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return created
 
@@ -547,12 +565,19 @@ class PruningService:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Drop ``logger.exception`` here -- the
+            # ``FiringRequest`` carries agent identity / reason and
+            # frame-locals on the traceback could leak that to
+            # logs. Mirror the notification-callback pattern:
+            # error_type + safe_error_description(exc) without
+            # exc_info.
+            logger.warning(
                 HR_PRUNING_POLICY_ERROR,
                 agent_id=agent_id,
                 approval_id=str(item.id),
-                error="Offboarding failed after approval",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -607,12 +632,16 @@ class PruningService:
                 await callback(record)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
+                # No traceback on the notification callback path --
+                # frame-locals could carry the ``record`` body the
+                # callback was about to deliver.
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=agent_id,
-                    error="notification callback failed",
-                    exc_info=True,
+                    reason="notification callback failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     def _handle_rejected(self, item: ApprovalItem) -> None:
@@ -659,8 +688,14 @@ class PruningService:
                 await self.run_pruning_cycle()
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                # Drop ``logger.exception`` -- the scheduler-loop
+                # traceback can carry FiringRequest fields and
+                # policy state in frame-locals, both of which
+                # contain agent identity / reasoning text.
+                logger.warning(
                     HR_PRUNING_POLICY_ERROR,
-                    error="Unexpected error in pruning scheduler loop",
+                    reason="scheduler_loop_unexpected_error",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )

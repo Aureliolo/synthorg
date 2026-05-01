@@ -22,7 +22,7 @@ from synthorg.engine.workflow.blueprint_errors import (
     BlueprintValidationError,
 )
 from synthorg.engine.workflow.blueprint_models import BlueprintData
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.blueprint import (
     BLUEPRINT_LIST,
     BLUEPRINT_LOAD_NOT_FOUND,
@@ -204,7 +204,8 @@ def _try_load_user_blueprint(name: str) -> BlueprintData | None:
                 BLUEPRINT_LOAD_NOT_FOUND,
                 blueprint_name=name,
                 action="user_failed_fallback_builtin",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         raise
@@ -271,7 +272,8 @@ def _parse_blueprint_yaml(yaml_text: str, source_name: str) -> BlueprintData:
             BLUEPRINT_LIST,
             source=source_name,
             action="yaml_parse_failed",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise BlueprintValidationError(msg) from exc
 
@@ -293,7 +295,8 @@ def _parse_blueprint_yaml(yaml_text: str, source_name: str) -> BlueprintData:
             BLUEPRINT_LIST,
             source=source_name,
             action="schema_validation_failed",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise BlueprintValidationError(msg) from exc
 
@@ -315,7 +318,8 @@ def _load_builtin(name: str) -> BlueprintData:
         logger.warning(
             BLUEPRINT_LOAD_NOT_FOUND,
             source=source_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise BlueprintValidationError(msg) from exc
 
@@ -332,7 +336,8 @@ def _load_from_file(path: Path, name: str) -> BlueprintData:
         logger.warning(
             BLUEPRINT_LOAD_NOT_FOUND,
             path=str(path),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise BlueprintValidationError(msg) from exc
     except UnicodeDecodeError as exc:
@@ -340,7 +345,8 @@ def _load_from_file(path: Path, name: str) -> BlueprintData:
         logger.warning(
             BLUEPRINT_LOAD_NOT_FOUND,
             path=str(path),
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise BlueprintValidationError(msg) from exc
 
@@ -395,6 +401,7 @@ def _collect_user_blueprints() -> dict[str, BlueprintInfo]:
                 BLUEPRINT_LIST,
                 blueprint_path=str(path),
                 action="skip_invalid",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
     return seen

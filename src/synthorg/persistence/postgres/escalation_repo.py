@@ -1,4 +1,4 @@
-"""Postgres repository for the human escalation queue (#1418).
+"""Postgres repository for the human escalation queue.
 
 Sibling of :class:`SQLiteEscalationRepository` backed by
 ``psycopg_pool.AsyncConnectionPool``.  Uses native ``JSONB`` for the

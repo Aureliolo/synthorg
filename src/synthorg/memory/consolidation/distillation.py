@@ -27,7 +27,7 @@ from synthorg.memory.tool_retriever import (
     RECALL_MEMORY_TOOL_NAME,
     SEARCH_MEMORY_TOOL_NAME,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     DISTILLATION_CAPTURE_FAILED,
     DISTILLATION_CAPTURED,
@@ -279,9 +279,8 @@ async def capture_distillation(
             DISTILLATION_CAPTURE_FAILED,
             agent_id=agent_id,
             task_id=task_id,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
-            exc_info=True,
         )
         return None
     logger.info(
