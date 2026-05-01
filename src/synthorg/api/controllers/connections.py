@@ -237,24 +237,37 @@ class ConnectionsController(Controller):
         unknown fields and shape mismatches surface as a structured 4xx
         response automatically.
         """
-        # Defensively deepcopy the request-sourced ``metadata`` mapping
-        # at the API boundary; same reasoning as ``create_connection``.
-        metadata_copy = (
-            copy.deepcopy(data.metadata) if data.metadata is not None else None
-        )
         # ``model_fields_set`` distinguishes "field omitted" from "field
         # explicitly set to ``None``" so a PATCH that drops ``base_url``
         # can still null out the stored value via ``base_url=None``;
         # when the field was omitted we forward ``_UNSET`` to keep the
-        # catalog's existing value.
-        base_url = data.base_url if "base_url" in data.model_fields_set else _UNSET
+        # catalog's existing value.  All three mutable fields use the
+        # same semantic so client behaviour is uniform.
+        base_url: str | None | object = (
+            data.base_url if "base_url" in data.model_fields_set else _UNSET
+        )
+        metadata: dict[str, Any] | None | object
+        if "metadata" in data.model_fields_set:
+            # Defensively deepcopy when provided; same reasoning as
+            # ``create_connection`` (catalog briefly holds the mapping
+            # before persisting / encrypting nested secrets).
+            metadata = (
+                copy.deepcopy(data.metadata) if data.metadata is not None else None
+            )
+        else:
+            metadata = _UNSET
+        health_check_enabled: bool | None | object = (
+            data.health_check_enabled
+            if "health_check_enabled" in data.model_fields_set
+            else _UNSET
+        )
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.update(
                 name,
                 base_url=base_url,
-                metadata=metadata_copy,
-                health_check_enabled=data.health_check_enabled,
+                metadata=metadata,
+                health_check_enabled=health_check_enabled,
             )
         except ConnectionNotFoundError as exc:
             logger.warning(

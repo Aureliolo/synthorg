@@ -264,10 +264,15 @@ class ConnectionCatalog:
         name: str,
         *,
         base_url: str | None | object = _UNSET,
-        metadata: dict[str, str] | None = None,
-        health_check_enabled: bool | None = None,
+        metadata: dict[str, str] | None | object = _UNSET,
+        health_check_enabled: bool | None | object = _UNSET,
     ) -> Connection:
         """Update a connection's mutable fields.
+
+        Each kwarg uses the ``_UNSET`` sentinel to distinguish "field
+        omitted" from "field set to ``None``" (clear).  Callers that
+        want a no-op pass nothing; callers that want to explicitly
+        null out a value pass ``None``.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -278,9 +283,9 @@ class ConnectionCatalog:
             updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
             if base_url is not _UNSET:
                 updates["base_url"] = NotBlankStr(base_url) if base_url else None
-            if metadata is not None:
+            if metadata is not _UNSET:
                 updates["metadata"] = metadata
-            if health_check_enabled is not None:
+            if health_check_enabled is not _UNSET:
                 updates["health_check_enabled"] = health_check_enabled
             updated = existing.model_copy(update=updates)
             await self._repo.save(updated)

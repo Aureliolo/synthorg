@@ -1,11 +1,10 @@
 """Tests for :class:`synthorg.core.resilience.GeneralRetryHandler`."""
 
-import asyncio
-
 import pytest
 import structlog.testing
 
 from synthorg.core.resilience import GeneralRetryHandler
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -41,16 +40,12 @@ class TestGeneralRetryHandler:
         assert result == "ok"
         assert calls == 1
 
-    async def test_retries_then_succeeds(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        sleeps: list[float] = []
-
-        async def fake_sleep(seconds: float) -> None:
-            sleeps.append(seconds)
-
-        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    async def test_retries_then_succeeds(self) -> None:
+        # FakeClock-first: ``GeneralRetryHandler`` accepts ``clock=``,
+        # so we inject a fake instead of monkeypatching ``asyncio.sleep``
+        # globally.  ``fake_clock.sleep_calls`` records every requested
+        # delay for assertion.
+        clock = FakeClock()
 
         calls = 0
 
@@ -69,13 +64,14 @@ class TestGeneralRetryHandler:
             cap=10.0,
             event="test.retry",
             jitter=False,
+            clock=clock,
         )
         with structlog.testing.capture_logs() as events:
             result = await handler.execute(op, source="test")
 
         assert result == "ok"
         assert calls == 3
-        assert len(sleeps) == 2  # one before each retry
+        assert len(clock.sleep_calls) == 2  # one before each retry
         retry_events = [e for e in events if e.get("event") == "test.retry"]
         assert len(retry_events) == 2
         for e in retry_events:
@@ -84,15 +80,8 @@ class TestGeneralRetryHandler:
             assert e.get("source") == "test"
             assert e.get("max_attempts") == 5
 
-    async def test_raises_after_max_attempts(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        async def fake_sleep(_seconds: float) -> None:
-            return None
-
-        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-
+    async def test_raises_after_max_attempts(self) -> None:
+        clock = FakeClock()
         boom = "boom"
 
         async def op() -> str:
@@ -104,6 +93,7 @@ class TestGeneralRetryHandler:
             base=0.0,
             cap=0.0,
             event="test.retry",
+            clock=clock,
         )
 
         with pytest.raises(RuntimeError, match="boom"):
@@ -149,18 +139,8 @@ class TestGeneralRetryHandler:
         with pytest.raises(TypeError):
             await handler.execute(op)
 
-    async def test_zero_base_skips_sleep(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        sleep_calls = 0
-
-        async def fake_sleep(_seconds: float) -> None:
-            nonlocal sleep_calls
-            sleep_calls += 1
-
-        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-
+    async def test_zero_base_skips_sleep(self) -> None:
+        clock = FakeClock()
         calls = 0
         transient = "transient"
 
@@ -177,10 +157,13 @@ class TestGeneralRetryHandler:
             base=0.0,
             cap=0.0,
             event="test.retry",
+            clock=clock,
         )
         await handler.execute(op)
 
-        assert sleep_calls == 0  # base=0 means no sleep
+        # ``base=0`` short-circuits the ``await self._clock.sleep(...)``
+        # call site (delay > 0 gate); FakeClock should record nothing.
+        assert clock.sleep_calls == ()
         # Verify the delay computation itself returns exactly 0.0 so
         # a future regression that returns a small epsilon (e.g.
         # ``return self._base or 1e-9``) is caught.
@@ -202,17 +185,8 @@ class TestGeneralRetryHandler:
         assert handler._compute_delay(0) == 0.0
         assert handler._compute_delay(3) == 0.0
 
-    async def test_delay_caps_at_cap_no_jitter(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        sleeps: list[float] = []
-
-        async def fake_sleep(seconds: float) -> None:
-            sleeps.append(seconds)
-
-        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-
+    async def test_delay_caps_at_cap_no_jitter(self) -> None:
+        clock = FakeClock()
         calls = 0
         transient = "transient"
 
@@ -230,26 +204,19 @@ class TestGeneralRetryHandler:
             cap=15.0,
             event="test.retry",
             jitter=False,
+            clock=clock,
         )
         await handler.execute(op)
 
         # base=10, cap=15.  Delays: attempt0 -> 10, attempt1 -> 15
         # (capped from 20), attempt2 -> 15, attempt3 -> 15.
+        sleeps = clock.sleep_calls
         assert all(s <= 15.0 for s in sleeps)
         assert sleeps[0] == 10.0
         assert sleeps[1] == 15.0
 
-    async def test_jitter_returns_value_in_range(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        sleeps: list[float] = []
-
-        async def fake_sleep(seconds: float) -> None:
-            sleeps.append(seconds)
-
-        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-
+    async def test_jitter_returns_value_in_range(self) -> None:
+        clock = FakeClock()
         calls = 0
         transient = "transient"
 
@@ -267,10 +234,11 @@ class TestGeneralRetryHandler:
             cap=10.0,
             event="test.retry",
             jitter=True,
+            clock=clock,
         )
         await handler.execute(op)
 
-        assert all(0 <= s <= 2.0 for s in sleeps)
+        assert all(0 <= s <= 2.0 for s in clock.sleep_calls)
 
     async def test_max_attempts_must_be_positive(self) -> None:
         with pytest.raises(ValueError, match="max_attempts must be >= 1"):
@@ -325,15 +293,8 @@ class TestGeneralRetryHandler:
                 event="test",
             )
 
-    async def test_log_ctx_propagated_to_event(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        async def fake_sleep(_seconds: float) -> None:
-            return None
-
-        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-
+    async def test_log_ctx_propagated_to_event(self) -> None:
+        clock = FakeClock()
         calls = 0
         transient = "transient"
 
@@ -351,6 +312,7 @@ class TestGeneralRetryHandler:
             cap=1.0,
             event="my.event",
             jitter=False,
+            clock=clock,
         )
 
         with structlog.testing.capture_logs() as events:

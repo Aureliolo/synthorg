@@ -56,12 +56,15 @@ class PerOpRateLimitConfig(BaseModel):
         """
         if not isinstance(data, dict):
             return data
-        overrides = data.get("overrides")
-        # ``None`` (default-factory miss) and absent key are valid;
-        # any other non-mapping shape is operator misconfiguration and
-        # gets the same warning + raise treatment as malformed entries.
-        if overrides is None:
+        # Only an absent key bypasses validation (default-factory dict
+        # is empty and falls through fine).  An explicit
+        # ``"overrides": None`` is operator misconfiguration -- it
+        # silently disabled all overrides under the previous early-
+        # return logic -- and now gets the same warning + raise
+        # treatment as a non-mapping shape.
+        if "overrides" not in data:
             return data
+        overrides = data["overrides"]
         if not isinstance(overrides, dict):
             msg = (
                 f"overrides must be a mapping of operation -> "
@@ -151,9 +154,10 @@ class PerOpConcurrencyConfig(BaseModel):
         """
         if not isinstance(data, dict):
             return data
-        overrides = data.get("overrides")
-        if overrides is None:
+        # See the matching comment on ``PerOpRateLimitConfig`` above.
+        if "overrides" not in data:
             return data
+        overrides = data["overrides"]
         if not isinstance(overrides, dict):
             msg = (
                 f"overrides must be a mapping of operation -> max_inflight, "

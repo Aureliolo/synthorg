@@ -98,8 +98,12 @@ class GeneralRetryHandler:
             ``computed_delay``.
 
     Raises:
-        ValueError: If ``max_attempts < 1`` or ``base < 0`` or
-            ``cap < base``.
+        ValueError: If ``max_attempts < 1``, ``base`` is non-finite
+            (``NaN`` / ``+inf`` / ``-inf``) or negative, or ``cap`` is
+            non-finite or smaller than ``base``.  Non-finite ``base``
+            silently disables backoff (every ``base * 2 ** k`` is also
+            non-finite) and a non-finite ``cap`` lets a single retry
+            sleep effectively forever; both surface here.
     """
 
     def __init__(  # noqa: PLR0913 -- 7 named params is the irreducible config surface

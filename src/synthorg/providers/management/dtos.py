@@ -458,6 +458,16 @@ class CreateFromPresetRequest(BaseModel):
     def _validate_base_url(cls, v: str | None) -> str | None:
         return _validate_base_url(v)
 
+    @field_validator("api_key")
+    @classmethod
+    def _check_api_key(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="api_key")
+
+    @field_validator("subscription_token")
+    @classmethod
+    def _check_subscription_token(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="subscription_token")
+
 
 class DiscoverModelsResponse(BaseModel):
     """Result of provider model auto-discovery.
@@ -499,7 +509,7 @@ class ProbeLocalResponse(BaseModel):
             empty candidates) are excluded.
         errors: Map of preset name to error message for presets whose
             probes raised.  ``results`` and ``errors`` are disjoint:
-            a successful probe for ``ollama`` populates ``results``,
+            a successful probe for a preset populates ``results``,
             a raising probe populates ``errors``.
     """
 

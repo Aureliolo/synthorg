@@ -35,6 +35,7 @@ from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_FETCH_FAILED,
+    PERSISTENCE_ARTIFACT_METADATA_MISSING,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
@@ -234,7 +235,7 @@ class ArtifactController(Controller):
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
             logger.warning(
-                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
                 artifact_id=artifact_id,
                 operation="read",
             )
@@ -309,7 +310,7 @@ class ArtifactController(Controller):
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
             logger.warning(
-                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
                 artifact_id=artifact_id,
                 operation="delete",
             )
@@ -380,9 +381,9 @@ class ArtifactController(Controller):
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
             logger.warning(
-                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
                 artifact_id=artifact_id,
-                error_type="artifact_not_found",
+                operation="upload",
                 note="upload_content_target_missing",
             )
             raise NotFoundError(msg)
@@ -481,7 +482,7 @@ class ArtifactController(Controller):
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
             logger.warning(
-                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
                 artifact_id=artifact_id,
                 operation="download",
             )
