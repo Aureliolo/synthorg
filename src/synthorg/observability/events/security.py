@@ -193,3 +193,26 @@ SECURITY_PROVIDER_DELETED: Final[str] = "security.provider.deleted"
 # Emitted by SettingsService.set when the namespace is in the
 # sensitive set (auth, security, autonomy, encryption, rbac).
 SECURITY_SETTINGS_CHANGED: Final[str] = "security.settings.changed"
+
+# ── Connection / external-integration credentials (signed) ─────
+# Connection records carry API keys and OAuth tokens; every CRUD
+# hop is a control-plane change that warrants a signed audit-chain
+# entry. Reveal events capture plaintext credential reads (the
+# success path) and reveal failures (potential abuse / probing).
+SECURITY_CONNECTION_CREATED: Final[str] = "security.connection.created"
+SECURITY_CONNECTION_UPDATED: Final[str] = "security.connection.updated"
+SECURITY_CONNECTION_DELETED: Final[str] = "security.connection.deleted"
+SECURITY_CONNECTION_SECRET_REVEALED: Final[str] = "security.connection.secret_revealed"  # noqa: S105
+SECURITY_CONNECTION_SECRET_REVEAL_FAILED: Final[str] = (
+    "security.connection.secret_reveal_failed"  # noqa: S105
+)
+
+# ── Custom signal rules (signed) ───────────────────────────────
+# Custom rules define automation triggers (control plane) and are
+# comparable in impact to settings or autonomy changes.  Repository
+# layer telemetry (fetched, save_failed, ...) stays under meta.* as
+# operational events.
+SECURITY_CUSTOM_RULE_CREATED: Final[str] = "security.custom_rule.created"
+SECURITY_CUSTOM_RULE_UPDATED: Final[str] = "security.custom_rule.updated"
+SECURITY_CUSTOM_RULE_DELETED: Final[str] = "security.custom_rule.deleted"
+SECURITY_CUSTOM_RULE_TOGGLED: Final[str] = "security.custom_rule.toggled"

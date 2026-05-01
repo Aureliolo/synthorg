@@ -208,6 +208,222 @@ class TestConnectionsController:
         assert "vault" not in str(exc_info.value).lower()
 
 
+def _make_audit_state(catalog: object) -> dict[str, MagicMock]:
+    """Build a minimal ``state`` mapping that pins ``connection_catalog``.
+
+    ``MagicMock(spec=AppState)`` would force every attribute access to
+    declare in the spec; the controller only reads ``connection_catalog``
+    so a focused mock keeps the test surface small while still passing
+    the mock-spec gate (``spec=`` is supplied via the catalog parameter).
+    """
+    app_state = MagicMock()
+    app_state.connection_catalog = catalog
+    return {"app_state": app_state}
+
+
+@pytest.mark.integration
+class TestConnectionAuditEvents:
+    """Connection mutations emit ``security.connection.*`` events.
+
+    The ``AuditChainSink`` filters on the ``security.*`` prefix; an
+    event under ``integrations.*`` would never reach the chain. These
+    tests guard the prefix contract at the controller boundary so
+    forensic reconstruction of credential CRUD stays possible.
+
+    Uses ``structlog.testing.capture_logs`` because the structured
+    ``event`` key lives in the structlog event dict, not on the stdlib
+    ``LogRecord``.
+    """
+
+    async def test_create_emits_security_event(self) -> None:
+        import structlog
+
+        from synthorg.api.controllers.connections import (
+            ConnectionsController,
+            CreateConnectionRequest,
+        )
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_CREATED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.create = AsyncMock(return_value=_make_conn())
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events:
+            await ctrl.create_connection.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                data=CreateConnectionRequest.model_validate(
+                    {
+                        "name": "gh",
+                        "connection_type": "github",
+                        "credentials": {"token": "t"},
+                    },
+                ),
+            )
+
+        emitted = [e["event"] for e in events]
+        assert emitted.count(SECURITY_CONNECTION_CREATED) == 1
+
+    async def test_update_emits_security_event(self) -> None:
+        import structlog
+
+        from synthorg.api.controllers.connections import (
+            ConnectionsController,
+            UpdateConnectionRequest,
+        )
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_UPDATED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.update = AsyncMock(return_value=_make_conn())
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events:
+            await ctrl.update_connection.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+                data=UpdateConnectionRequest.model_validate(
+                    {"base_url": "https://api.github.com/v4"},
+                ),
+            )
+
+        emitted = [e["event"] for e in events]
+        assert emitted.count(SECURITY_CONNECTION_UPDATED) == 1
+
+    async def test_delete_emits_security_event(self) -> None:
+        import structlog
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_DELETED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.delete = AsyncMock(return_value=None)
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events:
+            await ctrl.delete_connection.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+            )
+
+        emitted = [e["event"] for e in events]
+        assert emitted.count(SECURITY_CONNECTION_DELETED) == 1
+
+    async def test_reveal_success_emits_security_event(self) -> None:
+        import structlog
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_SECRET_REVEALED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(
+            return_value={"client_secret": "real-secret-value"},
+        )
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events:
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+                field="client_secret",
+            )
+
+        emitted = [e["event"] for e in events]
+        assert emitted.count(SECURITY_CONNECTION_SECRET_REVEALED) == 1
+
+    async def test_reveal_field_missing_emits_failed_security_event(self) -> None:
+        import structlog
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(return_value={"other": "x"})
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events, pytest.raises(NotFoundError):
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+                field="client_secret",
+            )
+
+        emitted = [e["event"] for e in events]
+        assert emitted.count(SECURITY_CONNECTION_SECRET_REVEAL_FAILED) == 1
+
+    async def test_reveal_connection_missing_emits_failed_security_event(self) -> None:
+        import structlog
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.integrations.errors import ConnectionNotFoundError
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(
+            side_effect=ConnectionNotFoundError("gh missing"),
+        )
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events, pytest.raises(NotFoundError):
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+                field="client_secret",
+            )
+
+        emitted = [e["event"] for e in events]
+        assert emitted.count(SECURITY_CONNECTION_SECRET_REVEAL_FAILED) == 1
+
+    async def test_reveal_backend_error_emits_failed_security_event(self) -> None:
+        import structlog
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.integrations.errors import SecretRetrievalError
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(
+            side_effect=SecretRetrievalError("vault timeout"),
+        )
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events, pytest.raises(NotFoundError):
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+                field="client_secret",
+            )
+
+        emitted = [e["event"] for e in events]
+        assert emitted.count(SECURITY_CONNECTION_SECRET_REVEAL_FAILED) == 1
+
+
 @pytest.mark.integration
 class TestWebhooksController:
     async def test_missing_signing_secret_fails_closed(self) -> None:
