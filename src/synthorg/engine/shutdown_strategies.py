@@ -108,6 +108,9 @@ class ImmediateCancelStrategy:
         """Return the strategy identifier."""
         return "immediate"
 
+    # Internal constant by design: bounds cancellation propagation so
+    # the total shutdown stays within the lifecycle budget; not
+    # exposed to the settings registry.
     _CANCEL_PROPAGATION_TIMEOUT: float = 5.0
 
     async def execute_shutdown(
@@ -211,6 +214,9 @@ class FinishCurrentToolStrategy:
         """Return the strategy identifier."""
         return "finish_tool"
 
+    # Internal constant by design: bounds cancellation propagation so
+    # the total shutdown stays within the lifecycle budget; not
+    # exposed to the settings registry.
     _CANCEL_PROPAGATION_TIMEOUT: float = 5.0
 
     async def execute_shutdown(
@@ -307,6 +313,11 @@ class CheckpointAndStopStrategy:
     are reported as ``tasks_interrupted``.
     """
 
+    # Internal constants by design: cancellation propagation and
+    # checkpoint persistence are bounded so total shutdown stays
+    # within the lifecycle budget.  Longer values defer SIGKILL
+    # past the orchestrator's grace period.  Not exposed to the
+    # settings registry.
     _CANCEL_PROPAGATION_TIMEOUT: float = 5.0
     _CHECKPOINT_TIMEOUT: float = 30.0
 

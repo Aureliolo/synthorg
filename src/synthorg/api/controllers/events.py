@@ -51,7 +51,9 @@ from synthorg.observability.metrics_hub import record_client_disconnect
 logger = get_logger(__name__)
 
 _SSE_KEEPALIVE_FALLBACK_SECONDS = 30.0
-"""Fallback keepalive interval when the resolver is unavailable.
+"""Internal constant by design: fallback keepalive interval used only
+when the resolver is unavailable; the canonical operator-tunable value
+is ``api.sse_keepalive_seconds``.
 
 Mirrors the registry default for ``api.sse_keepalive_seconds`` so a
 test harness or anonymous stream that bypasses :class:`AppState` still

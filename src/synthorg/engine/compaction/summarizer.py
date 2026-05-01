@@ -38,7 +38,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MAX_SUMMARY_CHARS: int = 500
-"""Maximum characters in the generated summary text."""
+"""Internal constant by design: maximum characters in the generated
+summary text.  Defensive cap; prevents bloated summaries in
+compaction memory.  Not exposed to the settings registry."""
 
 
 def make_compaction_callback(

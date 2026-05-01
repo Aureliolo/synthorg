@@ -64,11 +64,12 @@ _SUPPORTED_METHODS = frozenset(
     }
 )
 
-# Fallback maximum number of message parts in a single message/send
-# request when the resolver is unavailable.  Mirrors the registry
-# default for ``a2a.max_message_parts`` so a test harness or a boot
-# path that bypasses :class:`AppState` still enforces the documented
-# ceiling.
+# Internal constant by design: fallback maximum number of message
+# parts in a single message/send request when the resolver is
+# unavailable.  The canonical operator-tunable value is
+# ``a2a.max_message_parts``.  This constant mirrors that registry
+# default so a test harness or a boot path that bypasses
+# :class:`AppState` still enforces the documented ceiling.
 _MAX_MESSAGE_PARTS_FALLBACK = 100
 
 

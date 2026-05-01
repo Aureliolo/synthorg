@@ -24,9 +24,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Internal constants by design: defensive caps on classification-tree
+# recursion depth and on the length of cross-agent evidence included
+# in findings; not exposed to the settings registry.
 _MAX_TREE_DEPTH = 5
-
-# sanitize_message cap for cross-agent evidence included in findings.
 _SANITIZE_MAX_LENGTH = 2000
 
 

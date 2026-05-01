@@ -93,14 +93,13 @@ def run_server(config: RootConfig) -> None:
         ws_ping_timeout=ws_timeout,
         access_log=False,
         log_config=None,
-        # Pair with the in-process request-drain middleware budget
-        # (25 s) so uvicorn's graceful-shutdown window covers both
-        # the drain wait and the slowest service teardown step.
-        # Realistic worst case is ~51 s (drain + services), absolute
-        # worst case ~67 s if every per-service budget hits its cap;
-        # 75 s gives ~8 s headroom over the absolute worst case so
-        # the orchestrator's ``terminationGracePeriodSeconds: 75``
-        # never SIGKILLs the process mid-teardown. See
+        # Internal constant by design: pairs with the in-process
+        # request-drain middleware budget (25 s) and the per-service
+        # shutdown budgets in ``api/lifecycle.py`` (67 s absolute worst
+        # case) to reserve 8 s of headroom over the orchestrator's
+        # ``terminationGracePeriodSeconds: 75``.  Raising this without
+        # also raising the per-service budgets surrenders the headroom
+        # back to SIGKILL.  Not exposed to the settings registry; see
         # ``docs/design/deployment.md`` for the full math.
         timeout_graceful_shutdown=75,
         **ssl_kwargs,

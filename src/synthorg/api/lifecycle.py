@@ -52,13 +52,14 @@ logger = get_logger(__name__)
 #     return well under their cap. Realistic headline budget is 25
 #     (drain) + ~26 s (services) = ~51 s.
 #
+# Internal constants by design: per-service shutdown budgets enforce a
+# fixed total worst-case drain (67 s plus the 25 s drain budget below),
+# matched in api/server.py by Litestar's 75 s graceful_shutdown to
+# reserve 8 s of headroom before the orchestrator SIGKILLs the process.
 # Recommended ``terminationGracePeriodSeconds: 75`` per
-# ``docs/design/deployment.md`` -- 8 s headroom over the absolute
-# worst-case 67 s so the orchestrator never SIGKILLs the process
-# mid-teardown. Operators that consistently hit drain timeouts
-# should raise the grace and document the incident.
-# Raising any *individual* budget should come with a note explaining
-# which production incident motivated the change.
+# ``docs/design/deployment.md``. Raising any *individual* budget
+# requires a production-incident justification documented in the
+# commit; not exposed to the settings registry.
 _TASK_ENGINE_SHUTDOWN_SECONDS: float = 8.0
 _MEETING_SCHEDULER_SHUTDOWN_SECONDS: float = 2.0
 _PERFORMANCE_TRACKER_SHUTDOWN_SECONDS: float = 2.0

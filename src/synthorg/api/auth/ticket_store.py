@@ -37,6 +37,12 @@ class TicketLimitExceededError(Exception):
     """Raised when a user exceeds the per-user pending ticket cap."""
 
 
+# Internal constant by design: boot-time snapshot of
+# ``api.ws_ticket_max_pending_per_user``.  The store reads its cap
+# once at instantiation and holds it until restart so behaviour is
+# stable across the connection lifecycle; runtime mutations to the
+# setting take effect on the next process start.  Not exposed to the
+# settings registry as a runtime knob.
 _MAX_PENDING_PER_USER: int = 5
 
 

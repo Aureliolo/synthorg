@@ -207,9 +207,10 @@ def _data_to_plan(
         )
         return None
 
-    # Cap step count at parse time to prevent unbounded allocation
-    # from misbehaving LLM output (individual loop configs may
-    # truncate further).
+    # Internal constant by design: cap step count at parse time to
+    # prevent unbounded allocation from misbehaving LLM output
+    # (individual loop configs may truncate further).  Not exposed
+    # to the settings registry.
     _MAX_PARSE_STEPS = 50  # noqa: N806
     if len(raw_steps) > _MAX_PARSE_STEPS:
         logger.warning(
