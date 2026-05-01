@@ -3153,10 +3153,10 @@ tests/unit/tools/sandbox/test_docker_sandbox_logs.py:230:43
 tests/unit/tools/sandbox/test_docker_sandbox_logs.py:325:32
 tests/unit/tools/test_code_runner.py:23:11
 tests/unit/tools/test_code_runner.py:24:19
-tests/unit/tools/test_factory.py:141:23
-tests/unit/tools/test_factory.py:518:24
-tests/unit/tools/test_factory.py:609:23
-tests/unit/tools/test_factory.py:623:23
+tests/unit/tools/test_factory.py:155:23
+tests/unit/tools/test_factory.py:558:24
+tests/unit/tools/test_factory.py:654:23
+tests/unit/tools/test_factory.py:669:23
 tests/unit/tools/test_integrity_check.py:29:11
 tests/unit/tools/test_invocation_bridge.py:24:14
 tests/unit/tools/test_invocation_bridge.py:36:11

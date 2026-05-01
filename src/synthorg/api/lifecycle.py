@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 
 # Per-service shutdown budgets (seconds). The total budget is bounded so
 # container orchestrators have headroom before SIGKILL kicks. The current
-# math (#1600 Phase 3):
+# Worst-case shutdown math:
 #
 #   drain (25)  +  task_engine outer (8 * 2 + 1 = 17)  +
 #   meeting (2) +  perf (2)  +  backup (5)  +  settings (2)  +
@@ -389,11 +389,10 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
 
-            # Auth repositories are exposed directly on the persistence
-            # backend (A1 consolidation, issue #1457). Sessions and
-            # refresh tokens are properties; lockouts are built via
-            # ``build_lockouts(auth_config)`` because they need the
-            # operator's threshold/window/duration policy.
+            # Auth repositories live on the persistence backend.
+            # Sessions and refresh tokens are properties; lockouts are
+            # built via ``build_lockouts(auth_config)`` because they
+            # need the operator's threshold/window/duration policy.
             if not app_state.has_session_store:
                 session_store: SessionRepository = persistence.sessions
                 await session_store.load_revoked()

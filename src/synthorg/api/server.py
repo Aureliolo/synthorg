@@ -71,12 +71,12 @@ def run_server(config: RootConfig) -> None:
 
     app = create_app(config=config)
     # Wrap the Litestar app in the request-drain middleware as the
-    # outermost ASGI layer (#1600 Phase 3). The wrap happens here
-    # rather than in ``create_app`` so unit tests retrieve a raw
-    # ``Litestar`` for ``TestClient``; production uvicorn always
-    # gets the drain wrapper. The drain middleware itself
-    # intercepts ``lifespan.shutdown`` and runs ``begin_drain``
-    # before forwarding the message to Litestar, so the per-service
+    # outermost ASGI layer.  The wrap happens here rather than in
+    # ``create_app`` so unit tests retrieve a raw ``Litestar`` for
+    # ``TestClient``; production uvicorn always gets the drain
+    # wrapper.  The drain middleware itself intercepts
+    # ``lifespan.shutdown`` and runs ``begin_drain`` before
+    # forwarding the message to Litestar, so the per-service
     # ``on_shutdown`` hooks only start once in-flight HTTP traffic
     # has drained.
     drain_app = RequestDrainMiddleware(

@@ -299,6 +299,14 @@ class DeviceFlow:
             sleep_seconds = min(poll_interval, remaining)
             logger.debug(OAUTH_DEVICE_FLOW_POLLING, interval=sleep_seconds)
             await self._clock.sleep(sleep_seconds)
+            # Re-check after waking: ``FakeClock.sleep`` and a real
+            # ``asyncio.sleep`` both advance time to (or just past)
+            # the deadline, and the surrounding ``while`` only re-runs
+            # on the next iteration. Without this break the current
+            # iteration still issues the token-endpoint POST after the
+            # caller's budget has expired.
+            if self._clock.now() >= deadline:
+                break
 
             try:
                 async with httpx.AsyncClient(
