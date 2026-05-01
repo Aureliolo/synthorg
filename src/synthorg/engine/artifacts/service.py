@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.artifact import Artifact
+from synthorg.core.domain_errors import ArtifactPersistenceNoStorageError
 from synthorg.core.enums import ArtifactType  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -175,9 +176,9 @@ class ArtifactService:
                 artifact_id=artifact_id,
                 reason=msg,
             )
-            raise RuntimeError(msg)
+            raise ArtifactPersistenceNoStorageError(msg)
         try:
-            await self._storage.delete(artifact_id)
+            blob_deleted = await self._storage.delete(artifact_id)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -192,7 +193,7 @@ class ArtifactService:
         # here leaves the blob gone but the row present, so log with
         # context before re-raising so operators can reconcile.
         try:
-            return await self.delete(artifact_id)
+            metadata_deleted = await self.delete(artifact_id)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -204,3 +205,7 @@ class ArtifactService:
                 error=safe_error_description(exc),
             )
             raise
+        # ``True`` if either side actually removed something so callers
+        # can distinguish "nothing to delete" from "deleted at least one
+        # of the blob / metadata pair".
+        return blob_deleted or metadata_deleted

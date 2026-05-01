@@ -50,67 +50,76 @@ class RollbackGuard:
         import math  # noqa: PLC0415
 
         if not isinstance(window_tasks, int) or isinstance(window_tasks, bool):
-            msg = f"window_tasks must be an integer, got {window_tasks!r}"
-            logger.warning(
-                EVOLUTION_GUARD_INVALID_CONFIG,
-                guard_name="rollback",
+            self._raise_invalid_config(
                 field="window_tasks",
-                value=str(window_tasks),
+                value=window_tasks,
                 constraint="must be int (not bool)",
+                msg=f"window_tasks must be an integer, got {window_tasks!r}",
             )
-            raise ValueError(msg)  # noqa: TRY004 -- consistent with sibling validators
         if window_tasks <= 0:
-            msg = f"window_tasks must be > 0, got {window_tasks!r}"
-            logger.warning(
-                EVOLUTION_GUARD_INVALID_CONFIG,
-                guard_name="rollback",
+            self._raise_invalid_config(
                 field="window_tasks",
                 value=window_tasks,
                 constraint="must be > 0",
+                msg=f"window_tasks must be > 0, got {window_tasks!r}",
             )
-            raise ValueError(msg)
         if not isinstance(regression_threshold, int | float) or isinstance(
             regression_threshold, bool
         ):
-            msg = (
-                f"regression_threshold must be a real number in "
-                f"[0, 1], got {regression_threshold!r}"
-            )
-            logger.warning(
-                EVOLUTION_GUARD_INVALID_CONFIG,
-                guard_name="rollback",
+            self._raise_invalid_config(
                 field="regression_threshold",
-                value=str(regression_threshold),
+                value=regression_threshold,
                 constraint="must be real number (not bool)",
+                msg=(
+                    f"regression_threshold must be a real number in "
+                    f"[0, 1], got {regression_threshold!r}"
+                ),
             )
-            raise ValueError(msg)  # noqa: TRY004 -- consistent with sibling validators
         if not math.isfinite(regression_threshold):
-            msg = (
-                f"regression_threshold must be a finite number in "
-                f"[0, 1], got {regression_threshold!r}"
-            )
-            logger.warning(
-                EVOLUTION_GUARD_INVALID_CONFIG,
-                guard_name="rollback",
+            self._raise_invalid_config(
                 field="regression_threshold",
-                value=str(regression_threshold),
+                value=regression_threshold,
                 constraint="must be finite",
+                msg=(
+                    f"regression_threshold must be a finite number in "
+                    f"[0, 1], got {regression_threshold!r}"
+                ),
             )
-            raise ValueError(msg)
         if regression_threshold < 0.0 or regression_threshold > 1.0:
-            msg = (
-                f"regression_threshold must be in [0, 1], got {regression_threshold!r}"
-            )
-            logger.warning(
-                EVOLUTION_GUARD_INVALID_CONFIG,
-                guard_name="rollback",
+            self._raise_invalid_config(
                 field="regression_threshold",
                 value=regression_threshold,
                 constraint="must be in [0, 1]",
+                msg=(
+                    f"regression_threshold must be in [0, 1], "
+                    f"got {regression_threshold!r}"
+                ),
             )
-            raise ValueError(msg)
         self._window_tasks = window_tasks
         self._regression_threshold = regression_threshold
+
+    @staticmethod
+    def _raise_invalid_config(
+        *,
+        field: str,
+        value: object,
+        constraint: str,
+        msg: str,
+    ) -> None:
+        """Log + raise on invalid construction arg.
+
+        Centralises the warning + ValueError pattern so __init__ stays
+        readable as a sequence of preconditions rather than a stack of
+        repeated five-line blocks.
+        """
+        logger.warning(
+            EVOLUTION_GUARD_INVALID_CONFIG,
+            guard_name="rollback",
+            field=field,
+            value=str(value),
+            constraint=constraint,
+        )
+        raise ValueError(msg)
 
     @property
     def name(self) -> str:

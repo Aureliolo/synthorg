@@ -904,7 +904,11 @@ class SettingsService:
                 msg = f"Unknown setting: {namespace}/{key}"
                 raise SettingNotFoundError(msg)
 
-            _reject_if_read_only(definition, action="set_many")
+            _reject_if_read_only(
+                definition,
+                action="set_many",
+                import_source=import_source,
+            )
 
             try:
                 _validate_value(definition, value)

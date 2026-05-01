@@ -247,6 +247,21 @@ class ArtifactStorageRejectedFullError(DomainError):
     status_code: ClassVar[int] = 507
 
 
+class ArtifactPersistenceNoStorageError(DomainError):
+    """Raised when an artifact-content delete is requested without a backend.
+
+    Surfaces a controller-helper bug: ``ArtifactService`` was constructed
+    without a ``storage`` dependency, so ``delete_with_content`` cannot
+    run.  Distinct ``error_code`` so dashboards can identify the
+    misconfiguration.
+    """
+
+    default_message: ClassVar[str] = "Artifact service is missing a storage backend"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_NO_STORAGE_BACKEND
+    status_code: ClassVar[int] = 500
+
+
 class PerOperationRateLimitError(DomainError):
     """Raised when a per-operation rate limit is exceeded (429).
 

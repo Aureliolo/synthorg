@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 class CreateClientRequest(BaseModel):
     """Request payload for creating a client."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     client_id: NotBlankStr = Field(description="Unique client identifier")
     name: NotBlankStr = Field(description="Human-readable name")
@@ -51,7 +51,7 @@ class CreateClientRequest(BaseModel):
 class UpdateClientRequest(BaseModel):
     """Request payload for updating a client."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr | None = Field(default=None, description="Human-readable name.")
     persona: NotBlankStr | None = Field(

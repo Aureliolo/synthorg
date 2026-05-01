@@ -342,7 +342,7 @@ collection returns, where ``NotFoundError`` belongs).
 |--------|-----------|-----------|
 | `save` | `async def save(entity) -> None` | Insert or update; idempotent. One persist verb (no separate `create` / `update`). |
 | `get` | `async def get(id) -> Entity \| None` | Single-entity fetch. Returns `None` on miss, never raises `NotFoundError`. |
-| `delete` | `async def delete(id) -> None` | Removal. Repositories stay side-effect free on misses; callers do a preceding `get(...)` when they need 404 semantics. |
+| `delete` | `async def delete(id) -> None` | Removal. Repositories stay side-effect-free on misses; callers do a preceding `get(...)` when they need 404 semantics. |
 | `list_all` | `async def list_all() -> tuple[Entity, ...]` | Full scan of all entities. |
 | `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query when the filter set diverges from a single canonical `list_all`. |
 

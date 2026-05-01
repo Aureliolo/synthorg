@@ -138,22 +138,33 @@ class AsyncTaskService:
                 error=safe_error_description(exc),
             )
             if task is not None:
+                # Re-query persisted state: ``transition_task`` may
+                # have committed a status change before raising
+                # (e.g. the DB write succeeded but a downstream
+                # publish-change step blew up).  Branching on the
+                # in-memory ``task.status`` would call
+                # ``delete_task`` on a row that's already moved out
+                # of ``CREATED``, which the state machine would
+                # reject and orphan the row.
+                rollback_action = "unknown"
                 try:
-                    # If ``transition_task`` raised, the row is still in
-                    # ``CREATED`` -- ``CREATED -> CANCELLED`` is rejected
-                    # by the task-state machine (see
+                    persisted_task = await self._engine.get_task(task.id)
+                    rollback_status = (
+                        persisted_task.status if persisted_task is not None else None
+                    )
+                    # ``CREATED -> CANCELLED`` is rejected by the
+                    # task-state machine (see
                     # ``test_task_engine_mutations.py::test_cancel_from_created_fails``)
-                    # so calling ``cancel_task`` would orphan the row.
-                    # Use ``delete_task`` for the still-CREATED case and
-                    # fall back to ``cancel_task`` for any later-state
-                    # rollback (e.g. transition succeeded but a
-                    # subsequent step failed in the future).
-                    if task.status is TaskStatus.CREATED:
+                    # so use ``delete_task`` for the still-CREATED
+                    # case and ``cancel_task`` for any later state.
+                    if rollback_status is TaskStatus.CREATED:
+                        rollback_action = "delete"
                         await self._engine.delete_task(
                             task.id,
                             requested_by=supervisor_id,
                         )
-                    else:
+                    elif rollback_status is not None:
+                        rollback_action = "cancel"
                         await self._engine.cancel_task(
                             task.id,
                             requested_by=supervisor_id,
@@ -169,7 +180,7 @@ class AsyncTaskService:
                         ASYNC_TASK_START_FAILED,
                         task_id=task.id,
                         error_type=type(cancel_exc).__name__,
-                        reason="rollback cancel also failed",
+                        reason=f"rollback {rollback_action} also failed",
                         error=safe_error_description(cancel_exc),
                     )
             raise

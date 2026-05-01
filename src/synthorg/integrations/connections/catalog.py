@@ -37,6 +37,7 @@ from synthorg.observability.events.integrations import (
     CONNECTION_VALIDATION_FAILED,
     OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
+    SECRET_DELETE_FAILED,
     SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
 )
@@ -333,6 +334,13 @@ class ConnectionCatalog:
                 # No-op PATCH; return the existing row unchanged.
                 return existing
             real_updates["updated_at"] = datetime.now(UTC)
+            # ``model_copy(update=...)`` skips ``@model_validator``s, so
+            # any nested mutable container we pass in (here ``metadata``)
+            # would leak shared references to callers post-construction.
+            # Deep-copy on the way in so the persisted row owns its own
+            # mapping; matches the create-path's defensive deepcopy.
+            if "metadata" in real_updates:
+                real_updates["metadata"] = copy.deepcopy(real_updates["metadata"])
             updated = existing.model_copy(update=real_updates)
             try:
                 await self._repo.save(updated)
@@ -619,11 +627,15 @@ class ConnectionCatalog:
                 except MemoryError, RecursionError:
                     raise
                 except Exception as del_exc:
-                    # SEC-1: avoid raw ``str(del_exc)`` -- the secret
-                    # backend's exception message can include
-                    # backend-internal credentials.
+                    # The token rotation itself succeeded; a stale-
+                    # secret cleanup failure is a secret-delete
+                    # problem, not a token-exchange problem.  Use the
+                    # cleanup-scoped event so dashboards / alerts
+                    # surface the right ownership.  SEC-1: redacted
+                    # error to keep backend-internal credentials out
+                    # of the log stream.
                     logger.warning(
-                        OAUTH_TOKEN_EXCHANGE_FAILED,
+                        SECRET_DELETE_FAILED,
                         connection_name=name,
                         secret_id=old_ref.secret_id,
                         note="failed_to_delete_stale_secret_after_rotation",

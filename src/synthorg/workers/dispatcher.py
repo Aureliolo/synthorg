@@ -26,6 +26,7 @@ from synthorg.observability.events.workers import (
 from synthorg.workers.claim import TaskClaim
 
 if TYPE_CHECKING:
+    from synthorg.core.clock import Clock
     from synthorg.engine.task_engine_models import TaskStateChanged
     from synthorg.workers.claim import JetStreamTaskQueue
 
@@ -86,8 +87,16 @@ class DistributedDispatcher:
     it before registering the observer with the engine.
     """
 
-    def __init__(self, *, task_queue: JetStreamTaskQueue) -> None:
+    def __init__(
+        self,
+        *,
+        task_queue: JetStreamTaskQueue,
+        clock: Clock | None = None,
+    ) -> None:
         self._task_queue = task_queue
+        # Forward the clock so tests can inject ``FakeClock`` and drive
+        # retry backoff deterministically; ``GeneralRetryHandler``
+        # defaults to ``SystemClock`` when omitted.
         self._retry = GeneralRetryHandler(
             retryable=lambda _exc: True,
             max_attempts=_PUBLISH_MAX_ATTEMPTS,
@@ -95,6 +104,7 @@ class DistributedDispatcher:
             cap=_PUBLISH_BACKOFF_CAP_SECONDS,
             event=WORKERS_DISPATCHER_PUBLISH_RETRYING,
             jitter=False,
+            clock=clock,
         )
 
     async def on_task_state_changed(

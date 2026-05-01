@@ -309,6 +309,11 @@ def _validated_tags(verb: str, path: str, op: dict[str, object]) -> list[str]:
     return tags_field
 
 
+_HTTP_METHODS: frozenset[str] = frozenset(
+    {"get", "put", "post", "delete", "options", "head", "patch", "trace"},
+)
+
+
 def _collect_tag_paths(schema: dict[str, object]) -> dict[str, list[str]]:
     """Walk the OpenAPI ``paths`` and return ``tag -> [path, ...]``."""
     paths = schema.get("paths", {})
@@ -321,7 +326,12 @@ def _collect_tag_paths(schema: dict[str, object]) -> dict[str, list[str]]:
             continue
         seen_tags: set[str] = set()
         for verb, op in methods.items():
-            if verb in {"parameters", "summary", "description"}:
+            # Filter on the explicit HTTP-methods allowlist so non-
+            # operation path-item keys (``parameters``, ``summary``,
+            # ``description``, ``servers``, ``$ref``, ``x-*``) don't
+            # get misclassified as untagged operations and trigger the
+            # fail-fast in ``_validated_tags``.
+            if verb.lower() not in _HTTP_METHODS:
                 continue
             if not isinstance(op, dict):
                 continue
