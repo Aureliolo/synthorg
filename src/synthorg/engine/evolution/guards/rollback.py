@@ -37,14 +37,23 @@ class RollbackGuard:
                 to absorb evaluation-noise without thrashing.
 
         Raises:
-            ValueError: If ``regression_threshold`` is non-finite
-                (``NaN`` / ``+inf`` / ``-inf``) or outside ``[0, 1]``.
-                A non-finite threshold silently disables the guard;
-                an out-of-range threshold inverts its meaning -- both
-                surface here.
+            ValueError: If ``window_tasks`` is not a positive integer
+                (``bool`` rejected explicitly because ``isinstance(True,
+                int)`` is True), or if ``regression_threshold`` is
+                non-finite (``NaN`` / ``+inf`` / ``-inf``) or outside
+                ``[0, 1]``.  A non-positive window silently disables
+                rollback monitoring; a non-finite threshold disables
+                the guard; an out-of-range threshold inverts its
+                meaning -- all three surface here.
         """
         import math  # noqa: PLC0415
 
+        if not isinstance(window_tasks, int) or isinstance(window_tasks, bool):
+            msg = f"window_tasks must be an integer, got {window_tasks!r}"
+            raise ValueError(msg)  # noqa: TRY004 -- consistent with sibling validators
+        if window_tasks <= 0:
+            msg = f"window_tasks must be > 0, got {window_tasks!r}"
+            raise ValueError(msg)
         if not math.isfinite(regression_threshold):
             msg = (
                 f"regression_threshold must be a finite number in "

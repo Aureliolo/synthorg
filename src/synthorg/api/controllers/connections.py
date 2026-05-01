@@ -215,10 +215,15 @@ class ConnectionsController(Controller):
             )
             raise ConflictError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
+            # ``InvalidConnectionAuthError`` is raised by
+            # ``authenticator.validate_credentials(credentials)``, so
+            # the offending field is ``credentials`` rather than
+            # ``auth_method``; mislabelling here would point clients at
+            # the wrong input.
             logger.warning(
                 API_VALIDATION_FAILED,
                 connection=data.name,
-                field="auth_method",
+                field="credentials",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

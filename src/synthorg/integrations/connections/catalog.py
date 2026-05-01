@@ -294,9 +294,19 @@ class ConnectionCatalog:
             if base_url is not _UNSET:
                 updates["base_url"] = NotBlankStr(base_url) if base_url else None
             if metadata is not _UNSET:
-                updates["metadata"] = metadata
+                # Normalise explicit ``null`` to the canonical empty
+                # mapping used by ``create()``; ``model_copy`` does not
+                # re-run validators so a raw ``None`` would persist as
+                # ``metadata=None`` on the row even though the
+                # ``Connection`` field is typed as ``dict[str, str]``.
+                updates["metadata"] = metadata if metadata is not None else {}
             if health_check_enabled is not _UNSET:
-                updates["health_check_enabled"] = health_check_enabled
+                # Same reasoning as ``metadata`` above; ``create()``
+                # always materialises ``health_check_enabled=True`` so
+                # an explicit-null clear normalises to the same default.
+                updates["health_check_enabled"] = (
+                    health_check_enabled if health_check_enabled is not None else True
+                )
             updated = existing.model_copy(update=updates)
             await self._repo.save(updated)
             self._invalidate_cache()

@@ -87,12 +87,16 @@ class CompositeGuard:
             last_decision = decision
 
         # Chain-level pass row: same constant covers per-guard plus
-        # composite so dashboards can chart either partition.
+        # composite so dashboards can chart either partition.  The
+        # reason is composite-level ("All guards approved"), not the
+        # last individual guard's reason -- pulling
+        # ``last_decision.reason`` would mislabel the chain outcome
+        # with one guard's bookkeeping text.
         logger.debug(
             EVOLUTION_GUARD_DECISION,
             guard_name=self.name,
             approved=last_decision.approved,
-            reason=last_decision.reason,
+            reason="All guards approved",
         )
         logger.info(
             EVOLUTION_GUARDS_PASSED,
