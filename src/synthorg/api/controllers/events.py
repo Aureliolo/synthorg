@@ -21,6 +21,7 @@ from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import _READ_ROLES, require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.event_stream.interrupt import (
     Interrupt,
@@ -554,7 +555,10 @@ class EventStreamController(Controller):
 
     @post(
         "/resume/{interrupt_id:str}",
-        guards=[require_approval_roles],
+        guards=[
+            require_approval_roles,
+            per_op_rate_limit_from_policy("interrupts.resume", key="user"),
+        ],
         status_code=200,
     )
     async def resume_interrupt(
@@ -636,7 +640,10 @@ class InterruptController(Controller):
 
     @post(
         "/{interrupt_id:str}/resume",
-        guards=[require_approval_roles],
+        guards=[
+            require_approval_roles,
+            per_op_rate_limit_from_policy("interrupts.resume", key="user"),
+        ],
         status_code=200,
     )
     async def resume(

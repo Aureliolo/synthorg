@@ -15,6 +15,7 @@ from synthorg.api.pagination import (
     CursorParam,
     paginate_cursor,
 )
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.telemetry.collector import InMemoryAnalyticsCollector  # noqa: TC001
 from synthorg.meta.telemetry.models import (
@@ -77,7 +78,13 @@ class MetaAnalyticsController(Controller):
     tags = ["meta-analytics"]  # noqa: RUF012
     guards = [require_read_access]  # noqa: RUF012
 
-    @post("/events", guards=[require_write_access])
+    @post(
+        "/events",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("meta.ingest_events", key="user"),
+        ],
+    )
     async def ingest_events(
         self,
         data: EventBatch,

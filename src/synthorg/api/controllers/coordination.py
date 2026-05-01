@@ -15,6 +15,7 @@ from synthorg.api.dto import (
 )
 from synthorg.api.guards import require_write_access
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.domain_errors import (
@@ -119,7 +120,13 @@ class CoordinationController(Controller):
     path = "/tasks/{task_id:str}/coordinate"
     tags = ("coordination",)
 
-    @post(guards=[require_write_access], status_code=200)
+    @post(
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("tasks.coordinate", key="user"),
+        ],
+        status_code=200,
+    )
     async def coordinate_task(
         self,
         request: Request[Any, Any, Any],

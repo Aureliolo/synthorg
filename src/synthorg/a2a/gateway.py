@@ -39,7 +39,7 @@ from synthorg.a2a.rpc_params import (
 )
 from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
-from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_INBOUND_AUTH_FAILED,
@@ -168,12 +168,7 @@ class A2AGatewayController(Controller):
         ),
         status_code=200,
         guards=[
-            per_op_rate_limit(
-                "a2a.gateway",
-                max_requests=120,
-                window_seconds=60,
-                key="user_or_ip",
-            ),
+            per_op_rate_limit_from_policy("a2a.gateway", key="user_or_ip"),
         ],
     )
     async def handle_jsonrpc(  # noqa: PLR0911

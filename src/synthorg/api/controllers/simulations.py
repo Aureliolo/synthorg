@@ -322,7 +322,13 @@ class SimulationController(Controller):
         sim_state.background_tasks.add(task)
         return ApiResponse(data=_to_response(record))
 
-    @post("/{simulation_id:str}/cancel", guards=[require_write_access])
+    @post(
+        "/{simulation_id:str}/cancel",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("simulations.cancel", key="user"),
+        ],
+    )
     async def cancel_simulation(
         self,
         request: Request[Any, Any, Any],

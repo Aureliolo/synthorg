@@ -262,7 +262,13 @@ class ArtifactController(Controller):
             raise NotFoundError(msg)
         return ApiResponse[Artifact](data=artifact)
 
-    @post(guards=[require_write_access], status_code=201)
+    @post(
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("artifacts.create", key="user"),
+        ],
+        status_code=201,
+    )
     async def create_artifact(
         self,
         request: Request[Any, Any, Any],
