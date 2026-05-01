@@ -242,8 +242,6 @@ class TestMultiWindowStrategy:
         """
         import math
 
-        from synthorg.hr.performance import multi_window_strategy as mws
-
         # Single window so the spy records exactly one fsum invocation
         # for the monetary aggregation path.
         strategy = self._make_strategy(windows=("7d",), min_data_points=1)
@@ -259,11 +257,13 @@ class TestMultiWindowStrategy:
         real_fsum = math.fsum
 
         def _spy_fsum(values: object, /) -> float:
-            seq = tuple(values)  # type: ignore[arg-type]
+            seq: tuple[float, ...] = tuple(values)  # type: ignore[arg-type]
             calls.append(seq)
             return real_fsum(seq)
 
-        monkeypatch.setattr(mws.math, "fsum", _spy_fsum)
+        monkeypatch.setattr(
+            "synthorg.hr.performance.multi_window_strategy.math.fsum", _spy_fsum
+        )
         strategy.compute_windows(records, now=NOW)
 
         # Exactly one fsum call for the monetary aggregation path.

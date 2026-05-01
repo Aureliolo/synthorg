@@ -55,6 +55,36 @@ def _build_binding_payload(
     return hasher.digest()
 
 
+def _extract_event_name(record: logging.LogRecord) -> str:
+    """Return the canonical event name from a stdlib LogRecord.
+
+    Handles three shapes of ``record.msg`` produced by the codebase:
+
+    * ``str`` -- a plain ``logger.info("security.x.y")`` call. The
+      string IS the event name.
+    * ``dict`` -- a structlog event_dict bridged via
+      :func:`structlog.stdlib.LoggerFactory` BEFORE
+      ``wrap_for_formatter`` has been applied. The event name lives at
+      ``msg["event"]``.
+    * ``tuple`` of ``(event_dict, foreign_pre_chain)`` -- a structlog
+      record post ``wrap_for_formatter``. The first tuple element is
+      the event_dict.
+
+    Returns an empty string when the shape doesn't match (the caller
+    treats that as "not a security event" and skips emit).
+    """
+    msg = record.msg
+    if isinstance(msg, str):
+        return record.getMessage()
+    if isinstance(msg, dict):
+        event = msg.get("event")
+        return event if isinstance(event, str) else ""
+    if isinstance(msg, tuple) and msg and isinstance(msg[0], dict):
+        event = msg[0].get("event")
+        return event if isinstance(event, str) else ""
+    return ""
+
+
 # Dedicated thread pool for async-to-sync bridging.  A single worker
 # avoids contention and keeps chain appends sequential.
 _SIGNING_EXECUTOR_PREFIX = "audit-sign"
@@ -238,7 +268,13 @@ class AuditChainSink(logging.Handler):
         if threading.current_thread().name.startswith(_SIGNING_EXECUTOR_PREFIX):
             return
 
-        msg = record.getMessage()
+        # ``structlog`` bridges its event_dict into stdlib by setting
+        # ``record.msg`` to the dict (or a tuple wrapping it for
+        # ``ProcessorFormatter``). The dict's ``event`` key holds the
+        # canonical event name we filter on. Plain stdlib emissions
+        # (``logger.info("security.x.y")``) keep ``msg`` as a string
+        # and fall through to ``getMessage()``.
+        msg = _extract_event_name(record)
         if not any(msg.startswith(p) for p in self._AUDITED_PREFIXES):
             return
 
