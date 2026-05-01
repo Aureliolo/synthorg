@@ -22,6 +22,7 @@ from synthorg.api.lifecycle_helpers import (
     _maybe_bootstrap_agents,
     _maybe_promote_first_owner,
     _ticket_cleanup_loop,
+    _webhook_receipt_cleanup_loop,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -31,6 +32,9 @@ from synthorg.observability.events.api import (
     API_SERVICE_AUTO_WIRE_FAILED,
     API_SERVICE_AUTO_WIRED,
     API_WS_TICKET_CLEANUP,
+)
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
 )
 from synthorg.settings.dispatcher import SettingsChangeDispatcher  # noqa: TC001
 
@@ -93,6 +97,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
     """
     _ticket_cleanup_task: asyncio.Task[None] | None = None
     _audit_retention_task: asyncio.Task[None] | None = None
+    _webhook_cleanup_task: asyncio.Task[None] | None = None
     _auto_wired_dispatcher: SettingsChangeDispatcher | None = None
     _health_prober: ProviderHealthProber | None = None
     _training_memory_backend: object | None = None
@@ -126,9 +131,14 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         API_AUDIT_RETENTION,
         "Audit retention task died unexpectedly",
     )
+    _on_webhook_cleanup_done = _make_cleanup_done_callback(
+        PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
+        "Webhook receipt cleanup task died unexpectedly",
+    )
 
     async def on_startup() -> None:  # noqa: C901, PLR0912, PLR0915
         nonlocal _ticket_cleanup_task, _audit_retention_task
+        nonlocal _webhook_cleanup_task
         nonlocal _auto_wired_dispatcher
         nonlocal _health_prober, _training_memory_backend
         logger.info(API_APP_STARTUP, version=__version__)
@@ -410,6 +420,25 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             name="audit-retention",
         )
         _audit_retention_task.add_done_callback(_on_audit_retention_done)
+
+        # Webhook-receipt sweep loop (once every 24h).  Idempotent:
+        # cancel any prior sweep task before spawning a fresh one so
+        # tasks do not accumulate when lifespan re-enters.
+        if _webhook_cleanup_task is not None and not _webhook_cleanup_task.done():
+            _webhook_cleanup_task.cancel()
+            try:
+                await _webhook_cleanup_task
+            except asyncio.CancelledError:
+                pass
+            except MemoryError, RecursionError:
+                raise
+            except Exception:  # noqa: S110 -- already logged via done-callback
+                pass
+        _webhook_cleanup_task = asyncio.create_task(
+            _webhook_receipt_cleanup_loop(app_state),
+            name="webhook-receipt-cleanup",
+        )
+        _webhook_cleanup_task.add_done_callback(_on_webhook_cleanup_done)
         # Idempotent: stop any prior health prober instance before
         # starting a new one so probers do not accumulate when the
         # shared app re-enters lifespan.
@@ -481,6 +510,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
 
     async def on_shutdown() -> None:  # noqa: C901, PLR0912, PLR0915
         nonlocal _ticket_cleanup_task, _audit_retention_task
+        nonlocal _webhook_cleanup_task
         nonlocal _auto_wired_dispatcher
         nonlocal _health_prober, _training_memory_backend
         # Disconnect training memory backend if auto-wired.
@@ -516,6 +546,11 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             with contextlib.suppress(asyncio.CancelledError):
                 await _audit_retention_task
             _audit_retention_task = None
+        if _webhook_cleanup_task is not None:
+            _webhook_cleanup_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await _webhook_cleanup_task
+            _webhook_cleanup_task = None
         logger.info(API_APP_SHUTDOWN, version=__version__)
         if _health_prober is not None:
             await _try_stop(

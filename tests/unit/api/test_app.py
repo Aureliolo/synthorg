@@ -16,7 +16,7 @@ from synthorg.api.app_helpers import (
 from synthorg.api.middleware import _SECURITY_HEADERS
 from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
-from synthorg.communication.bus_memory import InMemoryMessageBus
+from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.config.schema import RootConfig
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
@@ -1125,7 +1125,7 @@ class TestAutoWirePhase1ErrorPaths:
         """Channels already in bus config are not duplicated."""
         from synthorg.api.auto_wire import auto_wire_phase1
         from synthorg.api.channels import ALL_CHANNELS
-        from synthorg.communication.bus_memory import InMemoryMessageBus
+        from synthorg.communication.bus.memory import InMemoryMessageBus
 
         # Add an API channel to the bus config so it overlaps
         bus_cfg = root_config.communication.message_bus
@@ -1191,7 +1191,7 @@ class TestAutoWirePhase1ErrorPaths:
     ) -> None:
         """InMemoryMessageBus construction failure propagates."""
         from synthorg.api.auto_wire import auto_wire_phase1
-        from synthorg.communication.bus_memory import InMemoryMessageBus
+        from synthorg.communication.bus.memory import InMemoryMessageBus
 
         def failing_init(self: Any, **kwargs: Any) -> None:
             msg = "bus boom"

@@ -150,7 +150,7 @@ class MemoryService:
 
         Every dependency is independently optional so a deployment
         that wires only a ``MemoryBackend`` (e.g. for the
-        ``DELETE /memory/entries`` GDPR path) can construct the
+        ``DELETE /memory/entries`` path) can construct the
         service without resolving fine-tune repositories. Each
         lifecycle method that needs a missing dep raises
         :class:`BackendUnsupportedError` at call time.

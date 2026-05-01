@@ -155,6 +155,7 @@ class ConnectionCatalog:
         secret_id: str,
         metadata: dict[str, str] | None,
         health_check_enabled: bool,
+        webhook_receipt_retention_days: int | None,
     ) -> Connection:
         """Build and validate the ``Connection`` model BEFORE secret writes.
 
@@ -177,6 +178,7 @@ class ConnectionCatalog:
                 secret_refs=(secret_ref,),
                 health_check_enabled=health_check_enabled,
                 metadata=metadata or {},
+                webhook_receipt_retention_days=webhook_receipt_retention_days,
                 created_at=now,
                 updated_at=now,
             )
@@ -277,6 +279,7 @@ class ConnectionCatalog:
         base_url: str | None = None,
         metadata: dict[str, str] | None = None,
         health_check_enabled: bool = True,
+        webhook_receipt_retention_days: int | None = None,
     ) -> Connection:
         """Create a new connection.
 
@@ -291,6 +294,10 @@ class ConnectionCatalog:
             base_url: Optional base URL.
             metadata: Optional user tags.
             health_check_enabled: Whether to probe health.
+            webhook_receipt_retention_days: Optional per-connection override
+                for the webhook-receipt retention window (days). ``None``
+                falls back to the global default; ``0`` opts out of the
+                cleanup sweep entirely.
 
         Returns:
             The persisted connection.
@@ -321,6 +328,7 @@ class ConnectionCatalog:
                 secret_id=secret_id,
                 metadata=metadata,
                 health_check_enabled=health_check_enabled,
+                webhook_receipt_retention_days=webhook_receipt_retention_days,
             )
             await self._store_secret(secret_id, credentials, connection_name=name)
             await self._persist_connection_with_cleanup(
@@ -375,13 +383,17 @@ class ConnectionCatalog:
         base_url: str | None | _UnsetType = _UNSET,
         metadata: dict[str, str] | None | _UnsetType = _UNSET,
         health_check_enabled: bool | None | _UnsetType = _UNSET,
+        webhook_receipt_retention_days: int | None | _UnsetType = _UNSET,
     ) -> Connection:
         """Update a connection's mutable fields.
 
         Each kwarg uses the ``_UNSET`` sentinel to distinguish "field
         omitted" from "field set to ``None``" (clear).  Callers that
         want a no-op pass nothing; callers that want to explicitly
-        null out a value pass ``None``.
+        null out a value pass ``None``.  ``webhook_receipt_retention_days``
+        follows the same semantic: ``None`` clears the per-connection
+        override (falls back to the global default), an int sets the
+        override, leaving unset keeps the existing stored value.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -413,6 +425,13 @@ class ConnectionCatalog:
                         health_check_enabled
                         if health_check_enabled is not None
                         else True
+                    )
+                if webhook_receipt_retention_days is not _UNSET:
+                    # ``None`` is a meaningful value here -- it clears
+                    # the per-connection override and falls back to the
+                    # global default.  Pass through verbatim.
+                    candidate["webhook_receipt_retention_days"] = (
+                        webhook_receipt_retention_days
                     )
             except MemoryError, RecursionError:
                 raise

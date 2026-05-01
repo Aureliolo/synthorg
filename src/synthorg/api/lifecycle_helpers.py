@@ -18,6 +18,11 @@ from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
     API_WS_TICKET_CLEANUP,
 )
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_OAUTH_STATE_CLEANUP,
+    PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
+    PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+)
 from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.enums import SettingNamespace
@@ -173,6 +178,11 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         )
     if app_state.has_persistence:
         await _run_cleanup_step(
+            app_state.persistence.oauth_states.cleanup_expired,
+            event=PERSISTENCE_OAUTH_STATE_CLEANUP,
+            failure_message="Periodic OAuth-state cleanup failed",
+        )
+        await _run_cleanup_step(
             app_state.idempotency_service.cleanup_expired,
             event=IDEMPOTENCY_CLEANUP,
             failure_message="Periodic idempotency cleanup failed",
@@ -282,6 +292,138 @@ _AUDIT_RETENTION_TICK_SECONDS: Final[float] = 86_400.0
 """Audit retention sweep cadence (24h). Hardcoded by design: retention is
 not a hot path and operators tune the *window* (``security.audit_retention_days``)
 rather than the *cadence*."""
+
+
+_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS = 90
+
+
+async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
+    """Resolve the global default webhook-receipt retention window (days).
+
+    Falls back to :data:`_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS` when the
+    settings resolver is unavailable or the read fails -- a transient
+    settings-backend outage must not silently truncate the receipt log
+    (``0`` would disable the sweep) nor flip every connection to
+    indefinite retention.
+    """
+    if not app_state.has_config_resolver:
+        return _DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+    try:
+        return await app_state.config_resolver.get_int(
+            SettingNamespace.INTEGRATIONS.value,
+            "webhook_receipt_retention_days",
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+            error=(
+                "Failed to resolve integrations.webhook_receipt_retention_days;"
+                f" falling back to {_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS} days"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+            fallback_days=_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS,
+        )
+        return _DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+
+
+async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
+    """One iteration of the per-connection webhook-receipt sweep.
+
+    Reads the global default retention from
+    ``integrations.webhook_receipt_retention_days``, then iterates every
+    connection and applies the effective retention:
+
+    * ``Connection.webhook_receipt_retention_days = None`` -- use global
+    * ``... = 0`` -- never sweep this connection
+    * ``... = N`` (positive) -- sweep entries older than N days
+
+    Per-connection failures are logged and skipped so one bad
+    connection does not abort the rest of the sweep.
+    """
+    if not app_state.has_persistence:
+        return
+    default_days = await _resolve_webhook_receipt_retention(app_state)
+    try:
+        connections = await app_state.persistence.connections.list_all()
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+            error="Failed to list connections for webhook receipt sweep",
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+        return
+    total_removed = 0
+    swept = 0
+    for conn in connections:
+        override = conn.webhook_receipt_retention_days
+        effective = override if override is not None else default_days
+        if effective <= 0:
+            # Per-connection or global opt-out.
+            continue
+        try:
+            removed = (
+                await app_state.persistence.webhook_receipts.cleanup_old_for_connection(
+                    conn.name,
+                    effective,
+                )
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+                connection_name=str(conn.name),
+                retention_days=effective,
+                error=(
+                    "Webhook receipt sweep failed for connection;"
+                    " continuing with remaining connections"
+                ),
+                error_type=type(exc).__name__,
+                error_desc=safe_error_description(exc),
+            )
+            continue
+        total_removed += removed
+        swept += 1
+    logger.info(
+        PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
+        note="webhook receipt sweep completed",
+        removed=total_removed,
+        connections_swept=swept,
+        connections_seen=len(connections),
+        default_retention_days=default_days,
+    )
+
+
+_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS: Final[float] = 86_400.0
+"""Webhook-receipt sweep cadence (24h). Hardcoded by design: receipts
+are retained in days, not minutes, so a daily sweep is the right
+granularity.  Operators tune the *window* (per-connection or global
+``integrations.webhook_receipt_retention_days``) rather than the
+*cadence*."""
+
+
+async def _webhook_receipt_cleanup_loop(app_state: AppState) -> None:
+    """Daily sweep that prunes webhook receipts per connection.
+
+    Mirrors :func:`_audit_retention_loop`: a separate daily loop kept
+    out of the 60-second tick because receipt retention is durable
+    (days→months) rather than transient (minutes/seconds).
+    """
+    while True:
+        await _webhook_receipt_cleanup_tick(app_state)
+        await asyncio.sleep(_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)
 
 
 async def _audit_retention_loop(app_state: AppState) -> None:

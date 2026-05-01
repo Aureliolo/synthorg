@@ -42,6 +42,13 @@ export interface Connection {
   readonly health_status: ConnectionHealthStatus
   readonly last_health_check_at: string | null
   readonly metadata: Record<string, string>
+  /**
+   * Per-connection override for the webhook-receipt retention window
+   * (days). `null` falls back to the global
+   * `integrations.webhook_receipt_retention_days` setting; `0` opts
+   * this connection out of the cleanup sweep entirely.
+   */
+  readonly webhook_receipt_retention_days: number | null
   readonly created_at: string
   readonly updated_at: string
 }
@@ -54,12 +61,14 @@ export interface CreateConnectionRequest {
   readonly base_url?: string | null
   readonly metadata?: Record<string, string>
   readonly health_check_enabled?: boolean
+  readonly webhook_receipt_retention_days?: number | null
 }
 
 export interface UpdateConnectionRequest {
   readonly base_url?: string | null
   readonly metadata?: Record<string, string>
   readonly health_check_enabled?: boolean
+  readonly webhook_receipt_retention_days?: number | null
 }
 
 export interface HealthReport {

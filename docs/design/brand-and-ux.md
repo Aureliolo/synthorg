@@ -77,7 +77,7 @@ No component code changes required. The 5 exploration themes (Ice Station, Warm 
 ### Self-Hosted Fonts
 
 All fonts are bundled via `@fontsource` packages. No external CDN (Google Fonts) dependencies. This ensures:
-- No GDPR/privacy issues from third-party font loading
+- No privacy concerns from third-party font loading
 - Consistent rendering regardless of network
 - Faster first contentful paint (no font fetch waterfall)
 

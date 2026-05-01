@@ -85,6 +85,10 @@ class Connection(BaseModel):
         health_status: Last-known health status.
         last_health_check_at: Timestamp of most recent check.
         metadata: User-provided tags and notes.
+        webhook_receipt_retention_days: Per-connection override for the
+            webhook-receipt retention window (days). ``None`` falls back
+            to ``integrations.webhook_receipt_retention_days``; ``0``
+            disables sweeping for this connection's receipts.
         created_at: Creation timestamp.
         updated_at: Last modification timestamp.
     """
@@ -104,6 +108,15 @@ class Connection(BaseModel):
     health_status: ConnectionStatus = ConnectionStatus.UNKNOWN
     last_health_check_at: AwareDatetime | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
+    webhook_receipt_retention_days: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Per-connection override for webhook-receipt retention "
+            "(days). None = use the global default; 0 = never sweep "
+            "this connection's receipts."
+        ),
+    )
     created_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )

@@ -93,8 +93,6 @@ export function paginatedFor<
 > {
   type Item = AwaitedReturn<Fn> extends PaginatedResult<infer I> ? I : never
   const pagination: PaginationMeta = {
-    total: result.total,
-    offset: result.offset,
     limit: result.limit,
     next_cursor: result.nextCursor,
     has_more: result.hasMore,
@@ -112,14 +110,10 @@ export function paginatedFor<
 export function emptyPage<T>(limit = 200): PaginatedResult<T> {
   return {
     data: [],
-    total: 0,
-    offset: 0,
     limit,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total: 0,
-      offset: 0,
       limit,
       next_cursor: null,
       has_more: false,

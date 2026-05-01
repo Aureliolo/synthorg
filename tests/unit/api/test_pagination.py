@@ -42,7 +42,6 @@ class TestHappyPath:
         collected: list[int] = []
         cursor: str | None = None
         pages = 0
-        expected_offsets = [0, 50, 100]
         while True:
             page, meta = paginate_cursor(
                 items,
@@ -50,11 +49,6 @@ class TestHappyPath:
                 cursor=cursor,
                 secret=secret,
             )
-            # ``offset`` is part of the wire envelope clients see and
-            # use for UI display; verify it tracks the slice start on
-            # every page so a helper bug cannot regress the offset
-            # contract while still returning the right slices.
-            assert meta.offset == expected_offsets[pages]
             collected.extend(page)
             pages += 1
             if not meta.has_more:
@@ -292,44 +286,6 @@ class TestEncodeRepoSeekMeta:
                 secret=secret,
             )
 
-    def test_display_total_overrides_pagination_total(
-        self,
-        secret: CursorSecret,
-    ) -> None:
-        """``display_total`` controls ``meta.total`` independently of ``has_more``."""
-        meta = encode_repo_seek_meta(
-            offset=0,
-            page_len=10,
-            total=30,
-            display_total=29,
-            limit=10,
-            secret=secret,
-        )
-        assert meta.has_more is True  # still driven by repo ``total``.
-        assert meta.total == 29  # display-facing value is the override.
-
-    def test_display_total_does_not_mask_stale_cursor(
-        self,
-        secret: CursorSecret,
-    ) -> None:
-        """The stale-cursor check uses ``total``, not ``display_total``.
-
-        Regression guard: an earlier design had ``has_more`` compare
-        against the display total and would suppress ``next_cursor``
-        when forged rows shrank the displayed count below the cursor
-        offset, stranding callers before the last legitimate row.
-        """
-        meta = encode_repo_seek_meta(
-            offset=20,
-            page_len=10,
-            total=31,
-            display_total=30,
-            limit=10,
-            secret=secret,
-        )
-        assert meta.has_more is True
-        assert meta.next_cursor is not None
-
     def test_reject_stale_cursor_false_returns_terminal_page(
         self,
         secret: CursorSecret,
@@ -382,14 +338,13 @@ class TestEncodeRepoSeekMeta:
         )
         assert meta.has_more is False
         assert meta.next_cursor is None
-        assert meta.total == 0
 
 
 class TestEncodeCountlessSeekMeta:
     """Helper for repos that use the ``fetch limit + 1`` overflow pattern."""
 
     def test_intermediate_page_emits_cursor(self, secret: CursorSecret) -> None:
-        """``fetched_rows > limit`` -> ``has_more`` + signed cursor, ``total=None``."""
+        """``fetched_rows > limit`` -> ``has_more`` + signed cursor."""
         meta = encode_countless_seek_meta(
             offset=0,
             fetched_rows=11,  # asked for 10+1, got overflow.
@@ -398,8 +353,6 @@ class TestEncodeCountlessSeekMeta:
         )
         assert meta.has_more is True
         assert meta.next_cursor is not None
-        assert meta.total is None
-        assert meta.offset == 0
         assert meta.limit == 10
 
     def test_terminal_page_clears_cursor(self, secret: CursorSecret) -> None:
@@ -412,7 +365,6 @@ class TestEncodeCountlessSeekMeta:
         )
         assert meta.has_more is False
         assert meta.next_cursor is None
-        assert meta.total is None
 
     def test_exact_fit_is_terminal(self, secret: CursorSecret) -> None:
         """``fetched_rows == limit`` means no overflow row, so terminal."""
@@ -437,8 +389,6 @@ class TestEncodeCountlessSeekMeta:
         )
         assert meta.has_more is False
         assert meta.next_cursor is None
-        assert meta.total is None
-        assert meta.offset == 0
 
     def test_empty_follow_up_page_is_truncation(
         self,

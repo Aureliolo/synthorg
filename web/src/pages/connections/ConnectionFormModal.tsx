@@ -42,6 +42,12 @@ interface FormState {
   type: ConnectionType | null
   topLevel: Record<string, string>
   credentials: Record<string, string>
+  /**
+   * Webhook receipt retention input as a string so the empty state
+   * (= use the global default) round-trips cleanly through `<input>`.
+   * Parsed to `number | null` on submit.
+   */
+  webhookRetention: string
 }
 
 const EMPTY_STATE: FormState = {
@@ -49,6 +55,7 @@ const EMPTY_STATE: FormState = {
   type: null,
   topLevel: {},
   credentials: {},
+  webhookRetention: '',
 }
 
 function makeInitialState(
@@ -62,12 +69,38 @@ function makeInitialState(
       type: connection.connection_type,
       topLevel: { base_url: connection.base_url ?? '' },
       credentials: {},
+      webhookRetention:
+        connection.webhook_receipt_retention_days === null
+          ? ''
+          : String(connection.webhook_receipt_retention_days),
     }
   }
   return {
     ...EMPTY_STATE,
     type: initialType ?? null,
   }
+}
+
+/**
+ * Parse the webhook-retention input into the wire shape.
+ *
+ * `''` -> `null` (clear override / use global default).
+ * `'<int>'` -> the integer.
+ * Anything else -> validation error.
+ */
+function parseRetentionDays(
+  raw: string,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  const trimmed = raw.trim()
+  if (trimmed === '') return { ok: true, value: null }
+  if (!/^\d+$/.test(trimmed)) {
+    return { ok: false, error: 'Must be a non-negative integer or blank' }
+  }
+  const parsed = Number.parseInt(trimmed, 10)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { ok: false, error: 'Must be a non-negative integer or blank' }
+  }
+  return { ok: true, value: parsed }
 }
 
 function renderField(
@@ -206,6 +239,15 @@ export function ConnectionFormModal({
     setSubmitted(true)
     if (!validateAll() || !form.type || !spec) return
 
+    const retention = parseRetentionDays(form.webhookRetention)
+    if (!retention.ok) {
+      setErrors((prev) => ({
+        ...prev,
+        webhook_receipt_retention_days: retention.error,
+      }))
+      return
+    }
+
     if (mode === 'create') {
       const credentials: Record<string, string> = {}
       for (const field of spec.credentialFields) {
@@ -218,12 +260,14 @@ export function ConnectionFormModal({
         auth_method: spec.defaultAuthMethod,
         credentials,
         base_url: form.topLevel.base_url?.trim() || null,
+        webhook_receipt_retention_days: retention.value,
       }
       const result = await createConnection(body)
       if (result) onClose()
     } else if (connection) {
       const result = await updateConnection(connection.name, {
         base_url: form.topLevel.base_url?.trim() || null,
+        webhook_receipt_retention_days: retention.value,
       })
       if (result) onClose()
     }
@@ -321,6 +365,24 @@ export function ConnectionFormModal({
                     recreate the connection to rotate secrets.
                   </p>
                 )}
+
+                <InputField
+                  label="Webhook receipt retention (days)"
+                  type="number"
+                  value={form.webhookRetention}
+                  placeholder="Use system default"
+                  hint="Leave blank to use the system default. Set to 0 to never delete this connection's webhook receipts."
+                  error={submitted ? errors.webhook_receipt_retention_days : null}
+                  onValueChange={(v) => {
+                    setForm((prev) => ({ ...prev, webhookRetention: v }))
+                    if (errors.webhook_receipt_retention_days) {
+                      setErrors((prev) => ({
+                        ...prev,
+                        webhook_receipt_retention_days: null,
+                      }))
+                    }
+                  }}
+                />
 
                 <div className="mt-2 flex justify-end gap-2">
                   <Button type="button" variant="ghost" onClick={onClose}>

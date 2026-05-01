@@ -137,25 +137,14 @@ class AgentIdentityVersionController(Controller):
             agent_id=agent_id,
             count=len(safe_versions),
         )
-        # Subtract forged-row drops from the reported total so clients
-        # paginating by ``pagination.total`` don't see a count that
-        # disagrees with the returned ``data`` slice.
-        safe_total = max(total - dropped, len(safe_versions))
-        # ``has_more`` must compare against the *repo* total, not
-        # ``safe_total``: when this page drops any forged rows, a
-        # ``safe_total``-gated check would flip ``has_more`` to
-        # False early and strand the client before reaching later
-        # legitimate rows.  ``display_total`` still reports the
-        # filtered count to the client so ``pagination.total`` stays
-        # consistent with the returned ``data`` slice.  The cursor
-        # advances by ``len(versions)`` (consumed repo rows) so a
-        # page where the filter drops rows does not replay them on
-        # the next request.
+        # ``has_more`` and the cursor advance against the repo's full
+        # ``total`` and ``len(versions)`` so a page that drops forged
+        # rows does not strand the client before reaching later
+        # legitimate rows.
         meta = encode_repo_seek_meta(
             offset=offset,
             page_len=len(versions),
             total=total,
-            display_total=safe_total,
             limit=limit,
             secret=secret,
         )

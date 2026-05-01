@@ -93,7 +93,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
             : state.decisions,
         totalDecisions:
           decisionsR.status === 'fulfilled'
-            ? decisionsR.value.total ?? decisionsR.value.data.length
+            ? decisionsR.value.data.length
             : state.totalDecisions,
         signals:
           signalsR.status === 'fulfilled' ? signalsR.value : state.signals,
@@ -123,7 +123,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
       if (epoch !== wsRefreshEpoch) return
       set({
         decisions: result.data,
-        totalDecisions: result.total ?? result.data.length,
+        totalDecisions: result.data.length,
       })
     } catch (err) {
       if (epoch !== wsRefreshEpoch) return

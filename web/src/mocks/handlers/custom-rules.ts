@@ -46,8 +46,6 @@ export const customRulesHandlers = [
       error: null,
       error_detail: null,
       pagination: {
-        total: 0,
-        offset: 0,
         limit: 200,
         next_cursor: null,
         has_more: false,

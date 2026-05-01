@@ -87,7 +87,6 @@ class TestTasksList:
             ),
         )
         assert body["status"] == "ok"
-        assert body["pagination"]["total"] == 1
 
 
 class TestTasksCancel:

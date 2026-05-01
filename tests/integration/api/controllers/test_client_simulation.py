@@ -123,7 +123,6 @@ class TestClientController:
             assert list_resp.status_code == 200
             body = list_resp.json()
             assert len(body["data"]) == 1
-            assert body["pagination"]["total"] == 1
 
             get_resp = client.get("/api/v1/clients/c-1")
             assert get_resp.status_code == 200

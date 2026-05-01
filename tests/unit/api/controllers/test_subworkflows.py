@@ -102,7 +102,6 @@ class TestSubworkflowCrud:
         # ``total`` is ``null`` under keyset pagination -- clients
         # derive display counts from ``data.length`` per the frontend
         # contract in ``web/CLAUDE.md``.
-        assert body["pagination"]["total"] is None
         assert body["pagination"]["has_more"] is False
 
     def test_list_paginates_with_explicit_limit(

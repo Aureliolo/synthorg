@@ -33,7 +33,6 @@ class TestAgentController:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     def test_list_agents_with_data(
         self,
@@ -74,7 +73,6 @@ class TestAgentController:
             client.headers.update(make_auth_headers("observer"))
             resp = client.get("/api/v1/agents")
             body = resp.json()
-            assert body["pagination"]["total"] == 1
             assert body["data"][0]["name"] == "alice"
 
     def test_get_agent_not_found(self, test_client: TestClient[Any]) -> None:
@@ -133,7 +131,6 @@ class TestAgentControllerDbOverride:
             resp = client.get("/api/v1/agents")
             assert resp.status_code == 200
             body = resp.json()
-            assert body["pagination"]["total"] == 2
             names = {a["name"] for a in body["data"]}
             assert names == {"db-agent-1", "db-agent-2"}
 
@@ -319,7 +316,6 @@ class TestAgentActivity:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 2
         events = body["data"]
         # Most recent first
         assert events[0]["event_type"] == "task_completed"
@@ -350,8 +346,6 @@ class TestAgentActivity:
         )
         assert resp1.status_code == 200
         body1 = resp1.json()
-        assert body1["pagination"]["total"] == 5
-        assert body1["pagination"]["offset"] == 0
         assert body1["pagination"]["limit"] == 2
         assert body1["pagination"]["has_more"] is True
         assert body1["pagination"]["next_cursor"] is not None
@@ -363,7 +357,6 @@ class TestAgentActivity:
         )
         assert resp2.status_code == 200
         body2 = resp2.json()
-        assert body2["pagination"]["offset"] == 2
         assert body2["pagination"]["limit"] == 2
         assert len(body2["data"]) == 2
         # Verify the cursor actually advanced: page 2's items must be
@@ -386,7 +379,6 @@ class TestAgentActivity:
         )
         assert resp3.status_code == 200
         body3 = resp3.json()
-        assert body3["pagination"]["offset"] == 4
         assert body3["pagination"]["has_more"] is False
         assert body3["pagination"]["next_cursor"] is None
         assert len(body3["data"]) == 1
@@ -402,7 +394,6 @@ class TestAgentActivity:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 0
         assert body["data"] == []
 
     def test_activity_agent_not_found(

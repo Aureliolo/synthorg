@@ -75,7 +75,6 @@ class TestEscalationsController:
         body = resp.json()
         assert body["success"] is True
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     async def test_list_returns_pending_rows(
         self,
@@ -87,7 +86,6 @@ class TestEscalationsController:
         resp = test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["escalation"]["id"] == "escalation-list-01"
 
     async def test_get_missing_returns_404(

@@ -228,7 +228,7 @@ class TestDeleteMemoryEntryDestructiveAudit:
                 arguments={
                     "agent_id": agent_id,
                     "memory_id": memory_id,
-                    "reason": "operator gdpr request",
+                    "reason": "operator user-deletion request",
                     "confirm": True,
                 },
                 actor=actor,
@@ -244,7 +244,7 @@ class TestDeleteMemoryEntryDestructiveAudit:
         assert len(destructive) == 1
         event = destructive[0]
         assert event["actor_agent_id"] == str(actor.id)
-        assert event["reason"] == "operator gdpr request"
+        assert event["reason"] == "operator user-deletion request"
         assert event["target_id"] == memory_id
         assert event["agent_id"] == agent_id
         # Tighten the regression: confirm the service was called with

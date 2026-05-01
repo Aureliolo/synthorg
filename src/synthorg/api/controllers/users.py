@@ -44,7 +44,7 @@ def _service(state: State) -> UserService:
 
     Threads the refresh-token repo so ``delete()`` can explicitly
     revoke outstanding refresh tokens before the DB delete as
-    defense-in-depth (CFG-1 audit / GDPR). Sessions, api_keys, and
+    defense-in-depth (CFG-1 audit). Sessions, api_keys, and
     refresh_tokens are all also removed by the schema's
     ``ON DELETE CASCADE`` on ``user_id`` when the user row goes
     away -- the explicit revocation runs first so tokens stop

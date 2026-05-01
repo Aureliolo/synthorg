@@ -140,7 +140,6 @@ class TestAgentsList:
         body = _parse(result)
         assert body["status"] == "ok"
         assert body["data"] == [identity.model_dump(mode="json")]
-        assert body["pagination"]["total"] == 1
 
 
 class TestAgentsGet:

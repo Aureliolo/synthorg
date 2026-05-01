@@ -20,7 +20,7 @@ class AuditRepository(Protocol):
     retention sweeper used to enforce the operator-configurable
     ``security.audit_retention_days`` window.  This is a deliberate
     exception, not a per-row mutation API; see :meth:`purge_before`
-    for the GDPR/forensic tradeoff.
+    for the retention/forensic tradeoff.
     """
 
     async def save(self, entry: AuditEntry) -> None:
@@ -75,8 +75,8 @@ class AuditRepository(Protocol):
         This is the one exception to the append-only rule: it powers
         the retention sweeper which enforces the operator-configurable
         ``security.audit_retention_days`` window. Rows are removed
-        permanently; the GDPR-vs-forensic tradeoff is decided at the
-        retention-window level, not per row.
+        permanently; the retention-vs-forensic tradeoff is decided at
+        the retention-window level, not per row.
 
         Args:
             cutoff: Entries strictly older than this UTC timestamp

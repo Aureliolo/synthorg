@@ -5,10 +5,9 @@ from typing import Any
 from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 
-from synthorg.api.dto import (
-    ActivateWorkflowRequest,
-    ApiResponse,
-    PaginatedResponse,
+from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_workflow import (
+    ActivateWorkflowRequest,  # noqa: TC001 -- Litestar resolves request-body annotations at runtime
 )
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (

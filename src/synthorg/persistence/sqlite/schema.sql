@@ -908,6 +908,11 @@ CREATE TABLE connections (
         ),
     last_health_check_at TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
+    webhook_receipt_retention_days INTEGER
+        CHECK(
+            webhook_receipt_retention_days IS NULL
+            OR webhook_receipt_retention_days >= 0
+        ),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );

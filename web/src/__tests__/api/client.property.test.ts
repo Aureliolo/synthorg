@@ -51,21 +51,17 @@ describe('client property tests', () => {
     fc.assert(
       fc.property(
         fc.array(fc.record({ id: fc.string() })),
-        fc.nat({ max: 10000 }),
-        fc.nat({ max: 1000 }),
         fc.integer({ min: 1, max: 200 }),
-        (items, total, offset, limit) => {
+        (items, limit) => {
           const response = mockResponse<PaginatedResponse<{ id: string }>>({
             data: items,
             error: null,
             error_detail: null,
             success: true,
-            pagination: { total, offset, limit, next_cursor: null, has_more: false },
+            pagination: { limit, next_cursor: null, has_more: false },
           })
           const result = unwrapPaginated(response)
           expect(result.data).toEqual(items)
-          expect(result.total).toBe(total)
-          expect(result.offset).toBe(offset)
           expect(result.limit).toBe(limit)
           // Terminal page: cursor fields must round-trip from the
           // envelope into the unwrapped shape so cursor regressions
@@ -89,8 +85,6 @@ describe('client property tests', () => {
             error_detail: null,
             success: true,
             pagination: {
-              total: null,
-              offset: 0,
               limit: items.length,
               next_cursor: nextCursor,
               has_more: true,
@@ -99,10 +93,6 @@ describe('client property tests', () => {
           const result = unwrapPaginated(response)
           expect(result.nextCursor).toBe(nextCursor)
           expect(result.hasMore).toBe(true)
-          // ``total`` is nullable under cursor pagination; the
-          // unwrap helper must surface ``null`` so stores derive
-          // display counts from ``data.length``.
-          expect(result.total).toBeNull()
         },
       ),
     )

@@ -123,8 +123,6 @@ def paginate_cursor[T](
         limit=effective_limit,
         next_cursor=next_cursor,
         has_more=has_more,
-        total=len(items),
-        offset=offset,
     )
     return page, meta
 
@@ -136,7 +134,6 @@ def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagin
     total: int,
     limit: int,
     secret: CursorSecret,
-    display_total: int | None = None,
     reject_stale_cursor: bool = True,
 ) -> PaginationMeta:
     """Build ``PaginationMeta`` for controllers that push limit+offset into the repo.
@@ -149,14 +146,6 @@ def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagin
     that would loop the client on the same page when
     ``count_versions`` disagrees with ``list_versions``.
 
-    ``display_total`` is an override for ``PaginationMeta.total`` that
-    stays independent of the ``total`` used for the ``has_more``
-    check.  Controllers that filter out forged / cross-wired rows
-    after the repo read (``agent_identity_versions``) need to report
-    a lower ``total`` to clients while still letting ``has_more``
-    see the full repo row count, so later pages containing only
-    legitimate rows stay reachable.
-
     Args:
         offset: The decoded cursor offset the current page started at.
         page_len: The number of repo rows consumed (``len(repo_rows)``,
@@ -167,11 +156,6 @@ def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagin
             ``has_more`` check.
         limit: The page size requested.
         secret: HMAC secret used to sign the ``next_cursor``.
-        display_total: Optional override for ``PaginationMeta.total``.
-            Defaults to ``total``.  Pass a lower value when the
-            controller drops rows between the repo read and the
-            client-facing slice (e.g. owner-mismatch forgeries) so
-            ``pagination.total`` stays consistent with ``data``.
         reject_stale_cursor: When ``True`` (the default), a decoded
             ``offset == total`` raises :class:`InvalidCursorError`
             (mirrors the ``paginate_cursor`` helper).  Set to
@@ -227,8 +211,6 @@ def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagin
         limit=limit,
         next_cursor=next_cursor,
         has_more=has_more,
-        total=display_total if display_total is not None else total,
-        offset=offset,
     )
 
 
@@ -286,19 +268,15 @@ def encode_countless_seek_meta(
         limit=limit,
         next_cursor=next_cursor,
         has_more=has_more,
-        total=None,
-        offset=offset,
     )
 
 
-def encode_keyset_meta(  # noqa: PLR0913 -- every kwarg tracks a distinct pagination input
+def encode_keyset_meta(
     *,
     next_after_key: str | None,
     has_more: bool,
     limit: int,
     secret: CursorSecret,
-    total: int | None = None,
-    offset: int = 0,
 ) -> PaginationMeta:
     """Build ``PaginationMeta`` for a keyset-paginated read.
 
@@ -320,14 +298,6 @@ def encode_keyset_meta(  # noqa: PLR0913 -- every kwarg tracks a distinct pagina
             emission.
         limit: Page size requested.
         secret: HMAC secret used to sign the ``next_cursor``.
-        total: Optional authoritative row count. Pass ``None`` when
-            the caller skipped the COUNT round-trip (most keyset
-            endpoints do; the wire field is then ``null`` and clients
-            derive display counts from ``data.length``).
-        offset: Wire-only display field for ``PaginationMeta.offset``.
-            Defaults to ``0`` because keyset pagination has no
-            stable absolute offset; pass a running total only if the
-            caller is tracking page-relative positioning.
 
     Returns:
         ``PaginationMeta`` ready to wrap in ``PaginatedResponse``.
@@ -348,8 +318,6 @@ def encode_keyset_meta(  # noqa: PLR0913 -- every kwarg tracks a distinct pagina
         limit=limit,
         next_cursor=next_cursor,
         has_more=has_more,
-        total=total,
-        offset=offset,
     )
 
 

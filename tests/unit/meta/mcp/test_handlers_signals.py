@@ -218,7 +218,6 @@ class TestProposalsList:
         )
         payload = json.loads(response)
         assert payload["status"] == "ok"
-        assert payload["pagination"]["total"] == 1
 
     async def test_status_filter_applied(
         self,

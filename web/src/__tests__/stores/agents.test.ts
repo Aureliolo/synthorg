@@ -414,7 +414,7 @@ describe('fetchMoreActivity', () => {
     await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
 
     expect(useAgentsStore.getState().activity).toHaveLength(2)
-    expect(useAgentsStore.getState().activityTotal).toBe(5)
+    expect(useAgentsStore.getState().activityTotal).toBe(2)
     // Terminal page must clear both cursor fields so a subsequent
     // ``fetchMoreActivity`` call short-circuits on the ``!hasMore ||
     // !nextCursor`` guard instead of replaying the last cursor.

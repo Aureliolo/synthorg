@@ -170,22 +170,16 @@ class PaginationMeta(BaseModel):
     """Pagination metadata for list responses.
 
     Cursor-based: clients receive an opaque ``next_cursor`` and walk
-    forward until ``has_more`` is ``False``. Legacy ``total`` and
-    ``offset`` fields are preserved for callers that already rely on
-    them; new code should page via ``next_cursor``.
+    forward until ``has_more`` is ``False``.
 
     Attributes:
         limit: Maximum items per page.
         next_cursor: Opaque cursor for the next page (``None`` on the
             final page).
         has_more: Whether more items follow the current page.
-        total: Total matching items (``None`` for repo-backed endpoints
-            that avoid the extra ``COUNT(*)`` round-trip).
-        offset: Starting offset of the current page (``0`` for the first
-            page; reflects the decoded cursor offset otherwise).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     limit: int = Field(ge=1, description="Maximum items per page")
     next_cursor: str | None = Field(
@@ -195,16 +189,6 @@ class PaginationMeta(BaseModel):
     has_more: bool = Field(
         default=False,
         description="Whether more items follow the current page",
-    )
-    total: int | None = Field(
-        default=None,
-        ge=0,
-        description="Total matching items (null when unknown)",
-    )
-    offset: int = Field(
-        default=0,
-        ge=0,
-        description="Starting offset of the current page (decoded cursor offset)",
     )
 
     @model_validator(mode="after")
@@ -689,17 +673,6 @@ from synthorg.api.dto_providers import (  # noqa: E402
     to_provider_response,
 )
 
-# ── Workflow definition DTOs (extracted to dto_workflow.py) ────
-from synthorg.api.dto_workflow import (  # noqa: E402
-    ActivateWorkflowRequest,
-    BlueprintInfoResponse,
-    CreateFromBlueprintRequest,
-    CreateWorkflowDefinitionRequest,
-    RollbackWorkflowRequest,
-    UpdateWorkflowDefinitionRequest,
-    WorkflowIODeclarationRequest,
-)
-
 
 class RollbackAgentIdentityRequest(BaseModel):
     """Request body for rolling back an agent identity to a previous version.
@@ -724,22 +697,18 @@ class RollbackAgentIdentityRequest(BaseModel):
 
 
 __all__ = [
-    "ActivateWorkflowRequest",
     "ApiResponse",
     "ApproveRequest",
-    "BlueprintInfoResponse",
     "CancelTaskRequest",
     "CoordinateTaskRequest",
     "CoordinationPhaseResponse",
     "CoordinationResultResponse",
     "CreateApprovalRequest",
     "CreateArtifactRequest",
-    "CreateFromBlueprintRequest",
     "CreateFromPresetRequest",
     "CreateProjectRequest",
     "CreateProviderRequest",
     "CreateTaskRequest",
-    "CreateWorkflowDefinitionRequest",
     "DiscoverModelsResponse",
     "ErrorDetail",
     "PaginatedResponse",
@@ -750,13 +719,10 @@ __all__ = [
     "ProviderResponse",
     "RejectRequest",
     "RollbackAgentIdentityRequest",
-    "RollbackWorkflowRequest",
     "TestConnectionRequest",
     "TestConnectionResponse",
     "TransitionTaskRequest",
     "UpdateProviderRequest",
     "UpdateTaskRequest",
-    "UpdateWorkflowDefinitionRequest",
-    "WorkflowIODeclarationRequest",
     "to_provider_response",
 ]

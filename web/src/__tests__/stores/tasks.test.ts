@@ -47,19 +47,13 @@ function paginated(
   data: Task[],
   meta: Partial<{ total: number; offset: number; limit: number }> = {},
 ) {
-  const total = meta.total ?? data.length
-  const offset = meta.offset ?? 0
   const limit = meta.limit ?? 200
   return paginatedFor<typeof listTasks>({
     data,
-    total,
-    offset,
     limit,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total,
-      offset,
       limit,
       next_cursor: null,
       has_more: false,
@@ -71,7 +65,6 @@ function resetStore() {
   useTasksStore.setState({
     tasks: [],
     selectedTask: null,
-    total: 0,
     loading: false,
     loadingDetail: false,
     error: null,

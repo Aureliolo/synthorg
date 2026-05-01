@@ -75,7 +75,6 @@ class TestListVersions:
         body = resp.json()
         assert body["data"][0]["version"] == 1
         assert body["data"][0]["entity_id"] == str(identity.id)
-        assert body["pagination"]["total"] == 1
 
     @pytest.mark.unit
     async def test_multiple_versions_after_updates(
@@ -107,8 +106,6 @@ class TestListVersions:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
-        assert body["pagination"]["offset"] == 0
         assert body["pagination"]["limit"] == 20
 
 
@@ -510,7 +507,6 @@ class TestReadEndpointsOwnership:
         assert versions[0]["entity_id"] == str(bob.id)
         assert versions[0]["version"] == 1
         assert all(v["version"] != 42 for v in versions)
-        assert body["pagination"]["total"] == len(versions)
 
 
 class TestAuthGuards:

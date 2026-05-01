@@ -82,7 +82,7 @@ export const useUsersStore = create<UsersState>()((set, get) => {
       if (token !== listRequestToken) return
       set({
         users: page.data,
-        total: page.total,
+        total: page.data.length,
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         loading: false,

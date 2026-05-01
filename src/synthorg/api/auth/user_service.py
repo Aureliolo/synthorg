@@ -46,7 +46,7 @@ class UserService:
         refresh_tokens: Optional refresh-token repository. When
             provided, ``delete()`` performs ``revoke_by_user()`` as
             an explicit refresh-token revocation step before the DB
-            delete (CFG-1 audit / GDPR defense-in-depth). Refresh
+            delete (CFG-1 audit / defense-in-depth). Refresh
             tokens are persisted and also removed by the schema's
             ``ON DELETE CASCADE`` on ``refresh_tokens.user_id``, as
             with sessions and api_keys; the explicit revocation runs
@@ -176,7 +176,7 @@ class UserService:
         """Delete a user and cascade to dependent rows.
 
         Explicitly revokes outstanding refresh tokens before the DB
-        delete as defense-in-depth (CFG-1 audit / GDPR). Refresh
+        delete as defense-in-depth (CFG-1 audit). Refresh
         tokens are persisted in ``refresh_tokens`` and also removed
         by schema-level ``ON DELETE CASCADE`` on ``user_id``; running
         ``revoke_by_user`` first prevents a window where tokens could

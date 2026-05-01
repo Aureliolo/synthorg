@@ -10,18 +10,13 @@ import type { Project } from '@/api/types/projects'
 import type { Task } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
 
-function paginatedProjects(data: Project[], total?: number) {
-  const resolvedTotal = total ?? data.length
+function paginatedProjects(data: Project[]) {
   return paginatedFor<typeof listProjects>({
     data,
-    total: resolvedTotal,
-    offset: 0,
     limit: 200,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total: resolvedTotal,
-      offset: 0,
       limit: 200,
       next_cursor: null,
       has_more: false,
@@ -29,18 +24,13 @@ function paginatedProjects(data: Project[], total?: number) {
   })
 }
 
-function paginatedTasks(data: Task[], total?: number) {
-  const resolvedTotal = total ?? data.length
+function paginatedTasks(data: Task[]) {
   return paginatedFor<typeof listTasks>({
     data,
-    total: resolvedTotal,
-    offset: 0,
     limit: 50,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total: resolvedTotal,
-      offset: 0,
       limit: 50,
       next_cursor: null,
       has_more: false,
@@ -70,7 +60,7 @@ describe('useProjectsStore', () => {
       const project = makeProject('proj-001')
       server.use(
         http.get('/api/v1/projects', () =>
-          HttpResponse.json(paginatedProjects([project], 1)),
+          HttpResponse.json(paginatedProjects([project])),
         ),
       )
 
@@ -104,7 +94,7 @@ describe('useProjectsStore', () => {
           HttpResponse.json(apiSuccess(project)),
         ),
         http.get('/api/v1/tasks', () =>
-          HttpResponse.json(paginatedTasks([task], 1)),
+          HttpResponse.json(paginatedTasks([task])),
         ),
       )
 

@@ -405,11 +405,10 @@ class TestTemplatePacks:
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
-        listed = await INFRASTRUCTURE_HANDLERS["synthorg_template_packs_list"](
+        await INFRASTRUCTURE_HANDLERS["synthorg_template_packs_list"](
             app_state=fake_app_state,
             arguments={},
         )
-        assert json.loads(listed)["pagination"]["total"] == 1
 
     async def test_uninstall_guardrails(
         self,

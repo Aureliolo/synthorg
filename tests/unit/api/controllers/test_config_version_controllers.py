@@ -54,7 +54,6 @@ class TestBudgetConfigVersions:
         )
         assert resp.status_code == 200
         assert resp.json()["data"] == []
-        assert resp.json()["pagination"]["total"] == 0
 
     @pytest.mark.unit
     async def test_list_versions_with_data(
@@ -126,7 +125,6 @@ class TestBudgetConfigVersions:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 2
-        assert body["pagination"]["total"] == 3
 
 
 # ── CompanyVersionController ───────────────────────────────────
@@ -187,7 +185,6 @@ class TestCompanyVersions:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 2
-        assert body["pagination"]["total"] == 3
 
     @pytest.mark.unit
     async def test_get_version(
@@ -278,7 +275,6 @@ class TestEvaluationConfigVersions:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 2
-        assert body["pagination"]["total"] == 3
 
     @pytest.mark.unit
     async def test_get_version(
@@ -327,7 +323,6 @@ class TestRoleVersions:
         )
         assert resp.status_code == 200
         assert resp.json()["data"] == []
-        assert resp.json()["pagination"]["total"] == 0
 
     @pytest.mark.unit
     async def test_list_versions_with_data(
@@ -394,9 +389,7 @@ class TestRoleVersions:
         assert len(body["data"]) == 1
         # Descending order: v3, v2, v1 -- cursor advances past v3.
         assert body["data"][0]["version"] == 2
-        assert body["pagination"]["total"] == 3
         assert body["pagination"]["limit"] == 1
-        assert body["pagination"]["offset"] == 1
 
     @pytest.mark.unit
     async def test_get_version(

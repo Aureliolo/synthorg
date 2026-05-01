@@ -125,7 +125,7 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
         if (token !== listRequestToken) return
         set({
           escalations: page.data,
-          total: page.total,
+          total: page.data.length,
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
           loading: false,

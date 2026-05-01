@@ -1,6 +1,6 @@
 """Communication subsystem for the SynthOrg framework."""
 
-from synthorg.communication.bus_memory import InMemoryMessageBus
+from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import (

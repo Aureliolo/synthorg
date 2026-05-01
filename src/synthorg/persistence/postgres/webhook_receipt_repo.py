@@ -183,11 +183,15 @@ class PostgresWebhookReceiptRepository:
             )
             raise QueryError(msg) from exc
 
-    async def cleanup_old(self, retention_days: int) -> int:
-        """Delete receipts whose ``received_at`` is older than *retention_days*.
+    async def cleanup_old_for_connection(
+        self,
+        connection_name: NotBlankStr,
+        retention_days: int,
+    ) -> int:
+        """Delete receipts for *connection_name* older than *retention_days*.
 
         ``retention_days <= 0`` is treated as a no-op so callers cannot
-        accidentally truncate the entire log via misconfiguration.
+        accidentally truncate the log via misconfiguration.
         """
         if retention_days <= 0:
             return 0
@@ -195,14 +199,16 @@ class PostgresWebhookReceiptRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    "DELETE FROM webhook_receipts WHERE received_at < %s",
-                    (cutoff,),
+                    "DELETE FROM webhook_receipts "
+                    "WHERE connection_name = %s AND received_at < %s",
+                    (str(connection_name), cutoff),
                 )
                 removed = cur.rowcount
         except Exception as exc:
-            msg = "Failed to cleanup old webhook receipts"
+            msg = f"Failed to cleanup old webhook receipts for {connection_name!r}"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+                connection_name=str(connection_name),
                 retention_days=retention_days,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -211,6 +217,7 @@ class PostgresWebhookReceiptRepository:
         if removed:
             logger.info(
                 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
+                connection_name=str(connection_name),
                 retention_days=retention_days,
                 removed=removed,
             )

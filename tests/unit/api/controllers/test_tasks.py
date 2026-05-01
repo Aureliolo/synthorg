@@ -16,7 +16,6 @@ class TestTaskController:
         body = resp.json()
         assert body["success"] is True
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     def test_list_tasks_with_data(
         self,
@@ -28,7 +27,6 @@ class TestTaskController:
         resp = test_client.get("/api/v1/tasks")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["id"] == "task-001"
 
     def test_list_tasks_filter_by_status(
@@ -48,7 +46,6 @@ class TestTaskController:
         fake_persistence.tasks._tasks["t2"] = t2
         resp = test_client.get("/api/v1/tasks?status=created")
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["id"] == "t1"
 
     def test_get_task_found(

@@ -23,19 +23,13 @@ function paginated(
   // COUNT(*) round-trip) is exercisable from tests. ``'total' in
   // meta`` means the caller explicitly wanted the supplied value
   // (possibly ``null``); otherwise fall back to ``data.length``.
-  const total = 'total' in meta ? (meta.total as number | null) : data.length
-  const offset = meta.offset ?? 0
   const limit = meta.limit ?? 200
   return paginatedFor<typeof listApprovals>({
     data,
-    total,
-    offset,
     limit,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total,
-      offset,
       limit,
       next_cursor: null,
       has_more: false,
@@ -48,7 +42,6 @@ function resetStore() {
   useApprovalsStore.setState({
     approvals: [],
     selectedApproval: null,
-    total: 0,
     loading: false,
     loadingDetail: false,
     error: null,
