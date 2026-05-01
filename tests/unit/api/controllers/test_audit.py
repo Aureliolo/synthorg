@@ -125,8 +125,12 @@ class TestAuditController:
         # Filter is applied -- only entries within [t1, t2] come back.
         # Compare as datetimes (not strings) so the wire's ``Z`` suffix
         # and ``isoformat()``'s ``+00:00`` suffix don't string-compare
-        # to different values for the same instant.
+        # to different values for the same instant.  Also assert the
+        # exact set of ids so an empty result (regression: filter
+        # eats every row) cannot pass the loop vacuously.
         assert isinstance(body["data"], list)
+        assert len(body["data"]) == 2
+        assert {entry["id"] for entry in body["data"]} == {"e-1", "e-2"}
         for entry in body["data"]:
             raw_ts = entry.get("created_at") or entry.get("timestamp")
             assert raw_ts is not None

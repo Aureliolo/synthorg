@@ -66,7 +66,11 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
             raise side
         return 1
 
-    webhook_repo.cleanup_old_for_connection = AsyncMock(side_effect=_cleanup)
+    # Configure the side_effect on the auto-spec'd child mock instead
+    # of replacing it with a bare AsyncMock; the parent
+    # ``AsyncMock(spec=WebhookReceiptRepository)`` has already created
+    # a properly specced ``cleanup_old_for_connection`` attribute.
+    webhook_repo.cleanup_old_for_connection.side_effect = _cleanup
     persistence = SimpleNamespace(
         connections=connections_repo,
         webhook_receipts=webhook_repo,
@@ -219,9 +223,8 @@ async def test_resolve_falls_back_when_no_config_resolver() -> None:
 
 
 async def test_resolve_falls_back_on_resolver_error() -> None:
-    config_resolver = SimpleNamespace(
-        get_int=AsyncMock(side_effect=RuntimeError("settings backend down")),
-    )
+    config_resolver = AsyncMock(spec=ConfigResolver)
+    config_resolver.get_int.side_effect = RuntimeError("settings backend down")
     app_state = SimpleNamespace(
         has_config_resolver=True,
         config_resolver=config_resolver,

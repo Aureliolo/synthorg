@@ -227,10 +227,15 @@ class TestCoordinationMetricsController:
         # records, none from before t1.
         assert isinstance(body["data"], list)
         assert all(row.get("agent_id") == "alice" for row in body["data"])
-        assert all(
-            row.get("timestamp", t1.isoformat()) >= t1.isoformat()
-            for row in body["data"]
-        )
+        # Assert ``computed_at`` (the wire field for ``timestamp``) is
+        # present on every row -- a missing field would otherwise be
+        # silently masked by a defaulted ``row.get(...)``.  Parse as
+        # datetimes so the wire's ``Z`` suffix and ``isoformat()``'s
+        # ``+00:00`` suffix do not string-compare to different values
+        # for the same instant.
+        for row in body["data"]:
+            assert "computed_at" in row
+            assert datetime.fromisoformat(row["computed_at"]) >= t1
 
     def test_rejects_inverted_time_window(
         self,

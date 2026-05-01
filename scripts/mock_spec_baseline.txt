@@ -564,8 +564,6 @@ tests/unit/api/test_state.py:312:19
 tests/unit/api/test_state.py:323:19
 tests/unit/api/test_state.py:343:19
 tests/unit/api/test_state.py:350:19
-tests/unit/api/test_webhook_receipt_cleanup_loop.py:69:46
-tests/unit/api/test_webhook_receipt_cleanup_loop.py:223:16
 tests/unit/backup/test_scheduler.py:14:14
 tests/unit/backup/test_scheduler.py:15:28
 tests/unit/backup/test_service.py:21:14

@@ -72,9 +72,11 @@ class TestArtifactController:
         assert resp.status_code == 200
         body = resp.json()
         assert isinstance(body["data"], list)
-        # Whatever was just created should appear in the listing.
-        assert len(body["data"]) >= 1
-        assert any(item.get("task_id") == "task-1" for item in body["data"])
+        # Both created artifacts must appear in the listing -- a weak
+        # ``len(...) >= 1`` would still pass if one of them silently
+        # disappeared between create and list.
+        returned_paths = {item.get("path") for item in body["data"]}
+        assert {"src/a.py", "tests/a.py"}.issubset(returned_paths)
 
     def test_list_artifacts_filter_by_task_id(
         self, test_client: TestClient[Any]
