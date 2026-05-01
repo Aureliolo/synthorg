@@ -127,6 +127,139 @@ class ConnectionCatalog:
                 self._name_locks[name] = lock
             return lock
 
+    def _validate_credentials_for_create(
+        self,
+        name: str,
+        connection_type: ConnectionType,
+        credentials: dict[str, str],
+    ) -> None:
+        """Validate credentials via the type's authenticator before persist."""
+        authenticator = get_authenticator(connection_type)
+        try:
+            authenticator.validate_credentials(credentials)
+        except InvalidConnectionAuthError:
+            logger.warning(
+                CONNECTION_VALIDATION_FAILED,
+                connection_name=name,
+                connection_type=connection_type,
+            )
+            raise
+
+    def _build_connection(  # noqa: PLR0913
+        self,
+        *,
+        name: str,
+        connection_type: ConnectionType,
+        auth_method: str,
+        base_url: str | None,
+        secret_id: str,
+        metadata: dict[str, str] | None,
+        health_check_enabled: bool,
+    ) -> Connection:
+        """Build and validate the ``Connection`` model BEFORE secret writes.
+
+        ``NotBlankStr`` rejections, ``AuthMethod`` rejections, and
+        Pydantic ``@model_validator`` failures are caught here so we
+        never leave an orphaned secret behind with no row to clean it
+        up from.
+        """
+        secret_ref = SecretRef(
+            secret_id=NotBlankStr(secret_id),
+            backend=NotBlankStr(self._secret_backend.backend_name),
+        )
+        now = datetime.now(UTC)
+        try:
+            return Connection(
+                name=NotBlankStr(name),
+                connection_type=connection_type,
+                auth_method=AuthMethod(auth_method),
+                base_url=NotBlankStr(base_url) if base_url else None,
+                secret_refs=(secret_ref,),
+                health_check_enabled=health_check_enabled,
+                metadata=metadata or {},
+                created_at=now,
+                updated_at=now,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Surface ``connection_name`` context on model-construction
+            # failures.  Without this the resulting 500 carries the
+            # exception's raw message but no resource attribution.
+            logger.warning(
+                CONNECTION_VALIDATION_FAILED,
+                connection_name=name,
+                connection_type=connection_type,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+
+    async def _store_secret(
+        self,
+        secret_id: str,
+        credentials: dict[str, str],
+        *,
+        connection_name: str,
+    ) -> None:
+        """Store credentials via the secret backend with structured error log."""
+        try:
+            await self._secret_backend.store(
+                secret_id,
+                json.dumps(credentials).encode("utf-8"),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONNECTION_CREATE_FAILED,
+                connection_name=connection_name,
+                secret_id=secret_id,
+                note="secret_backend_store_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+
+    async def _persist_connection_with_cleanup(
+        self,
+        connection: Connection,
+        *,
+        secret_id: str,
+    ) -> None:
+        """Persist the connection row; on failure, delete the orphaned secret.
+
+        SEC-1: structured warning with redacted error rather than
+        ``logger.exception`` so a raw traceback can't leak repo /
+        secret-backend internals.
+        """
+        try:
+            await self._repo.save(connection)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONNECTION_CREATE_FAILED,
+                connection_name=connection.name,
+                note="repo_save_failed_deleting_orphaned_secret",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            try:
+                await self._secret_backend.delete(secret_id)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as cleanup_exc:
+                logger.warning(
+                    CONNECTION_CREATE_FAILED,
+                    connection_name=connection.name,
+                    secret_id=secret_id,
+                    note="rollback_delete_failed_manual_cleanup_required",
+                    error_type=type(cleanup_exc).__name__,
+                    error=safe_error_description(cleanup_exc),
+                )
+            raise
+
     async def create(  # noqa: PLR0913
         self,
         *,
@@ -163,98 +296,30 @@ class ConnectionCatalog:
         async with lock:
             await self._ensure_cache()
             if name in self._cache:
-                logger.warning(
-                    CONNECTION_DUPLICATE,
-                    connection_name=name,
-                )
+                logger.warning(CONNECTION_DUPLICATE, connection_name=name)
                 msg = f"Connection '{name}' already exists"
                 raise DuplicateConnectionError(msg)
 
-            authenticator = get_authenticator(connection_type)
-            try:
-                authenticator.validate_credentials(credentials)
-            except InvalidConnectionAuthError:
-                logger.warning(
-                    CONNECTION_VALIDATION_FAILED,
-                    connection_name=name,
-                    connection_type=connection_type,
-                )
-                raise
-
-            # Build and validate the ``Connection`` model BEFORE
-            # writing to the secret backend. If the model raises
-            # (e.g. ``NotBlankStr`` rejects a value, or ``AuthMethod``
-            # rejects the auth_method string), we would otherwise
-            # leave an orphaned secret behind with no row to clean
-            # it up from.
+            self._validate_credentials_for_create(
+                name,
+                connection_type,
+                credentials,
+            )
             secret_id = str(uuid4())
-            secret_ref = SecretRef(
-                secret_id=NotBlankStr(secret_id),
-                backend=NotBlankStr(self._secret_backend.backend_name),
+            connection = self._build_connection(
+                name=name,
+                connection_type=connection_type,
+                auth_method=auth_method,
+                base_url=base_url,
+                secret_id=secret_id,
+                metadata=metadata,
+                health_check_enabled=health_check_enabled,
             )
-            now = datetime.now(UTC)
-            try:
-                connection = Connection(
-                    name=NotBlankStr(name),
-                    connection_type=connection_type,
-                    auth_method=AuthMethod(auth_method),
-                    base_url=NotBlankStr(base_url) if base_url else None,
-                    secret_refs=(secret_ref,),
-                    health_check_enabled=health_check_enabled,
-                    metadata=metadata or {},
-                    created_at=now,
-                    updated_at=now,
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                # Surface ``connection_name`` context on model-construction
-                # failures (NotBlankStr / AuthMethod / Pydantic validators).
-                # Without this, the resulting 500 carries the exception's
-                # raw message but no resource attribution in the audit log.
-                logger.warning(
-                    CONNECTION_VALIDATION_FAILED,
-                    connection_name=name,
-                    connection_type=connection_type,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise
-
-            await self._secret_backend.store(
-                secret_id,
-                json.dumps(credentials).encode("utf-8"),
+            await self._store_secret(secret_id, credentials, connection_name=name)
+            await self._persist_connection_with_cleanup(
+                connection,
+                secret_id=secret_id,
             )
-            try:
-                await self._repo.save(connection)
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                # Compensating cleanup: secret was already stored.
-                # SEC-1: structured warning with redacted error rather
-                # than ``logger.exception`` -- the full traceback can
-                # leak repo / secret-backend internals.
-                logger.warning(
-                    CONNECTION_CREATE_FAILED,
-                    connection_name=name,
-                    note="repo_save_failed_deleting_orphaned_secret",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                try:
-                    await self._secret_backend.delete(secret_id)
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as cleanup_exc:
-                    logger.warning(
-                        CONNECTION_CREATE_FAILED,
-                        connection_name=name,
-                        secret_id=secret_id,
-                        note=("rollback_delete_failed_manual_cleanup_required"),
-                        error_type=type(cleanup_exc).__name__,
-                        error=safe_error_description(cleanup_exc),
-                    )
-                raise
             self._invalidate_cache()
             logger.info(
                 CONNECTION_CREATED,
@@ -320,23 +385,43 @@ class ConnectionCatalog:
             # Build candidate updates without seeding ``updated_at`` --
             # an unchanged PATCH should be a no-op so we can skip
             # ``save`` and the ``CONNECTION_UPDATED`` audit emit.
-            candidate: dict[str, object] = {}
-            if base_url is not _UNSET:
-                candidate["base_url"] = NotBlankStr(base_url) if base_url else None
-            if metadata is not _UNSET:
-                # Normalise explicit ``null`` to the canonical empty
-                # mapping used by ``create()``; ``model_copy`` does not
-                # re-run validators so a raw ``None`` would persist as
-                # ``metadata=None`` on the row even though the
-                # ``Connection`` field is typed as ``dict[str, str]``.
-                candidate["metadata"] = metadata if metadata is not None else {}
-            if health_check_enabled is not _UNSET:
-                # Same reasoning as ``metadata`` above; ``create()``
-                # always materialises ``health_check_enabled=True`` so
-                # an explicit-null clear normalises to the same default.
-                candidate["health_check_enabled"] = (
-                    health_check_enabled if health_check_enabled is not None else True
+            try:
+                candidate: dict[str, object] = {}
+                if base_url is not _UNSET:
+                    candidate["base_url"] = NotBlankStr(base_url) if base_url else None
+                if metadata is not _UNSET:
+                    # Normalise explicit ``null`` to the canonical empty
+                    # mapping used by ``create()``; ``model_copy`` does
+                    # not re-run validators so a raw ``None`` would
+                    # persist as ``metadata=None`` on the row even
+                    # though ``Connection.metadata`` is typed
+                    # ``dict[str, str]``.
+                    candidate["metadata"] = metadata if metadata is not None else {}
+                if health_check_enabled is not _UNSET:
+                    # Same reasoning as ``metadata`` above;
+                    # ``create()`` always materialises
+                    # ``health_check_enabled=True`` so an explicit-null
+                    # clear normalises to the same default.
+                    candidate["health_check_enabled"] = (
+                        health_check_enabled
+                        if health_check_enabled is not None
+                        else True
+                    )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # ``NotBlankStr`` rejections (e.g. caller passed an
+                # empty ``base_url``) currently bubble with no resource
+                # attribution.  Surface ``connection_name`` + the input
+                # field set before re-raising so the audit log can
+                # explain WHICH PATCH was rejected and why.
+                logger.warning(
+                    CONNECTION_VALIDATION_FAILED,
+                    connection_name=name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
+                raise
             # Drop fields whose candidate value matches the persisted
             # value -- otherwise an idempotent PATCH would still bump
             # ``updated_at`` and emit a phantom ``CONNECTION_UPDATED``
@@ -552,11 +637,7 @@ class ConnectionCatalog:
         lock = await self._lock_for(name)
         async with lock:
             # Load the connection once and share it across the
-            # credential merge + persist paths. The previous
-            # implementation called ``get_credentials`` (which
-            # itself loads the connection) followed by
-            # ``get_or_raise``, performing two redundant cache hits
-            # plus the secret-backend lookup under the same lock.
+            # credential merge + persist paths.
             conn = await self.get_or_raise(name)
             existing = await self._resolve_credentials_for(conn)
             merged = dict(existing)
@@ -564,109 +645,121 @@ class ConnectionCatalog:
             if refresh_token is not None:
                 merged["refresh_token"] = refresh_token
 
-            # Always write a single merged secret (new id) and
-            # replace ``secret_refs`` with exactly that one ref.
-            # Writing back into an existing ref would leave any
-            # sibling refs pointing at stale credential slices,
-            # and ``get_credentials`` merges them in order so the
-            # old values could shadow the fresh token on the next
-            # resolve.
-            new_secret_id = str(uuid4())
-            await self._secret_backend.store(
-                new_secret_id,
-                json.dumps(merged).encode("utf-8"),
+            new_secret_id, updated = await self._stage_oauth_secret_rotation(
+                conn,
+                merged,
             )
-            old_refs = conn.secret_refs
-            ref = SecretRef(
-                secret_id=NotBlankStr(new_secret_id),
-                backend=NotBlankStr(self._secret_backend.backend_name),
-            )
-            updated = conn.model_copy(
-                update={
-                    "secret_refs": (ref,),
-                    "updated_at": datetime.now(UTC),
-                }
-            )
-            try:
-                await self._repo.save(updated)
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                # Compensating cleanup: delete the freshly-written
-                # secret so we do not leak a bearer token when the
-                # repo row could not record it.  SEC-1: structured
-                # warning with redacted error rather than
-                # ``logger.exception`` -- the OAuth-token path is
-                # secret-bearing and a raw traceback can leak the
-                # token / backend internals.
-                logger.warning(
-                    OAUTH_TOKEN_EXCHANGE_FAILED,
-                    connection_name=name,
-                    note="repo_save_failed_deleting_orphaned_oauth_secret",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                try:
-                    await self._secret_backend.delete(new_secret_id)
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as cleanup_exc:
-                    # SEC-1: see sibling handler -- avoid raw str(exc)
-                    # in case the secret backend's exception message
-                    # contains backend-internal credentials.
-                    logger.warning(
-                        OAUTH_TOKEN_EXCHANGE_FAILED,
-                        connection_name=name,
-                        secret_id=new_secret_id,
-                        error_context=(
-                            "rollback delete failed; manual cleanup "
-                            "required for orphaned OAuth secret"
-                        ),
-                        error_type=type(cleanup_exc).__name__,
-                        error=safe_error_description(cleanup_exc),
-                    )
-                raise
-            # Invalidate cache BEFORE the stale-secret deletion loop:
-            # concurrent ``get()`` / ``get_credentials()`` callers
-            # would otherwise read the old ``secret_refs`` while we
-            # delete those secrets, and either return stale tokens or
-            # fail trying to resolve a secret that's gone.
+            await self._persist_oauth_rotation(updated, new_secret_id, name)
             self._invalidate_cache()
-            # Repo save succeeded -- drop any previously-referenced
-            # secrets from the backend now that the canonical merged
-            # secret is persisted. Best effort: log failures but do
-            # not re-raise so one stale secret does not abort the
-            # whole rotation.
-            for old_ref in old_refs:
-                try:
-                    deleted = await self._secret_backend.delete(old_ref.secret_id)
-                    if deleted:
-                        logger.debug(
-                            SECRET_DELETED,
-                            connection_name=name,
-                            secret_id=old_ref.secret_id,
-                        )
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as del_exc:
-                    # The token rotation itself succeeded; a stale-
-                    # secret cleanup failure is a secret-delete
-                    # problem, not a token-exchange problem.  Use the
-                    # cleanup-scoped event so dashboards / alerts
-                    # surface the right ownership.  SEC-1: redacted
-                    # error to keep backend-internal credentials out
-                    # of the log stream.
-                    logger.warning(
-                        SECRET_DELETE_FAILED,
-                        connection_name=name,
-                        secret_id=old_ref.secret_id,
-                        note="failed_to_delete_stale_secret_after_rotation",
-                        error_type=type(del_exc).__name__,
-                        error=safe_error_description(del_exc),
-                    )
+            await self._cleanup_stale_oauth_secrets(conn.secret_refs, name)
             logger.info(
                 OAUTH_TOKEN_EXCHANGED,
                 connection_name=name,
                 has_refresh=refresh_token is not None,
             )
             return updated
+
+    async def _stage_oauth_secret_rotation(
+        self,
+        conn: Connection,
+        merged: dict[str, str],
+    ) -> tuple[str, Connection]:
+        """Write the merged secret blob and stage the updated connection.
+
+        Always allocates a fresh secret id and collapses ``secret_refs``
+        to exactly that one ref.  Writing back into an existing ref
+        would leave sibling refs pointing at stale credential slices,
+        and ``get_credentials`` merges them in order so old values
+        could shadow the fresh token on the next resolve.
+        """
+        new_secret_id = str(uuid4())
+        await self._secret_backend.store(
+            new_secret_id,
+            json.dumps(merged).encode("utf-8"),
+        )
+        ref = SecretRef(
+            secret_id=NotBlankStr(new_secret_id),
+            backend=NotBlankStr(self._secret_backend.backend_name),
+        )
+        updated = conn.model_copy(
+            update={
+                "secret_refs": (ref,),
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        return new_secret_id, updated
+
+    async def _persist_oauth_rotation(
+        self,
+        updated: Connection,
+        new_secret_id: str,
+        name: str,
+    ) -> None:
+        """Persist the rotated connection; delete the new secret on failure.
+
+        SEC-1: redacted errors throughout -- the OAuth-token path is
+        secret-bearing and raw tracebacks can leak token / backend
+        internals.
+        """
+        try:
+            await self._repo.save(updated)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                connection_name=name,
+                note="repo_save_failed_deleting_orphaned_oauth_secret",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            try:
+                await self._secret_backend.delete(new_secret_id)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as cleanup_exc:
+                logger.warning(
+                    OAUTH_TOKEN_EXCHANGE_FAILED,
+                    connection_name=name,
+                    secret_id=new_secret_id,
+                    error_context=(
+                        "rollback delete failed; manual cleanup "
+                        "required for orphaned OAuth secret"
+                    ),
+                    error_type=type(cleanup_exc).__name__,
+                    error=safe_error_description(cleanup_exc),
+                )
+            raise
+
+    async def _cleanup_stale_oauth_secrets(
+        self,
+        old_refs: tuple[SecretRef, ...],
+        name: str,
+    ) -> None:
+        """Best-effort delete the previously-referenced OAuth secrets.
+
+        Repo save has already succeeded so failures here log but do
+        not re-raise -- a single stale secret should not abort the
+        whole rotation.  Stale-secret cleanup failure is a
+        ``SECRET_DELETE_FAILED`` event, not a token-exchange failure.
+        """
+        for old_ref in old_refs:
+            try:
+                deleted = await self._secret_backend.delete(old_ref.secret_id)
+                if deleted:
+                    logger.debug(
+                        SECRET_DELETED,
+                        connection_name=name,
+                        secret_id=old_ref.secret_id,
+                    )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as del_exc:
+                logger.warning(
+                    SECRET_DELETE_FAILED,
+                    connection_name=name,
+                    secret_id=old_ref.secret_id,
+                    note="failed_to_delete_stale_secret_after_rotation",
+                    error_type=type(del_exc).__name__,
+                    error=safe_error_description(del_exc),
+                )

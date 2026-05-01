@@ -158,8 +158,8 @@ class ArtifactService:
                 constructed without a ``storage`` dependency
                 (controller helper bug, surfaces 500 with RFC 9457
                 metadata via the central exception handler).
-            Exception: Any storage backend failure propagates with
-                type intact.
+            Exception: Any storage-backend or metadata-delete
+                failure propagates with type intact.
 
         Returns:
             ``True`` if either the blob or the metadata row was

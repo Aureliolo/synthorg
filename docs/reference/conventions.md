@@ -359,16 +359,16 @@ follow-up migration.  New repositories follow the
 ``NotFoundError`` raise (with the ``logger.warning(...)`` + raise
 audit trail).
 
-## 15. MCP handler logging centralization
+## 15. MCP handler logging centralisation
 
-Every MCP handler error path uses one of three centralized helpers
+Every MCP handler error path uses one of three centralised helpers
 from `src/synthorg/meta/mcp/handlers/common_logging.py`:
 
-* `log_handler_argument_invalid(tool_name, exc)` for
+* `log_handler_argument_invalid(tool, exc)` for
   `ArgumentValidationError`
-* `log_handler_invoke_failed(tool_name, exc, **context)` for any
+* `log_handler_invoke_failed(tool, exc, **context)` for any
   other service-layer exception
-* `log_handler_guardrail_violated(tool_name, exc)` for
+* `log_handler_guardrail_violated(tool, exc)` for
   `GuardrailViolationError`
 
 Success paths emit `logger.info(MCP_HANDLER_INVOKE_SUCCESS,
