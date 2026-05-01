@@ -207,25 +207,32 @@ class ConnectionCatalog:
             )
             try:
                 await self._repo.save(connection)
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 # Compensating cleanup: secret was already stored.
-                logger.exception(
+                # SEC-1: structured warning with redacted error rather
+                # than ``logger.exception`` -- the full traceback can
+                # leak repo / secret-backend internals.
+                logger.warning(
                     CONNECTION_CREATED,
                     connection_name=name,
-                    error="repo save failed, deleting orphaned secret",
+                    note="repo_save_failed_deleting_orphaned_secret",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 try:
                     await self._secret_backend.delete(secret_id)
+                except MemoryError, RecursionError:
+                    raise
                 except Exception as cleanup_exc:
-                    logger.exception(
+                    logger.warning(
                         CONNECTION_CREATED,
                         connection_name=name,
                         secret_id=secret_id,
-                        error=(
-                            "rollback delete failed; manual cleanup "
-                            "required for orphaned secret"
-                        ),
-                        cleanup_exception=str(cleanup_exc),
+                        note=("rollback_delete_failed_manual_cleanup_required"),
+                        error_type=type(cleanup_exc).__name__,
+                        error=safe_error_description(cleanup_exc),
                     )
                 raise
             self._invalidate_cache()
@@ -290,24 +297,40 @@ class ConnectionCatalog:
         lock = await self._lock_for(name)
         async with lock:
             existing = await self.get_or_raise(name)
-            updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
+            # Build candidate updates without seeding ``updated_at`` --
+            # an unchanged PATCH should be a no-op so we can skip
+            # ``save`` and the ``CONNECTION_UPDATED`` audit emit.
+            candidate: dict[str, object] = {}
             if base_url is not _UNSET:
-                updates["base_url"] = NotBlankStr(base_url) if base_url else None
+                candidate["base_url"] = NotBlankStr(base_url) if base_url else None
             if metadata is not _UNSET:
                 # Normalise explicit ``null`` to the canonical empty
                 # mapping used by ``create()``; ``model_copy`` does not
                 # re-run validators so a raw ``None`` would persist as
                 # ``metadata=None`` on the row even though the
                 # ``Connection`` field is typed as ``dict[str, str]``.
-                updates["metadata"] = metadata if metadata is not None else {}
+                candidate["metadata"] = metadata if metadata is not None else {}
             if health_check_enabled is not _UNSET:
                 # Same reasoning as ``metadata`` above; ``create()``
                 # always materialises ``health_check_enabled=True`` so
                 # an explicit-null clear normalises to the same default.
-                updates["health_check_enabled"] = (
+                candidate["health_check_enabled"] = (
                     health_check_enabled if health_check_enabled is not None else True
                 )
-            updated = existing.model_copy(update=updates)
+            # Drop fields whose candidate value matches the persisted
+            # value -- otherwise an idempotent PATCH would still bump
+            # ``updated_at`` and emit a phantom ``CONNECTION_UPDATED``
+            # audit row.
+            real_updates = {
+                key: value
+                for key, value in candidate.items()
+                if getattr(existing, key) != value
+            }
+            if not real_updates:
+                # No-op PATCH; return the existing row unchanged.
+                return existing
+            real_updates["updated_at"] = datetime.now(UTC)
+            updated = existing.model_copy(update=real_updates)
             await self._repo.save(updated)
             self._invalidate_cache()
             logger.info(CONNECTION_UPDATED, connection_name=name)
@@ -421,11 +444,16 @@ class ConnectionCatalog:
             try:
                 data = json.loads(raw.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                # SEC-1: ``f"...: {exc}"`` would interpolate raw
+                # exception text in a secret-bearing path; route via
+                # ``safe_error_description``.
                 logger.warning(
                     SECRET_RETRIEVAL_FAILED,
                     connection_name=name,
                     secret_id=ref.secret_id,
-                    error=f"malformed secret: {exc}",
+                    note="malformed_secret",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = f"Secret '{ref.secret_id}' for connection '{name}' is malformed"
                 raise SecretRetrievalError(msg) from exc
@@ -519,17 +547,22 @@ class ConnectionCatalog:
             )
             try:
                 await self._repo.save(updated)
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 # Compensating cleanup: delete the freshly-written
                 # secret so we do not leak a bearer token when the
-                # repo row could not record it.
-                logger.exception(
+                # repo row could not record it.  SEC-1: structured
+                # warning with redacted error rather than
+                # ``logger.exception`` -- the OAuth-token path is
+                # secret-bearing and a raw traceback can leak the
+                # token / backend internals.
+                logger.warning(
                     OAUTH_TOKEN_EXCHANGED,
                     connection_name=name,
-                    error=(
-                        "repo save failed; deleting orphaned OAuth "
-                        "secret to avoid leaking tokens"
-                    ),
+                    note="repo_save_failed_deleting_orphaned_oauth_secret",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 try:
                     await self._secret_backend.delete(new_secret_id)
@@ -563,13 +596,19 @@ class ConnectionCatalog:
                             connection_name=name,
                             secret_id=old_ref.secret_id,
                         )
+                except MemoryError, RecursionError:
+                    raise
                 except Exception as del_exc:
+                    # SEC-1: avoid raw ``str(del_exc)`` -- the secret
+                    # backend's exception message can include
+                    # backend-internal credentials.
                     logger.warning(
                         OAUTH_TOKEN_EXCHANGED,
                         connection_name=name,
                         secret_id=old_ref.secret_id,
-                        error="failed to delete stale secret after rotation",
-                        cleanup_exception=str(del_exc),
+                        note="failed_to_delete_stale_secret_after_rotation",
+                        error_type=type(del_exc).__name__,
+                        error=safe_error_description(del_exc),
                     )
             self._invalidate_cache()
             logger.info(

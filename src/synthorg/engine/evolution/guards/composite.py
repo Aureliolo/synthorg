@@ -58,10 +58,12 @@ class CompositeGuard:
             reason="All guards approved",
         )
 
+        proposal_id = str(proposal.id)
         for guard in self._guards:
             decision = await guard.evaluate(proposal)
             logger.debug(
                 EVOLUTION_GUARD_DECISION,
+                proposal_id=proposal_id,
                 guard_name=guard.name,
                 approved=decision.approved,
                 reason=decision.reason,
@@ -73,13 +75,14 @@ class CompositeGuard:
                 # matching the constant's documented semantics.
                 logger.debug(
                     EVOLUTION_GUARD_DECISION,
+                    proposal_id=proposal_id,
                     guard_name=self.name,
                     approved=decision.approved,
                     reason=decision.reason,
                 )
                 logger.info(
                     EVOLUTION_GUARDS_REJECTED,
-                    proposal_id=str(proposal.id),
+                    proposal_id=proposal_id,
                     guard_name=guard.name,
                     reason=decision.reason,
                 )
@@ -91,16 +94,18 @@ class CompositeGuard:
         # reason is composite-level ("All guards approved"), not the
         # last individual guard's reason -- pulling
         # ``last_decision.reason`` would mislabel the chain outcome
-        # with one guard's bookkeeping text.
+        # with one guard's bookkeeping text.  ``proposal_id`` is on
+        # every row so concurrent guard evaluations stay correlatable.
         logger.debug(
             EVOLUTION_GUARD_DECISION,
+            proposal_id=proposal_id,
             guard_name=self.name,
             approved=last_decision.approved,
             reason="All guards approved",
         )
         logger.info(
             EVOLUTION_GUARDS_PASSED,
-            proposal_id=str(proposal.id),
+            proposal_id=proposal_id,
             guards_count=len(self._guards),
         )
         return last_decision

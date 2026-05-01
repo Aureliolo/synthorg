@@ -80,3 +80,11 @@ EVOLUTION_GUARD_DECISION: Final[str] = "evolution.guard.decision"
 Carries the guard chain result (approve / reject / request-review)
 plus the per-guard breakdown so operators can audit which guard
 gated a proposal."""
+
+EVOLUTION_GUARD_INVALID_CONFIG: Final[str] = "evolution.guard.invalid_config"
+"""Guard rejected operator-supplied construction parameters.
+
+Emitted before the guard ``__init__`` raises ``ValueError`` so
+operators see the field, value, and constraint that failed without
+having to wait for the traceback.  Typical fields: ``field``,
+``value``, ``constraint``."""

@@ -41,7 +41,6 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.integrations import (
     CONNECTION_SECRET_REVEAL_FAILED,
     CONNECTION_SECRET_REVEALED,
-    SECRET_RETRIEVAL_FAILED,
 )
 
 # Unified error surfaced to clients on any reveal failure. The
@@ -390,15 +389,21 @@ class ConnectionsController(Controller):
             # Secret backend failures are operational errors, not a
             # "not found" condition -- log at ERROR level so they
             # show up on the health dashboard instead of getting lost
-            # in the 404 noise.  ``exc_info`` is intentionally omitted:
-            # the full traceback for a credential-bearing operation can
-            # leak backend secret metadata via wrapped causes; the
-            # redacted ``safe_error_description`` is the only message
-            # emitted.
+            # in the 404 noise.  Use ``CONNECTION_SECRET_REVEAL_FAILED``
+            # (the request-side event) rather than the backend-side
+            # ``SECRET_RETRIEVAL_FAILED`` that the catalog already
+            # emitted -- otherwise one backend failure would
+            # double-count and the user-visible context (this is a
+            # reveal request, not a credential-resolve) would be lost.
+            # ``exc_info`` is intentionally omitted: the full traceback
+            # for a credential-bearing operation can leak backend
+            # secret metadata via wrapped causes; the redacted
+            # ``safe_error_description`` is the only message emitted.
             logger.error(  # noqa: TRY400
-                SECRET_RETRIEVAL_FAILED,
+                CONNECTION_SECRET_REVEAL_FAILED,
                 connection_name=name,
                 field=field,
+                reason="secret_retrieval_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

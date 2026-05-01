@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
+    EVOLUTION_GUARD_INVALID_CONFIG,
     EVOLUTION_ROLLBACK_TRIGGERED,
 )
 
@@ -50,19 +51,47 @@ class RollbackGuard:
 
         if not isinstance(window_tasks, int) or isinstance(window_tasks, bool):
             msg = f"window_tasks must be an integer, got {window_tasks!r}"
+            logger.warning(
+                EVOLUTION_GUARD_INVALID_CONFIG,
+                guard_name="rollback",
+                field="window_tasks",
+                value=str(window_tasks),
+                constraint="must be int (not bool)",
+            )
             raise ValueError(msg)  # noqa: TRY004 -- consistent with sibling validators
         if window_tasks <= 0:
             msg = f"window_tasks must be > 0, got {window_tasks!r}"
+            logger.warning(
+                EVOLUTION_GUARD_INVALID_CONFIG,
+                guard_name="rollback",
+                field="window_tasks",
+                value=window_tasks,
+                constraint="must be > 0",
+            )
             raise ValueError(msg)
         if not math.isfinite(regression_threshold):
             msg = (
                 f"regression_threshold must be a finite number in "
                 f"[0, 1], got {regression_threshold!r}"
             )
+            logger.warning(
+                EVOLUTION_GUARD_INVALID_CONFIG,
+                guard_name="rollback",
+                field="regression_threshold",
+                value=str(regression_threshold),
+                constraint="must be finite",
+            )
             raise ValueError(msg)
         if regression_threshold < 0.0 or regression_threshold > 1.0:
             msg = (
                 f"regression_threshold must be in [0, 1], got {regression_threshold!r}"
+            )
+            logger.warning(
+                EVOLUTION_GUARD_INVALID_CONFIG,
+                guard_name="rollback",
+                field="regression_threshold",
+                value=regression_threshold,
+                constraint="must be in [0, 1]",
             )
             raise ValueError(msg)
         self._window_tasks = window_tasks
