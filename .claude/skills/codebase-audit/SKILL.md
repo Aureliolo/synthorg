@@ -2696,13 +2696,22 @@ Forbidden patterns to flag:
    - `(CodeRabbit minor at ...)` / `(CodeRabbit critical at ...)`
    - any `<reviewer> at <file>:<line>` shape
 
-2. **In-code issue / PR back-references**:
+2. **In-code issue / PR / audit-run back-references**:
    - `(#NNNN)` standalone (4-digit GitHub issue numbers)
    - `(#NNNN, CodeRabbit ...)` composite
    - `(GH-NNNN)` / `(see PR #NNNN)` / `(fixes #NNNN)`
    - `as part of #NNNN` / `closes #NNNN` / `this commit closes #N`
    - `(#1599)`, `(#1682)`, etc. -- any standalone issue tag in
      a comment
+   - **Identifier names** that bake an issue number into a constant,
+     test name, helper, or fixture: `_AUDIT_NNNN_*`,
+     `test_audit_NNNN`, `_ISSUE_NNNN_DEFAULTS`, etc. -- these go
+     stale instantly when the issue closes and they leak the
+     change-management trail into committed code.
+   - **Audit-run callouts** in comments or docstrings:
+     `Audit #NNNN`, `2026-04-30 audit`, `audit run YYYY-MM-DD`,
+     `from the codebase audit`. Audit dates belong in
+     `_audit/runs/` paths, never in `src/` or `tests/`.
 
 3. **Cryptic internal-taxonomy shorthand in src/ and tests/**:
    - Naked `SEC-1` (without surrounding rationale that explains
