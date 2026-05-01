@@ -40,8 +40,11 @@ from synthorg.meta.rules.custom import (
     MetricDescriptor,
 )
 from synthorg.meta.rules.service import CustomRuleNotFoundError, CustomRulesService
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
+)
 
 logger = get_logger(__name__)
 
@@ -280,6 +283,14 @@ class CustomRuleController(Controller):
         try:
             saved = await _service(state).create(definition)
         except ConstraintViolationError as exc:
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                resource="custom_rule",
+                operation="create",
+                name=data.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise ConflictError(str(exc)) from exc
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(saved),
@@ -322,6 +333,14 @@ class CustomRuleController(Controller):
             )
             raise NotFoundError(str(exc)) from exc
         except ConstraintViolationError as exc:
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                resource="custom_rule",
+                operation="update",
+                rule_id=rule_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise ConflictError(str(exc)) from exc
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(updated),

@@ -63,17 +63,20 @@ class PostgresProviderAuditRepo:
 
     async def record(self, event: ProviderAuditEvent) -> ProviderAuditEvent:
         """Insert one audit event and return the saved row with id populated."""
-        # ``event.payload`` is wrapped in ``MappingProxyType`` by the
-        # DTO so the audit row stays append-only at the Python level.
+        # ``event.payload`` is recursively frozen by the DTO
+        # (``MappingProxyType`` / ``tuple`` / ``frozenset``) so the
+        # audit row stays append-only at the Python level.
         # ``psycopg.types.json.Jsonb`` calls ``json.dumps`` internally,
-        # which cannot encode ``mappingproxy`` directly; unwrap to a
-        # plain dict here so the on-disk JSONB shape is unchanged.
+        # which cannot encode any of those directly; route through
+        # ``model_dump(mode="json")`` so the field-serializer recursively
+        # thaws nested containers back to plain builtins before insertion.
+        serialized = event.model_dump(mode="json")
         params: tuple[Any, ...] = (
             event.provider_name,
             event.event_type,
             event.actor.id,
             event.actor.label,
-            Jsonb(dict(event.payload)),
+            Jsonb(serialized["payload"]),
             normalize_utc(event.occurred_at),
         )
         try:

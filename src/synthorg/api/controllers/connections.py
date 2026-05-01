@@ -358,14 +358,17 @@ class ConnectionsController(Controller):
             # Secret backend failures are operational errors, not a
             # "not found" condition -- log at ERROR level so they
             # show up on the health dashboard instead of getting lost
-            # in the 404 noise.
-            logger.error(
+            # in the 404 noise.  ``exc_info`` is intentionally omitted:
+            # the full traceback for a credential-bearing operation can
+            # leak backend secret metadata via wrapped causes; the
+            # redacted ``safe_error_description`` is the only message
+            # emitted.
+            logger.error(  # noqa: TRY400
                 SECRET_RETRIEVAL_FAILED,
                 connection_name=name,
                 field=field,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
 

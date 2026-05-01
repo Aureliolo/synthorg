@@ -28,7 +28,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.events.api import (
@@ -651,9 +651,14 @@ class SettingsController(Controller):
         try:
             validated = SecurityConfig.model_validate(data.config)
         except ValidationError as exc:
+            # Redact: ``str(exc)`` includes rejected input values from
+            # the import payload, which can hold secrets or
+            # operator-sensitive configuration.  ``safe_error_description``
+            # plus ``error_type`` is the SEC-1 substitute.
             logger.warning(
                 API_SECURITY_CONFIG_IMPORT_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Invalid security config: {exc}"
             raise DomainValidationError(msg) from exc
@@ -661,6 +666,7 @@ class SettingsController(Controller):
         await _persist_security_settings(
             app_state.settings_service,
             validated,
+            import_source=SettingsImportSource.API_BODY,
         )
 
         warning = (
@@ -694,6 +700,8 @@ _SECURITY_SETTING_FIELDS: dict[str, str] = {
 async def _persist_security_settings(
     svc: SettingsService,
     config: SecurityConfig,
+    *,
+    import_source: SettingsImportSource,
 ) -> None:
     """Persist registered security settings from a validated config.
 
@@ -704,13 +712,16 @@ async def _persist_security_settings(
     Args:
         svc: Settings service for persistence.
         config: Validated security configuration.
+        import_source: Source attribution forwarded to ``svc.set`` so
+            audit logs distinguish bulk-import writes from per-key
+            ``PATCH /settings`` calls.
     """
     ns = SettingNamespace.SECURITY
     for field_name, key in _SECURITY_SETTING_FIELDS.items():
         value = getattr(config, field_name)
         str_value = str(value).lower() if isinstance(value, bool) else str(value)
         try:
-            await svc.set(ns, key, str_value)
+            await svc.set(ns, key, str_value, import_source=import_source)
         except SettingNotFoundError:
             logger.debug(
                 SETTINGS_NOT_FOUND,

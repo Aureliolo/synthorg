@@ -129,38 +129,38 @@ class DriftDetectionService:
         import asyncio  # noqa: PLC0415
 
         entities = await self._ontology.list_entities()
-
-        results = await asyncio.gather(
-            *(self.check_entity(entity.name, agent_ids) for entity in entities),
-            return_exceptions=True,
-        )
-
         reports: list[DriftReport] = []
-        for i, result in enumerate(results):
-            if isinstance(result, BaseException) and not isinstance(result, Exception):
-                # ``BaseException`` non-``Exception`` (CancelledError,
-                # KeyboardInterrupt, SystemExit) propagates -- swallowing
-                # cancellation as a "drift check failed" log would mask
-                # task-group teardown and let the cooperative-cancellation
-                # contract degrade silently.
-                raise result
-            if isinstance(result, (MemoryError, RecursionError)):
-                # ``MemoryError`` / ``RecursionError`` are ``Exception``
-                # subclasses in Python, so without this explicit branch
-                # they would hit the entity-failure log below and the
-                # scan would continue running on a process that just
-                # ran out of stack or memory.  Project convention:
-                # propagate fatal builtins.
-                raise result
-            if isinstance(result, Exception):
-                logger.error(
+
+        async def _check_one(entity_name: NotBlankStr) -> None:
+            """Run one entity's drift check; capture non-fatal failures.
+
+            Wrapping each ``check_entity`` invocation in this helper lets
+            us re-raise fatal builtins (``MemoryError`` / ``RecursionError``)
+            and ``BaseException`` non-``Exception`` (cancellation /
+            shutdown signals) immediately so the surrounding ``TaskGroup``
+            tears down the scan instead of buffering until every other
+            entity completes -- the failure mode that ``asyncio.gather(
+            return_exceptions=True)`` could not avoid.  Ordinary
+            ``Exception`` is logged per-entity and dropped so a single
+            bad entity does not cancel the whole scan.
+            """
+            try:
+                report = await self.check_entity(entity_name, agent_ids)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(  # noqa: TRY400
                     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
-                    entity_name=entities[i].name,
-                    error_type=type(result).__name__,
-                    error=safe_error_description(result),
+                    entity_name=entity_name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-            else:
-                reports.append(result)
+                return
+            reports.append(report)
+
+        async with asyncio.TaskGroup() as tg:
+            for entity in entities:
+                tg.create_task(_check_one(entity.name))
         return tuple(reports)
 
     @property

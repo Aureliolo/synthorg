@@ -9,6 +9,7 @@ from litestar.testing import TestClient
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import SeniorityLevel
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.hr.registry import AgentRegistryService
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -204,6 +205,10 @@ class TestDiff:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == expected_status
+        if expected_status == 422:
+            assert (
+                resp.json()["error_detail"]["error_code"] == ErrorCode.VALIDATION_ERROR
+            )
 
 
 class TestRollback:
@@ -373,6 +378,7 @@ class TestRollback:
         )
         assert resp.status_code == 422
         body = resp.json()
+        assert body["error_detail"]["error_code"] == ErrorCode.VALIDATION_ERROR
         assert "cannot rollback" in body["error"].lower()
         assert "immutable field mismatch" in body["error"].lower()
 
@@ -465,7 +471,9 @@ class TestReadEndpointsOwnership:
         # ``VALIDATION_ERROR`` ``error_code`` lets clients distinguish
         # them from generic 4xx responses.
         assert resp.status_code == 422
-        assert "different agent" in resp.json()["error"].lower()
+        body = resp.json()
+        assert body["error_detail"]["error_code"] == ErrorCode.VALIDATION_ERROR
+        assert "different agent" in body["error"].lower()
 
     @pytest.mark.unit
     async def test_list_versions_drops_cross_entity_rows(

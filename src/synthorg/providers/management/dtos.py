@@ -123,18 +123,28 @@ def _validate_provider_name(v: str) -> str:
     return v
 
 
-def _validate_base_url(v: str | None) -> str | None:
-    """Validate that a base URL uses http or https scheme."""
+def _validate_http_url(v: str | None, *, field: str) -> str | None:
+    """Validate that ``v`` is an http/https URL with a host, or ``None``."""
     if v is None:
         return v
     parsed = urlparse(v)
     if parsed.scheme not in ("http", "https"):
-        msg = f"base_url must use http or https scheme, got {parsed.scheme!r}"
+        msg = f"{field} must use http or https scheme, got {parsed.scheme!r}"
         raise ValueError(msg)
     if not parsed.netloc:
-        msg = "base_url must include a host"
+        msg = f"{field} must include a host"
         raise ValueError(msg)
     return v
+
+
+def _validate_base_url(v: str | None) -> str | None:
+    """Validate that a base URL uses http or https scheme."""
+    return _validate_http_url(v, field="base_url")
+
+
+def _validate_oauth_token_url(v: str | None) -> str | None:
+    """Validate that an OAuth token URL uses http or https scheme."""
+    return _validate_http_url(v, field="oauth_token_url")
 
 
 class CreateProviderRequest(BaseModel):
@@ -185,6 +195,11 @@ class CreateProviderRequest(BaseModel):
     def _validate_base_url(cls, v: str | None) -> str | None:
         return _validate_base_url(v)
 
+    @field_validator("oauth_token_url")
+    @classmethod
+    def _validate_oauth_token_url(cls, v: str | None) -> str | None:
+        return _validate_oauth_token_url(v)
+
 
 class UpdateProviderRequest(BaseModel):
     """Payload for updating a provider (partial update).
@@ -221,6 +236,11 @@ class UpdateProviderRequest(BaseModel):
     @classmethod
     def _validate_base_url(cls, v: str | None) -> str | None:
         return _validate_base_url(v)
+
+    @field_validator("oauth_token_url")
+    @classmethod
+    def _validate_oauth_token_url(cls, v: str | None) -> str | None:
+        return _validate_oauth_token_url(v)
 
     @model_validator(mode="after")
     def _validate_credential_clear_consistency(self) -> Self:

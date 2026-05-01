@@ -132,6 +132,7 @@ MEMORY_CHECKPOINT_ROLLBACK_FAILED: Final[str] = "memory.checkpoint.rollback_fail
 MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED: Final[str] = (
     "memory.checkpoint.rollback_step_failed"
 )
+MEMORY_CHECKPOINT_DELETE_FAILED: Final[str] = "memory.checkpoint.delete_failed"
 
 # ── Composite routing ────────────────────────────────────────────
 

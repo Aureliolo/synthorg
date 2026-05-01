@@ -98,7 +98,11 @@ async def test_payload_round_trip_complex(backend: PersistenceBackend) -> None:
     saved = await repo.record(_event(payload=payload))
     loaded, _ = await repo.list(provider_name=saved.provider_name, limit=1)
     assert len(loaded) == 1
-    assert loaded[0].payload == payload
+    # ``ProviderAuditEvent._freeze_payload`` recursively converts the
+    # payload into immutable equivalents (``MappingProxyType`` /
+    # ``tuple`` / ``frozenset``); compare via the JSON-serialised form
+    # which is the wire-shape callers actually consume.
+    assert loaded[0].model_dump(mode="json")["payload"] == payload
 
 
 async def test_purge_before_id(backend: PersistenceBackend) -> None:

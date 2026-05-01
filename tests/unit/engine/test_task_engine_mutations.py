@@ -235,12 +235,13 @@ class TestCancelTask:
             reason="Assigning",
             assigned_to="bob",
         )
-        cancelled = await engine.cancel_task(
+        cancelled, prior = await engine.cancel_task(
             assigned.id,
             requested_by="alice",
             reason="No longer needed",
         )
         assert cancelled.status == TaskStatus.CANCELLED
+        assert prior == TaskStatus.ASSIGNED
 
     async def test_cancel_from_created_fails(
         self,

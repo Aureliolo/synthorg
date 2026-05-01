@@ -189,10 +189,10 @@ class BackupController(Controller):
                 offset=offset,
             )
         except BackupError as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 BACKUP_FAILED,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = "Failed to list backups"
             raise InternalServerException(msg) from exc

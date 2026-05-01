@@ -42,8 +42,10 @@ from synthorg.memory.service import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
+    MEMORY_CHECKPOINT_DELETE_FAILED,
     MEMORY_CHECKPOINT_DEPLOY_FAILED,
     MEMORY_CHECKPOINT_NOT_FOUND,
+    MEMORY_CHECKPOINT_ROLLBACK_FAILED,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
@@ -482,7 +484,7 @@ class MemoryAdminController(Controller):
             # Operator-error / corrupt backup conditions; 422 better
             # reflects "rollback target invalid" than a generic 400.
             logger.warning(
-                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                MEMORY_CHECKPOINT_ROLLBACK_FAILED,
                 checkpoint_id=checkpoint_id,
                 operation="rollback",
                 reason="rollback_unavailable",
@@ -492,7 +494,7 @@ class MemoryAdminController(Controller):
             raise ValidationError(safe_error_description(exc)) from exc
         except CheckpointRollbackCorruptError as exc:
             logger.warning(
-                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                MEMORY_CHECKPOINT_ROLLBACK_FAILED,
                 checkpoint_id=checkpoint_id,
                 operation="rollback",
                 reason="rollback_corrupt",
@@ -541,7 +543,7 @@ class MemoryAdminController(Controller):
             raise NotFoundError(safe_error_description(exc)) from exc
         except QueryError as exc:
             logger.warning(
-                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                MEMORY_CHECKPOINT_DELETE_FAILED,
                 checkpoint_id=checkpoint_id,
                 operation="delete",
                 error_type=type(exc).__name__,

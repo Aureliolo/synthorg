@@ -64,7 +64,13 @@ T = TypeVar("T")
 # collision so caller-supplied context cannot silently overwrite the
 # handler's own diagnostic fields.
 _RESERVED_LOG_KWARGS: Final[frozenset[str]] = frozenset(
-    {"attempt", "max_attempts", "backoff_seconds", "error_type"}
+    {
+        "attempt",
+        "max_attempts",
+        "backoff_seconds",
+        "error_type",
+        "retry_decision",
+    }
 )
 
 
@@ -236,8 +242,10 @@ class GeneralRetryHandler:
         """Compute exponential-backoff delay for retry iteration ``attempt``.
 
         ``attempt`` is zero-based: 0 is the delay before the second
-        attempt.  Returns ``0.0`` immediately if ``base == 0`` to
-        cover self-correction loops that don't sleep between attempts.
+        attempt.  Returns ``0.0`` when ``base == 0`` so callers can
+        opt into immediate retries without sleeping; LLM self-correction
+        loops are an explicit non-goal of this helper (see the carve-out
+        list at the top of the module).
         """
         if self._base == 0:
             return 0.0

@@ -246,12 +246,18 @@ class OrgAgentMutationsMixin:
 
         await CASRetryHandler(resource="org_mutation").execute(read, write)
 
+        # Use the post-commit name when ``name`` was among the updated
+        # fields so the audit log reflects the authoritative identifier
+        # the row now carries, not the pre-rename one supplied by the
+        # caller.
+        committed_agent = captured["updated"]
+        agent_for_log = committed_agent.name if "name" in captured_updates else name
         logger.info(
             API_AGENT_UPDATED,
-            agent=name,
+            agent=agent_for_log,
             updated_fields=list(captured_updates.keys()),
         )
-        return captured["updated"]
+        return committed_agent
 
     async def delete_agent(self, name: str, *, saved_by: str = "api") -> None:
         """Delete an agent from the org config."""

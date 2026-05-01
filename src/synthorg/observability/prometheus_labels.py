@@ -190,6 +190,20 @@ TRANSIENT_PROVIDER_ERROR_CLASSES: Final[frozenset[str]] = frozenset(
 """Subset of :data:`VALID_PROVIDER_ERROR_CLASSES` that mark transient
 failures (caller should retry).  Mirrors
 ``ProviderError.is_retryable=True`` in :mod:`synthorg.providers.errors`."""
+
+# Fail fast at import time if the transient set drifts out of the canonical
+# valid-class allowlist.  Without this guard, a renamed or removed label in
+# ``ProviderErrorLabel`` would silently leave a stale entry here that no
+# label-validation pipeline consults.
+_TRANSIENT_DIFF: Final[frozenset[str]] = (
+    TRANSIENT_PROVIDER_ERROR_CLASSES - VALID_PROVIDER_ERROR_CLASSES
+)
+if _TRANSIENT_DIFF:
+    msg = (
+        "TRANSIENT_PROVIDER_ERROR_CLASSES contains labels not in "
+        f"VALID_PROVIDER_ERROR_CLASSES: {sorted(_TRANSIENT_DIFF)}"
+    )
+    raise ValueError(msg)
 # In-process cache names that emit ``synthorg_cache_operations_total``.
 # Expanding this set requires adding a new cache + its record call.
 VALID_CACHE_NAMES: Final[frozenset[str]] = frozenset({"mcp_result", "reranker"})

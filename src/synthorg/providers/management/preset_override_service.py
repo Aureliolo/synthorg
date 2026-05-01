@@ -1,9 +1,14 @@
 """Service that owns operator-authored preset overrides.
 
-Reads / writes :class:`synthorg.api.dto_provider_capabilities.PresetOverride`
-through a :class:`PresetOverrideRepo`.  Cross-shape validation
-(cloud preset rejecting ``candidate_urls``, local preset rejecting
-``base_url``) lives here so the persistence layer stays semantics-free.
+Reads / writes :class:`PresetOverride` from
+:mod:`synthorg.providers.management.capability_dtos` through a
+:class:`PresetOverrideRepo`.  The DTOs imported below
+(``PresetOverride``, ``PresetOverrideUpdateRequest``,
+``ProviderAuditActor``) live in the management-layer DTO module rather
+than the API DTO layer so this service stays inside the provider domain
+boundary.  Cross-shape validation (cloud preset rejecting
+``candidate_urls``, local preset rejecting ``base_url``) lives here so
+the persistence layer stays semantics-free.
 
 The "effective preset" merge (in-code preset + override) is the
 responsibility of :meth:`get_effective_override` callers.  The legacy

@@ -345,7 +345,7 @@ async def _tasks_cancel(
 
     requested_by = actor_id(actor) or "system"
     try:
-        task = await app_state.task_engine.cancel_task(
+        task, _prior_status = await app_state.task_engine.cancel_task(
             task_id,
             requested_by=requested_by,
             reason=reason,

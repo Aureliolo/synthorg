@@ -7,7 +7,7 @@ rate-limit middleware both consume these from the config layer so the
 144 layer violation).
 """
 
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -41,18 +41,26 @@ class PerOpRateLimitConfig(BaseModel):
     backend: Literal["memory"] = "memory"
     overrides: dict[NotBlankStr, tuple[int, int]] = Field(default_factory=dict)
 
-    @model_validator(mode="after")
-    def _validate_override_tuples(self) -> Self:
-        """Reject override tuples with malformed (non-integer, negative) values.
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_override_tuples(cls, data: Any) -> Any:
+        """Reject override tuples with malformed length or negative values.
 
-        Zero is allowed and means "disable this operation" -- the guard
-        short-circuits when either component is ``0``.  Negative values
-        are rejected because they express no meaningful intent.  Bad
-        configs are logged at WARNING before the ValueError is raised
-        so operator-facing config errors surface with context.
+        Run BEFORE Pydantic coercion so the malformed-length branch is
+        actually reachable with operator-facing context: with
+        ``mode="after"`` the ``tuple[int, int]`` type would already have
+        rejected mis-shaped inputs with a generic ``ValidationError``
+        and our log line would never fire.  Zero is allowed and means
+        "disable this operation" -- the guard short-circuits when
+        either component is ``0``.
         """
-        for operation, pair in self.overrides.items():
-            if len(pair) != _OVERRIDE_TUPLE_LEN:
+        if not isinstance(data, dict):
+            return data
+        overrides = data.get("overrides")
+        if not isinstance(overrides, dict):
+            return data
+        for operation, pair in overrides.items():
+            if not isinstance(pair, (tuple, list)) or len(pair) != _OVERRIDE_TUPLE_LEN:
                 msg = (
                     f"overrides[{operation!r}]={pair!r} must be a "
                     "(max_requests, window_seconds) 2-tuple"
@@ -65,10 +73,15 @@ class PerOpRateLimitConfig(BaseModel):
                 )
                 raise ValueError(msg)
             max_req, window = pair
-            if max_req < 0 or window < 0:
+            if (
+                not isinstance(max_req, int)
+                or not isinstance(window, int)
+                or max_req < 0
+                or window < 0
+            ):
                 msg = (
-                    f"overrides[{operation!r}]={pair!r} has negative values; "
-                    "use 0 to disable an operation"
+                    f"overrides[{operation!r}]={pair!r} must contain non-negative "
+                    "integers; use 0 to disable an operation"
                 )
                 logger.warning(
                     API_APP_STARTUP,
@@ -77,7 +90,7 @@ class PerOpRateLimitConfig(BaseModel):
                     error=msg,
                 )
                 raise ValueError(msg)
-        return self
+        return data
 
 
 class PerOpConcurrencyConfig(BaseModel):

@@ -285,26 +285,19 @@ class AsyncTaskService:
         Returns:
             Updated status (should be CANCELLED).
         """
-        # ``get_task`` reads persistence directly and bypasses the
-        # mutation queue, while ``cancel_task`` goes through the
-        # sequential actor; under concurrent mutation the
-        # ``prior_status`` captured here may not reflect the value
-        # that ``cancel_task`` actually transitioned from.  The
-        # downstream ``ASYNC_TASK_STATUS_TRANSITIONED`` event therefore
-        # carries best-effort audit data, not a strict happens-before
-        # guarantee.  The right durable fix is to expose a
-        # ``cancel_task`` variant on ``TaskEngine`` that returns both
-        # ``old_status`` and ``new_status`` from inside the actor lock;
-        # tracked separately from this controller change so the engine
-        # API churn is atomic.
-        prior_task = await self._engine.get_task(task_id)
-        prior_status = (
-            self._map_status(prior_task.status) if prior_task is not None else None
-        )
-        task = await self._engine.cancel_task(
+        # ``cancel_task`` returns the previous status captured INSIDE
+        # the actor lock, so the transition log below carries
+        # happens-before-correct audit data even under concurrent
+        # mutation -- no second ``get_task`` round trip needed.
+        task, prior_task_status = await self._engine.cancel_task(
             task_id,
             requested_by=supervisor_id,
             reason="ASYNC_CANCEL",
+        )
+        prior_status = (
+            self._map_status(prior_task_status)
+            if prior_task_status is not None
+            else None
         )
         status = self._map_status(task.status)
         logger.info(

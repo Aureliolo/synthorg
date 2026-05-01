@@ -129,6 +129,11 @@ async def _save_metadata_with_rollback(
         )
         try:
             await storage.delete(artifact_id)
+        except MemoryError, RecursionError:
+            # System-fatal builtins are ``Exception`` subclasses; re-raise
+            # them before the catch-all so process-fatal conditions are
+            # never logged-and-swallowed under the rollback path.
+            raise
         except Exception as cleanup_exc:
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
@@ -396,6 +401,21 @@ class ArtifactController(Controller):
                 note="artifact_storage_full",
             )
             raise ArtifactStorageRejectedFullError from exc
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Catch-all so any other backend / storage failure leaves an
+            # operator-visible breadcrumb on the standardized error path
+            # this PR is widening; the original exception still
+            # propagates with type intact.
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORE_FAILED,
+                artifact_id=artifact_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="artifact_store_unexpected",
+            )
+            raise
 
         updated = artifact.model_copy(
             update={

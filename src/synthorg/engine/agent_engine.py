@@ -566,7 +566,14 @@ class AgentEngine(
                 project_id=task.project,
             )
 
-            span.set_attribute("turn.count", ctx.turn_count)
+            # Read from the post-execution context: ``ctx`` is the
+            # pre-loop snapshot and copy-on-write contexts inside the
+            # loop don't mutate it, so logging ``ctx.turn_count`` here
+            # would always emit the starting value (typically 0).
+            span.set_attribute(
+                "turn.count",
+                execution_result.context.turn_count,
+            )
             return self._build_and_log_result(
                 execution_result,
                 system_prompt,

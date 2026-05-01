@@ -639,8 +639,8 @@ class TaskEngine(TaskEngineLoopsMixin):
         *,
         requested_by: str,
         reason: str,
-    ) -> Task:
-        """Convenience: cancel a task and return the cancelled Task.
+    ) -> tuple[Task, TaskStatus | None]:
+        """Convenience: cancel a task and return ``(task, previous_status)``.
 
         Args:
             task_id: Target task identifier.
@@ -648,7 +648,11 @@ class TaskEngine(TaskEngineLoopsMixin):
             reason: Reason for cancellation.
 
         Returns:
-            The cancelled task.
+            Tuple of (cancelled task, status before cancellation).  The
+            previous status is captured inside the actor lock so callers
+            can audit the transition without a second ``get_task`` round
+            trip that races concurrent mutation.  ``previous_status`` is
+            ``None`` only when the underlying mutation didn't record one.
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
@@ -671,7 +675,7 @@ class TaskEngine(TaskEngineLoopsMixin):
         if result.task is None:
             msg = "Internal error: cancel succeeded but task is None"
             raise TaskInternalError(msg)
-        return result.task
+        return result.task, result.previous_status
 
     @staticmethod
     def _raise_typed_error(result: TaskMutationResult) -> Never:

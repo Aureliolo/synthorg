@@ -22,7 +22,7 @@ model, ...) stay in ``dto_providers.py``.
 from collections.abc import Mapping  # noqa: TC003 -- Pydantic field type at runtime
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Literal, Self, cast
 
 from pydantic import (
     AfterValidator,
@@ -32,6 +32,7 @@ from pydantic import (
     Field,
     SecretStr,
     field_serializer,
+    field_validator,
     model_validator,
 )
 
@@ -58,6 +59,52 @@ def _require_utc(value: datetime) -> datetime:
 
 
 UTCDatetime = Annotated[AwareDatetime, AfterValidator(_require_utc)]
+
+
+def _recursively_freeze(value: Any) -> Any:
+    """Return an immutable equivalent of ``value`` for audit-payload safety.
+
+    Walks the structure and produces ``MappingProxyType`` for dicts,
+    ``tuple`` for lists/tuples, and ``frozenset`` for sets; scalars
+    pass through unchanged.  ``MappingProxyType`` instances re-enter
+    the recursion so nested already-frozen mappings are normalised
+    against the outer wrap.
+    """
+    if isinstance(value, MappingProxyType):
+        # Re-freeze recursively so nested values inserted prior to
+        # wrapping still get the same treatment.
+        return MappingProxyType(
+            {k: _recursively_freeze(v) for k, v in value.items()},
+        )
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {k: _recursively_freeze(v) for k, v in value.items()},
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_recursively_freeze(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_recursively_freeze(item) for item in value)
+    return value
+
+
+def _recursively_thaw(value: Any) -> Any:
+    """Inverse of :func:`_recursively_freeze` for JSON serialisation.
+
+    Pydantic-core / msgspec cannot encode ``MappingProxyType`` or
+    ``frozenset`` directly, so each immutable container is converted
+    back to its mutable JSON-friendly counterpart (``dict`` / ``list``).
+    Tuples become lists for the same reason.
+    """
+    if isinstance(value, MappingProxyType):
+        return {k: _recursively_thaw(v) for k, v in value.items()}
+    if isinstance(value, dict):
+        return {k: _recursively_thaw(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_recursively_thaw(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return [_recursively_thaw(item) for item in value]
+    return value
+
 
 # ── Provider audit log ────────────────────────────────────────────────
 
@@ -161,33 +208,44 @@ class ProviderAuditEvent(BaseModel):
 
     @model_validator(mode="after")
     def _freeze_payload(self) -> Self:
-        """Wrap ``payload`` in :class:`MappingProxyType`.
+        """Recursively freeze ``payload`` so the audit row is fully immutable.
 
         ``frozen=True`` on the model only prevents attribute
         reassignment; without this hook the audit row's ``payload``
         dict could be mutated post-construction, breaking the
-        append-only contract this model documents.  The companion
-        ``_serialize_payload`` field-serializer below unwraps back to
-        a plain dict at JSON-encode time so msgspec / pydantic-core
+        append-only contract this model documents.  Round 6's shallow
+        ``MappingProxyType`` wrap was insufficient -- nested ``dict`` /
+        ``list`` / ``set`` values stayed mutable, so a caller could
+        still rewrite ``event.payload["nested"]["k"] = "evil"`` and
+        violate the audit invariant.  ``_recursively_freeze`` walks
+        the entire payload tree and produces an immutable equivalent
+        (``MappingProxyType``, ``tuple``, ``frozenset``); the companion
+        ``_serialize_payload`` field-serializer thaws back to plain
+        builtins at JSON-encode time so msgspec / pydantic-core
         serialization still succeeds.
         """
-        if not isinstance(self.payload, MappingProxyType):
-            object.__setattr__(
-                self,
-                "payload",
-                MappingProxyType(dict(self.payload)),
-            )
+        frozen = _recursively_freeze(self.payload)
+        # ``MappingProxyType`` is not its own type; identity check
+        # against the original avoids double-freezing on re-validate.
+        if frozen is not self.payload:
+            object.__setattr__(self, "payload", frozen)
         return self
 
     @field_serializer("payload")
     def _serialize_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        """Unwrap ``MappingProxyType`` to a plain dict for JSON encode.
+        """Recursively thaw the immutable payload back to plain builtins.
 
-        Pydantic-core / msgspec cannot encode ``MappingProxyType``
-        directly; the unwrap copy keeps the on-wire payload independent
-        of the in-memory proxy.
+        Pydantic-core / msgspec cannot encode ``MappingProxyType``,
+        ``tuple`` (when typed as ``Mapping`` value), or ``frozenset``
+        directly; ``_recursively_thaw`` produces a JSON-encodable copy
+        that's independent of the in-memory immutable structure.
         """
-        return dict(payload)
+        thawed = _recursively_thaw(payload)
+        # Outer container is always a Mapping after thaw because
+        # ``payload`` is typed as ``Mapping[str, Any]``.  Defensive
+        # ``cast`` rather than ``assert`` so ``-O`` builds keep the
+        # contract.
+        return cast("dict[str, Any]", thawed)
 
 
 # ── Rate-limit override ───────────────────────────────────────────────
@@ -436,6 +494,25 @@ class _OAuthRotation(BaseModel):
     oauth_client_id: NotBlankStr
     oauth_client_secret: SecretStr = Field(min_length=8)
     oauth_scope: NotBlankStr | None = None
+
+    @field_validator("oauth_token_url")
+    @classmethod
+    def _check_oauth_token_url(cls, v: str) -> str:
+        # Inline check (no import from .dtos to avoid the
+        # providers / security / providers.cost_recording circular import
+        # path).  Mirrors ``_validate_oauth_token_url`` in .dtos.
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            msg = (
+                f"oauth_token_url must use http or https scheme, got {parsed.scheme!r}"
+            )
+            raise ValueError(msg)
+        if not parsed.netloc:
+            msg = "oauth_token_url must include a host"
+            raise ValueError(msg)
+        return v
 
 
 CredentialsRotateRequest = Annotated[

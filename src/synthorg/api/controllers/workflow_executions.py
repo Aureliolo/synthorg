@@ -52,7 +52,11 @@ def _extract_username(request: Request[Any, Any, Any]) -> str:
     user = getattr(request, "user", None)
     if user is not None:
         username = getattr(user, "username", None)
-        if username:
+        if isinstance(username, str):
+            stripped = username.strip()
+            if stripped:
+                return stripped
+        elif username:
             return str(username)
     logger.warning(
         WORKFLOW_EXECUTION_USERNAME_FALLBACK,
