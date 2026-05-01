@@ -20,12 +20,6 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
 
 **Rule (mandatory):** When fixes are needed, fix EVERYTHING valid in this round. No "out of scope", no "pre-existing", no "too big", no "older non-touched code". The only items skipped are ones factually wrong (verified against current code, not vibes); each skip is logged in the round-history entry with the reason.
 
-**First-tick semantics:** On a fresh state file (`last_review_id == 0` and the other ID fields at 0), every existing review / inline comment / issue comment counts as "new" relative to the cached IDs. That's intentional: the loop's first invocation against an already-active PR must triage everything that has piled up before babysit started watching, not just deltas going forward. CodeRabbit-mid-processing is the typical first-tick state on a freshly-opened PR; the right response is to wait (Phase 4 no-op) so the *next* tick batches CodeRabbit's findings together with any earlier reviewers (Gemini, Copilot, Greptile, human reviewers) into one push. The cached-ID hygiene rule below is what makes that batching work.
-
-**Cached-ID hygiene (CRITICAL):** `last_review_id`, `last_pr_comment_id`, and `last_issue_comment_id` advance ONLY in Phase 11, after Phase 8 fixes have been pushed. Phase 4 early-exits (rate-limit dance, "currently processing") and Phase 5 no-ops MUST NOT bump these IDs; if they did, items not yet triaged would silently fall out of scope on the next tick. `last_head_sha` is a separate concern and may advance on every tick (it tracks "what commit have we seen", not "what feedback have we processed").
-
-**Round counter (uniform across exits):** `round` increments at the very END of every tick, after all phase handling and the matching state write. This applies on EVERY exit path: Phase 2 terminal stop (PR merged/closed), Phase 3 convergence exit, Phase 4 rate-limit-ping / "currently processing" no-op, Phase 5 nothing-changed no-op, Phase 11 fixed-and-pushed. The single rule is "the printed round number monotonically counts wakeups, including terminal ones." Cached IDs are governed by the separate hygiene rule above, so the round bump never carries a side effect on `last_review_id` / `last_pr_comment_id` / `last_issue_comment_id`.
-
 **Security alerts (CodeQL / code-scanning, Dependabot, Secret Scanning) are NEVER allowed to sit open.** Each open alert in scope for this PR must be either (a) fixed in the source code in this round, or (b) explicitly dismissed via the GitHub API with one of the sanctioned reasons (Phase 6b). Silent acceptance ("we'll get to it later", "not blocking", "third-party issue") is forbidden. The only sanctioned exits are FIX or DISMISS WITH REASON.
 
 **Socket Security** alerts surface as PR-level review comments, not via a dedicated GitHub API. Treat them as part of the regular reviewer feedback in Phase 6 (FIX in code or, if a verified false-positive, post an `@socket-security ignore-rule <rule>` reply on the comment thread per Socket's ignore syntax). Convergence (Phase 3) does not gate on a separate Socket Security counter; the "no new comments since cached IDs" branch already covers Socket's PR-comment flow.
@@ -55,6 +49,7 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
      "last_issue_comment_id": 0,
      "last_ci_state": "",
      "last_action_at": "<ISO-now>",
+     "last_merge_attempt_headRefOid": "",
      "rate_limit_pings": 0,
      "scanners_available": {
        "code_scanning": true,
@@ -129,7 +124,6 @@ If `state` is `MERGED` or `CLOSED`:
   https://github.com/OWNER/REPO/pull/N
   ```
 
-- **Increment `round` (after the print)** and re-write the state file to persist the bump. Per the round-counter rule above, the increment runs at the very end of every tick including terminal exits; cached IDs (`last_review_id` / `last_pr_comment_id` / `last_issue_comment_id`) MUST stay frozen on this path.
 - **Do NOT** ScheduleWakeup. Loop ends.
 
 ## Phase 3: convergence check (success exit, no reschedule)
@@ -145,17 +139,46 @@ Convergence holds when ALL true:
 
 If converged:
 - Append history `{round, action: "converged", checks_passed: N}`.
-- Write state.
-- Resolve the PR's web URL via `gh pr view N --json url --jq .url` (or pull it from the JSON fetched in Phase 1 if you already requested `url` there).
-- Print TWO lines, in this exact order so the URL renders as a clickable link in the user's terminal:
+- **Squash-merge immediately, but only once per head SHA.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Compare the current `headRefOid` against `state.last_merge_attempt_headRefOid` to decide which sub-flow to enter. (Phase 11 owns clearing `state.last_merge_attempt_headRefOid` when a new commit lands; Phase 3 only reads the guard.)
 
-  ```text
-  babysit-pr round R: CONVERGED (CI green, 0 actionable, no new feedback). Ready for human review/merge.
-  https://github.com/OWNER/REPO/pull/N
-  ```
+  **Naming convention.** Throughout Phase 3, `headRefOid` is the in-memory variable from the Phase 1 fetch and `head_sha` is the canonical history-entry field name. They carry the same value; the two names exist only to distinguish "live PR state, just fetched" from "persisted state we wrote earlier." Every history append below MUST include `head_sha: headRefOid` so the reverse-walk lookup in sub-flow A can match entries by a single, consistent identifier. Do NOT omit `head_sha` from any append, even when the action is `merged` (the success-path entry must still carry it so a future round can confirm which head merged).
 
-- **Increment `round` (after the print)** and re-write the state file to persist the bump. Per the round-counter rule above, the increment runs at the very end of every tick including the convergence terminal exit; cached IDs MUST stay frozen on this path so a future tick re-opening the PR can use them as the watermark from the last triage.
-- **Do NOT** ScheduleWakeup.
+  ### Sub-flow A: same-head re-check (`headRefOid == state.last_merge_attempt_headRefOid`)
+
+  An earlier tick already attempted this exact head. Do NOT re-issue the merge call -- the prior `--auto` request is still attached to this head and a second call would be redundant or worse.
+
+  1. Resolve the prior outcome from `state.history` by walking entries in **reverse chronological order** (most recent first) until you find one whose `head_sha == headRefOid` AND whose `action` is one of `merge_queued` / `merge_blocked` / `merged`. Capture that entry as `prior_attempt`. If no such entry exists (e.g. state file was rewritten), treat the prior attempt as `merge_blocked` with `reason: "history lookup miss"` -- the safe default since a queued merge that lost its history record cannot be reasoned about and the user should be told.
+  2. Re-fetch live state with `gh pr view N --json state,mergedAt`, then enter exactly one of these branches:
+
+     - **`state == "MERGED"` (`mergedAt != null`):** the queued merge has fired since the previous tick. Append history `{round, action: "merge_already_attempted", head_sha: headRefOid, observed_state: "MERGED"}` AND `{round, action: "merged", method: "squash", head_sha: headRefOid}`. Write state. Print the `CONVERGED + SQUASH-MERGED` line. Exit (no ScheduleWakeup).
+     - **`state == "OPEN"` and `prior_attempt.action == "merge_queued"`:** the merge is still pending its required checks. Append history `{round, action: "merge_already_attempted", head_sha: headRefOid, observed_state: "OPEN_queued"}`. Write state. ScheduleWakeup at the standard cadence (next tick lands in Phase 2's terminal-state branch once the auto-merge fires). Exit.
+     - **`state == "OPEN"` and `prior_attempt.action == "merge_blocked"`:** the user must unblock manually before another attempt. Append history `{round, action: "merge_already_attempted", head_sha: headRefOid, observed_state: "OPEN_blocked"}`. Write state. Print the `CONVERGED, merge blocked: <prior_attempt.reason>` line using the recorded reason. Exit (no ScheduleWakeup).
+     - **Fallback (any other combination):** the freshly-fetched state is something the three explicit branches above did not anticipate -- e.g. `state == "CLOSED"` (PR closed without merge between ticks), `state == "OPEN"` with `prior_attempt.action == "merged"` (the head got reverted or force-pushed back), or any unexpected GraphQL state value GitHub adds in the future. Treat as blocked so the loop never silently retries. Compute `reason = "unexpected: state=<state>, prior=<prior_attempt.action or 'none'>"`. Append history `{round, action: "merge_blocked", head_sha: headRefOid, observed_state: state, reason}` AND `{round, action: "merge_already_attempted", head_sha: headRefOid, observed_state: state}`. Write state. Print the `CONVERGED, merge blocked: <reason>` single-line variant. Exit (no ScheduleWakeup -- the user must investigate before any further automated attempt).
+
+  ### Sub-flow B: fresh attempt (`headRefOid != state.last_merge_attempt_headRefOid`)
+
+  1. Record `state.last_merge_attempt_headRefOid = headRefOid` (the value from the Phase 1 fetch) and write state BEFORE running the merge, so a crash mid-call still leaves the guard set (which sub-flow A then handles correctly on the next tick).
+  2. Run the merge with stderr captured into a variable AND the exit code preserved so the branching logic below has explicit values to test. `MERGE_REASON` normalises the captured stderr into a single line of plain text (ANSI escape sequences stripped, all whitespace collapsed) so the history entry and terminal output are both legible regardless of what the underlying tool printed:
+
+     ```bash
+     MERGE_STDERR="$(gh pr merge N --squash --auto 2>&1 >/dev/null)"
+     MERGE_EXIT=$?
+     # Strip ANSI escape sequences (CSI, OSC, single-character SS3 etc.)
+     # and collapse all whitespace runs (including embedded newlines)
+     # into a single space, then trim leading/trailing whitespace.
+     MERGE_REASON="$(printf '%s' "$MERGE_STDERR" \
+       | sed -E 's/\x1B\[[0-9;?]*[ -\/]*[@-~]//g; s/\x1B[]PX^_].*?\x1B\\//g; s/\x1B[@-Z\\-_]//g' \
+       | tr -s '[:space:]' ' ' \
+       | sed -E 's/^ //; s/ $//')"
+     ```
+
+     `--auto` is harmless if branch protection is already satisfied (squashes immediately) and is the right behaviour if a final required check is still queueing (queues the merge for when checks pass).
+
+  3. Re-fetch live state with `gh pr view N --json state,mergedAt`, then enter exactly one of these branches using the captured `MERGE_REASON` / `MERGE_EXIT` plus the freshly-fetched `state`:
+
+     - **`state == "MERGED"` (immediate success):** append history `{round, action: "merged", method: "squash", head_sha: headRefOid}`. Write state. Print the `CONVERGED + SQUASH-MERGED` line. Exit (no ScheduleWakeup -- Phase 2's terminal exit covers any future re-entry).
+     - **`state == "OPEN"` AND `MERGE_EXIT == 0` (queued):** append history `{round, action: "merge_queued", head_sha: headRefOid}`. Write state. ScheduleWakeup at the standard cadence so the next tick lands in Phase 2's terminal-state branch once the auto-merge fires. Do NOT print a terminal line yet. Exit.
+     - **Otherwise (`MERGE_EXIT != 0` or `state` is neither `MERGED` nor `OPEN`):** the merge was rejected by branch protection / CODEOWNERS / merge-queue policy / etc. Append history `{round, action: "merge_blocked", head_sha: headRefOid, reason: "$MERGE_REASON"}`. Write state. Print the `CONVERGED, merge blocked: $MERGE_REASON` single-line variant. Exit (no ScheduleWakeup -- the user must unblock manually). A future push that lands a new commit will clear the guard via Phase 11 and allow a fresh attempt.
 
 ## Phase 4: CodeRabbit rate-limit dance
 
@@ -174,13 +197,7 @@ Inspect the most recent CodeRabbit-authored item across reviews + issue comments
 gh api "repos/$OWNER_REPO/issues/$PR/comments" -X POST -f body='@coderabbitai review'
 ```
 
-Then increment `rate_limit_pings`, increment `round`, append history `{round, action: "rate_limit_ping", ping_count: K}`, write state, ScheduleWakeup, exit.
-
-**No-op exit (`currently processing`):** increment `round`, append history `{round, action: "coderabbit_processing", reviewers_seen: [...]}`, write state, ScheduleWakeup, exit. The marker reflects an in-flight CodeRabbit review that will land in 5 to 10 minutes; pinging would just fight CodeRabbit's own scheduler.
-
-**MUST NOT update `last_review_id` / `last_pr_comment_id` / `last_issue_comment_id` on either exit path.** Those IDs only advance in Phase 11 after fixes have been pushed. If a Phase 4 exit bumped them, the next tick would treat any reviewer feedback that arrived before the ping as already-processed and silently drop it. The whole point of waiting for CodeRabbit is to batch its findings with already-pending reviewer feedback into one push the *next* round.
-
-**State-write discipline (read-modify-write).** Phase 4 / Phase 5 state writes are not allowed to be a "fresh template" write that re-emits a default state.json. The implementation MUST: (a) read the existing state.json (Phase 0 already does this), (b) preserve `last_review_id`, `last_pr_comment_id`, `last_issue_comment_id`, `rate_limit_pings`, `scanners_available`, `history`, and any other persisted fields exactly as-is, (c) modify only the explicitly-allowed fields for the current phase (Phase 4: `round`, optional `rate_limit_pings` increment, append `history` entry; Phase 5: `round`, `last_head_sha`, `last_action_at`, append `history` entry), and (d) write the merged object back. Re-using the default-template object from Phase 0 step 4 as a write source would zero the cached IDs even though "no bump" was respected, because every field not in the modify-list would be overwritten with the default.
+Then increment `rate_limit_pings`, append history `{round, action: "rate_limit_ping", ping_count: K}`, ScheduleWakeup, exit.
 
 **Important:** when scanning issue comments later, exclude any comment authored by `synthorg-repo-bot[bot]` OR with body exactly `@coderabbitai review` so the skill doesn't trip on its own pings.
 
@@ -191,20 +208,14 @@ There is NO upper bound on `rate_limit_pings`. The user explicitly said 10x with
 Compute deltas vs. cached IDs:
 
 - `new_commits` = current `headRefOid` != `state.last_head_sha`
-- `new_reviews` = `max(r.id for r in reviews if r.author != self_login and r.author != "synthorg-repo-bot[bot]") > state.last_review_id`
-- `new_pr_comments` = `max(c.id for c in pr_comments if c.author != self_login) > state.last_pr_comment_id`
-- `new_issue_comments` = `max(c.id for c in issue_comments if c.author != self_login and c.body != "@coderabbitai review") > state.last_issue_comment_id`
+- `new_reviews` = `max(review.id) > state.last_review_id` AND review author is not self/synthorg-repo-bot
+- `new_pr_comments` = `max(pr_comment.id) > state.last_pr_comment_id` AND author is not self
+- `new_issue_comments` = `max(issue_comment.id) > state.last_issue_comment_id` AND comment is not self-authored AND body is not `@coderabbitai review` (our own pings)
 - `ci_state_change` = current overall CI state differs from cached state
-
-The `max()` MUST be computed over the *filtered* set, not over the full set with the filter applied as a separate predicate. If the implementation took `max(id)` over all reviews and then said "and author is not self", a review whose id is the highest but happens to be from `self_login` would never advance past the filter (the comparison is `max > cached`, but the max itself was excluded), so you would miss that bot/human reviewers below it had advanced. Compute the filter first, then `max()` over the filtered set, then compare. Empty filtered set short-circuits the check to `False`.
 
 If NONE of these AND no rate-limit dance fired in Phase 4:
 - `state.last_action_at = <ISO-now>` (heartbeat)
-- `state.last_head_sha = current_head_sha` (track latest seen commit; safe to advance on noops since it gates new-commit detection, not feedback triage)
-- Increment `round`.
-- Append history `{round, action: "noop"}`.
-- **MUST NOT update `last_review_id` / `last_pr_comment_id` / `last_issue_comment_id`.** A noop means we observed feedback but didn't triage it; bumping the IDs here would lose the items on the next tick.
-- **State write is read-modify-write** (same rule as Phase 4): preserve every cached-ID field, `rate_limit_pings`, `scanners_available`, and `history` exactly as-is; modify only `round`, `last_head_sha`, `last_action_at`, and the appended `history` entry. Never re-emit a default-template state.json on a noop.
+- Append history `{round, action: "noop"}`
 - Write state. Print: `babysit-pr round R: no changes, sleeping <cadence>m.`
 - ScheduleWakeup, exit.
 
@@ -342,15 +353,13 @@ Failure handling: if a gate fails, fix the failure in this round (don't push bro
 
 ## Phase 11: update state, schedule next tick
 
-1. Update `state.json` (success path only: Phase 8 fixes triaged AND pushed). The state write is **read-modify-write**: read the existing state.json (Phase 0 already did this), preserve every field not on the modify-list verbatim, modify only the fields below, and write the merged object back. Do NOT re-emit a fresh template object as the write source; that would zero unrelated fields like `rate_limit_pings` / `scanners_available` / `history` / `self_login`.
+1. Update `state.json`. The variable `headRefOid` here refers to the value fetched in Phase 1 (`gh pr view N --json headRefOid`), the same identifier Phase 3 reads:
    - `round += 1`
-   - `last_head_sha = current_head_sha`
-   - **Watermark bump (cached IDs).** `last_review_id = max(id for id in Phase6_working_set_after_exclusions, default=last_review_id)` where `Phase6_working_set_after_exclusions` is the Phase 6 triage working set with the same author/body filters applied as Phase 5 (drop `self_login`, `synthorg-repo-bot[bot]`, and your own `@coderabbitai review` pings, then take max). Apply the same `max(...)` bump to `last_pr_comment_id` and `last_issue_comment_id` against their respective Phase 6 streams. Bumping over the entire post-exclusion working set (NOT just the patched subset, NOT just the items marked Valid?=true) guarantees an item factually-disproved-and-skipped this round (Valid?=false in the triage table) doesn't re-surface as new feedback next round. Items get advanced regardless of the triage verdict; what matters is that they were OBSERVED in Phase 6, not whether they were fixed. Cached IDs are bumped **only here**, never in Phase 3 convergence exit, Phase 4 / Phase 5 / Phase 6b dismissals.
-   - `last_ci_state = current_ci_state`
+   - **If `headRefOid != state.last_head_sha`:** clear `state.last_merge_attempt_headRefOid = ""` so the next time Phase 3 reaches convergence on this branch, the merge guard does not block a fresh attempt against the new head. Without this reset the merge would only ever fire once per babysit lifetime, regardless of how many later commits land. Do this BEFORE updating `last_head_sha` so the comparison is against the previous tick's value.
+   - `last_head_sha = headRefOid`
+   - `last_review_id = max(review.id, last_review_id)` (same for the two comment streams)
    - `last_action_at = <ISO-now>`
    - Append history `{round, action: "fixed_and_pushed", findings: M, sources: {...}}`
-
-   The convergence path (Phase 3) writes its own terminal state entry and exits without bumping cached IDs; if a future tick re-opens the PR with new feedback, those IDs serve as the "watermark from the last triage" so already-triaged items don't get re-processed.
 2. **Max-rounds check:** if `round >= max_rounds`:
    - `AskUserQuestion`: "babysit-pr hit round R/max_rounds on PR #N. Continue / stop / raise cap?"
    - On "continue": apply the user's new cap, reschedule.
@@ -377,12 +386,23 @@ Print exactly ONE concise status line per tick at the end. Mid-loop verdicts (si
 
 Terminal verdicts (loop-exit cases for Phase 2 / Phase 3) print a status line followed by the PR's web URL on its own line so the user can click straight through to the PR. Both lines together:
 
-- ```text
-  babysit-pr round R: CONVERGED (CI green, 0 actionable, no new feedback). Ready for human review/merge.
+- Convergence + auto-merge succeeded:
+
+  ```text
+  babysit-pr round R: CONVERGED + SQUASH-MERGED. Done.
   https://github.com/OWNER/REPO/pull/N
   ```
 
-- ```text
+- Convergence reached but the merge was blocked (e.g. branch protection requires a human approval):
+
+  ```text
+  babysit-pr round R: CONVERGED, merge blocked: <reason>.
+  https://github.com/OWNER/REPO/pull/N
+  ```
+
+- PR already in a terminal state on entry:
+
+  ```text
   babysit-pr round R: PR #N <MERGED|CLOSED>, exiting.
   https://github.com/OWNER/REPO/pull/N
   ```

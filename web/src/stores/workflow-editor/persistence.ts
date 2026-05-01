@@ -5,12 +5,35 @@ import {
   updateWorkflow,
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
-import { getErrorMessage } from '@/utils/errors'
+import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { isObject, isString } from '@/utils/type-guards'
 import type { PersistenceSlice, SliceCreator } from './types'
 import { generateNodeId, parseDefinition, regenerateYaml } from './yaml'
 
 const log = createLogger('workflow-editor:persistence')
+
+/**
+ * Read a string field off a ReactFlow ``data`` payload without unsafe
+ * ``as`` casts. Returns ``undefined`` when ``data`` is missing or the
+ * field is not a string. Used at the persistence boundary where
+ * ReactFlow types ``data`` as ``Record<string, unknown> | undefined``.
+ */
+function readEdgeField(data: unknown, key: string): string | undefined {
+  if (!isObject(data)) return undefined
+  const value = data[key]
+  return isString(value) ? value : undefined
+}
+
+function readNodeLabel(data: unknown): string | undefined {
+  return readEdgeField(data, 'label')
+}
+
+function readNodeConfig(data: unknown): Record<string, unknown> | undefined {
+  if (!isObject(data)) return undefined
+  const value = data.config
+  return isObject(value) ? value : undefined
+}
 
 export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get) => ({
   definition: null,
@@ -107,7 +130,7 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
       return
     }
     const badNodes = nodes.filter((n) => !n.type)
-    const badEdges = edges.filter((e) => !(e.data as Record<string, unknown>)?.edgeType)
+    const badEdges = edges.filter((e) => !readEdgeField(e.data, 'edgeType'))
     if (badNodes.length > 0 || badEdges.length > 0) {
       const parts: string[] = []
       if (badNodes.length > 0) parts.push(`nodes missing type: ${badNodes.map((n) => n.id).join(', ')}`)
@@ -122,23 +145,25 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (set, get)
         nodes: nodes.map((n) => ({
           id: n.id,
           type: n.type!,
-          label: (n.data as Record<string, unknown>)?.label ?? n.id,
+          label: readNodeLabel(n.data) ?? n.id,
           position_x: n.position.x,
           position_y: n.position.y,
-          config: ((n.data as Record<string, unknown>)?.config as Record<string, unknown>) ?? {},
+          config: readNodeConfig(n.data) ?? {},
         })),
         edges: edges.map((e) => ({
           id: e.id,
           source_node_id: e.source,
           target_node_id: e.target,
-          type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
-          label: (e.label as string) ?? null,
+          type: readEdgeField(e.data, 'edgeType') ?? 'sequential',
+          label: isString(e.label) ? e.label : null,
         })),
         expected_revision: definition.revision,
       })
       set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })
     } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status
+      // ``isAxiosError`` lets us read response.status without an
+      // unsafe ``as`` cast through a hand-rolled shape.
+      const status = isAxiosError(err) ? err.response?.status : undefined
       if (status === 409 && definition) {
         log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
         set({ saving: false, error: 'Version conflict -- another save occurred. Reloading...' })

@@ -7,6 +7,7 @@ import { useWorkflowsData } from '@/hooks/useWorkflowsData'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { Button } from '@/components/ui/button'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
+import { KeyboardShortcutHint } from '@/components/ui/keyboard-shortcut-hint'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -191,6 +192,14 @@ export default function WorkflowsPage() {
               <Trash2 className="size-3.5" />
               Delete {formatNumber(selectedCount)}
             </Button>
+            {/* Surface the clear-shortcut so operators don't have to
+                guess that Esc deselects. The hint sits inside the bar
+                so it tracks the same dismissal as the action buttons. */}
+            <KeyboardShortcutHint
+              keys={['Esc']}
+              label="to clear"
+              className="ml-2"
+            />
           </BulkActionBar>
         )}
       </AnimatePresence>

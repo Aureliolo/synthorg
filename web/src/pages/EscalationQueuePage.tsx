@@ -6,19 +6,46 @@
  * detail drawer to view the underlying conflict and submit a
  * decision.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SectionCard } from '@/components/ui/section-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useEscalationsStore } from '@/stores/escalations'
 import { formatDateTime } from '@/utils/format'
 import { EscalationDetailDrawer } from './escalations/EscalationDetailDrawer'
-import type { EscalationStatus } from '@/api/types/escalations'
+import type { ConflictType, EscalationStatus } from '@/api/types/escalations'
 import { cn } from '@/lib/utils'
+
+/**
+ * Conflict-type buckets surfaced as the "priority" filter; the data
+ * model has no explicit priority field, so we group by conflict
+ * domain. ``critical`` covers conflicts the operator most likely
+ * needs to triage immediately (architecture / authority disputes);
+ * ``high`` covers strategic and technical disagreements; ``standard``
+ * is the default day-to-day work.
+ */
+type PriorityBucket = 'critical' | 'high' | 'standard'
+
+const PRIORITY_BUCKET_TYPES: Record<PriorityBucket, readonly ConflictType[]> = {
+  critical: ['architecture', 'authority'],
+  high: ['strategy', 'technical'],
+  standard: ['resource', 'process'],
+}
+
+const PRIORITY_OPTIONS: ReadonlyArray<{
+  value: PriorityBucket | 'all'
+  label: string
+}> = [
+  { value: 'all', label: 'All' },
+  { value: 'critical', label: 'Critical' },
+  { value: 'high', label: 'High' },
+  { value: 'standard', label: 'Standard' },
+]
 
 const STATUS_OPTIONS: ReadonlyArray<{
   value: EscalationStatus | 'all'
@@ -52,23 +79,91 @@ export default function EscalationQueuePage() {
   const setStatusFilter = useEscalationsStore((s) => s.setStatusFilter)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [priorityFilter, setPriorityFilter] = useState<PriorityBucket | 'all'>('all')
 
   useEffect(() => {
     void fetchEscalations()
   }, [fetchEscalations])
 
+  // Client-side priority filter: applied on top of the server-side
+  // status filter so the operator can narrow further to critical /
+  // high / standard buckets without an extra round-trip. The bucket
+  // list is intentionally small; the underlying ConflictType is the
+  // source of truth, the bucket is a UX shortcut.
+  const visibleEscalations = useMemo(() => {
+    if (priorityFilter === 'all') return escalations
+    const allowed = PRIORITY_BUCKET_TYPES[priorityFilter]
+    return escalations.filter((row) => allowed.includes(row.escalation.conflict.type))
+  }, [escalations, priorityFilter])
+
+  // Choose the empty-state copy outside the JSX so we don't trip
+  // ``@eslint-react/unsupported-syntax`` (no IIFEs in JSX, since
+  // React Compiler skips them). When no filters are active the
+  // queue itself is empty; otherwise the current view is.
+  const emptyStateProps = useMemo(() => {
+    if (visibleEscalations.length > 0) return null
+    const hasFilters =
+      (statusFilter !== null && statusFilter !== undefined)
+      || priorityFilter !== 'all'
+    if (hasFilters && escalations.length > 0) {
+      return {
+        title: 'No escalations match your filters',
+        description:
+          'Adjust the status or priority filter above to see more escalations.',
+      }
+    }
+    return {
+      title: 'No escalations',
+      description:
+        'Conflicts that the autonomous resolvers cannot decide land here for human review.',
+    }
+  }, [visibleEscalations.length, statusFilter, priorityFilter, escalations.length])
+
   return (
     <div className="flex flex-col gap-section-gap">
-      <ListHeader title="Escalation queue" count={escalations.length} />
+      <ListHeader title="Escalation queue" count={visibleEscalations.length} />
 
-      <SegmentedControl
-        label="Filter by status"
-        value={statusFilter ?? 'all'}
-        onChange={(value) => {
-          setStatusFilter(value === 'all' ? null : (value as EscalationStatus))
-        }}
-        options={STATUS_OPTIONS}
-        size="sm"
+      {/* Status + priority filters wrapped in the shared
+          SearchFilterSort layout primitive so the escalation queue
+          aligns with the rest of the dashboard's list pages. */}
+      <SearchFilterSort
+        filters={
+          <>
+            <SegmentedControl
+              label="Filter by status"
+              value={statusFilter ?? 'all'}
+              onChange={(value) => {
+                // Validate against the option set before casting; a
+                // malformed value (e.g. injected via a stale URL
+                // fragment) drops to ``null`` instead of being
+                // forwarded as an EscalationStatus that downstream
+                // code does not handle.
+                if (value === 'all') {
+                  setStatusFilter(null)
+                  return
+                }
+                const allowed = STATUS_OPTIONS.some((option) => option.value === value)
+                if (allowed) {
+                  setStatusFilter(value as EscalationStatus)
+                }
+              }}
+              options={STATUS_OPTIONS}
+              size="sm"
+            />
+            <SegmentedControl
+              label="Filter by priority"
+              value={priorityFilter}
+              onChange={(value) => {
+                const allowed = PRIORITY_OPTIONS.some((option) => option.value === value)
+                if (allowed) {
+                  setPriorityFilter(value as PriorityBucket | 'all')
+                }
+              }}
+              options={PRIORITY_OPTIONS}
+              size="sm"
+            />
+          </>
+        }
       />
 
       {error && (
@@ -88,14 +183,21 @@ export default function EscalationQueuePage() {
             <Skeleton key={i} className="h-24 w-full" />
           ))}
         </div>
-      ) : escalations.length === 0 ? (
-        <EmptyState
-          title="No escalations"
-          description="Conflicts that the autonomous resolvers cannot decide land here for human review."
-        />
-      ) : (
+      ) : !error && visibleEscalations.length === 0 ? (
+        // Filter-aware copy: the operator may have a status / priority
+        // filter active that hides every row, in which case "No
+        // escalations" is misleading (the queue itself isn't empty,
+        // just the current view). Differentiate so the empty state
+        // points at the right next action.
+        emptyStateProps !== null ? (
+          <EmptyState
+            title={emptyStateProps.title}
+            description={emptyStateProps.description}
+          />
+        ) : null
+      ) : visibleEscalations.length > 0 ? (
         <ul className="flex flex-col gap-grid-gap">
-          {escalations.map((row) => {
+          {visibleEscalations.map((row) => {
             const e = row.escalation
             return (
               <li key={e.id}>
@@ -153,7 +255,7 @@ export default function EscalationQueuePage() {
             )
           })}
         </ul>
-      )}
+      ) : null}
 
       {hasMore && (
         <Button

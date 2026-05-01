@@ -198,6 +198,24 @@ class ArtifactRejectedTooLargeError(DomainError):
     status_code: ClassVar[int] = 413
 
 
+class ProviderTierCoverageInsufficientError(ValidationError):
+    """Raised when configured providers expose no models during setup (422).
+
+    The setup-wizard contract requires at least one configured provider
+    that exposes at least one model before the company step can apply
+    a template. Distinct ``error_code`` lets the dashboard route the
+    operator back to the providers step instead of showing a generic
+    Retry button (the action would always fail until a model is added).
+    """
+
+    default_message: ClassVar[str] = (
+        "No configured provider exposes any models. "
+        "Go back to the Providers step, add at least one model "
+        "to a provider, then return here to apply the template."
+    )
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT
+
+
 class ArtifactStorageRejectedFullError(DomainError):
     """Raised when the artifact-storage subsystem reports it is full (507).
 

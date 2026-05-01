@@ -1,4 +1,4 @@
-import { MoreVertical, Plug, RefreshCw } from 'lucide-react'
+import { MoreVertical, Plug, RefreshCw, Trash2 } from 'lucide-react'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConnectionHealthBadge } from '@/components/ui/connection-health-badge'
@@ -74,6 +74,20 @@ export function ConnectionCard({
             >
               <MoreVertical className="size-4" aria-hidden />
             </Button>
+            {/* Delete consolidated into the top-right action group
+                so all per-connection actions live in one row, matching
+                the placement convention used elsewhere instead of the
+                previous split top-right + bottom-right layout. */}
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label={`Delete ${connection.name}`}
+              onClick={onDelete}
+              className="text-danger hover:bg-danger/10 hover:text-danger"
+            >
+              <Trash2 className="size-4" aria-hidden />
+            </Button>
           </div>
         </div>
       </div>
@@ -104,17 +118,6 @@ export function ConnectionCard({
         )}
       </div>
 
-      <div className="mt-3 flex justify-end">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={onDelete}
-          className="text-danger hover:text-danger"
-        >
-          Delete
-        </Button>
-      </div>
     </div>
   )
 }

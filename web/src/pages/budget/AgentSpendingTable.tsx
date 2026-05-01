@@ -135,20 +135,26 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
           description="Cost records will appear as agents consume tokens"
         />
       ) : (
-        <div className="rounded-lg border border-border">
-          <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
-            {COLUMNS.map((col) => (
-              <ColumnHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-            ))}
-          </div>
+        // Outer overflow-x-auto so on narrow viewports (phones, tight
+        // dashboard splits) the table scrolls instead of overflowing
+        // the section card. The inner min-w sizes the row to its
+        // natural width so the proportional column widths still hold.
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="min-w-[40rem]">
+            <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
+              {COLUMNS.map((col) => (
+                <ColumnHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              ))}
+            </div>
 
-          <StaggerGroup className="divide-y divide-border">
-            {sorted.map((row) => (
-              <StaggerItem key={row.agentId}>
-                <SpendingRow row={row} currency={currency} />
-              </StaggerItem>
-            ))}
-          </StaggerGroup>
+            <StaggerGroup className="divide-y divide-border">
+              {sorted.map((row) => (
+                <StaggerItem key={row.agentId}>
+                  <SpendingRow row={row} currency={currency} />
+                </StaggerItem>
+              ))}
+            </StaggerGroup>
+          </div>
         </div>
       )}
     </SectionCard>

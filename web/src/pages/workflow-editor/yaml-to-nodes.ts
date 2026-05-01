@@ -12,6 +12,7 @@
 import yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
 import type { WorkflowEdgeType } from '@/api/types/workflows'
+import { isObject } from '@/utils/type-guards'
 
 export interface ParseResult {
   nodes: Node[]
@@ -115,23 +116,27 @@ export function parseYamlToNodesEdges(
     return { nodes, edges, errors, warnings }
   }
 
-  if (typeof parsed !== 'object' || parsed === null) {
+  if (!isObject(parsed)) {
     errors.push('YAML must contain an object')
     return { nodes, edges, errors, warnings }
   }
 
-  const root = parsed as Record<string, unknown>
-  const wfDef = root.workflow_definition as Record<string, unknown> | undefined
-  if (!wfDef) {
+  const wfDefRaw = parsed.workflow_definition
+  if (!isObject(wfDefRaw)) {
     errors.push('Missing "workflow_definition" key')
     return { nodes, edges, errors, warnings }
   }
 
-  const steps = wfDef.steps as YamlStep[] | undefined
-  if (!Array.isArray(steps)) {
+  const stepsRaw = wfDefRaw.steps
+  if (!Array.isArray(stepsRaw)) {
     errors.push('Missing or invalid "steps" array')
     return { nodes, edges, errors, warnings }
   }
+  // Element shape is validated per-iteration in the loop below; the
+  // array-element narrowing happens at use sites where the script
+  // checks ``typeof raw !== 'object' || raw === null`` before reading
+  // any field.
+  const steps: unknown[] = stepsRaw
 
   // ---------------------------------------------------------------
   // Pass 1: Collect and validate all steps, build seenIds + stepMap
@@ -149,6 +154,10 @@ export function parseYamlToNodesEdges(
       errors.push(`Step ${i + 1} is not an object (got ${actualType})`)
       continue
     }
+    // Narrow per-element: ``raw`` was checked above (object, non-null,
+    // non-array), so the cast to YamlStep is now safe. The YamlStep
+    // fields are all optional; the subsequent code validates each
+    // field's runtime type before reading.
     const step = raw as YamlStep
 
     // Validate and normalize ID
@@ -235,8 +244,8 @@ export function parseYamlToNodesEdges(
         let depId: string
         let explicitBranch: 'true' | 'false' | undefined
 
-        if (typeof rawDep === 'object' && rawDep !== null && 'id' in rawDep) {
-          const obj = rawDep as Record<string, unknown>
+        if (isObject(rawDep) && 'id' in rawDep) {
+          const obj: Record<string, unknown> = rawDep
           depId = String(obj.id ?? '').trim()
           const branch = obj.branch !== undefined ? String(obj.branch) : undefined
           if (branch === 'true' || branch === 'false') {

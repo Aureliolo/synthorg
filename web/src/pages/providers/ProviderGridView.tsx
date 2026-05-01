@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link } from 'react-router'
 import { ProviderCard } from './ProviderCard'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
@@ -12,7 +13,10 @@ interface ProviderGridItemProps {
   health: ProviderHealthSummary | null
 }
 
-function ProviderGridItem({ provider, health }: ProviderGridItemProps) {
+const ProviderGridItem = memo(function ProviderGridItem({
+  provider,
+  health,
+}: ProviderGridItemProps) {
   return (
     <StaggerItem>
       <Link
@@ -26,7 +30,7 @@ function ProviderGridItem({ provider, health }: ProviderGridItemProps) {
       </Link>
     </StaggerItem>
   )
-}
+})
 
 interface ProviderGridViewProps {
   providers: readonly ProviderWithName[]

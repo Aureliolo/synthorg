@@ -55,9 +55,11 @@ export function WorkflowCard({
             <span className="truncate text-sm font-semibold text-foreground">
               {workflow.name}
             </span>
-            <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
-              {formatLabel(workflow.workflow_type)}
-            </span>
+            {/* Workflow type rendered through StatPill (consistent with
+                the StatPill instances below for Nodes/Edges and with
+                ArtifactCard's type label) instead of a hand-rolled
+                inline pill that drifts from the design tokens. */}
+            <StatPill value={formatLabel(workflow.workflow_type)} />
           </div>
 
           {workflow.description && (

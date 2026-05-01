@@ -347,7 +347,7 @@ export function ProviderFormModal({
               'transition-[opacity,translate,scale] duration-200 ease-out',
               'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
               'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
-              'flex max-h-[85vh] flex-col',
+              'flex max-h-[85vh] flex-col sm:max-h-[80vh]',
             )}
           >
             {/* Header */}

@@ -17,6 +17,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useUsersStore } from '@/stores/users'
 import { formatDateTime } from '@/utils/format'
@@ -85,19 +87,44 @@ export default function UsersPage() {
     user: UserResponse
     role: OrgRole
   } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     void fetchUsers()
   }, [fetchUsers])
 
-  const sortedUsers = useMemo(
-    () => [...users].sort((a, b) => a.username.localeCompare(b.username)),
-    [users],
-  )
+  // Trim once so both filtering and the empty-state copy agree on
+  // what counts as "active search". A whitespace-only query
+  // previously matched the unfiltered list yet rendered the
+  // "no matching users" empty-state copy (the raw ``searchQuery``
+  // was non-empty). The two now share the trimmed source of truth.
+  const trimmedQuery = searchQuery.trim()
+  const sortedUsers = useMemo(() => {
+    const q = trimmedQuery.toLowerCase()
+    const filtered = q
+      ? users.filter(
+          (u) =>
+            u.username.toLowerCase().includes(q) ||
+            u.role.toLowerCase().includes(q),
+        )
+      : users
+    return [...filtered].sort((a, b) => a.username.localeCompare(b.username))
+  }, [users, trimmedQuery])
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <ListHeader title="Users" count={users.length} />
+      <ListHeader title="Users" count={sortedUsers.length} />
+
+      <SearchFilterSort
+        search={
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search users by name or role"
+            ariaLabel="Search users"
+          />
+        }
+      />
 
       {error && (
         <ErrorBanner
@@ -116,12 +143,24 @@ export default function UsersPage() {
             <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
-      ) : users.length === 0 ? (
+      ) : !error && sortedUsers.length === 0 ? (
+        // Use ``sortedUsers`` (the post-search-filter view) so an
+        // active query that yields nothing renders a search-empty
+        // message instead of a blank list. ``users.length === 0``
+        // would only fire on the truly-empty roster case and was
+        // hiding the "no matches" state behind a search.
+        // Also gated on ``!error`` so a failed fetch (which leaves
+        // ``users`` empty) doesn't render alongside the error banner
+        // as a misleading "No users" message.
         <EmptyState
-          title="No users"
-          description="Human users with dashboard access will appear here once they're provisioned."
+          title={trimmedQuery ? 'No matching users' : 'No users'}
+          description={
+            trimmedQuery
+              ? 'Try a different search term or clear the field above.'
+              : "Human users with dashboard access will appear here once they're provisioned."
+          }
         />
-      ) : (
+      ) : sortedUsers.length > 0 ? (
         <ul className="flex flex-col gap-grid-gap">
           {sortedUsers.map((user) => (
             <li key={user.id}>
@@ -179,7 +218,7 @@ export default function UsersPage() {
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
 
       {hasMore && (
         <Button

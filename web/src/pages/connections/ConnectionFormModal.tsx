@@ -259,7 +259,14 @@ export function ConnectionFormModal({
           <DialogCloseButton />
         </DialogHeader>
 
-        <div className="max-h-[70vh] overflow-y-auto p-card">
+        {/* Responsive max-h: phones get 85dvh (more usable height
+            when the on-screen keyboard is up); desktop sits at 70dvh
+            so the modal stays centred with surrounding context. ``dvh``
+            (dynamic viewport height) shrinks correctly when the
+            mobile browser surfaces its address bar / keyboard, where
+            ``vh`` would lock to the static layout viewport and
+            overflow off-screen. */}
+        <div className="max-h-[85dvh] overflow-y-auto p-card sm:max-h-[70dvh]">
           {mode === 'create' && form.type === null ? (
             <TypePicker
               onSelect={(type) => setForm((prev) => ({ ...prev, type }))}

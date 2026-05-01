@@ -1,5 +1,8 @@
 import { http, HttpResponse } from 'msw'
-import { useAuthStore } from '@/stores/auth'
+import {
+  _resetUnauthorizedRedirectGuardForTests,
+  useAuthStore,
+} from '@/stores/auth'
 import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { AuthResponse, UserInfoResponse } from '@/api/types/auth'
@@ -61,6 +64,11 @@ function resetStore() {
     user: null,
     loading: false,
   })
+  // Reset the one-shot redirect guard so each test exercises a clean
+  // burst of `handleUnauthorized()`. Without this, the guard set by
+  // a prior test (or a prior call inside the same test) would no-op
+  // every subsequent invocation.
+  _resetUnauthorizedRedirectGuardForTests()
   window.location.pathname = '/dashboard'
   window.location.href = 'http://localhost/dashboard'
 }

@@ -48,16 +48,13 @@ function CheckpointRow({ checkpoint: cp, onDeploy, onRollback, onDelete }: Check
         {formatBytes(cp.size_bytes)}
       </td>
       <td className="py-2 pr-4">
+        {/* StatusBadge label prop renders the default status label
+            ("Active" / "Idle") inline, replacing the previous
+            hand-rolled adjacent <span> wrapper. */}
         {cp.is_active ? (
-          <span className="inline-flex items-center gap-1.5">
-            <StatusBadge status="active" />
-            <span className="text-xs">Active</span>
-          </span>
+          <StatusBadge status="active" label />
         ) : (
-          <span className="inline-flex items-center gap-1.5">
-            <StatusBadge status="idle" />
-            <span className="text-xs">Available</span>
-          </span>
+          <StatusBadge status="idle" label />
         )}
       </td>
       <td className="py-2">

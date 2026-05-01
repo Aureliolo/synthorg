@@ -42,6 +42,12 @@ export function ProviderHealthBadge({
 
   return (
     <span
+      // ``role="img"`` is implicit-but-fragile for ``<span aria-label>``;
+      // browsers expose it inconsistently across screen readers when
+      // the label is set but no role is declared. Setting it explicitly
+      // makes the label-as-accessible-name contract explicit and matches
+      // the documented StatusBadge default in web/CLAUDE.md.
+      role="img"
       className={cn('inline-flex items-center gap-1.5', className)}
       aria-label={statusLabel}
     >

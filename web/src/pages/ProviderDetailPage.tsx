@@ -1,12 +1,18 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useProviderDetailData } from '@/hooks/useProviderDetailData'
+import { useProvidersData } from '@/hooks/useProvidersData'
 import { useProvidersStore } from '@/stores/providers'
+import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ROUTES } from '@/router/routes'
+import {
+  useDetailNavigation,
+  useDetailNavigationCallbacks,
+} from '@/hooks/use-detail-navigation'
 import { ProviderDetailHeader } from './providers/ProviderDetailHeader'
 import { ProviderHealthMetrics } from './providers/ProviderHealthMetrics'
 import { ProviderModelList } from './providers/ProviderModelList'
@@ -53,6 +59,23 @@ export default function ProviderDetailPage() {
   const discoveringModels = useProvidersStore((s) => s.discoveringModels)
   const deletingModel = useProvidersStore((s) => s.deletingModel)
 
+  // Walk the parent provider list (filtered + sorted) so prev/next on
+  // this detail page steps through the same providers the operator
+  // saw on ProvidersPage. ``ProviderWithName.name`` is the URL key.
+  const { filteredProviders } = useProvidersData()
+  const routeForProvider = useCallback(
+    (item: { id: string }) =>
+      ROUTES.PROVIDER_DETAIL.replace(':providerName', encodeURIComponent(item.id)),
+    [],
+  )
+  const navItems = filteredProviders.map((p) => ({ id: p.name }))
+  const nav = useDetailNavigation({
+    items: navItems,
+    currentId: decodedName,
+    routeFor: routeForProvider,
+  })
+  const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
+
   // Loading state
   if (loading && !provider) {
     return <ProviderDetailSkeleton />
@@ -84,6 +107,13 @@ export default function ProviderDetailPage() {
 
   return (
     <div className="flex flex-col gap-section-gap">
+      <DetailNavBar
+        canPrev={nav.canPrev}
+        canNext={nav.canNext}
+        onPrev={goPrev}
+        onNext={goNext}
+        position={nav.position}
+      />
       {/* Partial error banner */}
       {error && (
         <ErrorBanner
