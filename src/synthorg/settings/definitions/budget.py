@@ -49,26 +49,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
-        key="cost_efficiency_lower_bound",
-        type=SettingType.FLOAT,
-        default="0.8",
-        description=(
-            "Cost efficiency threshold: agents whose cost-per-1k is"
-            " at or below this fraction of the global average are"
-            " rated EFFICIENT by the optimizer."
-        ),
-        group="Optimizer",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path="budget.cost_optimizer.efficiency_lower_bound_factor",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.BUDGET,
         key="auto_downgrade_enabled",
         type=SettingType.BOOLEAN,
         default="false",

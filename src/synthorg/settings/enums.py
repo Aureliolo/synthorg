@@ -29,7 +29,6 @@ class SettingNamespace(StrEnum):
     SIMULATIONS = "simulations"
     TOOLS = "tools"
     SETTINGS = "settings"
-    DISPLAY = "display"
     HR = "hr"
     WORKERS = "workers"
     TELEMETRY = "telemetry"

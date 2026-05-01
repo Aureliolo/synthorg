@@ -9,25 +9,6 @@ _r = get_registry()
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
-        key="default_topology",
-        type=SettingType.ENUM,
-        default="auto",
-        description="Default coordination topology for multi-agent tasks",
-        group="General",
-        enum_values=(
-            "auto",
-            "single_agent_sequential",
-            "centralized",
-            "decentralized",
-            "context_dependent",
-        ),
-        yaml_path="coordination.topology",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
         key="max_concurrency_per_wave",
         type=SettingType.INTEGER,
         default="5",

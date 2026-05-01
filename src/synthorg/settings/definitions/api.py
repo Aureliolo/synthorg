@@ -34,10 +34,15 @@ _r.register(
         key="server_host",
         type=SettingType.STRING,
         default="127.0.0.1",
-        description="Server bind address",
+        description=(
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] Server bind"
+            " address."
+        ),
         group="Server",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         yaml_path="api.server.host",
     )
 )
@@ -48,10 +53,15 @@ _r.register(
         key="server_port",
         type=SettingType.INTEGER,
         default="3001",
-        description="Server bind port",
+        description=(
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] Server bind"
+            " port."
+        ),
         group="Server",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         min_value=1,
         max_value=65535,
         yaml_path="api.server.port",
@@ -64,10 +74,15 @@ _r.register(
         key="api_prefix",
         type=SettingType.STRING,
         default="/api/v1",
-        description="URL prefix for all API routes",
+        description=(
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] URL prefix for"
+            " all API routes."
+        ),
         group="Server",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         yaml_path="api.api_prefix",
     )
 )
@@ -124,12 +139,15 @@ _r.register(
         type=SettingType.JSON,
         default="[]",
         description=(
-            "IP addresses/CIDRs trusted as reverse proxies "
-            "for X-Forwarded-For/Proto header processing"
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] IP addresses /"
+            " CIDRs trusted as reverse proxies for X-Forwarded-For /"
+            " X-Forwarded-Proto header processing."
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         yaml_path="api.server.trusted_proxies",
     )
 )
@@ -143,15 +161,17 @@ _r.register(
         type=SettingType.JSON,
         default="[]",
         description=(
-            "Origins permitted to make cross-origin requests."
-            " Empty default denies all cross-origin requests;"
-            " operators must explicitly allowlist dashboard"
-            " origins (e.g. ``http://localhost:5173`` for local"
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] Origins permitted"
+            " to make cross-origin requests.  Empty default denies all"
+            " cross-origin requests; operators must explicitly allowlist"
+            " dashboard origins (e.g. ``http://localhost:5173`` for local"
             " development). Matches CorsConfig default."
         ),
         group="CORS",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         yaml_path="api.cors.allowed_origins",
     )
 )
@@ -333,27 +353,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
-        key="per_op_rate_limit_backend",
-        type=SettingType.ENUM,
-        default="memory",
-        description=(
-            "Backend for per-operation sliding-window rate limiter."
-            " Only 'memory' (process-local) ships today; a Redis"
-            " adapter for cross-worker fairness is planned but not"
-            " yet implemented, so it is intentionally not listed as"
-            " a selectable option until the factory supports it."
-        ),
-        group="Rate Limiting",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        enum_values=("memory",),
-        yaml_path="api.per_op_rate_limit.backend",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
         key="per_op_rate_limit_overrides",
         type=SettingType.JSON,
         default="{}",
@@ -385,27 +384,6 @@ _r.register(
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         yaml_path="api.per_op_concurrency.enabled",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
-        key="per_op_concurrency_backend",
-        type=SettingType.ENUM,
-        default="memory",
-        description=(
-            "Backend for per-operation inflight limiter."
-            " Only 'memory' (process-local) ships today; a Redis"
-            " adapter for cross-worker fairness is planned but not"
-            " yet implemented, so it is intentionally not listed as"
-            " a selectable option until the factory supports it."
-        ),
-        group="Rate Limiting",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        enum_values=("memory",),
-        yaml_path="api.per_op_concurrency.backend",
     )
 )
 
@@ -595,25 +573,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
-        key="docs_cache_max_age_seconds",
-        type=SettingType.INTEGER,
-        default="300",
-        description=(
-            "Cache-Control max-age emitted for /docs responses. Longer"
-            " values reduce repeat fetches of the Scalar bundle; 0"
-            " disables caching."
-        ),
-        group="Documentation",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0,
-        max_value=86_400,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
         key="ws_auth_timeout_seconds",
         type=SettingType.FLOAT,
         default="10.0",
@@ -701,24 +660,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
-        key="ticket_cleanup_mode",
-        type=SettingType.ENUM,
-        default="async",
-        description=(
-            "Ticket cleanup mode. 'async' (default) runs cleanup in a"
-            " background task; 'sync' blocks the request. Use 'sync'"
-            " only for tests / audits."
-        ),
-        group="WebSocket",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        enum_values=("async", "sync"),
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
         key="lifecycle_cleanup_enabled",
         type=SettingType.BOOLEAN,
         default="true",
@@ -789,24 +730,5 @@ _r.register(
         restart_required=True,
         min_value=300.0,
         max_value=604_800.0,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
-        key="human_routing_threshold",
-        type=SettingType.FLOAT,
-        default="0.8",
-        description=(
-            "Strictness level above which the hybrid client routes"
-            " a request to a human reviewer rather than the automated"
-            " path."
-        ),
-        group="Hybrid Routing",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
     )
 )

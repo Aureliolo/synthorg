@@ -160,44 +160,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="heuristic_pass_threshold",
-        type=SettingType.FLOAT,
-        default="0.5",
-        description=(
-            "Probe-match ratio threshold above which the heuristic"
-            " rubric grader issues a PASS verdict."
-        ),
-        group="Quality",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path="engine.heuristic_pass_threshold",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
-        key="weak_model_min_accuracy",
-        type=SettingType.FLOAT,
-        default="0.8",
-        description=(
-            "Accuracy threshold above which a model that solved in"
-            " very few steps triggers a weak-model-trap warning."
-        ),
-        group="Quality",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path="engine.weak_model_min_accuracy",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
         key="classification_detector_timeout_seconds",
         type=SettingType.FLOAT,
         default="30.0",
@@ -214,44 +176,6 @@ _r.register(
     )
 )
 
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
-        key="replay_low_completeness_threshold",
-        type=SettingType.FLOAT,
-        default="0.5",
-        description=(
-            "Session replay completeness threshold below which the"
-            " agent engine logs a low-completeness recovery warning."
-        ),
-        group="Replay",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path="engine.replay_low_completeness_threshold",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
-        key="prompt_token_ratio_warn_threshold",
-        type=SettingType.FLOAT,
-        default="0.3",
-        description=(
-            "Prompt/total token ratio above which a high-prompt-ratio"
-            " warning is emitted. Flags contexts where system prompts"
-            " dominate the token budget."
-        ),
-        group="Efficiency",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path="engine.prompt_token_ratio_warn_threshold",
-    )
-)
 
 _r.register(
     SettingDefinition(
@@ -267,25 +191,6 @@ _r.register(
         group="Safety",
         level=SettingLevel.ADVANCED,
         yaml_path="engine.timeout_enforcement_enabled",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
-        key="passive_drift_notify_threshold",
-        type=SettingType.FLOAT,
-        default="0.5",
-        description=(
-            "Similarity threshold above which passive ontology drift"
-            " triggers operator notification."
-        ),
-        group="Ontology",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=0.0,
-        max_value=1.0,
-        yaml_path="engine.passive_drift_notify_threshold",
     )
 )
 
