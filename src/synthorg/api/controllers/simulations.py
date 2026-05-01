@@ -93,6 +93,25 @@ def _publish_event(
     )
 
 
+async def _mark_failed(
+    sim_state: Any,
+    simulation_id: str,
+    error: str,
+) -> None:
+    """Mark a simulation run failed with a stable error message.
+
+    Wraps ``simulation_store.update_status`` in ``contextlib.suppress``
+    so a missing record (race with cancellation) does not propagate;
+    the failure has already been logged by the caller.
+    """
+    with contextlib.suppress(ValueError):
+        await sim_state.simulation_store.update_status(
+            simulation_id,
+            status="failed",
+            error=error,
+        )
+
+
 async def _run_in_background(
     *,
     app_state: AppState,
@@ -101,21 +120,13 @@ async def _run_in_background(
     """Execute a simulation run and update the store with results."""
     sim_state = app_state.client_simulation_state
     if sim_state.intake_engine is None:
-        with contextlib.suppress(ValueError):
-            await sim_state.simulation_store.update_status(
-                record.simulation_id,
-                status="failed",
-                error="Intake engine not configured",
-            )
+        await _mark_failed(
+            sim_state, record.simulation_id, "Intake engine not configured"
+        )
         return
     clients = await sim_state.pool.list_clients()
     if not clients:
-        with contextlib.suppress(ValueError):
-            await sim_state.simulation_store.update_status(
-                record.simulation_id,
-                status="failed",
-                error="No clients in pool",
-            )
+        await _mark_failed(sim_state, record.simulation_id, "No clients in pool")
         return
     resolver = app_state.config_resolver
     try:
@@ -126,12 +137,10 @@ async def _run_in_background(
             "simulations", "review_timeout_seconds"
         )
     except (SettingNotFoundError, ValueError) as exc:
-        # The resolver already logs at WARNING for both branches; emit a
-        # simulation-scoped failure event so the operator sees the
-        # specific simulation_id that aborted, then mark the run failed
-        # with a precise reason instead of letting the broad
-        # ``except Exception`` below collapse it into "failed
-        # unexpectedly".
+        # Surface the specific simulation_id that aborted so the
+        # broad ``except Exception`` below does not collapse this
+        # path into "failed unexpectedly". Resolver already logged
+        # the underlying lookup failure at WARNING.
         logger.warning(
             SIMULATION_RUN_FAILED,
             simulation_id=record.simulation_id,
@@ -139,12 +148,11 @@ async def _run_in_background(
             error=safe_error_description(exc),
             stage="config_resolution",
         )
-        with contextlib.suppress(ValueError):
-            await sim_state.simulation_store.update_status(
-                record.simulation_id,
-                status="failed",
-                error="Simulation timeout configuration error",
-            )
+        await _mark_failed(
+            sim_state,
+            record.simulation_id,
+            "Simulation timeout configuration error",
+        )
         return
     runner = SimulationRunner(
         config=SimulationRunnerConfig(
@@ -177,29 +185,22 @@ async def _run_in_background(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        with contextlib.suppress(ValueError):
-            await sim_state.simulation_store.update_status(
-                record.simulation_id,
-                status="failed",
-                error="Simulation configuration error",
-            )
+        await _mark_failed(
+            sim_state, record.simulation_id, "Simulation configuration error"
+        )
         return
     except Exception as exc:
-        # logger.exception attaches the traceback; frame-locals on
-        # a simulation-run-failed path can carry the entire
-        # simulation config. Scrub + drop exc_info.
+        # Frame-locals on a simulation-run-failed path can carry the
+        # entire simulation config; scrub + drop the traceback.
         logger.warning(
             SIMULATION_RUN_FAILED,
             simulation_id=record.simulation_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        with contextlib.suppress(ValueError):
-            await sim_state.simulation_store.update_status(
-                record.simulation_id,
-                status="failed",
-                error="Simulation failed unexpectedly",
-            )
+        await _mark_failed(
+            sim_state, record.simulation_id, "Simulation failed unexpectedly"
+        )
         return
     await sim_state.simulation_store.update_status(
         record.simulation_id,

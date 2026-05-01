@@ -54,10 +54,6 @@ class DeviceFlowResult:
         interval: int,
         expires_in: int = 600,
     ) -> None:
-        # ``interval`` is operator-tunable; resolve via
-        # ``ConfigResolver.get_int("integrations",
-        # "oauth_device_flow_poll_interval_seconds")`` when the server
-        # response does not carry an explicit interval.
         self.device_code = device_code
         self.user_code = user_code
         self.verification_uri = verification_uri
@@ -68,6 +64,12 @@ class DeviceFlowResult:
 
 _DEFAULT_HTTP_TIMEOUT_SECONDS: float = 30.0
 """Fallback OAuth HTTP timeout used when no operator override is supplied."""
+
+_DEFAULT_POLL_INTERVAL_SECONDS: int = 5
+"""RFC 8628 baseline polling cadence (5 s) used when the server omits
+``interval`` from the device-authorization response. Operators tune this
+through the ``integrations.oauth_device_flow_poll_interval_seconds``
+setting; resolve at construction and pass into ``DeviceFlow``."""
 
 
 class DeviceFlow:
@@ -80,17 +82,32 @@ class DeviceFlow:
     Args:
         http_timeout_seconds: HTTP timeout for initiate + poll token
             calls (mirrors ``integrations.oauth_http_timeout_seconds``).
+        default_poll_interval_seconds: Fallback polling cadence used
+            when the device-authorization response omits ``interval``.
+            Mirrors the
+            ``integrations.oauth_device_flow_poll_interval_seconds``
+            setting; resolve at the construction site and pass through.
+            The IETF dynamic ``slow_down`` widening (``+5`` per response)
+            in ``poll_for_token`` is preserved.
     """
 
     def __init__(
         self,
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
+        default_poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
         if http_timeout_seconds <= 0:
             msg = f"http_timeout_seconds must be > 0, got {http_timeout_seconds}"
             raise ValueError(msg)
+        if default_poll_interval_seconds <= 0:
+            msg = (
+                "default_poll_interval_seconds must be > 0,"
+                f" got {default_poll_interval_seconds}"
+            )
+            raise ValueError(msg)
         self._http_timeout_seconds = http_timeout_seconds
+        self._default_poll_interval_seconds = default_poll_interval_seconds
 
     @property
     def grant_type(self) -> str:
@@ -202,7 +219,7 @@ class DeviceFlow:
                 raise TokenExchangeFailedError(msg)
             return raw
 
-        interval_value = _positive_int("interval", 5)
+        interval_value = _positive_int("interval", self._default_poll_interval_seconds)
         expires_in_value = _positive_int("expires_in", 600)
 
         # user_code is an active credential -- do not log it at

@@ -18,7 +18,7 @@ On-demand reference. The short rule in `CLAUDE.md` is: no default may privilege 
 | Timezone | UTC stored everywhere; render via `Intl` without passing a `timeZone` option (browser tz wins) |
 | Number / date format | `Intl` with the resolved locale; never hand-rolled templates |
 | Units | Metric only |
-| Spelling | American English (`color`, `initialize`); document deviations |
+| Spelling | International / British English UI default (`colour`, `behaviour`, `organise`, `centred`, `analyse`, `cancelled`); document deviations |
 
 ## What's enforced
 

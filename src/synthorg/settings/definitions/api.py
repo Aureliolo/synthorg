@@ -95,10 +95,15 @@ _r.register(
         key="ssl_certfile",
         type=SettingType.STRING,
         default="",
-        description="Path to SSL certificate file (PEM format)",
+        description=(
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] Path to SSL"
+            " certificate file (PEM format)."
+        ),
         group="Server",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         yaml_path="api.server.ssl_certfile",
     )
 )
@@ -109,10 +114,15 @@ _r.register(
         key="ssl_keyfile",
         type=SettingType.STRING,
         default="",
-        description="Path to SSL private key file (PEM format)",
+        description=(
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] Path to SSL"
+            " private key file (PEM format)."
+        ),
         group="Server",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         sensitive=True,
         yaml_path="api.server.ssl_keyfile",
     )
@@ -124,10 +134,15 @@ _r.register(
         key="ssl_ca_certs",
         type=SettingType.STRING,
         default="",
-        description="Path to CA bundle for client certificate verification",
+        description=(
+            "[Bootstrap-only -- read via RootConfig at startup; this entry"
+            " exists for /settings discoverability only.] Path to CA"
+            " bundle for client certificate verification."
+        ),
         group="Server",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         yaml_path="api.server.ssl_ca_certs",
     )
 )

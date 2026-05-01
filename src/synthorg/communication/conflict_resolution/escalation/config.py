@@ -65,6 +65,6 @@ class EscalationQueueConfig(BaseModel):
     decision_strategy: Literal["winner", "hybrid"] = "winner"
     default_timeout_seconds: int | None = Field(default=None, ge=1)
     sweeper_interval_seconds: float = Field(default=30.0, ge=5.0)
-    reconnect_delay_seconds: float = Field(default=1.0, gt=0.0, le=60.0)
+    reconnect_delay_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
     cross_instance_notify: Literal["auto", "on", "off"] = "auto"
     notify_channel: NotifyChannel = Field(default="conflict_escalation_events")

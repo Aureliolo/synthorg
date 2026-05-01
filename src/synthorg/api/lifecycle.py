@@ -53,9 +53,10 @@ logger = get_logger(__name__)
 #     (drain) + ~26 s (services) = ~51 s.
 #
 # Internal constants by design: per-service shutdown budgets enforce a
-# fixed total worst-case drain (67 s plus the 25 s drain budget below),
-# matched in api/server.py by Litestar's 75 s graceful_shutdown to
-# reserve 8 s of headroom before the orchestrator SIGKILLs the process.
+# fixed total worst-case drain of ~67 s (drain 25 s + services 42 s,
+# already inclusive of the drain budget below), matched in
+# api/server.py by Litestar's 75 s graceful_shutdown to reserve ~8 s
+# of headroom (75 - 67) before the orchestrator SIGKILLs the process.
 # Recommended ``terminationGracePeriodSeconds: 75`` per
 # ``docs/design/deployment.md``. Raising any *individual* budget
 # requires a production-incident justification documented in the

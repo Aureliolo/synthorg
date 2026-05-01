@@ -39,10 +39,13 @@ def service() -> SettingsService:
     )
 
 
-# (namespace, key, expected_default).  The five API entries that the
-# audit flagged as misleading were marked ``read_only_post_init=True``
-# in this PR; this matrix locks the contract so a future refactor can't
-# silently flip them back to runtime-mutable.
+# (namespace, key, expected_default).  These five API entries are
+# bootstrap-only: ``RootConfig`` reads them once at startup and the
+# resulting values are baked into uvicorn / Litestar / middleware at
+# app construction.  The matrix locks ``read_only_post_init=True`` on
+# each entry so ``SettingsService.set()`` rejects mutations that would
+# otherwise appear to take effect but never actually flow through to
+# the running process until a restart.
 _BOOTSTRAP_ONLY_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
     ("api", "api_prefix", "/api/v1"),
     ("api", "server_host", "127.0.0.1"),

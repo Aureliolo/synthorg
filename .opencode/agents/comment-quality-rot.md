@@ -16,6 +16,8 @@ Read every changed file in the diff (source, tests, docstrings, log message stri
 
 ## What to Check
 
+<!-- markdownlint-disable MD029 -->
+
 ### Reviewer-origin citations (MAJOR)
 
 1. `pre-PR review #N`, `Pre-PR review finding (#N, ...)`
@@ -44,6 +46,8 @@ Read every changed file in the diff (source, tests, docstrings, log message stri
 12. `ported from`, `renamed from`, `moved here in round N`, `implemented as part of #N`
 13. Code or commit-message bodies framing current code in terms of how it got there rather than what it does
 
+<!-- markdownlint-enable MD029 -->
+
 ## Do NOT Flag
 
 - Workflow / tooling files: `.claude/skills/*`, `.opencode/commands/*`, `.claude/hookify.*.md`, `.github/workflows/*` -- when the reference describes what the workflow protects against (e.g. "blocks `(#NNNN)` patterns"), it is a functional description of the rule.
@@ -63,7 +67,7 @@ Read every changed file in the diff (source, tests, docstrings, log message stri
 
 For each violation:
 
-```
+```text
 [SEVERITY] file:line
   Quote: <offending text>
   Bucket: <1-13 from the list above>

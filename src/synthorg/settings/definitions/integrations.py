@@ -111,7 +111,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=60,
-        yaml_path="integrations.oauth_device_flow_poll_interval_seconds",
+        yaml_path="integrations.oauth.device_flow_poll_interval_seconds",
     )
 )
 

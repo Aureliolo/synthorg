@@ -13,14 +13,17 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import structlog
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, TimeoutActionType
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability.events.notification import (
     NOTIFICATION_ESCALATION_SEND,
     NOTIFICATION_SEND_FAILED,
 )
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.security.timeout.timeout_checker import TimeoutChecker
 
 pytestmark = pytest.mark.unit
 
@@ -51,12 +54,15 @@ async def test_escalation_notification_failure_logs_error(
         escalate_to="manager",
     )
 
-    checker = MagicMock()
-    checker.check_and_resolve = AsyncMock(return_value=(item, action))
-    dispatcher = AsyncMock()
+    checker = MagicMock(spec=TimeoutChecker)
+    checker.check_and_resolve = AsyncMock(
+        spec=TimeoutChecker.check_and_resolve,
+        return_value=(item, action),
+    )
+    dispatcher = AsyncMock(spec=NotificationDispatcher)
 
     scheduler = ApprovalTimeoutScheduler(
-        approval_store=MagicMock(),
+        approval_store=MagicMock(spec=ApprovalStoreProtocol),
         timeout_checker=checker,
         interval_seconds=60.0,
         notification_dispatcher=dispatcher,
@@ -83,8 +89,8 @@ async def test_escalation_notification_failure_logs_error(
 async def test_scheduler_stop_drains_pending_notifications() -> None:
     """Scheduler.stop() drains pending fire-and-forget notifications."""
     scheduler = ApprovalTimeoutScheduler(
-        approval_store=MagicMock(),
-        timeout_checker=MagicMock(),
+        approval_store=MagicMock(spec=ApprovalStoreProtocol),
+        timeout_checker=MagicMock(spec=TimeoutChecker),
         interval_seconds=60.0,
         notification_dispatcher=None,
     )

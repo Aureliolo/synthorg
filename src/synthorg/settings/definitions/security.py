@@ -128,7 +128,7 @@ _r.register(
     )
 )
 
-# ── Security timeout scheduler ──────────────────────────────────
+# ── Approval-timeout scheduler ──────────────────────────────────
 
 _r.register(
     SettingDefinition(
@@ -137,8 +137,9 @@ _r.register(
         type=SettingType.FLOAT,
         default="60.0",
         description=(
-            "Interval at which the security timeout scheduler scans for"
-            " stale or expired security tokens."
+            "Interval at which the approval-timeout scheduler scans for"
+            " pending approvals and applies the timeout policy"
+            " (approve, deny, or escalate)."
         ),
         group="Timeouts",
         level=SettingLevel.ADVANCED,

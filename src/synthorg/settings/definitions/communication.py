@@ -275,11 +275,15 @@ _r.register(
         type=SettingType.FLOAT,
         default="1.0",
         description=(
-            "Delay before the Postgres LISTEN/NOTIFY escalation subscriber"
-            " retries after a connection drop."
+            "[Bootstrap-only -- read via EscalationQueueConfig at startup;"
+            " this entry exists for /settings discoverability only.]"
+            " Delay before the Postgres LISTEN/NOTIFY escalation"
+            " subscriber retries after a connection drop."
         ),
         group="Escalation",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
         min_value=0.1,
         max_value=60.0,
         yaml_path="communication.escalation_subscriber_reconnect_delay_seconds",

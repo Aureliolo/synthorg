@@ -93,16 +93,18 @@ def run_server(config: RootConfig) -> None:
         ws_ping_timeout=ws_timeout,
         access_log=False,
         log_config=None,
-        # Internal constant by design: 25 s in-process drain +
-        # 67 s per-service shutdown budgets (api/lifecycle.py worst
-        # case) = 92 s theoretical maximum, capped at this 75 s
-        # uvicorn timeout, leaving ~8 s of headroom before the
-        # orchestrator's ``terminationGracePeriodSeconds: 75``
-        # SIGKILLs the process mid-teardown.  Raising this without
-        # also raising the per-service budgets surrenders the
-        # headroom back to SIGKILL.  Not exposed to the settings
-        # registry; see ``docs/design/deployment.md`` for the full
-        # math.
+        # Internal constant by design.  api/lifecycle.py per-service
+        # budgets sum to ~67 s worst case (25 s in-process drain +
+        # 42 s services, where the 25 s is already counted inside
+        # the 67 s total).  This 75 s uvicorn timeout matches the
+        # orchestrator's ``terminationGracePeriodSeconds: 75`` and
+        # leaves ~8 s of headroom (75 - 67) before SIGKILL fires
+        # mid-teardown.  Raising this without also raising the
+        # per-service budgets does not buy more time -- the
+        # orchestrator kills the process at the same instant.
+        # Lowering it surrenders the 8 s headroom back to SIGKILL.
+        # Not exposed to the settings registry; see
+        # ``docs/design/deployment.md`` for the full math.
         timeout_graceful_shutdown=75,
         **ssl_kwargs,
         **proxy_kwargs,
