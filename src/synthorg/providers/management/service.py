@@ -91,6 +91,23 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _safe_task_id_segment(value: str) -> str:
+    """Strip control / whitespace characters from a task-id segment.
+
+    The probe ``task_id`` is built from a user-supplied provider name.
+    ``NotBlankStr`` rejects empty input but permits control characters
+    (newlines, NUL, vertical tab, ...) that would corrupt downstream
+    log parsers, audit-trail task-id splitters, or plaintext log
+    rendering. Unicode is preserved -- only the C0/C1 control range,
+    ASCII delete, and whitespace get replaced with ``_``. Returns
+    ``"_"`` if every character was filtered (preserves ``NotBlankStr``).
+    """
+    cleaned = "".join(
+        ch if ch.isprintable() and not ch.isspace() else "_" for ch in value
+    )
+    return cleaned or "_"
+
+
 class ProviderManagementService(ProviderCapabilitiesMixin):
     """Runtime CRUD service for LLM providers.
 
@@ -328,8 +345,34 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         model_id: str,
     ) -> TestConnectionResponse:
         """Execute the actual connection test probe."""
+        from synthorg.providers.resilience.errors import (  # noqa: PLC0415
+            RetryExhaustedError,
+        )
+
         try:
             return await self._probe_provider(name, config, model_id)
+        except RetryExhaustedError as exc:
+            # ``RetryExhaustedError`` is a ``ProviderError`` subtype but
+            # carries different operational meaning: every retry tier
+            # was exhausted, the provider isn't reachable, and the
+            # retry-handler signal is the actionable diagnostic.
+            # Logging it separately preserves that signal -- otherwise
+            # operators see "connection failed" without knowing whether
+            # the upstream timed out once or N times.
+            logger.warning(
+                PROVIDER_CONNECTION_TESTED,
+                provider=name,
+                model=model_id,
+                success=False,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                retry_exhausted=True,
+            )
+            return TestConnectionResponse(
+                success=False,
+                error=safe_error_description(exc),
+                model_tested=model_id,
+            )
         except ProviderError as exc:
             logger.warning(
                 PROVIDER_CONNECTION_TESTED,
@@ -386,10 +429,17 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         # cost-recording chokepoint so the spend appears in the same
         # accounting surface as production calls. ``cost_tracker=None``
         # (legacy bootstrap rigs) makes the scope a no-op.
+        # ``_safe_task_id_segment(name)`` strips control characters so
+        # a crafted provider name (newlines, NUL, etc.) cannot inject
+        # log lines or distort downstream task-id parsers; the
+        # provider-side ``provider`` field on the CostRecord still
+        # carries the raw name for forensic accuracy.
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr("system"),
-            task_id=NotBlankStr(f"system:providers:test_connection:{name}"),
+            task_id=NotBlankStr(
+                f"system:providers:test_connection:{_safe_task_id_segment(name)}",
+            ),
             call_category=LLMCallCategory.SYSTEM,
         ):
             await driver.complete(messages, model_id)

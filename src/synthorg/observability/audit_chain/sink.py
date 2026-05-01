@@ -1,5 +1,6 @@
 """AuditChainSink -- logging handler that signs and chains security events."""
 
+import concurrent.futures
 import hashlib
 import json
 import logging
@@ -13,6 +14,8 @@ from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_CALLBACK_ERROR,
     AUDIT_CHAIN_EMIT_ERROR,
+    AUDIT_CHAIN_EMIT_TIMEOUT,
+    AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN,
 )
 
 if TYPE_CHECKING:
@@ -55,7 +58,7 @@ def _build_binding_payload(
     return hasher.digest()
 
 
-def _extract_event_name(record: logging.LogRecord) -> str:
+def _extract_event_name(record: logging.LogRecord) -> str | None:
     """Return the canonical event name from a stdlib LogRecord.
 
     Handles three shapes of ``record.msg`` produced by the codebase:
@@ -70,19 +73,21 @@ def _extract_event_name(record: logging.LogRecord) -> str:
       record post ``wrap_for_formatter``. The first tuple element is
       the event_dict.
 
-    Returns an empty string when the shape doesn't match (the caller
-    treats that as "not a security event" and skips emit).
+    Returns ``None`` when the shape doesn't match any known pattern; the
+    caller treats that as "not a security event" AND logs a warning so
+    a future logging-bridge change is visible to operators rather than
+    silently dropping security events on the floor.
     """
     msg = record.msg
     if isinstance(msg, str):
         return record.getMessage()
     if isinstance(msg, dict):
         event = msg.get("event")
-        return event if isinstance(event, str) else ""
+        return event if isinstance(event, str) else None
     if isinstance(msg, tuple) and msg and isinstance(msg[0], dict):
         event = msg[0].get("event")
-        return event if isinstance(event, str) else ""
-    return ""
+        return event if isinstance(event, str) else None
+    return None
 
 
 # Dedicated thread pool for async-to-sync bridging.  A single worker
@@ -275,6 +280,16 @@ class AuditChainSink(logging.Handler):
         # (``logger.info("security.x.y")``) keep ``msg`` as a string
         # and fall through to ``getMessage()``.
         msg = _extract_event_name(record)
+        if msg is None:
+            # Unrecognised record shape: a future logging-bridge change
+            # could otherwise silently drop security events on the
+            # floor. Log via the non-recursive ``audit_chain.*`` prefix.
+            logger.warning(
+                AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN,
+                record_msg_type=type(record.msg).__name__,
+                logger_name=record.name,
+            )
+            return
         if not any(msg.startswith(p) for p in self._AUDITED_PREFIXES):
             return
 
@@ -343,6 +358,22 @@ class AuditChainSink(logging.Handler):
 
         except MemoryError, RecursionError:
             raise
+        except concurrent.futures.TimeoutError:
+            # Distinguishing timeout from other emit failures lets the
+            # operator triage TSA / signer hangs separately from
+            # one-off serialization or callback failures. Use the
+            # non-audited prefix so this log can't recurse through
+            # ``emit()``. ``logger.error`` (not ``logger.exception``)
+            # is intentional: a TSA hang carries credential-bearing
+            # frame-locals in its traceback (signer key paths, TSA
+            # auth headers); the structured fields below are the only
+            # diagnostics that should reach any sink.
+            logger.error(  # noqa: TRY400 -- see rationale above
+                AUDIT_CHAIN_EMIT_TIMEOUT,
+                audited_event=msg,
+                timeout_seconds=self._signing_timeout_seconds,
+            )
+            self._invoke_append_callback("error", 0, 0.0)
         except Exception:
             # Use a non-audited event prefix (``audit_chain.*``) so
             # this error log can't loop back through ``emit()`` and

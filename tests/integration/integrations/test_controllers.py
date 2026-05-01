@@ -16,7 +16,7 @@ dependency injection, and RFC 9457 error translation are exercised
 on the real HTTP path.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -221,6 +221,18 @@ def _make_audit_state(catalog: object) -> dict[str, MagicMock]:
     return {"app_state": app_state}
 
 
+def _capture_emission(
+    events: Sequence[Mapping[str, object]],
+    name: str,
+) -> Mapping[str, object]:
+    """Return the single event dict matching ``name`` from the captured list."""
+    matches = [e for e in events if e.get("event") == name]
+    if len(matches) != 1:
+        msg = f"expected 1 emission of {name!r}, got {len(matches)}: {matches}"
+        raise AssertionError(msg)
+    return matches[0]
+
+
 @pytest.mark.integration
 class TestConnectionAuditEvents:
     """Connection mutations emit ``security.connection.*`` events.
@@ -235,7 +247,10 @@ class TestConnectionAuditEvents:
     ``LogRecord``.
     """
 
-    async def test_create_emits_security_event(self) -> None:
+    async def test_create_emits_security_event_with_payload(self) -> None:
+        """Create success emits one ``SECURITY_CONNECTION_CREATED`` and
+        carries the bare ``connection`` field (matching SECURITY_PROVIDER_*
+        naming) plus the connection_type and auth_method context."""
         import structlog
 
         from synthorg.api.controllers.connections import (
@@ -248,7 +263,7 @@ class TestConnectionAuditEvents:
         )
 
         catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.create = AsyncMock(return_value=_make_conn())
+        catalog.create.return_value = _make_conn()
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with structlog.testing.capture_logs() as events:
@@ -264,10 +279,14 @@ class TestConnectionAuditEvents:
                 ),
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CONNECTION_CREATED) == 1
+        emission = _capture_emission(events, SECURITY_CONNECTION_CREATED)
+        assert emission["connection"] == "gh"
+        assert emission["connection_type"] == "github"
+        assert emission["auth_method"] == "api_key"
 
-    async def test_update_emits_security_event(self) -> None:
+    async def test_update_emits_security_event_with_fields_changed(self) -> None:
+        """Update success carries the ``connection`` field and
+        ``fields_changed`` tag listing the partial-update keys."""
         import structlog
 
         from synthorg.api.controllers.connections import (
@@ -280,7 +299,7 @@ class TestConnectionAuditEvents:
         )
 
         catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.update = AsyncMock(return_value=_make_conn())
+        catalog.update.return_value = _make_conn()
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with structlog.testing.capture_logs() as events:
@@ -293,8 +312,9 @@ class TestConnectionAuditEvents:
                 ),
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CONNECTION_UPDATED) == 1
+        emission = _capture_emission(events, SECURITY_CONNECTION_UPDATED)
+        assert emission["connection"] == "gh"
+        assert emission["fields_changed"] == ["base_url"]
 
     async def test_delete_emits_security_event(self) -> None:
         import structlog
@@ -306,7 +326,7 @@ class TestConnectionAuditEvents:
         )
 
         catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.delete = AsyncMock(return_value=None)
+        catalog.delete.return_value = None
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with structlog.testing.capture_logs() as events:
@@ -316,10 +336,14 @@ class TestConnectionAuditEvents:
                 name="gh",
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CONNECTION_DELETED) == 1
+        emission = _capture_emission(events, SECURITY_CONNECTION_DELETED)
+        assert emission["connection"] == "gh"
 
     async def test_reveal_success_emits_security_event(self) -> None:
+        """Reveal success emits exactly one
+        ``SECURITY_CONNECTION_SECRET_REVEALED`` carrying the bare
+        ``connection`` field name and the ``field`` accessed; the actual
+        secret value is NEVER part of the event payload."""
         import structlog
 
         from synthorg.api.controllers.connections import ConnectionsController
@@ -329,9 +353,9 @@ class TestConnectionAuditEvents:
         )
 
         catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_credentials = AsyncMock(
-            return_value={"client_secret": "real-secret-value"},
-        )
+        catalog.get_credentials.return_value = {
+            "client_secret": "real-secret-value",
+        }
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with structlog.testing.capture_logs() as events:
@@ -342,20 +366,62 @@ class TestConnectionAuditEvents:
                 field="client_secret",
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CONNECTION_SECRET_REVEALED) == 1
+        emission = _capture_emission(events, SECURITY_CONNECTION_SECRET_REVEALED)
+        assert emission["connection"] == "gh"
+        assert emission["field"] == "client_secret"
+        # Secret value never appears in the event payload.
+        for v in emission.values():
+            assert "real-secret-value" not in str(v)
 
-    async def test_reveal_field_missing_emits_failed_security_event(self) -> None:
+    @pytest.mark.parametrize(
+        ("setup_side_effect", "expected_reason"),
+        [
+            (
+                "field_missing",
+                "field_not_set",
+            ),
+            (
+                "connection_missing",
+                "connection_not_found",
+            ),
+            (
+                "backend_error",
+                "secret_retrieval_failed",
+            ),
+        ],
+        ids=["field_missing", "connection_missing", "backend_error"],
+    )
+    async def test_reveal_failure_emits_security_event_with_reason(
+        self,
+        setup_side_effect: str,
+        expected_reason: str,
+    ) -> None:
+        """Each reveal-failure branch emits ``SECURITY_CONNECTION_SECRET_REVEAL_FAILED``
+        with the right ``reason`` tag. Locks the contract that future
+        refactors keep the three branches distinguishable in the audit chain."""
         import structlog
 
         from synthorg.api.controllers.connections import ConnectionsController
         from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.integrations.errors import (
+            ConnectionNotFoundError,
+            SecretRetrievalError,
+        )
         from synthorg.observability.events.security import (
             SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
         )
 
         catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_credentials = AsyncMock(return_value={"other": "x"})
+        if setup_side_effect == "field_missing":
+            catalog.get_credentials.return_value = {"other": "x"}
+        elif setup_side_effect == "connection_missing":
+            catalog.get_credentials.side_effect = ConnectionNotFoundError(
+                "gh missing",
+            )
+        else:
+            catalog.get_credentials.side_effect = SecretRetrievalError(
+                "vault timeout",
+            )
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with structlog.testing.capture_logs() as events, pytest.raises(NotFoundError):
@@ -366,62 +432,10 @@ class TestConnectionAuditEvents:
                 field="client_secret",
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CONNECTION_SECRET_REVEAL_FAILED) == 1
-
-    async def test_reveal_connection_missing_emits_failed_security_event(self) -> None:
-        import structlog
-
-        from synthorg.api.controllers.connections import ConnectionsController
-        from synthorg.integrations.connections.catalog import ConnectionCatalog
-        from synthorg.integrations.errors import ConnectionNotFoundError
-        from synthorg.observability.events.security import (
-            SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-        )
-
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_credentials = AsyncMock(
-            side_effect=ConnectionNotFoundError("gh missing"),
-        )
-
-        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with structlog.testing.capture_logs() as events, pytest.raises(NotFoundError):
-            await ctrl.reveal_secret.fn(
-                ctrl,
-                state=_make_audit_state(catalog),
-                name="gh",
-                field="client_secret",
-            )
-
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CONNECTION_SECRET_REVEAL_FAILED) == 1
-
-    async def test_reveal_backend_error_emits_failed_security_event(self) -> None:
-        import structlog
-
-        from synthorg.api.controllers.connections import ConnectionsController
-        from synthorg.integrations.connections.catalog import ConnectionCatalog
-        from synthorg.integrations.errors import SecretRetrievalError
-        from synthorg.observability.events.security import (
-            SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-        )
-
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_credentials = AsyncMock(
-            side_effect=SecretRetrievalError("vault timeout"),
-        )
-
-        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with structlog.testing.capture_logs() as events, pytest.raises(NotFoundError):
-            await ctrl.reveal_secret.fn(
-                ctrl,
-                state=_make_audit_state(catalog),
-                name="gh",
-                field="client_secret",
-            )
-
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CONNECTION_SECRET_REVEAL_FAILED) == 1
+        emission = _capture_emission(events, SECURITY_CONNECTION_SECRET_REVEAL_FAILED)
+        assert emission["connection"] == "gh"
+        assert emission["field"] == "client_secret"
+        assert emission["reason"] == expected_reason
 
 
 @pytest.mark.integration

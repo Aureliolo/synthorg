@@ -257,10 +257,13 @@ class ConnectionsController(Controller):
             raise ValidationError(str(exc)) from exc
         # Connection records carry credentials; route the success
         # event through the audit chain (the SECURITY_* prefix is the
-        # ``AuditChainSink`` filter).
+        # ``AuditChainSink`` filter). Field naming mirrors
+        # ``SECURITY_PROVIDER_CREATED`` (bare resource name) so
+        # forensic queries use a single key across the security event
+        # surface.
         logger.info(
             SECURITY_CONNECTION_CREATED,
-            connection_name=data.name,
+            connection=data.name,
             connection_type=data.connection_type.value,
             auth_method=data.auth_method.value,
         )
@@ -336,7 +339,7 @@ class ConnectionsController(Controller):
             raise NotFoundError(str(exc)) from exc
         logger.info(
             SECURITY_CONNECTION_UPDATED,
-            connection_name=name,
+            connection=name,
             fields_changed=sorted(data.model_fields_set),
         )
         return ApiResponse(data=conn)
@@ -370,7 +373,7 @@ class ConnectionsController(Controller):
             raise NotFoundError(str(exc)) from exc
         logger.info(
             SECURITY_CONNECTION_DELETED,
-            connection_name=name,
+            connection=name,
         )
         return ApiResponse(data=None)
 
@@ -436,7 +439,7 @@ class ConnectionsController(Controller):
         except ConnectionNotFoundError as exc:
             logger.warning(
                 SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-                connection_name=name,
+                connection=name,
                 field=field,
                 reason="connection_not_found",
             )
@@ -457,7 +460,7 @@ class ConnectionsController(Controller):
             # ``safe_error_description`` is the only message emitted.
             logger.error(  # noqa: TRY400
                 SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-                connection_name=name,
+                connection=name,
                 field=field,
                 reason="secret_retrieval_failed",
                 error_type=type(exc).__name__,
@@ -469,14 +472,14 @@ class ConnectionsController(Controller):
         if value is None:
             logger.warning(
                 SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-                connection_name=name,
+                connection=name,
                 field=field,
                 reason="field_not_set",
             )
             raise NotFoundError(_REVEAL_GENERIC_ERROR)
         logger.info(
             SECURITY_CONNECTION_SECRET_REVEALED,
-            connection_name=name,
+            connection=name,
             field=field,
         )
         return ApiResponse(data={"field": field, "value": value})

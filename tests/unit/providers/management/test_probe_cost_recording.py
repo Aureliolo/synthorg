@@ -94,10 +94,18 @@ class TestProbeCostRecording:
         self,
         app_state: AppState,
     ) -> None:
-        """Without a tracker the scope is a no-op; no record is emitted."""
+        """Without a tracker the scope is a no-op AND leaves no
+        cost-recording context active in the calling task.
+
+        The two assertions cover both halves of the no-op contract:
+        the call succeeds (no exception), and the chokepoint context
+        var is unchanged (no leaked scope across boundaries)."""
+        from synthorg.providers.cost_recording import current_cost_context
+
         service = _make_service_with_tracker(app_state, cost_tracker=None)
         await service.create_provider(make_create_request())
 
+        assert current_cost_context() is None
         with patch.object(
             LiteLLMDriver,
             "_do_complete",
@@ -111,9 +119,8 @@ class TestProbeCostRecording:
 
         assert result.success is True
         await drain_pending_cost_records()
-        # No tracker wired -> nothing to assert beyond the absence of
-        # an exception. The chokepoint reads ``None`` from the context
-        # and is a true no-op.
+        # Scope tore down cleanly: no leaked context in the caller.
+        assert current_cost_context() is None
 
     async def test_probe_failure_does_not_record(
         self,
@@ -143,3 +150,45 @@ class TestProbeCostRecording:
         await drain_pending_cost_records()
         records = await tracker.get_records()
         assert records == ()
+
+    async def test_probe_propagates_provider_exception(
+        self,
+        app_state: AppState,
+    ) -> None:
+        """An ``AuthenticationError`` raised inside the cost-recording
+        scope propagates out of ``_probe_provider`` to the caller's
+        exception handler. Without this, a future change that swallows
+        exceptions in ``cost_recording_scope.__aexit__`` would silently
+        report success on a failed probe."""
+        from synthorg.providers.errors import AuthenticationError
+
+        tracker = CostTracker(
+            budget_config=BudgetConfig(currency="USD"),
+        )
+        service = _make_service_with_tracker(app_state, tracker)
+        await service.create_provider(make_create_request())
+
+        # Bypass _do_test_connection's catch by calling _probe_provider
+        # directly: this asserts the scope's exception path, not the
+        # handler's recovery path.
+        from synthorg.providers.management.service import (
+            ProviderManagementService,
+        )
+
+        providers = await service.list_providers()
+        config = providers["test-provider"]
+        with (
+            patch.object(
+                LiteLLMDriver,
+                "_do_complete",
+                new_callable=AsyncMock,
+                side_effect=AuthenticationError("Invalid key"),
+            ),
+            pytest.raises(AuthenticationError, match="Invalid key"),
+        ):
+            await ProviderManagementService._probe_provider(
+                service,
+                "test-provider",
+                config,
+                "test-model-001",
+            )

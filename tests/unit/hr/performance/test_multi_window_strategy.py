@@ -229,6 +229,21 @@ class TestMultiWindowStrategy:
         assert result[0].data_point_count == 1  # 7d: only 2-day-old
         assert result[1].data_point_count == 2  # 30d: both
 
+    def test_record_currency_is_required_by_model(self) -> None:
+        """``TaskMetricRecord.currency`` is ``str`` (not ``str | None``):
+        the model itself prevents the ``next(iter({None}))`` edge case at
+        the boundary, so ``_compute_single_window`` never sees a record
+        whose currency is ``None``. Pin the contract so a future relaxation
+        of ``TaskMetricRecord.currency`` can't silently re-introduce the
+        ``StopIteration`` risk."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            make_task_metric(
+                completed_at=NOW - timedelta(hours=1),
+                currency=None,  # type: ignore[arg-type]
+            )
+
     def test_avg_cost_uses_fsum_for_monetary_summation(
         self,
         monkeypatch: pytest.MonkeyPatch,

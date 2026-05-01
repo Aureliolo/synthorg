@@ -301,10 +301,13 @@ class CustomRuleController(Controller):
         # Custom rules define automation triggers (control plane);
         # route the success event through the audit chain via the
         # SECURITY_* prefix so the mutation is signed and chained
-        # alongside settings / autonomy changes.
+        # alongside settings / autonomy changes. ``rule`` is the bare
+        # canonical identifier (UUID), mirroring the
+        # ``SECURITY_PROVIDER_CREATED`` naming pattern; the human name
+        # rides alongside as ``rule_name`` for readability.
         logger.info(
             SECURITY_CUSTOM_RULE_CREATED,
-            rule_id=str(saved.id),
+            rule=str(saved.id),
             rule_name=saved.name,
             metric_path=saved.metric_path,
             severity=saved.severity.value,
@@ -361,7 +364,7 @@ class CustomRuleController(Controller):
             raise ConflictError(str(exc)) from exc
         logger.info(
             SECURITY_CUSTOM_RULE_UPDATED,
-            rule_id=rule_id,
+            rule=rule_id,
             fields_changed=sorted(data.model_dump(exclude_none=True).keys()),
         )
         return ApiResponse[dict[str, Any]](
@@ -399,7 +402,7 @@ class CustomRuleController(Controller):
             raise NotFoundError(str(exc)) from exc
         logger.info(
             SECURITY_CUSTOM_RULE_DELETED,
-            rule_id=rule_id,
+            rule=rule_id,
         )
 
     @post(
@@ -435,7 +438,7 @@ class CustomRuleController(Controller):
             raise NotFoundError(str(exc)) from exc
         logger.info(
             SECURITY_CUSTOM_RULE_TOGGLED,
-            rule_id=rule_id,
+            rule=rule_id,
             enabled=toggled.enabled,
         )
         return ApiResponse[dict[str, Any]](

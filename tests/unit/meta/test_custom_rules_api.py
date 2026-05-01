@@ -337,10 +337,15 @@ class TestCustomRuleAuditEvents:
     signed.
     """
 
-    async def test_create_emits_security_event(
+    async def test_create_emits_security_event_with_payload(
         self,
         patched_service: MagicMock,
     ) -> None:
+        """Create success carries the bare ``rule`` field (matching
+        SECURITY_PROVIDER_* naming) plus rule_name / metric_path /
+        severity context. A future log refactor that drops one of these
+        fields would break forensic queries -- the payload assertions
+        pin the contract."""
         rule = _make_rule()
         patched_service.create.return_value = rule
 
@@ -360,13 +365,20 @@ class TestCustomRuleAuditEvents:
                 ),
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CUSTOM_RULE_CREATED) == 1
+        matches = [e for e in events if e["event"] == SECURITY_CUSTOM_RULE_CREATED]
+        assert len(matches) == 1
+        emission = matches[0]
+        assert emission["rule"] == str(rule.id)
+        assert emission["rule_name"] == rule.name
+        assert emission["metric_path"] == rule.metric_path
+        assert emission["severity"] == rule.severity.value
 
-    async def test_update_emits_security_event(
+    async def test_update_emits_security_event_with_fields_changed(
         self,
         patched_service: MagicMock,
     ) -> None:
+        """Update success carries the bare ``rule`` field and
+        ``fields_changed`` reflecting only the partial-update keys."""
         rule = _make_rule()
         patched_service.update.return_value = rule
 
@@ -379,8 +391,11 @@ class TestCustomRuleAuditEvents:
                 data=UpdateCustomRuleRequest(threshold=9.0),
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CUSTOM_RULE_UPDATED) == 1
+        matches = [e for e in events if e["event"] == SECURITY_CUSTOM_RULE_UPDATED]
+        assert len(matches) == 1
+        emission = matches[0]
+        assert emission["rule"] == str(rule.id)
+        assert emission["fields_changed"] == ["threshold"]
 
     async def test_delete_emits_security_event(
         self,
@@ -397,8 +412,9 @@ class TestCustomRuleAuditEvents:
                 rule_id=str(rule.id),
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CUSTOM_RULE_DELETED) == 1
+        matches = [e for e in events if e["event"] == SECURITY_CUSTOM_RULE_DELETED]
+        assert len(matches) == 1
+        assert matches[0]["rule"] == str(rule.id)
 
     async def test_toggle_emits_security_event(
         self,
@@ -415,8 +431,11 @@ class TestCustomRuleAuditEvents:
                 rule_id=str(rule.id),
             )
 
-        emitted = [e["event"] for e in events]
-        assert emitted.count(SECURITY_CUSTOM_RULE_TOGGLED) == 1
+        matches = [e for e in events if e["event"] == SECURITY_CUSTOM_RULE_TOGGLED]
+        assert len(matches) == 1
+        emission = matches[0]
+        assert emission["rule"] == str(rule.id)
+        assert emission["enabled"] is False
 
     async def test_delete_missing_does_not_emit_security_event(
         self,

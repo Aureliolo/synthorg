@@ -1,5 +1,6 @@
 """Tests for the audit chain module."""
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
@@ -355,3 +356,174 @@ class TestHashChainProperties:
             )
         assert chain.verify_integrity() is True
         assert len(chain.entries) == n
+
+
+# ── _extract_event_name ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestExtractEventName:
+    """Cover all four shapes of ``record.msg`` the helper handles."""
+
+    def _record(self, msg: object) -> logging.LogRecord:
+        return logging.LogRecord(
+            name="synthorg.test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None,
+        )
+
+    def test_string_msg_returns_message(self) -> None:
+        from synthorg.observability.audit_chain.sink import _extract_event_name
+
+        assert (
+            _extract_event_name(self._record("security.connection.created"))
+            == "security.connection.created"
+        )
+
+    def test_dict_msg_returns_event_key(self) -> None:
+        """structlog pre-``wrap_for_formatter`` records carry the event_dict
+        directly as ``record.msg``."""
+        from synthorg.observability.audit_chain.sink import _extract_event_name
+
+        msg = {"event": "security.connection.updated", "extra": "kept"}
+        assert _extract_event_name(self._record(msg)) == "security.connection.updated"
+
+    def test_tuple_msg_returns_event_key(self) -> None:
+        """structlog post-``wrap_for_formatter`` records wrap the event_dict
+        in a tuple so ``ProcessorFormatter`` can rebuild it later."""
+        from synthorg.observability.audit_chain.sink import _extract_event_name
+
+        msg = ({"event": "security.connection.deleted"}, ["foreign", "chain"])
+        assert _extract_event_name(self._record(msg)) == "security.connection.deleted"
+
+    def test_unknown_shape_returns_none(self) -> None:
+        """Sentinel: unknown shapes return ``None`` so the caller can log
+        a warning and skip the emit instead of silently dropping."""
+        from synthorg.observability.audit_chain.sink import _extract_event_name
+
+        assert _extract_event_name(self._record(42)) is None
+        assert _extract_event_name(self._record(["list", "msg"])) is None
+        assert _extract_event_name(self._record(())) is None
+        assert _extract_event_name(self._record({"missing_event_key": True})) is None
+
+
+# ── AuditChainSink emit() failure paths ────────────────────────────
+
+
+def _build_log_record(event: str) -> logging.LogRecord:
+    """Stdlib LogRecord pre-shaped with a structlog event-dict ``msg``.
+
+    Mirrors the dict shape produced by ``synthorg.observability.get_logger``
+    so the sink's ``_extract_event_name`` and ``emit`` paths exercise the
+    structured route, not the bare-string fallback.
+    """
+    return logging.LogRecord(
+        name="synthorg.test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg={"event": event, "level": "info"},
+        args=(),
+        exc_info=None,
+    )
+
+
+@pytest.mark.unit
+class TestAuditChainSinkFailurePaths:
+    """``emit()`` failure-path coverage and callback re-entry safety."""
+
+    def _make_sink(self, *, signer: AsyncMock) -> AuditChainSink:
+        return AuditChainSink(
+            signer=signer,
+            timestamp_provider=LocalClockProvider(),
+        )
+
+    def test_signing_timeout_invokes_callback_with_error(self) -> None:
+        """A signer that hangs past the timeout fires the
+        ``status="error"`` callback path and does NOT append."""
+        signer = _make_mock_signer()
+
+        async def _hang(_data: bytes) -> SignedPayload:
+            await asyncio.sleep(10.0)
+            msg = "unreachable"
+            raise RuntimeError(msg)
+
+        signer.sign.side_effect = _hang
+        sink = AuditChainSink(
+            signer=signer,
+            timestamp_provider=LocalClockProvider(),
+            signing_timeout_seconds=0.05,
+        )
+        callback_calls: list[tuple[str, int, float]] = []
+        sink.set_append_callback(
+            lambda status, depth, ts: callback_calls.append((status, depth, ts)),
+        )
+
+        sink.emit(_build_log_record("security.test.timeout"))
+
+        assert len(sink.chain.entries) == 0
+        assert callback_calls == [("error", 0, 0.0)]
+
+    def test_signer_exception_invokes_callback_with_error(self) -> None:
+        """A signer that raises a non-timeout exception still fires the
+        ``status="error"`` callback path."""
+        signer = _make_mock_signer()
+
+        async def _crash(_data: bytes) -> SignedPayload:
+            error_msg = "signer crashed"
+            raise RuntimeError(error_msg)
+
+        signer.sign.side_effect = _crash
+        sink = self._make_sink(signer=signer)
+        callback_calls: list[tuple[str, int, float]] = []
+        sink.set_append_callback(
+            lambda status, depth, ts: callback_calls.append((status, depth, ts)),
+        )
+
+        sink.emit(_build_log_record("security.test.crash"))
+
+        assert len(sink.chain.entries) == 0
+        assert callback_calls == [("error", 0, 0.0)]
+
+    def test_callback_exception_does_not_break_chain(self) -> None:
+        """If the append callback raises, the chain still appended
+        (``_invoke_append_callback`` swallows callback errors)."""
+
+        def _bad_callback(_status: str, _depth: int, _ts: float) -> None:
+            error_msg = "metrics db down"
+            raise ValueError(error_msg)
+
+        sink = self._make_sink(signer=_make_mock_signer())
+        sink.set_append_callback(_bad_callback)
+
+        # Should NOT raise; chain still appends.
+        sink.emit(_build_log_record("security.test.callback_error"))
+
+        assert len(sink.chain.entries) == 1
+
+    def test_unknown_record_shape_drops_silently(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A record whose ``msg`` shape doesn't match any known pattern
+        is dropped from the chain AND emits a warning under the
+        non-recursive ``audit_chain.*`` prefix so operators can debug."""
+        sink = self._make_sink(signer=_make_mock_signer())
+        record = logging.LogRecord(
+            name="synthorg.test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=42,  # integer is not a recognized shape
+            args=(),
+            exc_info=None,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            sink.emit(record)
+
+        assert len(sink.chain.entries) == 0

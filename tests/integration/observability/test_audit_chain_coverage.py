@@ -7,8 +7,9 @@ hash chain. The chain's ``verify_integrity()`` is asserted at the end
 to prove the entries are properly linked.
 
 The unit-level test at ``tests/unit/observability/audit_chain/test_audit_chain.py``
-covers HashChain mechanics in isolation; this module is the
-end-to-end coverage guard for issue #1684.
+covers HashChain mechanics in isolation; this module verifies that
+controller-driven credential and control-plane mutations actually flow
+into the chain.
 """
 
 import logging
@@ -41,6 +42,7 @@ from synthorg.integrations.connections.models import (
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.meta.rules.service import CustomRulesService
+from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.protocol import (
     AuditChainSigner,
     SignedPayload,
@@ -170,6 +172,19 @@ def _connection_state() -> dict[str, MagicMock]:
     return {"app_state": app_state}
 
 
+def _tamper_previous_hash(snapshot: HashChain) -> None:
+    """Corrupt the last entry's ``previous_hash`` on a chain snapshot.
+
+    Centralises the private-attribute access so the tamper helper sits
+    next to the integration tests that need it. ``HashChain`` does not
+    expose a public mutation surface (by design: append-only, link-only).
+    """
+    last = snapshot._entries[-1]
+    snapshot._entries[-1] = last.model_copy(
+        update={"previous_hash": "tampered"},
+    )
+
+
 def _custom_rule_state(rule: CustomRuleDefinition) -> MagicMock:
     """Build a controller state with a stubbed persistence layer."""
     _ = rule
@@ -269,15 +284,14 @@ class TestConnectionAuditChainCoverage:
         assert after - before == expected_appends
         assert snapshot.verify_integrity() is True
 
-        # Tamper detection: corrupt one previous_hash on the snapshot
-        # and confirm verify_integrity reports failure. Snapshot is a
-        # copy so the live chain stays clean for other tests; the
-        # property we're proving here is the chain's tamper-evident
-        # contract, not the snapshot semantics.
-        tampered = snapshot._entries[-1].model_copy(
-            update={"previous_hash": "tampered"},
-        )
-        snapshot._entries[-1] = tampered
+        # Tamper detection: ``HashChain.append`` only links forward, so
+        # there is no public mutation API for tampering. Reach into the
+        # private ``_entries`` list (the same approach the unit test in
+        # ``tests/unit/observability/audit_chain/test_audit_chain.py``
+        # uses) to corrupt a ``previous_hash`` and confirm
+        # ``verify_integrity`` reports failure. Snapshot is a copy so
+        # the live chain stays clean for the rest of the suite.
+        _tamper_previous_hash(snapshot)
         assert snapshot.verify_integrity() is False
 
 
@@ -362,12 +376,14 @@ class TestCustomRuleAuditChainCoverage:
 
 @pytest.mark.integration
 class TestAuditChainEventNamespaceClosure:
-    """Negative coverage: ``integrations.*`` events are NOT signed.
+    """Negative coverage: only ``security.*`` and ``tool.registry.integrity.*``
+    cross into the audit chain.
 
-    The pre-#1684 connection-secret events lived under ``integrations.*``;
-    the AuditChainSink only filters ``security.*`` and
-    ``tool.registry.integrity.*``. This guards the post-rename invariant
-    that connection / custom-rule operational events do not double-sign.
+    The ``AuditChainSink`` filter is the single opt-in mechanism: an event
+    is signed iff its name carries one of the audited prefixes. This class
+    asserts that boundary stays closed -- ``integrations.*`` operational
+    events are silently ignored, and ``security.*`` emissions from anywhere
+    in the synthorg logger tree route through the chain.
     """
 
     async def test_integrations_namespace_not_signed(
