@@ -15,7 +15,6 @@ class TestArtifactController:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     def test_get_artifact_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/artifacts/nonexistent")
@@ -72,7 +71,12 @@ class TestArtifactController:
         resp = test_client.get("/api/v1/artifacts")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 2
+        assert isinstance(body["data"], list)
+        # Both created artifacts must appear in the listing -- a weak
+        # ``len(...) >= 1`` would still pass if one of them silently
+        # disappeared between create and list.
+        returned_paths = {item.get("path") for item in body["data"]}
+        assert {"src/a.py", "tests/a.py"}.issubset(returned_paths)
 
     def test_list_artifacts_filter_by_task_id(
         self, test_client: TestClient[Any]
@@ -100,7 +104,6 @@ class TestArtifactController:
         resp = test_client.get("/api/v1/artifacts?task_id=task-A")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["task_id"] == "task-A"
 
     def test_list_artifacts_filter_by_invalid_type(

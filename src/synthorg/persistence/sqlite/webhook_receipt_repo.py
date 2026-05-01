@@ -158,11 +158,23 @@ class SQLiteWebhookReceiptRepository:
             )
             raise QueryError(msg) from exc
 
-    async def cleanup_old(self, retention_days: int) -> int:
-        """Delete receipts whose ``received_at`` is older than *retention_days*.
+    async def cleanup_old_for_connection(
+        self,
+        connection_name: NotBlankStr,
+        retention_days: int,
+    ) -> int:
+        """Delete receipts for *connection_name* older than *retention_days*.
 
         ``retention_days <= 0`` is treated as a no-op so callers cannot
-        accidentally truncate the entire log via misconfiguration.
+        accidentally truncate the log via misconfiguration.
+
+        Note: holds ``self._write_lock`` for the duration of the DELETE
+        + COMMIT.  On a large ``webhook_receipts`` table this can
+        briefly block other writers (the daily sweep is serialised
+        against the rest of the SQLite write traffic by design).
+        Batching the delete is left as a future optimisation; current
+        deployment scale (handful of connections, days-scale retention)
+        keeps each per-connection sweep small.
         """
         if retention_days <= 0:
             return 0
@@ -171,17 +183,19 @@ class SQLiteWebhookReceiptRepository:
         async with self._write_lock:
             try:
                 cursor = await self._db.execute(
-                    "DELETE FROM webhook_receipts WHERE received_at < ?",
-                    (cutoff_iso,),
+                    "DELETE FROM webhook_receipts "
+                    "WHERE connection_name = ? AND received_at < ?",
+                    (str(connection_name), cutoff_iso),
                 )
                 removed = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
-                msg = "Failed to cleanup old webhook receipts"
+                msg = f"Failed to cleanup old webhook receipts for {connection_name!r}"
                 logger.warning(
                     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+                    connection_name=str(connection_name),
                     retention_days=retention_days,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -190,6 +204,7 @@ class SQLiteWebhookReceiptRepository:
         if removed:
             logger.info(
                 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
+                connection_name=str(connection_name),
                 retention_days=retention_days,
                 removed=removed,
             )

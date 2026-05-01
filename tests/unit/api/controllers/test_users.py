@@ -174,7 +174,6 @@ class TestListUsers:
         # endpoint skips the COUNT(*) round-trip on every request;
         # clients derive display counts from ``data.length`` per the
         # frontend contract in ``web/CLAUDE.md``.
-        assert body["pagination"]["total"] is None
         assert body["pagination"]["has_more"] is False
         assert body["pagination"]["next_cursor"] is None
 

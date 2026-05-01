@@ -38,7 +38,7 @@ class TestMeetingServiceDelete:
             result = await service.delete_meeting(
                 meeting_id=NotBlankStr("mtg-1"),
                 actor_id=NotBlankStr("user-1"),
-                reason=NotBlankStr("operator gdpr request"),
+                reason=NotBlankStr("operator user-deletion request"),
             )
 
         assert result is True
@@ -47,7 +47,7 @@ class TestMeetingServiceDelete:
         assert len(audit) == 1
         assert audit[0]["meeting_id"] == "mtg-1"
         assert audit[0]["actor_id"] == "user-1"
-        assert audit[0]["reason"] == "operator gdpr request"
+        assert audit[0]["reason"] == "operator user-deletion request"
 
     async def test_returns_false_and_skips_audit_when_id_missing(self) -> None:
         service, orch = _make_service(deleted=False)

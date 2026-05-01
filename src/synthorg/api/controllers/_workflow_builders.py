@@ -42,7 +42,7 @@ from synthorg.versioning import VersioningService
 if TYPE_CHECKING:
     from litestar.datastructures import State
 
-    from synthorg.api.dto import (
+    from synthorg.api.dto_workflow import (
         CreateFromBlueprintRequest,
         UpdateWorkflowDefinitionRequest,
     )

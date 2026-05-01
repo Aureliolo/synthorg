@@ -24,14 +24,10 @@ function singlePage(reports: readonly HealthReport[]): PaginatedResult<HealthRep
   const limit = 50
   return {
     data: [...reports],
-    total: reports.length,
-    offset: 0,
     limit,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total: reports.length,
-      offset: 0,
       limit,
       next_cursor: null,
       has_more: false,
@@ -49,6 +45,7 @@ const sampleConnection: Connection = {
   health_status: 'healthy',
   last_health_check_at: '2026-04-12T08:00:00Z',
   metadata: {},
+  webhook_receipt_retention_days: null,
   created_at: '2026-04-01T09:00:00Z',
   updated_at: '2026-04-12T08:00:00Z',
 }

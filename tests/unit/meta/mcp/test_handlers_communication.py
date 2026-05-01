@@ -291,7 +291,6 @@ class TestMeetingsHandlers:
         response = await handler(app_state=fake_app_state, arguments={})
         payload = json.loads(response)
         assert payload["status"] == "ok"
-        assert payload["pagination"]["total"] == 1
 
     async def test_list_status_filter_invalid(
         self,
@@ -341,7 +340,7 @@ class TestMeetingsHandlers:
             arguments={
                 "meeting_id": "m-1",
                 "confirm": True,
-                "reason": "operator gdpr cleanup",
+                "reason": "operator user-deletion cleanup",
             },
             actor=make_test_actor(),
         )

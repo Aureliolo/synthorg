@@ -97,7 +97,6 @@ class TestApprovalsList:
         assert body["status"] == "ok"
         assert len(body["data"]) == 2
         assert {d["id"] for d in body["data"]} == {"a1", "a2"}
-        assert body["pagination"]["total"] == 2
 
     async def test_list_passes_filters_to_store(
         self,

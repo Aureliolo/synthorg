@@ -12,7 +12,7 @@ across four submodules to keep each file under the 800-line guideline:
   audit, events, users, projects, requests, setup, simulations,
   template_packs, integration_health.
 * :mod:`._memory_finetune` -- fine-tuning, checkpoints, embedder,
-  GDPR delete.
+  memory-entry delete.
 
 Re-exports keep the historical
 ``from synthorg.meta.mcp.domains._remaining_args import X`` import

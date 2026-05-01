@@ -82,7 +82,7 @@ export const useUsersStore = create<UsersState>()((set, get) => {
       if (token !== listRequestToken) return
       set({
         users: page.data,
-        total: page.total,
+        total: page.data.length,
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         loading: false,
@@ -113,20 +113,40 @@ export const useUsersStore = create<UsersState>()((set, get) => {
       })
       // Drop the result if a newer ``fetchUsers`` (different token)
       // has superseded this load-more while we were awaiting; the
-      // pre-await snapshot is no longer authoritative.
-      if (token !== listRequestToken) return
+      // pre-await snapshot is no longer authoritative.  Clear
+      // ``loadingMore`` before bailing so a stale request that loses
+      // the token race does not leave the spinner pinned forever
+      // (subsequent fetch-more calls would early-return on the
+      // ``loadingMore`` guard).
+      if (token !== listRequestToken) {
+        set({ loadingMore: false })
+        return
+      }
       // Use the functional setter so concurrent mutations (e.g. a
       // grantOrgRole that lands while this page is in flight) are
       // not clobbered by the pre-await ``state.users`` snapshot.
-      set((current) => ({
-        users: [...current.users, ...page.data],
-        nextCursor: page.nextCursor,
-        hasMore: page.hasMore,
-        loadingMore: false,
-      }))
+      // Recompute ``total`` from the merged list so the count does
+      // not go stale once additional pages land (the wire envelope
+      // is cursor-only and no longer carries a server-side total).
+      set((current) => {
+        const merged = [...current.users, ...page.data]
+        return {
+          users: merged,
+          total: merged.length,
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+          loadingMore: false,
+        }
+      })
     } catch (err) {
       log.error('Failed to fetch more users', sanitizeForLog(err))
-      if (token !== listRequestToken) return
+      // Same reasoning as the success-path early return: clear
+      // ``loadingMore`` even on the stale-token branch so the
+      // pagination spinner cannot get stuck.
+      if (token !== listRequestToken) {
+        set({ loadingMore: false })
+        return
+      }
       set({ loadingMore: false, error: getErrorMessage(err) })
     }
   },

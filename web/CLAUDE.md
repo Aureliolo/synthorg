@@ -51,7 +51,7 @@ See [docs/reference/web-package-structure.md](../docs/reference/web-package-stru
 
 All store **mutation** actions (create / update / delete) follow the `stores/connections/crud-actions.ts` pattern: wrap the API call in `try` / `catch`, success path updates state + emits a success toast, failure path logs + emits an error toast + returns a sentinel (`null` for entity returns, `false` for delete). Optimistic mutations capture `previous` synchronously and restore in `catch`. **Callers MUST NOT wrap store mutation calls in `try` / `catch`**; the store owns the error UX. List reads (`fetch*`) set `error: string | null` on the store instead of toasting.
 
-**Cursor pagination (MANDATORY)**: list endpoints use opaque cursor-based paging via `PaginationMeta`. Stores keep `nextCursor` + `hasMore` in state (not offset arithmetic) and early-return when `!hasMore || !nextCursor`. `total` is nullable; derive display counts from `data.length` when `total === null`.
+**Cursor pagination (MANDATORY)**: list endpoints use opaque cursor-based paging via `PaginationMeta`. Stores keep `nextCursor` + `hasMore` in state (not offset arithmetic) and early-return when `!hasMore || !nextCursor`. Display counts come from `data.length`; the wire envelope no longer carries `total`.
 
 **Health / readiness endpoints (MANDATORY)**: `getLiveness()` is always 200 while the process is alive; `getReadiness()` is 200 healthy / 503 unavailable (binary `'ok' | 'unavailable'` outcome, no tri-state). Any new caller must handle the 503 path explicitly.
 

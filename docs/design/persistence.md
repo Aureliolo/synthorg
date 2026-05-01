@@ -201,7 +201,7 @@ semantics via an extra page, not an exact total.  Negative `limit` or
 List endpoints standardize on the `paginate_cursor` helper in
 `src/synthorg/api/pagination.py` and return `PaginatedResponse[T]` with
 the wire envelope documented in `web/CLAUDE.md`
-(``PaginationMeta { limit, next_cursor, has_more, total, offset }``).
+(``PaginationMeta { limit, next_cursor, has_more }``).
 Cursors are HMAC-signed offsets bound to a per-deployment secret
 (`SYNTHORG_PAGINATION_CURSOR_SECRET`), so a tampered cursor surfaces as
 HTTP 400 `InvalidCursorError` without leaking internal IDs or counts.

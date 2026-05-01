@@ -263,14 +263,10 @@ export const providersHandlers = [
     HttpResponse.json(
       paginatedFor<typeof listProviderAudit>({
         data: [],
-        total: null,
-        offset: 0,
         limit: 50,
         nextCursor: null,
         hasMore: false,
         pagination: {
-          total: null,
-          offset: 0,
           limit: 50,
           next_cursor: null,
           has_more: false,

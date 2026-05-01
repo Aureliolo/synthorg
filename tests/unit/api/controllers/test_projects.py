@@ -16,7 +16,6 @@ class TestProjectController:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     def test_get_project_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/projects/nonexistent")
@@ -61,7 +60,6 @@ class TestProjectController:
         resp = test_client.get("/api/v1/projects")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 2
         assert len(body["data"]) == 2
 
     def test_create_project_with_deadline(self, test_client: TestClient[Any]) -> None:

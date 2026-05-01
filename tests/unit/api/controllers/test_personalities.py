@@ -5,7 +5,6 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from synthorg.templates.presets import PERSONALITY_PRESETS
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -45,7 +44,6 @@ class TestListPresets:
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        assert body["pagination"]["total"] == len(PERSONALITY_PRESETS)
 
     def test_pagination_works(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/personalities/presets?offset=0&limit=5")

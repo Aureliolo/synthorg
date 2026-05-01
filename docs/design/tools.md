@@ -256,6 +256,13 @@ the manual `common_args` validators inside the handler body.
 }
 ```
 
+> Note: the example shows the **MCP-layer** ``PaginationMeta`` (defined in
+> ``synthorg.meta.mcp.handlers.common``), which intentionally retains the
+> legacy ``total``/``offset`` shape because MCP handlers slice
+> already-materialised sequences. The HTTP API uses a separate cursor-only
+> envelope (``synthorg.api.dto.PaginationMeta`` with
+> ``{limit, next_cursor, has_more}``); see persistence.md.
+
 Handler-caught error envelope (domain_code identifies the error class for
 programmatic dispatch):
 

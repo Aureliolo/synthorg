@@ -39,14 +39,10 @@ describe('useMcpCatalogStore', () => {
         HttpResponse.json(
           paginatedFor<typeof browseMcpCatalog>({
             data: entries,
-            total: entries.length,
-            offset: 0,
             limit: entries.length,
             nextCursor: null,
             hasMore: false,
             pagination: {
-              total: entries.length,
-              offset: 0,
               limit: entries.length,
               next_cursor: null,
               has_more: false,

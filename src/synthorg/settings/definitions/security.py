@@ -68,7 +68,7 @@ _r.register(
         description=(
             "Number of days to retain audit_entries before automatic"
             " purge. 0 disables purging (unbounded retention)."
-            " Default 730 (2 years) balances GDPR exposure against"
+            " Default 730 (2 years) balances audit retention against"
             " forensic value."
         ),
         group="Retention",

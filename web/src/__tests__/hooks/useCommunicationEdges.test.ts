@@ -12,9 +12,13 @@ type MessageSeed = { sender: string; to: string }
 function paginated(
   data: MessageSeed[],
   meta: {
-    total: number
-    offset: number
     limit: number
+    /**
+     * Required so paginated test pages cannot accidentally generate
+     * colliding message ids across calls. Pass an explicit offset for
+     * page 2+ (e.g. 100 if page 1 had 100 messages).
+     */
+    offset: number
     nextCursor?: string | null
     hasMore?: boolean
   },
@@ -25,8 +29,8 @@ function paginated(
   const messages: Message[] = data.map((seed, idx) => ({
     // Make ids globally unique across paginated pages so the
     // hook's de-dup logic sees distinct messages instead of
-    // collapsing them -- ``idx`` alone resets per page and would
-    // produce collisions (page 0 ``msg-0`` == page 1 ``msg-0``).
+    // collapsing them. The mandatory ``meta.offset`` argument forces
+    // every caller to supply a non-overlapping starting index.
     id: `msg-${meta.offset + idx}`,
     timestamp: '2026-04-21T00:00:00Z',
     sender: seed.sender,
@@ -48,14 +52,10 @@ function paginated(
   const hasMore = meta.hasMore ?? false
   return paginatedFor<typeof listMessages>({
     data: messages,
-    total: meta.total,
-    offset: meta.offset,
     limit: meta.limit,
     nextCursor,
     hasMore,
     pagination: {
-      total: meta.total,
-      offset: meta.offset,
       limit: meta.limit,
       next_cursor: nextCursor,
       has_more: hasMore,
@@ -90,7 +90,7 @@ describe('useCommunicationEdges', () => {
               { sender: 'bob', to: 'alice' },
               { sender: 'alice', to: 'carol' },
             ],
-            { total: 3, offset: 0, limit: 100 },
+            { offset: 0, limit: 100 },
           ),
         ),
       ),
@@ -129,7 +129,6 @@ describe('useCommunicationEdges', () => {
         if (params.get('cursor') === PAGE_2_CURSOR) {
           return HttpResponse.json(
             paginated(page2Data, {
-              total: 101,
               offset: 100,
               limit: 100,
               nextCursor: null,
@@ -139,7 +138,6 @@ describe('useCommunicationEdges', () => {
         }
         return HttpResponse.json(
           paginated(page1Data, {
-            total: 101,
             offset: 0,
             limit: 100,
             nextCursor: PAGE_2_CURSOR,
@@ -181,7 +179,7 @@ describe('useCommunicationEdges', () => {
   it('returns empty links when no messages exist', async () => {
     server.use(
       http.get('/api/v1/messages', () =>
-        HttpResponse.json(paginated([], { total: 0, offset: 0, limit: 100 })),
+        HttpResponse.json(paginated([], { offset: 0, limit: 100 })),
       ),
     )
 

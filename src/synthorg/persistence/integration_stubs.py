@@ -22,6 +22,7 @@ aliased to the stored value.
 
 import copy
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import (
     Connection,  # noqa: TC001
     ConnectionType,  # noqa: TC001
@@ -162,8 +163,9 @@ class InMemoryWebhookReceiptRepository:
         ]
         return tuple(matches[effective_offset : effective_offset + int(limit)])
 
-    async def cleanup_old(
+    async def cleanup_old_for_connection(
         self,
+        connection_name: NotBlankStr,  # noqa: ARG002
         retention_days: int,  # noqa: ARG002
     ) -> int:
         """In-memory: no retention policy; callers may truncate."""

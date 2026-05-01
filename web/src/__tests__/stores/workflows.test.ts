@@ -25,18 +25,13 @@ function makeWorkflow(
   } as WorkflowDefinition
 }
 
-function paginated(data: WorkflowDefinition[], total?: number) {
-  const resolvedTotal = total ?? data.length
+function paginated(data: WorkflowDefinition[]) {
   return paginatedFor<typeof listWorkflows>({
     data,
-    total: resolvedTotal,
-    offset: 0,
     limit: 200,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total: resolvedTotal,
-      offset: 0,
       limit: 200,
       next_cursor: null,
       has_more: false,
@@ -224,7 +219,7 @@ describe('fetchWorkflows', () => {
     const items = [makeWorkflow('1'), makeWorkflow('2')]
     server.use(
       http.get('/api/v1/workflows', () =>
-        HttpResponse.json(paginated(items, 2)),
+        HttpResponse.json(paginated(items)),
       ),
     )
 

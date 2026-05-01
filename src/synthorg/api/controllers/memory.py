@@ -11,8 +11,9 @@ from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import HumanRole, require_roles
+from synthorg.api.pagination import encode_repo_seek_meta
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import (
@@ -81,7 +82,7 @@ def _build_memory_service(
     The ``require_fine_tune`` flag separates the fine-tune-admin
     endpoints (which need both checkpoint + run repos and translate a
     missing backend implementation into HTTP 501) from memory-only
-    endpoints such as the GDPR ``DELETE /memory/entries/...`` path,
+    endpoints such as the ``DELETE /memory/entries/...`` path,
     which only need the ``MemoryBackend``. Without this carve-out a
     Postgres deployment that wires a memory backend without fine-tune
     support would 501 on every entry deletion even though
@@ -380,12 +381,13 @@ class MemoryAdminController(Controller):
         offset = max(offset, 0)
         service = _build_memory_service(state.app_state)
         cps, total = await service.list_checkpoints(limit=limit, offset=offset)
-        meta = PaginationMeta(
-            limit=limit,
+        meta = encode_repo_seek_meta(
             offset=offset,
+            page_len=len(cps),
             total=total,
-            has_more=(offset + len(cps)) < total,
-            next_cursor=None,
+            limit=limit,
+            secret=state.app_state.cursor_secret,
+            reject_stale_cursor=False,
         )
         return PaginatedResponse(data=cps, pagination=meta)
 
@@ -568,7 +570,7 @@ class MemoryAdminController(Controller):
             raise ConflictError(msg) from exc
         return ApiResponse(data=None)
 
-    # -- Memory entries (GDPR) ---------------------------------------
+    # -- Memory entries -------------------------------------------------
 
     @delete(
         "/agents/{agent_id:str}/memories/{memory_id:str}",
@@ -595,8 +597,8 @@ class MemoryAdminController(Controller):
         """
         # ``require_fine_tune=False`` -- entry deletion only needs the
         # ``MemoryBackend``; eagerly resolving the fine-tune repos
-        # would 501 every memory-only deployment, which the GDPR delete
-        # path must support.
+        # would 501 every memory-only deployment, which the
+        # ``DELETE /memory/entries/...`` path must support.
         service = _build_memory_service(state.app_state, require_fine_tune=False)
         try:
             deleted = await service.delete_memory_entry(
@@ -636,11 +638,13 @@ class MemoryAdminController(Controller):
         runs, total = await service.list_runs(limit=limit, offset=offset)
         return PaginatedResponse(
             data=runs,
-            pagination=PaginationMeta(
-                limit=limit,
+            pagination=encode_repo_seek_meta(
                 offset=offset,
+                page_len=len(runs),
                 total=total,
-                has_more=(offset + len(runs)) < total,
+                limit=limit,
+                secret=state.app_state.cursor_secret,
+                reject_stale_cursor=False,
             ),
         )
 

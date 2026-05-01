@@ -77,6 +77,10 @@ class CreateConnectionRequest(BaseModel):
     base_url: NotBlankStr | None = None
     metadata: dict[str, str] | None = None
     health_check_enabled: bool = True
+    # Per-connection override for the webhook-receipt cleanup window.
+    # ``None`` falls back to the global ``integrations.webhook_receipt_retention_days``
+    # setting; ``0`` opts this connection out of the sweep entirely.
+    webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
 
     @field_validator("name")
     @classmethod
@@ -104,6 +108,11 @@ class UpdateConnectionRequest(BaseModel):
     # in the catalog / health-check path.
     metadata: dict[str, str] | None = None
     health_check_enabled: bool | None = None
+    # Same tri-state semantics as ``CreateConnectionRequest``:
+    # ``None`` clears the override (falls back to global default),
+    # an int sets the override, omitting the field keeps the existing
+    # stored value (handled via ``model_fields_set`` below).
+    webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
 
 
 class ConnectionsController(Controller):
@@ -204,6 +213,7 @@ class ConnectionsController(Controller):
                 base_url=data.base_url,
                 metadata=metadata_copy,
                 health_check_enabled=data.health_check_enabled,
+                webhook_receipt_retention_days=data.webhook_receipt_retention_days,
             )
         except DuplicateConnectionError as exc:
             logger.warning(
@@ -254,7 +264,7 @@ class ConnectionsController(Controller):
         # explicitly set to ``None``" so a PATCH that drops ``base_url``
         # can still null out the stored value via ``base_url=None``;
         # when the field was omitted we forward ``_UNSET`` to keep the
-        # catalog's existing value.  All three mutable fields use the
+        # catalog's existing value.  All four mutable fields use the
         # same semantic so client behaviour is uniform.
         base_url: str | None | _UnsetType = (
             data.base_url if "base_url" in data.model_fields_set else _UNSET
@@ -274,6 +284,11 @@ class ConnectionsController(Controller):
             if "health_check_enabled" in data.model_fields_set
             else _UNSET
         )
+        webhook_receipt_retention_days: int | None | _UnsetType = (
+            data.webhook_receipt_retention_days
+            if "webhook_receipt_retention_days" in data.model_fields_set
+            else _UNSET
+        )
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.update(
@@ -281,6 +296,7 @@ class ConnectionsController(Controller):
                 base_url=base_url,
                 metadata=metadata,
                 health_check_enabled=health_check_enabled,
+                webhook_receipt_retention_days=webhook_receipt_retention_days,
             )
         except ConnectionNotFoundError as exc:
             logger.warning(

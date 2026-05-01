@@ -267,27 +267,18 @@ export function unwrapVoid(response: AxiosResponse<ApiResponse<null>>): void {
 
 /** Return type for paginated API calls. */
 export interface PaginatedResult<T> {
-  data: T[]
-  /**
-   * Total matching items. ``null`` when the backend chose to skip the
-   * extra ``COUNT(*)`` round-trip (repo-backed endpoints).
-   */
-  total: number | null
-  /** Starting offset of the current page (decoded from the cursor). */
-  offset: number
+  readonly data: T[]
   /** Maximum items per page. */
-  limit: number
+  readonly limit: number
   /** Opaque cursor for the next page; ``null`` on the final page. */
-  nextCursor: string | null
+  readonly nextCursor: string | null
   /** Whether more items follow the current page. */
-  hasMore: boolean
+  readonly hasMore: boolean
   /** Raw pagination envelope for callers that need direct access. */
-  pagination: {
-    total: number | null
-    offset: number
-    limit: number
-    next_cursor: string | null
-    has_more: boolean
+  readonly pagination: {
+    readonly limit: number
+    readonly next_cursor: string | null
+    readonly has_more: boolean
   }
 }
 
@@ -311,14 +302,10 @@ export function unwrapPaginated<T>(
   }
   return {
     data: body.data,
-    total: body.pagination.total,
-    offset: body.pagination.offset,
     limit: body.pagination.limit,
     nextCursor: body.pagination.next_cursor,
     hasMore: body.pagination.has_more,
     pagination: {
-      total: body.pagination.total,
-      offset: body.pagination.offset,
       limit: body.pagination.limit,
       next_cursor: body.pagination.next_cursor,
       has_more: body.pagination.has_more,

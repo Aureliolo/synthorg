@@ -107,14 +107,10 @@ function installDefaults(overrides: Overrides = {}) {
         : HttpResponse.json(
             paginatedFor<typeof listActivities>({
               data: [] as ActivityItem[],
-              total: 0,
-              offset: 0,
               limit: 20,
               nextCursor: null,
               hasMore: false,
               pagination: {
-                total: 0,
-                offset: 0,
                 limit: 20,
                 next_cursor: null,
                 has_more: false,
@@ -128,14 +124,10 @@ function installDefaults(overrides: Overrides = {}) {
         : HttpResponse.json(
             paginatedFor<typeof listDepartments>({
               data: [] as Department[],
-              total: 0,
-              offset: 0,
               limit: 50,
               nextCursor: null,
               hasMore: false,
               pagination: {
-                total: 0,
-                offset: 0,
                 limit: 50,
                 next_cursor: null,
                 has_more: false,
@@ -244,14 +236,10 @@ describe('useAnalyticsStore', () => {
                   teams: [],
                 } as Department,
               ],
-              total: 1,
-              offset: 0,
               limit: 100,
               nextCursor: null,
               hasMore: false,
               pagination: {
-                total: 1,
-                offset: 0,
                 limit: 100,
                 next_cursor: null,
                 has_more: false,
@@ -312,14 +300,10 @@ describe('useAnalyticsStore', () => {
                 { name: 'design', display_name: 'Design', teams: [] } as Department,
                 { name: 'operations', display_name: 'Operations', teams: [] } as Department,
               ],
-              total: 3,
-              offset: 0,
               limit: 100,
               nextCursor: null,
               hasMore: false,
               pagination: {
-                total: 3,
-                offset: 0,
                 limit: 100,
                 next_cursor: null,
                 has_more: false,

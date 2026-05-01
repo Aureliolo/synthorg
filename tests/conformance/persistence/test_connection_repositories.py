@@ -523,8 +523,14 @@ class TestWebhookReceiptRepository:
         await backend.connections.save(_connection("github-bot"))
         await backend.webhook_receipts.log(_receipt())
 
-        zero = await backend.webhook_receipts.cleanup_old(0)
-        negative = await backend.webhook_receipts.cleanup_old(-1)
+        zero = await backend.webhook_receipts.cleanup_old_for_connection(
+            NotBlankStr("github-bot"),
+            0,
+        )
+        negative = await backend.webhook_receipts.cleanup_old_for_connection(
+            NotBlankStr("github-bot"),
+            -1,
+        )
 
         assert zero == 0
         assert negative == 0
@@ -533,7 +539,7 @@ class TestWebhookReceiptRepository:
         )
         assert len(rows) == 1
 
-    async def test_cleanup_old_removes_aged_rows(
+    async def test_cleanup_old_removes_aged_rows_for_connection(
         self, backend: PersistenceBackend
     ) -> None:
         await backend.connections.save(_connection("github-bot"))
@@ -546,10 +552,47 @@ class TestWebhookReceiptRepository:
             _receipt(receipt_id="recent", received_at=recent),
         )
 
-        removed = await backend.webhook_receipts.cleanup_old(retention_days=7)
+        removed = await backend.webhook_receipts.cleanup_old_for_connection(
+            NotBlankStr("github-bot"),
+            7,
+        )
 
         assert removed == 1
         rows = await backend.webhook_receipts.get_by_connection(
             NotBlankStr("github-bot"),
         )
         assert {r.id for r in rows} == {"recent"}
+
+    async def test_cleanup_old_only_touches_named_connection(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Per-connection sweep must not delete rows for other connections."""
+        await backend.connections.save(_connection("github-bot"))
+        await backend.connections.save(_connection("slack-bot"))
+        old = datetime.now(UTC) - timedelta(days=30)
+        await backend.webhook_receipts.log(
+            _receipt(
+                receipt_id="github-old",
+                connection_name="github-bot",
+                received_at=old,
+            ),
+        )
+        await backend.webhook_receipts.log(
+            _receipt(
+                receipt_id="slack-old",
+                connection_name="slack-bot",
+                received_at=old,
+            ),
+        )
+
+        removed = await backend.webhook_receipts.cleanup_old_for_connection(
+            NotBlankStr("github-bot"),
+            7,
+        )
+
+        assert removed == 1
+        # Slack receipt survives despite being equally old.
+        slack_rows = await backend.webhook_receipts.get_by_connection(
+            NotBlankStr("slack-bot"),
+        )
+        assert {r.id for r in slack_rows} == {"slack-old"}

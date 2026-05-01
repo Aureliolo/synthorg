@@ -25,6 +25,7 @@ export function buildConnection(
     health_status: 'unknown',
     last_health_check_at: null,
     metadata: {},
+    webhook_receipt_retention_days: null,
     created_at: NOW,
     updated_at: NOW,
     ...overrides,

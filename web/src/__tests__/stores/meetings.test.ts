@@ -20,19 +20,13 @@ function paginated(
   data: MeetingResponse[],
   meta: Partial<{ total: number; offset: number; limit: number }> = {},
 ) {
-  const total = meta.total ?? data.length
-  const offset = meta.offset ?? 0
   const limit = meta.limit ?? 100
   return paginatedFor<typeof listMeetings>({
     data,
-    total,
-    offset,
     limit,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total,
-      offset,
       limit,
       next_cursor: null,
       has_more: false,
@@ -45,7 +39,6 @@ function resetStore() {
   useMeetingsStore.setState({
     meetings: [],
     selectedMeeting: null,
-    total: 0,
     loading: false,
     loadingDetail: false,
     error: null,
@@ -503,7 +496,6 @@ describe('upsertMeeting', () => {
     useMeetingsStore.setState({
       meetings: [selected],
       selectedMeeting: selected,
-      total: 1,
     })
 
     const updated = makeMeeting('1', { status: 'completed' })

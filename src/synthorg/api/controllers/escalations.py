@@ -158,8 +158,6 @@ class EscalationsController(Controller):
                 limit=limit,
                 next_cursor=next_cursor,
                 has_more=has_more,
-                total=total,
-                offset=offset,
             ),
         )
 

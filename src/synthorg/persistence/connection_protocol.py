@@ -137,8 +137,15 @@ class WebhookReceiptRepository(Protocol):
         """
         ...
 
-    async def cleanup_old(self, retention_days: int) -> int:
-        """Delete receipts older than *retention_days*.
+    async def cleanup_old_for_connection(
+        self,
+        connection_name: NotBlankStr,
+        retention_days: int,
+    ) -> int:
+        """Delete receipts for *connection_name* older than *retention_days*.
+
+        ``retention_days <= 0`` is a no-op so callers cannot accidentally
+        truncate a connection's log via misconfiguration.
 
         Returns:
             Number of deleted rows.

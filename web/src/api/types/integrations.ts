@@ -19,6 +19,28 @@ export const CONNECTION_TYPE_VALUES = [
   'a2a_peer',
 ] as const satisfies readonly ConnectionType[]
 
+/**
+ * Connection types that emit webhook receipts the retention sweep cleans up.
+ * The `webhook_receipt_retention_days` column exists on every connection
+ * row, but configuring it for a non-webhook type (smtp, database, a2a_peer)
+ * is meaningless: those connections never produce receipts. The dashboard
+ * only surfaces the field for the types below; backend validation accepts
+ * the field on any type so a future webhook-emitting type only needs
+ * adding to this list.
+ */
+export const WEBHOOK_RECEIPT_CONNECTION_TYPES = [
+  'github',
+  'slack',
+  'generic_http',
+  'oauth_app',
+] as const satisfies readonly ConnectionType[]
+
+export function connectionTypeUsesWebhookReceipts(
+  type: ConnectionType,
+): boolean {
+  return (WEBHOOK_RECEIPT_CONNECTION_TYPES as readonly ConnectionType[]).includes(type)
+}
+
 export type ConnectionAuthMethod =
   | 'api_key'
   | 'oauth2'
@@ -42,6 +64,13 @@ export interface Connection {
   readonly health_status: ConnectionHealthStatus
   readonly last_health_check_at: string | null
   readonly metadata: Record<string, string>
+  /**
+   * Per-connection override for the webhook-receipt retention window
+   * (days). `null` falls back to the global
+   * `integrations.webhook_receipt_retention_days` setting; `0` opts
+   * this connection out of the cleanup sweep entirely.
+   */
+  readonly webhook_receipt_retention_days: number | null
   readonly created_at: string
   readonly updated_at: string
 }
@@ -54,12 +83,14 @@ export interface CreateConnectionRequest {
   readonly base_url?: string | null
   readonly metadata?: Record<string, string>
   readonly health_check_enabled?: boolean
+  readonly webhook_receipt_retention_days?: number | null
 }
 
 export interface UpdateConnectionRequest {
   readonly base_url?: string | null
   readonly metadata?: Record<string, string>
   readonly health_check_enabled?: boolean
+  readonly webhook_receipt_retention_days?: number | null
 }
 
 export interface HealthReport {

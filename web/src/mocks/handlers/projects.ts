@@ -58,14 +58,10 @@ export const projectsList = [
     HttpResponse.json(
       paginatedFor<typeof listProjects>({
         data: mockProjects,
-        total: mockProjects.length,
-        offset: 0,
         limit: 50,
         nextCursor: null,
         hasMore: false,
         pagination: {
-          total: mockProjects.length,
-          offset: 0,
           limit: 50,
           next_cursor: null,
           has_more: false,

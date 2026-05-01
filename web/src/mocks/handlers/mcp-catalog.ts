@@ -59,14 +59,10 @@ function _catalogPage(
 ): import('@/api/client').PaginatedResult<McpCatalogEntry> {
   return {
     data: [...rows],
-    total: rows.length,
-    offset: 0,
     limit: rows.length || 1,
     nextCursor: null,
     hasMore: false,
     pagination: {
-      total: rows.length,
-      offset: 0,
       limit: rows.length || 1,
       next_cursor: null,
       has_more: false,

@@ -409,7 +409,11 @@ class TestTemplatePacks:
             app_state=fake_app_state,
             arguments={},
         )
-        assert json.loads(listed)["pagination"]["total"] == 1
+        list_payload = json.loads(listed)
+        assert list_payload["status"] == "ok"
+        # The pack we just installed should appear in the list.
+        names = {item.get("name") for item in list_payload.get("data", [])}
+        assert "p" in names
 
     async def test_uninstall_guardrails(
         self,
