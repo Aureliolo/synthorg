@@ -307,11 +307,9 @@ class MeetingController(Controller):
             NotFoundError: If the meeting is not found.
         """
         orchestrator = state.app_state.meeting_orchestrator
-        records = orchestrator.get_records()
-
-        for record in records:
-            if record.meeting_id == meeting_id:
-                return ApiResponse(data=_to_meeting_response(record))
+        record = orchestrator.get_record(meeting_id)
+        if record is not None:
+            return ApiResponse(data=_to_meeting_response(record))
 
         logger.warning(
             MEETING_NOT_FOUND,

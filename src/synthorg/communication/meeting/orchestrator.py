@@ -93,6 +93,7 @@ class MeetingOrchestrator:
         "_lens_assigner",
         "_protocol_registry",
         "_records",
+        "_records_by_id",
         "_strategy_config",
         "_task_creator",
     )
@@ -116,6 +117,11 @@ class MeetingOrchestrator:
         self._lens_assigner = lens_assigner
         self._config_resolver = config_resolver
         self._records: list[MeetingRecord] = []
+        # Mirror records by id for O(1) lookup via ``get_record``.
+        # The list keeps chronological order (used by ``get_records``);
+        # the dict serves point lookups so controller endpoints don't
+        # need to scan every record on every fetch.
+        self._records_by_id: dict[str, MeetingRecord] = {}
 
     async def run_meeting(  # noqa: PLR0913
         self,
@@ -195,7 +201,7 @@ class MeetingOrchestrator:
             # protocol-failed runs; an audit trail that silently drops
             # kill-switch cancellations would mislead operators
             # reconstructing what happened during a paused window.
-            self._records.append(cancelled_record)
+            self._append_record(cancelled_record)
             # ``MEETING_CANCELLED`` (not ``MEETING_FAILED``): operator
             # cancellations should not skew failure metrics or trip
             # alerts wired to ``meeting.lifecycle.failed``. Logged
@@ -255,6 +261,41 @@ class MeetingOrchestrator:
         """
         return tuple(self._records)
 
+    def get_record(self, meeting_id: str) -> MeetingRecord | None:
+        """Return the meeting record matching ``meeting_id`` or ``None``.
+
+        O(1) lookup via the by-id mirror; controller endpoints fetch a
+        single meeting without scanning the full record list.
+        """
+        return self._records_by_id.get(meeting_id)
+
+    def _append_record(self, record: MeetingRecord) -> None:
+        """Append a record to the chronological list and the by-id mirror.
+
+        Internal: every site that grows ``self._records`` MUST go through
+        this helper so the mirror stays in lock-step with the list.
+
+        ``_check_invariant`` runs under ``__debug__`` so production
+        builds skip the O(1) length comparison; under ``-O`` the
+        assertion is elided. In test / dev mode it catches future
+        mutation sites that bypass the helper and drift the dict.
+        """
+        self._records.append(record)
+        self._records_by_id[record.meeting_id] = record
+        self._check_invariant()
+
+    def _check_invariant(self) -> None:
+        """Verify the list and dict mirror agree on size.
+
+        Cheap O(1) sanity check: any drift between ``_records`` and
+        ``_records_by_id`` is a bug in record-mutation discipline. The
+        assertion is elided under ``python -O``.
+        """
+        assert len(self._records) == len(self._records_by_id), (  # noqa: S101
+            f"MeetingOrchestrator record drift: list={len(self._records)} "
+            f"dict={len(self._records_by_id)}"
+        )
+
     def delete_record(self, meeting_id: str) -> bool:
         """Remove the meeting record matching ``meeting_id``.
 
@@ -263,11 +304,33 @@ class MeetingOrchestrator:
         store has no I/O; the surrounding service-layer wrapper is
         async to match the rest of the persistence contract.
         """
-        for i, record in enumerate(self._records):
-            if record.meeting_id == meeting_id:
-                self._records.pop(i)
-                return True
-        return False
+        record = self._records_by_id.pop(meeting_id, None)
+        if record is None:
+            return False
+        # Locate the same record in the chronological list and remove it.
+        # ``list.remove`` is O(n) but acceptable here because the list
+        # mirrors the dict; both are bounded by the in-memory record set.
+        try:
+            self._records.remove(record)
+        except ValueError:
+            # The list and dict drifted -- restore the dict entry so the
+            # caller's "found" answer doesn't regress to a silent loss
+            # AND emit a structured ERROR log so operators see the
+            # invariant violation instead of debugging a phantom
+            # "delete returned False" later.
+            self._records_by_id[meeting_id] = record
+            # TRY400: this is an invariant-violation log, not a stack
+            # trace use case; the relevant context is the structured
+            # fields below, not the ValueError trace.
+            logger.error(  # noqa: TRY400
+                MEETING_FAILED,
+                reason="record_mirror_drift",
+                meeting_id=meeting_id,
+                list_len=len(self._records),
+                dict_len=len(self._records_by_id),
+            )
+            return False
+        return True
 
     async def _execute_protocol(  # noqa: PLR0913
         self,
@@ -359,7 +422,7 @@ class MeetingOrchestrator:
             error_message=error_msg,
             token_budget=token_budget,
         )
-        self._records.append(record)
+        self._append_record(record)
         if status == MeetingStatus.BUDGET_EXHAUSTED:
             logger.warning(
                 MEETING_BUDGET_EXHAUSTED,
@@ -403,7 +466,7 @@ class MeetingOrchestrator:
             minutes=minutes,
             token_budget=token_budget,
         )
-        self._records.append(record)
+        self._append_record(record)
         logger.info(
             MEETING_COMPLETED,
             meeting_id=meeting_id,

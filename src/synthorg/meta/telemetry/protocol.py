@@ -57,7 +57,7 @@ class AnalyticsEmitter(Protocol):
         """Flush all buffered events to the collector immediately."""
         ...
 
-    async def close(self) -> None:
+    async def aclose(self) -> None:
         """Flush remaining events and release resources."""
         ...
 

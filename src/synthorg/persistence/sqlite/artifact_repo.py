@@ -266,23 +266,41 @@ WHERE id=?""",
         task_id: NotBlankStr | None = None,
         created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Artifact, ...]:
-        """List artifacts with optional filters.
-
-        Args:
-            task_id: Filter by originating task ID.
-            created_by: Filter by creator agent ID.
-            artifact_type: Filter by artifact type.
-
-        Returns:
-            Matching artifacts as a tuple.
-
-        Raises:
-            QueryError: If the database query or deserialization fails.
-        """
-        query = "SELECT * FROM artifacts"
+        """List artifacts with optional filters (paginated)."""
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_LIST_FAILED,
+                error=msg,
+                param="limit",
+                value=limit,
+            )
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_LIST_FAILED,
+                error=msg,
+                param="offset",
+                value=offset,
+            )
+            raise QueryError(msg)
+        # Cap the page size at ``_MAX_LIST_ROWS`` so a runaway caller
+        # cannot exhaust SQLite memory with a single oversized fetch.
+        effective_limit = min(limit, _MAX_LIST_ROWS)
+        # Explicit column list (matches Postgres) so a future schema
+        # change does not silently widen the returned shape.
+        query = (
+            "SELECT id, type, path, task_id, created_by, "
+            "description, content_type, size_bytes, created_at, "
+            "project_id "
+            "FROM artifacts"
+        )
         conditions: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
 
         if task_id is not None:
             conditions.append("task_id = ?")
@@ -296,7 +314,8 @@ WHERE id=?""",
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        query += f" ORDER BY id LIMIT {_MAX_LIST_ROWS}"
+        query += " ORDER BY id LIMIT ? OFFSET ?"
+        params.extend([effective_limit, offset])
 
         try:
             cursor = await self._db.execute(query, params)

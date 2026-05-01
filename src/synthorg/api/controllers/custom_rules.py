@@ -376,15 +376,24 @@ class CustomRuleController(Controller):
     @get("/metrics")
     async def list_metrics(
         self,
-    ) -> ApiResponse[list[dict[str, Any]]]:
-        """List available snapshot metrics for rule building.
+        state: State,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[dict[str, Any]]:
+        """List available snapshot metrics for rule building (paginated).
 
-        Returns:
-            List of metric descriptors with bounds and metadata.
+        Returns metric descriptors with bounds and metadata. The
+        registry is bounded today but the endpoint is paginated for
+        uniform shape with the rest of the list surface.
         """
-        return ApiResponse[list[dict[str, Any]]](
-            data=[_metric_to_dict(m) for m in METRIC_REGISTRY],
+        entries = tuple(_metric_to_dict(m) for m in METRIC_REGISTRY)
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
         )
+        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
     @post(
         "/preview",

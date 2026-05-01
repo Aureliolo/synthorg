@@ -6,6 +6,7 @@ controller route through this service so the persistence boundary stays
 honored (handlers never reach into ``app_state.persistence`` directly).
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
@@ -44,9 +45,11 @@ class WorkflowVersionService:
         """Return a paginated list of version snapshots and the total count.
 
         Snapshots are returned newest-first, matching the underlying
-        repository's ordering. The total is queried via
-        ``count_versions`` so paginated callers can drive a UI without
-        a second round trip.
+        repository's ordering. The page read and the unfiltered count
+        read run concurrently via :class:`asyncio.TaskGroup` so the
+        service round-trip matches the slower of the two repository
+        calls rather than their sum (mirrors
+        :class:`synthorg.budget.version_service.BudgetConfigVersionsService`).
         """
         if offset < 0:
             logger.warning(
@@ -66,13 +69,18 @@ class WorkflowVersionService:
             )
             msg = f"limit must be >= 1, got {limit}"
             raise ValueError(msg)
-        total = await self._repo.count_versions(definition_id)
-        page = await self._repo.list_versions(
-            definition_id,
-            limit=limit,
-            offset=offset,
-        )
-        return page, total
+        async with asyncio.TaskGroup() as tg:
+            list_task = tg.create_task(
+                self._repo.list_versions(
+                    definition_id,
+                    limit=limit,
+                    offset=offset,
+                ),
+            )
+            count_task = tg.create_task(
+                self._repo.count_versions(definition_id),
+            )
+        return list_task.result(), count_task.result()
 
     async def get_version(
         self,

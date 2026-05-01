@@ -14,6 +14,7 @@ filter into the service would over-broadcast the concern across a
 second surface without improving security.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
@@ -95,12 +96,17 @@ class AgentVersionService:
                 agent_id=agent_id,
             )
             raise ValueError(msg)
-        versions = await self._repo.list_versions(
-            agent_id,
-            limit=limit,
-            offset=offset,
-        )
-        total = await self._repo.count_versions(agent_id)
+        async with asyncio.TaskGroup() as tg:
+            list_task = tg.create_task(
+                self._repo.list_versions(
+                    agent_id,
+                    limit=limit,
+                    offset=offset,
+                ),
+            )
+            count_task = tg.create_task(self._repo.count_versions(agent_id))
+        versions = list_task.result()
+        total = count_task.result()
         logger.debug(
             AGENT_IDENTITY_VERSION_LISTED,
             agent_id=agent_id,

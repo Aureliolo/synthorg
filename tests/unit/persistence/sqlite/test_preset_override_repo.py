@@ -24,9 +24,9 @@ pytestmark = pytest.mark.unit
 def _make_row(  # noqa: PLR0913 -- test factory with explicit knobs
     *,
     preset_name: object = "test-cloud-provider",
-    default_models_json: object = None,
-    supported_auth_types_json: object = None,
-    candidate_urls_json: object = None,
+    default_models: object = None,
+    supported_auth_types: object = None,
+    candidate_urls: object = None,
     base_url: object = "https://api.example.com/v1",
     updated_at: object = None,
     updated_by: object = "user-1",
@@ -36,9 +36,9 @@ def _make_row(  # noqa: PLR0913 -- test factory with explicit knobs
         updated_at = datetime.now(UTC).isoformat()
     return {
         "preset_name": preset_name,
-        "default_models_json": default_models_json,
-        "supported_auth_types_json": supported_auth_types_json,
-        "candidate_urls_json": candidate_urls_json,
+        "default_models": default_models,
+        "supported_auth_types": supported_auth_types,
+        "candidate_urls": candidate_urls,
         "base_url": base_url,
         "updated_at": updated_at,
         "updated_by": updated_by,
@@ -64,7 +64,7 @@ class TestRowToOverrideHappy:
     def test_with_candidate_urls(self) -> None:
         repo = _build_repo()
         row = _make_row(
-            candidate_urls_json='["http://localhost:11434"]',
+            candidate_urls='["http://localhost:11434"]',
             base_url=None,
         )
         result = repo._row_to_override(row)
@@ -76,27 +76,27 @@ class TestRowToOverrideCorruption:
 
     def test_invalid_json_in_models_column(self) -> None:
         repo = _build_repo()
-        row = _make_row(default_models_json="{not-json")
+        row = _make_row(default_models="{not-json")
         with pytest.raises(QueryError, match="corrupt preset override JSON"):
             repo._row_to_override(row)
 
     def test_non_array_json_in_models_column(self) -> None:
         repo = _build_repo()
         # Object instead of array is a JSON-shape violation.
-        row = _make_row(default_models_json='{"foo": "bar"}')
+        row = _make_row(default_models='{"foo": "bar"}')
         with pytest.raises(QueryError, match="not a JSON array"):
             repo._row_to_override(row)
 
     def test_non_array_json_in_auth_types_column(self) -> None:
         repo = _build_repo()
-        row = _make_row(supported_auth_types_json="42")
+        row = _make_row(supported_auth_types="42")
         with pytest.raises(QueryError, match="not a JSON array"):
             repo._row_to_override(row)
 
     def test_non_string_candidate_url_element(self) -> None:
         repo = _build_repo()
         # Numeric element in an otherwise-valid JSON list.
-        row = _make_row(candidate_urls_json="[123, 456]")
+        row = _make_row(candidate_urls="[123, 456]")
         with pytest.raises(QueryError, match="non-string elements"):
             repo._row_to_override(row)
 

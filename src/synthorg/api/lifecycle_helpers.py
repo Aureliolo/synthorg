@@ -580,6 +580,36 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error_desc=safe_error_description(exc),
         )
 
+    # Each WS DoS-prevention setting resolves and applies independently
+    # so a single failed lookup (e.g. settings backend hiccup on one row)
+    # does NOT prevent the other two from being applied. Each falls back
+    # to its built-in default on failure with a structured warning so ops
+    # can see which knob failed.
+    for setting_key, setter_name in (
+        ("ws_frame_timeout_seconds", "set_ws_frame_timeout_seconds"),
+        ("ws_revalidation_window_seconds", "set_ws_revalidation_window_seconds"),
+        ("ws_revalidation_max_failures", "set_ws_revalidation_max_failures"),
+    ):
+        try:
+            value = await app_state.config_resolver.get_int(
+                SettingNamespace.API.value,
+                setting_key,
+            )
+            getattr(app_state, setter_name)(value)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_APP_STARTUP,
+                error=(
+                    f"Failed to apply WS DoS-prevention setting {setting_key};"
+                    " using built-in default"
+                ),
+                setting=setting_key,
+                error_type=type(exc).__name__,
+                error_desc=safe_error_description(exc),
+            )
+
     from synthorg.api.auth.token_size import (  # noqa: PLC0415
         _DEFAULT_AUTH_TOKEN_BYTES,
         set_auth_token_bytes,

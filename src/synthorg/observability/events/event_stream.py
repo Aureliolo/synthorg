@@ -10,6 +10,7 @@ EVENT_STREAM_INTERRUPT_CREATED: Final[str] = "event_stream.interrupt.created"
 EVENT_STREAM_INTERRUPT_RESUMED: Final[str] = "event_stream.interrupt.resumed"
 EVENT_STREAM_INTERRUPT_EXPIRED: Final[str] = "event_stream.interrupt.expired"
 EVENT_STREAM_INTERRUPT_NOT_FOUND: Final[str] = "event_stream.interrupt.not_found"
+EVENT_STREAM_INTERRUPT_DUPLICATE: Final[str] = "event_stream.interrupt.duplicate"
 EVENT_STREAM_INVALID_RESUME_PAYLOAD: Final[str] = (
     "event_stream.interrupt.invalid_resume_payload"
 )

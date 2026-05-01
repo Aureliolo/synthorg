@@ -47,8 +47,8 @@ class SQLitePresetOverrideRepo:
     async def get(self, preset_name: NotBlankStr) -> PresetOverride | None:
         """Read the override for ``preset_name``, if any."""
         sql = (
-            "SELECT preset_name, default_models_json, supported_auth_types_json, "
-            "candidate_urls_json, base_url, updated_at, updated_by "
+            "SELECT preset_name, default_models, supported_auth_types, "
+            "candidate_urls, base_url, updated_at, updated_by "
             "FROM preset_overrides WHERE preset_name = ?"
         )
         try:
@@ -129,8 +129,8 @@ class SQLitePresetOverrideRepo:
         )
         sql = (
             "INSERT OR REPLACE INTO preset_overrides "
-            "(preset_name, default_models_json, supported_auth_types_json, "
-            "candidate_urls_json, base_url, updated_at, updated_by) "
+            "(preset_name, default_models, supported_auth_types, "
+            "candidate_urls, base_url, updated_at, updated_by) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
         async with self._write_lock:
@@ -213,22 +213,22 @@ class SQLitePresetOverrideRepo:
                 raise QueryError(msg)
             return parsed
 
-        models_raw = _decode_json_list(row["default_models_json"])
+        models_raw = _decode_json_list(row["default_models"])
         models: tuple[ProviderModelConfig, ...] | None = (
             tuple(_ProviderModelConfig.model_validate(m) for m in models_raw)
             if models_raw is not None
             else None
         )
-        auth_types_raw = _decode_json_list(row["supported_auth_types_json"])
+        auth_types_raw = _decode_json_list(row["supported_auth_types"])
         auth_types: tuple[AuthType, ...] | None = (
             tuple(AuthType(str(a)) for a in auth_types_raw)
             if auth_types_raw is not None
             else None
         )
-        urls_raw = _decode_json_list(row["candidate_urls_json"])
+        urls_raw = _decode_json_list(row["candidate_urls"])
         if urls_raw is not None and not all(isinstance(u, str) for u in urls_raw):
             msg = (
-                f"preset_overrides.candidate_urls_json for preset "
+                f"preset_overrides.candidate_urls for preset "
                 f"{row.get('preset_name')!r} contains non-string elements"
             )
             raise QueryError(msg)

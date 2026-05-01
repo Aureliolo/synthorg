@@ -1,6 +1,6 @@
 """Postgres repository implementation for security audit entries."""
 
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -94,11 +94,11 @@ class PostgresAuditRepository:
         self,
         *,
         agent_id: NotBlankStr | None = None,
-        action_type: str | None = None,
+        action_type: NotBlankStr | None = None,
         verdict: AuditVerdictStr | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters (newest first).
@@ -203,7 +203,7 @@ class PostgresAuditRepository:
         self,
         *,
         agent_id: NotBlankStr | None,
-        action_type: str | None,
+        action_type: NotBlankStr | None,
         verdict: AuditVerdictStr | None,
         risk_level: ApprovalRiskLevel | None,
         since: AwareDatetime | None,
@@ -278,8 +278,8 @@ class PostgresAuditRepository:
 
     def _build_time_clause(
         self,
-        since: datetime | None,
-        until: datetime | None,
+        since: AwareDatetime | None,
+        until: AwareDatetime | None,
     ) -> tuple[list[str], list[object]]:
         """Build timestamp filter conditions."""
         conditions: list[str] = []
@@ -297,8 +297,8 @@ class PostgresAuditRepository:
         extra_condition: str,
         extra_params: list[object],
         *,
-        since: datetime | None,
-        until: datetime | None,
+        since: AwareDatetime | None,
+        until: AwareDatetime | None,
         limit: int,
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -354,8 +354,8 @@ class PostgresAuditRepository:
         column: str,
         value: dict[str, Any] | list[Any],
         *,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -379,8 +379,8 @@ class PostgresAuditRepository:
         column: str,
         key: str,
         *,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:

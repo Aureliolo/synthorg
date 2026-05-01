@@ -83,6 +83,10 @@ API_WS_AUTH_OK: Final[str] = "api.ws.auth_ok"
 API_WS_PING: Final[str] = "api.ws.ping"
 API_WS_EVENT_DROPPED: Final[str] = "api.ws.event_dropped"
 API_WS_BACKPRESSURE_DROPPED: Final[str] = "api.ws.backpressure_dropped"
+API_WS_FRAME_TIMEOUT: Final[str] = "api.ws.frame_timeout"
+API_WS_REVALIDATION_BUDGET_EXHAUSTED: Final[str] = (
+    "api.ws.revalidation_budget_exhausted"
+)
 
 # SSE streaming
 API_SSE_PULL_MODEL_FAILED: Final[str] = "api.sse.pull_model_failed"

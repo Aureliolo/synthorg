@@ -97,17 +97,23 @@ class DecisionRepository(Protocol):
     async def list_by_task(
         self,
         task_id: NotBlankStr,
+        *,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
-        """List decision records for a task, ordered by version ascending.
+        """List decision records for a task (paginated, oldest first).
 
         Args:
             task_id: The task identifier.
+            limit: Maximum rows to return (>= 1).
+            offset: Rows to skip (>= 0).
 
         Returns:
             Matching records as a tuple (oldest first).
 
         Raises:
-            QueryError: If the operation fails.
+            QueryError: If the operation fails or pagination args are
+                out of range.
         """
         ...
 
@@ -116,21 +122,24 @@ class DecisionRepository(Protocol):
         agent_id: NotBlankStr,
         *,
         role: DecisionRole,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
-        """List decision records where the agent acted in the given role.
+        """List decision records by agent role (paginated, newest first).
 
         Args:
             agent_id: The agent identifier.
             role: Either ``"executor"`` or ``"reviewer"``.
+            limit: Maximum rows to return (>= 1).
+            offset: Rows to skip (>= 0).
 
         Returns:
-            Matching records as a tuple, ordered by ``recorded_at`` DESC.
+            Matching records as a tuple, ordered by
+            ``(recorded_at DESC, id DESC)`` so cursor pagination is
+            stable under concurrent inserts.
 
         Raises:
-            QueryError: If the operation fails.
-            ValueError: If ``role`` is not a recognised value.
-                Implementations SHOULD re-validate at runtime and
-                raise ``ValueError`` for unrecognised roles; type-safe
-                callers will never trigger this path.
+            QueryError: If the operation fails, pagination args are
+                out of range, or ``role`` is not a recognised value.
         """
         ...

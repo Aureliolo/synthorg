@@ -21,6 +21,15 @@ from synthorg.observability.events.api import (
 pytestmark = pytest.mark.unit
 
 
+_FAKE_MAX_LIST_ROWS: int = 10_000
+"""Mirror of the production cap in ``persistence/{sqlite,postgres}/artifact_repo.py``.
+
+Kept in sync intentionally: the fake repo enforces the same upper bound so
+service-level tests passing a runaway ``limit`` see the clamped page size
+they would in production rather than silently materialising the full table.
+"""
+
+
 class _FakeArtifactRepo:
     """In-memory ArtifactRepository used as a test stub."""
 
@@ -41,7 +50,27 @@ class _FakeArtifactRepo:
         task_id: NotBlankStr | None = None,
         created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Artifact, ...]:
+        # Mirror the real repo's validation so service-level tests
+        # exercising bad pagination args see the same QueryError they
+        # would in production.
+        if limit < 1:
+            from synthorg.core.persistence_errors import QueryError
+
+            msg = f"limit must be >= 1, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            from synthorg.core.persistence_errors import QueryError
+
+            msg = f"offset must be >= 0, got {offset}"
+            raise QueryError(msg)
+        # Mirror the production clamp so service-level tests that pass a
+        # runaway ``limit`` (e.g. ``limit=10**9``) observe the same page
+        # ceiling as the real backends instead of silently materialising
+        # the full table.
+        effective_limit = min(limit, _FAKE_MAX_LIST_ROWS)
         rows = sorted(self._rows.values(), key=lambda a: a.id)
         if task_id is not None:
             rows = [a for a in rows if a.task_id == task_id]
@@ -49,7 +78,7 @@ class _FakeArtifactRepo:
             rows = [a for a in rows if a.created_by == created_by]
         if artifact_type is not None:
             rows = [a for a in rows if a.type == artifact_type]
-        return tuple(rows)
+        return tuple(rows[offset : offset + effective_limit])
 
     async def delete(self, artifact_id: NotBlankStr) -> bool:
         return self._rows.pop(artifact_id, None) is not None

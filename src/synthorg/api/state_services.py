@@ -93,6 +93,28 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _reject_non_int(value: object, *, field: str) -> None:
+    """Raise ``TypeError`` (with a structured warning) for non-int settings.
+
+    The WS DoS-prevention setters expect ``int`` values resolved from
+    ``ConfigResolver.get_int``; non-int values would otherwise raise
+    ``TypeError`` at the bounds comparison without a structured log,
+    leaving operators without a clear signal which knob was bad.
+    """
+    # ``isinstance(value, int)`` accepts ``bool`` (since ``bool`` is a
+    # subclass of ``int`` in Python); explicitly reject it so flags
+    # don't slip through as 0/1.
+    if isinstance(value, bool) or not isinstance(value, int):
+        logger.warning(
+            API_BRIDGE_CONFIG_REJECTED,
+            field=field,
+            reason="invalid_type",
+            provided_type=type(value).__name__,
+        )
+        msg = f"{field} must be int, got {type(value).__name__}"
+        raise TypeError(msg)
+
+
 class AppStateServicesMixin(_FacadesMixin):
     """Service accessor mixin for ``AppState``.
 
@@ -162,6 +184,9 @@ class AppStateServicesMixin(_FacadesMixin):
     _mcp_installations_repo: McpInstallationRepository | None
     _persistence: Any
     _ws_auth_timeout_seconds: float
+    _ws_frame_timeout_seconds: int
+    _ws_revalidation_window_seconds: int
+    _ws_revalidation_max_failures: int
 
     @property
     def settings_service(self) -> SettingsService:
@@ -416,6 +441,81 @@ class AppStateServicesMixin(_FacadesMixin):
             )
             raise ValueError(msg)
         self._ws_auth_timeout_seconds = value
+
+    @property
+    def ws_frame_timeout_seconds(self) -> int:
+        """Per-frame WebSocket receive timeout in seconds.
+
+        Bounded by ``[1, 600]``; defaults to 30. Read once at controller
+        construction (read_only_post_init), so the value can be staged
+        in tests via ``set_ws_frame_timeout_seconds`` without spinning
+        the lifecycle.
+        """
+        return self._ws_frame_timeout_seconds
+
+    def set_ws_frame_timeout_seconds(self, value: int) -> None:
+        """Validate + cache the per-frame WebSocket idle timeout."""
+        _reject_non_int(value, field="ws_frame_timeout_seconds")
+        if not 1 <= value <= 600:  # noqa: PLR2004 -- bounds mirror Field(ge=1, le=600)
+            logger.warning(
+                API_BRIDGE_CONFIG_REJECTED,
+                field="ws_frame_timeout_seconds",
+                reason="out_of_range",
+                provided_value=value,
+                min_value=1,
+                max_value=600,
+            )
+            msg = (
+                "ws_frame_timeout_seconds must be between 1 and"
+                f" 600 seconds, got {value}"
+            )
+            raise ValueError(msg)
+        self._ws_frame_timeout_seconds = value
+
+    @property
+    def ws_revalidation_window_seconds(self) -> int:
+        """Sliding-window length for revalidation failure tracking."""
+        return self._ws_revalidation_window_seconds
+
+    def set_ws_revalidation_window_seconds(self, value: int) -> None:
+        """Validate + cache the revalidation sliding-window length."""
+        _reject_non_int(value, field="ws_revalidation_window_seconds")
+        if not 1 <= value <= 3_600:  # noqa: PLR2004 -- bounds mirror Field(ge=1, le=3600)
+            logger.warning(
+                API_BRIDGE_CONFIG_REJECTED,
+                field="ws_revalidation_window_seconds",
+                reason="out_of_range",
+                provided_value=value,
+                min_value=1,
+                max_value=3_600,
+            )
+            msg = (
+                "ws_revalidation_window_seconds must be between 1 and"
+                f" 3600 seconds, got {value}"
+            )
+            raise ValueError(msg)
+        self._ws_revalidation_window_seconds = value
+
+    @property
+    def ws_revalidation_max_failures(self) -> int:
+        """Max revalidation failures admitted in the sliding window."""
+        return self._ws_revalidation_max_failures
+
+    def set_ws_revalidation_max_failures(self, value: int) -> None:
+        """Validate + cache the revalidation max-failures cap."""
+        _reject_non_int(value, field="ws_revalidation_max_failures")
+        if not 1 <= value <= 100:  # noqa: PLR2004 -- bounds mirror Field(ge=1, le=100)
+            logger.warning(
+                API_BRIDGE_CONFIG_REJECTED,
+                field="ws_revalidation_max_failures",
+                reason="out_of_range",
+                provided_value=value,
+                min_value=1,
+                max_value=100,
+            )
+            msg = f"ws_revalidation_max_failures must be between 1 and 100, got {value}"
+            raise ValueError(msg)
+        self._ws_revalidation_max_failures = value
 
     @property
     def has_session_store(self) -> bool:
