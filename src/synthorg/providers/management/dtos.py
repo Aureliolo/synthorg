@@ -19,6 +19,10 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.budget.currency import (
+    DEFAULT_CURRENCY,
+    CurrencyCode,
+)
 from synthorg.config.schema import (  # noqa: TC001
     LocalModelParams,
     ProviderModelConfig,
@@ -63,6 +67,15 @@ class ProviderModelResponse(BaseModel):
         default=0.0,
         ge=0.0,
         description="Cost per 1k output tokens",
+    )
+    currency: CurrencyCode = Field(
+        default=DEFAULT_CURRENCY,
+        description=(
+            "Currency the cost fields are expressed in.  Carries the "
+            "operator's configured ``budget.currency`` so aggregation "
+            "sites can enforce the same-currency invariant without a "
+            "second lookup."
+        ),
     )
     max_context: int = Field(
         default=200_000,
@@ -659,6 +672,12 @@ def to_provider_model_response(
         alias=config.alias,
         cost_per_1k_input=config.cost_per_1k_input,
         cost_per_1k_output=config.cost_per_1k_output,
+        # ``ProviderModelConfig`` does not yet carry a per-row
+        # currency; the project-wide default reflects the operator's
+        # ``budget.currency`` setting and aggregation sites enforce
+        # same-currency at sum time.  When per-model overrides land,
+        # plumb that value through here.
+        currency=DEFAULT_CURRENCY,
         max_context=config.max_context,
         estimated_latency_ms=config.estimated_latency_ms,
         local_params=config.local_params,

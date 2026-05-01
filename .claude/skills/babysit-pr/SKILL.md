@@ -42,7 +42,7 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
      "self_login": "<gh api user --jq .login, cached>",
      "round": 0,
      "cadence_seconds": 900,
-     "max_rounds": 12,
+     "max_rounds": 24,
      "last_head_sha": "",
      "last_review_id": 0,
      "last_pr_comment_id": 0,

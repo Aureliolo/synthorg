@@ -74,6 +74,20 @@ class PerOpRateLimitConfig(BaseModel):
             logger.warning(API_APP_STARTUP, override=str(overrides), error=msg)
             raise ValueError(msg)  # noqa: TRY004 -- Pydantic wraps ValueError as ValidationError
         for operation, pair in overrides.items():
+            # Operation key must be a non-blank string before coercion;
+            # see the matching note on ``PerOpConcurrencyConfig`` below.
+            if not isinstance(operation, str) or not operation.strip():
+                msg = (
+                    f"overrides key {operation!r} must be a non-blank string "
+                    "operation name"
+                )
+                logger.warning(
+                    API_APP_STARTUP,
+                    operation=str(operation),
+                    override=str(pair),
+                    error=msg,
+                )
+                raise ValueError(msg)
             if not isinstance(pair, (tuple, list)) or len(pair) != _OVERRIDE_TUPLE_LEN:
                 msg = (
                     f"overrides[{operation!r}]={pair!r} must be a "
@@ -166,6 +180,22 @@ class PerOpConcurrencyConfig(BaseModel):
             logger.warning(API_APP_STARTUP, override=str(overrides), error=msg)
             raise ValueError(msg)  # noqa: TRY004 -- Pydantic wraps ValueError as ValidationError
         for operation, value in overrides.items():
+            # Operation key must be a non-blank string.  ``NotBlankStr``
+            # only kicks in after coercion; mode="before" runs first
+            # and would otherwise let ``None`` / ``42`` / ``""`` slip
+            # through with a generic Pydantic error.
+            if not isinstance(operation, str) or not operation.strip():
+                msg = (
+                    f"overrides key {operation!r} must be a non-blank string "
+                    "operation name"
+                )
+                logger.warning(
+                    API_APP_STARTUP,
+                    operation=str(operation),
+                    override=str(value),
+                    error=msg,
+                )
+                raise ValueError(msg)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 msg = (
                     f"overrides[{operation!r}]={value!r} must be a "

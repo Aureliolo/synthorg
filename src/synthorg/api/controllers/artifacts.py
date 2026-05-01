@@ -36,7 +36,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_METADATA_MISSING,
     PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
-    PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
     PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
@@ -46,8 +45,17 @@ logger = get_logger(__name__)
 
 
 def _service(state: State) -> ArtifactService:
-    """Build the per-request :class:`ArtifactService` instance."""
-    return ArtifactService(repo=state.app_state.persistence.artifacts)
+    """Build the per-request :class:`ArtifactService` instance.
+
+    Both the persistence repo and the artifact storage backend are
+    plumbed in so the service can orchestrate
+    :meth:`ArtifactService.delete_with_content` (storage delete +
+    persistence delete with the right ordering and error taxonomy).
+    """
+    return ArtifactService(
+        repo=state.app_state.persistence.artifacts,
+        storage=state.app_state.artifact_storage,
+    )
 
 
 _SAFE_CONTENT_TYPES = frozenset(
@@ -327,28 +335,13 @@ class ArtifactController(Controller):
                 operation="delete",
             )
             raise NotFoundError(msg)
-        # Delete storage content first -- if this fails, metadata
-        # MUST still exist so the inconsistency is detectable (vs.
-        # the reverse order where metadata is gone but the orphaned
-        # blob is invisible).  Do NOT continue to ``service.delete``
-        # on storage failure: that would emit ``ARTIFACT_DELETED`` and
-        # remove the metadata row even though the blob is still
-        # present, causing data-state drift the metadata-first invariant
-        # exists to prevent.
-        storage = state.app_state.artifact_storage
-        try:
-            await storage.delete(artifact_id)
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
-                artifact_id=artifact_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
-        await service.delete(artifact_id)
+        # Storage-first delete + persistence delete with the right
+        # error taxonomy is owned by the service so the controller
+        # stays out of the mixed-orchestration role; see
+        # ``ArtifactService.delete_with_content`` for the full
+        # contract (storage failure preserves the metadata row so the
+        # inconsistency is detectable, etc.).
+        await service.delete_with_content(artifact_id)
         publish_ws_event(
             request,
             WsEventType.ARTIFACT_DELETED,
