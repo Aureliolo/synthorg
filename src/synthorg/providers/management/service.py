@@ -9,7 +9,9 @@ import json
 import time
 from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
@@ -74,6 +76,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
 
     from synthorg.api.state import AppState
+    from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import LocalModelParams, RootConfig
     from synthorg.providers.management.audit_service import ProviderAuditService
     from synthorg.providers.management.local_models import (
@@ -104,9 +107,14 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             (legacy bootstrap paths, in-memory test rigs); each
             mutation entry point is a no-op for audit emission in that
             case.
+        cost_tracker: Optional cost tracker. When wired, the connection
+            probe records a ``CostRecord`` for the paid completion it
+            sends. ``None`` makes the probe scope a no-op (the cost
+            chokepoint reads ``None`` from the context and skips
+            recording).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- explicit DI; all kw-only and optional after the 4th arg
         self,
         *,
         settings_service: SettingsService,
@@ -114,12 +122,14 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         app_state: AppState,
         config: RootConfig,
         audit_service: ProviderAuditService | None = None,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._settings_service = settings_service
         self._config_resolver = config_resolver
         self._app_state = app_state
         self._config = config
         self._audit_service = audit_service
+        self._cost_tracker = cost_tracker
         self._lock = asyncio.Lock()
         self._allowlist = DiscoveryAllowlistManager(
             settings_service=settings_service,
@@ -362,6 +372,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         model_id: str,
     ) -> TestConnectionResponse:
         """Send a minimal completion request to verify connectivity."""
+        from synthorg.providers.cost_recording import (  # noqa: PLC0415
+            cost_recording_scope,
+        )
         from synthorg.providers.drivers.litellm_driver import (  # noqa: PLC0415
             LiteLLMDriver,
         )
@@ -369,7 +382,17 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         driver = LiteLLMDriver(name, config)
         messages = [ChatMessage(role=MessageRole.USER, content="ping")]
         start = time.monotonic()
-        await driver.complete(messages, model_id)
+        # Probes hit a real provider and are billed; route through the
+        # cost-recording chokepoint so the spend appears in the same
+        # accounting surface as production calls. ``cost_tracker=None``
+        # (legacy bootstrap rigs) makes the scope a no-op.
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr(f"system:providers:test_connection:{name}"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            await driver.complete(messages, model_id)
         elapsed_ms = (time.monotonic() - start) * 1000
 
         logger.info(

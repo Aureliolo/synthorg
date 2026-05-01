@@ -503,6 +503,7 @@ class AppState(AppStateServicesMixin):
             app_state=self,
             config=config,
             audit_service=audit_service,
+            cost_tracker=self._cost_tracker,
         )
         org_mutations = OrgMutationService(
             settings_service=settings_service,
