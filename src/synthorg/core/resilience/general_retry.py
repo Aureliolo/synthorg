@@ -77,9 +77,13 @@ class GeneralRetryHandler:
             immediately.
         max_attempts: Total attempts including the first.  Must be
             ``>= 1``.
-        base: Base delay (seconds) for the first retry.  Set to
-            ``0.0`` to disable backoff (useful for self-correction
-            loops where the next attempt sends a richer payload).
+        base: Base delay (seconds) for the first retry.  ``0.0``
+            disables temporal backoff (every retry is immediate); this
+            is rare in practice -- LLM self-correction loops use a
+            different helper entirely (see the carve-out list at the
+            top of this module), so the canonical use of ``base=0``
+            is "I want bounded retry without a sleep budget" rather
+            than "I'm building a self-correction loop".
         cap: Maximum delay between any two attempts.
         event: Structured log event name emitted on each retry.
         jitter: If True, sleep for a uniform random duration in

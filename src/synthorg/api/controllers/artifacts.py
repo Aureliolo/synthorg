@@ -166,7 +166,12 @@ class ArtifactController(Controller):
             type: Filter by artifact type.
 
         Returns:
-            Paginated list of artifacts, or 400 for invalid filters.
+            Paginated list of artifacts.
+
+        Raises:
+            ValidationError: If ``type`` is not a known ``ArtifactType``
+                value (mapped centrally to HTTP 422 by
+                ``EXCEPTION_HANDLERS``).
         """
         parsed_type: ArtifactType | None = None
         if type is not None:
@@ -175,6 +180,11 @@ class ArtifactController(Controller):
             except ValueError as exc:
                 valid = ", ".join(e.value for e in ArtifactType)
                 msg = f"Invalid artifact type: {type!r}. Valid values: {valid}"
+                logger.warning(
+                    PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                    rejected_type=type,
+                    reason="invalid_artifact_type",
+                )
                 raise ValidationError(msg) from exc
 
         artifacts = await _service(state).list_artifacts(
@@ -211,6 +221,11 @@ class ArtifactController(Controller):
         artifact = await _service(state).get(artifact_id)
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                artifact_id=artifact_id,
+                operation="read",
+            )
             raise NotFoundError(msg)
         return ApiResponse[Artifact](data=artifact)
 
@@ -281,6 +296,11 @@ class ArtifactController(Controller):
         artifact = await service.get(artifact_id)
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                artifact_id=artifact_id,
+                operation="delete",
+            )
             raise NotFoundError(msg)
         # Delete storage content first -- if this fails, metadata still
         # exists so the inconsistency is detectable (vs. the reverse
@@ -425,6 +445,11 @@ class ArtifactController(Controller):
         artifact = await _service(state).get(artifact_id)
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                artifact_id=artifact_id,
+                operation="download",
+            )
             raise NotFoundError(msg)
 
         storage = state.app_state.artifact_storage

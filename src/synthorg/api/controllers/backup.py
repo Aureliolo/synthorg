@@ -228,7 +228,10 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=backup_id,
             )
-            raise NotFoundError(str(exc)) from exc
+            # Controller-authored message (not the raw service text)
+            # so the 404 response cannot leak backend internals.
+            msg = "Backup not found"
+            raise NotFoundError(msg) from exc
         return ApiResponse(data=manifest)
 
     @delete("/{backup_id:str}", status_code=HTTP_204_NO_CONTENT)
@@ -244,7 +247,7 @@ class BackupController(Controller):
             backup_id: Backup identifier.
 
         Raises:
-            NotFoundException: If backup does not exist (404).
+            NotFoundError: If backup does not exist (404).
             HTTPException: 409 if a backup operation is already in
                 progress (mapped centrally from
                 ``BackupInProgressError`` via ``handle_backup_error``).
@@ -257,7 +260,8 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=backup_id,
             )
-            raise NotFoundError(str(exc)) from exc
+            msg = "Backup not found"
+            raise NotFoundError(msg) from exc
 
     @post(
         "/restore",
@@ -313,7 +317,8 @@ class BackupController(Controller):
                 BACKUP_NOT_FOUND,
                 backup_id=data.backup_id,
             )
-            raise NotFoundError(safe_error_description(exc)) from exc
+            msg = "Backup not found"
+            raise NotFoundError(msg) from exc
         except ManifestError as exc:
             logger.warning(
                 BACKUP_RESTORE_FAILED,
@@ -338,7 +343,8 @@ class BackupController(Controller):
             logger.error(
                 BACKUP_RESTORE_FAILED,
                 backup_id=data.backup_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 exc_info=True,
             )
             msg = "Restore operation failed"

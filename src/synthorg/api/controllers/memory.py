@@ -212,7 +212,8 @@ class MemoryAdminController(Controller):
         except RuntimeError as exc:
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = "A fine-tuning run is already active"
             raise ConflictError(msg) from exc
@@ -262,7 +263,8 @@ class MemoryAdminController(Controller):
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,
                 run_id=run_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = "A fine-tuning run is already active"
             raise ConflictError(msg) from exc
@@ -270,7 +272,8 @@ class MemoryAdminController(Controller):
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,
                 run_id=run_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = "Run not found or not resumable"
             raise NotFoundError(msg) from exc
@@ -430,7 +433,7 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = "Failed to update embedder settings"
+            msg = "Failed to deploy checkpoint"
             raise ConflictError(msg) from exc
         return ApiResponse(data=updated)
 
@@ -661,11 +664,16 @@ class MemoryAdminController(Controller):
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                # Re-raise after logging instead of silently
+                # swallowing -- a settings-service failure here would
+                # otherwise look like "no embedder configured" to the
+                # caller, masking the broken backend.
                 logger.warning(
                     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+                raise
         return ApiResponse(data=result)
 
 
@@ -811,8 +819,8 @@ def _recommend_batch_size() -> int | None:
     except Exception as exc:
         logger.warning(
             MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
-            error=str(exc),
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             exc_info=True,
         )
         return None

@@ -207,12 +207,28 @@ class RateLimitsUpdateRequest(BaseModel):
 
     @model_validator(mode="after")
     def _at_least_one_field(self) -> Self:
-        """Reject empty patches (no fields set)."""
+        """Reject empty patches and explicit-``null`` field values.
+
+        ``{"requests_per_minute": null}`` would otherwise satisfy the
+        "set at least one field" rule via ``exclude_unset`` while
+        leaving every value semantically ``None``.  The intent of the
+        endpoint is to set a cap (``0`` or positive int) or leave a
+        cap unchanged (omit the field); explicit ``null`` is neither
+        and must surface as an explicit validation failure.
+        """
         explicit = self.model_dump(exclude_unset=True)
         if not explicit:
             msg = (
                 "rate-limit patch must set at least one field; an empty "
                 "patch has no effect"
+            )
+            raise ValueError(msg)
+        explicit_nones = [k for k, v in explicit.items() if v is None]
+        if explicit_nones:
+            msg = (
+                f"rate-limit patch fields must be a non-negative integer "
+                f"(use 0 for 'unlimited'); explicit null is rejected for "
+                f"{sorted(explicit_nones)!r}"
             )
             raise ValueError(msg)
         return self

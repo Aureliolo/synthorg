@@ -127,7 +127,14 @@ class TestBuildTable:
             },
         }
         rendered = gen._build_table(schema)
-        assert "Agents" in rendered
+        # Verify the agents row is rendered with its actual base path
+        # ``/agents`` -- not just that "Agents" appears anywhere in
+        # the output.  A regression that stopped skipping
+        # ``parameters`` / ``summary`` would still trip a substring
+        # check on "Agents" because the unrelated metadata strings
+        # would also be parsed; the column-anchored substring catches
+        # the actual regression mode.
+        assert "| Agents | `/agents` |" in rendered
 
     def test_dedupes_tag_per_path_across_verbs(self) -> None:
         # The same tag listed on GET + POST should not double-count

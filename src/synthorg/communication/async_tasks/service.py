@@ -118,6 +118,11 @@ class AsyncTaskService:
                 assigned_to=task_spec.agent_id,
                 parent_task_id=task_spec.parent_task_id,
             )
+        except MemoryError, RecursionError:
+            # Process-fatal builtins propagate before any logging /
+            # rollback work runs -- project convention for system-error
+            # propagation.
+            raise
         except Exception as exc:
             # Include ``task_id`` when the create succeeded so this
             # primary failure log can be correlated with the rollback
