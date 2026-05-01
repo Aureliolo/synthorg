@@ -25,7 +25,6 @@ from synthorg.core.enums import ArtifactType
 from synthorg.core.persistence_errors import (
     ArtifactStorageFullError,
     ArtifactTooLargeError,
-    PersistenceError,
     RecordNotFoundError,
 )
 from synthorg.core.types import NotBlankStr
@@ -34,8 +33,8 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
-    PERSISTENCE_ARTIFACT_FETCH_FAILED,
     PERSISTENCE_ARTIFACT_METADATA_MISSING,
+    PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
@@ -117,11 +116,24 @@ async def _save_metadata_with_rollback(
         updated: Updated artifact model.
 
     Raises:
-        PersistenceError: If the metadata save fails (after rollback attempt).
+        Exception: Any failure from ``service.save`` propagates after
+            the storage-content rollback runs.  Narrowing this to
+            ``PersistenceError`` only would leave stored content
+            behind on any other failure mode (validation,
+            serialisation, etc.).
     """
     try:
         await service.save(updated)
-    except PersistenceError as exc:
+    except MemoryError, RecursionError:
+        # Process-fatal builtins propagate before any rollback work
+        # runs; project convention.
+        raise
+    except Exception as exc:
+        # Catch-all rollback so any ``service.save`` failure undoes
+        # the prior content write.  Without this, a non-
+        # ``PersistenceError`` failure (validation, serialisation,
+        # network, etc.) would leave the blob orphan in storage with
+        # no metadata row to point at it.
         logger.warning(
             PERSISTENCE_ARTIFACT_SAVE_FAILED,
             artifact_id=artifact_id,
@@ -505,11 +517,12 @@ class ArtifactController(Controller):
             # download path leaves an operator-visible breadcrumb
             # alongside the standardized error path; the original
             # exception still propagates with type intact.  Route
-            # through ``PERSISTENCE_ARTIFACT_FETCH_FAILED`` (operator
-            # /storage outage) instead of ``CONTENT_MISSING`` (true 404)
-            # so the two cardinalities don't collapse on dashboards.
+            # through ``PERSISTENCE_ARTIFACT_RETRIEVE_FAILED`` (the
+            # storage-retrieve cardinality) so blob-store outages are
+            # visible alongside metadata-fetch failures without sharing
+            # a counter.
             logger.error(  # noqa: TRY400
-                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
                 artifact_id=artifact_id,
                 operation="download",
                 error_type=type(exc).__name__,

@@ -35,7 +35,7 @@ class PerOpRateLimitConfig(BaseModel):
             Negative values are invalid and rejected at startup.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     backend: Literal["memory"] = "memory"
@@ -129,7 +129,7 @@ class PerOpConcurrencyConfig(BaseModel):
             at startup.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     # Tighten to the only shipped backend.  A Redis adapter for

@@ -505,8 +505,8 @@ class ProbeLocalResponse(BaseModel):
     Attributes:
         results: Map of preset name to per-preset probe result.  Only
             local presets with non-empty ``candidate_urls`` are probed
-            and appear here; cloud presets and vLLM (intentionally
-            empty candidates) are excluded.
+            and appear here; cloud presets and any local runtime that
+            ships intentionally-empty candidates are excluded.
         errors: Map of preset name to error message for presets whose
             probes raised.  ``results`` and ``errors`` are disjoint:
             a successful probe for a preset populates ``results``,

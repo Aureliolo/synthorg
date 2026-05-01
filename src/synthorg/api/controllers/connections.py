@@ -5,7 +5,6 @@ including on-demand health checks.
 """
 
 import copy
-from typing import Any
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -69,9 +68,15 @@ class CreateConnectionRequest(BaseModel):
     name: NotBlankStr = Field(max_length=128)
     connection_type: ConnectionType
     auth_method: AuthMethod = AuthMethod.API_KEY
-    credentials: dict[str, Any] = Field(default_factory=dict)
+    # ``dict[str, str]`` matches the catalog signature
+    # (``catalog.create(..., credentials: dict[str, str], metadata:
+    # dict[str, str])``) and the secret-backend reveal contract;
+    # accepting non-string values would let a ``credentials["k"] = 42``
+    # entry slip through and trigger ``SecretRetrievalError`` only at
+    # reveal time.
+    credentials: dict[str, str] = Field(default_factory=dict)
     base_url: NotBlankStr | None = None
-    metadata: dict[str, Any] | None = None
+    metadata: dict[str, str] | None = None
     health_check_enabled: bool = True
 
     @field_validator("name")
@@ -94,7 +99,11 @@ class UpdateConnectionRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     base_url: NotBlankStr | None = None
-    metadata: dict[str, Any] | None = None
+    # ``dict[str, str]`` matches the catalog signature and
+    # ``CreateConnectionRequest``; non-string metadata values are
+    # rejected at parse time rather than producing surprises later
+    # in the catalog / health-check path.
+    metadata: dict[str, str] | None = None
     health_check_enabled: bool | None = None
 
 
@@ -246,7 +255,7 @@ class ConnectionsController(Controller):
         base_url: str | None | object = (
             data.base_url if "base_url" in data.model_fields_set else _UNSET
         )
-        metadata: dict[str, Any] | None | object
+        metadata: dict[str, str] | None | object
         if "metadata" in data.model_fields_set:
             # Defensively deepcopy when provided; same reasoning as
             # ``create_connection`` (catalog briefly holds the mapping
