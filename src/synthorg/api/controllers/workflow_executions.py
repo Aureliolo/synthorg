@@ -8,8 +8,14 @@ from litestar.datastructures import State  # noqa: TC002
 from synthorg.api.dto import (
     ActivateWorkflowRequest,
     ApiResponse,
+    PaginatedResponse,
 )
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import NotFoundError
@@ -145,8 +151,10 @@ class WorkflowExecutionController(Controller):
         self,
         state: State,
         workflow_id: PathId,
-    ) -> Response[ApiResponse[list[WorkflowExecution]]]:
-        """List executions for a workflow definition."""
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> Response[PaginatedResponse[WorkflowExecution] | ApiResponse[None]]:
+        """List executions for a workflow definition with cursor pagination."""
         service = _build_service(state)
         try:
             executions = await service.list_executions(workflow_id)
@@ -159,14 +167,21 @@ class WorkflowExecutionController(Controller):
                 note="persistence failure during list",
             )
             return Response(
-                content=ApiResponse[list[WorkflowExecution]](
+                content=ApiResponse[None](
                     error="Failed to list workflow executions.",
                 ),
                 status_code=500,
             )
+        page, meta = paginate_cursor(
+            tuple(executions),
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return Response(
-            content=ApiResponse[list[WorkflowExecution]](
-                data=list(executions),
+            content=PaginatedResponse[WorkflowExecution](
+                data=page,
+                pagination=meta,
             ),
         )
 

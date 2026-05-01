@@ -1,12 +1,23 @@
 """API namespace setting definitions.
 
-Registers 31 settings covering server, TLS, CORS, rate limiting
-(global + per-operation sliding-window + per-operation inflight),
-authentication, and setup.  Twelve are runtime-editable (picked up by
-the matching ``SettingsSubscriber`` on change); the remaining nineteen
-are ``restart_required=True`` because Litestar bakes middleware,
-rate-limit budgets, CORS origins, and store backends into the
-application at construction time.
+Registers settings covering server, TLS, CORS, rate limiting (global
++ per-operation sliding-window + per-operation inflight),
+authentication, setup, and the WebSocket frame-receive / revalidation
+budget added in the #1683 reliability bundle.
+
+Counts (kept generic on purpose; the registry below is the
+authoritative source so docstring counts do not silently drift on the
+next addition):
+
+* The majority are ``restart_required=True`` because Litestar bakes
+  middleware, rate-limit budgets, CORS origins, store backends, and
+  WebSocket frame-timeout / revalidation tracker construction into the
+  application at construction time.
+* The remainder are runtime-editable and picked up by the matching
+  ``SettingsSubscriber`` on change.
+* A subset of the restart-required entries also carry
+  ``read_only_post_init=True`` for surfaces that are init-only at the
+  controller construction site (currently the WebSocket budget knobs).
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -616,6 +627,74 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=120.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ws_frame_timeout_seconds",
+        type=SettingType.INTEGER,
+        default="30",
+        description=(
+            "Per-frame receive timeout for established WebSocket"
+            " connections. A connection that goes idle (no inbound"
+            " frame) for longer than this is closed with policy code"
+            " 1008. Bounds the number of slots a silent client can"
+            " hold (DoS prevention). Resolved at controller"
+            " construction; runtime mutation requires a restart."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=600,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ws_revalidation_window_seconds",
+        type=SettingType.INTEGER,
+        default="60",
+        description=(
+            "Sliding-window length (seconds) for WebSocket session"
+            " revalidation failures. Persistence backend errors are"
+            " admitted into a per-connection sliding window of this"
+            " length; once the window saturates the connection is"
+            " closed. Replaces the legacy reset-on-success counter"
+            " so a flaky persistence layer cannot indefinitely keep"
+            " a connection alive by interleaving successes."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=3_600,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ws_revalidation_max_failures",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Maximum number of revalidation failures admitted in the"
+            " ws_revalidation_window_seconds window before the"
+            " WebSocket is closed with server-error code 4011 so the"
+            " client reconnects against a healthy replica."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=100,
     )
 )
 

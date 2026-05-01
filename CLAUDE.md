@@ -178,6 +178,8 @@ See [docs/reference/telemetry.md](docs/reference/telemetry.md) for enable flags,
 - **Non-retryable errors** raise immediately without retry
 - **`RetryExhaustedError`** signals that all retries failed; the engine layer catches this to trigger fallback chains
 - **Rate limiter** respects `RateLimitError.retry_after` from providers, automatically pausing future requests
+- **WebSocket per-frame timeout (DoS prevention)**: silent clients are closed with policy code 1008 once they exceed `api.ws_frame_timeout_seconds` (default 30s) without sending a frame. Wraps `socket.receive_text()` in `asyncio.wait_for(...)` so a connected-but-silent peer cannot indefinitely hold a slot.
+- **WebSocket revalidation sliding window**: persistence-backend failures during the periodic revalidation are tracked via a `_SlidingWindowRateLimiter` (`api.ws_revalidation_window_seconds` default 60s, `api.ws_revalidation_max_failures` default 5) instead of a reset-on-success streak counter. A flaky persistence layer that returns one good response between every failure cluster cannot indefinitely keep stale-auth connections alive; once the window saturates, the socket closes with code 4011.
 
 ## Test Regression (MANDATORY)
 

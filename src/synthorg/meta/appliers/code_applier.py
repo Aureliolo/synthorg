@@ -8,12 +8,14 @@ No local ``git`` or ``gh`` CLI is required -- all remote operations
 use the GitHub API, making this safe to run inside containers.
 """
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.meta.models import (
     ApplyResult,
     CIValidationResult,
+    CodeChange,
     CodeOperation,
     ImprovementProposal,
     ProposalAltitude,
@@ -34,10 +36,24 @@ from synthorg.observability.events.meta import (
 
 if TYPE_CHECKING:
     from synthorg.meta.config import CodeModificationConfig
-    from synthorg.meta.models import CodeChange
     from synthorg.meta.protocol import CIValidator, GitHubAPI
 
 logger = get_logger(__name__)
+
+
+class PartialWriteError(RuntimeError):
+    """Raised by ``_write_changes`` on partial application failure.
+
+    Carries the ordered subset of ``CodeChange`` instances that were
+    successfully written before the error, so the outer ``apply()``
+    handler can revert ONLY those files. Without this, defensive
+    revert with the full proposal would attempt to undo changes that
+    were never made and could clobber files the proposal never touched.
+    """
+
+    def __init__(self, message: str, *, applied: tuple[CodeChange, ...]) -> None:
+        super().__init__(message)
+        self.applied = applied
 
 
 class CodeApplier:
@@ -114,17 +130,38 @@ class CodeApplier:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as outer_exc:
             logger.exception(
                 META_APPLY_FAILED,
                 altitude="code_modification",
                 proposal_id=str(proposal.id),
             )
-            self._revert_local_changes(
-                proposal.code_changes,
-                project_root,
-                defensive=True,
-            )
+            # Revert ONLY the changes that were actually written. If
+            # the failure surfaced from ``_write_changes`` it carries
+            # the applied-so-far subset on a ``PartialWriteError``;
+            # any other failure path means the inner finally already
+            # reverted (so an empty subset is the safe default).
+            applied_subset: tuple[CodeChange, ...] = ()
+            if isinstance(outer_exc, PartialWriteError):
+                applied_subset = outer_exc.applied
+            try:
+                await asyncio.to_thread(
+                    self._revert_local_changes,
+                    applied_subset,
+                    project_root,
+                    defensive=True,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as revert_exc:
+                logger.warning(
+                    META_APPLY_FAILED,
+                    altitude="code_modification",
+                    proposal_id=str(proposal.id),
+                    reason="defensive_revert_failed",
+                    error_type=type(revert_exc).__name__,
+                    error=safe_error_description(revert_exc),
+                )
             try:
                 await self._github.delete_branch(branch)
             except Exception:
@@ -164,7 +201,12 @@ class CodeApplier:
             Result indicating success or failure.
         """
         # -- Local CI gate ------------------------------------------------
-        changed_files, applied = self._write_changes(
+        # Filesystem mutations run on a worker thread (``asyncio.to_thread``)
+        # so the per-change ``Path.read_text`` / ``Path.write_text`` /
+        # ``Path.unlink`` calls don't block the event loop while CI gates
+        # for other proposals progress concurrently.
+        changed_files, applied = await asyncio.to_thread(
+            self._write_changes,
             proposal.code_changes,
             project_root,
         )
@@ -175,8 +217,29 @@ class CodeApplier:
                 project_root,
             )
         finally:
-            # Revert only the changes that were actually written.
-            self._revert_local_changes(applied, project_root)
+            # Revert only the changes that were actually written. The
+            # cleanup itself is wrapped so a transient I/O error during
+            # revert (e.g. permission flake) does not mask the CI
+            # outcome captured in ``ci_result`` -- the warning surfaces
+            # the cleanup failure for ops without overwriting the
+            # primary success/failure signal.
+            try:
+                await asyncio.to_thread(
+                    self._revert_local_changes,
+                    applied,
+                    project_root,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as revert_exc:
+                logger.warning(
+                    META_APPLY_FAILED,
+                    altitude="code_modification",
+                    proposal_id=str(proposal.id),
+                    reason="cleanup_revert_failed",
+                    error_type=type(revert_exc).__name__,
+                    error=safe_error_description(revert_exc),
+                )
         if not ci_result.passed:
             return ApplyResult(
                 success=False,
@@ -349,7 +412,14 @@ class CodeApplier:
                     project_root=str(resolved_root),
                 )
                 msg = f"Path escapes project root: {change.file_path}"
-                raise RuntimeError(msg)
+                # Carry the applied subset on ``PartialWriteError`` so
+                # ``apply()``'s outer revert reaches the writes that
+                # already landed before this change tripped the
+                # path-escape guard. Raising a plain ``RuntimeError``
+                # would leave ``applied_subset=()`` on the outer
+                # handler and the partially-written workspace would
+                # stay dirty after the failed apply.
+                raise PartialWriteError(msg, applied=tuple(applied))
             try:
                 _apply_single_change(change, file_path)
             except MemoryError, RecursionError:
@@ -364,7 +434,14 @@ class CodeApplier:
                     error=safe_error_description(exc),
                 )
                 msg = f"{change.operation.value} failed for '{change.file_path}': {exc}"
-                raise RuntimeError(msg) from exc
+                # Wrap the underlying error so the caller can revert
+                # ONLY the changes that were successfully written
+                # before the failure -- avoids defensive-revert
+                # clobbering files that were never touched.
+                raise PartialWriteError(
+                    msg,
+                    applied=tuple(applied),
+                ) from exc
             applied.append(change)
             changed.append(change.file_path)
             logger.debug(
@@ -553,7 +630,7 @@ def _is_within(candidate: Path, root: Path) -> bool:
     return True
 
 
-def _revert_single_change(
+def _revert_single_change(  # noqa: C901 -- linear branch tree per CodeOperation, splitting hides the parallel structure
     change: CodeChange,
     path: Path,
     *,
@@ -568,8 +645,18 @@ def _revert_single_change(
             change was applied (prevents overwriting untouched files).
     """
     if change.operation == CodeOperation.CREATE:
-        if defensive and not path.exists():
-            return
+        if defensive:
+            # Only delete if the file's current contents match what
+            # ``_apply_single_change`` would have written. Without this
+            # check, defensive revert of a CREATE proposal whose target
+            # accidentally pre-existed (caused the precondition failure
+            # in ``_apply_single_change``) would clobber the operator's
+            # pre-existing file.
+            if not path.exists():
+                return
+            current = path.read_text(encoding="utf-8")
+            if current != change.new_content:
+                return
         path.unlink(missing_ok=True)
     elif change.operation == CodeOperation.MODIFY:
         if defensive:

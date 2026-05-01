@@ -67,26 +67,51 @@ class EscalationExpirationSweeper:
         self._interval = interval_seconds
         self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
-        # ``asyncio.Event`` and ``asyncio.Lock`` bind to the running
-        # loop on first use.  Construction happens at app-wire time
-        # (no loop yet) and the sweeper may also be reused across
-        # multiple lifespans in tests, so create them lazily in
-        # ``start()`` on the loop that will actually run the task.
-        self._stop_event: asyncio.Event | None = None
-        self._start_lock: asyncio.Lock | None = None
+        # Eager construction of the lifecycle primitives. Python 3.10+
+        # ``asyncio.Lock`` / ``asyncio.Event`` are loop-agnostic until
+        # first ``acquire()`` / ``set()``, so constructing them at
+        # app-wire time (no loop yet) is safe; they bind to whichever
+        # loop calls ``start()`` first. The previous "lazy create in
+        # start()" shape published the lock attribute *before* the
+        # ``async with`` body ran, which let a racing ``stop()``
+        # observe a fresh lock instance and operate on different
+        # primitives than the in-flight ``start()`` -- the bug
+        # CodeRabbit flagged on round 3 (notify.py / sweeper.py
+        # outside-diff).
+        self._stop_event: asyncio.Event = asyncio.Event()
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        # Per ``docs/reference/lifecycle-sync.md``: a ``stop()`` drain
+        # that exceeds the hard deadline marks the service unrestartable
+        # so a subsequent ``start()`` cannot attach a fresh task while
+        # the orphan loop still owns the store. The flag survives any
+        # state resets so it remains observable on the next ``start()``
+        # call.
+        self._stop_failed: bool = False
+        self._stop_drain_timeout_seconds: float = 30.0
 
     async def start(self) -> None:
         """Schedule the background loop.
 
         Idempotent + concurrent-safe: concurrent ``start()`` calls
-        serialize on an asyncio.Lock so at most one task is created
-        even when multiple callers race.
+        serialize on ``self._lifecycle_lock`` so at most one task is
+        created even when multiple callers race. Per the canonical
+        lifecycle pattern (``docs/reference/lifecycle-sync.md``), the
+        lock is held across the full body including the success log
+        AND no lifecycle primitive is published outside the lock
+        (those are constructed once in ``__init__``).
         """
-        if self._start_lock is None:
-            self._start_lock = asyncio.Lock()
-        if self._stop_event is None:
-            self._stop_event = asyncio.Event()
-        async with self._start_lock:
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "EscalationExpirationSweeper is unrestartable after a "
+                    "timed-out stop; construct a fresh sweeper instead"
+                )
+                logger.warning(
+                    CONFLICT_ESCALATION_SWEEPER_FAILED,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise RuntimeError(msg)
             if self._task is not None and not self._task.done():
                 return
             self._stop_event.clear()
@@ -94,53 +119,114 @@ class EscalationExpirationSweeper:
                 self._run(),
                 name="escalation-sweeper",
             )
-        logger.info(
-            CONFLICT_ESCALATION_SWEEPER_STARTED,
-            interval_seconds=self._interval,
-        )
+            logger.info(
+                CONFLICT_ESCALATION_SWEEPER_STARTED,
+                interval_seconds=self._interval,
+            )
 
     async def stop(self) -> None:
-        """Signal the loop to exit and await its completion."""
-        if self._stop_event is not None:
+        """Signal the loop to exit and await its completion.
+
+        Acquires ``self._lifecycle_lock`` so a concurrent ``start()``
+        cannot recreate the task mid-stop. Per
+        ``docs/reference/lifecycle-sync.md``, lifecycle locks must be
+        held across the full body of both ``start`` and ``stop``.
+
+        Idle stop: when nothing was ever started (``_task`` is None
+        and ``_stop_event`` was never set) ``stop()`` still acquires
+        the lock and returns cleanly; this keeps the lifecycle
+        contract uniform regardless of whether ``start()`` ever ran.
+        """
+        async with self._lifecycle_lock:
             self._stop_event.set()
-        task = self._task
-        if task is None:
-            return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            # Expected: we just cancelled the task.
-            pass
-        except Exception as exc:
-            # Best-effort shutdown: never propagate, but elevate to
-            # WARNING so real failures surface in production logs
-            # instead of being lost at DEBUG.
-            logger.warning(
-                CONFLICT_ESCALATION_SWEEPER_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="shutdown",
-            )
-        finally:
+            task = self._task
+            if task is None:
+                return
+            task.cancel()
+
+            # Spawn the await as a separate task and ``shield`` it from
+            # the outer ``wait_for`` cancellation: if ``_run`` (or any
+            # callee) suppresses ``CancelledError``, ``await task``
+            # would block INSIDE the lifecycle lock waiting for the
+            # suppressed cancellation to take effect -- the hard
+            # deadline would be soft. With ``shield``, the outer
+            # ``wait_for`` times out the wait only; the shielded await
+            # keeps running in the background but does not prevent
+            # ``stop()`` from exiting and releasing
+            # ``self._lifecycle_lock``. Same pattern as
+            # ``MessageBusBridge.stop()``.
+            async def _drain() -> None:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    # Expected: we just cancelled the task.
+                    pass
+                except MemoryError, RecursionError:
+                    # Catastrophic interpreter-level errors must
+                    # surface to the caller; never log-and-swallow
+                    # because that hides loss-of-process conditions
+                    # behind a "clean shutdown" log line.
+                    raise
+                except Exception as exc:
+                    # Best-effort shutdown: never propagate, but elevate
+                    # to WARNING so real failures surface in production
+                    # logs instead of being lost at DEBUG.
+                    logger.warning(
+                        CONFLICT_ESCALATION_SWEEPER_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                # Drain exceeded the hard deadline. Mark the sweeper
+                # unrestartable so a future ``start()`` cannot spawn a
+                # fresh ``_run`` while the orphan task still owns the
+                # store. Leave ``_task`` + ``_stop_event`` intact so
+                # subsequent inspection reflects the incomplete shutdown.
+                self._stop_failed = True
+                # TRY400: ``logger.exception`` here would append a
+                # ``TimeoutError`` traceback with no actionable
+                # diagnostic information beyond the structured fields.
+                logger.error(  # noqa: TRY400
+                    CONFLICT_ESCALATION_SWEEPER_FAILED,
+                    error=("stop exceeded hard deadline; sweeper marked unrestartable"),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
             self._task = None
-            # Drop the loop-bound primitives so the next ``start()``
-            # (potentially on a new event loop) can recreate them.
-            self._stop_event = None
-            self._start_lock = None
-        logger.info(CONFLICT_ESCALATION_SWEEPER_STOPPED)
+            logger.info(CONFLICT_ESCALATION_SWEEPER_STOPPED)
+        # Re-create the lifecycle primitives outside the (now
+        # released) lock so a subsequent ``start()`` on a different
+        # event loop can re-bind them. ``asyncio.Lock`` and
+        # ``asyncio.Event`` bind to the running loop on first
+        # ``acquire`` / ``set``; the loop they were last bound to
+        # may be closed (test pattern: fresh-per-test event loops),
+        # so reusing the instances would raise ``RuntimeError: ...
+        # is bound to a different event loop``. The recreate runs
+        # AFTER the ``async with`` exits to avoid swapping the lock
+        # while we still hold it. Production single-loop wiring
+        # constructs the sweeper once and never hits this path.
+        self._lifecycle_lock = asyncio.Lock()
+        self._stop_event = asyncio.Event()
 
     async def _run(self) -> None:
         """Main loop body."""
-        if self._stop_event is None:
-            # Defensive: ``start()`` installs the event before
-            # scheduling the task; a ``_run`` that sees ``None`` can
-            # only be the result of ``stop()`` racing with ``start()``.
-            return
         while not self._stop_event.is_set():
             try:
                 await self._sweep_once()
             except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                # Match the ``_drain`` shape: surface catastrophic
+                # interpreter-level errors instead of looping past
+                # them at WARNING.
                 raise
             except Exception as exc:
                 logger.warning(

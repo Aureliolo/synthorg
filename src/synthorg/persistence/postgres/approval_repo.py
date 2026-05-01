@@ -36,6 +36,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_MAX_PAGE_LIMIT: int = 1_000
+
 _SELECT_COLS = (
     "id, action_type, title, description, requested_by, risk_level, "
     "status, created_at, expires_at, decided_at, decided_by, "
@@ -256,14 +258,33 @@ class PostgresApprovalRepository:
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[ApprovalItem, ...]:
-        """List approval items with optional filters.
-
-        Raises:
-            QueryError: If the database query fails.
-        """
+        """List approval items with optional filters (paginated)."""
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                error=msg,
+                param="limit",
+                value=limit,
+            )
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                error=msg,
+                param="offset",
+                value=offset,
+            )
+            raise QueryError(msg)
+        # Clamp limit at ``_MAX_PAGE_LIMIT`` so a runaway caller cannot
+        # exhaust memory with a single oversized fetch.
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if status is not None:
             clauses.append("status = %s")
             params.append(status.value)
@@ -274,6 +295,7 @@ class PostgresApprovalRepository:
             clauses.append("action_type = %s")
             params.append(action_type)
         where_sql = " AND ".join(clauses) if clauses else "TRUE"
+        params.extend([effective_limit, offset])
         try:
             async with (
                 self._pool.connection() as conn,
@@ -281,7 +303,8 @@ class PostgresApprovalRepository:
             ):
                 await cur.execute(
                     f"SELECT {_SELECT_COLS} FROM approvals "  # noqa: S608
-                    f"WHERE {where_sql} ORDER BY created_at DESC",
+                    f"WHERE {where_sql} ORDER BY created_at DESC, id DESC "
+                    f"LIMIT %s OFFSET %s",
                     params,
                 )
                 rows = await cur.fetchall()

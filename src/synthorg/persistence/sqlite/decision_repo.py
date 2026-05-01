@@ -28,12 +28,16 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
+
+_MAX_PAGE_LIMIT: int = 1_000
+
 
 _COLS = (
     "id, task_id, approval_id, executing_agent_id, reviewer_agent_id, "
@@ -483,19 +487,60 @@ class SQLiteDecisionRepository:
             return None
         return self._row_to_record(dict(row))
 
-    async def list_by_task(self, task_id: NotBlankStr) -> tuple[DecisionRecord, ...]:
-        """List decision records for a task, ordered by version ascending.
+    async def list_by_task(
+        self,
+        task_id: NotBlankStr,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DecisionRecord, ...]:
+        """List decision records for a task, oldest first.
 
         Serialized against concurrent writers via ``_write_lock`` so
         reads never observe phantom rows from a mid-transaction
         ``append_with_next_version``.
+
+        Args:
+            task_id: Identifier of the task whose decisions are being
+                listed.
+            limit: Maximum number of records to return on this page;
+                must be ``>= 1``. The repo additionally clamps the
+                returned slice to ``_MAX_PAGE_LIMIT`` to prevent a
+                runaway caller from materialising the full table.
+            offset: Number of records to skip before the page; must
+                be ``>= 0``.
+
+        Returns:
+            ``tuple[DecisionRecord, ...]`` ordered ascending by
+            ``(recorded_at, id)`` so a backfilled decision still
+            sorts to its true chronological position; the ``id``
+            tiebreaker matches the Postgres backend.
+
+        Raises:
+            QueryError: If ``limit`` / ``offset`` fail the type or
+                bounds check, or if the underlying SQLite query
+                raises. The structured ``WARNING`` is emitted before
+                the raise.
         """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+            task_id=task_id,
+        )
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             async with self._write_lock:
+                # ``recorded_at ASC, id ASC`` matches the protocol's
+                # "oldest first" contract; ``version ASC`` would
+                # mis-place a backfilled decision (low ``recorded_at``
+                # but a freshly-allocated high ``version``) at the end
+                # of the list. Mirrors the Postgres backend.
                 cursor = await self._db.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                    "WHERE task_id = ? ORDER BY version ASC",
-                    (task_id,),
+                    "WHERE task_id = ? "
+                    "ORDER BY recorded_at ASC, id ASC LIMIT ? OFFSET ?",
+                    (task_id, effective_limit, offset),
                 )
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -520,6 +565,8 @@ class SQLiteDecisionRepository:
         agent_id: NotBlankStr,
         *,
         role: DecisionRole,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records where the agent acted in the given role.
 
@@ -527,6 +574,30 @@ class SQLiteDecisionRepository:
         re-check at runtime to guard against bad callers that bypass
         type checking.  A rejected role is logged before raising.
         Serialized against concurrent writers via ``_write_lock``.
+
+        Args:
+            agent_id: Identifier of the agent whose decisions are
+                being listed.
+            role: Either ``"executor"`` or ``"reviewer"``; selects
+                which side of the decision the agent participated on.
+                Anything outside that set raises ``QueryError``.
+            limit: Maximum number of records to return on this page;
+                must be ``>= 1``. Clamped to ``_MAX_PAGE_LIMIT`` to
+                prevent unbounded queries.
+            offset: Number of records to skip before the page; must
+                be ``>= 0``.
+
+        Returns:
+            ``tuple[DecisionRecord, ...]`` ordered by
+            ``(recorded_at DESC, id DESC)`` so newest decisions come
+            first. The ``id`` tiebreaker matches the Postgres
+            backend and keeps page boundaries stable under
+            concurrent inserts.
+
+        Raises:
+            QueryError: If ``role`` is outside the closed set, if
+                ``limit`` / ``offset`` fail the type or bounds check,
+                or if the underlying SQLite query raises.
         """
         # Runtime defense in depth: the Literal prevents type-safe
         # callers from passing bad values, but untyped callers can
@@ -554,7 +625,7 @@ class SQLiteDecisionRepository:
                 role_type=type(role_obj).__name__,
                 error=msg,
             )
-            raise ValueError(msg)  # noqa: TRY004  # consistent with unknown-string ValueError below
+            raise QueryError(msg)
         role_str: str = role_obj
         try:
             column = _ROLE_TO_COLUMN[role_str]
@@ -566,17 +637,31 @@ class SQLiteDecisionRepository:
                 role=role_str,
                 error=msg,
             )
-            raise ValueError(msg) from exc
+            raise QueryError(msg) from exc
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+            agent_id=agent_id,
+            role=role_str,
+        )
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             # column is a closed-set value from _ROLE_TO_COLUMN, never
             # user-supplied; agent_id flows through the positional
-            # placeholder.
+            # placeholder. ``id`` is added to the ORDER BY tiebreaker
+            # so cursor pagination stays deterministic when two records
+            # share a ``recorded_at`` timestamp.
             query = (
                 f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                f"WHERE {column} = ? ORDER BY recorded_at DESC"
+                f"WHERE {column} = ? ORDER BY recorded_at DESC, id DESC "
+                f"LIMIT ? OFFSET ?"
             )
             async with self._write_lock:
-                cursor = await self._db.execute(query, (agent_id,))
+                cursor = await self._db.execute(
+                    query,
+                    (agent_id, effective_limit, offset),
+                )
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = (

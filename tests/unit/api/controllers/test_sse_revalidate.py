@@ -135,10 +135,10 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
             await asyncio.Event().wait()
 
     class _FakeHub:
-        def subscribe(self, _session_id: str) -> _FakeQueue:
+        async def subscribe(self, _session_id: str) -> _FakeQueue:
             return _FakeQueue()
 
-        def unsubscribe(self, _session_id: str, _queue: _FakeQueue) -> None:
+        async def unsubscribe(self, _session_id: str, _queue: _FakeQueue) -> None:
             pass
 
     user = AuthenticatedUser(

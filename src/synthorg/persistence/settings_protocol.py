@@ -52,8 +52,16 @@ class SettingsRepository(Protocol):
 
     async def get_all(
         self,
+        *,
+        limit: int = 200,
+        offset: int = 0,
     ) -> tuple[tuple[NotBlankStr, NotBlankStr, str, str], ...]:
-        """Retrieve all settings across all namespaces.
+        """Retrieve all settings across all namespaces (paginated).
+
+        Args:
+            limit: Maximum rows to return (>= 1; defaults to 200, the
+                practical bound for the settings registry).
+            offset: Rows to skip (>= 0).
 
         Returns:
             Tuple of ``(namespace, key, value, updated_at)`` tuples,
@@ -61,6 +69,7 @@ class SettingsRepository(Protocol):
 
         Raises:
             PersistenceError: If the operation fails.
+            QueryError: If ``limit < 1`` or ``offset < 0``.
         """
         ...
 

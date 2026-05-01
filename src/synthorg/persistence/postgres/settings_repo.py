@@ -119,8 +119,34 @@ class PostgresSettingsRepository:
             for r in rows
         )
 
-    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
-        """Return all (namespace, key, value, updated_at)."""
+    async def get_all(
+        self,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> tuple[tuple[str, str, str, str], ...]:
+        """Return all (namespace, key, value, updated_at) (paginated)."""
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                error=msg,
+                param="limit",
+                value=limit,
+            )
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                error=msg,
+                param="offset",
+                value=offset,
+            )
+            raise QueryError(msg)
+        # Settings registry has a few hundred entries by design; the
+        # 1000 cap is a defensive ceiling against misconfigured callers.
+        effective_limit = min(limit, 1_000)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -128,7 +154,8 @@ class PostgresSettingsRepository:
             ):
                 await cur.execute(
                     "SELECT namespace, key, value, updated_at FROM settings "
-                    "ORDER BY namespace, key"
+                    "ORDER BY namespace, key LIMIT %s OFFSET %s",
+                    (effective_limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

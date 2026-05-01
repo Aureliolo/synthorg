@@ -138,20 +138,50 @@ class PostgresEscalationNotifySubscriber:
         self._channel = channel
         self._reconnect_delay = reconnect_delay_seconds
         self._task: asyncio.Task[None] | None = None
-        # Lazy-init: asyncio primitives bind to the running loop on
-        # first use, but this subscriber is wired at app-build time
-        # (no loop) and may outlive one lifespan in tests that share
-        # an app across loops.  Create on ``start()``, drop on ``stop()``.
-        self._stop_event: asyncio.Event | None = None
-        self._start_lock: asyncio.Lock | None = None
+        # Eager construction of the lifecycle primitives. Python 3.10+
+        # ``asyncio.Lock`` / ``asyncio.Event`` are loop-agnostic until
+        # first ``acquire()`` / ``set()``, so constructing them at
+        # app-wire time (no loop yet) is safe. The previous "lazy
+        # create in start()" shape published the lock attribute
+        # *before* the ``async with`` body ran, which let a racing
+        # ``stop()`` observe a fresh lock instance and operate on
+        # different primitives than the in-flight ``start()`` -- the
+        # bug CodeRabbit flagged on round 3.
+        self._stop_event: asyncio.Event = asyncio.Event()
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        # Per ``docs/reference/lifecycle-sync.md``: a ``stop()`` drain
+        # that exceeds the hard deadline marks the subscriber
+        # unrestartable so a subsequent ``start()`` cannot attach a
+        # fresh task while the orphan loop still holds the LISTEN
+        # connection. The flag survives any state resets so it
+        # remains observable on the next ``start()`` call.
+        self._stop_failed: bool = False
+        self._stop_drain_timeout_seconds: float = 30.0
 
     async def start(self) -> None:
-        """Schedule the background subscriber loop."""
-        if self._start_lock is None:
-            self._start_lock = asyncio.Lock()
-        if self._stop_event is None:
-            self._stop_event = asyncio.Event()
-        async with self._start_lock:
+        """Schedule the background subscriber loop.
+
+        Per the canonical lifecycle pattern
+        (``docs/reference/lifecycle-sync.md``), ``self._lifecycle_lock``
+        is held across the full body including the success log so
+        concurrent ``start()`` / ``stop()`` calls cannot interleave,
+        and no lifecycle primitive is published outside the lock
+        (those are constructed once in ``__init__``).
+        """
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "PostgresEscalationNotifySubscriber is unrestartable "
+                    "after a timed-out stop; construct a fresh subscriber "
+                    "instead"
+                )
+                logger.warning(
+                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    channel=self._channel,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise RuntimeError(msg)
             if self._task is not None and not self._task.done():
                 return
             self._stop_event.clear()
@@ -159,44 +189,104 @@ class PostgresEscalationNotifySubscriber:
                 self._run(),
                 name="escalation-notify-subscriber",
             )
-        logger.info(
-            CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
-            channel=self._channel,
-        )
+            logger.info(
+                CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
+                channel=self._channel,
+            )
 
     async def stop(self) -> None:
-        """Signal the loop to exit and await its completion."""
-        if self._stop_event is not None:
+        """Signal the loop to exit and await its completion.
+
+        Acquires ``self._lifecycle_lock`` so a concurrent ``start()``
+        cannot recreate the task mid-stop. Per
+        ``docs/reference/lifecycle-sync.md``, lifecycle locks must be
+        held across the full body of both ``start`` and ``stop``.
+        """
+        async with self._lifecycle_lock:
             self._stop_event.set()
-        task = self._task
-        if task is None:
-            return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            logger.warning(
-                CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="shutdown",
-            )
-        finally:
+            task = self._task
+            if task is None:
+                return
+            task.cancel()
+
+            # Spawn the await as a separate task and ``shield`` it from
+            # the outer ``wait_for`` cancellation: if ``_run`` (or any
+            # callee, e.g. a stuck ``subscribe_notifications`` context
+            # manager) suppresses ``CancelledError``, ``await task``
+            # would block INSIDE the lifecycle lock waiting for the
+            # suppressed cancellation to take effect -- the hard
+            # deadline would be soft. Same pattern as
+            # ``MessageBusBridge.stop()``.
+            async def _drain() -> None:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except MemoryError, RecursionError:
+                    # Catastrophic interpreter-level errors must
+                    # surface to the caller; never log-and-swallow
+                    # because that hides loss-of-process conditions
+                    # behind a "clean shutdown" log line.
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                # Drain exceeded the hard deadline. Mark the subscriber
+                # unrestartable so a future ``start()`` cannot spawn a
+                # fresh ``_run`` while the orphan task still holds the
+                # LISTEN connection.
+                self._stop_failed = True
+                # TRY400: ``logger.exception`` here would append a
+                # ``TimeoutError`` traceback with no actionable
+                # diagnostic information beyond the structured fields.
+                logger.error(  # noqa: TRY400
+                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    channel=self._channel,
+                    error=(
+                        "stop exceeded hard deadline; subscriber marked unrestartable"
+                    ),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
             self._task = None
-            self._stop_event = None
-            self._start_lock = None
-        logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
+            logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
+        # Re-create the lifecycle primitives outside the (now
+        # released) lock so a subsequent ``start()`` on a different
+        # event loop can re-bind them. ``asyncio.Lock`` /
+        # ``asyncio.Event`` bind to the running loop on first
+        # ``acquire`` / ``set``; the loop they were last bound to
+        # may be closed (test pattern: fresh-per-test event loops),
+        # so reusing the instances would raise ``RuntimeError: ...
+        # is bound to a different event loop``. The recreate runs
+        # AFTER the ``async with`` exits so we never swap the lock
+        # while still holding it. Production single-loop wiring
+        # never hits this path.
+        self._lifecycle_lock = asyncio.Lock()
+        self._stop_event = asyncio.Event()
 
     async def _run(self) -> None:
         """Main loop: (re)open a listen connection and dispatch notifies."""
-        if self._stop_event is None:
-            return
         while not self._stop_event.is_set():
             try:
                 await self._listen_once()
             except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                # Match ``_drain``: surface catastrophic
+                # interpreter-level errors instead of looping past
+                # them at WARNING.
                 raise
             except Exception as exc:
                 logger.warning(
@@ -227,7 +317,7 @@ class PostgresEscalationNotifySubscriber:
         """
         async with self._repo.subscribe_notifications(self._channel) as payloads:
             async for payload in payloads:
-                if self._stop_event is None or self._stop_event.is_set():
+                if self._stop_event.is_set():
                     break
                 await self._dispatch_payload(payload)
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, User
-from synthorg.api.controllers.ws import (
+from synthorg.api.controllers.ws_revalidation import (
     _periodic_revalidate,
     _revocation_reason,
 )
@@ -109,8 +109,35 @@ async def test_periodic_revalidate_closes_on_role_demoted() -> None:
 
 
 async def test_periodic_revalidate_tolerates_transient_failure() -> None:
-    """Three consecutive transient errors close the socket with 4011."""
+    """Three consecutive transient errors close the socket with 4011.
+
+    The fake app state caps ``ws_revalidation_max_failures`` at 3, so
+    the third take() returns False and the limiter triggers the close
+    with code 4011 (server error / revalidation backend unavailable).
+    """
     socket = _FakeSocket(persisted_user=_make_user(), raise_on_get=True)
+    user = _make_auth_user()
+    await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
+    assert socket.closed is True
+    assert socket.close_code == 4011
+
+
+async def test_periodic_revalidate_failure_window_does_not_reset_on_success() -> None:
+    """Sliding-window tracking does not reset on intervening successes.
+
+    Three successes in a row do NOT clear earlier failures: once the
+    failure budget within the configured window is exhausted, the
+    socket closes regardless of any successful tick that happened
+    between the failure cluster and the saturating failure.
+    """
+    socket = _FakeSocket(persisted_user=_make_user())
+    socket.app.state["app_state"].persistence.users.get.side_effect = [
+        RuntimeError("blip 1"),
+        _make_user(),  # success
+        RuntimeError("blip 2"),
+        _make_user(),  # success
+        RuntimeError("blip 3"),  # saturates the 3-slot window -> close
+    ]
     user = _make_auth_user()
     await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
     assert socket.closed is True
@@ -157,6 +184,14 @@ class _FakeApp:
         app_state = type(
             "AS",
             (),
-            {"persistence": persistence, "has_session_store": False},
+            {
+                "persistence": persistence,
+                "has_session_store": False,
+                # Issue #1683 settings: tight bounds so the
+                # transient-failure regression test can saturate the
+                # window in a few iterations.
+                "ws_revalidation_window_seconds": 60,
+                "ws_revalidation_max_failures": 3,
+            },
         )()
         self.state: dict[str, Any] = {"app_state": app_state}

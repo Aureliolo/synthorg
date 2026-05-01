@@ -40,6 +40,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -48,6 +49,9 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
+
+_MAX_PAGE_LIMIT: int = 1_000
+
 
 _COLS = (
     "id, task_id, approval_id, executing_agent_id, reviewer_agent_id, "
@@ -424,17 +428,63 @@ class PostgresDecisionRepository:
             return None
         return self._row_to_record(row)
 
-    async def list_by_task(self, task_id: NotBlankStr) -> tuple[DecisionRecord, ...]:
-        """List decision records for a task, ordered by version ascending."""
+    async def list_by_task(
+        self,
+        task_id: NotBlankStr,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DecisionRecord, ...]:
+        """List decision records for a task, oldest first.
+
+        Args:
+            task_id: Identifier of the task whose decisions are being
+                listed.
+            limit: Maximum number of records to return on this page;
+                must be ``>= 1``. The repo additionally clamps the
+                returned slice to ``_MAX_PAGE_LIMIT`` to prevent a
+                runaway caller from materialising the full table.
+            offset: Number of records to skip before the page; must
+                be ``>= 0``.
+
+        Returns:
+            ``tuple[DecisionRecord, ...]`` ordered ascending by
+            ``(recorded_at, id)`` so paginated results are stable
+            and a backfilled decision (low ``recorded_at``, high
+            ``version``) still sorts to the correct chronological
+            position. The ``id`` tiebreaker matches the deterministic
+            ordering used by ``list_by_agent``.
+
+        Raises:
+            QueryError: If ``limit`` / ``offset`` fail the type or
+                bounds check, or if the underlying ``psycopg`` query
+                raises. The structured ``WARNING`` is emitted before
+                the raise so operators can correlate the failure.
+        """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+            task_id=task_id,
+        )
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
+                # ``recorded_at ASC, id ASC`` matches the protocol's
+                # "oldest first" contract via the same wall-clock
+                # ordering ``list_by_agent`` uses (DESC there). A
+                # backfill that lands an old decision with a fresh
+                # high-numbered ``version`` would otherwise sort to
+                # the end under ``version ASC`` -- the exact scenario
+                # CodeRabbit flagged on round 4.
                 await cur.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                    "WHERE task_id = %s ORDER BY version ASC",
-                    (task_id,),
+                    "WHERE task_id = %s "
+                    "ORDER BY recorded_at ASC, id ASC LIMIT %s OFFSET %s",
+                    (task_id, effective_limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
@@ -459,8 +509,36 @@ class PostgresDecisionRepository:
         agent_id: NotBlankStr,
         *,
         role: DecisionRole,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
-        """List decision records where the agent acted in the given role."""
+        """List decision records where the agent acted in the given role.
+
+        Args:
+            agent_id: Identifier of the agent whose decisions are
+                being listed.
+            role: Either ``"executor"`` or ``"reviewer"``; selects
+                which side of the decision the agent participated on.
+                Anything outside that set raises ``QueryError`` so
+                callers don't accidentally widen the closed set.
+            limit: Maximum number of records to return on this page;
+                must be ``>= 1``. Clamped to ``_MAX_PAGE_LIMIT`` to
+                prevent unbounded queries.
+            offset: Number of records to skip before the page; must
+                be ``>= 0``.
+
+        Returns:
+            ``tuple[DecisionRecord, ...]`` ordered by
+            ``(recorded_at DESC, id DESC)`` so newest decisions come
+            first. The ``id`` tiebreaker keeps the page boundary
+            stable under concurrent inserts.
+
+        Raises:
+            QueryError: If ``role`` is outside the closed set, if
+                ``limit`` / ``offset`` fail the type or bounds check,
+                or if the underlying ``psycopg`` query raises. The
+                structured ``WARNING`` is emitted before the raise.
+        """
         # Runtime defense: validate role is in the closed set
         role_obj: object = role
         if not isinstance(role_obj, str):
@@ -473,7 +551,7 @@ class PostgresDecisionRepository:
                 role_type=type(role_obj).__name__,
                 error=msg,
             )
-            raise TypeError(msg)
+            raise QueryError(msg)
         role_str: str = role_obj
         try:
             column = _ROLE_TO_COLUMN[role_str]
@@ -485,18 +563,29 @@ class PostgresDecisionRepository:
                 role=role_str,
                 error=msg,
             )
-            raise ValueError(msg) from exc
+            raise QueryError(msg) from exc
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
+            agent_id=agent_id,
+            role=role_str,
+        )
+        effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
-            # column is a closed-set value from _ROLE_TO_COLUMN
+            # column is a closed-set value from _ROLE_TO_COLUMN.
+            # ``id DESC`` tiebreaker keeps cursor pagination stable
+            # when records share a recorded_at timestamp.
             query = (
                 f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                f"WHERE {column} = %s ORDER BY recorded_at DESC"
+                f"WHERE {column} = %s ORDER BY recorded_at DESC, id DESC "
+                f"LIMIT %s OFFSET %s"
             )
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(query, (agent_id,))
+                await cur.execute(query, (agent_id, effective_limit, offset))
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = (

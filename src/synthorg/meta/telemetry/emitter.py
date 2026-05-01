@@ -3,15 +3,14 @@
 Buffers anonymized events and flushes them in batches to the
 configured collector endpoint. Flush triggers: batch size
 threshold, time interval (periodic background task), or
-explicit ``flush()``/``close()`` call. Retries on 5xx with
+explicit ``flush()``/``aclose()`` call. Retries on 5xx with
 exponential backoff, drops on 4xx. 3xx redirects are treated
 as failures (POST may not have been stored).
 """
 
 import asyncio
-import contextlib
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import httpx
 
@@ -31,6 +30,7 @@ from synthorg.observability.events.cross_deployment import (
 
 if TYPE_CHECKING:
     from collections.abc import Collection
+    from types import TracebackType
 
     from synthorg.meta.chief_of_staff.models import ProposalOutcome
     from synthorg.meta.config import SelfImprovementConfig
@@ -53,9 +53,17 @@ class HttpAnalyticsEmitter:
 
     Events are buffered in memory and flushed when the batch size
     threshold is reached, the flush interval has elapsed, or
-    ``flush()``/``close()`` is called explicitly. A background
+    ``flush()``/``aclose()`` is called explicitly. A background
     periodic task ensures buffered events are flushed even when
     no new events arrive.
+
+    Supports the async-context-manager protocol for guaranteed
+    cleanup::
+
+        async with HttpAnalyticsEmitter(...) as emitter:
+            await emitter.emit_decision(...)
+        # ``aclose()`` runs on exit; the httpx client and any
+        # buffered events are flushed.
 
     Lock invariants: ``_buffer`` and ``_last_flush_at`` are
     protected by ``_lock``. ``_analytics_config``,
@@ -81,6 +89,26 @@ class HttpAnalyticsEmitter:
         self._builtin_rule_names = frozenset(builtin_rule_names)
         self._buffer: list[AnonymizedOutcomeEvent] = []
         self._lock = asyncio.Lock()
+        # Dedicated lifecycle lock serialises flush-task creation
+        # (``_ensure_flush_task``) and shutdown (``aclose``). Without
+        # this, two concurrent first-emit producers could both pass
+        # the ``_flush_task is None`` guard and spawn two
+        # ``_periodic_flush`` tasks; only the last assigned to
+        # ``self._flush_task`` would be cancelled by ``aclose``, and
+        # the orphan would continue running and call ``flush`` /
+        # ``self._client`` after the client had been closed.
+        self._lifecycle_lock = asyncio.Lock()
+        # Dedicated send lock serialises in-flight ``_send_batch`` calls
+        # with ``aclose``'s ``self._client.aclose()``. Without it,
+        # ``aclose`` can close the httpx client mid-POST: the public
+        # ``flush()`` releases ``self._lock`` before calling
+        # ``_send_batch`` (so concurrent emit_* keep enqueuing while
+        # the network round-trip runs), which means there is no
+        # mutual exclusion between an in-flight POST and a racing
+        # ``aclose``. ``aclose`` acquires this lock around its
+        # ``self._client.aclose()`` so any in-flight send finishes
+        # against a live client; the close then proceeds.
+        self._send_lock = asyncio.Lock()
         self._last_flush_at = time.monotonic()
         self._closed = False
         self._flush_task: asyncio.Task[None] | None = None
@@ -155,37 +183,138 @@ class HttpAnalyticsEmitter:
             logger.exception(XDEPLOY_EVENT_EMIT_FAILED, event_type="rollout_result")
 
     async def flush(self) -> None:
-        """Flush all buffered events to the collector."""
+        """Flush all buffered events to the collector.
+
+        The buffer is cleared up-front so concurrent ``emit_*`` calls
+        can keep enqueueing while the network round-trip runs. If the
+        flush is cancelled mid-flight (e.g. by ``aclose()`` cancelling
+        the periodic task) we re-stage the cleared batch onto the front
+        of the buffer so the subsequent ``aclose().flush()`` retries it
+        instead of silently dropping the batch.
+
+        ``self._send_lock`` is held across ``_send_batch`` so a
+        concurrent ``aclose`` cannot close ``self._client`` while a
+        POST is mid-flight; ``aclose`` acquires the same lock around
+        its ``self._client.aclose()`` call.
+        """
         async with self._lock:
             if not self._buffer:
                 return
             batch = tuple(self._buffer)
             self._buffer.clear()
             self._last_flush_at = time.monotonic()
-        await self._send_batch(batch)
+        try:
+            async with self._send_lock:
+                await self._send_batch(batch)
+        except asyncio.CancelledError:
+            async with self._lock:
+                # Prepend so chronological order is preserved relative
+                # to any events appended while we were sending.
+                self._buffer[:0] = batch
+            raise
 
-    async def close(self) -> None:
-        """Flush remaining events and close the HTTP client."""
-        self._closed = True
-        if self._flush_task is not None:
-            self._flush_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._flush_task
-        await self.flush()
-        await self._client.aclose()
-        logger.info(XDEPLOY_EMITTER_CLOSED)
+    async def aclose(self) -> None:
+        """Flush remaining events and close the HTTP client.
+
+        Cancellation order matters: ``self._closed = True`` is set
+        BEFORE awaiting the flush task so the periodic loop's
+        ``while not self._closed`` guard exits cleanly on its next
+        iteration. We then ``cancel()`` to interrupt the in-progress
+        ``asyncio.sleep`` (which is the only place the loop can be
+        parked); a flush already in progress propagates its
+        ``CancelledError`` to the awaiter, which we suppress
+        explicitly. The explicit final ``flush()`` then sweeps any
+        events appended between the cancellation request and this
+        call.
+
+        ``self._lifecycle_lock`` is held across the flag flip + task
+        cancel + client close so a concurrent ``_enqueue`` cannot
+        spawn a fresh ``_periodic_flush`` task in between -- otherwise
+        the orphan would survive shutdown and call ``flush`` (which
+        touches ``self._client``) after ``self._client.aclose()``.
+
+        Resource-close ordering: the ``httpx.AsyncClient`` MUST close
+        even if ``self._flush_task`` raised a non-CancelledError
+        exception or ``self.flush()`` failed. A naive ``contextlib.
+        suppress(CancelledError)`` around the await would let any
+        other exception (e.g. an unexpected ``RuntimeError`` raised
+        from the periodic loop) propagate before
+        ``self._client.aclose()`` ran, leaving the httpx connection
+        pool open for the rest of the process lifetime. We capture
+        the first non-CancelledError exception, finish the close
+        sequence, and re-raise at the end so shutdown is observable
+        without leaking the client.
+        """
+        async with self._lifecycle_lock:
+            self._closed = True
+            deferred_exc: BaseException | None = None
+            if self._flush_task is not None:
+                self._flush_task.cancel()
+                try:
+                    await self._flush_task
+                except asyncio.CancelledError:
+                    pass  # expected: we just cancelled it
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    deferred_exc = exc
+            try:
+                await self.flush()
+            except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                if deferred_exc is None:
+                    deferred_exc = exc
+            # Hold ``_send_lock`` over ``_client.aclose()`` so any
+            # in-flight ``_send_batch`` (which holds the same lock
+            # while POSTing) finishes against a live client. The
+            # final ``flush`` above already drained the buffer
+            # serially, but a concurrent caller of the public
+            # ``flush()`` could still be mid-POST when we get here.
+            async with self._send_lock:
+                await self._client.aclose()
+            logger.info(XDEPLOY_EMITTER_CLOSED)
+            if deferred_exc is not None:
+                raise deferred_exc
+
+    async def __aenter__(self) -> Self:
+        """Enter the async context manager."""
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        """Flush + close on context manager exit."""
+        await self.aclose()
 
     async def _ensure_flush_task(self) -> None:
-        """Start the periodic flush background task if not running."""
-        if self._flush_task is None or self._flush_task.done():
-            self._flush_task = asyncio.create_task(
-                self._periodic_flush(),
-            )
+        """Start the periodic flush background task if not running.
+
+        Holds ``self._lifecycle_lock`` so two concurrent first-emit
+        producers can't both pass the ``is None / done()`` guard and
+        spawn two background tasks (only one would be remembered on
+        ``self._flush_task``; the other would orphan and survive
+        ``aclose``). The lock is also acquired by ``aclose`` so a
+        producer racing shutdown observes the closed flag set inside
+        the same critical section.
+        """
+        async with self._lifecycle_lock:
+            if self._closed:
+                return
+            if self._flush_task is None or self._flush_task.done():
+                self._flush_task = asyncio.create_task(
+                    self._periodic_flush(),
+                )
 
     async def _periodic_flush(self) -> None:
         """Background loop that flushes on interval.
 
-        Runs until ``close()`` sets ``_closed`` and cancels this
+        Runs until ``aclose()`` sets ``_closed`` and cancels this
         task. The cancellation interrupts the sleep, so no
         post-sleep guard is needed.
         """
@@ -198,13 +327,30 @@ class HttpAnalyticsEmitter:
     async def _enqueue(self, event: AnonymizedOutcomeEvent) -> None:
         """Add event to buffer and maybe flush.
 
-        Silently drops events after ``close()`` has been called.
+        Silently drops events after ``aclose()`` has been called. The
+        ``_closed`` check is repeated INSIDE the buffer-mutation lock
+        so a producer that passed the early guard cannot append after
+        ``aclose()`` set the flag and drained the buffer; otherwise
+        the post-shutdown event would be stranded forever.
         """
         if self._closed:
             return
         await self._ensure_flush_task()
         should_flush = False
         async with self._lock:
+            if self._closed:
+                # ``aclose()`` set the flag while we were awaiting the
+                # lock or the flush-task helper above; the buffer may
+                # already have been drained. Drop the event rather
+                # than stranding it past shutdown.
+                #
+                # mypy ``[unreachable]`` on the ``return`` below:
+                # mypy narrows ``self._closed`` to ``False`` after the
+                # outer guard, but this is concurrent code; another
+                # coroutine can flip the flag while we ``await
+                # _ensure_flush_task()`` or the lock. The narrowing is
+                # incorrect for async-mutated state.
+                return  # type: ignore[unreachable]
             self._buffer.append(event)
             logger.debug(
                 XDEPLOY_EVENT_QUEUED,

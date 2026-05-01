@@ -322,7 +322,7 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                     " WHERE definition_id = %s"
-                    " ORDER BY updated_at DESC LIMIT %s",
+                    " ORDER BY updated_at DESC, id ASC LIMIT %s",
                     (definition_id, _MAX_LIST_ROWS),
                 )
                 rows = await cur.fetchall()
@@ -369,7 +369,7 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                     " WHERE status = %s"
-                    " ORDER BY updated_at DESC LIMIT %s",
+                    " ORDER BY updated_at DESC, id ASC LIMIT %s",
                     (status.value, _MAX_LIST_ROWS),
                 )
                 rows = await cur.fetchall()

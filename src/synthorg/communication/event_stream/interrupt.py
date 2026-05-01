@@ -22,6 +22,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_INTERRUPT_CREATED,
+    EVENT_STREAM_INTERRUPT_DUPLICATE,
     EVENT_STREAM_INTERRUPT_EXPIRED,
     EVENT_STREAM_INTERRUPT_NOT_FOUND,
     EVENT_STREAM_INTERRUPT_RESUMED,
@@ -190,15 +191,20 @@ class InterruptStore:
        See also: ``A2A gateway implementation`` (#1164).
     """
 
-    __slots__ = ("_events", "_pending", "_results")
+    __slots__ = ("_events", "_lock", "_pending", "_results")
 
     def __init__(self) -> None:
         self._pending: dict[str, Interrupt] = {}
         self._events: dict[str, asyncio.Event] = {}
         self._results: dict[str, InterruptResolution] = {}
+        self._lock = asyncio.Lock()
 
     async def create(self, interrupt: Interrupt) -> None:
         """Register a new pending interrupt.
+
+        The existence check and the dict writes execute under
+        ``self._lock`` so two concurrent ``create()`` calls with the
+        same ``interrupt.id`` cannot both pass the existence guard.
 
         Args:
             interrupt: The interrupt to register.
@@ -206,26 +212,46 @@ class InterruptStore:
         Raises:
             ValueError: If an interrupt with the same ID already exists.
         """
-        if (
-            interrupt.id in self._pending
-            or interrupt.id in self._events
-            or interrupt.id in self._results
-        ):
-            msg = f"Interrupt {interrupt.id!r} already exists"
-            raise ValueError(msg)
-        self._pending[interrupt.id] = copy.deepcopy(interrupt)
-        self._events[interrupt.id] = asyncio.Event()
-        logger.info(
-            EVENT_STREAM_INTERRUPT_CREATED,
-            interrupt_id=interrupt.id,
-            interrupt_type=interrupt.type.value,
-            session_id=interrupt.session_id,
-        )
+        async with self._lock:
+            if (
+                interrupt.id in self._pending
+                or interrupt.id in self._events
+                or interrupt.id in self._results
+            ):
+                msg = f"Interrupt {interrupt.id!r} already exists"
+                # Log before raise per the repo's error-path observability
+                # rule. Includes the interrupt id + which dict already had
+                # it so concurrent-create races are diagnosable from the
+                # event stream alone.
+                logger.warning(
+                    EVENT_STREAM_INTERRUPT_DUPLICATE,
+                    interrupt_id=interrupt.id,
+                    in_pending=interrupt.id in self._pending,
+                    in_events=interrupt.id in self._events,
+                    in_results=interrupt.id in self._results,
+                )
+                raise ValueError(msg)
+            self._pending[interrupt.id] = copy.deepcopy(interrupt)
+            self._events[interrupt.id] = asyncio.Event()
+            logger.info(
+                EVENT_STREAM_INTERRUPT_CREATED,
+                interrupt_id=interrupt.id,
+                interrupt_type=interrupt.type.value,
+                session_id=interrupt.session_id,
+            )
 
     async def get(self, interrupt_id: str) -> Interrupt | None:
         """Get a pending interrupt by ID.
 
         Returns a deep copy so callers cannot mutate in-store state.
+
+        The deep copy runs **outside** the lock so an arbitrarily large
+        ``Interrupt`` payload doesn't block concurrent ``create`` /
+        ``resolve`` writers for the duration of the copy. The store is
+        only held long enough to snapshot the in-store reference; the
+        reference is immutable for our purposes (``Interrupt`` is a
+        frozen Pydantic model and we only ever replace the dict slot,
+        never mutate in place), so copying after the release is safe.
 
         Args:
             interrupt_id: The interrupt identifier.
@@ -233,7 +259,8 @@ class InterruptStore:
         Returns:
             A copy of the interrupt, or ``None`` if not found.
         """
-        interrupt = self._pending.get(interrupt_id)
+        async with self._lock:
+            interrupt = self._pending.get(interrupt_id)
         return copy.deepcopy(interrupt) if interrupt is not None else None
 
     async def list_pending(
@@ -244,19 +271,27 @@ class InterruptStore:
 
         Returns deep copies so callers cannot mutate in-store state.
 
+        Snapshots the matching ``Interrupt`` references under the lock,
+        then deep-copies them outside the lock. Same justification as
+        ``get``: the in-store entries are immutable replace-only slots,
+        so a snapshot taken under the lock is safe to copy after
+        release. This keeps a large pending queue's copy cost off the
+        critical path of concurrent ``create`` / ``resolve`` writers.
+
         Args:
             session_id: Filter by session, or ``None`` for all.
 
         Returns:
             Tuple of copied pending interrupts.
         """
-        if session_id is None:
-            return tuple(copy.deepcopy(i) for i in self._pending.values())
-        return tuple(
-            copy.deepcopy(i)
-            for i in self._pending.values()
-            if i.session_id == session_id
-        )
+        async with self._lock:
+            if session_id is None:
+                snapshot: tuple[Interrupt, ...] = tuple(self._pending.values())
+            else:
+                snapshot = tuple(
+                    i for i in self._pending.values() if i.session_id == session_id
+                )
+        return tuple(copy.deepcopy(i) for i in snapshot)
 
     async def resolve(
         self,
@@ -264,51 +299,72 @@ class InterruptStore:
     ) -> Interrupt | None:
         """Resolve a pending interrupt and signal waiters.
 
+        The lookup, validation, removal, result write, and ``event.set()``
+        run under ``self._lock`` so a concurrent ``wait_for_resolution()``
+        cannot observe a half-applied state where ``_pending`` is cleared
+        but the resolution has not landed in ``_results`` yet.
+
+        Returns ``None`` in three cases (each emits a structured log so
+        operators can distinguish them):
+
+        * ``EVENT_STREAM_INTERRUPT_NOT_FOUND`` -- no matching pending
+          interrupt for ``resolution.interrupt_id``.
+        * ``EVENT_STREAM_INVALID_RESUME_PAYLOAD`` (TOOL_APPROVAL) --
+          ``decision`` was missing.
+        * ``EVENT_STREAM_INVALID_RESUME_PAYLOAD`` (INFO_REQUEST) --
+          ``response`` was missing.
+
+        On the latter two cases the interrupt stays in ``_pending`` so
+        the caller can retry with a corrected resolution; the eventual
+        ``wait_for_resolution()`` timeout cleans up if no retry arrives.
+
         Args:
             resolution: The resolution to apply.
 
         Returns:
-            The resolved interrupt, or ``None`` if not found.
+            The resolved interrupt, or ``None`` per the three cases
+            documented above.
         """
-        interrupt = self._pending.get(resolution.interrupt_id)
-        if interrupt is None:
-            logger.warning(
-                EVENT_STREAM_INTERRUPT_NOT_FOUND,
-                interrupt_id=resolution.interrupt_id,
-            )
-            return None
+        async with self._lock:
+            interrupt = self._pending.get(resolution.interrupt_id)
+            if interrupt is None:
+                logger.warning(
+                    EVENT_STREAM_INTERRUPT_NOT_FOUND,
+                    interrupt_id=resolution.interrupt_id,
+                )
+                return None
 
-        # Validate resolution payload matches interrupt type.
-        is_tool = interrupt.type == InterruptType.TOOL_APPROVAL
-        if is_tool and resolution.decision is None:
-            logger.warning(
-                EVENT_STREAM_INVALID_RESUME_PAYLOAD,
-                interrupt_id=resolution.interrupt_id,
-                note="TOOL_APPROVAL requires decision",
-            )
-            return None
-        is_info = interrupt.type == InterruptType.INFO_REQUEST
-        if is_info and resolution.response is None:
-            logger.warning(
-                EVENT_STREAM_INVALID_RESUME_PAYLOAD,
-                interrupt_id=resolution.interrupt_id,
-                note="INFO_REQUEST requires response",
-            )
-            return None
+            # Validate resolution payload matches interrupt type.
+            is_tool = interrupt.type == InterruptType.TOOL_APPROVAL
+            if is_tool and resolution.decision is None:
+                logger.warning(
+                    EVENT_STREAM_INVALID_RESUME_PAYLOAD,
+                    interrupt_id=resolution.interrupt_id,
+                    note="TOOL_APPROVAL requires decision",
+                )
+                return None
+            is_info = interrupt.type == InterruptType.INFO_REQUEST
+            if is_info and resolution.response is None:
+                logger.warning(
+                    EVENT_STREAM_INVALID_RESUME_PAYLOAD,
+                    interrupt_id=resolution.interrupt_id,
+                    note="INFO_REQUEST requires response",
+                )
+                return None
 
-        # Remove from pending only after validation succeeds.
-        del self._pending[resolution.interrupt_id]
-        self._results[resolution.interrupt_id] = resolution
-        event = self._events.get(resolution.interrupt_id)
-        if event is not None:
-            event.set()
+            # Remove from pending only after validation succeeds.
+            del self._pending[resolution.interrupt_id]
+            self._results[resolution.interrupt_id] = resolution
+            event = self._events.get(resolution.interrupt_id)
+            if event is not None:
+                event.set()
 
-        logger.info(
-            EVENT_STREAM_INTERRUPT_RESUMED,
-            interrupt_id=resolution.interrupt_id,
-            resolved_by=resolution.resolved_by,
-        )
-        return interrupt
+            logger.info(
+                EVENT_STREAM_INTERRUPT_RESUMED,
+                interrupt_id=resolution.interrupt_id,
+                resolved_by=resolution.resolved_by,
+            )
+            return interrupt
 
     async def wait_for_resolution(
         self,
@@ -318,6 +374,12 @@ class InterruptStore:
     ) -> InterruptResolution | None:
         """Block until the interrupt is resolved or timeout expires.
 
+        The waiter snapshots the ``asyncio.Event`` under the lock,
+        releases the lock for the ``await event.wait()`` (so resolvers
+        can take the lock to set the event), then re-acquires the lock
+        for the timeout / result cleanup so the dict mutations stay
+        consistent with concurrent ``resolve()`` calls.
+
         Args:
             interrupt_id: The interrupt to wait on.
             timeout: Seconds to wait, or ``None`` for indefinite.
@@ -326,23 +388,26 @@ class InterruptStore:
             The resolution, or ``None`` on timeout or if the
             interrupt does not exist.
         """
-        event = self._events.get(interrupt_id)
+        async with self._lock:
+            event = self._events.get(interrupt_id)
         if event is None:
             return None
 
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
         except TimeoutError:
-            # Clean up expired interrupt and any orphaned result
-            self._pending.pop(interrupt_id, None)
-            self._events.pop(interrupt_id, None)
-            self._results.pop(interrupt_id, None)
-            logger.info(
-                EVENT_STREAM_INTERRUPT_EXPIRED,
-                interrupt_id=interrupt_id,
-            )
+            async with self._lock:
+                # Clean up expired interrupt and any orphaned result.
+                self._pending.pop(interrupt_id, None)
+                self._events.pop(interrupt_id, None)
+                self._results.pop(interrupt_id, None)
+                logger.info(
+                    EVENT_STREAM_INTERRUPT_EXPIRED,
+                    interrupt_id=interrupt_id,
+                )
             return None
 
-        result = self._results.pop(interrupt_id, None)
-        self._events.pop(interrupt_id, None)
+        async with self._lock:
+            result = self._results.pop(interrupt_id, None)
+            self._events.pop(interrupt_id, None)
         return result

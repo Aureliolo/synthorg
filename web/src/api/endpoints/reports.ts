@@ -1,6 +1,6 @@
-import { apiClient, unwrap } from '../client'
+import { apiClient, unwrap, unwrapPaginated } from '../client'
 import type { components } from '../types/generated'
-import type { ApiResponse } from '../types/http'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 type Schemas = components['schemas']
 
@@ -15,11 +15,15 @@ export interface ListReportPeriodsOptions {
 export async function listReportPeriods(
   options: ListReportPeriodsOptions = {},
 ): Promise<ReportPeriod[]> {
-  const response = await apiClient.get<ApiResponse<ReportPeriod[]>>(
+  // Backend returns ``PaginatedResponse[ReportPeriod]`` (the period set
+  // is bounded but paginated for shape consistency with the rest of
+  // the list surface). Default page size covers all known periods, so
+  // we discard the cursor metadata at the call site.
+  const response = await apiClient.get<PaginatedResponse<ReportPeriod>>(
     '/reports/periods',
     { signal: options.signal },
   )
-  return unwrap(response)
+  return unwrapPaginated<ReportPeriod>(response).data
 }
 
 export async function generateReport(

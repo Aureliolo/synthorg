@@ -1,5 +1,5 @@
-import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid } from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 // -- Types -------------------------------------------------------------------
 
@@ -123,10 +123,14 @@ export async function toggleCustomRule(id: string): Promise<CustomRule> {
 }
 
 export async function listMetrics(): Promise<MetricDescriptor[]> {
-  const response = await apiClient.get<ApiResponse<MetricDescriptor[]>>(
+  // Backend returns ``PaginatedResponse[MetricDescriptor]``; the
+  // metric registry is bounded but paginated for shape consistency
+  // with the rest of the list surface. Default page size covers the
+  // full registry, so the caller receives a flat array.
+  const response = await apiClient.get<PaginatedResponse<MetricDescriptor>>(
     `${BASE}/metrics`,
   )
-  return unwrap(response)
+  return unwrapPaginated<MetricDescriptor>(response).data
 }
 
 export async function previewRule(

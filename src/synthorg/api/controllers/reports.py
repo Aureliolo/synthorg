@@ -6,8 +6,13 @@ from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    paginate_cursor,
+)
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.report_config import ReportPeriod
@@ -130,8 +135,20 @@ class ReportsController(Controller):
     @get(
         "/periods",
         summary="List available report periods",
-        description="Return the available report period options.",
+        description="Return the available report period options (paginated).",
     )
-    async def list_periods(self) -> ApiResponse[list[str]]:
-        """List available report periods."""
-        return ApiResponse(data=[p.value for p in ReportPeriod])
+    async def list_periods(
+        self,
+        state: State,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[str]:
+        """List available report periods (cursor-paginated for shape parity)."""
+        entries = tuple(p.value for p in ReportPeriod)
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
+        return PaginatedResponse[str](data=page, pagination=meta)

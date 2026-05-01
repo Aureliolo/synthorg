@@ -363,7 +363,7 @@ WHERE id = ? AND version = ?""",
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE definition_id = ?"
-                " ORDER BY updated_at DESC LIMIT ?",
+                " ORDER BY updated_at DESC, id ASC LIMIT ?",
                 (definition_id, _MAX_LIST_ROWS),
             )
             rows = await cursor.fetchall()
@@ -406,7 +406,7 @@ WHERE id = ? AND version = ?""",
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE status = ?"
-                " ORDER BY updated_at DESC LIMIT ?",
+                " ORDER BY updated_at DESC, id ASC LIMIT ?",
                 (status.value, _MAX_LIST_ROWS),
             )
             rows = await cursor.fetchall()

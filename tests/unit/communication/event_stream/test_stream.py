@@ -27,12 +27,12 @@ def _make_event(
 class TestEventStreamHub:
     async def test_subscribe_returns_queue(self) -> None:
         hub = EventStreamHub()
-        queue = hub.subscribe("session-abc")
+        queue = await hub.subscribe("session-abc")
         assert isinstance(queue, asyncio.Queue)
 
     async def test_publish_delivers_to_subscriber(self) -> None:
         hub = EventStreamHub()
-        queue = hub.subscribe("session-abc")
+        queue = await hub.subscribe("session-abc")
         event = _make_event()
         await hub.publish(event)
         received = queue.get_nowait()
@@ -40,8 +40,8 @@ class TestEventStreamHub:
 
     async def test_publish_fans_out_to_multiple_subscribers(self) -> None:
         hub = EventStreamHub()
-        q1 = hub.subscribe("session-abc")
-        q2 = hub.subscribe("session-abc")
+        q1 = await hub.subscribe("session-abc")
+        q2 = await hub.subscribe("session-abc")
         event = _make_event()
         await hub.publish(event)
         assert q1.get_nowait().id == "evt-001"
@@ -49,8 +49,8 @@ class TestEventStreamHub:
 
     async def test_publish_only_to_matching_session(self) -> None:
         hub = EventStreamHub()
-        q_abc = hub.subscribe("session-abc")
-        q_xyz = hub.subscribe("session-xyz")
+        q_abc = await hub.subscribe("session-abc")
+        q_xyz = await hub.subscribe("session-xyz")
         event = _make_event(session_id="session-abc")
         await hub.publish(event)
         assert q_abc.get_nowait().id == "evt-001"
@@ -58,8 +58,8 @@ class TestEventStreamHub:
 
     async def test_unsubscribe_removes_queue(self) -> None:
         hub = EventStreamHub()
-        queue = hub.subscribe("session-abc")
-        hub.unsubscribe("session-abc", queue)
+        queue = await hub.subscribe("session-abc")
+        await hub.unsubscribe("session-abc", queue)
         event = _make_event()
         await hub.publish(event)
         assert queue.empty()
@@ -67,7 +67,7 @@ class TestEventStreamHub:
     async def test_unsubscribe_unknown_session_no_error(self) -> None:
         hub = EventStreamHub()
         queue: asyncio.Queue[StreamEvent] = asyncio.Queue()
-        hub.unsubscribe("nonexistent", queue)
+        await hub.unsubscribe("nonexistent", queue)
 
     async def test_publish_to_session_with_no_subscribers(self) -> None:
         hub = EventStreamHub()
@@ -76,7 +76,7 @@ class TestEventStreamHub:
 
     async def test_full_queue_does_not_block(self) -> None:
         hub = EventStreamHub(max_queue_size=1)
-        queue = hub.subscribe("session-abc")
+        queue = await hub.subscribe("session-abc")
         e1 = _make_event()
         e2 = StreamEvent(
             id="evt-002",
@@ -93,7 +93,7 @@ class TestEventStreamHub:
 
     async def test_publish_raw_convenience(self) -> None:
         hub = EventStreamHub()
-        queue = hub.subscribe("session-abc")
+        queue = await hub.subscribe("session-abc")
         await hub.publish_raw(
             session_id="session-abc",
             event_type=AgUiEventType.STEP_STARTED,
@@ -107,8 +107,8 @@ class TestEventStreamHub:
 
     async def test_multiple_sessions_isolated(self) -> None:
         hub = EventStreamHub()
-        q1 = hub.subscribe("s1")
-        q2 = hub.subscribe("s2")
+        q1 = await hub.subscribe("s1")
+        q2 = await hub.subscribe("s2")
         await hub.publish(_make_event(session_id="s1"))
         await hub.publish(
             StreamEvent(
@@ -122,3 +122,60 @@ class TestEventStreamHub:
         assert q2.get_nowait().session_id == "s2"
         assert q1.empty()
         assert q2.empty()
+
+
+@pytest.mark.unit
+class TestEventStreamHubRaceConditions:
+    """Regression tests for issue #1683 race-condition fixes.
+
+    These tests synchronize many concurrent tasks at the start of the
+    critical section via :class:`asyncio.Barrier` so they all attempt
+    the unsynchronized dict mutation simultaneously.  Without the
+    ``_lock``, ``setdefault().append()`` could lose subscribers or
+    drop events; the assertions below would intermittently fail.
+    """
+
+    async def test_concurrent_subscribers_for_same_session_all_receive_event(
+        self,
+    ) -> None:
+        hub = EventStreamHub()
+        n_subscribers = 100
+        barrier = asyncio.Barrier(n_subscribers)
+
+        async def subscribe_under_barrier() -> asyncio.Queue[StreamEvent]:
+            await barrier.wait()
+            return await hub.subscribe("race-session")
+
+        queues = await asyncio.gather(
+            *(subscribe_under_barrier() for _ in range(n_subscribers)),
+        )
+        assert len({id(q) for q in queues}) == n_subscribers
+
+        await hub.publish(_make_event(session_id="race-session"))
+
+        for queue in queues:
+            received = queue.get_nowait()
+            assert received.id == "evt-001"
+
+    async def test_concurrent_subscribe_unsubscribe_no_corruption(self) -> None:
+        hub = EventStreamHub()
+        n_subscribers = 50
+        barrier = asyncio.Barrier(n_subscribers * 2)
+
+        async def subscribe_then_unsubscribe() -> None:
+            await barrier.wait()
+            queue = await hub.subscribe("race-session")
+            await hub.unsubscribe("race-session", queue)
+
+        async def publish_repeatedly() -> None:
+            await barrier.wait()
+            for _ in range(10):
+                await hub.publish(_make_event(session_id="race-session"))
+
+        # Half subscribe/unsubscribe, half publish; barrier holds them all
+        # until every coroutine is at the start.  No KeyError or
+        # corruption should occur.
+        await asyncio.gather(
+            *(subscribe_then_unsubscribe() for _ in range(n_subscribers)),
+            *(publish_repeatedly() for _ in range(n_subscribers)),
+        )
