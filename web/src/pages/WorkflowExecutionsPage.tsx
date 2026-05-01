@@ -120,36 +120,31 @@ export default function WorkflowExecutionsPage() {
     void reload()
   }, [reload])
 
-  // Drop any in-flight cancel target when the workflow id changes;
-  // otherwise navigating away while the confirm dialog is open
-  // would let the user click Cancel and dispatch the request
-  // against a different workflow's execution id. Deferred to a
-  // microtask so the effect stays free of synchronous setState
-  // (per the ESLint set-state-in-effect rule).
+  // Drop any in-flight cancel target when the workflow id changes.
+  // The setState fires synchronously here on purpose: a deferred
+  // microtask creates a race window where the user can click
+  // Confirm on the dialog (still open with the previous workflow's
+  // execution id) before the microtask settles, which then
+  // dispatches a cancel against the wrong workflow.
   useEffect(() => {
-    let cancelled = false
-    void Promise.resolve().then(() => {
-      if (cancelled) return
-      setPendingCancel(null)
-    })
-    return () => { cancelled = true }
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- correctness wins over the microtask defer here
+    setPendingCancel(null)
   }, [id])
 
   // Capture the workflow id at the moment the cancel was issued so
   // ``handleCancel`` can detect navigation away from this view (the
   // dialog Confirm callback can resolve after a route change). The
-  // toast still fires, but ``reload()`` is gated on the workflow id
-  // still matching ``latestIdRef.current``; otherwise we'd be
-  // refetching the previous workflow's executions while the
-  // operator is already looking at a different page.
+  // success-path toast still fires, but ``reload()`` is gated on
+  // the workflow id still matching ``latestIdRef.current``;
+  // otherwise we'd be refetching the previous workflow's executions
+  // while the operator is already looking at a different page.
+  // The ``try`` only wraps the API call so a future addToast
+  // refactor that throws (e.g. a queue overflow check) can't be
+  // mistaken for an API failure and routed through the error toast.
   const handleCancel = useCallback(async (executionId: string) => {
     const issuedFor = id
     try {
       await cancelWorkflowExecution(executionId)
-      addToast({ variant: 'success', title: 'Cancellation requested' })
-      if (latestIdRef.current === issuedFor) {
-        void reload()
-      }
     } catch (err) {
       const message = getErrorMessage(err)
       log.error('cancelWorkflowExecution failed', {
@@ -161,6 +156,11 @@ export default function WorkflowExecutionsPage() {
         title: 'Could not cancel execution',
         description: message,
       })
+      return
+    }
+    addToast({ variant: 'success', title: 'Cancellation requested' })
+    if (latestIdRef.current === issuedFor) {
+      void reload()
     }
   }, [addToast, reload, id])
 

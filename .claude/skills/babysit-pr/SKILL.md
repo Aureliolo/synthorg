@@ -139,32 +139,32 @@ Convergence holds when ALL true:
 
 If converged:
 - Append history `{round, action: "converged", checks_passed: N}`.
-- **Squash-merge immediately, but only once per head SHA.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Before issuing the merge, compare the current `headRefOid` against `state.last_merge_attempt_headRefOid`:
-  - If they are equal, an earlier tick already attempted this exact head. Do NOT re-issue the merge call -- the prior `--auto` request is still attached to this head and a second call would be redundant or worse. Instead, re-read the PR with `gh pr view N --json state,mergedAt` and decide based on the freshly-fetched state:
-    - `state == "MERGED"` (`mergedAt != null`): print the `CONVERGED + SQUASH-MERGED` line and exit, same as a normal merge-success path.
-    - `state == "OPEN"` and the prior attempt was queued: append history `{round, action: "merge_queued", head_sha}`, ScheduleWakeup at the standard cadence, exit. The next tick will land in Phase 2's terminal-state branch once the auto-merge fires.
-    - `state == "OPEN"` but the prior attempt was blocked (history entry `merge_blocked` already exists for this head): print the `CONVERGED, merge blocked: <reason>` line using the recorded reason, exit, no ScheduleWakeup. The user must unblock manually before another attempt.
-    - Append history `{round, action: "merge_already_attempted", head_sha, observed_state: "<state>"}` so the audit trail records that this tick re-checked instead of falling through silently.
-  - Otherwise record `state.last_merge_attempt_headRefOid = current headRefOid` (and write state) BEFORE running the merge, so a crash mid-call still leaves the guard set. Then run:
+- **Squash-merge immediately, but only once per head SHA.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Compare the current `headRefOid` against `state.last_merge_attempt_headRefOid` to decide which sub-flow to enter. (Phase 11 owns clearing `state.last_merge_attempt_headRefOid` when a new commit lands; Phase 3 only reads the guard.)
 
-    ```bash
-    gh pr merge N --squash --auto
-    ```
+  ### Sub-flow A: same-head re-check (`headRefOid == state.last_merge_attempt_headRefOid`)
 
-  `--auto` is harmless if branch protection is already satisfied (squashes immediately) and is the right behaviour if a final required check is still queueing (queues the merge for when checks pass). Capture the resolved state from `gh pr view N --json state,mergedAt` after the call. If the merge is queued, ScheduleWakeup at the standard cadence so the next tick lands in Phase 2's terminal-state branch and prints the `MERGED` line. If the merge fails (e.g. branch protection requires a human-only review approval, or a CODEOWNERS rule the bot cannot satisfy), append history `{round, action: "merge_blocked", reason: "<gh stderr>"}` and fall through to the print-and-stop branch below; do NOT retry merge silently in subsequent ticks until the user weighs in. Clear `state.last_merge_attempt_headRefOid` whenever a new commit lands on the branch (head SHA changes) so a fresh push gets a fresh attempt.
-- Append history `{round, action: "merged", method: "squash"}` once the PR shows `state: MERGED`.
-- Write state.
-- Resolve the PR's web URL via `gh pr view N --json url --jq .url` (or pull it from the JSON fetched in Phase 1 if you already requested `url` there).
-- Print TWO lines, in this exact order so the URL renders as a clickable link in the user's terminal:
+  An earlier tick already attempted this exact head. Do NOT re-issue the merge call -- the prior `--auto` request is still attached to this head and a second call would be redundant or worse. Re-fetch state with `gh pr view N --json state,mergedAt`, then enter exactly one of these branches:
 
-  ```text
-  babysit-pr round R: CONVERGED + SQUASH-MERGED. Done.
-  https://github.com/OWNER/REPO/pull/N
-  ```
+  - **`state == "MERGED"` (`mergedAt != null`):** the queued merge has fired since the previous tick. Append history `{round, action: "merge_already_attempted", head_sha, observed_state: "MERGED"}` AND `{round, action: "merged", method: "squash"}`. Write state. Print the `CONVERGED + SQUASH-MERGED` line. Exit (no ScheduleWakeup).
+  - **`state == "OPEN"` and prior attempt was queued (history shows `merge_queued` for this head):** the merge is still pending its required checks. Append history `{round, action: "merge_already_attempted", head_sha, observed_state: "OPEN_queued"}`. Write state. ScheduleWakeup at the standard cadence (next tick lands in Phase 2's terminal-state branch once the auto-merge fires). Exit.
+  - **`state == "OPEN"` and prior attempt was blocked (history shows `merge_blocked` for this head):** the user must unblock manually before another attempt. Append history `{round, action: "merge_already_attempted", head_sha, observed_state: "OPEN_blocked"}`. Write state. Print the `CONVERGED, merge blocked: <recorded_reason>` line. Exit (no ScheduleWakeup).
 
-  If the merge was blocked rather than completed, emit the merge-blocked single-line variant from the Output discipline section instead (see `babysit-pr round R: CONVERGED, merge blocked: <reason>.`).
+  ### Sub-flow B: fresh attempt (`headRefOid != state.last_merge_attempt_headRefOid`)
 
-- **Do NOT** ScheduleWakeup once the PR is `MERGED` (Phase 2's terminal exit covers re-entry).
+  1. Record `state.last_merge_attempt_headRefOid = current headRefOid` and write state BEFORE running the merge, so a crash mid-call still leaves the guard set (which sub-flow A then handles correctly on the next tick).
+  2. Run:
+
+     ```bash
+     gh pr merge N --squash --auto
+     ```
+
+     `--auto` is harmless if branch protection is already satisfied (squashes immediately) and is the right behaviour if a final required check is still queueing (queues the merge for when checks pass).
+
+  3. Re-fetch state with `gh pr view N --json state,mergedAt` and the merge command's exit code, then enter exactly one of these branches:
+
+     - **`state == "MERGED"` (immediate success):** append history `{round, action: "merged", method: "squash"}`. Write state. Print the `CONVERGED + SQUASH-MERGED` line. Exit (no ScheduleWakeup -- Phase 2's terminal exit covers any future re-entry).
+     - **`state == "OPEN"` and merge command exited 0 (queued):** append history `{round, action: "merge_queued", head_sha}`. Write state. ScheduleWakeup at the standard cadence so the next tick lands in Phase 2's terminal-state branch once the auto-merge fires. Do NOT print a terminal line yet. Exit.
+     - **Otherwise (non-zero exit code or merge rejected by branch protection / CODEOWNERS / etc.):** append history `{round, action: "merge_blocked", head_sha, reason: "<gh stderr>"}`. Write state. Print the `CONVERGED, merge blocked: <reason>` single-line variant. Exit (no ScheduleWakeup -- the user must unblock manually). A future push that lands a new commit will clear the guard via Phase 11 and allow a fresh attempt.
 
 ## Phase 4: CodeRabbit rate-limit dance
 
