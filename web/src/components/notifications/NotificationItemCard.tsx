@@ -97,7 +97,6 @@ export function NotificationItemCard({
         onClick={handleClick}
         disabled={!isActionable}
         tabIndex={isActionable ? 0 : -1}
-        aria-label={`${item.severity} notification: ${item.title}`}
         className={cn(
           'flex flex-1 items-start gap-3 text-left -m-px',
           isActionable ? 'cursor-pointer' : 'cursor-default',
@@ -108,6 +107,13 @@ export function NotificationItemCard({
           aria-hidden="true"
         />
         <span className="min-w-0 flex-1">
+          {/* Severity surfaced as an sr-only prefix so the accessible
+              name still mentions it without overriding the rich text
+              content the way a hardcoded ``aria-label`` would. The
+              button's accessible name is otherwise derived from the
+              visible title + description + timestamp, matching what
+              the operator reads on screen. */}
+          <span className="sr-only">{`${item.severity} notification: `}</span>
           <span className="block truncate text-sm font-medium text-foreground">
             {item.title}
           </span>

@@ -73,6 +73,11 @@ describe('ChannelSidebar', () => {
 
   it('shows empty state when no channels', () => {
     render(<ChannelSidebar {...defaultProps} channels={[]} />)
-    expect(screen.getAllByText('No channels').length).toBeGreaterThan(0)
+    // Scope to the desktop nav landmark so the assertion fails
+    // deterministically if the desktop branch ever stops rendering
+    // the empty state. ``getAllByText`` would have passed even if
+    // only the mobile-Drawer branch (which is also in the DOM under
+    // jsdom) rendered the message.
+    expect(desktop().getByText('No channels')).toBeInTheDocument()
   })
 })

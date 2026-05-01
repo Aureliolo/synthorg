@@ -137,12 +137,15 @@ export default function UsersPage() {
             <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
-      ) : sortedUsers.length === 0 ? (
+      ) : !error && sortedUsers.length === 0 ? (
         // Use ``sortedUsers`` (the post-search-filter view) so an
         // active query that yields nothing renders a search-empty
         // message instead of a blank list. ``users.length === 0``
         // would only fire on the truly-empty roster case and was
         // hiding the "no matches" state behind a search.
+        // Also gated on ``!error`` so a failed fetch (which leaves
+        // ``users`` empty) doesn't render alongside the error banner
+        // as a misleading "No users" message.
         <EmptyState
           title={searchQuery ? 'No matching users' : 'No users'}
           description={
@@ -151,7 +154,7 @@ export default function UsersPage() {
               : "Human users with dashboard access will appear here once they're provisioned."
           }
         />
-      ) : (
+      ) : sortedUsers.length > 0 ? (
         <ul className="flex flex-col gap-grid-gap">
           {sortedUsers.map((user) => (
             <li key={user.id}>
@@ -209,7 +212,7 @@ export default function UsersPage() {
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
 
       {hasMore && (
         <Button

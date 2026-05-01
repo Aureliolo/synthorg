@@ -111,13 +111,14 @@ describe('useDetailNavigation', () => {
     currentInitialPath = '/items/alice'
     // ``T extends { id: string }`` on the hook means we keep ``id`` for
     // the constraint; ``getId`` then projects a different field as the
-    // logical key. ``id`` here is the URL slug; ``name`` is the lookup
-    // value tests assert against. Mirrors a real surface where the
-    // route uses a slug but the backend list keys by ``name``.
+    // logical key. ``name`` is the URL key here (matches
+    // ``currentInitialPath`` and the assertions); ``id`` exists only
+    // to satisfy the constraint and is intentionally not used by
+    // ``routeFor`` so the test exercises the custom-key code path.
     type Custom = { id: string; name: string }
     const customItems: readonly Custom[] = [
-      { id: 'alice-slug', name: 'alice' },
-      { id: 'bob-slug', name: 'bob' },
+      { id: 'alice-internal', name: 'alice' },
+      { id: 'bob-internal', name: 'bob' },
     ]
     const { result } = renderHook(
       () =>
@@ -125,10 +126,12 @@ describe('useDetailNavigation', () => {
           items: customItems,
           currentId: 'alice',
           getId: (item) => item.name,
-          routeFor: (item) => `/items/${item.id}`,
+          routeFor: (item) => `/items/${item.name}`,
         }),
       { wrapper: RouterWrapper },
     )
     expect(result.current.position).toEqual({ current: 1, total: 2 })
+    expect(result.current.canPrev).toBe(false)
+    expect(result.current.canNext).toBe(true)
   })
 })

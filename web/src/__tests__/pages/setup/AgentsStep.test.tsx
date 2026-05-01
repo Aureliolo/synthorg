@@ -74,6 +74,11 @@ describe('AgentsStep: unresolved-agent detection', () => {
     useSetupWizardStore.setState({
       agents: [agent({ name: 'Alice', model_provider: 'gone', model_id: 'm-1' })],
       providers: { 'cloud-x': provider('cloud-x', [model('cloud-x-large')]) },
+      // Explicit starting step so the click+state assertion below
+      // verifies a real navigation. Without this, the click could
+      // pass trivially because the wizard might already be on
+      // ``'providers'`` from an earlier test that didn't reset it.
+      currentStep: 'agents',
     })
 
     render(<AgentsStep />)

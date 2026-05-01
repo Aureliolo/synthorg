@@ -51,12 +51,19 @@ export const workflowExecutionsHandlers = [
   // wire shape matches the typed client.
   http.post('/api/v1/workflow-executions/:executionId/cancel', ({ params }) => {
     const executionId = String(params.executionId ?? 'wfx-cancelled')
+    // ``updated_at`` and ``completed_at`` carry the same cancellation
+    // timestamp because the backend emits them together when a run
+    // transitions to the terminal ``cancelled`` state. Letting them
+    // diverge here would let consumers latch onto the wrong field for
+    // "last activity" sort keys and miss the regression in tests.
+    const cancelledAt = '2026-04-30T10:10:00Z'
     return HttpResponse.json(
       apiSuccess<WorkflowExecution>(
         buildWorkflowExecution({
           id: executionId,
           status: 'cancelled',
-          completed_at: '2026-04-30T10:10:00Z',
+          updated_at: cancelledAt,
+          completed_at: cancelledAt,
         }),
       ),
     )

@@ -364,12 +364,23 @@ Print exactly ONE concise status line per tick at the end. Mid-loop verdicts (si
 
 Terminal verdicts (loop-exit cases for Phase 2 / Phase 3) print a status line followed by the PR's web URL on its own line so the user can click straight through to the PR. Both lines together:
 
-- ```text
-  babysit-pr round R: CONVERGED (CI green, 0 actionable, no new feedback). Ready for human review/merge.
+- Convergence + auto-merge succeeded:
+
+  ```text
+  babysit-pr round R: CONVERGED + SQUASH-MERGED. Done.
   https://github.com/OWNER/REPO/pull/N
   ```
 
-- ```text
+- Convergence reached but the merge was blocked (e.g. branch protection requires a human approval):
+
+  ```text
+  babysit-pr round R: CONVERGED, merge blocked: <reason>.
+  https://github.com/OWNER/REPO/pull/N
+  ```
+
+- PR already in a terminal state on entry:
+
+  ```text
   babysit-pr round R: PR #N <MERGED|CLOSED>, exiting.
   https://github.com/OWNER/REPO/pull/N
   ```

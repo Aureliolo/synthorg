@@ -6,7 +6,7 @@
  * and the page surfaces every received event with its status,
  * payload size, and any backend-captured error.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -50,29 +50,33 @@ export default function WebhookReceiptsPage() {
     return () => { cancelled = true }
   }, [connections, selected])
 
-  // ``reload`` captures the connection it was issued for. If the
-  // operator changes the selection mid-flight, the older request's
-  // response is dropped: the captured ``requestedFor`` no longer
-  // matches the currently-selected value when the await resolves.
+  // Per-request sequence number, bumped on every reload. The earlier
+  // ``requestedFor !== selected`` check compared two values from the
+  // same closure snapshot, so it never filtered an older response
+  // after the user switched connections. The ref-backed counter
+  // gives the in-flight request a stable identity that the latest
+  // issued id can be compared against; a mismatch unambiguously
+  // marks the response as stale.
+  const requestSeqRef = useRef(0)
+
+  // If the operator changes the selection mid-flight, the older
+  // request's response is dropped: the captured ``requestId`` no
+  // longer matches ``requestSeqRef.current`` when the await resolves.
   // Without this guard, switching from connection A to B during a
   // slow A response would render A's receipts under B's label.
   const reload = useCallback(async () => {
     if (!selected) return
     const requestedFor = selected
+    requestSeqRef.current += 1
+    const requestId = requestSeqRef.current
     setLoading(true)
     setError(null)
     try {
       const rows = await listWebhookActivity(requestedFor)
-      // Latest-write wins guard: the stale-response race compares the
-      // captured ``requestedFor`` against the ``selected`` state at
-      // settle-time. The setState callback reads the same ``prev``
-      // closure for ``selected`` as a defensive belt-and-braces
-      // (``selected`` is also read directly because React state is
-      // already up-to-date by the time await resumes).
-      if (requestedFor !== selected) return
+      if (requestId !== requestSeqRef.current) return
       setEntries(rows)
     } catch (err) {
-      if (requestedFor !== selected) return
+      if (requestId !== requestSeqRef.current) return
       const message = getErrorMessage(err)
       // SEC-1: connectionName is operator-controlled (URL / dropdown
       // value); sanitize before structured logging.
@@ -82,7 +86,7 @@ export default function WebhookReceiptsPage() {
       })
       setError(message)
     } finally {
-      if (requestedFor === selected) setLoading(false)
+      if (requestId === requestSeqRef.current) setLoading(false)
     }
   }, [selected])
 

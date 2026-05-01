@@ -160,12 +160,12 @@ export default function EscalationQueuePage() {
             <Skeleton key={i} className="h-24 w-full" />
           ))}
         </div>
-      ) : visibleEscalations.length === 0 ? (
+      ) : !error && visibleEscalations.length === 0 ? (
         <EmptyState
           title="No escalations"
           description="Conflicts that the autonomous resolvers cannot decide land here for human review."
         />
-      ) : (
+      ) : visibleEscalations.length > 0 ? (
         <ul className="flex flex-col gap-grid-gap">
           {visibleEscalations.map((row) => {
             const e = row.escalation
@@ -225,7 +225,7 @@ export default function EscalationQueuePage() {
             )
           })}
         </ul>
-      )}
+      ) : null}
 
       {hasMore && (
         <Button

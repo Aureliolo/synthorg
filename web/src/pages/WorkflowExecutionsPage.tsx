@@ -4,7 +4,7 @@
  * Lists recent runs for a single workflow definition with a Cancel
  * action for executions still in flight.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import { Loader2 } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
@@ -41,27 +41,36 @@ export default function WorkflowExecutionsPage() {
   const [error, setError] = useState<string | null>(null)
   const [pendingCancel, setPendingCancel] = useState<string | null>(null)
   const addToast = useToastStore((s) => s.add)
+  // Per-request sequence number, bumped on every reload. The earlier
+  // ``requestedFor !== id`` guard compared two values from the same
+  // closure snapshot, so it never filtered out an older in-flight
+  // request after the user switched workflows. A ref-backed counter
+  // is the canonical pattern: the in-flight request remembers its
+  // own id, the ref always reads the latest issued one, and a
+  // mismatch unambiguously identifies a stale response.
+  const requestSeqRef = useRef(0)
 
-  // ``reload`` captures the workflow id it was issued for. When the
-  // operator navigates between workflows quickly (URL changes drive
-  // ``id``), an in-flight response for the previous workflow could
-  // otherwise land in the new workflow's table; the captured-id
-  // guard drops stale responses by comparing ``requestedFor`` to the
-  // current ``id`` state when the await resumes. ``setExecutions([])``
-  // also clears the previous workflow's rows immediately so the
-  // operator sees a clean transition instead of stale data + spinner.
+  // When the operator navigates between workflows quickly (URL
+  // changes drive ``id``), an in-flight response for the previous
+  // workflow could otherwise land in the new workflow's table.
+  // ``setExecutions([])`` clears the previous workflow's rows
+  // immediately so the operator sees a clean transition instead of
+  // stale data + spinner; the sequence guard drops responses whose
+  // captured ``requestId`` no longer matches the latest issued one.
   const reload = useCallback(async () => {
     if (!id) return
     const requestedFor = id
+    requestSeqRef.current += 1
+    const requestId = requestSeqRef.current
     setExecutions([])
     setLoading(true)
     setError(null)
     try {
       const rows = await listWorkflowExecutions(requestedFor)
-      if (requestedFor !== id) return
+      if (requestId !== requestSeqRef.current) return
       setExecutions(rows)
     } catch (err) {
-      if (requestedFor !== id) return
+      if (requestId !== requestSeqRef.current) return
       const message = getErrorMessage(err)
       // SEC-1: workflowId is URL-controlled, sanitize.
       log.error('listWorkflowExecutions failed', {
@@ -70,7 +79,7 @@ export default function WorkflowExecutionsPage() {
       })
       setError(message)
     } finally {
-      if (requestedFor === id) setLoading(false)
+      if (requestId === requestSeqRef.current) setLoading(false)
     }
   }, [id])
 
@@ -124,12 +133,12 @@ export default function WorkflowExecutionsPage() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="size-6 animate-spin text-text-muted" />
         </div>
-      ) : executions.length === 0 ? (
+      ) : !error && executions.length === 0 ? (
         <EmptyState
           title="No executions yet"
           description="Trigger this workflow to see its run history here."
         />
-      ) : (
+      ) : executions.length > 0 ? (
         <SectionCard title="Recent runs">
           <ul className="divide-y divide-border">
             {executions.map((row) => {
@@ -163,7 +172,7 @@ export default function WorkflowExecutionsPage() {
             })}
           </ul>
         </SectionCard>
-      )}
+      ) : null}
 
       <ConfirmDialog
         open={pendingCancel !== null}
