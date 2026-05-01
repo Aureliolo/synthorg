@@ -346,12 +346,15 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
             dedup_source=dedup_source,
         )
 
-    cached, _fresh = await state["app_state"].idempotency_service.run_idempotent(
+    outcome = await state["app_state"].idempotency_service.run_idempotent(
         scope=scope,
         key=idem_key,
         callback=_publish_and_accept,
     )
-    if cached is None:
+    if outcome.timed_out:
+        # Distinct from a callback that legitimately returned ``None``
+        # (#1682, CodeRabbit at idempotency_service.py:121); we only
+        # 409 on actual in-flight timeouts / leader-failure exhaustion.
         logger.warning(
             IDEMPOTENCY_CLAIM_IN_FLIGHT,
             scope=scope,
@@ -362,6 +365,7 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
         )
         msg = "Concurrent in-flight webhook delivery"
         raise ConflictError(msg)
+    cached = outcome.result
     # ``run_idempotent`` returns ``Any`` (the JSON-decoded cached
     # body); the only callbacks under this scope are
     # ``_publish_and_accept`` returning ``dict[str, object]``.

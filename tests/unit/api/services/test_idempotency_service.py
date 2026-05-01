@@ -121,10 +121,11 @@ async def test_run_idempotent_executes_callback_on_fresh_claim() -> None:
         calls += 1
         return {"status": "ok", "n": 42}
 
-    result, fresh = await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
+    outcome = await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
     assert calls == 1
-    assert fresh is True
-    assert result == {"status": "ok", "n": 42}
+    assert outcome.fresh is True
+    assert outcome.timed_out is False
+    assert outcome.result == {"status": "ok", "n": 42}
     assert len(repo.completes) == 1
     body, digest, forwarded_token = repo.completes[0]
     assert "status" in body
@@ -148,10 +149,11 @@ async def test_run_idempotent_returns_cached_on_completed_claim() -> None:
         calls += 1
         return {"status": "ok"}
 
-    result, fresh = await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
+    outcome = await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
     assert calls == 0, "callback must not run on cached claim"
-    assert fresh is False
-    assert result == {"status": "cached"}
+    assert outcome.fresh is False
+    assert outcome.timed_out is False
+    assert outcome.result == {"status": "cached"}
 
 
 async def test_run_idempotent_marks_failed_when_callback_raises() -> None:
@@ -239,9 +241,13 @@ async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
         msg = "callback must not run when claim is in-flight"
         raise AssertionError(msg)
 
-    result, fresh = await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
-    assert fresh is False
-    assert result is None
+    outcome = await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
+    assert outcome.fresh is False
+    # Discriminated timeout: ``timed_out`` is True so callers can
+    # distinguish this from a callback that legitimately returned
+    # ``None`` (#1682, CodeRabbit at idempotency_service.py:121).
+    assert outcome.timed_out is True
+    assert outcome.result is None
 
 
 async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
@@ -293,9 +299,10 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
         msg = "callback must not run when claim is in-flight"
         raise AssertionError(msg)
 
-    result, fresh = await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
-    assert fresh is False
-    assert result == {"status": "resolved"}
+    outcome = await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
+    assert outcome.fresh is False
+    assert outcome.timed_out is False
+    assert outcome.result == {"status": "resolved"}
 
 
 async def test_cleanup_expired_delegates_to_repository() -> None:

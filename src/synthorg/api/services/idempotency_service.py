@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -86,6 +87,40 @@ class _PollOutcome(StrEnum):
 _LeaderFailedSentinel: object = object()
 
 
+@dataclass(frozen=True, slots=True)
+class IdempotencyResult:
+    """Disambiguated outcome of :meth:`IdempotencyService.run_idempotent`.
+
+    Pre-PR review #1682 (CodeRabbit major at idempotency_service.py:121):
+    a bare ``(result, fresh)`` tuple cannot tell three states apart --
+    a callback that legitimately returned ``None``, a polling timeout
+    on an in-flight claim, and a leader-failed-and-retry-exhausted --
+    all of which previously surfaced as ``cached is None`` at call
+    sites and got translated to 409 Conflict regardless of whether
+    the cached body was a real ``null``. A discriminated wrapper
+    forces callers to handle each case explicitly.
+
+    Attributes:
+        result: The callback's (or cached) return value. May be
+            ``None`` for callbacks that legitimately return ``None``.
+            Treat as authoritative ONLY when ``timed_out`` is
+            ``False``; when ``timed_out`` is ``True`` the field is
+            always ``None`` and the caller must surface 409 / retry.
+        fresh: ``True`` when this call executed the callback;
+            ``False`` when it returned a cached prior result OR when
+            it timed out.
+        timed_out: ``True`` when the in-flight poll expired without
+            seeing the leader resolve, OR when leader-failed retries
+            were exhausted. The caller surfaces this as a 409
+            Conflict; the row in the repository may eventually
+            cleanup to FAILED via ``cleanup_expired``.
+    """
+
+    result: Any | None
+    fresh: bool
+    timed_out: bool
+
+
 class IdempotencyService:
     """Lifecycle wrapper around :class:`IdempotencyRepository`."""
 
@@ -124,16 +159,18 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
         callback: Callable[[], Awaitable[Any]],
-    ) -> tuple[Any, bool]:
+    ) -> IdempotencyResult:
         """Run *callback* exactly once for ``(scope, key)``.
 
-        Returns ``(result, fresh)``. ``fresh=True`` means the
-        callback executed in this call; ``fresh=False`` means the
-        cached prior result was returned.
+        Returns an :class:`IdempotencyResult` discriminated wrapper
+        so callers can distinguish a legitimate ``None`` callback
+        return from an in-flight timeout (#1682, CodeRabbit major at
+        idempotency_service.py:121). Inspect ``timed_out`` first;
+        only trust ``result`` when ``timed_out`` is ``False``.
 
         On ``IN_FLIGHT``: poll with exponential backoff up to
-        :data:`_IN_FLIGHT_POLL_TIMEOUT_SECONDS`, then give up. Caller
-        chooses whether to surface 409 or wait further.
+        :data:`_IN_FLIGHT_POLL_TIMEOUT_SECONDS`, then give up. The
+        wrapper surfaces ``timed_out=True`` so the caller can 409.
 
         On callback exception: mark the key as FAILED so the next
         retry can re-claim, and re-raise the original exception.
@@ -148,18 +185,22 @@ class IdempotencyService:
         """
         retries_after_leader_failure = 0
         while True:
-            outcome_value, fresh = await self._run_idempotent_once(
+            outcome_value, fresh, timed_out = await self._run_idempotent_once(
                 scope=scope,
                 key=key,
                 callback=callback,
             )
             if outcome_value is not _LeaderFailedSentinel:
-                return outcome_value, fresh
+                return IdempotencyResult(
+                    result=outcome_value,
+                    fresh=fresh,
+                    timed_out=timed_out,
+                )
             if retries_after_leader_failure >= _MAX_LEADER_FAILED_RETRIES:
                 # Repeated leader failures look like a sustained
-                # downstream outage; surface 409 so the caller can
-                # back off rather than spinning the loop forever.
-                return None, False
+                # downstream outage; surface ``timed_out=True`` so
+                # the caller can back off / 409 rather than spinning.
+                return IdempotencyResult(result=None, fresh=False, timed_out=True)
             retries_after_leader_failure += 1
 
     async def _run_idempotent_once(
@@ -168,13 +209,15 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
         callback: Callable[[], Awaitable[Any]],
-    ) -> tuple[Any, bool]:
+    ) -> tuple[Any, bool, bool]:
         """Single attempt of the claim/run cycle.
 
-        Returns ``(_LeaderFailedSentinel, False)`` to signal the
-        caller should re-claim because the prior in-flight leader
-        flipped the row to FAILED. Any other return value is the
-        canonical ``(result, fresh)`` pair.
+        Returns ``(result, fresh, timed_out)``. The first element is
+        :data:`_LeaderFailedSentinel` to tell the caller to re-claim
+        because the prior in-flight leader flipped the row to
+        ``FAILED``; any other value is the canonical callback result.
+        ``timed_out`` is ``True`` when the in-flight poll exhausted
+        its budget without observing a final state.
         """
         now = datetime.now(UTC)
         claim = await self._repo.claim(
@@ -193,7 +236,7 @@ class IdempotencyService:
             cached = (
                 json.loads(claim.cached_response) if claim.cached_response else None
             )
-            return cached, False
+            return cached, False, False
 
         if claim.outcome is IdempotencyOutcome.IN_FLIGHT:
             logger.info(
@@ -206,14 +249,14 @@ class IdempotencyService:
                 key=key,
             )
             if poll_outcome is _PollOutcome.COMPLETED:
-                return body, False
+                return body, False, False
             if poll_outcome is _PollOutcome.LEADER_FAILED:
                 # Tell the caller to re-claim. The repo's claim() has
                 # already rotated the lease for the FAILED row so the
                 # next call lands FRESH.
-                return _LeaderFailedSentinel, False
+                return _LeaderFailedSentinel, False, False
             # TIMED_OUT -- caller surfaces 409 Conflict.
-            return None, False
+            return None, False, True
 
         # FRESH -- execute the callback under the claim. The
         # ``claim_token`` is the lease this worker owns; ``complete``
@@ -256,7 +299,7 @@ class IdempotencyService:
         # caller would receive ``dict[str, object]`` while a replay
         # caller would receive whatever JSON-decoding produces, leaving
         # callers with type-unstable behaviour they cannot reason about.
-        return json.loads(body), True
+        return json.loads(body), True, False
 
     async def _wait_for_in_flight(
         self,

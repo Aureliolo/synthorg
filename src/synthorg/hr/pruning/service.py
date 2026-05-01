@@ -690,8 +690,14 @@ class PruningService:
                 await self.run_pruning_cycle()
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                # SEC-1 (#1682): drop ``logger.exception`` -- the
+                # scheduler-loop traceback can carry FiringRequest
+                # fields and policy state in frame-locals, both of
+                # which contain agent identity / reasoning text.
+                logger.warning(
                     HR_PRUNING_POLICY_ERROR,
-                    error="Unexpected error in pruning scheduler loop",
+                    reason="scheduler_loop_unexpected_error",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )

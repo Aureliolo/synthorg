@@ -116,13 +116,19 @@ class TestPublishWithDurableIdempotency:
             spy,
         )
 
+        from synthorg.api.services.idempotency_service import IdempotencyResult
+
         async def run_idempotent(
             *,
             scope: str,
             key: str,
             callback: Any,
-        ) -> tuple[Any, bool]:
-            return await callback(), True
+        ) -> IdempotencyResult:
+            return IdempotencyResult(
+                result=await callback(),
+                fresh=True,
+                timed_out=False,
+            )
 
         idem_service = AsyncMock(spec=IdempotencyService)
         idem_service.run_idempotent = run_idempotent

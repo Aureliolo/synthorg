@@ -738,20 +738,24 @@ class TestControllerHttpLayer:
             STATE_KEY_STORE,
         )
         from synthorg.api.rate_limits.config import PerOpRateLimitConfig
-        from synthorg.api.rate_limits.protocol import SlidingWindowStore
+        from synthorg.api.rate_limits.protocol import (
+            RateLimitOutcome,
+            SlidingWindowStore,
+        )
         from synthorg.api.state import AppState
 
         # Stub rate-limit store: the guard calls
-        # ``store.acquire(operation, subject, max_requests, window)``
-        # and treats a truthy result as "not throttled". Returning a
-        # token with no retry-after is the cheapest safe stub.
+        # ``store.acquire(...)`` and inspects the
+        # :class:`RateLimitOutcome` it returns (see protocol.py).
+        # Returning a tuple here would silently violate the contract
+        # (#1682, CodeRabbit at integrations/test_controllers.py:755).
         # ``spec=`` enforces the protocol surface (#1604) so a future
-        # SlidingWindowStore method rename surfaces as an
+        # ``SlidingWindowStore`` method rename surfaces as an
         # ``AttributeError`` instead of a silent test pass.
         rate_limit_store = MagicMock(spec=SlidingWindowStore)
         rate_limit_store.acquire = AsyncMock(
             spec=SlidingWindowStore.acquire,
-            return_value=(True, None),
+            return_value=RateLimitOutcome(allowed=True, remaining=999),
         )
         rate_limit_config = PerOpRateLimitConfig(enabled=False)
 

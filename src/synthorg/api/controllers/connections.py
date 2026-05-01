@@ -355,7 +355,7 @@ class ConnectionsController(Controller):
         ),
         field: str = Parameter(
             description="Credential field name",
-            max_length=_MAX_NAME_LEN,
+            max_length=_MAX_CRED_KEY_LEN,
         ),
     ) -> ApiResponse[dict[str, str]]:
         """Return the plaintext value of one credential field.

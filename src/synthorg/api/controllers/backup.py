@@ -134,12 +134,16 @@ class BackupController(Controller):
                 raise InternalServerException(msg) from exc
 
         if idempotency_key:
-            cached, _fresh = await app_state.idempotency_service.run_idempotent(
+            outcome = await app_state.idempotency_service.run_idempotent(
                 scope=NotBlankStr("backup"),
                 key=NotBlankStr(idempotency_key),
                 callback=lambda: _do_backup_as_dict(_do_backup),
             )
-            if cached is None:
+            if outcome.timed_out:
+                # ``timed_out`` is the discriminated 409 path; it
+                # cannot be confused with a callback that
+                # legitimately returned ``None`` (#1682, CodeRabbit at
+                # idempotency_service.py:121).
                 logger.warning(
                     IDEMPOTENCY_CLAIM_IN_FLIGHT,
                     scope="backup",
@@ -148,7 +152,7 @@ class BackupController(Controller):
                 )
                 msg = "Concurrent in-flight backup with this idempotency key"
                 raise ClientException(msg, status_code=409)
-            return ApiResponse(data=BackupManifest.model_validate(cached))
+            return ApiResponse(data=BackupManifest.model_validate(outcome.result))
 
         manifest = await _do_backup()
         return ApiResponse(data=manifest)
