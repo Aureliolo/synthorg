@@ -40,11 +40,21 @@ const defaultExecutions: WorkflowExecution[] = [
 ]
 
 export const workflowExecutionsHandlers = [
-  http.get('/api/v1/workflow-executions/by-definition/:workflowId', () =>
-    HttpResponse.json(
-      successFor<typeof listWorkflowExecutions>(defaultExecutions),
-    ),
-  ),
+  http.get('/api/v1/workflow-executions/by-definition/:workflowId', ({ params }) => {
+    // Reflect the requested workflow id so consumers (tests + Storybook)
+    // see ``definition_id`` matching the URL they fetched, not the
+    // hardcoded fallback that ``buildWorkflowExecution`` defaults to.
+    // Otherwise a test that asserts on ``definition_id`` always sees
+    // ``wf-default`` no matter which workflow it just queried.
+    const workflowId = String(params.workflowId ?? 'wf-default')
+    const rows = defaultExecutions.map((row) => ({
+      ...row,
+      definition_id: workflowId,
+    }))
+    return HttpResponse.json(
+      successFor<typeof listWorkflowExecutions>(rows),
+    )
+  }),
 
   // Backend returns ApiResponse<WorkflowExecution> from cancel; the
   // MSW handler returns a representative cancelled execution so the

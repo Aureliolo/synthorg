@@ -96,6 +96,29 @@ export default function EscalationQueuePage() {
     return escalations.filter((row) => allowed.includes(row.escalation.conflict.type))
   }, [escalations, priorityFilter])
 
+  // Choose the empty-state copy outside the JSX so we don't trip
+  // ``@eslint-react/unsupported-syntax`` (no IIFEs in JSX, since
+  // React Compiler skips them). When no filters are active the
+  // queue itself is empty; otherwise the current view is.
+  const emptyStateProps = useMemo(() => {
+    if (visibleEscalations.length > 0) return null
+    const hasFilters =
+      (statusFilter !== null && statusFilter !== undefined)
+      || priorityFilter !== 'all'
+    if (hasFilters && escalations.length > 0) {
+      return {
+        title: 'No escalations match your filters',
+        description:
+          'Adjust the status or priority filter above to see more escalations.',
+      }
+    }
+    return {
+      title: 'No escalations',
+      description:
+        'Conflicts that the autonomous resolvers cannot decide land here for human review.',
+    }
+  }, [visibleEscalations.length, statusFilter, priorityFilter, escalations.length])
+
   return (
     <div className="flex flex-col gap-section-gap">
       <ListHeader title="Escalation queue" count={visibleEscalations.length} />
@@ -161,10 +184,17 @@ export default function EscalationQueuePage() {
           ))}
         </div>
       ) : !error && visibleEscalations.length === 0 ? (
-        <EmptyState
-          title="No escalations"
-          description="Conflicts that the autonomous resolvers cannot decide land here for human review."
-        />
+        // Filter-aware copy: the operator may have a status / priority
+        // filter active that hides every row, in which case "No
+        // escalations" is misleading (the queue itself isn't empty,
+        // just the current view). Differentiate so the empty state
+        // points at the right next action.
+        emptyStateProps !== null ? (
+          <EmptyState
+            title={emptyStateProps.title}
+            description={emptyStateProps.description}
+          />
+        ) : null
       ) : visibleEscalations.length > 0 ? (
         <ul className="flex flex-col gap-grid-gap">
           {visibleEscalations.map((row) => {

@@ -49,6 +49,7 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
      "last_issue_comment_id": 0,
      "last_ci_state": "",
      "last_action_at": "<ISO-now>",
+     "last_merge_attempt_headRefOid": "",
      "rate_limit_pings": 0,
      "scanners_available": {
        "code_scanning": true,
@@ -138,13 +139,15 @@ Convergence holds when ALL true:
 
 If converged:
 - Append history `{round, action: "converged", checks_passed: N}`.
-- **Squash-merge immediately.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Run:
+- **Squash-merge immediately, but only once per head SHA.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Before issuing the merge, compare the current `headRefOid` against `state.last_merge_attempt_headRefOid`:
+  - If they are equal, an earlier tick already attempted this exact head and the result is durably recorded in history (queued, blocked, or merged). Do NOT re-issue the merge call -- treat as "merge already in flight or already decided", append history `{round, action: "merge_already_attempted", head_sha}`, and fall through to the print branch using whatever the current PR state shows.
+  - Otherwise record `state.last_merge_attempt_headRefOid = current headRefOid` (and write state) BEFORE running the merge, so a crash mid-call still leaves the guard set. Then run:
 
-  ```bash
-  gh pr merge N --squash --auto
-  ```
+    ```bash
+    gh pr merge N --squash --auto
+    ```
 
-  `--auto` is harmless if branch protection is already satisfied (squashes immediately) and is the right behaviour if a final required check is still queueing (queues the merge for when checks pass). Capture the resolved state from `gh pr view N --json state,mergedAt` after the call. If the merge is queued, ScheduleWakeup at the standard cadence so the next tick lands in Phase 2's terminal-state branch and prints the `MERGED` line. If the merge fails (e.g. branch protection requires a human-only review approval, or a CODEOWNERS rule the bot cannot satisfy), append history `{round, action: "merge_blocked", reason: "<gh stderr>"}` and fall through to the print-and-stop branch below; do NOT retry merge silently in subsequent ticks until the user weighs in.
+  `--auto` is harmless if branch protection is already satisfied (squashes immediately) and is the right behaviour if a final required check is still queueing (queues the merge for when checks pass). Capture the resolved state from `gh pr view N --json state,mergedAt` after the call. If the merge is queued, ScheduleWakeup at the standard cadence so the next tick lands in Phase 2's terminal-state branch and prints the `MERGED` line. If the merge fails (e.g. branch protection requires a human-only review approval, or a CODEOWNERS rule the bot cannot satisfy), append history `{round, action: "merge_blocked", reason: "<gh stderr>"}` and fall through to the print-and-stop branch below; do NOT retry merge silently in subsequent ticks until the user weighs in. Clear `state.last_merge_attempt_headRefOid` whenever a new commit lands on the branch (head SHA changes) so a fresh push gets a fresh attempt.
 - Append history `{round, action: "merged", method: "squash"}` once the PR shows `state: MERGED`.
 - Write state.
 - Resolve the PR's web URL via `gh pr view N --json url --jq .url` (or pull it from the JSON fetched in Phase 1 if you already requested `url` there).
@@ -155,7 +158,7 @@ If converged:
   https://github.com/OWNER/REPO/pull/N
   ```
 
-  If the merge was blocked rather than completed, print the older `CONVERGED` line plus a `merge blocked: <reason>` follow-up so the user can unblock manually.
+  If the merge was blocked rather than completed, emit the merge-blocked single-line variant from the Output discipline section instead (see `babysit-pr round R: CONVERGED, merge blocked: <reason>.`).
 
 - **Do NOT** ScheduleWakeup once the PR is `MERGED` (Phase 2's terminal exit covers re-entry).
 

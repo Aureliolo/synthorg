@@ -93,8 +93,14 @@ export default function UsersPage() {
     void fetchUsers()
   }, [fetchUsers])
 
+  // Trim once so both filtering and the empty-state copy agree on
+  // what counts as "active search". A whitespace-only query
+  // previously matched the unfiltered list yet rendered the
+  // "no matching users" empty-state copy (the raw ``searchQuery``
+  // was non-empty). The two now share the trimmed source of truth.
+  const trimmedQuery = searchQuery.trim()
   const sortedUsers = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
+    const q = trimmedQuery.toLowerCase()
     const filtered = q
       ? users.filter(
           (u) =>
@@ -103,7 +109,7 @@ export default function UsersPage() {
         )
       : users
     return [...filtered].sort((a, b) => a.username.localeCompare(b.username))
-  }, [users, searchQuery])
+  }, [users, trimmedQuery])
 
   return (
     <div className="flex flex-col gap-section-gap">
@@ -147,9 +153,9 @@ export default function UsersPage() {
         // ``users`` empty) doesn't render alongside the error banner
         // as a misleading "No users" message.
         <EmptyState
-          title={searchQuery ? 'No matching users' : 'No users'}
+          title={trimmedQuery ? 'No matching users' : 'No users'}
           description={
-            searchQuery
+            trimmedQuery
               ? 'Try a different search term or clear the field above.'
               : "Human users with dashboard access will appear here once they're provisioned."
           }

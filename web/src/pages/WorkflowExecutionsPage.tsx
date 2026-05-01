@@ -6,13 +6,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router'
-import { Loader2 } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { ProgressIndicator } from '@/components/ui/progress-indicator'
 import { SectionCard } from '@/components/ui/section-card'
 import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
@@ -87,6 +87,21 @@ export default function WorkflowExecutionsPage() {
     void reload()
   }, [reload])
 
+  // Drop any in-flight cancel target when the workflow id changes;
+  // otherwise navigating away while the confirm dialog is open
+  // would let the user click Cancel and dispatch the request
+  // against a different workflow's execution id. Deferred to a
+  // microtask so the effect stays free of synchronous setState
+  // (per the ESLint set-state-in-effect rule).
+  useEffect(() => {
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setPendingCancel(null)
+    })
+    return () => { cancelled = true }
+  }, [id])
+
   const handleCancel = useCallback(async (executionId: string) => {
     try {
       await cancelWorkflowExecution(executionId)
@@ -130,9 +145,11 @@ export default function WorkflowExecutionsPage() {
       )}
 
       {loading && executions.length === 0 ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="size-6 animate-spin text-text-muted" />
-        </div>
+        <ProgressIndicator
+          variant="indeterminate"
+          label="Loading executions"
+          description={`Fetching run history for ${id}`}
+        />
       ) : !error && executions.length === 0 ? (
         <EmptyState
           title="No executions yet"

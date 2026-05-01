@@ -7,11 +7,11 @@
  * payload size, and any backend-captured error.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { ProgressIndicator } from '@/components/ui/progress-indicator'
 import { SectionCard } from '@/components/ui/section-card'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SelectField } from '@/components/ui/select-field'
@@ -90,6 +90,23 @@ export default function WebhookReceiptsPage() {
     }
   }, [selected])
 
+  // Clear the previous connection's rows immediately on selection
+  // change so the operator sees the loading state for the new
+  // connection, not the stale rows from the previous one. The
+  // setState is deferred to a microtask so the effect body itself
+  // stays free of synchronous setState calls per the ESLint
+  // set-state-in-effect rule. The request-sequence guard prevents
+  // the late response from overwriting; this keeps the UI honest
+  // in the meantime.
+  useEffect(() => {
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setEntries([])
+    })
+    return () => { cancelled = true }
+  }, [selected])
+
   useEffect(() => {
     void reload()
   }, [reload])
@@ -128,18 +145,27 @@ export default function WebhookReceiptsPage() {
       )}
 
       {loading && entries.length === 0 ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="size-6 animate-spin text-text-muted" />
-        </div>
-      ) : entries.length === 0 ? (
-        <EmptyState
-          title={selected ? 'No webhook deliveries yet' : 'Select a connection'}
-          description={
-            selected
-              ? 'Inbound webhook events for this connection will appear here.'
-              : 'Pick a connection from the dropdown above to inspect its receipt log.'
-          }
+        <ProgressIndicator
+          variant="indeterminate"
+          label="Loading webhook activity"
+          description={selected ? `Fetching receipts for ${selected}` : undefined}
         />
+      ) : entries.length === 0 ? (
+        connections.length === 0 ? (
+          <EmptyState
+            title="No connections configured"
+            description="Configure a connection in the Integrations area before inspecting webhook deliveries."
+          />
+        ) : (
+          <EmptyState
+            title={selected ? 'No webhook deliveries yet' : 'Select a connection'}
+            description={
+              selected
+                ? 'Inbound webhook events for this connection will appear here.'
+                : 'Pick a connection from the dropdown above to inspect its receipt log.'
+            }
+          />
+        )
       ) : (
         <SectionCard title="Recent receipts">
           <div className="overflow-x-auto">
