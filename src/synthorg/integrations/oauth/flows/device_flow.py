@@ -1,6 +1,7 @@
 """OAuth 2.1 device authorization flow (RFC 8628)."""
 
 import json
+import math
 from datetime import timedelta
 
 import httpx
@@ -102,11 +103,26 @@ class DeviceFlow:
         default_poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
         clock: Clock | None = None,
     ) -> None:
-        if http_timeout_seconds <= 0:
-            msg = f"http_timeout_seconds must be > 0, got {http_timeout_seconds}"
+        # Strict numeric + finite + positive: reject ``bool`` (which is
+        # an ``int`` subclass and would silently flow into
+        # ``httpx.AsyncClient(timeout=True)`` -> 1 s) and reject
+        # ``NaN`` / ``+Inf`` / ``-Inf`` so they cannot reach
+        # ``httpx`` where their behaviour is implementation-defined.
+        if (
+            isinstance(http_timeout_seconds, bool)
+            or not isinstance(http_timeout_seconds, (int, float))
+            or not math.isfinite(float(http_timeout_seconds))
+            or float(http_timeout_seconds) <= 0.0
+        ):
+            msg = (
+                "http_timeout_seconds must be a finite positive number,"
+                f" got {http_timeout_seconds!r}"
+                f" of type {type(http_timeout_seconds).__name__}"
+            )
             raise ValueError(msg)
-        # Strictly positive ``int`` only.  Reject ``bool`` (which is an
-        # ``int`` subclass: ``True == 1`` and ``False == 0`` would pass
+        # Strictly positive ``int`` only for the polling-cadence
+        # default.  Reject ``bool`` (which is an ``int`` subclass:
+        # ``True == 1`` and ``False == 0`` would pass
         # the comparison silently) and reject ``float`` because the
         # response-parser default uses ``_positive_int`` which already
         # rejects floats; an inconsistent fallback would shadow that
@@ -122,7 +138,7 @@ class DeviceFlow:
                 f" of type {type(default_poll_interval_seconds).__name__}"
             )
             raise ValueError(msg)
-        self._http_timeout_seconds = http_timeout_seconds
+        self._http_timeout_seconds = float(http_timeout_seconds)
         self._default_poll_interval_seconds = default_poll_interval_seconds
         self._clock: Clock = clock if clock is not None else SystemClock()
 
@@ -285,11 +301,28 @@ class DeviceFlow:
                 non-positive (would cause a tight loop / immediate
                 timeout).
         """
-        if interval <= 0:
-            msg = f"interval must be > 0, got {interval}"
+        # Same strict ``int`` shape as ``DeviceFlow.__init__`` rejects
+        # for ``default_poll_interval_seconds``: ``bool`` is excluded
+        # (``True == 1`` would otherwise satisfy ``<= 0`` silently) and
+        # ``float`` is excluded so a caller passing e.g. ``1.5`` cannot
+        # smuggle a fractional sleep through what the type annotation
+        # advertises as an integer cadence.
+        if not isinstance(interval, int) or isinstance(interval, bool) or interval <= 0:
+            msg = (
+                "interval must be a positive int (not bool/float),"
+                f" got {interval!r} of type {type(interval).__name__}"
+            )
             raise ValueError(msg)
-        if max_wait_seconds <= 0:
-            msg = f"max_wait_seconds must be > 0, got {max_wait_seconds}"
+        if (
+            not isinstance(max_wait_seconds, int)
+            or isinstance(max_wait_seconds, bool)
+            or max_wait_seconds <= 0
+        ):
+            msg = (
+                "max_wait_seconds must be a positive int (not bool/float),"
+                f" got {max_wait_seconds!r}"
+                f" of type {type(max_wait_seconds).__name__}"
+            )
             raise ValueError(msg)
         payload = {
             "grant_type": self.grant_type,

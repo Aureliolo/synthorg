@@ -147,8 +147,8 @@ tests/integration/integrations/test_oauth_flows.py:242:31
 tests/integration/integrations/test_oauth_flows.py:249:34
 tests/integration/integrations/test_oauth_flows.py:271:22
 tests/integration/integrations/test_oauth_flows.py:323:22
-tests/integration/integrations/test_oauth_flows.py:457:22
-tests/integration/integrations/test_oauth_flows.py:590:22
+tests/integration/integrations/test_oauth_flows.py:493:22
+tests/integration/integrations/test_oauth_flows.py:626:22
 tests/integration/integrations/test_rate_limiter_shared_state.py:114:18
 tests/integration/mcp/test_tool_surface.py:59:11
 tests/integration/mcp/test_tool_surface.py:60:22

@@ -1,6 +1,7 @@
 """OAuth 2.1 authorization code flow with PKCE."""
 
 import json
+import math
 import secrets as stdlib_secrets
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
@@ -54,10 +55,24 @@ class AuthorizationCodeFlow:
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
     ) -> None:
-        if http_timeout_seconds <= 0:
-            msg = f"http_timeout_seconds must be > 0, got {http_timeout_seconds}"
+        # Strict numeric + finite + positive: reject ``bool`` (which
+        # is an ``int`` subclass and would silently flow into
+        # ``httpx.AsyncClient(timeout=True)`` -> 1 s) and reject
+        # ``NaN`` / ``+Inf`` / ``-Inf`` so they cannot reach ``httpx``
+        # where their behaviour is implementation-defined.
+        if (
+            isinstance(http_timeout_seconds, bool)
+            or not isinstance(http_timeout_seconds, (int, float))
+            or not math.isfinite(float(http_timeout_seconds))
+            or float(http_timeout_seconds) <= 0.0
+        ):
+            msg = (
+                "http_timeout_seconds must be a finite positive number,"
+                f" got {http_timeout_seconds!r}"
+                f" of type {type(http_timeout_seconds).__name__}"
+            )
             raise ValueError(msg)
-        self._http_timeout_seconds = http_timeout_seconds
+        self._http_timeout_seconds = float(http_timeout_seconds)
 
     @property
     def grant_type(self) -> str:
