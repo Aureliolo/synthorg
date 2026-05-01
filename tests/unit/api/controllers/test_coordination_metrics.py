@@ -14,6 +14,7 @@ from synthorg.budget.coordination_store import (
     CoordinationMetricsRecord,
     CoordinationMetricsStore,
 )
+from synthorg.persistence._shared import parse_iso_utc
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")
@@ -143,11 +144,12 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        # Time window includes t1 and t2 but excludes t3; verify no t3
-        # record leaks through.
+        # Time window includes t1 and t2 but excludes t3.  Assert the
+        # exact in-window set (rather than only ``"task-3" not in ...``)
+        # so a regression that drops every row still fails this test.
         assert isinstance(body["data"], list)
         task_ids = {row.get("task_id") for row in body["data"]}
-        assert "task-3" not in task_ids
+        assert task_ids == {"task-1", "task-2"}
 
     def test_pagination(
         self,
@@ -226,16 +228,19 @@ class TestCoordinationMetricsController:
         # Combined filter (agent + since) honoured: only alice's
         # records, none from before t1.
         assert isinstance(body["data"], list)
+        # Assert the seeded ids landed in the response so an empty body
+        # cannot pass the per-row checks vacuously.
+        task_ids = {row.get("task_id") for row in body["data"]}
+        assert task_ids == {"t1", "t2"}
         assert all(row.get("agent_id") == "alice" for row in body["data"])
         # Assert ``computed_at`` (the wire field for ``timestamp``) is
         # present on every row -- a missing field would otherwise be
-        # silently masked by a defaulted ``row.get(...)``.  Parse as
-        # datetimes so the wire's ``Z`` suffix and ``isoformat()``'s
-        # ``+00:00`` suffix do not string-compare to different values
-        # for the same instant.
+        # silently masked by a defaulted ``row.get(...)``.  Parse via
+        # ``parse_iso_utc`` so the strict ISO-UTC contract used by the
+        # persistence layer also gates the API surface here.
         for row in body["data"]:
             assert "computed_at" in row
-            assert datetime.fromisoformat(row["computed_at"]) >= t1
+            assert parse_iso_utc(row["computed_at"]) >= t1
 
     def test_rejects_inverted_time_window(
         self,

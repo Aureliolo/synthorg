@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from synthorg.api import webhook_cleanup
 from synthorg.core.types import NotBlankStr
@@ -230,9 +231,19 @@ async def test_resolve_falls_back_on_resolver_error() -> None:
         config_resolver=config_resolver,
     )
 
-    days = await webhook_cleanup._resolve_webhook_receipt_retention(app_state)  # type: ignore[arg-type]
+    with structlog.testing.capture_logs() as captured:
+        days = await webhook_cleanup._resolve_webhook_receipt_retention(
+            app_state,  # type: ignore[arg-type]
+        )
 
     assert days == webhook_cleanup._DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+    # Resolver failure must escalate to ERROR (not WARNING) so an
+    # operator's intentional ``=0`` opt-out cannot be silently
+    # overridden by the fallback default; the contract is enforced
+    # here so the severity choice cannot regress unnoticed.
+    error_events = [event for event in captured if event.get("log_level") == "error"]
+    assert error_events, "expected at least one error-level log on resolver failure"
+    assert any(event.get("error_type") == "RuntimeError" for event in error_events)
 
 
 async def test_loop_drives_tick_at_each_iteration(

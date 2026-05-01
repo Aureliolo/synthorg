@@ -7,6 +7,7 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.persistence._shared import parse_iso_utc
 from synthorg.security.audit import AuditLog
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from tests.unit.api.conftest import make_auth_headers
@@ -134,7 +135,7 @@ class TestAuditController:
         for entry in body["data"]:
             raw_ts = entry.get("created_at") or entry.get("timestamp")
             assert raw_ts is not None
-            entry_dt = datetime.fromisoformat(raw_ts)
+            entry_dt = parse_iso_utc(raw_ts)
             assert t1 <= entry_dt <= t2
 
     def test_pagination_offset_limit(
