@@ -291,17 +291,32 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         """Update individual company scalar settings."""
         captured: dict[str, Any] = {"updated": {}, "new_etag": ""}
 
-        async def read() -> tuple[UpdateCompanyRequest, str]:
+        async def read() -> tuple[
+            tuple[UpdateCompanyRequest, dict[tuple[str, str], str]],
+            str,
+        ]:
             # Pre-write precondition runs every attempt: between
             # attempts a concurrent writer may have changed the
             # snapshot etag, invalidating the operator's If-Match.
             if if_match:
                 cur_etag = await self._company_snapshot_etag()
                 check_if_match(if_match, cur_etag, "company")
-            return data, ""
+            # Capture versions for every input that contributes to
+            # the snapshot ETag so write() can re-verify before
+            # set_many lands -- otherwise an ``agents`` /
+            # ``departments`` write between read() and set_many()
+            # would commit even though the operator's If-Match was
+            # stale at the moment of write.
+            snapshot_versions = await self._read_snapshot_versions()
+            return (data, snapshot_versions), ""
 
-        async def write(payload: UpdateCompanyRequest, _version: str) -> None:
-            captured["updated"] = await self._apply_company_scalars(payload)
+        async def write(
+            payload: tuple[UpdateCompanyRequest, dict[tuple[str, str], str]],
+            _version: str,
+        ) -> None:
+            request, snapshot_versions = payload
+            await self._verify_snapshot_unchanged(snapshot_versions)
+            captured["updated"] = await self._apply_company_scalars(request)
             captured["new_etag"] = await self._company_snapshot_etag()
             if "budget_monthly" in captured["updated"]:
                 await self._snapshot_budget_config(saved_by=saved_by)
@@ -310,6 +325,47 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         await CASRetryHandler(resource="org_mutation").execute(read, write)
         logger.info(API_COMPANY_UPDATED, fields=list(captured["updated"].keys()))
         return captured["updated"], captured["new_etag"]
+
+    async def _read_snapshot_versions(
+        self,
+    ) -> dict[tuple[str, str], str]:
+        """Capture versions of every key contributing to the company ETag."""
+        keys = (
+            ("company", "company_name"),
+            ("company", "autonomy_level"),
+            ("company", "total_monthly"),
+            ("company", "communication_pattern"),
+            ("company", "agents"),
+            ("company", "departments"),
+        )
+        versions: dict[tuple[str, str], str] = {}
+        for namespace, key in keys:
+            _, version = await self._read_setting_versioned(namespace, key)
+            versions[(namespace, key)] = version
+        return versions
+
+    async def _verify_snapshot_unchanged(
+        self,
+        captured: dict[tuple[str, str], str],
+    ) -> None:
+        """Re-read snapshot versions and raise VersionConflictError on drift.
+
+        Closes the gap between read()'s If-Match check and write()'s
+        set_many landing.  Without this the 4 scalars get CAS'd by
+        set_many but ``agents`` / ``departments`` shifts between
+        read() and write() would still commit the scalar update under
+        a stale If-Match.
+        """
+        from synthorg.core.domain_errors import VersionConflictError  # noqa: PLC0415
+
+        current = await self._read_snapshot_versions()
+        for key, version in captured.items():
+            if current.get(key) != version:
+                msg = (
+                    f"Company snapshot changed under us: {key[0]}/{key[1]} "
+                    "version drifted between If-Match check and write"
+                )
+                raise VersionConflictError(msg)
 
     async def _apply_company_scalars(
         self,

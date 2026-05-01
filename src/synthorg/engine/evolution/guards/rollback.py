@@ -69,6 +69,21 @@ class RollbackGuard:
                 constraint="must be > 0",
             )
             raise ValueError(msg)
+        if not isinstance(regression_threshold, int | float) or isinstance(
+            regression_threshold, bool
+        ):
+            msg = (
+                f"regression_threshold must be a real number in "
+                f"[0, 1], got {regression_threshold!r}"
+            )
+            logger.warning(
+                EVOLUTION_GUARD_INVALID_CONFIG,
+                guard_name="rollback",
+                field="regression_threshold",
+                value=str(regression_threshold),
+                constraint="must be real number (not bool)",
+            )
+            raise ValueError(msg)  # noqa: TRY004 -- consistent with sibling validators
         if not math.isfinite(regression_threshold):
             msg = (
                 f"regression_threshold must be a finite number in "

@@ -30,7 +30,7 @@ __all__ = [
 class CreateDepartmentRequest(BaseModel):
     """Request body for creating a new department."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(max_length=128)
     head: NotBlankStr | None = None
@@ -41,7 +41,7 @@ class CreateDepartmentRequest(BaseModel):
 class UpdateDepartmentRequest(BaseModel):
     """Partial update for an existing department."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     head: NotBlankStr | None = None
     budget_percent: float | None = Field(default=None, ge=0.0, le=100.0)
@@ -66,7 +66,7 @@ class UpdateDepartmentRequest(BaseModel):
 class ReorderDepartmentsRequest(BaseModel):
     """Reorder departments -- must be an exact permutation."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     department_names: tuple[NotBlankStr, ...] = Field(min_length=1)
 
@@ -77,7 +77,7 @@ class ReorderDepartmentsRequest(BaseModel):
 class CreateAgentOrgRequest(BaseModel):
     """Request body for creating a new agent in the org config."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(max_length=128)
     role: NotBlankStr = Field(max_length=128)
@@ -98,7 +98,7 @@ class CreateAgentOrgRequest(BaseModel):
 class UpdateAgentOrgRequest(BaseModel):
     """Partial update for an existing agent in the org config."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr | None = Field(default=None, max_length=128)
     role: NotBlankStr | None = Field(default=None, max_length=128)
@@ -120,6 +120,6 @@ class UpdateAgentOrgRequest(BaseModel):
 class ReorderAgentsRequest(BaseModel):
     """Reorder agents within a department -- must be an exact permutation."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_names: tuple[NotBlankStr, ...] = Field(min_length=1)

@@ -27,12 +27,15 @@ from synthorg.integrations.errors import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
+    CONNECTION_CREATE_FAILED,
     CONNECTION_CREATED,
     CONNECTION_DELETED,
     CONNECTION_DUPLICATE,
     CONNECTION_NOT_FOUND,
+    CONNECTION_UPDATE_FAILED,
     CONNECTION_UPDATED,
     CONNECTION_VALIDATION_FAILED,
+    OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
     SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
@@ -215,7 +218,7 @@ class ConnectionCatalog:
                 # than ``logger.exception`` -- the full traceback can
                 # leak repo / secret-backend internals.
                 logger.warning(
-                    CONNECTION_CREATED,
+                    CONNECTION_CREATE_FAILED,
                     connection_name=name,
                     note="repo_save_failed_deleting_orphaned_secret",
                     error_type=type(exc).__name__,
@@ -227,7 +230,7 @@ class ConnectionCatalog:
                     raise
                 except Exception as cleanup_exc:
                     logger.warning(
-                        CONNECTION_CREATED,
+                        CONNECTION_CREATE_FAILED,
                         connection_name=name,
                         secret_id=secret_id,
                         note=("rollback_delete_failed_manual_cleanup_required"),
@@ -331,7 +334,22 @@ class ConnectionCatalog:
                 return existing
             real_updates["updated_at"] = datetime.now(UTC)
             updated = existing.model_copy(update=real_updates)
-            await self._repo.save(updated)
+            try:
+                await self._repo.save(updated)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # PATCH persistence failed; surface ``connection_name``
+                # context before re-raising so the failure is
+                # attributable in dashboards (the repo's own exception
+                # only carries a row id).  SEC-1: redacted error.
+                logger.warning(
+                    CONNECTION_UPDATE_FAILED,
+                    connection_name=name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
             self._invalidate_cache()
             logger.info(CONNECTION_UPDATED, connection_name=name)
             return updated
@@ -558,7 +576,7 @@ class ConnectionCatalog:
                 # secret-bearing and a raw traceback can leak the
                 # token / backend internals.
                 logger.warning(
-                    OAUTH_TOKEN_EXCHANGED,
+                    OAUTH_TOKEN_EXCHANGE_FAILED,
                     connection_name=name,
                     note="repo_save_failed_deleting_orphaned_oauth_secret",
                     error_type=type(exc).__name__,
@@ -566,12 +584,14 @@ class ConnectionCatalog:
                 )
                 try:
                     await self._secret_backend.delete(new_secret_id)
+                except MemoryError, RecursionError:
+                    raise
                 except Exception as cleanup_exc:
                     # SEC-1: see sibling handler -- avoid raw str(exc)
                     # in case the secret backend's exception message
                     # contains backend-internal credentials.
                     logger.warning(
-                        OAUTH_TOKEN_EXCHANGED,
+                        OAUTH_TOKEN_EXCHANGE_FAILED,
                         connection_name=name,
                         secret_id=new_secret_id,
                         error_context=(
@@ -603,7 +623,7 @@ class ConnectionCatalog:
                     # backend's exception message can include
                     # backend-internal credentials.
                     logger.warning(
-                        OAUTH_TOKEN_EXCHANGED,
+                        OAUTH_TOKEN_EXCHANGE_FAILED,
                         connection_name=name,
                         secret_id=old_ref.secret_id,
                         note="failed_to_delete_stale_secret_after_rotation",

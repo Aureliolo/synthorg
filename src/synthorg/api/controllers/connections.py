@@ -340,6 +340,15 @@ class ConnectionsController(Controller):
         catalog = state["app_state"].connection_catalog
         try:
             report = await check_connection_health(catalog, name)
+            # ``update_health`` shares the 404 mapping: a concurrent
+            # delete between the probe and the health write would
+            # otherwise bubble a ``ConnectionNotFoundError`` as a 500
+            # and skip the structured ``API_RESOURCE_NOT_FOUND`` log.
+            await catalog.update_health(
+                name,
+                status=report.status,
+                checked_at=report.checked_at,
+            )
         except ConnectionNotFoundError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -349,11 +358,6 @@ class ConnectionsController(Controller):
                 error=safe_error_description(exc),
             )
             raise NotFoundError(str(exc)) from exc
-        await catalog.update_health(
-            name,
-            status=report.status,
-            checked_at=report.checked_at,
-        )
         return ApiResponse(data=report)
 
     @get(

@@ -311,10 +311,13 @@ class AgentController(Controller):
         # is the request principal (stable user_id, matching the
         # workflows.py audit pattern); the field set is what the
         # request body declared via Pydantic ``model_fields_set``.
+        # Log the persisted name (rename requests change it) and sort
+        # the field set so the audit row is deterministic.
         logger.info(
             AGENT_IDENTITY_MODIFIED,
-            agent_name=agent_name,
-            fields_changed=tuple(data.model_fields_set),
+            agent_name=updated.name,
+            previous_agent_name=agent_name,
+            fields_changed=tuple(sorted(data.model_fields_set)),
             actor=get_auth_user_id(request),
         )
         publish_ws_event(

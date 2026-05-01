@@ -19,6 +19,7 @@ from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
+    ASYNC_TASK_CANCEL_FAILED,
     ASYNC_TASK_CANCELLED,
     ASYNC_TASK_CHECKED,
     ASYNC_TASK_LISTED,
@@ -304,11 +305,24 @@ class AsyncTaskService:
         # the actor lock, so the transition log below carries
         # happens-before-correct audit data even under concurrent
         # mutation -- no second ``get_task`` round trip needed.
-        task, prior_task_status = await self._engine.cancel_task(
-            task_id,
-            requested_by=supervisor_id,
-            reason="ASYNC_CANCEL",
-        )
+        try:
+            task, prior_task_status = await self._engine.cancel_task(
+                task_id,
+                requested_by=supervisor_id,
+                reason="ASYNC_CANCEL",
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                ASYNC_TASK_CANCEL_FAILED,
+                task_id=task_id,
+                supervisor_id=supervisor_id,
+                reason="ASYNC_CANCEL",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         prior_status = (
             self._map_status(prior_task_status)
             if prior_task_status is not None

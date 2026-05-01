@@ -284,6 +284,31 @@ def _table_for_section(
     return lines
 
 
+def _validated_tags(verb: str, path: str, op: dict[str, object]) -> list[str]:
+    """Return the operation's tag list, raising on invalid / missing tags.
+
+    Fail-fast on untagged or malformed operations: this script is the
+    docs source of truth, so silently dropping a route would let a
+    controller ship without appearing in the public endpoint inventory.
+    """
+    tags_field = op.get("tags")
+    if not isinstance(tags_field, list) or not tags_field:
+        msg = (
+            f"OpenAPI operation {verb.upper()} {path} is missing a "
+            "valid 'tags' list. Add a tag before regenerating the "
+            "endpoint table."
+        )
+        raise TypeError(msg)
+    for tag in tags_field:
+        if not isinstance(tag, str) or not tag:
+            msg = (
+                f"OpenAPI operation {verb.upper()} {path} has an "
+                f"invalid tag entry: {tag!r}"
+            )
+            raise TypeError(msg)
+    return tags_field
+
+
 def _collect_tag_paths(schema: dict[str, object]) -> dict[str, list[str]]:
     """Walk the OpenAPI ``paths`` and return ``tag -> [path, ...]``."""
     paths = schema.get("paths", {})
@@ -300,11 +325,8 @@ def _collect_tag_paths(schema: dict[str, object]) -> dict[str, list[str]]:
                 continue
             if not isinstance(op, dict):
                 continue
-            tags_field = op.get("tags", [])
-            if not isinstance(tags_field, list):
-                continue
-            for tag in tags_field:
-                if not isinstance(tag, str) or tag in seen_tags:
+            for tag in _validated_tags(verb, path, op):
+                if tag in seen_tags:
                     continue
                 tag_to_paths[tag].append(path)
                 seen_tags.add(tag)

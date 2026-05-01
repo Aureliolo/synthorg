@@ -275,6 +275,11 @@ class SettingsService:
         # so no lock is required for cooperative concurrency.
         self._resolution_logged: set[tuple[str, str]] = set()
 
+    @property
+    def registry(self) -> SettingsRegistry:
+        """Read-only access to the registry for callers that need definitions."""
+        return self._registry
+
     def _emit_resolved(
         self,
         definition: SettingDefinition,
@@ -755,12 +760,13 @@ class SettingsService:
 
         try:
             _validate_value(definition, value)
-        except SettingValidationError:
+        except SettingValidationError as exc:
             logger.warning(
                 SETTINGS_VALIDATION_FAILED,
                 namespace=namespace,
                 key=key,
                 import_source=import_source.value,
+                reason=safe_error_description(exc),
             )
             raise
 
@@ -806,6 +812,7 @@ class SettingsService:
         items: Sequence[tuple[str, str, str]],
         *,
         expected_updated_at_map: Mapping[tuple[str, str], str],
+        import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> str:
         """Atomically persist multiple setting values with per-key CAS.
 
@@ -819,13 +826,21 @@ class SettingsService:
         on CAS miss (whole transaction rolled back),
         ``SettingNotFoundError`` / ``SettingValidationError`` /
         ``SettingsEncryptionError`` on preflight failures.
+
+        ``import_source`` is forwarded to validation-failure logs so
+        bulk-import audit trails carry the same attribution as the
+        per-key ``set`` path.
         """
         if not items:
             msg = "set_many requires at least one item"
             raise ValueError(msg)
 
         updated_at = _now_iso()
-        prepared, definitions = self._prepare_set_many(items, updated_at)
+        prepared, definitions = self._prepare_set_many(
+            items,
+            updated_at,
+            import_source=import_source,
+        )
 
         written = await self._repository.set_many(
             prepared,
@@ -861,6 +876,8 @@ class SettingsService:
         self,
         items: Sequence[tuple[str, str, str]],
         updated_at: str,
+        *,
+        import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> tuple[
         list[tuple[NotBlankStr, NotBlankStr, str, str]],
         list[tuple[str, str, SettingDefinition]],
@@ -891,8 +908,14 @@ class SettingsService:
 
             try:
                 _validate_value(definition, value)
-            except SettingValidationError:
-                logger.warning(SETTINGS_VALIDATION_FAILED, namespace=namespace, key=key)
+            except SettingValidationError as exc:
+                logger.warning(
+                    SETTINGS_VALIDATION_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    import_source=import_source.value,
+                    reason=safe_error_description(exc),
+                )
                 raise
 
             store_value = self._encrypt_if_sensitive(definition, value)

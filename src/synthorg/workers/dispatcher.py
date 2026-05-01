@@ -161,18 +161,25 @@ class DistributedDispatcher:
             # from permanent failures (auth, malformed config) that
             # the broad ``retryable=lambda _exc: True`` predicate
             # cannot distinguish on its own.
+            #
+            # ``GeneralRetryHandler.execute`` may raise
+            # ``RetryExhaustedError`` after the last attempt; in that
+            # case unwrap to the underlying cause so ``error_type``
+            # carries the actual publish failure (auth, timeout, etc.)
+            # rather than the generic exhaustion wrapper.
+            root_exc = exc.__cause__ or exc
             logger.warning(
                 WORKERS_DISPATCHER_PUBLISH_FAILED,
                 task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error_type=type(root_exc).__name__,
+                error=safe_error_description(root_exc),
             )
             logger.error(  # noqa: TRY400
                 WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
                 task_id=task_id,
                 attempts=_PUBLISH_MAX_ATTEMPTS,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error_type=type(root_exc).__name__,
+                error=safe_error_description(root_exc),
             )
             return False
         else:

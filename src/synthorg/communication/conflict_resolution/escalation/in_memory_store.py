@@ -27,6 +27,7 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_RESOLVED,
     CONFLICT_ESCALATION_STATUS_TRANSITIONED,
 )
+from synthorg.persistence._shared import parse_iso_utc
 
 logger = get_logger(__name__)
 
@@ -232,7 +233,10 @@ class InMemoryEscalationStore(EscalationQueueStore):
         can distinguish sweeper-driven expiry from operator actions
         (mirrors the SQLite/Postgres backends).
         """
-        now_dt = datetime.fromisoformat(now_iso)
+        # ``parse_iso_utc`` rejects naive datetimes -- ``EscalationRow.expires_at``
+        # is UTC-aware, so a naive ``fromisoformat`` parse would raise
+        # ``TypeError`` on the ``<=`` compare and silently break expiry sweeps.
+        now_dt = parse_iso_utc(now_iso)
         expired_pairs: list[tuple[str, EscalationStatus]] = []
         async with self._lock:
             for key, row in list(self._rows.items()):

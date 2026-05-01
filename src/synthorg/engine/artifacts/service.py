@@ -28,6 +28,7 @@ from synthorg.observability.events.api import (
     API_ARTIFACT_UPDATED,
 )
 from synthorg.observability.events.persistence import (
+    PERSISTENCE_ARTIFACT_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_DELETE_NO_STORAGE,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
 )
@@ -187,4 +188,19 @@ class ArtifactService:
                 error=safe_error_description(exc),
             )
             raise
-        return await self.delete(artifact_id)
+        # The metadata delete is the highest-risk branch: a failure
+        # here leaves the blob gone but the row present, so log with
+        # context before re-raising so operators can reconcile.
+        try:
+            return await self.delete(artifact_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_DELETE_FAILED,
+                artifact_id=artifact_id,
+                note="metadata_delete_failed_after_blob_deleted",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise

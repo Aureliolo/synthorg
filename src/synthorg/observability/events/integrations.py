@@ -18,6 +18,18 @@ CONNECTION_VALIDATION_FAILED: Final[str] = "integrations.connection.validation_f
 CONNECTION_AUTHENTICATOR_MISSING: Final[str] = (
     "integrations.connection.authenticator_missing"
 )
+CONNECTION_CREATE_FAILED: Final[str] = "integrations.connection.create_failed"
+"""Connection create rolled back / cleanup failed.
+
+Use on rollback / compensating-cleanup branches that previously
+emitted ``CONNECTION_CREATED`` -- a success-named constant on a
+failure path overcounts created connections in dashboards."""
+
+CONNECTION_UPDATE_FAILED: Final[str] = "integrations.connection.update_failed"
+"""Connection PATCH persistence failed.
+
+Emitted before re-raising so the failure carries
+``connection_name`` context (the repo's exception alone loses it)."""
 
 # -- Secret management ---------------------------------------------------
 

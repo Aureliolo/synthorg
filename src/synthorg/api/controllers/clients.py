@@ -224,6 +224,7 @@ class ClientController(Controller):
             msg = f"Client {data.client_id!r} already exists"
             logger.warning(
                 API_RESOURCE_CONFLICT,
+                resource="client",
                 client_id=data.client_id,
                 reason=msg,
             )
@@ -261,6 +262,7 @@ class ClientController(Controller):
             msg = f"Client {client_id!r} not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
+                resource="client",
                 client_id=client_id,
                 reason=msg,
             )
@@ -297,6 +299,7 @@ class ClientController(Controller):
             msg = f"Client {client_id!r} not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
+                resource="client",
                 client_id=client_id,
                 reason=msg,
             )
@@ -322,6 +325,7 @@ class ClientController(Controller):
             msg = f"Client {client_id!r} not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
+                resource="client",
                 client_id=client_id,
                 reason=msg,
             )

@@ -725,25 +725,41 @@ async def _persist_security_settings(
     Code-defined fields (custom_policies, rule_engine, etc.) are
     not persistable through the settings service.
 
+    The persist runs through ``svc.set_many`` so the whole batch
+    commits or rolls back together; per-key ``svc.set`` would leave
+    the system in a mixed configuration if a later key failed
+    validation after earlier keys already landed.
+
     Args:
         svc: Settings service for persistence.
         config: Validated security configuration.
-        import_source: Source attribution forwarded to ``svc.set`` so
-            audit logs distinguish bulk-import writes from per-key
+        import_source: Source attribution forwarded so audit logs
+            distinguish bulk-import writes from per-key
             ``PATCH /settings`` calls.
     """
     ns = SettingNamespace.SECURITY
+    items: list[tuple[str, str, str]] = []
     for field_name, key in _SECURITY_SETTING_FIELDS.items():
+        # Skip fields that aren't registered as persistable settings;
+        # the original loop probed each key with ``svc.set`` and ate
+        # ``SettingNotFoundError`` -- mirror that here so a config
+        # carrying a code-defined field doesn't fail the import.
+        if svc.registry.get(ns.value, key) is None:
+            logger.debug(SETTINGS_NOT_FOUND, namespace=ns.value, key=key)
+            continue
         value = getattr(config, field_name)
         str_value = str(value).lower() if isinstance(value, bool) else str(value)
-        try:
-            await svc.set(ns, key, str_value, import_source=import_source)
-        except SettingNotFoundError:
-            logger.debug(
-                SETTINGS_NOT_FOUND,
-                namespace=ns,
-                key=key,
-            )
+        items.append((ns.value, key, str_value))
+    if not items:
+        return
+    # ``expected_updated_at_map`` of all-empty strings means
+    # "first-write" semantics for every key; matches the prior
+    # ``svc.set`` loop, which also did not pass CAS versions.
+    await svc.set_many(
+        items,
+        expected_updated_at_map={(ns_val, key): "" for ns_val, key, _ in items},
+        import_source=import_source,
+    )
 
 
 # ── Sink helpers (extracted for <50 line methods) ────────────────
