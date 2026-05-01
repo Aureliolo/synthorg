@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.7](https://github.com/Aureliolo/synthorg/compare/v0.7.6...v0.7.7) (2026-05-01)
+
+
+### Bug Fixes
+
+* API hardening — rate limits, settings tunables, dead config (closes [#1686](https://github.com/Aureliolo/synthorg/issues/1686)) ([#1697](https://github.com/Aureliolo/synthorg/issues/1697)) ([75dbee7](https://github.com/Aureliolo/synthorg/commit/75dbee743fca2b18d71374820e801be8941ad88e))
+* backend reliability bundle (race conditions, leaks, blocking I/O, persistence parity) ([#1691](https://github.com/Aureliolo/synthorg/issues/1691)) ([f62a11e](https://github.com/Aureliolo/synthorg/commit/f62a11ebb6a4c470c0487499ef3369740f593ed9)), closes [#1683](https://github.com/Aureliolo/synthorg/issues/1683)
+* cost & budget integrity + audit-chain coverage ([#1684](https://github.com/Aureliolo/synthorg/issues/1684)) ([#1696](https://github.com/Aureliolo/synthorg/issues/1696)) ([3f9ee2f](https://github.com/Aureliolo/synthorg/commit/3f9ee2f5a2d385a0e76d83082bf3ce9fe48f6517))
+* **security:** SEC-1 hardening, crypto, idempotency, secret-log discipline ([#1682](https://github.com/Aureliolo/synthorg/issues/1682)) ([#1693](https://github.com/Aureliolo/synthorg/issues/1693)) ([9891325](https://github.com/Aureliolo/synthorg/commit/9891325715b1216a3eaf4e91f01ccc1a55572a84))
+* **web:** close out dashboard UX audit ([#1687](https://github.com/Aureliolo/synthorg/issues/1687)) — setup wizard, auth race, list pages, missing surfaces ([#1692](https://github.com/Aureliolo/synthorg/issues/1692)) ([ac662d4](https://github.com/Aureliolo/synthorg/commit/ac662d4653a4478e4a1353b0e132f10f24f19793))
+
+
+### Documentation
+
+* trim auto-loaded CLAUDE.md surfaces from 130k+ to 60k via docs/reference ([#1689](https://github.com/Aureliolo/synthorg/issues/1689)) ([9d228f9](https://github.com/Aureliolo/synthorg/commit/9d228f950b210e6b514d7f97a47b294e2ba55c9b))
+
+
+### Maintenance
+
+* storage hygiene + pre-alpha cleanup + GDPR vocabulary scrub ([#1685](https://github.com/Aureliolo/synthorg/issues/1685)) ([#1695](https://github.com/Aureliolo/synthorg/issues/1695)) ([b791247](https://github.com/Aureliolo/synthorg/commit/b79124777984a0581b0fd9c816a10cd04fac98e2))
+
 ## [0.7.6](https://github.com/Aureliolo/synthorg/compare/v0.7.5...v0.7.6) (2026-04-30)
 
 
