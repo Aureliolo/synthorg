@@ -70,11 +70,13 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        # Both records show up unfiltered.  Assert the exact seeded
-        # task_id set rather than ``len >= 2`` so duplicated or
-        # unexpected rows still fail the test.
+        # Both records show up unfiltered.  Assert exact cardinality
+        # AND the exact seeded task_id set so a regression that
+        # duplicates or drops rows still fails the test (a set-only
+        # assertion would silently accept duplicates).
         assert isinstance(body["data"], list)
-        assert {row.get("task_id") for row in body["data"]} == {"task-1", "task-2"}
+        assert len(body["data"]) == 2
+        assert {row["task_id"] for row in body["data"]} == {"task-1", "task-2"}
 
     def test_filter_by_task_id(
         self,
@@ -147,10 +149,12 @@ class TestCoordinationMetricsController:
         assert resp.status_code == 200
         body = resp.json()
         # Time window includes t1 and t2 but excludes t3.  Assert the
-        # exact in-window set (rather than only ``"task-3" not in ...``)
-        # so a regression that drops every row still fails this test.
+        # exact in-window cardinality and id set so a regression that
+        # drops every row still fails this test (a set-only assertion
+        # would also silently accept duplicates).
         assert isinstance(body["data"], list)
-        task_ids = {row.get("task_id") for row in body["data"]}
+        assert len(body["data"]) == 2
+        task_ids = {row["task_id"] for row in body["data"]}
         assert task_ids == {"task-1", "task-2"}
 
     def test_pagination(
@@ -230,9 +234,11 @@ class TestCoordinationMetricsController:
         # Combined filter (agent + since) honoured: only alice's
         # records, none from before t1.
         assert isinstance(body["data"], list)
-        # Assert the seeded ids landed in the response so an empty body
-        # cannot pass the per-row checks vacuously.
-        task_ids = {row.get("task_id") for row in body["data"]}
+        # Assert exact cardinality plus the seeded id set so an empty
+        # body cannot pass the per-row checks vacuously and a duplicate
+        # row cannot pass the set-only check.
+        assert len(body["data"]) == 2
+        task_ids = {row["task_id"] for row in body["data"]}
         assert task_ids == {"t1", "t2"}
         assert all(row.get("agent_id") == "alice" for row in body["data"])
         # Assert ``computed_at`` (the wire field for ``timestamp``) is

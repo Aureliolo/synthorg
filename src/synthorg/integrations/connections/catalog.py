@@ -376,6 +376,48 @@ class ConnectionCatalog:
             c for c in self._cache.values() if c.connection_type == connection_type
         )
 
+    def _build_update_candidate(
+        self,
+        *,
+        base_url: str | None | _UnsetType,
+        metadata: dict[str, str] | None | _UnsetType,
+        health_check_enabled: bool | None | _UnsetType,
+        webhook_receipt_retention_days: int | None | _UnsetType,
+    ) -> dict[str, object]:
+        """Compose the PATCH candidate dict, normalising explicit nulls.
+
+        Extracted from :meth:`update` so the per-field ``_UNSET`` /
+        ``None`` normalisation does not push the caller over the
+        cyclomatic-complexity budget.  The returned mapping is the
+        proposed update *before* the idempotent-no-op filter
+        compares it against the existing row.
+        """
+        candidate: dict[str, object] = {}
+        if base_url is not _UNSET:
+            candidate["base_url"] = NotBlankStr(base_url) if base_url else None
+        if metadata is not _UNSET:
+            # Normalise explicit ``null`` to the canonical empty
+            # mapping used by ``create()``; ``model_copy`` does
+            # not re-run validators so a raw ``None`` would
+            # persist as ``metadata=None`` on the row even
+            # though ``Connection.metadata`` is typed
+            # ``dict[str, str]``.
+            candidate["metadata"] = metadata if metadata is not None else {}
+        if health_check_enabled is not _UNSET:
+            # Same reasoning as ``metadata`` above;
+            # ``create()`` always materialises
+            # ``health_check_enabled=True`` so an explicit-null
+            # clear normalises to the same default.
+            candidate["health_check_enabled"] = (
+                health_check_enabled if health_check_enabled is not None else True
+            )
+        if webhook_receipt_retention_days is not _UNSET:
+            # ``None`` is a meaningful value here -- it clears the
+            # per-connection override and falls back to the global
+            # default.  Pass through verbatim.
+            candidate["webhook_receipt_retention_days"] = webhook_receipt_retention_days
+        return candidate
+
     async def update(
         self,
         name: str,
@@ -405,34 +447,12 @@ class ConnectionCatalog:
             # an unchanged PATCH should be a no-op so we can skip
             # ``save`` and the ``CONNECTION_UPDATED`` audit emit.
             try:
-                candidate: dict[str, object] = {}
-                if base_url is not _UNSET:
-                    candidate["base_url"] = NotBlankStr(base_url) if base_url else None
-                if metadata is not _UNSET:
-                    # Normalise explicit ``null`` to the canonical empty
-                    # mapping used by ``create()``; ``model_copy`` does
-                    # not re-run validators so a raw ``None`` would
-                    # persist as ``metadata=None`` on the row even
-                    # though ``Connection.metadata`` is typed
-                    # ``dict[str, str]``.
-                    candidate["metadata"] = metadata if metadata is not None else {}
-                if health_check_enabled is not _UNSET:
-                    # Same reasoning as ``metadata`` above;
-                    # ``create()`` always materialises
-                    # ``health_check_enabled=True`` so an explicit-null
-                    # clear normalises to the same default.
-                    candidate["health_check_enabled"] = (
-                        health_check_enabled
-                        if health_check_enabled is not None
-                        else True
-                    )
-                if webhook_receipt_retention_days is not _UNSET:
-                    # ``None`` is a meaningful value here -- it clears
-                    # the per-connection override and falls back to the
-                    # global default.  Pass through verbatim.
-                    candidate["webhook_receipt_retention_days"] = (
-                        webhook_receipt_retention_days
-                    )
+                candidate = self._build_update_candidate(
+                    base_url=base_url,
+                    metadata=metadata,
+                    health_check_enabled=health_check_enabled,
+                    webhook_receipt_retention_days=webhook_receipt_retention_days,
+                )
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
