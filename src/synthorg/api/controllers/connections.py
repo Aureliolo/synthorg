@@ -79,7 +79,12 @@ class CreateConnectionRequest(BaseModel):
         Annotated[NotBlankStr, Field(max_length=_MAX_CRED_KEY_LEN)],
         Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
     ] = Field(default_factory=dict)
-    base_url: Annotated[str, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
+    # ``NotBlankStr`` rejects ``""`` so a client can't send a blank
+    # ``base_url`` as an undocumented "clear" signal -- ``null`` is the
+    # only sanctioned clear operation, matching the DTO contract
+    # documented on :class:`UpdateConnectionRequest` (#1682, CodeRabbit
+    # at connections.py:82).
+    base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
         dict[
             Annotated[NotBlankStr, Field(max_length=_MAX_METADATA_KEY_LEN)],
@@ -114,7 +119,10 @@ class UpdateConnectionRequest(BaseModel):
         extra="forbid",
     )
 
-    base_url: Annotated[str, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
+    # ``NotBlankStr`` rejects ``""`` so explicit-null is the only
+    # documented "clear" path; see ``CreateConnectionRequest`` (#1682,
+    # CodeRabbit at connections.py:82).
+    base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
         dict[
             Annotated[NotBlankStr, Field(max_length=_MAX_METADATA_KEY_LEN)],

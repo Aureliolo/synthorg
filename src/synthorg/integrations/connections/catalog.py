@@ -264,10 +264,23 @@ class ConnectionCatalog:
         name: str,
         *,
         base_url: str | None | object = _UNSET,
-        metadata: dict[str, str] | None = None,
+        metadata: dict[str, str] | None | object = _UNSET,
         health_check_enabled: bool | None = None,
     ) -> Connection:
         """Update a connection's mutable fields.
+
+        ``base_url`` and ``metadata`` use the same three-way contract:
+
+        * ``_UNSET`` (the default) leaves the stored value untouched.
+        * ``None`` clears the stored value.
+        * Any other value overwrites the stored value.
+
+        Pre-PR review #1682 (CodeRabbit critical at connections.py:295):
+        ``metadata`` previously treated ``None`` as "skip", which made
+        explicit clearing impossible from the controller and let the
+        controller's ``_UNSET`` sentinel slip into the persistence
+        layer when the caller did pass it through. Aligning with
+        ``base_url`` makes both fields PATCH-compatible.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -278,7 +291,7 @@ class ConnectionCatalog:
             updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
             if base_url is not _UNSET:
                 updates["base_url"] = NotBlankStr(base_url) if base_url else None
-            if metadata is not None:
+            if metadata is not _UNSET:
                 updates["metadata"] = metadata
             if health_check_enabled is not None:
                 updates["health_check_enabled"] = health_check_enabled
