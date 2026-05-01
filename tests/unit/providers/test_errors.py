@@ -2,15 +2,19 @@
 
 import pytest
 
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.providers.errors import (
     AuthenticationError,
     ContentFilterError,
     InvalidRequestError,
     ModelNotFoundError,
+    ProviderAlreadyExistsError,
     ProviderConnectionError,
     ProviderError,
     ProviderInternalError,
+    ProviderNotFoundError,
     ProviderTimeoutError,
+    ProviderValidationError,
     RateLimitError,
 )
 
@@ -208,3 +212,36 @@ class TestRateLimitValidation:
     def test_zero_retry_after_accepted(self) -> None:
         err = RateLimitError("slow down", retry_after=0.0)
         assert err.retry_after == 0.0
+
+
+@pytest.mark.unit
+class TestProviderManagementErrorStatusCodes:
+    """Verify provider-management error subclasses override the parent
+    ProviderError 502 default with semantically correct HTTP status
+    codes so the domain exception handler maps them directly without
+    a controller-level catch-and-translate.
+    """
+
+    def test_provider_not_found_error_is_404(self) -> None:
+        assert ProviderNotFoundError.status_code == 404
+        assert ProviderNotFoundError.error_code == ErrorCode.RESOURCE_NOT_FOUND
+        assert ProviderNotFoundError.error_category == ErrorCategory.NOT_FOUND
+
+    def test_provider_validation_error_is_422(self) -> None:
+        assert ProviderValidationError.status_code == 422
+        assert ProviderValidationError.error_code == ErrorCode.VALIDATION_ERROR
+        assert ProviderValidationError.error_category == ErrorCategory.VALIDATION
+
+    def test_provider_already_exists_error_is_409(self) -> None:
+        assert ProviderAlreadyExistsError.status_code == 409
+        assert ProviderAlreadyExistsError.error_code == ErrorCode.RESOURCE_CONFLICT
+        assert ProviderAlreadyExistsError.error_category == ErrorCategory.CONFLICT
+
+    def test_status_code_overrides_parent_default(self) -> None:
+        # Sanity check: if these inherit 502 from ProviderError, the
+        # controllers in src/synthorg/api/controllers/providers.py
+        # will continue to need the catch-and-translate boilerplate.
+        assert ProviderError.status_code == 502
+        assert ProviderNotFoundError.status_code != ProviderError.status_code
+        assert ProviderValidationError.status_code != ProviderError.status_code
+        assert ProviderAlreadyExistsError.status_code != ProviderError.status_code

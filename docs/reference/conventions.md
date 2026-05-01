@@ -331,6 +331,74 @@ write succeeds, so the audit trail captures only transitions that
 actually landed; if pre-decision visibility is needed, emit a
 separate DEBUG "attempting transition" log alongside.
 
+## 14. Repository CRUD method names
+
+Persistence repositories share a CRUD vocabulary that's uniform
+across 100+ implementations.  This section expands on §1 with the
+extra semantic detail (return-value contracts, immutability of
+collection returns, where ``NotFoundError`` belongs).
+
+| Method | Signature | Semantics |
+|--------|-----------|-----------|
+| `save` | `async def save(entity) -> None` | Insert or update; idempotent. One persist verb (no separate `create` / `update`). |
+| `get` | `async def get(id) -> Entity \| None` | Single-entity fetch. Returns `None` on miss, never raises. |
+| `delete` | `async def delete(id) -> bool` | Removal. ``True`` if a row was removed, ``False`` if the id did not exist; same return type used in §1. |
+| `list_items` | `async def list_items(...) -> tuple[Entity, ...]` | Full scan / paginated list. Some older repositories use `list_all()`; new repositories prefer `list_items(*, limit, offset, **filters)` so callers can paginate without defensive slicing. |
+| `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query when the filter set diverges from a single canonical `list_items`. |
+
+Query methods always return `tuple[T, ...]`, never `list[T]`. This
+matches the immutability default for collection returns and lets
+callers safely share results without defensive copies.
+
+A handful of older repositories (notably ``OntologyEntityRepository``
+and ``ProjectRepository``) currently raise ``OntologyNotFoundError`` /
+``RecordNotFoundError`` directly from ``get()`` instead of returning
+``None``; this predates the canonical pattern and is tracked as a
+follow-up migration.  New repositories follow the
+``Entity | None`` shape so the service layer owns the
+``NotFoundError`` raise (with the ``logger.warning(...)`` + raise
+audit trail).
+
+## 15. MCP handler logging centralisation
+
+Every MCP handler error path uses one of three centralised helpers
+from `src/synthorg/meta/mcp/handlers/common_logging.py`:
+
+* `log_handler_argument_invalid(tool, exc)` for
+  `ArgumentValidationError`
+* `log_handler_invoke_failed(tool, exc, **context)` for any
+  other service-layer exception
+* `log_handler_guardrail_violated(tool, exc)` for
+  `GuardrailViolationError`
+
+Success paths emit `logger.info(MCP_HANDLER_INVOKE_SUCCESS,
+tool_name=...)`. Do NOT emit custom `logger.error()` /
+`logger.warning()` calls from handlers -- these three helpers are
+the single source of truth so an event-name change touches one
+file, not 200+ handler methods.
+
+## 16. Repository file structure
+
+* Repository protocols live in
+  `src/synthorg/persistence/<domain>_protocol.py` as
+  `@runtime_checkable Protocol` classes.
+* Concrete implementations live in
+  `src/synthorg/persistence/sqlite/<domain>_repo.py` and
+  `src/synthorg/persistence/postgres/<domain>_repo.py`.
+* Both backends MUST conform to the same protocol; dual-backend
+  conformance is enforced via `tests/conformance/persistence/`.
+* Every new repository MUST be exposed on `PersistenceBackend`
+  (`src/synthorg/persistence/protocol.py`) as a property so
+  controllers and services can resolve it through the same
+  backend handle they already hold; concrete backends
+  (`SQLitePersistenceBackend`, `PostgresPersistenceBackend`) fill
+  in the property by constructing the per-backend repo with the
+  shared connection pool.  Without this exposure, the new repo is
+  unreachable through the canonical service-layer access path
+  and must be hand-wired at every call site.
+* The naming consistency lets `glob`-based test discovery and
+  contributor onboarding find the right files without grepping.
+
 ## See also
 
 * [persistence-boundary.md](persistence-boundary.md): repository /

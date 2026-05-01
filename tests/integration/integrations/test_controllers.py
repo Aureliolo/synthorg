@@ -79,35 +79,31 @@ class TestConnectionsController:
             await ctrl.get_connection.fn(ctrl, state=state, name="missing")
 
     async def test_create_validates_missing_name(self) -> None:
-        from synthorg.api.controllers.connections import ConnectionsController
+        # Pydantic validation on ``CreateConnectionRequest`` rejects the
+        # missing required ``name`` before the controller is reached;
+        # in production this surfaces as an automatic 4xx via Litestar.
+        from pydantic import ValidationError as PydanticValidationError
 
-        catalog = MagicMock()
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        from synthorg.api.controllers.connections import CreateConnectionRequest
 
-        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with pytest.raises(ValidationError):
-            await ctrl.create_connection.fn(
-                ctrl,
-                state=state,
-                data={"connection_type": "github"},
-            )
+        with pytest.raises(PydanticValidationError):
+            CreateConnectionRequest.model_validate({"connection_type": "github"})
 
     async def test_create_validates_bad_connection_type(self) -> None:
-        from synthorg.api.controllers.connections import ConnectionsController
+        from pydantic import ValidationError as PydanticValidationError
 
-        catalog = MagicMock()
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        from synthorg.api.controllers.connections import CreateConnectionRequest
 
-        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with pytest.raises(ValidationError):
-            await ctrl.create_connection.fn(
-                ctrl,
-                state=state,
-                data={"name": "x", "connection_type": "not-a-type"},
+        with pytest.raises(PydanticValidationError):
+            CreateConnectionRequest.model_validate(
+                {"name": "x", "connection_type": "not-a-type"},
             )
 
     async def test_create_duplicate_raises_conflict(self) -> None:
-        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.api.controllers.connections import (
+            ConnectionsController,
+            CreateConnectionRequest,
+        )
 
         catalog = MagicMock()
         catalog.create = AsyncMock(
@@ -120,11 +116,13 @@ class TestConnectionsController:
             await ctrl.create_connection.fn(
                 ctrl,
                 state=state,
-                data={
-                    "name": "x",
-                    "connection_type": "github",
-                    "credentials": {"token": "t"},
-                },
+                data=CreateConnectionRequest.model_validate(
+                    {
+                        "name": "x",
+                        "connection_type": "github",
+                        "credentials": {"token": "t"},
+                    },
+                ),
             )
 
     async def test_reveal_secret_returns_field(self) -> None:

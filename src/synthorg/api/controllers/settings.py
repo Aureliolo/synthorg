@@ -6,11 +6,7 @@ from typing import TYPE_CHECKING, Any, Self
 
 from litestar import Controller, Request, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import (
-    ClientException,
-    InternalServerException,
-    NotFoundException,
-)
+from litestar.exceptions import InternalServerException
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import (
     AwareDatetime,
@@ -29,8 +25,10 @@ from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.events.api import (
@@ -42,6 +40,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_ENCRYPTION_ERROR,
     SETTINGS_NOT_FOUND,
     SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
+    SETTINGS_VALIDATION_FAILED,
 )
 from synthorg.observability.sink_config_builder import (
     CONSOLE_SINK_ID,
@@ -50,7 +49,7 @@ from synthorg.observability.sink_config_builder import (
     build_log_config_from_settings,
 )
 from synthorg.security.config import SecurityConfig
-from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.enums import SettingNamespace, SettingsImportSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingsEncryptionError,
@@ -191,7 +190,12 @@ def _validate_namespace(namespace: str) -> None:
     """Raise 404 if namespace is not a known SettingNamespace member."""
     if namespace not in _VALID_NAMESPACES:
         msg = f"Unknown namespace: {namespace!r}"
-        raise NotFoundException(msg)
+        logger.warning(
+            SETTINGS_NOT_FOUND,
+            namespace=namespace,
+            reason="unknown_namespace",
+        )
+        raise NotFoundError(msg)
 
 
 async def _check_setting_etag(
@@ -214,7 +218,7 @@ async def _check_setting_etag(
         when no ``If-Match`` header is provided.
 
     Raises:
-        NotFoundException: If the setting does not exist.
+        NotFoundError: If the setting does not exist (HTTP 404).
         VersionConflictError: If the ETag does not match.
     """
     if_match = request.headers.get("if-match")
@@ -226,7 +230,13 @@ async def _check_setting_etag(
             key,
         )
     except SettingNotFoundError as exc:
-        raise NotFoundException(str(exc)) from exc
+        logger.warning(
+            SETTINGS_NOT_FOUND,
+            namespace=namespace,
+            key=key,
+            operation="etag_check",
+        )
+        raise NotFoundError(str(exc)) from exc
     current_etag = compute_etag(
         current.value,
         current.updated_at or "",
@@ -374,7 +384,13 @@ class SettingsController(Controller):
         try:
             entry = await app_state.settings_service.get_entry(namespace, key)
         except SettingNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+                operation="read",
+            )
+            raise NotFoundError(str(exc)) from exc
         etag = compute_etag(
             entry.value,
             entry.updated_at or "",
@@ -416,11 +432,31 @@ class SettingsController(Controller):
                 key,
                 data.value,
                 expected_updated_at=expected_updated_at,
+                import_source=SettingsImportSource.API_BODY,
             )
         except SettingNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+                operation="update",
+            )
+            raise NotFoundError(str(exc)) from exc
         except SettingValidationError as exc:
-            raise ClientException(str(exc), status_code=422) from exc
+            # Log the redacted exception detail server-side so operator
+            # triage retains the full reason; the 422 body keeps a
+            # client-safe generic message so backend exception text
+            # never leaks into the API response.
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                operation="update",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Invalid setting value"
+            raise DomainValidationError(msg) from exc
         except SettingsEncryptionError:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
@@ -465,7 +501,13 @@ class SettingsController(Controller):
         try:
             await app_state.settings_service.delete(namespace, key)
         except SettingNotFoundError as exc:
-            raise NotFoundException(str(exc)) from exc
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+                operation="delete",
+            )
+            raise NotFoundError(str(exc)) from exc
 
     # ── Observability sink endpoints ──────────────────────────────
 
@@ -616,22 +658,31 @@ class SettingsController(Controller):
             The validated and persisted config.
 
         Raises:
-            ClientException: If the config fails validation.
+            DomainValidationError: If the config fails validation
+                (HTTP 422).
         """
         app_state: AppState = state.app_state
         try:
             validated = SecurityConfig.model_validate(data.config)
         except ValidationError as exc:
+            # Redact: ``str(exc)`` (and the f-string substitution below)
+            # would surface rejected input values from the import payload,
+            # which can hold secrets or operator-sensitive configuration.
+            # The 422 response keeps a generic message; full diagnostic
+            # detail stays on the server-side warning stream via
+            # ``safe_error_description``.  SEC-1.
             logger.warning(
                 API_SECURITY_CONFIG_IMPORT_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = f"Invalid security config: {exc}"
-            raise ClientException(msg) from exc
+            msg = "Invalid security config"
+            raise DomainValidationError(msg) from exc
 
         await _persist_security_settings(
             app_state.settings_service,
             validated,
+            import_source=SettingsImportSource.API_BODY,
         )
 
         warning = (
@@ -665,6 +716,8 @@ _SECURITY_SETTING_FIELDS: dict[str, str] = {
 async def _persist_security_settings(
     svc: SettingsService,
     config: SecurityConfig,
+    *,
+    import_source: SettingsImportSource,
 ) -> None:
     """Persist registered security settings from a validated config.
 
@@ -672,22 +725,41 @@ async def _persist_security_settings(
     Code-defined fields (custom_policies, rule_engine, etc.) are
     not persistable through the settings service.
 
+    The persist runs through ``svc.set_many`` so the whole batch
+    commits or rolls back together; per-key ``svc.set`` would leave
+    the system in a mixed configuration if a later key failed
+    validation after earlier keys already landed.
+
     Args:
         svc: Settings service for persistence.
         config: Validated security configuration.
+        import_source: Source attribution forwarded so audit logs
+            distinguish bulk-import writes from per-key
+            ``PATCH /settings`` calls.
     """
     ns = SettingNamespace.SECURITY
+    items: list[tuple[str, str, str]] = []
     for field_name, key in _SECURITY_SETTING_FIELDS.items():
+        # Skip fields that aren't registered as persistable settings;
+        # the original loop probed each key with ``svc.set`` and ate
+        # ``SettingNotFoundError`` -- mirror that here so a config
+        # carrying a code-defined field doesn't fail the import.
+        if svc.registry.get(ns.value, key) is None:
+            logger.debug(SETTINGS_NOT_FOUND, namespace=ns.value, key=key)
+            continue
         value = getattr(config, field_name)
         str_value = str(value).lower() if isinstance(value, bool) else str(value)
-        try:
-            await svc.set(ns, key, str_value)
-        except SettingNotFoundError:
-            logger.debug(
-                SETTINGS_NOT_FOUND,
-                namespace=ns,
-                key=key,
-            )
+        items.append((ns.value, key, str_value))
+    if not items:
+        return
+    # ``expected_updated_at_map`` of all-empty strings means
+    # "first-write" semantics for every key; matches the prior
+    # ``svc.set`` loop, which also did not pass CAS versions.
+    await svc.set_many(
+        items,
+        expected_updated_at_map={(ns_val, key): "" for ns_val, key, _ in items},
+        import_source=import_source,
+    )
 
 
 # ── Sink helpers (extracted for <50 line methods) ────────────────

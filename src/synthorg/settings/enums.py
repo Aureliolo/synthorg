@@ -71,3 +71,18 @@ class SettingSource(StrEnum):
     ENVIRONMENT = "env"
     YAML = "yaml"
     DEFAULT = "default"
+
+
+class SettingsImportSource(StrEnum):
+    """How a settings write entered the service.
+
+    Distinguishes user-driven edits (single-key API set) from bulk
+    or programmatic merges so ``SETTINGS_VALIDATION_FAILED`` logs
+    can pinpoint whether a malformed value came from a user form, a
+    config-file upload, a startup config merge, or a JSON API body.
+    """
+
+    DIRECT_SET = "direct_set"
+    FILE_UPLOAD = "file_upload"
+    CONFIG_MERGE = "config_merge"
+    API_BODY = "api_body"

@@ -4,19 +4,24 @@ CRUD endpoints for the external service connection catalog,
 including on-demand health checks.
 """
 
-from typing import Any
+import copy
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
-from synthorg.integrations.connections.catalog import _UNSET
+from synthorg.core.types import (
+    NotBlankStr,  # noqa: TC001 -- Pydantic field type at runtime
+)
+from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
 from synthorg.integrations.connections.models import (
+    AuthMethod,
     Connection,
     ConnectionType,
     HealthReport,
@@ -27,11 +32,15 @@ from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
     SecretRetrievalError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
+    API_VALIDATION_FAILED,
+)
 from synthorg.observability.events.integrations import (
     CONNECTION_SECRET_REVEAL_FAILED,
     CONNECTION_SECRET_REVEALED,
-    SECRET_RETRIEVAL_FAILED,
 )
 
 # Unified error surfaced to clients on any reveal failure. The
@@ -42,6 +51,59 @@ from synthorg.observability.events.integrations import (
 _REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 
 logger = get_logger(__name__)
+
+
+class CreateConnectionRequest(BaseModel):
+    """Request body for ``POST /connections``.
+
+    ``extra="forbid"`` rejects unknown keys at the boundary so the API
+    never silently ACKs payloads it did not actually accept (typos,
+    fabricated capability flags, stale client schemas).  Field types
+    enforce the same shape the controller previously checked inline.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    name: NotBlankStr = Field(max_length=128)
+    connection_type: ConnectionType
+    auth_method: AuthMethod = AuthMethod.API_KEY
+    # ``dict[str, str]`` matches the catalog signature
+    # (``catalog.create(..., credentials: dict[str, str], metadata:
+    # dict[str, str])``) and the secret-backend reveal contract;
+    # accepting non-string values would let a ``credentials["k"] = 42``
+    # entry slip through and trigger ``SecretRetrievalError`` only at
+    # reveal time.
+    credentials: dict[str, str] = Field(default_factory=dict)
+    base_url: NotBlankStr | None = None
+    metadata: dict[str, str] | None = None
+    health_check_enabled: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        # Persist the canonical trimmed form so ``"  github  "`` and
+        # ``"github"`` cannot become two distinct identities.  The
+        # ``NotBlankStr`` annotation already rejects whitespace-only
+        # input; this just normalises the surrounding spaces.
+        return v.strip()
+
+
+class UpdateConnectionRequest(BaseModel):
+    """Request body for ``PATCH /connections/{name}`` (partial update).
+
+    Each field is optional; absent fields keep their stored value.
+    ``extra="forbid"`` mirrors :class:`CreateConnectionRequest`.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    base_url: NotBlankStr | None = None
+    # ``dict[str, str]`` matches the catalog signature and
+    # ``CreateConnectionRequest``; non-string metadata values are
+    # rejected at parse time rather than producing surprises later
+    # in the catalog / health-check path.
+    metadata: dict[str, str] | None = None
+    health_check_enabled: bool | None = None
 
 
 class ConnectionsController(Controller):
@@ -97,6 +159,7 @@ class ConnectionsController(Controller):
         conn = await catalog.get(name)
         if conn is None:
             msg = f"Connection '{name}' not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=msg)
             raise NotFoundError(msg) from None
         return ApiResponse(data=conn)
 
@@ -111,62 +174,58 @@ class ConnectionsController(Controller):
     async def create_connection(
         self,
         state: State,
-        data: dict[str, Any],
+        data: CreateConnectionRequest,
     ) -> ApiResponse[Connection]:
         """Create a new connection.
 
-        Validates required fields and connection type before
-        delegating to the catalog so clients get a structured
-        400 instead of a 500 on malformed payloads.
+        Litestar runs Pydantic validation on
+        :class:`CreateConnectionRequest` before this handler executes;
+        unknown fields and shape mismatches surface as a structured 4xx
+        response automatically.  The handler body therefore only owns
+        the persistence-layer dispatch and the domain-error mapping.
         """
-        name = data.get("name")
-        if not isinstance(name, str) or not name.strip():
-            msg = "Field 'name' is required and must be a non-empty string"
-            raise ValidationError(msg)
-        # Persist the canonical trimmed form so "  github  " and
-        # "github" cannot become two distinct identities and so the
-        # /{name} routes consistently address the stored row.
-        name = name.strip()
-
-        connection_type_raw = data.get("connection_type")
-        if not isinstance(connection_type_raw, str) or not connection_type_raw:
-            msg = "Field 'connection_type' is required"
-            raise ValidationError(msg)
-        try:
-            connection_type = ConnectionType(connection_type_raw)
-        except ValueError as exc:
-            msg = f"Unknown connection_type '{connection_type_raw}'"
-            raise ValidationError(msg) from exc
-
-        credentials = data.get("credentials", {})
-        if not isinstance(credentials, dict):
-            msg = "Field 'credentials' must be an object"
-            raise ValidationError(msg)
-
-        metadata = data.get("metadata")
-        if metadata is not None and not isinstance(metadata, dict):
-            msg = "Field 'metadata' must be an object if provided"
-            raise ValidationError(msg)
-
-        health_check_enabled = data.get("health_check_enabled", True)
-        if not isinstance(health_check_enabled, bool):
-            msg = "Field 'health_check_enabled' must be a boolean"
-            raise ValidationError(msg)
-
+        # Defensively deepcopy ``credentials`` / ``metadata`` at the API
+        # boundary so the catalog can never observe (or be mutated by)
+        # subsequent caller-owned changes to the request payload.  The
+        # secret backend persists ``credentials`` in plaintext briefly
+        # before encryption, so a shared-reference write would be
+        # particularly dangerous here.
+        credentials_copy = copy.deepcopy(data.credentials)
+        metadata_copy = (
+            copy.deepcopy(data.metadata) if data.metadata is not None else None
+        )
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.create(
-                name=name,
-                connection_type=connection_type,
-                auth_method=data.get("auth_method", "api_key"),
-                credentials=credentials,
-                base_url=data.get("base_url"),
-                metadata=metadata,
-                health_check_enabled=health_check_enabled,
+                name=data.name,
+                connection_type=data.connection_type,
+                auth_method=data.auth_method.value,
+                credentials=credentials_copy,
+                base_url=data.base_url,
+                metadata=metadata_copy,
+                health_check_enabled=data.health_check_enabled,
             )
         except DuplicateConnectionError as exc:
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                connection=data.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise ConflictError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
+            # ``InvalidConnectionAuthError`` is raised by
+            # ``authenticator.validate_credentials(credentials)``, so
+            # the offending field is ``credentials`` rather than
+            # ``auth_method``; mislabelling here would point clients at
+            # the wrong input.
+            logger.warning(
+                API_VALIDATION_FAILED,
+                connection=data.name,
+                field="credentials",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise ValidationError(str(exc)) from exc
         return ApiResponse(data=conn)
 
@@ -182,38 +241,55 @@ class ConnectionsController(Controller):
         self,
         state: State,
         name: str,
-        data: dict[str, Any],
+        data: UpdateConnectionRequest,
     ) -> ApiResponse[Connection]:
-        """Update mutable fields of a connection."""
-        # Validate PATCH field types at the boundary so malformed
-        # payloads surface as a structured 400 instead of failing
-        # inside the catalog / Pydantic model layer.
-        if "base_url" in data:
-            base_url_value = data["base_url"]
-            if base_url_value is not None and not isinstance(base_url_value, str):
-                msg = "Field 'base_url' must be a string or null"
-                raise ValidationError(msg)
-        metadata = data.get("metadata")
-        if metadata is not None and not isinstance(metadata, dict):
-            msg = "Field 'metadata' must be an object if provided"
-            raise ValidationError(msg)
-        health_check_enabled = data.get("health_check_enabled")
-        if health_check_enabled is not None and not isinstance(
-            health_check_enabled,
-            bool,
-        ):
-            msg = "Field 'health_check_enabled' must be a boolean if provided"
-            raise ValidationError(msg)
+        """Update mutable fields of a connection.
 
+        Litestar runs Pydantic validation on
+        :class:`UpdateConnectionRequest` before this handler executes;
+        unknown fields and shape mismatches surface as a structured 4xx
+        response automatically.
+        """
+        # ``model_fields_set`` distinguishes "field omitted" from "field
+        # explicitly set to ``None``" so a PATCH that drops ``base_url``
+        # can still null out the stored value via ``base_url=None``;
+        # when the field was omitted we forward ``_UNSET`` to keep the
+        # catalog's existing value.  All three mutable fields use the
+        # same semantic so client behaviour is uniform.
+        base_url: str | None | _UnsetType = (
+            data.base_url if "base_url" in data.model_fields_set else _UNSET
+        )
+        metadata: dict[str, str] | None | _UnsetType
+        if "metadata" in data.model_fields_set:
+            # Defensively deepcopy when provided; same reasoning as
+            # ``create_connection`` (catalog briefly holds the mapping
+            # before persisting / encrypting nested secrets).
+            metadata = (
+                copy.deepcopy(data.metadata) if data.metadata is not None else None
+            )
+        else:
+            metadata = _UNSET
+        health_check_enabled: bool | None | _UnsetType = (
+            data.health_check_enabled
+            if "health_check_enabled" in data.model_fields_set
+            else _UNSET
+        )
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.update(
                 name,
-                base_url=data.get("base_url", _UNSET),
+                base_url=base_url,
                 metadata=metadata,
                 health_check_enabled=health_check_enabled,
             )
         except ConnectionNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                connection=name,
+                operation="update",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=conn)
 
@@ -236,6 +312,13 @@ class ConnectionsController(Controller):
         try:
             await catalog.delete(name)
         except ConnectionNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                connection=name,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=None)
 
@@ -257,13 +340,24 @@ class ConnectionsController(Controller):
         catalog = state["app_state"].connection_catalog
         try:
             report = await check_connection_health(catalog, name)
+            # ``update_health`` shares the 404 mapping: a concurrent
+            # delete between the probe and the health write would
+            # otherwise bubble a ``ConnectionNotFoundError`` as a 500
+            # and skip the structured ``API_RESOURCE_NOT_FOUND`` log.
+            await catalog.update_health(
+                name,
+                status=report.status,
+                checked_at=report.checked_at,
+            )
         except ConnectionNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                connection=name,
+                operation="health_check",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise NotFoundError(str(exc)) from exc
-        await catalog.update_health(
-            name,
-            status=report.status,
-            checked_at=report.checked_at,
-        )
         return ApiResponse(data=report)
 
     @get(
@@ -299,13 +393,23 @@ class ConnectionsController(Controller):
             # Secret backend failures are operational errors, not a
             # "not found" condition -- log at ERROR level so they
             # show up on the health dashboard instead of getting lost
-            # in the 404 noise.
-            logger.error(
-                SECRET_RETRIEVAL_FAILED,
+            # in the 404 noise.  Use ``CONNECTION_SECRET_REVEAL_FAILED``
+            # (the request-side event) rather than the backend-side
+            # ``SECRET_RETRIEVAL_FAILED`` that the catalog already
+            # emitted -- otherwise one backend failure would
+            # double-count and the user-visible context (this is a
+            # reveal request, not a credential-resolve) would be lost.
+            # ``exc_info`` is intentionally omitted: the full traceback
+            # for a credential-bearing operation can leak backend
+            # secret metadata via wrapped causes; the redacted
+            # ``safe_error_description`` is the only message emitted.
+            logger.error(  # noqa: TRY400
+                CONNECTION_SECRET_REVEAL_FAILED,
                 connection_name=name,
                 field=field,
-                error=str(exc),
-                exc_info=True,
+                reason="secret_retrieval_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
 

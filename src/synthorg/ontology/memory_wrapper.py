@@ -13,6 +13,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_MEMORY_DRIFT_WARNED,
     ONTOLOGY_MEMORY_ENRICHED,
+    ONTOLOGY_MEMORY_ENRICHMENT_FAILED,
+    ONTOLOGY_MEMORY_MANIFEST_FAILED,
     ONTOLOGY_MEMORY_TAGGED,
 )
 
@@ -113,7 +115,7 @@ class OntologyAwareMemoryBackend:
                 found = ()
         except Exception:
             logger.warning(
-                "ontology.memory.enrichment_failed",
+                ONTOLOGY_MEMORY_ENRICHMENT_FAILED,
                 agent_id=agent_id,
                 exc_info=True,
             )
@@ -171,7 +173,7 @@ class OntologyAwareMemoryBackend:
             manifest = await self._ontology.get_version_manifest()
         except Exception:
             logger.warning(
-                "ontology.memory.manifest_failed",
+                ONTOLOGY_MEMORY_MANIFEST_FAILED,
                 agent_id=agent_id,
                 exc_info=True,
             )

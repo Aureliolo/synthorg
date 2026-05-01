@@ -14,12 +14,12 @@ audit rows secret-free.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from synthorg.api.dto_provider_capabilities import (
+from synthorg.observability import get_logger
+from synthorg.providers.management.capability_dtos import (
     ProviderAuditActor,
     ProviderAuditEvent,
     ProviderAuditEventType,
 )
-from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr

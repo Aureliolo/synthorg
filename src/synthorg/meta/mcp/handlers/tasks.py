@@ -345,7 +345,7 @@ async def _tasks_cancel(
 
     requested_by = actor_id(actor) or "system"
     try:
-        task = await app_state.task_engine.cancel_task(
+        task, _prior_status = await app_state.task_engine.cancel_task(
             task_id,
             requested_by=requested_by,
             reason=reason,
@@ -356,6 +356,11 @@ async def _tasks_cancel(
     except TaskMutationError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    except MemoryError, RecursionError:
+        # Process-fatal builtins propagate; matches the convention
+        # used by ``_tasks_create`` and ``_activities_list`` in this
+        # file.
+        raise
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)

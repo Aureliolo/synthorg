@@ -194,31 +194,45 @@ class ErrorTaxonomyConfig(BaseModel):
         return tuple(self.detectors)
 
 
+# Default orchestration-overhead alert thresholds.  Documented as a
+# triplet so the rationale stays adjacent: 30% / 50% / 70% form the
+# info / warn / critical cascade with strict ordering enforced by a
+# model_validator below.
+_DEFAULT_INFO_THRESHOLD: float = 0.30
+_DEFAULT_WARN_THRESHOLD: float = 0.50
+_DEFAULT_CRITICAL_THRESHOLD: float = 0.70
+
+
 class OrchestrationAlertThresholds(BaseModel):
     """Thresholds for orchestration overhead alert levels.
 
     Attributes:
-        info: Ratio threshold for INFO alert (default 0.30).
-        warn: Ratio threshold for WARNING alert (default 0.50).
-        critical: Ratio threshold for CRITICAL alert (default 0.70).
+        info: Ratio threshold for INFO alert (default 0.30 -- 30%
+            orchestration overhead is informational; visible in
+            dashboards but no operator action required).
+        warn: Ratio threshold for WARNING alert (default 0.50 -- 50%
+            warrants attention; investigate coordination patterns).
+        critical: Ratio threshold for CRITICAL alert (default 0.70 --
+            70% is paying more than half the request budget on
+            orchestration; stop routing and triage).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     info: float = Field(
-        default=0.30,
+        default=_DEFAULT_INFO_THRESHOLD,
         ge=0.0,
         le=1.0,
         description="Ratio threshold for INFO alert",
     )
     warn: float = Field(
-        default=0.50,
+        default=_DEFAULT_WARN_THRESHOLD,
         ge=0.0,
         le=1.0,
         description="Ratio threshold for WARNING alert",
     )
     critical: float = Field(
-        default=0.70,
+        default=_DEFAULT_CRITICAL_THRESHOLD,
         ge=0.0,
         le=1.0,
         description="Ratio threshold for CRITICAL alert",

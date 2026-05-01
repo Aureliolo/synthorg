@@ -328,6 +328,9 @@ class TestEventConstants:
             # StrategyRegistry and the persistence/memory backend
             # registries that consolidate factory dispatch.
             "registry",
+            # Added in #1688 for ``GeneralRetryHandler`` constructor
+            # validation logs (max_attempts / base / cap rejection).
+            "resilience",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
@@ -342,6 +345,15 @@ class TestEventConstants:
         assert ANALYTICS_TRENDS_QUERIED == "analytics.trends.queried"
         assert ANALYTICS_FORECAST_QUERIED == "analytics.forecast.queried"
         assert ANALYTICS_OVERVIEW_QUERIED == "analytics.overview.queried"
+
+    def test_resilience_events_exist(self) -> None:
+        # Event names are part of the public observability contract;
+        # asserting the literal value protects against silent renames.
+        from synthorg.observability.events.resilience import (
+            CORE_RESILIENCE_INVALID_CONFIG,
+        )
+
+        assert CORE_RESILIENCE_INVALID_CONFIG == "core.resilience.invalid_config"
 
     def test_config_events_exist(self) -> None:
         assert CONFIG_LOADED == "config.load.success"

@@ -33,11 +33,11 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Department  # noqa: TC001
+from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import (
     NotFoundError,
     ServiceUnavailableError,
     ValidationError,
-    VersionConflictError,
 )
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -352,26 +352,26 @@ async def _mutate_dept_policies_with_retry(
     :class:`VersionConflictError` before surfacing the last conflict.
     """
     max_attempts = await _resolve_dept_policy_cas_attempts(app_state)
-    last_attempt = max_attempts - 1
-    for attempt in range(max_attempts):
+
+    async def read() -> tuple[dict[str, Any], str]:
         policies, expected = await _load_dept_policies_versioned(app_state)
         policies[department_name] = (
             None if new_value is None else copy.deepcopy(new_value)
         )
-        try:
-            await _save_dept_policies_with_cas(
-                app_state,
-                policies,
-                expected_updated_at=expected,
-            )
-        except VersionConflictError:
-            # Re-raise on the final attempt so the caller sees HTTP 409;
-            # otherwise re-read and retry against the new ``updated_at``.
-            if attempt == last_attempt:
-                raise
-            continue
-        else:
-            return
+        return policies, expected
+
+    async def write(policies: dict[str, Any], expected: str) -> None:
+        await _save_dept_policies_with_cas(
+            app_state,
+            policies,
+            expected_updated_at=expected,
+        )
+
+    handler = CASRetryHandler(
+        resource="dept_policy",
+        max_attempts=max_attempts,
+    )
+    await handler.execute(read, write)
 
 
 # ── Controller ────────────────────────────────────────────────

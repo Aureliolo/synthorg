@@ -94,7 +94,7 @@ def fake_app_state() -> SimpleNamespace:
     engine.list_tasks.return_value = ((), 0)
     engine.get_task.return_value = None
     engine.update_task.return_value = dummy_task
-    engine.cancel_task.return_value = dummy_task
+    engine.cancel_task.return_value = (dummy_task, None)
     engine.delete_task.return_value = True
     engine.transition_task.return_value = (dummy_task, None)
     ns.task_engine = engine

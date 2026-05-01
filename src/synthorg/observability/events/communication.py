@@ -144,3 +144,8 @@ COMMUNICATION_WEBHOOK_DELETED: Final[str] = "communication.webhook.deleted"
 COMMUNICATION_TUNNEL_CONNECTED: Final[str] = "communication.tunnel.connected"
 COMMUNICATION_TUNNEL_STATUS_CHECKED: Final[str] = "communication.tunnel.status_checked"
 COMMUNICATION_TUNNEL_PROVIDER_ERROR: Final[str] = "communication.tunnel.provider_error"
+
+BUS_HISTORY_CHANNEL_NOT_FOUND: Final[str] = (
+    "communication.bus.history.channel_not_found"
+)
+"""Bus history accessor failed to resolve a channel name to a bucket."""

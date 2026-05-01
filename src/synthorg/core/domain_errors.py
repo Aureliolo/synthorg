@@ -185,6 +185,22 @@ class ServiceUnavailableError(DomainError):
     status_code: ClassVar[int] = 503
 
 
+class FeatureNotImplementedError(DomainError):
+    """Raised when a feature is not supported by the active backend (501).
+
+    Distinct from ``ServiceUnavailableError`` (503): 503 means a known
+    service is currently down or unconfigured, retry later might
+    succeed.  501 means the active backend or deployment fundamentally
+    does not implement the requested operation -- retrying without
+    changing configuration will not help.
+    """
+
+    default_message: ClassVar[str] = "Feature not implemented"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.FEATURE_NOT_IMPLEMENTED
+    status_code: ClassVar[int] = 501
+
+
 class ArtifactRejectedTooLargeError(DomainError):
     """Raised when an artifact upload exceeds the configured size limit (413).
 
@@ -229,6 +245,21 @@ class ArtifactStorageRejectedFullError(DomainError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_STORAGE_FULL
     status_code: ClassVar[int] = 507
+
+
+class ArtifactPersistenceNoStorageError(DomainError):
+    """Raised when an artifact-content delete is requested without a backend.
+
+    Surfaces a controller-helper bug: ``ArtifactService`` was constructed
+    without a ``storage`` dependency, so ``delete_with_content`` cannot
+    run.  Distinct ``error_code`` so dashboards can identify the
+    misconfiguration.
+    """
+
+    default_message: ClassVar[str] = "Artifact service is missing a storage backend"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_NO_STORAGE_BACKEND
+    status_code: ClassVar[int] = 500
 
 
 class PerOperationRateLimitError(DomainError):

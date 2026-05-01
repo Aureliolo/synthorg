@@ -6,35 +6,22 @@ from synthorg.core.company import Team  # noqa: TC001
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
+from synthorg.organization.models import UpdateCompanyRequest
 
 # -- Company -----------------------------------------------------------
-
-
-class UpdateCompanyRequest(BaseModel):
-    """Partial update for company-level settings."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    company_name: NotBlankStr | None = Field(
-        default=None,
-        description="Display name of the company.",
-    )
-    autonomy_level: AutonomyLevel | None = Field(
-        default=None,
-        description="Org-wide autonomy level (full, semi, supervised, locked).",
-    )
-    budget_monthly: float | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Monthly budget cap for the company in the operator's configured "
-            "currency; set to 0 to disable enforcement."
-        ),
-    )
-    communication_pattern: NotBlankStr | None = Field(
-        default=None,
-        description="Communication strategy or pattern identifier.",
-    )
+#
+# UpdateCompanyRequest is sourced from synthorg.organization.models so
+# the domain service can validate the same input shape without
+# importing from the API layer (audit-144).
+__all__ = [
+    "CreateAgentOrgRequest",
+    "CreateDepartmentRequest",
+    "ReorderAgentsRequest",
+    "ReorderDepartmentsRequest",
+    "UpdateAgentOrgRequest",
+    "UpdateCompanyRequest",
+    "UpdateDepartmentRequest",
+]
 
 
 # -- Departments -------------------------------------------------------
@@ -43,7 +30,7 @@ class UpdateCompanyRequest(BaseModel):
 class CreateDepartmentRequest(BaseModel):
     """Request body for creating a new department."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(max_length=128)
     head: NotBlankStr | None = None
@@ -54,7 +41,7 @@ class CreateDepartmentRequest(BaseModel):
 class UpdateDepartmentRequest(BaseModel):
     """Partial update for an existing department."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     head: NotBlankStr | None = None
     budget_percent: float | None = Field(default=None, ge=0.0, le=100.0)
@@ -79,7 +66,7 @@ class UpdateDepartmentRequest(BaseModel):
 class ReorderDepartmentsRequest(BaseModel):
     """Reorder departments -- must be an exact permutation."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     department_names: tuple[NotBlankStr, ...] = Field(min_length=1)
 
@@ -90,7 +77,7 @@ class ReorderDepartmentsRequest(BaseModel):
 class CreateAgentOrgRequest(BaseModel):
     """Request body for creating a new agent in the org config."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(max_length=128)
     role: NotBlankStr = Field(max_length=128)
@@ -111,7 +98,7 @@ class CreateAgentOrgRequest(BaseModel):
 class UpdateAgentOrgRequest(BaseModel):
     """Partial update for an existing agent in the org config."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr | None = Field(default=None, max_length=128)
     role: NotBlankStr | None = Field(default=None, max_length=128)
@@ -133,6 +120,6 @@ class UpdateAgentOrgRequest(BaseModel):
 class ReorderAgentsRequest(BaseModel):
     """Reorder agents within a department -- must be an exact permutation."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_names: tuple[NotBlankStr, ...] = Field(min_length=1)

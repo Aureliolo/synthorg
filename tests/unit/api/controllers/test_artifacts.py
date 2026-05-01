@@ -107,7 +107,10 @@ class TestArtifactController:
         self, test_client: TestClient[Any]
     ) -> None:
         resp = test_client.get("/api/v1/artifacts?type=bogus")
-        assert resp.status_code == 400
+        # Domain ``ValidationError`` maps to 422 via the central
+        # exception handler, not the legacy 400 the manual
+        # ``Response(...)`` site emitted.
+        assert resp.status_code == 422
         body = resp.json()
         assert body["success"] is False
         assert "Invalid artifact type" in body["error"]
@@ -195,4 +198,9 @@ class TestArtifactController:
         resp = test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
         assert resp.status_code == 404
         body = resp.json()
-        assert "content not found" in body["error"].lower()
+        # Error message includes the artifact_id for parity with the
+        # other 404 messages in this controller.
+        error_lower = body["error"].lower()
+        assert "content" in error_lower
+        assert "not found" in error_lower
+        assert artifact_id.lower() in error_lower

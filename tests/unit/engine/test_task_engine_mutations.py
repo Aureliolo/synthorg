@@ -235,12 +235,13 @@ class TestCancelTask:
             reason="Assigning",
             assigned_to="bob",
         )
-        cancelled = await engine.cancel_task(
+        cancelled, prior = await engine.cancel_task(
             assigned.id,
             requested_by="alice",
             reason="No longer needed",
         )
         assert cancelled.status == TaskStatus.CANCELLED
+        assert prior == TaskStatus.ASSIGNED
 
     async def test_cancel_from_created_fails(
         self,
@@ -465,8 +466,14 @@ class TestListTasksPushDownPagination:
                     make_create_data(title=f"task-{i}"),
                     requested_by="alice",
                 )
-            list_spy = AsyncMock(wraps=persistence.tasks.list_tasks)
-            count_spy = AsyncMock(wraps=persistence.tasks.count_tasks)
+            list_spy = AsyncMock(
+                spec=persistence.tasks.list_tasks,
+                wraps=persistence.tasks.list_tasks,
+            )
+            count_spy = AsyncMock(
+                spec=persistence.tasks.count_tasks,
+                wraps=persistence.tasks.count_tasks,
+            )
             persistence.tasks.list_tasks = list_spy  # type: ignore[method-assign]
             persistence.tasks.count_tasks = count_spy  # type: ignore[method-assign]
 
@@ -503,7 +510,10 @@ class TestListTasksPushDownPagination:
                     make_create_data(title=f"task-{i}"),
                     requested_by="alice",
                 )
-            list_spy = AsyncMock(wraps=persistence.tasks.list_tasks)
+            list_spy = AsyncMock(
+                spec=persistence.tasks.list_tasks,
+                wraps=persistence.tasks.list_tasks,
+            )
             persistence.tasks.list_tasks = list_spy  # type: ignore[method-assign]
 
             first, _ = await eng.list_tasks(limit=10, offset=0)
@@ -527,7 +537,10 @@ class TestListTasksPushDownPagination:
         await eng.start()
         try:
             await eng.create_task(make_create_data(), requested_by="alice")
-            count_spy = AsyncMock(wraps=persistence.tasks.count_tasks)
+            count_spy = AsyncMock(
+                spec=persistence.tasks.count_tasks,
+                wraps=persistence.tasks.count_tasks,
+            )
             persistence.tasks.count_tasks = count_spy  # type: ignore[method-assign]
 
             tasks, total = await eng.list_tasks(

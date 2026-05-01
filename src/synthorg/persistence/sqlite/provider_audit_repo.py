@@ -73,12 +73,21 @@ class SQLiteProviderAuditRepo:
 
     async def record(self, event: ProviderAuditEvent) -> ProviderAuditEvent:
         """Insert one audit event and return the saved row with id populated."""
+        # ``event.payload`` is recursively frozen by
+        # ``ProviderAuditEvent._freeze_payload`` (``MappingProxyType`` /
+        # ``tuple`` / ``frozenset`` for dicts / lists / sets respectively)
+        # to make the audit row append-only at the Python level.
+        # ``json.dumps`` cannot encode any of those directly, so route
+        # through ``model_dump(mode="json")`` which calls the
+        # ``_serialize_payload`` field-serializer to recursively thaw
+        # nested containers back to plain builtins.
+        serialized = event.model_dump(mode="json")
         params = (
             event.provider_name,
             event.event_type,
             event.actor.id,
             event.actor.label,
-            json.dumps(event.payload, sort_keys=True),
+            json.dumps(serialized["payload"], sort_keys=True),
             format_iso_utc(event.occurred_at),
         )
         async with self._write_lock:

@@ -91,7 +91,7 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     ---
 
-    Resolve, view, and edit the 17 settings namespaces at runtime.
+    Resolve, view, and edit the 20 settings namespaces at runtime.
 
     [:octicons-arrow-right-24: Settings Reference](settings-reference.md)
 

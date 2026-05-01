@@ -25,8 +25,13 @@ class ScoredFeedback:
     below ``passing_score`` individually.
     """
 
-    _HASH_LOW: float = 0.3
-    _HASH_RANGE: float = 0.5
+    # Floor and width of the deterministic fallback-score band.  The
+    # hashed score lands in ``[0.3, 0.8]`` so the band straddles the
+    # default ``passing_score`` of 0.7 -- some criteria pass, some
+    # don't, producing realistic mixed-acceptance behaviour without an
+    # LLM call.
+    _MIN_FALLBACK_SCORE: float = 0.3
+    _FALLBACK_SCORE_RANGE: float = 0.5
     _DEFAULT_CRITERION: str = "__default__"
 
     def __init__(
@@ -132,4 +137,6 @@ class ScoredFeedback:
         ).digest()
         (hash_val,) = struct.unpack(">Q", digest)
         fraction = (hash_val % 1000) / 1000
-        return float(self._HASH_LOW + fraction * self._HASH_RANGE)
+        return float(
+            self._MIN_FALLBACK_SCORE + fraction * self._FALLBACK_SCORE_RANGE,
+        )

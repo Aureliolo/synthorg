@@ -273,16 +273,31 @@ class StragglerGap(BaseModel):
         return self.gap_seconds / self.mean_duration_seconds
 
 
+# Alerts trigger when the token-to-speedup ratio exceeds this value:
+# paying twice as many tokens for the same wall-clock win is the
+# empirical "diminishing returns" point operators care about,
+# regardless of agent count.
+#
+# Module-level (not class-level) so the ``alert`` computed_field does
+# not pay a Pydantic field-table lookup per instance -- a class-level
+# float annotation is otherwise picked up by Pydantic's model-fields
+# inspection and adds measurable overhead (~26µs per call observed on
+# the CodSpeed benchmark).
+_DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO: Final[float] = 2.0
+
+
 class TokenSpeedupRatio(BaseModel):
     """Token cost vs latency speedup ratio.
 
-    Alerts when tokens scale faster than speedup (ratio > 2.0).
+    Alerts when tokens scale faster than speedup -- the threshold lives
+    in :data:`_DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO` so it stays uniform
+    across this module and the alert helper.
 
     Attributes:
         token_multiplier: ``tokens_mas / tokens_sas``.
         latency_speedup: ``duration_sas / duration_mas``.
         ratio: ``token_multiplier / latency_speedup`` (computed).
-        alert: Whether ratio exceeds 2.0 threshold (computed).
+        alert: Whether ratio exceeds the alert threshold (computed).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -305,13 +320,12 @@ class TokenSpeedupRatio(BaseModel):
         return self.token_multiplier / self.latency_speedup
 
     @computed_field(  # type: ignore[prop-decorator]
-        description="Alert when ratio > 2.0",
+        description="Alert when ratio exceeds the alert threshold",
     )
     @property
     def alert(self) -> bool:
         """True when paying disproportionately more tokens than speed gained."""
-        _alert_threshold = 2.0
-        return self.ratio > _alert_threshold
+        return self.ratio > _DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO
 
 
 class MessageOverhead(BaseModel):
@@ -652,7 +666,8 @@ def compute_token_speedup_ratio(
         duration_sas: Wall-clock duration for single-agent (seconds).
 
     Returns:
-        Token speedup ratio model (alerts when ratio > 2.0).
+        Token speedup ratio model (alerts when ratio exceeds
+        :data:`_DEFAULT_TOKEN_SPEEDUP_ALERT_RATIO`).
 
     Raises:
         ValueError: If any input is non-finite, zero, or negative.

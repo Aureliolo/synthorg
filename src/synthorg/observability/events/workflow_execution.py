@@ -100,3 +100,9 @@ WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED: Final[str] = (
     "workflow.execution.subworkflow.node_completed"
 )
 """A SUBWORKFLOW node finished walking its child graph."""
+
+WORKFLOW_EXECUTION_USERNAME_FALLBACK: Final[str] = (
+    "workflow.execution.username_fallback"
+)
+"""Workflow-execution caller resolved to a username fallback when the
+session principal lacked a stable identifier."""

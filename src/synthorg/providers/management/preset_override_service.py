@@ -1,9 +1,14 @@
 """Service that owns operator-authored preset overrides.
 
-Reads / writes :class:`synthorg.api.dto_provider_capabilities.PresetOverride`
-through a :class:`PresetOverrideRepo`.  Cross-shape validation
-(cloud preset rejecting ``candidate_urls``, local preset rejecting
-``base_url``) lives here so the persistence layer stays semantics-free.
+Reads / writes :class:`PresetOverride` from
+:mod:`synthorg.providers.management.capability_dtos` through a
+:class:`PresetOverrideRepo`.  The DTOs imported below
+(``PresetOverride``, ``PresetOverrideUpdateRequest``,
+``ProviderAuditActor``) live in the management-layer DTO module rather
+than the API DTO layer so this service stays inside the provider domain
+boundary.  Cross-shape validation (cloud preset rejecting
+``candidate_urls``, local preset rejecting ``base_url``) lives here so
+the persistence layer stays semantics-free.
 
 The "effective preset" merge (in-code preset + override) is the
 responsibility of :meth:`get_effective_override` callers.  The legacy
@@ -16,13 +21,13 @@ override at read time is a follow-on task tracked in #1642.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.api.dto_provider_capabilities import (
+from synthorg.observability import get_logger
+from synthorg.providers.errors import ProviderValidationError
+from synthorg.providers.management.capability_dtos import (
     PresetOverride,
     PresetOverrideUpdateRequest,
     ProviderAuditActor,
 )
-from synthorg.observability import get_logger
-from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.presets import CloudPreset, LocalPreset, get_preset
 
 if TYPE_CHECKING:

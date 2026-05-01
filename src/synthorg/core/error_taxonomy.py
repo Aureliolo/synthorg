@@ -127,6 +127,8 @@ class ErrorCode(IntEnum):
     TOOL_ERROR = 8006
     ARTIFACT_STORAGE_FULL = 8007
     TOOL_EXECUTION_ERROR = 8008
+    FEATURE_NOT_IMPLEMENTED = 8009
+    ARTIFACT_NO_STORAGE_BACKEND = 8010
 
 
 # Error-code band for the NOT_FOUND category (3xxx).  ``resource_not_found``

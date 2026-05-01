@@ -6,7 +6,8 @@ from types import MappingProxyType
 from typing import Any, Final
 from urllib.parse import urlparse
 
-from synthorg.api.dto import CreateProviderRequest, UpdateProviderRequest  # noqa: TC001
+from pydantic import SecretStr
+
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -16,12 +17,33 @@ from synthorg.observability.events.provider import (
     PROVIDER_LITELLM_MODELS_LOADED,
 )
 from synthorg.providers.enums import AuthType
+from synthorg.providers.management.dtos import (  # noqa: TC001
+    CreateProviderRequest,
+    UpdateProviderRequest,
+)
 
 logger = get_logger(__name__)
 
 # Date suffix pattern for model names (e.g. "-YYYYMMDD" like "-20250514")
 _DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
 _DEFAULT_MAX_CONTEXT: Final[int] = 200_000
+
+
+def _unwrap_secret(value: SecretStr | str | None) -> str | None:
+    """Return the raw string for a request-side credential field.
+
+    Request DTOs use ``SecretStr`` so debug / log / repr cannot leak
+    secrets at the API boundary; ``ProviderConfig`` (the persisted
+    shape) stores the same fields as plain strings, so this helper
+    unwraps when handing values across the boundary.  Plain ``str``
+    inputs pass through unchanged so the helper is safe on non-Secret
+    legacy values too.
+    """
+    if value is None:
+        return None
+    if isinstance(value, SecretStr):
+        return value.get_secret_value()
+    return value
 
 
 def build_provider_config(
@@ -43,16 +65,18 @@ def build_provider_config(
         driver=request.driver,
         litellm_provider=request.litellm_provider,
         auth_type=request.auth_type,
-        api_key=request.api_key,
-        subscription_token=request.subscription_token if is_subscription else None,
+        api_key=_unwrap_secret(request.api_key),
+        subscription_token=(
+            _unwrap_secret(request.subscription_token) if is_subscription else None
+        ),
         tos_accepted_at=tos_accepted_at,
         base_url=request.base_url,
         oauth_token_url=request.oauth_token_url,
         oauth_client_id=request.oauth_client_id,
-        oauth_client_secret=request.oauth_client_secret,
+        oauth_client_secret=_unwrap_secret(request.oauth_client_secret),
         oauth_scope=request.oauth_scope,
         custom_header_name=request.custom_header_name,
-        custom_header_value=request.custom_header_value,
+        custom_header_value=_unwrap_secret(request.custom_header_value),
         models=request.models,
         preset_name=request.preset_name,
     )
@@ -69,6 +93,13 @@ _UPDATE_FIELDS: tuple[str, ...] = (
     "custom_header_name",
     "custom_header_value",
     "models",
+)
+
+# Subset of ``_UPDATE_FIELDS`` that arrive on the request as
+# ``SecretStr`` and must be unwrapped before being copied into
+# ``ProviderConfig`` (which stores plain strings).
+_UPDATE_SECRET_FIELDS: frozenset[str] = frozenset(
+    {"oauth_client_secret", "custom_header_value"},
 )
 
 
@@ -109,11 +140,26 @@ def apply_update(
     Returns:
         New ProviderConfig with updates applied.
     """
+    # ``model_fields_set`` distinguishes "field omitted" (no change)
+    # from "field explicitly set to ``None``" (clear).  Without this,
+    # the previous ``value is not None`` gate made it impossible to
+    # null out fields like ``litellm_provider`` / ``base_url`` /
+    # ``oauth_*`` / ``custom_header_*`` / ``models`` via PATCH.  The
+    # existing ``clear_api_key`` / ``clear_subscription_token`` flags
+    # on the request DTO retain their original semantic for those two
+    # SecretStr fields (handled in ``_apply_credential_updates``).
+    sent_fields = request.model_fields_set
     updates: dict[str, Any] = {}
     for field in _UPDATE_FIELDS:
+        if field not in sent_fields:
+            continue
         value = getattr(request, field)
-        if value is not None:
-            updates[field] = value
+        if value is None:
+            updates[field] = None
+        else:
+            updates[field] = (
+                _unwrap_secret(value) if field in _UPDATE_SECRET_FIELDS else value
+            )
 
     # auth_type change: clear all fields NOT owned by the new auth type
     if request.auth_type is not None:
@@ -137,11 +183,16 @@ def _apply_credential_updates(
     request: UpdateProviderRequest,
     final_auth_type: AuthType,
 ) -> None:
-    """Apply set/clear logic for api_key, subscription_token, and tos_accepted_at."""
+    """Apply set/clear logic for api_key, subscription_token, and tos_accepted_at.
+
+    ``api_key`` and ``subscription_token`` arrive as ``SecretStr`` on
+    the request DTO; unwrap to the raw string before storing on
+    ``ProviderConfig`` (which keeps these as plain ``NotBlankStr``).
+    """
     # api_key: only set/clear when the resulting auth type supports it
     if final_auth_type in (AuthType.API_KEY, AuthType.OAUTH):
         if request.api_key is not None:
-            updates["api_key"] = request.api_key
+            updates["api_key"] = _unwrap_secret(request.api_key)
         elif request.clear_api_key:
             updates["api_key"] = None
     else:
@@ -150,7 +201,7 @@ def _apply_credential_updates(
     # subscription_token: only set/clear when auth type is SUBSCRIPTION
     if final_auth_type == AuthType.SUBSCRIPTION:
         if request.subscription_token is not None:
-            updates["subscription_token"] = request.subscription_token
+            updates["subscription_token"] = _unwrap_secret(request.subscription_token)
         elif request.clear_subscription_token:
             updates["subscription_token"] = None
         if request.tos_accepted:

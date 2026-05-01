@@ -19,22 +19,23 @@ from synthorg.core.domain_errors import (
     ArtifactRejectedTooLargeError,
     ArtifactStorageRejectedFullError,
     NotFoundError,
+    ValidationError,
 )
 from synthorg.core.enums import ArtifactType
 from synthorg.core.persistence_errors import (
     ArtifactStorageFullError,
     ArtifactTooLargeError,
-    PersistenceError,
     RecordNotFoundError,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
-    PERSISTENCE_ARTIFACT_FETCH_FAILED,
+    PERSISTENCE_ARTIFACT_METADATA_MISSING,
+    PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
-    PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
     PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
@@ -44,8 +45,17 @@ logger = get_logger(__name__)
 
 
 def _service(state: State) -> ArtifactService:
-    """Build the per-request :class:`ArtifactService` instance."""
-    return ArtifactService(repo=state.app_state.persistence.artifacts)
+    """Build the per-request :class:`ArtifactService` instance.
+
+    Both the persistence repo and the artifact storage backend are
+    plumbed in so the service can orchestrate
+    :meth:`ArtifactService.delete_with_content` (storage delete +
+    persistence delete with the right ordering and error taxonomy).
+    """
+    return ArtifactService(
+        repo=state.app_state.persistence.artifacts,
+        storage=state.app_state.artifact_storage,
+    )
 
 
 _SAFE_CONTENT_TYPES = frozenset(
@@ -114,24 +124,44 @@ async def _save_metadata_with_rollback(
         updated: Updated artifact model.
 
     Raises:
-        PersistenceError: If the metadata save fails (after rollback attempt).
+        Exception: Any failure from ``service.save`` propagates after
+            the storage-content rollback runs.  Narrowing this to
+            ``PersistenceError`` only would leave stored content
+            behind on any other failure mode (validation,
+            serialisation, etc.).
     """
     try:
         await service.save(updated)
-    except PersistenceError as exc:
+    except MemoryError, RecursionError:
+        # Process-fatal builtins propagate before any rollback work
+        # runs; project convention.
+        raise
+    except Exception as exc:
+        # Catch-all rollback so any ``service.save`` failure undoes
+        # the prior content write.  Without this, a non-
+        # ``PersistenceError`` failure (validation, serialisation,
+        # network, etc.) would leave the blob orphan in storage with
+        # no metadata row to point at it.
         logger.warning(
             PERSISTENCE_ARTIFACT_SAVE_FAILED,
             artifact_id=artifact_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             note="metadata save failed, rolling back content",
         )
         try:
             await storage.delete(artifact_id)
+        except MemoryError, RecursionError:
+            # System-fatal builtins are ``Exception`` subclasses; re-raise
+            # them before the catch-all so process-fatal conditions are
+            # never logged-and-swallowed under the rollback path.
+            raise
         except Exception as cleanup_exc:
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
                 artifact_id=artifact_id,
-                error=str(cleanup_exc),
+                error_type=type(cleanup_exc).__name__,
+                error=safe_error_description(cleanup_exc),
             )
         raise
 
@@ -151,7 +181,7 @@ class ArtifactController(Controller):
         task_id: TaskIdFilter = None,
         created_by: CreatedByFilter = None,
         type: TypeFilter = None,  # noqa: A002
-    ) -> PaginatedResponse[Artifact] | Response[ApiResponse[None]]:
+    ) -> PaginatedResponse[Artifact]:
         """List artifacts with optional filters.
 
         Args:
@@ -163,22 +193,32 @@ class ArtifactController(Controller):
             type: Filter by artifact type.
 
         Returns:
-            Paginated list of artifacts, or 400 for invalid filters.
+            Paginated list of artifacts.
+
+        Raises:
+            ValidationError: If ``type`` is not a known ``ArtifactType``
+                value (mapped centrally to HTTP 422 by
+                ``EXCEPTION_HANDLERS``).
         """
         parsed_type: ArtifactType | None = None
         if type is not None:
             try:
                 parsed_type = ArtifactType(type)
-            except ValueError:
+            except ValueError as exc:
                 valid = ", ".join(e.value for e in ArtifactType)
-                return Response(
-                    content=ApiResponse[None](
-                        error=(
-                            f"Invalid artifact type: {type!r}. Valid values: {valid}"
-                        ),
-                    ),
-                    status_code=400,
+                msg = f"Invalid artifact type: {type!r}. Valid values: {valid}"
+                # Validation rejection at the request boundary; route
+                # through ``API_VALIDATION_FAILED`` so query-shape
+                # rejections don't collapse into the
+                # ``PERSISTENCE_ARTIFACT_FETCH_FAILED`` bucket used for
+                # actual fetch failures.
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    field="type",
+                    rejected_value=type,
+                    reason=msg,
                 )
+                raise ValidationError(msg) from exc
 
         artifacts = await _service(state).list_artifacts(
             task_id=task_id,
@@ -198,7 +238,7 @@ class ArtifactController(Controller):
         self,
         state: State,
         artifact_id: PathId,
-    ) -> Response[ApiResponse[Artifact]]:
+    ) -> ApiResponse[Artifact]:
         """Get an artifact by ID.
 
         Args:
@@ -206,28 +246,29 @@ class ArtifactController(Controller):
             artifact_id: Artifact identifier.
 
         Returns:
-            The artifact metadata, or 404 if not found.
+            The artifact metadata.
+
+        Raises:
+            NotFoundError: If the artifact does not exist (HTTP 404).
         """
         artifact = await _service(state).get(artifact_id)
         if artifact is None:
-            return Response(
-                content=ApiResponse[Artifact](
-                    error=f"Artifact {artifact_id!r} not found",
-                ),
-                status_code=404,
+            msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
+                artifact_id=artifact_id,
+                operation="read",
             )
-        return Response(
-            content=ApiResponse[Artifact](data=artifact),
-            status_code=200,
-        )
+            raise NotFoundError(msg)
+        return ApiResponse[Artifact](data=artifact)
 
-    @post(guards=[require_write_access])
+    @post(guards=[require_write_access], status_code=201)
     async def create_artifact(
         self,
         request: Request[Any, Any, Any],
         state: State,
         data: CreateArtifactRequest,
-    ) -> Response[ApiResponse[Artifact]]:
+    ) -> ApiResponse[Artifact]:
         """Create a new artifact.
 
         Args:
@@ -258,10 +299,7 @@ class ArtifactController(Controller):
                 "type": artifact.type.value,
             },
         )
-        return Response(
-            content=ApiResponse[Artifact](data=artifact),
-            status_code=201,
-        )
+        return ApiResponse[Artifact](data=artifact)
 
     @delete(
         "/{artifact_id:str}",
@@ -273,7 +311,7 @@ class ArtifactController(Controller):
         request: Request[Any, Any, Any],
         state: State,
         artifact_id: PathId,
-    ) -> Response[ApiResponse[None]]:
+    ) -> ApiResponse[None]:
         """Delete an artifact and its stored content.
 
         Args:
@@ -282,40 +320,50 @@ class ArtifactController(Controller):
             artifact_id: Artifact identifier.
 
         Returns:
-            200 on success, 404 if not found.
+            ``ApiResponse`` with ``data=None`` on success.
+
+        Raises:
+            NotFoundError: If the artifact does not exist (HTTP 404).
         """
         service = _service(state)
         artifact = await service.get(artifact_id)
         if artifact is None:
-            return Response(
-                content=ApiResponse[None](
-                    error=f"Artifact {artifact_id!r} not found",
-                ),
-                status_code=404,
-            )
-        # Delete storage content first -- if this fails, metadata still
-        # exists so the inconsistency is detectable (vs. the reverse
-        # order where metadata is gone but orphaned blob is invisible).
-        storage = state.app_state.artifact_storage
-        try:
-            await storage.delete(artifact_id)
-        except Exception as exc:
+            msg = f"Artifact {artifact_id!r} not found"
             logger.warning(
-                PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
                 artifact_id=artifact_id,
-                error=str(exc),
+                operation="delete",
             )
-        await service.delete(artifact_id)
+            raise NotFoundError(msg)
+        # Storage-first delete + persistence delete with the right
+        # error taxonomy is owned by the service so the controller
+        # stays out of the mixed-orchestration role; see
+        # ``ArtifactService.delete_with_content`` for the full
+        # contract (storage failure preserves the metadata row so the
+        # inconsistency is detectable, etc.).
+        deleted = await service.delete_with_content(artifact_id)
+        if not deleted:
+            # TOCTOU: the row was present at ``service.get`` above but
+            # vanished before ``delete_with_content`` ran (concurrent
+            # delete / cleanup job).  Do NOT publish the WS event --
+            # claiming a deletion that didn't happen here would mislead
+            # subscribers.  Surface as 404 so clients see the same
+            # outcome as if the row was missing on entry.
+            msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
+                artifact_id=artifact_id,
+                operation="delete",
+                note="concurrent_delete",
+            )
+            raise NotFoundError(msg)
         publish_ws_event(
             request,
             WsEventType.ARTIFACT_DELETED,
             CHANNEL_ARTIFACTS,
             {"artifact_id": artifact_id, "task_id": artifact.task_id},
         )
-        return Response(
-            content=ApiResponse[None](data=None),
-            status_code=200,
-        )
+        return ApiResponse[None](data=None)
 
     @put(
         "/{artifact_id:str}/content",
@@ -334,7 +382,7 @@ class ArtifactController(Controller):
             bytes,
             Body(media_type=RequestEncodingType.MULTI_PART),
         ],
-    ) -> Response[ApiResponse[Artifact]]:
+    ) -> ApiResponse[Artifact]:
         """Upload binary content for an artifact.
 
         Validates size limits before storing.
@@ -353,9 +401,9 @@ class ArtifactController(Controller):
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
             logger.warning(
-                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
                 artifact_id=artifact_id,
-                error_type="artifact_not_found",
+                operation="upload",
                 note="upload_content_target_missing",
             )
             raise NotFoundError(msg)
@@ -368,7 +416,7 @@ class ArtifactController(Controller):
                 PERSISTENCE_ARTIFACT_STORE_FAILED,
                 artifact_id=artifact_id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="artifact_too_large",
             )
             raise ArtifactRejectedTooLargeError from exc
@@ -377,10 +425,25 @@ class ArtifactController(Controller):
                 PERSISTENCE_ARTIFACT_STORE_FAILED,
                 artifact_id=artifact_id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="artifact_storage_full",
             )
             raise ArtifactStorageRejectedFullError from exc
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Catch-all so any other backend / storage failure leaves an
+            # operator-visible breadcrumb on the standardized error path
+            # this PR is widening; the original exception still
+            # propagates with type intact.
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORE_FAILED,
+                artifact_id=artifact_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="artifact_store_unexpected",
+            )
+            raise
 
         updated = artifact.model_copy(
             update={
@@ -404,10 +467,7 @@ class ArtifactController(Controller):
                 "content_type": updated.content_type,
             },
         )
-        return Response(
-            content=ApiResponse[Artifact](data=updated),
-            status_code=200,
-        )
+        return ApiResponse[Artifact](data=updated)
 
     @get(
         "/{artifact_id:str}/content",
@@ -421,35 +481,63 @@ class ArtifactController(Controller):
     ) -> Response:  # type: ignore[type-arg]
         """Download binary content for an artifact.
 
+        Both 404 branches raise ``NotFoundError`` *before* any binary
+        bytes are streamed, so the central exception handler can swap
+        the response shape from ``application/octet-stream`` to the
+        RFC 9457 JSON envelope without colliding with already-sent
+        headers.
+
         Args:
             state: Application state.
             artifact_id: Artifact identifier.
 
         Returns:
-            Binary content with appropriate content type, or JSON
-            error on 404.
+            Binary content with appropriate content type.
+
+        Raises:
+            NotFoundError: If the artifact metadata or content is
+                missing (HTTP 404).
         """
         artifact = await _service(state).get(artifact_id)
         if artifact is None:
-            return Response(
-                content=ApiResponse[None](error="Artifact not found"),
-                status_code=404,
-                media_type="application/json",
+            msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_METADATA_MISSING,
+                artifact_id=artifact_id,
+                operation="download",
             )
+            raise NotFoundError(msg)
 
         storage = state.app_state.artifact_storage
         try:
             content = await storage.retrieve(artifact_id)
-        except RecordNotFoundError:
+        except RecordNotFoundError as exc:
             logger.warning(
                 PERSISTENCE_ARTIFACT_CONTENT_MISSING,
                 artifact_id=artifact_id,
             )
-            return Response(
-                content=ApiResponse[None](error="Artifact content not found"),
-                status_code=404,
-                media_type="application/json",
+            msg = f"Artifact content for {artifact_id!r} not found"
+            raise NotFoundError(msg) from exc
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Catch-all so any backend / storage failure on the
+            # download path leaves an operator-visible breadcrumb
+            # alongside the standardized error path; the original
+            # exception still propagates with type intact.  Route
+            # through ``PERSISTENCE_ARTIFACT_RETRIEVE_FAILED`` (the
+            # storage-retrieve cardinality) so blob-store outages are
+            # visible alongside metadata-fetch failures without sharing
+            # a counter.
+            logger.error(  # noqa: TRY400
+                PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
+                artifact_id=artifact_id,
+                operation="download",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="artifact_retrieve_unexpected",
             )
+            raise
 
         raw_ct = artifact.content_type or "application/octet-stream"
         fallback = "application/octet-stream"

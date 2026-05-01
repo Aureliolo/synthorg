@@ -35,19 +35,32 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NOT_FOUND,
     WORKFLOW_EXEC_PERSISTENCE_FAILED,
+    WORKFLOW_EXECUTION_USERNAME_FALLBACK,
 )
 
 logger = get_logger(__name__)
 
 
 def _extract_username(request: Request[Any, Any, Any]) -> str:
-    """Extract username from the request, falling back to ``"api"``."""
+    """Extract username from the request, falling back to ``"api"``.
+
+    Treats ``None`` and empty-string usernames as missing so the
+    fallback warning fires for those cases too -- ``str(None)`` would
+    otherwise persist the literal string ``"None"`` as the actor on
+    workflow audit entries.
+    """
     user = getattr(request, "user", None)
-    if user and hasattr(user, "username"):
-        return str(user.username)
+    if user is not None:
+        username = getattr(user, "username", None)
+        if isinstance(username, str):
+            stripped = username.strip()
+            if stripped:
+                return stripped
+        elif username:
+            return str(username)
     logger.warning(
-        "workflow.execution.username_fallback",
-        note="request has no user or username attribute, using 'api'",
+        WORKFLOW_EXECUTION_USERNAME_FALLBACK,
+        note="request has no usable username, using 'api'",
         path=str(request.url),
     )
     return "api"

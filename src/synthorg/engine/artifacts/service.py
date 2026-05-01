@@ -5,10 +5,13 @@ save / delete artifacts without reaching into
 ``state.app_state.persistence.artifacts`` directly. Centralises the
 ``API_ARTIFACT_*`` logging so every mutation has the same audit shape.
 
-Content storage (upload / download / rollback) stays in the controller
-because it depends on :class:`ArtifactStorage` rather than the repository,
-a distinct boundary from persistence that already has its own
-backing-store abstraction.
+When constructed with the optional ``storage`` dependency the service
+also orchestrates the storage-content delete inside
+:meth:`delete_with_content`, so controllers stay out of the
+storage / persistence error-taxonomy mix.  Upload / download paths
+remain controller-side because they involve streaming bytes and rely
+on Litestar request / response abstractions; the delete path is the
+one mixed-orchestration site that benefits from the service boundary.
 """
 
 import uuid
@@ -16,17 +19,24 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.artifact import Artifact
+from synthorg.core.domain_errors import ArtifactPersistenceNoStorageError
 from synthorg.core.enums import ArtifactType  # noqa: TC001
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_ARTIFACT_CREATED,
     API_ARTIFACT_DELETED,
     API_ARTIFACT_UPDATED,
 )
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_ARTIFACT_DELETE_FAILED,
+    PERSISTENCE_ARTIFACT_DELETE_NO_STORAGE,
+    PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
+)
 
 if TYPE_CHECKING:
     from synthorg.persistence.artifact_protocol import ArtifactRepository
+    from synthorg.persistence.artifact_storage import ArtifactStorageBackend
 
 logger = get_logger(__name__)
 
@@ -34,10 +44,16 @@ logger = get_logger(__name__)
 class ArtifactService:
     """CRUD orchestration for artifacts with uniform audit logging."""
 
-    __slots__ = ("_repo",)
+    __slots__ = ("_repo", "_storage")
 
-    def __init__(self, *, repo: ArtifactRepository) -> None:
+    def __init__(
+        self,
+        *,
+        repo: ArtifactRepository,
+        storage: ArtifactStorageBackend | None = None,
+    ) -> None:
         self._repo = repo
+        self._storage = storage
 
     async def list_artifacts(
         self,
@@ -124,3 +140,75 @@ class ArtifactService:
                 artifact_id=artifact_id,
             )
         return deleted
+
+    async def delete_with_content(self, artifact_id: NotBlankStr) -> bool:
+        """Delete the artifact's storage blob THEN its metadata row.
+
+        Storage-first ordering preserves the metadata-first invariant
+        on failure: if the blob delete raises, the row remains so the
+        inconsistency is detectable; the reverse order would leave an
+        orphan blob with no metadata pointing at it.
+
+        Storage failures route through
+        ``PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED`` and propagate;
+        the persistence delete only runs after the blob is gone.
+
+        Raises:
+            ArtifactPersistenceNoStorageError: If the service was
+                constructed without a ``storage`` dependency
+                (controller helper bug, surfaces 500 with RFC 9457
+                metadata via the central exception handler).
+            Exception: Any storage-backend or metadata-delete
+                failure propagates with type intact.
+
+        Returns:
+            ``True`` if either the blob or the metadata row was
+            successfully removed; ``False`` only when both were
+            already absent.
+        """
+        if self._storage is None:
+            msg = (
+                "ArtifactService.delete_with_content called but the "
+                "service was constructed without a storage backend"
+            )
+            # Log before raising so the error path leaves a structured
+            # breadcrumb for operators (the controller helper that
+            # forgot to pass ``storage=`` is the typical cause).
+            logger.error(
+                PERSISTENCE_ARTIFACT_DELETE_NO_STORAGE,
+                artifact_id=artifact_id,
+                reason=msg,
+            )
+            raise ArtifactPersistenceNoStorageError(msg)
+        try:
+            blob_deleted = await self._storage.delete(artifact_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
+                artifact_id=artifact_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        # The metadata delete is the highest-risk branch: a failure
+        # here leaves the blob gone but the row present, so log with
+        # context before re-raising so operators can reconcile.
+        try:
+            metadata_deleted = await self.delete(artifact_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_DELETE_FAILED,
+                artifact_id=artifact_id,
+                note="metadata_delete_failed_after_blob_deleted",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        # ``True`` if either side actually removed something so callers
+        # can distinguish "nothing to delete" from "deleted at least one
+        # of the blob / metadata pair".
+        return blob_deleted or metadata_deleted

@@ -38,6 +38,15 @@ HR_REGISTRY_IDENTITY_UPDATED: Final[str] = "hr.registry.identity_updated"
 HR_REGISTRY_IDENTITY_EVOLVED: Final[str] = "hr.registry.identity_evolved"
 HR_REGISTRY_CLEARED: Final[str] = "hr.registry.cleared"
 
+HR_AGENT_STATUS_TRANSITIONED: Final[str] = "hr.agent.status_transitioned"
+"""Agent status transition (any persisted hop).
+
+Emitted AFTER the registry write succeeds, carrying ``from_status``
+/ ``to_status`` / ``agent_id``.  Complements terminal events
+(``HR_ONBOARDING_COMPLETE``, ``HR_FIRING_COMPLETE``) which stay on
+the terminal hop and remain the canonical "this is the final state"
+markers."""
+
 # ── Error-path events ───────────────────────────────────────────
 
 HR_HIRING_INSTANTIATION_FAILED: Final[str] = "hr.hiring.instantiation_failed"

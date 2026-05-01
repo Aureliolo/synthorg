@@ -47,6 +47,7 @@ from synthorg.observability.events.execution import (
 from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
 )
+from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.providers.models import ChatMessage  # noqa: TC001
 from synthorg.security.audit import AuditLog
 
@@ -107,6 +108,7 @@ if TYPE_CHECKING:
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 _REPLAY_LOW_COMPLETENESS_THRESHOLD: float = 0.5
 """Log a warning when session replay completeness is below this."""
@@ -512,54 +514,70 @@ class AgentEngine(
         project_budget: float = 0.0,
     ) -> AgentRunResult:
         """Run execution loop, record costs, apply transitions, and build result."""
-        budget_checker: BudgetChecker | None
-        if self._budget_enforcer:
-            budget_checker = await self._budget_enforcer.make_budget_checker(
-                task,
-                agent_id,
-                project_id=task.project,
-                project_budget=project_budget,
+        with _tracer.start_as_current_span(
+            "agent.execution",
+            attributes={
+                "agent.id": agent_id,
+                "task.id": task_id,
+                "agent.status": identity.status.value,
+            },
+        ) as span:
+            budget_checker: BudgetChecker | None
+            if self._budget_enforcer:
+                budget_checker = await self._budget_enforcer.make_budget_checker(
+                    task,
+                    agent_id,
+                    project_id=task.project,
+                    project_budget=project_budget,
+                )
+            else:
+                budget_checker = make_budget_checker(task)
+
+            logger.debug(
+                EXECUTION_ENGINE_PROMPT_BUILT,
+                agent_id=agent_id,
+                task_id=task_id,
+                estimated_tokens=system_prompt.estimated_tokens,
             )
-        else:
-            budget_checker = make_budget_checker(task)
 
-        logger.debug(
-            EXECUTION_ENGINE_PROMPT_BUILT,
-            agent_id=agent_id,
-            task_id=task_id,
-            estimated_tokens=system_prompt.estimated_tokens,
-        )
+            loop = await self._resolve_loop(task, agent_id, task_id)
 
-        loop = await self._resolve_loop(task, agent_id, task_id)
+            execution_result = await self._run_loop_with_timeout(
+                loop=loop,
+                ctx=ctx,
+                agent_id=agent_id,
+                task_id=task_id,
+                completion_config=completion_config,
+                budget_checker=budget_checker,
+                tool_invoker=tool_invoker,
+                start=start,
+                timeout_seconds=timeout_seconds,
+                provider=provider or self._provider,
+            )
 
-        execution_result = await self._run_loop_with_timeout(
-            loop=loop,
-            ctx=ctx,
-            agent_id=agent_id,
-            task_id=task_id,
-            completion_config=completion_config,
-            budget_checker=budget_checker,
-            tool_invoker=tool_invoker,
-            start=start,
-            timeout_seconds=timeout_seconds,
-            provider=provider or self._provider,
-        )
+            execution_result = await self._post_execution_pipeline(
+                execution_result,
+                identity,
+                agent_id,
+                task_id,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
+                provider=provider or self._provider,
+                project_id=task.project,
+            )
 
-        execution_result = await self._post_execution_pipeline(
-            execution_result,
-            identity,
-            agent_id,
-            task_id,
-            completion_config=completion_config,
-            effective_autonomy=effective_autonomy,
-            provider=provider or self._provider,
-            project_id=task.project,
-        )
-
-        return self._build_and_log_result(
-            execution_result,
-            system_prompt,
-            start,
-            agent_id,
-            task_id,
-        )
+            # Read from the post-execution context: ``ctx`` is the
+            # pre-loop snapshot and copy-on-write contexts inside the
+            # loop don't mutate it, so logging ``ctx.turn_count`` here
+            # would always emit the starting value (typically 0).
+            span.set_attribute(
+                "turn.count",
+                execution_result.context.turn_count,
+            )
+            return self._build_and_log_result(
+                execution_result,
+                system_prompt,
+                start,
+                agent_id,
+                task_id,
+            )

@@ -465,7 +465,7 @@ class TaskController(Controller):
         """
         app_state: AppState = state.app_state
         try:
-            task = await app_state.task_engine.cancel_task(
+            task, _prior_status = await app_state.task_engine.cancel_task(
                 task_id,
                 requested_by=_extract_requester(state),
                 reason=data.reason,
