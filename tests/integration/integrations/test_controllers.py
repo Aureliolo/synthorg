@@ -660,12 +660,12 @@ class TestTunnelController:
 @pytest.mark.integration
 class TestOAuthController:
     async def test_initiate_requires_connection_name(self) -> None:
-        from synthorg.api.controllers.oauth import OAuthController
+        from pydantic import ValidationError as PydanticValidationError
 
-        ctrl = OAuthController(owner=OAuthController)  # type: ignore[arg-type]
-        state = {"app_state": MagicMock()}
-        with pytest.raises(ValidationError):
-            await ctrl.initiate_flow.fn(ctrl, state=state, data={})
+        from synthorg.api.controllers.oauth import InitiateOAuthFlowRequest
+
+        with pytest.raises(PydanticValidationError):
+            InitiateOAuthFlowRequest()  # type: ignore[call-arg]
 
     async def test_status_returns_false_when_no_token(self) -> None:
         from synthorg.api.controllers.oauth import OAuthController

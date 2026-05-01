@@ -143,14 +143,8 @@ ONTOLOGY_DRIFT_STORE_DESERIALIZE_FAILED: Final[str] = (
 )
 """Drift report repository failed to deserialize a stored row."""
 
-ONTOLOGY_DRIFT_DETECT_FAILED: Final[str] = "ontology.drift.detect_failed"
-"""Drift detection raised before producing a report."""
-
 ONTOLOGY_DRIFT_STORE_FAILED: Final[str] = "ontology.drift.store_failed"
 """Drift report failed to persist (service-layer wrapper around store)."""
-
-ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED: Final[str] = "ontology.drift.entity_check_failed"
-"""Per-entity drift check raised (continues with the next entity)."""
 
 ONTOLOGY_INJECTION_UNKNOWN_STRATEGY: Final[str] = "ontology.injection.unknown_strategy"
 """Ontology injection factory received an unknown strategy name."""
