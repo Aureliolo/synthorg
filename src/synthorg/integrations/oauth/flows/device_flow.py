@@ -289,8 +289,16 @@ class DeviceFlow:
         poll_interval = interval
 
         while self._clock.now() < deadline:
-            logger.debug(OAUTH_DEVICE_FLOW_POLLING, interval=poll_interval)
-            await self._clock.sleep(poll_interval)
+            # Clamp the sleep to the remaining budget so the loop never
+            # overshoots the deadline by up to ``poll_interval`` seconds
+            # (and never makes one extra token-endpoint POST after the
+            # caller's max_wait_seconds is exhausted).
+            remaining = (deadline - self._clock.now()).total_seconds()
+            if remaining <= 0:
+                break
+            sleep_seconds = min(poll_interval, remaining)
+            logger.debug(OAUTH_DEVICE_FLOW_POLLING, interval=sleep_seconds)
+            await self._clock.sleep(sleep_seconds)
 
             try:
                 async with httpx.AsyncClient(

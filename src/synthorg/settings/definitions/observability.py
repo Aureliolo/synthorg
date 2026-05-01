@@ -242,7 +242,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
-        yaml_path="observability.audit_chain.tsa_endpoint_freetsa",
+        yaml_path="logging.audit_chain.tsa_endpoint_freetsa",
     )
 )
 
@@ -260,7 +260,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
-        yaml_path="observability.audit_chain.tsa_endpoint_digicert",
+        yaml_path="logging.audit_chain.tsa_endpoint_digicert",
     )
 )
 
@@ -278,6 +278,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
-        yaml_path="observability.audit_chain.tsa_endpoint_sectigo",
+        yaml_path="logging.audit_chain.tsa_endpoint_sectigo",
     )
 )

@@ -495,6 +495,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     analytics_provider: AnalyticsProvider | None = None,
     metric_sink: MetricSink | None = None,
     async_task_service: AsyncTaskService | None = None,
+    web_request_timeout: float | None = None,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
 
@@ -523,6 +524,12 @@ def build_default_tools_from_config(  # noqa: PLR0913
         async_task_service: Optional ``AsyncTaskService`` backing the
             async task steering tools.  When ``None``, those tools are
             skipped.
+        web_request_timeout: Optional resolved
+            ``tools.web_request_timeout_seconds`` registry value.  When
+            provided, it overrides ``config.web.request_timeout`` and
+            the ``WebToolsConfig`` default so operator tuning of the
+            registry takes effect; production callers resolve via
+            ``ConfigResolver`` and pass the result here.
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -590,19 +597,29 @@ def build_default_tools_from_config(  # noqa: PLR0913
 
     # Extract web config.  ``WebToolsConfig.request_timeout`` ships
     # the documented default that mirrors the
-    # ``tools.web_request_timeout_seconds`` setting; the registry
-    # entry is the source of truth and overrides this default once
-    # the bridge composer is wired to overlay it on
-    # ``config.web``.
+    # ``tools.web_request_timeout_seconds`` setting.  Production
+    # callers resolve the registry value (DB > env > YAML > default)
+    # via ``ConfigResolver.get_float("tools",
+    # "web_request_timeout_seconds")`` and pass it as
+    # ``web_request_timeout``; that wins over both ``config.web.
+    # request_timeout`` and the Pydantic default so an operator
+    # tuning the registry sees the change without restarting the
+    # bridge composer.  When the parameter is unset (test contexts,
+    # early boot) the precedence stays config.web > documented
+    # default.
     web_policy: NetworkPolicy | None = None
-    web_request_timeout = WebToolsConfig().request_timeout
+    if web_request_timeout is not None:
+        resolved_web_request_timeout = web_request_timeout
+    elif config.web is not None:
+        resolved_web_request_timeout = config.web.request_timeout
+    else:
+        resolved_web_request_timeout = WebToolsConfig().request_timeout
     if config.web is not None:
         web_policy = config.web.network_policy
-        web_request_timeout = config.web.request_timeout
 
     return build_default_tools(
         workspace=workspace,
-        web_request_timeout=web_request_timeout,
+        web_request_timeout=resolved_web_request_timeout,
         git_clone_policy=config.git_clone,
         sandbox=vc_sandbox,
         web_network_policy=web_policy,

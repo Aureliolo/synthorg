@@ -8,6 +8,7 @@ read-only-post-init branch collapses the chain to env > YAML > default
 (the DB row is never consulted).
 """
 
+import os
 from unittest.mock import AsyncMock
 
 import pytest
@@ -26,10 +27,32 @@ class _FakeConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
 
+class _RepoMustNotBeReadError(RuntimeError):
+    """Sentinel raised by the test repo if read_only_post_init misroutes a get.
+
+    A bootstrap-only entry must NEVER consult the persistence layer at
+    read time (env > YAML > default short-circuit applies).  The fixture
+    wires this exception into ``repo.get`` so any future regression that
+    accidentally hits the repository for a read-only-post-init key
+    surfaces immediately as a test failure rather than a silent default
+    fallback.
+    """
+
+
 @pytest.fixture
-def service() -> SettingsService:
+def service(monkeypatch: pytest.MonkeyPatch) -> SettingsService:
+    # Strip every SYNTHORG_API_* override so the registry resolution
+    # falls through to the documented default.  Without this, an
+    # operator-set env var on the developer machine would mask the
+    # default-resolution assertion.
+    for env_key in tuple(os.environ):
+        if env_key.startswith("SYNTHORG_API_"):
+            monkeypatch.delenv(env_key, raising=False)
+
     repo = AsyncMock(spec=SettingsRepository)
-    repo.get.return_value = None
+    repo.get.side_effect = _RepoMustNotBeReadError(
+        "read_only_post_init keys must not consult the persistence layer"
+    )
     repo.get_namespace.return_value = ()
     repo.get_all.return_value = ()
     return SettingsService(

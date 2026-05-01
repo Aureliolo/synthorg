@@ -19,7 +19,7 @@ def test_default_preset_is_none() -> None:
     config = AuditChainConfig()
     assert config.tsa_preset == TsaPreset.NONE
     assert config.tsa_url is None
-    assert config.effective_tsa_url is None
+    assert config.effective_tsa_url() is None
 
 
 def test_custom_preset_requires_tsa_url() -> None:
@@ -33,7 +33,7 @@ def test_custom_preset_with_url_resolves() -> None:
         tsa_url="https://tsa.example.com/tsr",
         tsa_trusted_roots_path=Path("tests/data/custom_roots.pem"),
     )
-    assert config.effective_tsa_url == "https://tsa.example.com/tsr"
+    assert config.effective_tsa_url() == "https://tsa.example.com/tsr"
 
 
 @pytest.mark.parametrize(
@@ -66,7 +66,7 @@ def test_preset_resolves_to_canonical_url(
         tsa_preset=preset,
         tsa_trusted_roots_path=roots_path,
     )
-    assert config.effective_tsa_url == expected_url
+    assert config.effective_tsa_url() == expected_url
 
 
 @pytest.mark.parametrize(
@@ -96,7 +96,7 @@ def test_freetsa_without_roots_allowed_when_not_verifying() -> None:
         tsa_preset=TsaPreset.FREETSA,
         tsa_verify_signature=False,
     )
-    assert config.effective_tsa_url == "https://freetsa.org/tsr"
+    assert config.effective_tsa_url() == "https://freetsa.org/tsr"
 
 
 def test_custom_tsa_url_overrides_preset() -> None:
@@ -106,7 +106,7 @@ def test_custom_tsa_url_overrides_preset() -> None:
         tsa_url="https://staging-tsa.example.com/tsr",
         tsa_trusted_roots_path=Path("tests/data/digicert_roots.pem"),
     )
-    assert config.effective_tsa_url == "https://staging-tsa.example.com/tsr"
+    assert config.effective_tsa_url() == "https://staging-tsa.example.com/tsr"
 
 
 @pytest.mark.parametrize("tsa_timeout_sec", [0.0, 5.01, 60.0])
@@ -170,6 +170,31 @@ def test_resolve_tsa_url_falls_back_when_preset_urls_none() -> None:
         resolve_tsa_url(TsaPreset.DIGICERT, None, preset_urls=None)
         == "http://timestamp.digicert.com"
     )
+
+
+def test_effective_tsa_url_threads_preset_urls_through() -> None:
+    """``AuditChainConfig.effective_tsa_url`` honours operator overrides.
+
+    Without this, the bridge-resolved ``observability.tsa_endpoint_*``
+    settings would be silently ignored when callers reach for the
+    config-level convenience accessor instead of ``resolve_tsa_url``
+    directly.
+    """
+    from types import MappingProxyType
+
+    config = AuditChainConfig(
+        tsa_preset=TsaPreset.FREETSA,
+        tsa_verify_signature=False,
+    )
+    overrides = MappingProxyType(
+        {TsaPreset.FREETSA: "https://private-tsa.example.com/tsr"}
+    )
+    assert (
+        config.effective_tsa_url(preset_urls=overrides)
+        == "https://private-tsa.example.com/tsr"
+    )
+    # ``preset_urls=None`` keeps the documented baseline.
+    assert config.effective_tsa_url() == "https://freetsa.org/tsr"
 
 
 def test_resolve_tsa_url_incomplete_preset_urls_falls_back() -> None:

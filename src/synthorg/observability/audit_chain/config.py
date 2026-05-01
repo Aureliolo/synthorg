@@ -5,7 +5,7 @@ from pathlib import Path  # noqa: TC003
 from types import MappingProxyType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -203,12 +203,28 @@ class AuditChainConfig(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def effective_tsa_url(self) -> str | None:
+    def effective_tsa_url(
+        self,
+        *,
+        preset_urls: MappingProxyType[TsaPreset, str] | None = None,
+    ) -> str | None:
         """Return the concrete TSA URL for this config, or ``None``.
 
         ``None`` means audit events always use the local clock
         (preset=NONE or unresolved CUSTOM preset).
+
+        Args:
+            preset_urls: Resolved preset URLs (typically built from the
+                ``observability.tsa_endpoint_*`` settings via
+                ``ObservabilityBridgeConfig``).  When ``None``, falls
+                back to the documented defaults in
+                :data:`_DEFAULT_PRESET_URLS` -- this is the right path
+                for early-boot / test contexts but bypasses operator
+                overrides, so production callers should thread the
+                bridge-resolved mapping through.
         """
-        return resolve_tsa_url(self.tsa_preset, self.tsa_url)
+        return resolve_tsa_url(
+            self.tsa_preset,
+            self.tsa_url,
+            preset_urls=preset_urls,
+        )

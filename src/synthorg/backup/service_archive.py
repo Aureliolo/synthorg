@@ -426,6 +426,9 @@ class BackupServiceArchiveMixin:
                         BACKUP_MANIFEST_INVALID,
                         path=str(archive_path),
                         error="manifest.json exceeds size limit",
+                        read_bytes=len(raw),
+                        max_bytes=_MANIFEST_MAX_SIZE,
+                        member=member.name,
                     )
                     return None
                 data = json.loads(raw)

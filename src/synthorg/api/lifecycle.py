@@ -58,9 +58,11 @@ logger = get_logger(__name__)
 # api/server.py by Litestar's 75 s graceful_shutdown to reserve ~8 s
 # of headroom (75 - 67) before the orchestrator SIGKILLs the process.
 # Recommended ``terminationGracePeriodSeconds: 75`` per
-# ``docs/design/deployment.md``. Raising any *individual* budget
-# requires a production-incident justification documented in the
-# commit; not exposed to the settings registry.
+# ``docs/design/deployment.md``. Raising any individual budget
+# narrows that 8 s headroom contract with the orchestrator and risks
+# SIGKILL mid-teardown; not exposed to the settings registry because
+# the shape of the contract -- not its operator-tunability -- is what
+# the orchestrator depends on.
 _TASK_ENGINE_SHUTDOWN_SECONDS: float = 8.0
 _MEETING_SCHEDULER_SHUTDOWN_SECONDS: float = 2.0
 _PERFORMANCE_TRACKER_SHUTDOWN_SECONDS: float = 2.0

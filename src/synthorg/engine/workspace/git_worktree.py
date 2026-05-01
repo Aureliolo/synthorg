@@ -5,6 +5,7 @@ directory backed by its own branch.
 """
 
 import asyncio
+import math
 import re
 import time
 from datetime import UTC, datetime
@@ -138,8 +139,13 @@ class PlannerWorktreeStrategy:
                 "git_command_timeout_seconds")`` at the call site.
             semantic_analyzer: Optional semantic conflict analyzer.
         """
-        if cmd_timeout <= 0:
-            msg = f"cmd_timeout must be positive, got {cmd_timeout!r}"
+        if not math.isfinite(cmd_timeout) or cmd_timeout <= 0:
+            # Reject NaN / +Inf / -Inf alongside zero and negatives:
+            # ``asyncio.wait_for(..., timeout=nan)`` would silently
+            # produce undefined wait behaviour, and a non-finite
+            # ``timedelta`` constructed downstream raises an opaque
+            # ``OverflowError`` mid-request.  Fail at the boundary.
+            msg = f"cmd_timeout must be a finite positive float, got {cmd_timeout!r}"
             logger.warning(
                 WORKSPACE_CONFIG_INVALID,
                 error=msg,
