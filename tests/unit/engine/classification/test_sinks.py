@@ -20,6 +20,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
+from tests._shared.fake_clock import FakeClock
 
 
 def _finding(
@@ -200,13 +201,13 @@ class TestNotificationDispatcherSink:
         """Sliding-window rate limiter drops excess dispatch calls."""
         dispatcher = AsyncMock()
         dispatcher.dispatch = AsyncMock()
-        fake_time = [0.0]
+        fake_clock = FakeClock()
         sink = NotificationDispatcherSink(
             dispatcher=dispatcher,
             min_severity=ErrorSeverity.HIGH,
             max_events_per_window=1,
             window_seconds=60.0,
-            clock=lambda: fake_time[0],
+            clock=fake_clock.monotonic,
         )
         result = _classification_result(
             _finding(description="A"),
@@ -220,19 +221,19 @@ class TestNotificationDispatcherSink:
         """Notifications resume once the sliding window advances."""
         dispatcher = AsyncMock()
         dispatcher.dispatch = AsyncMock()
-        fake_time = [0.0]
+        fake_clock = FakeClock()
         sink = NotificationDispatcherSink(
             dispatcher=dispatcher,
             min_severity=ErrorSeverity.HIGH,
             max_events_per_window=1,
             window_seconds=10.0,
-            clock=lambda: fake_time[0],
+            clock=fake_clock.monotonic,
         )
         first = _classification_result(_finding(description="A"))
         await sink.on_classification(first)
         assert dispatcher.dispatch.await_count == 1
 
-        fake_time[0] = 11.0  # past the 10s window
+        fake_clock.advance(11.0)  # past the 10s window
         second = _classification_result(_finding(description="B"))
         await sink.on_classification(second)
         assert dispatcher.dispatch.await_count == 2
@@ -241,13 +242,13 @@ class TestNotificationDispatcherSink:
         """Different agent_ids maintain independent rate-limit counters."""
         dispatcher = AsyncMock()
         dispatcher.dispatch = AsyncMock()
-        fake_time = [0.0]
+        fake_clock = FakeClock()
         sink = NotificationDispatcherSink(
             dispatcher=dispatcher,
             min_severity=ErrorSeverity.HIGH,
             max_events_per_window=1,
             window_seconds=60.0,
-            clock=lambda: fake_time[0],
+            clock=fake_clock.monotonic,
         )
 
         agent_a = ClassificationResult(
@@ -301,11 +302,11 @@ class TestSlidingWindowRateLimiterRaceConditions:
     async def test_concurrent_take_admits_at_most_max_events(self) -> None:
         max_events = 3
         n_callers = 50
-        fake_time = [0.0]
+        fake_clock = FakeClock()
         limiter = _SlidingWindowRateLimiter(
             max_events=max_events,
             window_seconds=60.0,
-            clock=lambda: fake_time[0],
+            clock=fake_clock.monotonic,
         )
         barrier = asyncio.Barrier(n_callers)
 
@@ -322,11 +323,11 @@ class TestSlidingWindowRateLimiterRaceConditions:
 
     async def test_release_after_concurrent_take_reopens_slots(self) -> None:
         max_events = 5
-        fake_time = [0.0]
+        fake_clock = FakeClock()
         limiter = _SlidingWindowRateLimiter(
             max_events=max_events,
             window_seconds=60.0,
-            clock=lambda: fake_time[0],
+            clock=fake_clock.monotonic,
         )
 
         # Saturate the window. Capture each admission handle so we
@@ -376,11 +377,11 @@ class TestSlidingWindowRateLimiterRaceConditions:
         right slot by luck.
         """
         max_events = 2
-        fake_time = [0.0]
+        fake_clock = FakeClock()
         limiter = _SlidingWindowRateLimiter(
             max_events=max_events,
             window_seconds=60.0,
-            clock=lambda: fake_time[0],
+            clock=fake_clock.monotonic,
         )
         # Two same-agent admissions in-flight concurrently.
         first = await limiter.take("agent-A")

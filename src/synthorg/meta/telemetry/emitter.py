@@ -314,7 +314,7 @@ class HttpAnalyticsEmitter:
     async def _periodic_flush(self) -> None:
         """Background loop that flushes on interval.
 
-        Runs until ``close()`` sets ``_closed`` and cancels this
+        Runs until ``aclose()`` sets ``_closed`` and cancels this
         task. The cancellation interrupts the sleep, so no
         post-sleep guard is needed.
         """
@@ -327,7 +327,7 @@ class HttpAnalyticsEmitter:
     async def _enqueue(self, event: AnonymizedOutcomeEvent) -> None:
         """Add event to buffer and maybe flush.
 
-        Silently drops events after ``close()`` has been called. The
+        Silently drops events after ``aclose()`` has been called. The
         ``_closed`` check is repeated INSIDE the buffer-mutation lock
         so a producer that passed the early guard cannot append after
         ``aclose()`` set the flag and drained the buffer; otherwise

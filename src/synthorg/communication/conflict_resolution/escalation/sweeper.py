@@ -202,11 +202,19 @@ class EscalationExpirationSweeper:
                 raise
             self._task = None
             logger.info(CONFLICT_ESCALATION_SWEEPER_STOPPED)
-        # The lifecycle primitives stay constructed once across the
-        # sweeper's entire life; only ``_task`` is reset so a future
-        # ``start()`` can spawn a fresh ``_run``. The ``_stop_event``
-        # already holds ``set()``; the next ``start()`` calls
-        # ``self._stop_event.clear()`` before scheduling.
+        # Re-create the lifecycle primitives outside the (now
+        # released) lock so a subsequent ``start()`` on a different
+        # event loop can re-bind them. ``asyncio.Lock`` and
+        # ``asyncio.Event`` bind to the running loop on first
+        # ``acquire`` / ``set``; the loop they were last bound to
+        # may be closed (test pattern: fresh-per-test event loops),
+        # so reusing the instances would raise ``RuntimeError: ...
+        # is bound to a different event loop``. The recreate runs
+        # AFTER the ``async with`` exits to avoid swapping the lock
+        # while we still hold it. Production single-loop wiring
+        # constructs the sweeper once and never hits this path.
+        self._lifecycle_lock = asyncio.Lock()
+        self._stop_event = asyncio.Event()
 
     async def _run(self) -> None:
         """Main loop body."""
