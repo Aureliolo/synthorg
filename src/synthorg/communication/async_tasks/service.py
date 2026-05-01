@@ -143,6 +143,11 @@ class AsyncTaskService:
                         requested_by=supervisor_id,
                         reason="assignment_failed",
                     )
+                except MemoryError, RecursionError:
+                    # Same carve-out as the outer scope: process-fatal
+                    # builtins propagate without further logging or
+                    # rollback work.
+                    raise
                 except Exception as cancel_exc:
                     logger.warning(
                         ASYNC_TASK_START_FAILED,

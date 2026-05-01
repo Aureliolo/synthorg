@@ -137,8 +137,11 @@ class TestBuildTable:
         assert "| Agents | `/agents` |" in rendered
 
     def test_dedupes_tag_per_path_across_verbs(self) -> None:
-        # The same tag listed on GET + POST should not double-count
-        # the path.
+        # The same tag listed on GET + POST + DELETE should not
+        # double-count the path -- the rendered table must contain a
+        # single row for ``agents`` with the singular "endpoint."
+        # purpose phrasing (vs the "3 routes" phrasing the renderer
+        # emits when more than one distinct path is present).
         schema = {
             "paths": {
                 "/api/v1/agents": {
@@ -149,7 +152,14 @@ class TestBuildTable:
             },
         }
         rendered = gen._build_table(schema)
-        assert "Agents endpoint." in rendered  # 1 path, not "3 routes"
+        # Exact-row + count assertions catch the dedup-regression mode
+        # the substring check used to miss: a regression that emits
+        # the same row three times would still satisfy
+        # ``"Agents endpoint." in rendered`` because the substring
+        # would appear at every row; ``count == 1`` flags it.
+        assert rendered.count("| Agents | `/agents` |") == 1
+        assert "Agents endpoint." in rendered
+        assert "3 routes" not in rendered
 
 
 class TestReplaceBlock:

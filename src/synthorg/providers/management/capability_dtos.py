@@ -19,7 +19,9 @@ PR; the existing CRUD DTOs (create / update / delete provider, pull
 model, ...) stay in ``dto_providers.py``.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- Pydantic field type at runtime
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
@@ -29,6 +31,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SecretStr,
+    field_serializer,
     model_validator,
 )
 
@@ -133,17 +136,58 @@ class ProviderAuditEvent(BaseModel):
         occurred_at: UTC timestamp of the mutation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        # Allow ``mappingproxy`` and frozen mappings on the ``payload``
+        # field after the validator below converts the input dict into
+        # a :class:`MappingProxyType`.
+        arbitrary_types_allowed=True,
+    )
 
     id: int | None = Field(default=None, ge=1, description="Repo-assigned row id")
     provider_name: NotBlankStr = Field(description="Provider name the mutation targets")
     event_type: ProviderAuditEventType = Field(description="Mutation category")
     actor: ProviderAuditActor = Field(description="Actor performing the mutation")
-    payload: dict[str, Any] = Field(
+    payload: Mapping[str, Any] = Field(
         default_factory=dict,
-        description="Event-specific metadata; credentials must be masked",
+        description=(
+            "Event-specific metadata; credentials must be masked. "
+            "Wrapped in MappingProxyType after validation so the audit "
+            "row stays append-only at the Python level too."
+        ),
     )
     occurred_at: UTCDatetime = Field(description="UTC timestamp of the mutation")
+
+    @model_validator(mode="after")
+    def _freeze_payload(self) -> Self:
+        """Wrap ``payload`` in :class:`MappingProxyType`.
+
+        ``frozen=True`` on the model only prevents attribute
+        reassignment; without this hook the audit row's ``payload``
+        dict could be mutated post-construction, breaking the
+        append-only contract this model documents.  The companion
+        ``_serialize_payload`` field-serializer below unwraps back to
+        a plain dict at JSON-encode time so msgspec / pydantic-core
+        serialization still succeeds.
+        """
+        if not isinstance(self.payload, MappingProxyType):
+            object.__setattr__(
+                self,
+                "payload",
+                MappingProxyType(dict(self.payload)),
+            )
+        return self
+
+    @field_serializer("payload")
+    def _serialize_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Unwrap ``MappingProxyType`` to a plain dict for JSON encode.
+
+        Pydantic-core / msgspec cannot encode ``MappingProxyType``
+        directly; the unwrap copy keeps the on-wire payload independent
+        of the in-memory proxy.
+        """
+        return dict(payload)
 
 
 # ── Rate-limit override ───────────────────────────────────────────────

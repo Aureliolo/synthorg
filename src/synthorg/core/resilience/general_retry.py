@@ -188,8 +188,34 @@ class GeneralRetryHandler:
                 raise
             except Exception as exc:
                 if not self._retryable(exc):
+                    # Non-retryable exceptions propagate immediately;
+                    # log first so the terminal outcome is visible
+                    # even when upstream callers don't log failures
+                    # consistently.
+                    logger.warning(
+                        self._event,
+                        attempt=attempt + 1,
+                        max_attempts=self._max_attempts,
+                        backoff_seconds=0.0,
+                        error_type=type(exc).__name__,
+                        retry_decision="not_retryable",
+                        **safe_ctx,
+                    )
                     raise
                 if attempt == self._max_attempts - 1:
+                    # Retries exhausted; log the terminal failure with
+                    # the same context every retry attempt logs so
+                    # downstream dashboards can chart "exhausted"
+                    # alongside the per-attempt rate.
+                    logger.warning(
+                        self._event,
+                        attempt=attempt + 1,
+                        max_attempts=self._max_attempts,
+                        backoff_seconds=0.0,
+                        error_type=type(exc).__name__,
+                        retry_decision="exhausted",
+                        **safe_ctx,
+                    )
                     raise
                 delay = self._compute_delay(attempt)
                 logger.warning(
@@ -198,6 +224,7 @@ class GeneralRetryHandler:
                     max_attempts=self._max_attempts,
                     backoff_seconds=delay,
                     error_type=type(exc).__name__,
+                    retry_decision="retrying",
                     **safe_ctx,
                 )
                 if delay > 0:

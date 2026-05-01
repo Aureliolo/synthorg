@@ -302,12 +302,19 @@ class ArtifactController(Controller):
                 operation="delete",
             )
             raise NotFoundError(msg)
-        # Delete storage content first -- if this fails, metadata still
-        # exists so the inconsistency is detectable (vs. the reverse
-        # order where metadata is gone but orphaned blob is invisible).
+        # Delete storage content first -- if this fails, metadata
+        # MUST still exist so the inconsistency is detectable (vs.
+        # the reverse order where metadata is gone but the orphaned
+        # blob is invisible).  Do NOT continue to ``service.delete``
+        # on storage failure: that would emit ``ARTIFACT_DELETED`` and
+        # remove the metadata row even though the blob is still
+        # present, causing data-state drift the metadata-first invariant
+        # exists to prevent.
         storage = state.app_state.artifact_storage
         try:
             await storage.delete(artifact_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
@@ -315,6 +322,7 @@ class ArtifactController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            raise
         await service.delete(artifact_id)
         publish_ws_event(
             request,

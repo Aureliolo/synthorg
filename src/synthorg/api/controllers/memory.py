@@ -547,7 +547,11 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ConflictError(safe_error_description(exc)) from exc
+            # Use a controller-authored message so backend exception
+            # text doesn't leak into the 409 response.  Detail stays in
+            # the warning log above for operator triage.
+            msg = "Failed to delete checkpoint"
+            raise ConflictError(msg) from exc
         return ApiResponse(data=None)
 
     # -- Memory entries (GDPR) ---------------------------------------
