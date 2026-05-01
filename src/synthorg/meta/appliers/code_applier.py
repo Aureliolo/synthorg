@@ -131,10 +131,17 @@ class CodeApplier:
         except MemoryError, RecursionError:
             raise
         except Exception as outer_exc:
-            logger.exception(
+            # SEC-1 (#1682): drop ``logger.exception`` here -- the
+            # outer handler runs after the ``_write_changes`` /
+            # GitHub-client paths, and the traceback carries
+            # full proposal payload + branch / commit metadata
+            # in frame-locals.
+            logger.error(  # noqa: TRY400
                 META_APPLY_FAILED,
                 altitude="code_modification",
                 proposal_id=str(proposal.id),
+                error_type=type(outer_exc).__name__,
+                error=safe_error_description(outer_exc),
             )
             # Revert ONLY the changes that were actually written. If
             # the failure surfaced from ``_write_changes`` it carries
@@ -164,13 +171,21 @@ class CodeApplier:
                 )
             try:
                 await self._github.delete_branch(branch)
-            except Exception:
-                logger.exception(
+            except MemoryError, RecursionError:
+                raise
+            except Exception as cleanup_exc:
+                # SEC-1 (#1682): GitHub-client errors can carry the
+                # remote URL with credential-bearing query params in
+                # the traceback frame-locals; drop ``exc_info`` and
+                # surface the scrubbed description only.
+                logger.warning(
                     META_APPLY_FAILED,
                     altitude="code_modification",
                     proposal_id=str(proposal.id),
                     reason="cleanup_failed",
                     branch=branch,
+                    error_type=type(cleanup_exc).__name__,
+                    error=safe_error_description(cleanup_exc),
                 )
             return ApplyResult(
                 success=False,
@@ -265,13 +280,19 @@ class CodeApplier:
             # Partial push left an orphaned branch -- clean up.
             try:
                 await self._github.delete_branch(branch)
-            except Exception:
-                logger.exception(
+            except MemoryError, RecursionError:
+                raise
+            except Exception as cleanup_exc:
+                # SEC-1 (#1682): same scrub as the other GitHub-
+                # client-error path above.
+                logger.warning(
                     META_APPLY_FAILED,
                     altitude="code_modification",
                     proposal_id=str(proposal.id),
                     reason="branch_cleanup_after_push_failed",
                     branch=branch,
+                    error_type=type(cleanup_exc).__name__,
+                    error=safe_error_description(cleanup_exc),
                 )
             raise
 

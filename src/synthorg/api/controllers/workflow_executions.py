@@ -30,11 +30,13 @@ from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_execution import (
+    WORKFLOW_EXEC_CANCEL_CONFLICT,
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NOT_FOUND,
     WORKFLOW_EXEC_PERSISTENCE_FAILED,
+    WORKFLOW_EXEC_USERNAME_FALLBACK,
 )
 
 logger = get_logger(__name__)
@@ -50,7 +52,7 @@ def _extract_username(request: Request[Any, Any, Any]) -> str:
     # workflow callbacks pass auth tokens as query parameters and
     # those would otherwise land in the warning log.
     logger.warning(
-        "workflow.execution.username_fallback",
+        WORKFLOW_EXEC_USERNAME_FALLBACK,
         note="request has no user or username attribute, using 'api'",
         path=request.url.path,
     )
@@ -264,8 +266,13 @@ class WorkflowExecutionController(Controller):
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
         except (WorkflowExecutionError, VersionConflictError) as exc:
+            # ``WORKFLOW_EXEC_CANCEL_CONFLICT`` is the dedicated
+            # 409 event; ``WORKFLOW_EXEC_CANCELLED`` is reserved for
+            # the success path below so audit/telemetry counters
+            # don't conflate failed cancels with successful ones
+            # (#1682, CodeRabbit at workflow_executions.py:267-279).
             logger.warning(
-                WORKFLOW_EXEC_CANCELLED,
+                WORKFLOW_EXEC_CANCEL_CONFLICT,
                 execution_id=execution_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -294,6 +301,15 @@ class WorkflowExecutionController(Controller):
                 status_code=500,
             )
 
+        # WORKFLOW_EXEC_CANCELLED is emitted only after the
+        # persistence write succeeds; the conflict path above uses
+        # WORKFLOW_EXEC_CANCEL_CONFLICT to avoid counter pollution
+        # (#1682, CodeRabbit at workflow_executions.py:267-279).
+        logger.info(
+            WORKFLOW_EXEC_CANCELLED,
+            execution_id=execution_id,
+            cancelled_by=cancelled_by,
+        )
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
         )
