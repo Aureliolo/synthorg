@@ -72,8 +72,6 @@ const mockArtifacts: Artifact[] = [
 ]
 
 const pagination: PaginationMeta = {
-  total: mockArtifacts.length,
-  offset: 0,
   limit: 50,
   next_cursor: null,
   has_more: false,

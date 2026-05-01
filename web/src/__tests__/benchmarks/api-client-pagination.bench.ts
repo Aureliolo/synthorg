@@ -51,8 +51,6 @@ function makePaginatedResponse<T>(rows: T[]): AxiosResponse<PaginatedResponse<T>
         limit: rows.length,
         next_cursor: 'opaque-cursor-deadbeef',
         has_more: true,
-        total: rows.length * 4,
-        offset: 0,
       },
     },
     status: 200,

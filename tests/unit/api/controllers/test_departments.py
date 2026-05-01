@@ -23,7 +23,6 @@ class TestDepartmentController:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     def test_get_department_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/departments/nonexistent")
@@ -79,7 +78,6 @@ class TestDepartmentControllerDbOverride:
             resp = client.get("/api/v1/departments")
             assert resp.status_code == 200
             body = resp.json()
-            assert body["pagination"]["total"] == 1
             assert body["data"][0]["name"] == "db-dept"
 
             detail_resp = client.get("/api/v1/departments/db-dept")

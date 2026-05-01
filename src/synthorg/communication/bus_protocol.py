@@ -2,7 +2,7 @@
 
 Defines the swappable interface for message bus backends.  The
 default implementation is :class:`InMemoryMessageBus` in
-``bus_memory.py``.
+``synthorg.communication.bus.memory``.
 """
 
 from collections.abc import Sequence  # noqa: TC003

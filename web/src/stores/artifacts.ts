@@ -97,7 +97,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
     try {
       const result = await listArtifacts({ limit: 200 })
       if (isStaleListRequest(token)) return
-      set({ artifacts: result.data, totalArtifacts: result.total ?? result.data.length, listLoading: false })
+      set({ artifacts: result.data, totalArtifacts: result.data.length, listLoading: false })
     } catch (err) {
       if (isStaleListRequest(token)) return
       set({ listLoading: false, listError: getErrorMessage(err) })

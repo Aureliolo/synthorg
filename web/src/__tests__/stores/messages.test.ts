@@ -21,8 +21,6 @@ function paginated(
   // repo-backed ``total === null`` path is exercisable from tests;
   // ``'total' in meta`` means the caller supplied an explicit value
   // (possibly ``null``), otherwise fall back to ``data.length``.
-  const total = 'total' in meta ? (meta.total as number | null) : data.length
-  const offset = meta.offset ?? 0
   const limit = meta.limit ?? 50
   // If the caller supplied a ``nextCursor`` without a ``hasMore``
   // (or vice versa), default the missing field to the consistent
@@ -42,14 +40,10 @@ function paginated(
     meta.hasMore !== undefined ? meta.hasMore : nextCursor !== null
   return paginatedFor<typeof listMessages>({
     data,
-    total,
-    offset,
     limit,
     nextCursor,
     hasMore,
     pagination: {
-      total,
-      offset,
       limit,
       next_cursor: nextCursor,
       has_more: hasMore,
@@ -64,7 +58,6 @@ function resetStore() {
     channelsLoading: false,
     channelsError: null,
     messages: [],
-    total: 0,
     nextCursor: null,
     hasMore: false,
     loading: false,
@@ -92,8 +85,6 @@ describe('messagesStore', () => {
             error_detail: null,
             success: true,
             pagination: {
-              total: channels.length,
-              offset: 0,
               limit: 50,
               next_cursor: null,
               has_more: false,
@@ -127,14 +118,14 @@ describe('messagesStore', () => {
       const msgs = [makeMessage('1'), makeMessage('2')]
       server.use(
         http.get('/api/v1/messages', () =>
-          HttpResponse.json(paginated(msgs, { total: 10 })),
+          HttpResponse.json(paginated(msgs)),
         ),
       )
 
       await useMessagesStore.getState().fetchMessages('#engineering')
 
       expect(useMessagesStore.getState().messages).toHaveLength(2)
-      expect(useMessagesStore.getState().total).toBe(10)
+      expect(useMessagesStore.getState().total).toBe(2)
       expect(useMessagesStore.getState().loading).toBe(false)
     })
 
@@ -198,7 +189,6 @@ describe('messagesStore', () => {
     it('appends messages to existing list', async () => {
       useMessagesStore.setState({
         messages: [makeMessage('1')],
-        total: 5,
         nextCursor: 'cursor-page-2',
         hasMore: true,
       })
@@ -206,8 +196,6 @@ describe('messagesStore', () => {
         http.get('/api/v1/messages', () =>
           HttpResponse.json(
             paginated([makeMessage('2'), makeMessage('3')], {
-              total: 5,
-              offset: 1,
               nextCursor: null,
               hasMore: false,
             }),
@@ -239,7 +227,6 @@ describe('messagesStore', () => {
     it('sets error on failure', async () => {
       useMessagesStore.setState({
         messages: [makeMessage('1')],
-        total: 5,
         nextCursor: 'cursor-page-2',
         hasMore: true,
       })
@@ -258,7 +245,6 @@ describe('messagesStore', () => {
     it('discards stale response after channel switch', async () => {
       useMessagesStore.setState({
         messages: [makeMessage('1')],
-        total: 5,
         nextCursor: 'cursor-old-page-2',
         hasMore: true,
       })
@@ -311,7 +297,6 @@ describe('messagesStore', () => {
     it('prepends message to active channel list', () => {
       useMessagesStore.setState({
         messages: [makeMessage('existing')],
-        total: 1,
       })
       const newMsg = makeMessage('new', { channel: '#engineering' })
 

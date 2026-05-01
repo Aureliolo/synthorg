@@ -1,9 +1,7 @@
 """In-memory message bus implementation (see Communication design page).
 
 Default backend using asyncio primitives.  Suitable for single-process
-deployments and testing.  Moved from ``synthorg.communication.bus_memory``
-as part of the distributed runtime work (see ``docs/design/distributed-runtime.md``).
-The original module path is preserved as a re-export shim for backward compatibility.
+deployments and testing.
 """
 
 import asyncio

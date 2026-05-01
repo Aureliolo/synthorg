@@ -26,8 +26,6 @@ function makeStubClient(
   return {
     list: async (): Promise<PaginatedResult<Snapshot>> => ({
       data: versions.map(buildSnapshot),
-      total: versions.length,
-      offset: 0,
       limit: 25,
       nextCursor: hasMore ? 'next-cursor' : null,
       hasMore,
@@ -35,8 +33,6 @@ function makeStubClient(
         limit: 25,
         next_cursor: hasMore ? 'next-cursor' : null,
         has_more: hasMore,
-        total: versions.length,
-        offset: 0,
       },
     }),
     get: async (version: number) => buildSnapshot(version),

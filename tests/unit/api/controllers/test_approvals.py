@@ -49,7 +49,6 @@ class TestListApprovals:
         body = resp.json()
         assert body["success"] is True
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     async def test_list_with_data(
         self,
@@ -60,7 +59,6 @@ class TestListApprovals:
         await _seed_item(approval_store, approval_id="a2")
         resp = test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
-        assert resp.json()["pagination"]["total"] == 2
 
     async def test_list_filter_by_status(
         self,
@@ -88,7 +86,6 @@ class TestListApprovals:
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 200
-        assert resp.json()["pagination"]["total"] == 1
         assert resp.json()["data"][0]["id"] == "a1"
 
     async def test_list_filter_by_risk_level(
@@ -112,7 +109,6 @@ class TestListApprovals:
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 200
-        assert resp.json()["pagination"]["total"] == 1
         assert resp.json()["data"][0]["id"] == "a2"
 
     async def test_list_pagination(
@@ -143,8 +139,6 @@ class TestListApprovals:
         assert resp2.status_code == 200
         body2 = resp2.json()
         assert len(body2["data"]) == 2
-        assert body2["pagination"]["total"] == 5
-        assert body2["pagination"]["offset"] == 2
         assert body2["pagination"]["has_more"] is True
         cursor2 = body2["pagination"]["next_cursor"]
         assert cursor2 is not None
@@ -162,7 +156,6 @@ class TestListApprovals:
         assert resp3.status_code == 200
         body3 = resp3.json()
         assert len(body3["data"]) == 1
-        assert body3["pagination"]["offset"] == 4
         assert body3["pagination"]["has_more"] is False
         assert body3["pagination"]["next_cursor"] is None
 

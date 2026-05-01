@@ -10,10 +10,9 @@ from litestar.params import Parameter
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.cursor import decode_cursor
-from synthorg.api.dto import (
-    ApiResponse,
-    PaginatedResponse,
-    RollbackWorkflowRequest,
+from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_workflow import (
+    RollbackWorkflowRequest,  # noqa: TC001 -- Litestar resolves request-body annotations at runtime
 )
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (

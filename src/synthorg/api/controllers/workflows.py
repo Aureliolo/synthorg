@@ -19,12 +19,11 @@ from synthorg.api.controllers._workflow_builders import (
     wf_versioning,
 )
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
-from synthorg.api.dto import (
-    ApiResponse,
+from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto_workflow import (
     BlueprintInfoResponse,
     CreateFromBlueprintRequest,
     CreateWorkflowDefinitionRequest,
-    PaginatedResponse,
     UpdateWorkflowDefinitionRequest,
 )
 from synthorg.api.guards import require_read_access, require_write_access

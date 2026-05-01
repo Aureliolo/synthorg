@@ -154,12 +154,10 @@ describe('unwrapPaginated', () => {
       error: null,
       error_detail: null,
       success: true,
-      pagination: { total: 10, offset: 0, limit: 50 },
+      pagination: { limit: 50, next_cursor: null, has_more: false },
     })
     const result = unwrapPaginated(response)
     expect(result.data).toHaveLength(2)
-    expect(result.total).toBe(10)
-    expect(result.offset).toBe(0)
     expect(result.limit).toBe(50)
   })
 
@@ -191,7 +189,7 @@ describe('unwrapPaginated', () => {
       error: null,
       error_detail: null,
       success: true,
-      pagination: { total: 0, offset: 0, limit: 50 },
+      pagination: { limit: 50, next_cursor: null, has_more: false },
     })
     expect(() => unwrapPaginated(response)).toThrow('Unexpected API response format')
   })

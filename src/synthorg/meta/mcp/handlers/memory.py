@@ -184,7 +184,7 @@ def _delete_entry_service(app_state: Any) -> MemoryService:
     """Return a :class:`MemoryService` suitable for memory-entry deletion.
 
     Sibling of :func:`_service` that does **not** require fine-tune
-    repositories. The GDPR ``delete_memory_entry`` path only needs a
+    repositories. The ``delete_memory_entry`` path only needs a
     :class:`MemoryBackend`; treating missing fine-tune repos as fatal
     here would route every memory-only deployment through
     ``not_supported`` and silently disable user data deletion.

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.communication.bus_memory import InMemoryMessageBus
+from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import (
@@ -770,7 +770,7 @@ class TestIdleSummary:
         """Summary fires when time interval elapses."""
         import time as _time
 
-        from synthorg.communication.bus_memory import (
+        from synthorg.communication.bus.memory import (
             _IDLE_SUMMARY_INTERVAL_SECONDS,
         )
 

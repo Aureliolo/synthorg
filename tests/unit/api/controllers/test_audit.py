@@ -7,6 +7,7 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.persistence._shared import parse_iso_utc
 from synthorg.security.audit import AuditLog
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from tests.unit.api.conftest import make_auth_headers
@@ -53,7 +54,6 @@ class TestAuditController:
         body = resp.json()
         assert body["success"] is True
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     def test_returns_entries_paginated(
         self,
@@ -68,7 +68,6 @@ class TestAuditController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 3
         assert len(body["data"]) == 3
 
     @pytest.mark.parametrize(
@@ -101,7 +100,6 @@ class TestAuditController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0][field] == match_val
 
     def test_filter_by_since_until(
@@ -125,7 +123,22 @@ class TestAuditController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 2
+        # Filter is applied -- only entries within [t1, t2] come back.
+        # Compare as datetimes (not strings) so the wire's ``Z`` suffix
+        # and ``isoformat()``'s ``+00:00`` suffix don't string-compare
+        # to different values for the same instant.  Also assert the
+        # exact set of ids so an empty result (regression: filter
+        # eats every row) cannot pass the loop vacuously.
+        assert isinstance(body["data"], list)
+        assert len(body["data"]) == 2
+        assert {entry["id"] for entry in body["data"]} == {"e-1", "e-2"}
+        for entry in body["data"]:
+            # Require ``timestamp`` strictly so a wire-contract regression
+            # that drops the field (or renames it) cannot be masked by
+            # the previous ``created_at`` fallback.
+            assert "timestamp" in entry
+            entry_dt = parse_iso_utc(entry["timestamp"])
+            assert t1 <= entry_dt <= t2
 
     def test_pagination_offset_limit(
         self,
@@ -150,8 +163,6 @@ class TestAuditController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 5
-        assert body["pagination"]["offset"] == 2
         assert body["pagination"]["limit"] == 2
         assert len(body["data"]) == 2
 
@@ -202,5 +213,4 @@ class TestAuditController:
             headers=_HEADERS,
         )
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["id"] == "e-2"

@@ -85,7 +85,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     try {
       const result = await listProjects({ limit: 200 })
       if (isStaleListRequest(token)) return
-      set({ projects: result.data, totalProjects: result.total ?? result.data.length, listLoading: false })
+      set({ projects: result.data, totalProjects: result.data.length, listLoading: false })
     } catch (err) {
       if (isStaleListRequest(token)) return
       set({ listLoading: false, listError: getErrorMessage(err) })

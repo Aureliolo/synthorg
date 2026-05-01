@@ -246,7 +246,7 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "Get active embedder configuration (provider, model, dims).",
         args_model=MemoryGetActiveEmbedderArgs,
     ),
-    # --- Memory entries (GDPR) ---
+    # --- Memory entries ---
     admin_tool(
         "memory",
         "delete_entry",

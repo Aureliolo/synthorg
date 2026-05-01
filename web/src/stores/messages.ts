@@ -271,7 +271,7 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
       if (seq !== messageRequestSeq) return
       set({
         messages: result.data,
-        total: result.total ?? result.data.length,
+        total: result.data.length,
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
         loading: false,
@@ -310,7 +310,7 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
         const mergedLength = s.messages.length + deduped.length
         return {
           messages: [...s.messages, ...deduped],
-          total: result.total ?? mergedLength,
+          total: mergedLength,
           nextCursor: result.nextCursor,
           hasMore: result.hasMore,
           loadingMore: false,

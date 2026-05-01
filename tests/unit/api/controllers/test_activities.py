@@ -138,7 +138,6 @@ class TestActivityFeed:
         body = resp.json()
         assert body["success"] is True
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     def test_auth_required(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get(
@@ -167,7 +166,6 @@ class TestActivityFeed:
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 2
         # Most recent first
         assert body["data"][0]["event_type"] == "hired"
         assert body["data"][1]["event_type"] == "onboarded"
@@ -183,7 +181,6 @@ class TestActivityFeed:
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["event_type"] == "task_completed"
 
     async def test_feed_with_task_started(
@@ -201,7 +198,6 @@ class TestActivityFeed:
         assert resp.status_code == 200
         body = resp.json()
         # Both task_completed and task_started from same record
-        assert body["pagination"]["total"] == 2
         types = {d["event_type"] for d in body["data"]}
         assert types == {"task_completed", "task_started"}
 
@@ -226,7 +222,6 @@ class TestActivityFeed:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["event_type"] == "task_completed"
 
     async def test_filter_by_agent_id(
@@ -253,8 +248,6 @@ class TestActivityFeed:
             params={"agent_id": _AGENT_ID},
         )
         assert resp.status_code == 200
-        body = resp.json()
-        assert body["pagination"]["total"] == 1
 
     def test_last_n_hours_default(
         self,
@@ -299,7 +292,6 @@ class TestActivityFeed:
         assert resp.status_code == 200
         body = resp.json()
         assert "pagination" in body
-        assert body["pagination"]["offset"] == 0
         assert body["pagination"]["limit"] == 10
         assert body["pagination"]["has_more"] is False
 
@@ -318,7 +310,6 @@ class TestActivityFeed:
                 headers=make_auth_headers("ceo"),
             )
             assert resp.status_code == 200
-            assert resp.json()["pagination"]["total"] == 1
 
     async def test_feed_with_cost_records(
         self,
@@ -340,7 +331,6 @@ class TestActivityFeed:
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["event_type"] == "cost_incurred"
 
     async def test_filter_by_type_cost_incurred(
@@ -370,7 +360,6 @@ class TestActivityFeed:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["event_type"] == "cost_incurred"
 
     async def test_feed_with_tool_invocations(
@@ -388,7 +377,6 @@ class TestActivityFeed:
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["event_type"] == "tool_used"
 
     async def test_feed_with_delegation_events(
@@ -409,7 +397,6 @@ class TestActivityFeed:
         assert resp.status_code == 200
         body = resp.json()
         # Org-wide: both sent and received
-        assert body["pagination"]["total"] == 2
         types = {d["event_type"] for d in body["data"]}
         assert types == {"delegation_sent", "delegation_received"}
 
@@ -461,8 +448,6 @@ class TestActivityFeed:
 
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
-        body = resp.json()
-        assert body["pagination"]["total"] == 1
 
     async def test_graceful_degradation_broken_delegation_store(
         self,
@@ -486,8 +471,6 @@ class TestActivityFeed:
 
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
-        body = resp.json()
-        assert body["pagination"]["total"] == 1
 
     def test_filter_by_invalid_type_returns_400(
         self,

@@ -288,7 +288,6 @@ class TestScalingListDecisions:
 
         body = _parse(raw)
         assert body["status"] == "ok"
-        assert body["pagination"]["total"] == 1
         assert body["data"] == [{"id": "d-1"}]
 
 

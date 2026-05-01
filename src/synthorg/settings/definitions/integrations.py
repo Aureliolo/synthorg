@@ -75,3 +75,22 @@ _r.register(
         yaml_path="integrations.rate_limit.coordinator_poll_timeout_seconds",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="webhook_receipt_retention_days",
+        type=SettingType.INTEGER,
+        default="90",
+        description=(
+            "Default retention window for webhook receipts (days)."
+            " 0 disables the sweep entirely; per-connection overrides on"
+            " the connection itself take precedence when set."
+        ),
+        group="Webhooks",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=36_500,
+        yaml_path="integrations.webhooks.receipt_retention_days",
+    )
+)

@@ -14,13 +14,6 @@ export interface PaginationMeta {
   next_cursor: string | null
   /** Whether more items follow the current page. */
   has_more: boolean
-  /**
-   * Total matching items. Null when the backend could not compute it
-   * without an extra round-trip (repo-backed endpoints).
-   */
-  total: number | null
-  /** Starting offset of the current page (reflects the decoded cursor). */
-  offset: number
 }
 
 /** Discriminated paginated response envelope. */

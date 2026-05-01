@@ -214,8 +214,6 @@ class ScalingController(Controller):
                     limit=limit,
                     next_cursor=None,
                     has_more=False,
-                    total=0,
-                    offset=0,
                 ),
             )
 

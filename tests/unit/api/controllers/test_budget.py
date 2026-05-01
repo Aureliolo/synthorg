@@ -27,7 +27,8 @@ class TestBudgetController:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
+        assert body["pagination"]["has_more"] is False
+        assert body["pagination"]["next_cursor"] is None
 
     async def test_list_cost_records_with_data(
         self,
@@ -49,7 +50,8 @@ class TestBudgetController:
         resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
+        assert len(body["data"]) == 1
+        assert body["pagination"]["has_more"] is False
 
     async def test_agent_spending(
         self,

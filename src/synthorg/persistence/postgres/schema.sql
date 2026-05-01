@@ -913,6 +913,11 @@ CREATE TABLE connections (
         ),
     last_health_check_at TIMESTAMPTZ,
     metadata_json JSONB NOT NULL DEFAULT '{}',
+    webhook_receipt_retention_days INTEGER
+        CHECK (
+            webhook_receipt_retention_days IS NULL
+            OR webhook_receipt_retention_days >= 0
+        ),
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );

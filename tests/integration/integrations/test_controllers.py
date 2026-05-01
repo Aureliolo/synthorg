@@ -351,7 +351,6 @@ class TestIntegrationHealthController:
 
         assert len(response.data) == 2
         assert {r.connection_name for r in response.data} == {"c1", "c2"}
-        assert response.pagination.total == 2
         assert response.pagination.has_more is False
 
     async def test_aggregate_paginates_and_only_probes_page_connections(
@@ -418,7 +417,6 @@ class TestIntegrationHealthController:
         assert len(response.data) == 3
         assert response.pagination.has_more is True
         assert response.pagination.next_cursor is not None
-        assert response.pagination.total == 6
         # Exact name-sorted page contents (and probe order) -- a sort
         # regression that returned the wrong three connections, or
         # probed them out of order, fails here.
@@ -449,7 +447,6 @@ class TestMCPCatalogController:
         # Bundled catalog has at least 8 entries; cursor pagination
         # returns the first page plus pagination metadata.
         assert len(response.data) >= 8
-        assert response.pagination.offset == 0
 
     async def test_browse_rejects_tampered_cursor(self) -> None:
         from synthorg.api.controllers.mcp_catalog import MCPCatalogController

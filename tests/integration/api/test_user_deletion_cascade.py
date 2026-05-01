@@ -1,8 +1,7 @@
-"""Integration tests for user-deletion cascade (CFG-1 audit / GDPR).
+"""Integration tests for user-deletion cascade (CFG-1 audit).
 
 Exercises :meth:`UserService.delete` end-to-end against a real SQLite
-persistence backend and asserts the cascade described in
-``docs/guides/data-retention.md``:
+persistence backend and asserts the cascade:
 
 1. Refresh tokens are explicitly revoked before the DB delete
    (defense-in-depth) -- :meth:`RefreshTokenRepository.revoke_by_user`

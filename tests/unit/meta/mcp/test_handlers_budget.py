@@ -73,7 +73,6 @@ class TestBudgetListRecords:
         )
         assert body["status"] == "ok"
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     async def test_invalid_agent_id(
         self,
@@ -131,7 +130,6 @@ class TestBudgetVersionsList:
             ),
         )
         assert body["status"] == "ok"
-        assert body["pagination"]["total"] == 0
 
 
 class TestBudgetVersionsGet:

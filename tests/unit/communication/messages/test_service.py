@@ -39,7 +39,7 @@ class TestMessageServiceDelete:
             result = await service.delete_message(
                 message_id=NotBlankStr("msg-1"),
                 actor_id=NotBlankStr("user-1"),
-                reason=NotBlankStr("operator gdpr request"),
+                reason=NotBlankStr("operator user-deletion request"),
             )
 
         assert result is True
@@ -49,7 +49,7 @@ class TestMessageServiceDelete:
         assert "channel" not in audit[0]
         assert audit[0]["message_id"] == "msg-1"
         assert audit[0]["actor_id"] == "user-1"
-        assert audit[0]["reason"] == "operator gdpr request"
+        assert audit[0]["reason"] == "operator user-deletion request"
 
     async def test_returns_false_and_skips_audit_when_id_missing(self) -> None:
         service, repo = _make_service(deleted=False)

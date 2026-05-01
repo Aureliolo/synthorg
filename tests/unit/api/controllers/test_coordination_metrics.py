@@ -14,6 +14,7 @@ from synthorg.budget.coordination_store import (
     CoordinationMetricsRecord,
     CoordinationMetricsStore,
 )
+from synthorg.persistence._shared import parse_iso_utc
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")
@@ -53,7 +54,6 @@ class TestCoordinationMetricsController:
         body = resp.json()
         assert body["success"] is True
         assert body["data"] == []
-        assert body["pagination"]["total"] == 0
 
     def test_returns_records(
         self,
@@ -70,7 +70,13 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 2
+        # Both records show up unfiltered.  Assert exact cardinality
+        # AND the exact seeded task_id set so a regression that
+        # duplicates or drops rows still fails the test (a set-only
+        # assertion would silently accept duplicates).
+        assert isinstance(body["data"], list)
+        assert len(body["data"]) == 2
+        assert {row["task_id"] for row in body["data"]} == {"task-1", "task-2"}
 
     def test_filter_by_task_id(
         self,
@@ -90,7 +96,6 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
         assert body["data"][0]["task_id"] == "task-1"
 
     def test_filter_by_agent_id(
@@ -111,7 +116,13 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 1
+        # Filter is honoured: exactly one ``alice`` record was seeded so
+        # the response must carry exactly one row.  ``len >= 1`` would
+        # silently pass if the endpoint started duplicating rows or
+        # returning extra ``alice`` records.
+        assert isinstance(body["data"], list)
+        assert len(body["data"]) == 1
+        assert all(row.get("agent_id") == "alice" for row in body["data"])
 
     def test_filter_by_time_range(
         self,
@@ -140,7 +151,14 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 2
+        # Time window includes t1 and t2 but excludes t3.  Assert the
+        # exact in-window cardinality and id set so a regression that
+        # drops every row still fails this test (a set-only assertion
+        # would also silently accept duplicates).
+        assert isinstance(body["data"], list)
+        assert len(body["data"]) == 2
+        task_ids = {row["task_id"] for row in body["data"]}
+        assert task_ids == {"task-1", "task-2"}
 
     def test_pagination(
         self,
@@ -158,8 +176,17 @@ class TestCoordinationMetricsController:
             headers=_HEADERS,
         )
         assert resp1.status_code == 200
-        cursor = resp1.json()["pagination"]["next_cursor"]
+        body1 = resp1.json()
+        # Explicit row count + set-size equality both gate the page:
+        # the row-count check catches a server that returns an empty
+        # body when one row was expected, and ``len(set) == len(data)``
+        # catches duplicated rows on a single page (a set-only check
+        # silently collapses duplicates).
+        assert len(body1["data"]) == 1
+        cursor = body1["pagination"]["next_cursor"]
         assert cursor is not None
+        page1_task_ids = {row["task_id"] for row in body1["data"]}
+        assert len(page1_task_ids) == len(body1["data"])
         resp = test_client.get(
             "/api/v1/coordination/metrics",
             params={"limit": 2, "cursor": cursor},
@@ -167,10 +194,16 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 5
-        assert body["pagination"]["offset"] == 1
         assert body["pagination"]["limit"] == 2
         assert len(body["data"]) == 2
+        # Cursor-only contract: the second page must be disjoint from
+        # the first AND its rows must be unique within the page (a
+        # backend that replays the first page would fail the disjoint
+        # check; one that returns ``[same, same]`` would fail the
+        # uniqueness check).
+        page2_task_ids = {row["task_id"] for row in body["data"]}
+        assert len(page2_task_ids) == len(body["data"])
+        assert page1_task_ids.isdisjoint(page2_task_ids)
 
     def test_message_overhead_is_quadratic_surfaced(
         self,
@@ -218,7 +251,24 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["pagination"]["total"] == 2
+        # Combined filter (agent + since) honoured: only alice's
+        # records, none from before t1.
+        assert isinstance(body["data"], list)
+        # Assert exact cardinality plus the seeded id set so an empty
+        # body cannot pass the per-row checks vacuously and a duplicate
+        # row cannot pass the set-only check.
+        assert len(body["data"]) == 2
+        task_ids = {row["task_id"] for row in body["data"]}
+        assert task_ids == {"t1", "t2"}
+        assert all(row.get("agent_id") == "alice" for row in body["data"])
+        # Assert ``computed_at`` (the wire field for ``timestamp``) is
+        # present on every row -- a missing field would otherwise be
+        # silently masked by a defaulted ``row.get(...)``.  Parse via
+        # ``parse_iso_utc`` so the strict ISO-UTC contract used by the
+        # persistence layer also gates the API surface here.
+        for row in body["data"]:
+            assert "computed_at" in row
+            assert parse_iso_utc(row["computed_at"]) >= t1
 
     def test_rejects_inverted_time_window(
         self,

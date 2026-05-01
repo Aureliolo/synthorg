@@ -47,14 +47,10 @@ export async function listCostRecords(
   }
   return {
     data: body.data,
-    total: body.pagination.total,
-    offset: body.pagination.offset,
     limit: body.pagination.limit,
     nextCursor: body.pagination.next_cursor,
     hasMore: body.pagination.has_more,
     pagination: {
-      total: body.pagination.total,
-      offset: body.pagination.offset,
       limit: body.pagination.limit,
       next_cursor: body.pagination.next_cursor,
       has_more: body.pagination.has_more,

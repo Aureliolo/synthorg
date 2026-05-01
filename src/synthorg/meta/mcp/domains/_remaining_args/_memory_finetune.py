@@ -1,6 +1,6 @@
 """Memory-domain MCP args.
 
-Covers fine-tuning, checkpoints, embedder, GDPR delete.
+Covers fine-tuning, checkpoints, embedder, memory-entry delete.
 """
 
 from typing import Literal, Self
@@ -167,7 +167,7 @@ class MemoryGetActiveEmbedderArgs(_ArgsBase):
 
 
 class MemoryDeleteEntryArgs(DestructiveGuardrailFields):
-    """Args for ``memory.delete_entry`` (destructive, GDPR)."""
+    """Args for ``memory.delete_entry`` (destructive)."""
 
     agent_id: NotBlankStr = Field(description="Owning agent identifier")
     memory_id: NotBlankStr = Field(description="Backend-assigned memory identifier")

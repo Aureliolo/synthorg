@@ -119,7 +119,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       const result = await listAgents({ limit: 200 })
       set({
         agents: result.data,
-        totalAgents: result.total ?? result.data.length,
+        totalAgents: result.data.length,
         listLoading: false,
       })
     } catch (err) {
@@ -169,7 +169,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         performance: perfResult.status === 'fulfilled' ? perfResult.value : null,
         agentTasks: tasksResult.status === 'fulfilled' ? tasksResult.value.data : [],
         activity: activityData,
-        activityTotal: activityPage?.total ?? activityData.length,
+        activityTotal: activityData.length,
         activityNextCursor: activityPage?.nextCursor ?? null,
         activityHasMore: activityPage?.hasMore ?? false,
         careerHistory: historyResult.status === 'fulfilled' ? historyResult.value : [],
@@ -217,10 +217,12 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         const merged = [...state.activity, ...result.data].slice(0, MAX_ACTIVITIES)
         return {
           activity: merged,
-          activityTotal:
-            result.total === null
-              ? merged.length
-              : Math.min(result.total, MAX_ACTIVITIES),
+          // ``activityTotal`` reflects the in-memory display count
+          // (post-cap, post-merge), not a server-reported total.  The
+          // wire envelope no longer carries ``total`` (cursor-only
+          // pagination); UI badges/counters use this for the visible
+          // "X items shown" label.
+          activityTotal: merged.length,
           activityNextCursor: result.nextCursor,
           activityHasMore: result.hasMore,
           activityLoading: false,
