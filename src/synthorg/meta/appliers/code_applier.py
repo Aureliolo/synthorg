@@ -425,15 +425,27 @@ class CodeApplier:
             except MemoryError, RecursionError:
                 raise
             except (OSError, RuntimeError) as exc:
+                # SEC-1 (#1682): the ``msg`` and chained-exception
+                # paths used to leak raw ``str(exc)`` into the
+                # PartialWriteError that the caller subsequently
+                # logs via ``logger.exception`` -- so the secret-log
+                # gate would be bypassed once the wrapper re-raised.
+                # Sanitize once via ``safe_error_description`` and
+                # break the chain with ``from None`` so the original
+                # exception cannot resurface.
+                scrubbed = safe_error_description(exc)
                 logger.warning(
                     META_APPLY_FAILED,
                     reason="file_write_failed",
                     operation=change.operation.value,
                     file_path=change.file_path,
                     error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                    error=scrubbed,
                 )
-                msg = f"{change.operation.value} failed for '{change.file_path}': {exc}"
+                msg = (
+                    f"{change.operation.value} failed for "
+                    f"'{change.file_path}': {scrubbed}"
+                )
                 # Wrap the underlying error so the caller can revert
                 # ONLY the changes that were successfully written
                 # before the failure -- avoids defensive-revert
@@ -441,7 +453,7 @@ class CodeApplier:
                 raise PartialWriteError(
                     msg,
                     applied=tuple(applied),
-                ) from exc
+                ) from None
             applied.append(change)
             changed.append(change.file_path)
             logger.debug(

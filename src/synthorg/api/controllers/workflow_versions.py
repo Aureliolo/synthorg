@@ -400,7 +400,7 @@ class WorkflowVersionController(Controller):
                 definition_id=rolled_back.id,
                 revision=rolled_back.revision,
                 error_type=type(exc).__name__,
-                error_desc=safe_error_description(exc),
+                error=safe_error_description(exc),
             )
         logger.info(
             WORKFLOW_DEF_ROLLED_BACK,

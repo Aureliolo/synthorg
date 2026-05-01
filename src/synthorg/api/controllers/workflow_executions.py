@@ -45,10 +45,14 @@ def _extract_username(request: Request[Any, Any, Any]) -> str:
     user = getattr(request, "user", None)
     if user and hasattr(user, "username"):
         return str(user.username)
+    # SEC-1 (#1682): log only the route path (``url.path``) rather
+    # than ``str(request.url)`` which embeds the query string -- some
+    # workflow callbacks pass auth tokens as query parameters and
+    # those would otherwise land in the warning log.
     logger.warning(
         "workflow.execution.username_fallback",
         note="request has no user or username attribute, using 'api'",
-        path=str(request.url),
+        path=request.url.path,
     )
     return "api"
 
@@ -108,8 +112,13 @@ class WorkflowExecutionController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            # SEC-1 (#1682): keep the scrubbed exception text in the
+            # warning log only; client-facing ``error`` field stays
+            # generic so internal details don't reach the API caller.
             return Response(
-                content=ApiResponse[WorkflowExecution](error=str(exc)),
+                content=ApiResponse[WorkflowExecution](
+                    error="Invalid workflow definition.",
+                ),
                 status_code=422,
             )
         except WorkflowConditionEvalError as exc:
@@ -120,7 +129,9 @@ class WorkflowExecutionController(Controller):
                 error=safe_error_description(exc),
             )
             return Response(
-                content=ApiResponse[WorkflowExecution](error=str(exc)),
+                content=ApiResponse[WorkflowExecution](
+                    error="Workflow condition evaluation failed.",
+                ),
                 status_code=422,
             )
         except PersistenceError as exc:
@@ -260,8 +271,12 @@ class WorkflowExecutionController(Controller):
                 error=safe_error_description(exc),
                 note="cancel conflict",
             )
+            # SEC-1 (#1682): generic client-facing message; scrubbed
+            # detail stays in the warning log above.
             return Response(
-                content=ApiResponse[WorkflowExecution](error=str(exc)),
+                content=ApiResponse[WorkflowExecution](
+                    error="Workflow execution cancel conflict.",
+                ),
                 status_code=409,
             )
         except PersistenceError as exc:
