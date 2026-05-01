@@ -233,6 +233,71 @@ The module carries two name-spaces: `TELEMETRY_*` constants are observability lo
 | `TELEMETRY_SHUTDOWN_WITHOUT_START` | WARNING | `shutdown()` invoked on an enabled collector that never had `start()` called (or whose `start()` failed before the deployment ID loaded). Surfaces silent init failure. |
 | `TELEMETRY_CLOSED` | INFO | `shutdown()` flipped the collector into its terminal state. After this event a subsequent `start()` raises rather than silently reusing a torn-down reporter. |
 
+<a id="audit-chain"></a>
+
+### Audit chain
+
+The `AuditChainSink` (`synthorg/observability/audit_chain/sink.py`) is
+a stdlib `logging.Handler` that signs and chains a curated subset of
+log events into a tamper-evident hash chain. Every appended entry is
+ML-DSA-65-signed (or Ed25519-fallback) and timestamped through
+`ResilientTimestampProvider` (TSA when reachable, local clock fallback).
+
+#### Opt-in by prefix
+
+The sink filters on a class-level allowlist:
+
+```python
+_AUDITED_PREFIXES = ("security.", "tool.registry.integrity.")
+```
+
+To make a new event reach the chain, name it `security.<domain>.<verb>`
+(or `tool.registry.integrity.<...>`). Operational events keep their
+existing namespace (`integrations.*`, `meta.*`, `api.*`, ...) and are
+**not** signed. The `security` namespace is therefore the single
+opt-in seam: a rename from `integrations.*` to `security.*` is the
+only way to bring an event into the chain. Repository-layer
+operational events MAY coexist with the security-namespace event for
+the same lifecycle hop (e.g. `integrations.connection.created` at the
+catalog layer and `security.connection.created` at the API controller
+layer is the canonical two-layer pattern).
+
+#### Record-shape extraction
+
+`AuditChainSink.emit()` accepts log records from both stdlib
+(`logging.getLogger(...).info("security.x.y")`) and the structlog
+bridge (`synthorg.observability.get_logger`). Structlog routes records
+through stdlib in two distinct shapes depending on whether
+`ProcessorFormatter.wrap_for_formatter` has run:
+
+- **stdlib direct**: `record.msg` is a `str`; the message IS the
+  event name.
+- **structlog pre-bridge**: `record.msg` is the event_dict
+  (`{"event": "security.x.y", ...}`).
+- **structlog post-bridge**: `record.msg` is a tuple
+  `(event_dict, foreign_pre_chain)`; the event_dict is the first
+  element.
+
+The helper `_extract_event_name` in `audit_chain/sink.py` returns the
+canonical event name from any of the three shapes, or `None` for any
+unknown shape. An unknown shape raises a WARNING under the
+non-recursive `audit_chain.record_shape_unknown` event so a future
+logging-bridge change does not silently drop security events.
+
+#### Failure modes
+
+`emit()` distinguishes three failure paths so operators can triage:
+
+| Event | When | Callback status |
+|---|---|---|
+| `audit_chain.emit_timeout` | Sign + TSA exceeded `audit_chain_signing_timeout_seconds` (default 5s) | `error` |
+| `audit_chain.emit_error` | Any other exception (serialization, signer crash, ...) | `error` |
+| `audit_chain.callback_error` | The append callback itself raised; chain still appended | (none) |
+
+All three use the `audit_chain.*` prefix (NOT `security.*`) so the
+diagnostic log can never recurse through `emit()` and deadlock the
+single-worker signing executor.
+
 ### Uvicorn Integration
 
 Uvicorn's default access logger is **disabled** (`access_log=False`, `log_config=None`).

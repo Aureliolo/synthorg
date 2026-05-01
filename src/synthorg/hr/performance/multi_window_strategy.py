@@ -4,6 +4,7 @@ Computes aggregate metrics across configurable time windows simultaneously.
 Returns None for aggregate values when data points < min_data_points.
 """
 
+import math
 import re
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -149,7 +150,13 @@ class MultiWindowStrategy:
                     currencies=frozenset(currencies),
                 )
             window_currency = next(iter(currencies))
-            avg_cost = sum(r.cost for r in records) / count
+            # Monetary accumulation goes through ``math.fsum`` so it
+            # matches the canonical aggregator at
+            # ``synthorg.budget._aggregation.sum_cost`` and stays exact
+            # across many small-cost records. Bare ``sum()`` accumulates
+            # 1-3 ULP error and would silently degrade
+            # ``avg_cost_per_task`` in long-running windows.
+            avg_cost = math.fsum(r.cost for r in records) / count
             avg_time = sum(r.duration_seconds for r in records) / count
             avg_tokens = sum(r.tokens_used for r in records) / count
             success_rate = completed / count

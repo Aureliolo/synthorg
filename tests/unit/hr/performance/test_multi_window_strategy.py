@@ -228,3 +228,60 @@ class TestMultiWindowStrategy:
 
         assert result[0].data_point_count == 1  # 7d: only 2-day-old
         assert result[1].data_point_count == 2  # 30d: both
+
+    def test_record_currency_is_required_by_model(self) -> None:
+        """``TaskMetricRecord.currency`` is ``str`` (not ``str | None``):
+        the model itself prevents the ``next(iter({None}))`` edge case at
+        the boundary, so ``_compute_single_window`` never sees a record
+        whose currency is ``None``. Pin the contract so a future relaxation
+        of ``TaskMetricRecord.currency`` can't silently re-introduce the
+        ``StopIteration`` risk."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            make_task_metric(
+                completed_at=NOW - timedelta(hours=1),
+                currency=None,  # type: ignore[arg-type]
+            )
+
+    def test_avg_cost_uses_fsum_for_monetary_summation(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Monetary cost summation routes through ``math.fsum``.
+
+        Patches ``math.fsum`` inside the strategy module and asserts the
+        ``avg_cost`` path invokes it. Mirrors the canonical aggregator at
+        ``synthorg.budget._aggregation.sum_cost`` and prevents a quiet
+        regression back to bare ``sum()``.
+        """
+        import math
+
+        # Single window so the spy records exactly one fsum invocation
+        # for the monetary aggregation path.
+        strategy = self._make_strategy(windows=("7d",), min_data_points=1)
+        records = tuple(
+            make_task_metric(
+                completed_at=NOW - timedelta(minutes=i + 1),
+                cost=0.10 + (i * 1e-9),
+            )
+            for i in range(5)
+        )
+
+        calls: list[tuple[float, ...]] = []
+        real_fsum = math.fsum
+
+        def _spy_fsum(values: object, /) -> float:
+            seq: tuple[float, ...] = tuple(values)  # type: ignore[arg-type]
+            calls.append(seq)
+            return real_fsum(seq)
+
+        monkeypatch.setattr(
+            "synthorg.hr.performance.multi_window_strategy.math.fsum", _spy_fsum
+        )
+        strategy.compute_windows(records, now=NOW)
+
+        # Exactly one fsum call for the monetary aggregation path.
+        assert len(calls) == 1
+        # And its argument is the cost stream from the records.
+        assert calls[0] == tuple(r.cost for r in records)

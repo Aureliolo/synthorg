@@ -299,7 +299,14 @@ Domains currently exposing constants (non-exhaustive; see
 `workers`, `meeting`, `engine`, `escalation`, `settings`,
 `memory`, `persistence`, `mcp`, `telemetry`, `classification`,
 `verification`, `rollout`, `chief_of_staff`, `analytics`,
-`integrations`, `a2a`, `budget`, `coordination`.
+`integrations`, `a2a`, `budget`, `coordination`, `security`,
+`audit_chain`.
+
+The `security` domain is special: every constant whose value starts
+with `security.` (or `tool.registry.integrity.`) is signed and
+appended to the audit chain by `AuditChainSink`. See
+[docs/design/observability.md](../design/observability.md#audit-chain)
+for the opt-in rule and the sink's record-shape extraction logic.
 
 ### `events/telemetry.py` namespace split
 

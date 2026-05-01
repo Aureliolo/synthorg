@@ -45,6 +45,12 @@ from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.observability.events.security import (
+    SECURITY_CUSTOM_RULE_CREATED,
+    SECURITY_CUSTOM_RULE_DELETED,
+    SECURITY_CUSTOM_RULE_TOGGLED,
+    SECURITY_CUSTOM_RULE_UPDATED,
+)
 
 logger = get_logger(__name__)
 
@@ -292,6 +298,20 @@ class CustomRuleController(Controller):
                 error=safe_error_description(exc),
             )
             raise ConflictError(str(exc)) from exc
+        # Custom rules define automation triggers (control plane);
+        # route the success event through the audit chain via the
+        # SECURITY_* prefix so the mutation is signed and chained
+        # alongside settings / autonomy changes. ``rule`` is the bare
+        # canonical identifier (UUID), mirroring the
+        # ``SECURITY_PROVIDER_CREATED`` naming pattern; the human name
+        # rides alongside as ``rule_name`` for readability.
+        logger.info(
+            SECURITY_CUSTOM_RULE_CREATED,
+            rule=str(saved.id),
+            rule_name=saved.name,
+            metric_path=saved.metric_path,
+            severity=saved.severity.value,
+        )
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(saved),
         )
@@ -342,6 +362,11 @@ class CustomRuleController(Controller):
                 error=safe_error_description(exc),
             )
             raise ConflictError(str(exc)) from exc
+        logger.info(
+            SECURITY_CUSTOM_RULE_UPDATED,
+            rule=rule_id,
+            fields_changed=sorted(data.model_dump(exclude_none=True).keys()),
+        )
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(updated),
         )
@@ -375,6 +400,10 @@ class CustomRuleController(Controller):
                 operation="delete",
             )
             raise NotFoundError(str(exc)) from exc
+        logger.info(
+            SECURITY_CUSTOM_RULE_DELETED,
+            rule=rule_id,
+        )
 
     @post(
         "/{rule_id:str}/toggle",
@@ -407,6 +436,11 @@ class CustomRuleController(Controller):
                 operation="toggle",
             )
             raise NotFoundError(str(exc)) from exc
+        logger.info(
+            SECURITY_CUSTOM_RULE_TOGGLED,
+            rule=rule_id,
+            enabled=toggled.enabled,
+        )
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(toggled),
         )

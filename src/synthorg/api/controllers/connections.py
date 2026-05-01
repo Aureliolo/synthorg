@@ -39,9 +39,12 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
-from synthorg.observability.events.integrations import (
-    CONNECTION_SECRET_REVEAL_FAILED,
-    CONNECTION_SECRET_REVEALED,
+from synthorg.observability.events.security import (
+    SECURITY_CONNECTION_CREATED,
+    SECURITY_CONNECTION_DELETED,
+    SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+    SECURITY_CONNECTION_SECRET_REVEALED,
+    SECURITY_CONNECTION_UPDATED,
 )
 
 # Unified error surfaced to clients on any reveal failure. The
@@ -252,6 +255,18 @@ class ConnectionsController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(str(exc)) from exc
+        # Connection records carry credentials; route the success
+        # event through the audit chain (the SECURITY_* prefix is the
+        # ``AuditChainSink`` filter). Field naming mirrors
+        # ``SECURITY_PROVIDER_CREATED`` (bare resource name) so
+        # forensic queries use a single key across the security event
+        # surface.
+        logger.info(
+            SECURITY_CONNECTION_CREATED,
+            connection=data.name,
+            connection_type=data.connection_type.value,
+            auth_method=data.auth_method.value,
+        )
         return ApiResponse(data=conn)
 
     @patch(
@@ -322,6 +337,11 @@ class ConnectionsController(Controller):
                 error=safe_error_description(exc),
             )
             raise NotFoundError(str(exc)) from exc
+        logger.info(
+            SECURITY_CONNECTION_UPDATED,
+            connection=name,
+            fields_changed=sorted(data.model_fields_set),
+        )
         return ApiResponse(data=conn)
 
     @delete(
@@ -351,6 +371,10 @@ class ConnectionsController(Controller):
                 error=safe_error_description(exc),
             )
             raise NotFoundError(str(exc)) from exc
+        logger.info(
+            SECURITY_CONNECTION_DELETED,
+            connection=name,
+        )
         return ApiResponse(data=None)
 
     @get(
@@ -414,8 +438,8 @@ class ConnectionsController(Controller):
             credentials = await catalog.get_credentials(name)
         except ConnectionNotFoundError as exc:
             logger.warning(
-                CONNECTION_SECRET_REVEAL_FAILED,
-                connection_name=name,
+                SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+                connection=name,
                 field=field,
                 reason="connection_not_found",
             )
@@ -424,8 +448,8 @@ class ConnectionsController(Controller):
             # Secret backend failures are operational errors, not a
             # "not found" condition -- log at ERROR level so they
             # show up on the health dashboard instead of getting lost
-            # in the 404 noise.  Use ``CONNECTION_SECRET_REVEAL_FAILED``
-            # (the request-side event) rather than the backend-side
+            # in the 404 noise.  Use the request-side reveal-failed
+            # event rather than the backend-side
             # ``SECRET_RETRIEVAL_FAILED`` that the catalog already
             # emitted -- otherwise one backend failure would
             # double-count and the user-visible context (this is a
@@ -435,8 +459,8 @@ class ConnectionsController(Controller):
             # secret metadata via wrapped causes; the redacted
             # ``safe_error_description`` is the only message emitted.
             logger.error(  # noqa: TRY400
-                CONNECTION_SECRET_REVEAL_FAILED,
-                connection_name=name,
+                SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+                connection=name,
                 field=field,
                 reason="secret_retrieval_failed",
                 error_type=type(exc).__name__,
@@ -447,15 +471,15 @@ class ConnectionsController(Controller):
         value = credentials.get(field)
         if value is None:
             logger.warning(
-                CONNECTION_SECRET_REVEAL_FAILED,
-                connection_name=name,
+                SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+                connection=name,
                 field=field,
                 reason="field_not_set",
             )
             raise NotFoundError(_REVEAL_GENERIC_ERROR)
         logger.info(
-            CONNECTION_SECRET_REVEALED,
-            connection_name=name,
+            SECURITY_CONNECTION_SECRET_REVEALED,
+            connection=name,
             field=field,
         )
         return ApiResponse(data={"field": field, "value": value})

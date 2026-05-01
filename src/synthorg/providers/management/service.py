@@ -9,7 +9,9 @@ import json
 import time
 from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
@@ -74,6 +76,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
 
     from synthorg.api.state import AppState
+    from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import LocalModelParams, RootConfig
     from synthorg.providers.management.audit_service import ProviderAuditService
     from synthorg.providers.management.local_models import (
@@ -86,6 +89,27 @@ if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
+
+
+def _safe_task_id_segment(value: str) -> str:
+    """Strip control / whitespace / colon characters from a task-id segment.
+
+    The probe ``task_id`` is built from a user-supplied provider name
+    embedded in a colon-delimited template
+    (``system:providers:test_connection:{name}``). ``NotBlankStr``
+    rejects empty input but permits control characters (newlines, NUL,
+    vertical tab, ...) AND colons, both of which would corrupt
+    downstream log parsers and task-id segment splitters that rely on
+    ``:`` as the canonical separator. Unicode is preserved -- only the
+    C0/C1 control range, ASCII delete, whitespace, and ``:`` itself
+    get replaced with ``_``. Returns ``"_"`` if every character was
+    filtered (preserves ``NotBlankStr``).
+    """
+    cleaned = "".join(
+        ch if ch.isprintable() and not ch.isspace() and ch != ":" else "_"
+        for ch in value
+    )
+    return cleaned or "_"
 
 
 class ProviderManagementService(ProviderCapabilitiesMixin):
@@ -104,9 +128,14 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             (legacy bootstrap paths, in-memory test rigs); each
             mutation entry point is a no-op for audit emission in that
             case.
+        cost_tracker: Optional cost tracker. When wired, the connection
+            probe records a ``CostRecord`` for the paid completion it
+            sends. ``None`` makes the probe scope a no-op (the cost
+            chokepoint reads ``None`` from the context and skips
+            recording).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- explicit DI; all kw-only and optional after the 4th arg
         self,
         *,
         settings_service: SettingsService,
@@ -114,12 +143,14 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         app_state: AppState,
         config: RootConfig,
         audit_service: ProviderAuditService | None = None,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._settings_service = settings_service
         self._config_resolver = config_resolver
         self._app_state = app_state
         self._config = config
         self._audit_service = audit_service
+        self._cost_tracker = cost_tracker
         self._lock = asyncio.Lock()
         self._allowlist = DiscoveryAllowlistManager(
             settings_service=settings_service,
@@ -318,8 +349,34 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         model_id: str,
     ) -> TestConnectionResponse:
         """Execute the actual connection test probe."""
+        from synthorg.providers.resilience.errors import (  # noqa: PLC0415
+            RetryExhaustedError,
+        )
+
         try:
             return await self._probe_provider(name, config, model_id)
+        except RetryExhaustedError as exc:
+            # ``RetryExhaustedError`` is a ``ProviderError`` subtype but
+            # carries different operational meaning: every retry tier
+            # was exhausted, the provider isn't reachable, and the
+            # retry-handler signal is the actionable diagnostic.
+            # Logging it separately preserves that signal -- otherwise
+            # operators see "connection failed" without knowing whether
+            # the upstream timed out once or N times.
+            logger.warning(
+                PROVIDER_CONNECTION_TESTED,
+                provider=name,
+                model=model_id,
+                success=False,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                retry_exhausted=True,
+            )
+            return TestConnectionResponse(
+                success=False,
+                error=safe_error_description(exc),
+                model_tested=model_id,
+            )
         except ProviderError as exc:
             logger.warning(
                 PROVIDER_CONNECTION_TESTED,
@@ -338,6 +395,13 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 error=safe_error_description(exc),
                 model_tested=model_id,
             )
+        except MemoryError, RecursionError:
+            # Process-level failures must propagate, not collapse into
+            # a normal "probe failed" response. Placed before the
+            # ``except asyncio.CancelledError`` and ``except Exception``
+            # branches so the broad catch downstream cannot swallow
+            # them.
+            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -362,6 +426,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         model_id: str,
     ) -> TestConnectionResponse:
         """Send a minimal completion request to verify connectivity."""
+        from synthorg.providers.cost_recording import (  # noqa: PLC0415
+            cost_recording_scope,
+        )
         from synthorg.providers.drivers.litellm_driver import (  # noqa: PLC0415
             LiteLLMDriver,
         )
@@ -369,7 +436,24 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         driver = LiteLLMDriver(name, config)
         messages = [ChatMessage(role=MessageRole.USER, content="ping")]
         start = time.monotonic()
-        await driver.complete(messages, model_id)
+        # Probes hit a real provider and are billed; route through the
+        # cost-recording chokepoint so the spend appears in the same
+        # accounting surface as production calls. ``cost_tracker=None``
+        # (legacy bootstrap rigs) makes the scope a no-op.
+        # ``_safe_task_id_segment(name)`` strips control characters so
+        # a crafted provider name (newlines, NUL, etc.) cannot inject
+        # log lines or distort downstream task-id parsers; the
+        # provider-side ``provider`` field on the CostRecord still
+        # carries the raw name for forensic accuracy.
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr(
+                f"system:providers:test_connection:{_safe_task_id_segment(name)}",
+            ),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            await driver.complete(messages, model_id)
         elapsed_ms = (time.monotonic() - start) * 1000
 
         logger.info(

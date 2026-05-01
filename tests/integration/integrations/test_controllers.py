@@ -16,8 +16,9 @@ dependency injection, and RFC 9457 error translation are exercised
 on the real HTTP path.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -206,6 +207,241 @@ class TestConnectionsController:
             )
         # Backend failure detail must not leak to the client.
         assert "vault" not in str(exc_info.value).lower()
+
+
+def _make_audit_state(catalog: object) -> dict[str, object]:
+    """Build a minimal ``state`` mapping that pins ``connection_catalog``.
+
+    Uses ``SimpleNamespace`` instead of ``MagicMock`` so we don't need
+    a Mock-spec declaration just to satisfy the ``state["app_state"]
+    .connection_catalog`` attribute access -- ``SimpleNamespace`` is
+    typed and accepts arbitrary attributes by construction. The
+    controller only reads ``connection_catalog``; nothing else needs
+    to exist on the namespace.
+    """
+    return {"app_state": SimpleNamespace(connection_catalog=catalog)}
+
+
+def _capture_emission(
+    events: Sequence[Mapping[str, object]],
+    name: str,
+) -> Mapping[str, object]:
+    """Return the single event dict matching ``name`` from the captured list."""
+    matches = [e for e in events if e.get("event") == name]
+    if len(matches) != 1:
+        msg = f"expected 1 emission of {name!r}, got {len(matches)}: {matches}"
+        raise AssertionError(msg)
+    return matches[0]
+
+
+@pytest.mark.integration
+class TestConnectionAuditEvents:
+    """Connection mutations emit ``security.connection.*`` events.
+
+    The ``AuditChainSink`` filters on the ``security.*`` prefix; an
+    event under ``integrations.*`` would never reach the chain. These
+    tests guard the prefix contract at the controller boundary so
+    forensic reconstruction of credential CRUD stays possible.
+
+    Uses ``structlog.testing.capture_logs`` because the structured
+    ``event`` key lives in the structlog event dict, not on the stdlib
+    ``LogRecord``.
+    """
+
+    async def test_create_emits_security_event_with_payload(self) -> None:
+        """Create success emits one ``SECURITY_CONNECTION_CREATED`` and
+        carries the bare ``connection`` field (matching SECURITY_PROVIDER_*
+        naming) plus the connection_type and auth_method context."""
+        import structlog
+
+        from synthorg.api.controllers.connections import (
+            ConnectionsController,
+            CreateConnectionRequest,
+        )
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_CREATED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.create.return_value = _make_conn()
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events:
+            await ctrl.create_connection.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                data=CreateConnectionRequest.model_validate(
+                    {
+                        "name": "gh",
+                        "connection_type": "github",
+                        "credentials": {"token": "t"},
+                    },
+                ),
+            )
+
+        emission = _capture_emission(events, SECURITY_CONNECTION_CREATED)
+        assert emission["connection"] == "gh"
+        assert emission["connection_type"] == "github"
+        assert emission["auth_method"] == "api_key"
+
+    async def test_update_emits_security_event_with_fields_changed(self) -> None:
+        """Update success carries the ``connection`` field and
+        ``fields_changed`` tag listing the partial-update keys."""
+        import structlog
+
+        from synthorg.api.controllers.connections import (
+            ConnectionsController,
+            UpdateConnectionRequest,
+        )
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_UPDATED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.update.return_value = _make_conn()
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events:
+            await ctrl.update_connection.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+                data=UpdateConnectionRequest.model_validate(
+                    {"base_url": "https://api.github.com/v4"},
+                ),
+            )
+
+        emission = _capture_emission(events, SECURITY_CONNECTION_UPDATED)
+        assert emission["connection"] == "gh"
+        assert emission["fields_changed"] == ["base_url"]
+
+    async def test_delete_emits_security_event(self) -> None:
+        import structlog
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_DELETED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.delete.return_value = None
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events:
+            await ctrl.delete_connection.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+            )
+
+        emission = _capture_emission(events, SECURITY_CONNECTION_DELETED)
+        assert emission["connection"] == "gh"
+
+    async def test_reveal_success_emits_security_event(self) -> None:
+        """Reveal success emits exactly one
+        ``SECURITY_CONNECTION_SECRET_REVEALED`` carrying the bare
+        ``connection`` field name and the ``field`` accessed; the actual
+        secret value is NEVER part of the event payload."""
+        import structlog
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_SECRET_REVEALED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog.get_credentials.return_value = {
+            "client_secret": "real-secret-value",
+        }
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events:
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+                field="client_secret",
+            )
+
+        emission = _capture_emission(events, SECURITY_CONNECTION_SECRET_REVEALED)
+        assert emission["connection"] == "gh"
+        assert emission["field"] == "client_secret"
+        # Secret value never appears in ANY captured log payload, not
+        # just the matched emission. A future refactor that splits the
+        # log call across multiple events MUST keep the secret out of
+        # every payload; iterating the full event stream catches the
+        # accidental leak that an emission-only check would miss.
+        for event in events:
+            for value in event.values():
+                assert "real-secret-value" not in str(value)
+
+    @pytest.mark.parametrize(
+        ("setup_side_effect", "expected_reason"),
+        [
+            (
+                "field_missing",
+                "field_not_set",
+            ),
+            (
+                "connection_missing",
+                "connection_not_found",
+            ),
+            (
+                "backend_error",
+                "secret_retrieval_failed",
+            ),
+        ],
+        ids=["field_missing", "connection_missing", "backend_error"],
+    )
+    async def test_reveal_failure_emits_security_event_with_reason(
+        self,
+        setup_side_effect: str,
+        expected_reason: str,
+    ) -> None:
+        """Each reveal-failure branch emits ``SECURITY_CONNECTION_SECRET_REVEAL_FAILED``
+        with the right ``reason`` tag. Locks the contract that future
+        refactors keep the three branches distinguishable in the audit chain."""
+        import structlog
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
+        from synthorg.integrations.errors import (
+            ConnectionNotFoundError,
+            SecretRetrievalError,
+        )
+        from synthorg.observability.events.security import (
+            SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+        )
+
+        catalog = MagicMock(spec=ConnectionCatalog)
+        if setup_side_effect == "field_missing":
+            catalog.get_credentials.return_value = {"other": "x"}
+        elif setup_side_effect == "connection_missing":
+            catalog.get_credentials.side_effect = ConnectionNotFoundError(
+                "gh missing",
+            )
+        else:
+            catalog.get_credentials.side_effect = SecretRetrievalError(
+                "vault timeout",
+            )
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        with structlog.testing.capture_logs() as events, pytest.raises(NotFoundError):
+            await ctrl.reveal_secret.fn(
+                ctrl,
+                state=_make_audit_state(catalog),
+                name="gh",
+                field="client_secret",
+            )
+
+        emission = _capture_emission(events, SECURITY_CONNECTION_SECRET_REVEAL_FAILED)
+        assert emission["connection"] == "gh"
+        assert emission["field"] == "client_secret"
+        assert emission["reason"] == expected_reason
 
 
 @pytest.mark.integration

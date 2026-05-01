@@ -213,7 +213,23 @@ def build_category_breakdown(
 
     Records without a ``call_category`` are counted as uncategorized.
     Uses :func:`math.fsum` for accurate floating-point summation.
+
+    Raises:
+        MixedCurrencyAggregationError: If two or more distinct currency
+            codes appear across *records*. Aggregating across currencies
+            would silently produce a meaningless ``total_cost`` in an
+            undefined unit; the guard forces callers to partition
+            records by currency first.
     """
+    # Local import: ``_tracker_helpers`` pulls in ``cost_record`` which
+    # transitively imports ``synthorg.providers``; importing it at module
+    # top would create a cycle through ``providers.cost_recording`` ->
+    # ``budget.cost_record`` during package initialization.
+    from synthorg.budget._tracker_helpers import (  # noqa: PLC0415
+        _assert_single_currency,
+    )
+
+    _assert_single_currency(records)
     buckets: dict[LLMCallCategory | None, tuple[list[float], int, int]] = {
         cat: ([], 0, 0) for cat in LLMCallCategory
     } | {None: ([], 0, 0)}

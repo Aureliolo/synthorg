@@ -2,7 +2,7 @@
 
 import logging
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from hypothesis import given, settings
@@ -355,3 +355,232 @@ class TestHashChainProperties:
             )
         assert chain.verify_integrity() is True
         assert len(chain.entries) == n
+
+
+# ── _extract_event_name ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestExtractEventName:
+    """Cover all four shapes of ``record.msg`` the helper handles."""
+
+    def _record(self, msg: object) -> logging.LogRecord:
+        return logging.LogRecord(
+            name="synthorg.test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None,
+        )
+
+    def test_string_msg_returns_message(self) -> None:
+        from synthorg.observability.audit_chain.sink import _extract_event_name
+
+        assert (
+            _extract_event_name(self._record("security.connection.created"))
+            == "security.connection.created"
+        )
+
+    def test_dict_msg_returns_event_key(self) -> None:
+        """structlog pre-``wrap_for_formatter`` records carry the event_dict
+        directly as ``record.msg``."""
+        from synthorg.observability.audit_chain.sink import _extract_event_name
+
+        msg = {"event": "security.connection.updated", "extra": "kept"}
+        assert _extract_event_name(self._record(msg)) == "security.connection.updated"
+
+    def test_tuple_msg_returns_event_key(self) -> None:
+        """structlog post-``wrap_for_formatter`` records wrap the event_dict
+        in a tuple so ``ProcessorFormatter`` can rebuild it later."""
+        from synthorg.observability.audit_chain.sink import _extract_event_name
+
+        msg = ({"event": "security.connection.deleted"}, ["foreign", "chain"])
+        assert _extract_event_name(self._record(msg)) == "security.connection.deleted"
+
+    def test_unknown_shape_returns_none(self) -> None:
+        """Sentinel: unknown shapes return ``None`` so the caller can log
+        a warning and skip the emit instead of silently dropping."""
+        from synthorg.observability.audit_chain.sink import _extract_event_name
+
+        assert _extract_event_name(self._record(42)) is None
+        assert _extract_event_name(self._record(["list", "msg"])) is None
+        assert _extract_event_name(self._record(())) is None
+        assert _extract_event_name(self._record({"missing_event_key": True})) is None
+
+
+# ── AuditChainSink emit() failure paths ────────────────────────────
+
+
+def _build_log_record(event: str) -> logging.LogRecord:
+    """Stdlib LogRecord pre-shaped with a structlog event-dict ``msg``.
+
+    Mirrors the dict shape produced by ``synthorg.observability.get_logger``
+    so the sink's ``_extract_event_name`` and ``emit`` paths exercise the
+    structured route, not the bare-string fallback.
+    """
+    return logging.LogRecord(
+        name="synthorg.test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg={"event": event, "level": "info"},
+        args=(),
+        exc_info=None,
+    )
+
+
+@pytest.mark.unit
+class TestAuditChainSinkFailurePaths:
+    """``emit()`` failure-path coverage and callback re-entry safety."""
+
+    def _make_sink(self, *, signer: AsyncMock) -> AuditChainSink:
+        return AuditChainSink(
+            signer=signer,
+            timestamp_provider=LocalClockProvider(),
+        )
+
+    def test_signing_timeout_invokes_callback_with_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A signer whose future times out fires the ``status="error"``
+        callback AND emits AUDIT_CHAIN_EMIT_TIMEOUT.
+
+        Deterministic via direct mock of the executor's future: the
+        previous implementation relied on a real 50 ms wall-clock
+        timeout which flaked under ``-n 8`` worker contention. Patching
+        ``_SIGNING_EXECUTOR.submit`` so its returned future raises
+        ``TimeoutError`` immediately removes the timing dependency.
+        """
+        import concurrent.futures
+
+        import structlog
+
+        from synthorg.observability.audit_chain import sink as sink_module
+        from synthorg.observability.events.audit_chain import (
+            AUDIT_CHAIN_EMIT_TIMEOUT,
+        )
+
+        fake_future = MagicMock(spec=concurrent.futures.Future)
+        fake_future.result.side_effect = concurrent.futures.TimeoutError()
+        monkeypatch.setattr(
+            sink_module._SIGNING_EXECUTOR,
+            "submit",
+            lambda *_args, **_kwargs: fake_future,
+        )
+
+        sink = self._make_sink(signer=_make_mock_signer())
+        callback_calls: list[tuple[str, int, float]] = []
+        sink.set_append_callback(
+            lambda status, depth, ts: callback_calls.append((status, depth, ts)),
+        )
+
+        with structlog.testing.capture_logs() as events:
+            sink.emit(_build_log_record("security.test.timeout"))
+
+        assert len(sink.chain.entries) == 0
+        assert callback_calls == [("error", 0, 0.0)]
+        # Diagnostic-event contract: the sink MUST log the
+        # timeout-specific event so operators can distinguish a TSA /
+        # signer hang from a one-off serialization failure.
+        emitted = [e["event"] for e in events]
+        assert AUDIT_CHAIN_EMIT_TIMEOUT in emitted, (
+            f"expected AUDIT_CHAIN_EMIT_TIMEOUT, got {emitted}"
+        )
+
+    def test_signer_exception_invokes_callback_with_error(self) -> None:
+        """A signer that raises a non-timeout exception fires the
+        ``status="error"`` callback AND emits AUDIT_CHAIN_EMIT_ERROR.
+
+        Deterministic by construction -- ``signer.sign`` raises
+        synchronously inside ``asyncio.run`` so no wall-clock waits
+        are involved.
+        """
+        import structlog
+
+        from synthorg.observability.events.audit_chain import (
+            AUDIT_CHAIN_EMIT_ERROR,
+        )
+
+        signer = _make_mock_signer()
+
+        async def _crash(_data: bytes) -> SignedPayload:
+            error_msg = "signer crashed"
+            raise RuntimeError(error_msg)
+
+        signer.sign.side_effect = _crash
+        sink = self._make_sink(signer=signer)
+        callback_calls: list[tuple[str, int, float]] = []
+        sink.set_append_callback(
+            lambda status, depth, ts: callback_calls.append((status, depth, ts)),
+        )
+
+        with structlog.testing.capture_logs() as events:
+            sink.emit(_build_log_record("security.test.crash"))
+
+        assert len(sink.chain.entries) == 0
+        assert callback_calls == [("error", 0, 0.0)]
+        # Diagnostic-event contract: the generic emit_error event is
+        # the only signal operators have for non-timeout signer
+        # failures; assert it fires so a refactor that drops the log
+        # (or routes it to the timeout branch) is caught.
+        emitted = [e["event"] for e in events]
+        assert AUDIT_CHAIN_EMIT_ERROR in emitted, (
+            f"expected AUDIT_CHAIN_EMIT_ERROR, got {emitted}"
+        )
+
+    def test_callback_exception_does_not_break_chain(self) -> None:
+        """If the append callback raises, the chain still appended
+        (``_invoke_append_callback`` swallows callback errors)."""
+
+        def _bad_callback(_status: str, _depth: int, _ts: float) -> None:
+            error_msg = "metrics db down"
+            raise ValueError(error_msg)
+
+        sink = self._make_sink(signer=_make_mock_signer())
+        sink.set_append_callback(_bad_callback)
+
+        # Should NOT raise; chain still appends.
+        sink.emit(_build_log_record("security.test.callback_error"))
+
+        assert len(sink.chain.entries) == 1
+
+    def test_unknown_record_shape_drops_silently(self) -> None:
+        """A record whose ``msg`` shape doesn't match any known pattern
+        is dropped from the chain AND emits a warning under the
+        non-recursive ``audit_chain.*`` prefix so operators can debug.
+
+        Asserts both halves of the contract: the chain stays untouched,
+        AND the AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN warning fires. Uses
+        ``structlog.testing.capture_logs`` since the diagnostic log is
+        emitted via ``synthorg.observability.get_logger`` (structlog),
+        not stdlib -- the bridge to stdlib isn't wired in this unit
+        test process.
+        """
+        import structlog
+
+        from synthorg.observability.events.audit_chain import (
+            AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN,
+        )
+
+        sink = self._make_sink(signer=_make_mock_signer())
+        record = logging.LogRecord(
+            name="synthorg.test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=42,  # integer is not a recognized shape
+            args=(),
+            exc_info=None,
+        )
+
+        with structlog.testing.capture_logs() as events:
+            sink.emit(record)
+
+        assert len(sink.chain.entries) == 0
+        emitted = [e["event"] for e in events]
+        assert AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN in emitted, (
+            f"expected AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN warning, got: {emitted}"
+        )

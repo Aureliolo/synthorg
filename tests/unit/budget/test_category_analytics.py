@@ -108,6 +108,48 @@ class TestBuildCategoryBreakdown:
         result = build_category_breakdown(records)
         assert result.productive_cost == 1.0
 
+    def test_mixed_currencies_raises(self) -> None:
+        """Mixed-currency input must fail loud, not silently sum."""
+        from synthorg.budget.errors import MixedCurrencyAggregationError
+
+        records = [
+            _record(category=LLMCallCategory.PRODUCTIVE, currency="USD"),
+            _record(category=LLMCallCategory.COORDINATION, currency="EUR"),
+        ]
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            build_category_breakdown(records)
+        assert exc_info.value.currencies == frozenset({"USD", "EUR"})
+
+    def test_same_currency_across_categories_passes(self) -> None:
+        """Same currency across distinct categories aggregates cleanly."""
+        records = [
+            _record(
+                category=LLMCallCategory.PRODUCTIVE,
+                currency="EUR",
+                cost=0.10,
+            ),
+            _record(
+                category=LLMCallCategory.SYSTEM,
+                currency="EUR",
+                cost=0.20,
+            ),
+        ]
+        result = build_category_breakdown(records)
+        assert result.total_cost == pytest.approx(0.30)
+
+    def test_three_currencies_raises_with_full_set(self) -> None:
+        """Three distinct currencies surface in the raised exception."""
+        from synthorg.budget.errors import MixedCurrencyAggregationError
+
+        records = [
+            _record(category=LLMCallCategory.PRODUCTIVE, currency="USD"),
+            _record(category=LLMCallCategory.PRODUCTIVE, currency="EUR"),
+            _record(category=LLMCallCategory.PRODUCTIVE, currency="GBP"),
+        ]
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            build_category_breakdown(records)
+        assert exc_info.value.currencies == frozenset({"USD", "EUR", "GBP"})
+
 
 @pytest.mark.unit
 class TestComputeOrchestrationRatio:
