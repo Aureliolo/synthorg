@@ -337,7 +337,11 @@ class BackupController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(safe_error_description(exc)) from exc
+            # Controller-authored 4xx message so the response body
+            # never echoes raw manifest-parse internals; full diagnostic
+            # detail stays in the warning log.
+            msg = "Invalid backup manifest"
+            raise ValidationError(msg) from exc
         except BackupInProgressError as exc:
             # Use BACKUP_RESTORE_FAILED (not BACKUP_FAILED) so restore
             # failures are tracked separately from create-backup

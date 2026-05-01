@@ -527,9 +527,17 @@ class _OAuthRotation(BaseModel):
                 f"oauth_token_url must use http or https scheme, got {parsed.scheme!r}"
             )
             raise ValueError(msg)
-        if not parsed.netloc:
+        # ``parsed.hostname`` rejects host-less inputs (``http:///path``)
+        # and userinfo-only forms that ``parsed.netloc`` happens to
+        # accept; mirrors ``_validate_http_url`` in .dtos.
+        if not parsed.hostname:
             msg = "oauth_token_url must include a host"
             raise ValueError(msg)
+        try:
+            _ = parsed.port  # raises on malformed ``host:bad`` ports
+        except ValueError as exc:
+            msg = f"oauth_token_url has malformed port: {exc}"
+            raise ValueError(msg) from exc
         return v
 
 
@@ -582,7 +590,8 @@ class SyncModelsRequest(BaseModel):
             keep their existing config (pricing, alias) and only new
             ones are appended.
         preset_hint: Optional preset name passed to ``discover_models``
-            for endpoint-shape selection (Ollama vs standard /models).
+            for endpoint-shape selection (self-hosted vs standard
+            ``/models``).
     """
 
     model_config = ConfigDict(

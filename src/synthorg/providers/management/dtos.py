@@ -4,7 +4,9 @@ Split from ``dto.py`` to keep that file under the 800-line limit.
 """
 
 import re
-from typing import TYPE_CHECKING, Self
+from collections.abc import Mapping  # noqa: TC003 -- Pydantic field type at runtime
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import urlparse
 
 from pydantic import (
@@ -12,6 +14,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SecretStr,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -160,6 +163,24 @@ def _validate_oauth_token_url(v: str | None) -> str | None:
     return _validate_http_url(v, field="oauth_token_url")
 
 
+def _reject_blank_secret(v: SecretStr | None, *, field: str) -> SecretStr | None:
+    """Reject ``SecretStr`` whose unwrapped value is empty / whitespace.
+
+    ``SecretStr("")`` is truthy as an object reference, so ``is not
+    None`` checks downstream cannot distinguish "secret missing" from
+    "secret was blanked out".  Catching the empty-string case at the
+    DTO boundary keeps callers from having to ``get_secret_value()``
+    just to test presence.  ``None`` (the explicit "not provided" /
+    "do not change" signal) is allowed.
+    """
+    if v is None:
+        return v
+    if not v.get_secret_value().strip():
+        msg = f"{field} must be a non-empty value if provided"
+        raise ValueError(msg)
+    return v
+
+
 class CreateProviderRequest(BaseModel):
     """Payload for creating a new provider.
 
@@ -213,6 +234,26 @@ class CreateProviderRequest(BaseModel):
     def _validate_oauth_token_url(cls, v: str | None) -> str | None:
         return _validate_oauth_token_url(v)
 
+    @field_validator("api_key")
+    @classmethod
+    def _check_api_key(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="api_key")
+
+    @field_validator("subscription_token")
+    @classmethod
+    def _check_subscription_token(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="subscription_token")
+
+    @field_validator("oauth_client_secret")
+    @classmethod
+    def _check_oauth_client_secret(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="oauth_client_secret")
+
+    @field_validator("custom_header_value")
+    @classmethod
+    def _check_custom_header_value(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="custom_header_value")
+
 
 class UpdateProviderRequest(BaseModel):
     """Payload for updating a provider (partial update).
@@ -254,6 +295,26 @@ class UpdateProviderRequest(BaseModel):
     @classmethod
     def _validate_oauth_token_url(cls, v: str | None) -> str | None:
         return _validate_oauth_token_url(v)
+
+    @field_validator("api_key")
+    @classmethod
+    def _check_api_key(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="api_key")
+
+    @field_validator("subscription_token")
+    @classmethod
+    def _check_subscription_token(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="subscription_token")
+
+    @field_validator("oauth_client_secret")
+    @classmethod
+    def _check_oauth_client_secret(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="oauth_client_secret")
+
+    @field_validator("custom_header_value")
+    @classmethod
+    def _check_custom_header_value(cls, v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field="custom_header_value")
 
     @model_validator(mode="after")
     def _validate_credential_clear_consistency(self) -> Self:
@@ -442,32 +503,34 @@ class ProbeLocalResponse(BaseModel):
             a raising probe populates ``errors``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        # ``MappingProxyType`` instances are stored on the model after
+        # ``_freeze_mappings`` runs; Pydantic-core needs the lenient
+        # arbitrary-type allowance to keep them past validation.
+        arbitrary_types_allowed=True,
+    )
 
     # Keys are preset names; ``NotBlankStr`` rejects empty / whitespace
     # entries that would otherwise sneak through ``dict[str, ...]`` and
     # render as ghost rows in the detected-list UI.
-    results: dict[NotBlankStr, ProbePresetResponse] = Field(default_factory=dict)
-    errors: dict[NotBlankStr, str] = Field(default_factory=dict)
+    results: Mapping[NotBlankStr, ProbePresetResponse] = Field(default_factory=dict)
+    errors: Mapping[NotBlankStr, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_disjoint_results_errors(self) -> Self:
-        """Enforce that ``results`` and ``errors`` share no preset name.
+        """Enforce disjointness and freeze ``results`` / ``errors``.
 
         A preset either succeeds (lands in ``results``) or fails
         (lands in ``errors``); both at once is a service-layer bug.
-        Validating here moves the invariant from prose to type and
-        catches misconstruction at the API boundary.
-
-        ``frozen=True`` on the model blocks attribute reassignment but
-        not mutation of the dict's contents -- in theory a caller
-        could ``response.results["new"] = ...``.  We do not wrap
-        ``results``/``errors`` in :class:`MappingProxyType` because
-        Pydantic's msgspec serializer rejects ``mappingproxy`` at
-        wire-encode time.  In practice the response is constructed in
-        a single controller, returned through Litestar (which freezes
-        nothing on the way out), and never re-handled by callers, so
-        the dict-mutation hole is a theoretical-only concern.
+        After the disjointness check passes, both mappings are wrapped
+        in :class:`MappingProxyType` so ``frozen=True`` on the model
+        blocks attribute reassignment AND in-place mutation of the
+        mapping contents (e.g. ``response.results["new"] = ...``).
+        The ``_serialize_mappings`` field-serializer below unwraps back
+        to plain dicts at JSON-encode time so msgspec / pydantic-core
+        serialization still succeeds.
         """
         overlap = set(self.results) & set(self.errors)
         if overlap:
@@ -476,7 +539,29 @@ class ProbeLocalResponse(BaseModel):
                 f"preset(s): {sorted(overlap)!r}"
             )
             raise ValueError(msg)
+        if not isinstance(self.results, MappingProxyType):
+            object.__setattr__(
+                self,
+                "results",
+                MappingProxyType(dict(self.results)),
+            )
+        if not isinstance(self.errors, MappingProxyType):
+            object.__setattr__(
+                self,
+                "errors",
+                MappingProxyType(dict(self.errors)),
+            )
         return self
+
+    @field_serializer("results", "errors")
+    def _serialize_mappings(self, value: Mapping[str, Any]) -> dict[str, Any]:
+        """Unwrap ``MappingProxyType`` to plain ``dict`` for JSON encode.
+
+        Pydantic-core / msgspec cannot encode ``mappingproxy`` directly;
+        the unwrap copy keeps the on-wire payload independent of the
+        in-memory proxy.
+        """
+        return dict(value)
 
 
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:

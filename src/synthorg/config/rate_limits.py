@@ -57,8 +57,19 @@ class PerOpRateLimitConfig(BaseModel):
         if not isinstance(data, dict):
             return data
         overrides = data.get("overrides")
-        if not isinstance(overrides, dict):
+        # ``None`` (default-factory miss) and absent key are valid;
+        # any other non-mapping shape is operator misconfiguration and
+        # gets the same warning + raise treatment as malformed entries.
+        if overrides is None:
             return data
+        if not isinstance(overrides, dict):
+            msg = (
+                f"overrides must be a mapping of operation -> "
+                "(max_requests, window_seconds), got "
+                f"{type(overrides).__name__}"
+            )
+            logger.warning(API_APP_STARTUP, override=str(overrides), error=msg)
+            raise ValueError(msg)  # noqa: TRY004 -- Pydantic wraps ValueError as ValidationError
         for operation, pair in overrides.items():
             if not isinstance(pair, (tuple, list)) or len(pair) != _OVERRIDE_TUPLE_LEN:
                 msg = (
@@ -73,9 +84,15 @@ class PerOpRateLimitConfig(BaseModel):
                 )
                 raise ValueError(msg)
             max_req, window = pair
+            # ``isinstance(True, int)`` is True in Python (``bool`` is a
+            # subclass of ``int``), so an explicit ``bool`` reject is
+            # required to keep ``True`` / ``False`` out of the override
+            # values.  Mirrors PerOpConcurrencyConfig.
             if (
                 not isinstance(max_req, int)
+                or isinstance(max_req, bool)
                 or not isinstance(window, int)
+                or isinstance(window, bool)
                 or max_req < 0
                 or window < 0
             ):
@@ -135,8 +152,15 @@ class PerOpConcurrencyConfig(BaseModel):
         if not isinstance(data, dict):
             return data
         overrides = data.get("overrides")
-        if not isinstance(overrides, dict):
+        if overrides is None:
             return data
+        if not isinstance(overrides, dict):
+            msg = (
+                f"overrides must be a mapping of operation -> max_inflight, "
+                f"got {type(overrides).__name__}"
+            )
+            logger.warning(API_APP_STARTUP, override=str(overrides), error=msg)
+            raise ValueError(msg)  # noqa: TRY004 -- Pydantic wraps ValueError as ValidationError
         for operation, value in overrides.items():
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 msg = (

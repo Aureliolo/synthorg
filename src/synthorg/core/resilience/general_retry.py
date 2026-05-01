@@ -43,6 +43,7 @@ transient-failure retry with temporal backoff.
   there.  Bootstrap-tier code keeps its own retry loop.
 """
 
+import math
 import random
 from typing import TYPE_CHECKING, Final, TypeVar
 
@@ -122,8 +123,13 @@ class GeneralRetryHandler:
                 reason=msg,
             )
             raise ValueError(msg)
-        if base < 0:
-            msg = f"base must be >= 0, got {base}"
+        # Reject ``NaN`` / ``+inf`` / ``-inf``: a non-finite ``base``
+        # silently disables backoff (every ``base * 2 ** k`` is also
+        # non-finite, ``min(...)`` collapses to ``cap``) and a non-finite
+        # ``cap`` lets a single retry sleep effectively forever.  Both
+        # are operator misconfig and surface here.
+        if not math.isfinite(base) or base < 0:
+            msg = f"base must be a finite number >= 0, got {base!r}"
             logger.error(
                 CORE_RESILIENCE_INVALID_CONFIG,
                 retry_event=event,
@@ -132,8 +138,8 @@ class GeneralRetryHandler:
                 reason=msg,
             )
             raise ValueError(msg)
-        if cap < base:
-            msg = f"cap ({cap}) must be >= base ({base})"
+        if not math.isfinite(cap) or cap < base:
+            msg = f"cap must be a finite number >= base ({base}), got {cap!r}"
             logger.error(
                 CORE_RESILIENCE_INVALID_CONFIG,
                 retry_event=event,

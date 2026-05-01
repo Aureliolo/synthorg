@@ -283,7 +283,7 @@ class TestGeneralRetryHandler:
             )
 
     async def test_base_must_be_non_negative(self) -> None:
-        with pytest.raises(ValueError, match="base must be >= 0"):
+        with pytest.raises(ValueError, match=r"base must be a finite number >= 0"):
             GeneralRetryHandler(
                 retryable=_always_retryable,
                 max_attempts=3,
@@ -293,12 +293,35 @@ class TestGeneralRetryHandler:
             )
 
     async def test_cap_must_be_at_least_base(self) -> None:
-        with pytest.raises(ValueError, match=r"cap .* must be >= base"):
+        with pytest.raises(
+            ValueError,
+            match=r"cap must be a finite number >= base",
+        ):
             GeneralRetryHandler(
                 retryable=_always_retryable,
                 max_attempts=3,
                 base=10.0,
                 cap=5.0,
+                event="test",
+            )
+
+    async def test_base_rejects_nan(self) -> None:
+        with pytest.raises(ValueError, match=r"base must be a finite"):
+            GeneralRetryHandler(
+                retryable=_always_retryable,
+                max_attempts=3,
+                base=float("nan"),
+                cap=1.0,
+                event="test",
+            )
+
+    async def test_cap_rejects_inf(self) -> None:
+        with pytest.raises(ValueError, match=r"cap must be a finite"):
+            GeneralRetryHandler(
+                retryable=_always_retryable,
+                max_attempts=3,
+                base=0.1,
+                cap=float("inf"),
                 event="test",
             )
 

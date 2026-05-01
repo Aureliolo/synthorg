@@ -430,7 +430,11 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(safe_error_description(exc)) from exc
+            # Controller-authored 4xx message so the response body
+            # never echoes backend exception class names / wording;
+            # full diagnostic detail stays in the warning log above.
+            msg = "Checkpoint not found"
+            raise NotFoundError(msg) from exc
         except QueryError as exc:
             logger.warning(
                 MEMORY_CHECKPOINT_DEPLOY_FAILED,
@@ -483,7 +487,8 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(safe_error_description(exc)) from exc
+            msg = "Checkpoint not found"
+            raise NotFoundError(msg) from exc
         except CheckpointRollbackUnavailableError as exc:
             # Operator-error / corrupt backup conditions; 422 better
             # reflects "rollback target invalid" than a generic 400.
@@ -495,7 +500,8 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(safe_error_description(exc)) from exc
+            msg = "Checkpoint rollback is unavailable"
+            raise ValidationError(msg) from exc
         except CheckpointRollbackCorruptError as exc:
             logger.warning(
                 MEMORY_CHECKPOINT_ROLLBACK_FAILED,
@@ -505,7 +511,8 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(safe_error_description(exc)) from exc
+            msg = "Checkpoint rollback data is corrupt"
+            raise ValidationError(msg) from exc
         return ApiResponse(data=updated)
 
     @delete(
@@ -544,7 +551,8 @@ class MemoryAdminController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(safe_error_description(exc)) from exc
+            msg = "Checkpoint not found"
+            raise NotFoundError(msg) from exc
         except QueryError as exc:
             logger.warning(
                 MEMORY_CHECKPOINT_DELETE_FAILED,
@@ -827,11 +835,13 @@ def _recommend_batch_size() -> int | None:
         # torch is optional -- absence is expected on CPU-only installs.
         return None
     except Exception as exc:
+        # SEC-1: drop ``exc_info=True``.  The full traceback bypasses
+        # ``safe_error_description`` and can leak environment paths /
+        # backend metadata; the redacted form is sufficient for triage.
         logger.warning(
             MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         return None
 

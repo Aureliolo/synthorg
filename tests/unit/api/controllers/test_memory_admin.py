@@ -239,7 +239,10 @@ class TestRecommendBatchSize:
         assert args[0] == MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED
         assert kwargs.get("error_type") == "RuntimeError"
         assert "CUDA driver unavailable" in kwargs.get("error", "")
-        assert kwargs.get("exc_info") is True
+        # ``exc_info`` is intentionally NOT set: the full traceback
+        # bypasses ``safe_error_description`` and can leak environment
+        # paths / backend metadata; SEC-1.
+        assert "exc_info" not in kwargs
 
 
 @pytest.mark.unit

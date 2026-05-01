@@ -31,6 +31,7 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_FETCH_FAILED,
@@ -185,10 +186,16 @@ class ArtifactController(Controller):
             except ValueError as exc:
                 valid = ", ".join(e.value for e in ArtifactType)
                 msg = f"Invalid artifact type: {type!r}. Valid values: {valid}"
+                # Validation rejection at the request boundary; route
+                # through ``API_VALIDATION_FAILED`` so query-shape
+                # rejections don't collapse into the
+                # ``PERSISTENCE_ARTIFACT_FETCH_FAILED`` bucket used for
+                # actual fetch failures.
                 logger.warning(
-                    PERSISTENCE_ARTIFACT_FETCH_FAILED,
-                    rejected_type=type,
-                    reason="invalid_artifact_type",
+                    API_VALIDATION_FAILED,
+                    field="type",
+                    rejected_value=type,
+                    reason=msg,
                 )
                 raise ValidationError(msg) from exc
 
@@ -496,10 +503,14 @@ class ArtifactController(Controller):
             # Catch-all so any backend / storage failure on the
             # download path leaves an operator-visible breadcrumb
             # alongside the standardized error path; the original
-            # exception still propagates with type intact.
+            # exception still propagates with type intact.  Route
+            # through ``PERSISTENCE_ARTIFACT_FETCH_FAILED`` (operator
+            # /storage outage) instead of ``CONTENT_MISSING`` (true 404)
+            # so the two cardinalities don't collapse on dashboards.
             logger.error(  # noqa: TRY400
-                PERSISTENCE_ARTIFACT_CONTENT_MISSING,
+                PERSISTENCE_ARTIFACT_FETCH_FAILED,
                 artifact_id=artifact_id,
+                operation="download",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 note="artifact_retrieve_unexpected",

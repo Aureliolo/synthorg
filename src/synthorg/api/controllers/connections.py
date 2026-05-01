@@ -4,19 +4,25 @@ CRUD endpoints for the external service connection catalog,
 including on-demand health checks.
 """
 
+import copy
 from typing import Any
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.types import (
+    NotBlankStr,  # noqa: TC001 -- Pydantic field type at runtime
+)
 from synthorg.integrations.connections.catalog import _UNSET
 from synthorg.integrations.connections.models import (
+    AuthMethod,
     Connection,
     ConnectionType,
     HealthReport,
@@ -46,53 +52,50 @@ from synthorg.observability.events.integrations import (
 # information about what connections exist and which fields are set.
 _REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 
-# Boundary allowlists for the two free-form ``dict[str, Any]`` payloads
-# this controller still accepts.  The catalog only consumes these keys;
-# any extra key in the request body is a client-side bug (typo, stale
-# field, fabricated capability) and rejecting it at the boundary means
-# the API never silently ACKs payloads it did not actually accept.
-_CREATE_CONNECTION_KEYS: frozenset[str] = frozenset(
-    {
-        "name",
-        "connection_type",
-        "auth_method",
-        "credentials",
-        "base_url",
-        "metadata",
-        "health_check_enabled",
-    },
-)
-_UPDATE_CONNECTION_KEYS: frozenset[str] = frozenset(
-    {
-        "base_url",
-        "metadata",
-        "health_check_enabled",
-    },
-)
-
 logger = get_logger(__name__)
 
 
-def _reject_unknown_keys(
-    data: dict[str, Any],
-    allowed: frozenset[str],
-) -> None:
-    """Raise ``ValidationError`` if ``data`` contains keys outside ``allowed``.
+class CreateConnectionRequest(BaseModel):
+    """Request body for ``POST /connections``.
 
-    Centralised so create / update share the same shape: log
-    ``API_VALIDATION_FAILED`` with the unknown keys before raising so
-    operators can spot client-side schema drift early.
+    ``extra="forbid"`` rejects unknown keys at the boundary so the API
+    never silently ACKs payloads it did not actually accept (typos,
+    fabricated capability flags, stale client schemas).  Field types
+    enforce the same shape the controller previously checked inline.
     """
-    unknown = sorted(set(data) - allowed)
-    if not unknown:
-        return
-    msg = f"Unsupported field(s): {', '.join(repr(k) for k in unknown)}"
-    logger.warning(
-        API_VALIDATION_FAILED,
-        unknown_fields=tuple(unknown),
-        reason=msg,
-    )
-    raise ValidationError(msg)
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    name: NotBlankStr = Field(max_length=128)
+    connection_type: ConnectionType
+    auth_method: AuthMethod = AuthMethod.API_KEY
+    credentials: dict[str, Any] = Field(default_factory=dict)
+    base_url: NotBlankStr | None = None
+    metadata: dict[str, Any] | None = None
+    health_check_enabled: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        # Persist the canonical trimmed form so ``"  github  "`` and
+        # ``"github"`` cannot become two distinct identities.  The
+        # ``NotBlankStr`` annotation already rejects whitespace-only
+        # input; this just normalises the surrounding spaces.
+        return v.strip()
+
+
+class UpdateConnectionRequest(BaseModel):
+    """Request body for ``PATCH /connections/{name}`` (partial update).
+
+    Each field is optional; absent fields keep their stored value.
+    ``extra="forbid"`` mirrors :class:`CreateConnectionRequest`.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    base_url: NotBlankStr | None = None
+    metadata: dict[str, Any] | None = None
+    health_check_enabled: bool | None = None
 
 
 class ConnectionsController(Controller):
@@ -163,83 +166,41 @@ class ConnectionsController(Controller):
     async def create_connection(
         self,
         state: State,
-        data: dict[str, Any],
+        data: CreateConnectionRequest,
     ) -> ApiResponse[Connection]:
         """Create a new connection.
 
-        Validates required fields and connection type before
-        delegating to the catalog so clients get a structured
-        400 instead of a 500 on malformed payloads.
+        Litestar runs Pydantic validation on
+        :class:`CreateConnectionRequest` before this handler executes;
+        unknown fields and shape mismatches surface as a structured 4xx
+        response automatically.  The handler body therefore only owns
+        the persistence-layer dispatch and the domain-error mapping.
         """
-        _reject_unknown_keys(data, _CREATE_CONNECTION_KEYS)
-        name = data.get("name")
-        if not isinstance(name, str) or not name.strip():
-            msg = "Field 'name' is required and must be a non-empty string"
-            logger.warning(API_VALIDATION_FAILED, field="name", reason=msg)
-            raise ValidationError(msg)
-        # Persist the canonical trimmed form so "  github  " and
-        # "github" cannot become two distinct identities and so the
-        # /{name} routes consistently address the stored row.
-        name = name.strip()
-
-        connection_type_raw = data.get("connection_type")
-        if not isinstance(connection_type_raw, str) or not connection_type_raw:
-            msg = "Field 'connection_type' is required"
-            logger.warning(
-                API_VALIDATION_FAILED,
-                field="connection_type",
-                reason=msg,
-            )
-            raise ValidationError(msg)
-        try:
-            connection_type = ConnectionType(connection_type_raw)
-        except ValueError as exc:
-            msg = f"Unknown connection_type '{connection_type_raw}'"
-            logger.warning(
-                API_VALIDATION_FAILED,
-                field="connection_type",
-                value=connection_type_raw,
-                reason=msg,
-            )
-            raise ValidationError(msg) from exc
-
-        credentials = data.get("credentials", {})
-        if not isinstance(credentials, dict):
-            msg = "Field 'credentials' must be an object"
-            logger.warning(API_VALIDATION_FAILED, field="credentials", reason=msg)
-            raise ValidationError(msg)
-
-        metadata = data.get("metadata")
-        if metadata is not None and not isinstance(metadata, dict):
-            msg = "Field 'metadata' must be an object if provided"
-            logger.warning(API_VALIDATION_FAILED, field="metadata", reason=msg)
-            raise ValidationError(msg)
-
-        health_check_enabled = data.get("health_check_enabled", True)
-        if not isinstance(health_check_enabled, bool):
-            msg = "Field 'health_check_enabled' must be a boolean"
-            logger.warning(
-                API_VALIDATION_FAILED,
-                field="health_check_enabled",
-                reason=msg,
-            )
-            raise ValidationError(msg)
-
+        # Defensively deepcopy ``credentials`` / ``metadata`` at the API
+        # boundary so the catalog can never observe (or be mutated by)
+        # subsequent caller-owned changes to the request payload.  The
+        # secret backend persists ``credentials`` in plaintext briefly
+        # before encryption, so a shared-reference write would be
+        # particularly dangerous here.
+        credentials_copy = copy.deepcopy(data.credentials)
+        metadata_copy = (
+            copy.deepcopy(data.metadata) if data.metadata is not None else None
+        )
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.create(
-                name=name,
-                connection_type=connection_type,
-                auth_method=data.get("auth_method", "api_key"),
-                credentials=credentials,
-                base_url=data.get("base_url"),
-                metadata=metadata,
-                health_check_enabled=health_check_enabled,
+                name=data.name,
+                connection_type=data.connection_type,
+                auth_method=data.auth_method.value,
+                credentials=credentials_copy,
+                base_url=data.base_url,
+                metadata=metadata_copy,
+                health_check_enabled=data.health_check_enabled,
             )
         except DuplicateConnectionError as exc:
             logger.warning(
                 API_RESOURCE_CONFLICT,
-                connection=name,
+                connection=data.name,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -247,7 +208,7 @@ class ConnectionsController(Controller):
         except InvalidConnectionAuthError as exc:
             logger.warning(
                 API_VALIDATION_FAILED,
-                connection=name,
+                connection=data.name,
                 field="auth_method",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -267,58 +228,33 @@ class ConnectionsController(Controller):
         self,
         state: State,
         name: str,
-        data: dict[str, Any],
+        data: UpdateConnectionRequest,
     ) -> ApiResponse[Connection]:
-        """Update mutable fields of a connection."""
-        _reject_unknown_keys(data, _UPDATE_CONNECTION_KEYS)
-        # Validate PATCH field types at the boundary so malformed
-        # payloads surface as a structured 400 instead of failing
-        # inside the catalog / Pydantic model layer.  Each branch logs
-        # ``API_VALIDATION_FAILED`` with the offending field before
-        # raising so malformed PATCH requests are visible alongside
-        # equivalent 4xx paths in this controller.
-        if "base_url" in data:
-            base_url_value = data["base_url"]
-            if base_url_value is not None and not isinstance(base_url_value, str):
-                msg = "Field 'base_url' must be a string or null"
-                logger.warning(
-                    API_VALIDATION_FAILED,
-                    connection_name=name,
-                    field="base_url",
-                    reason=msg,
-                )
-                raise ValidationError(msg)
-        metadata = data.get("metadata")
-        if metadata is not None and not isinstance(metadata, dict):
-            msg = "Field 'metadata' must be an object if provided"
-            logger.warning(
-                API_VALIDATION_FAILED,
-                connection_name=name,
-                field="metadata",
-                reason=msg,
-            )
-            raise ValidationError(msg)
-        health_check_enabled = data.get("health_check_enabled")
-        if health_check_enabled is not None and not isinstance(
-            health_check_enabled,
-            bool,
-        ):
-            msg = "Field 'health_check_enabled' must be a boolean if provided"
-            logger.warning(
-                API_VALIDATION_FAILED,
-                connection_name=name,
-                field="health_check_enabled",
-                reason=msg,
-            )
-            raise ValidationError(msg)
+        """Update mutable fields of a connection.
 
+        Litestar runs Pydantic validation on
+        :class:`UpdateConnectionRequest` before this handler executes;
+        unknown fields and shape mismatches surface as a structured 4xx
+        response automatically.
+        """
+        # Defensively deepcopy the request-sourced ``metadata`` mapping
+        # at the API boundary; same reasoning as ``create_connection``.
+        metadata_copy = (
+            copy.deepcopy(data.metadata) if data.metadata is not None else None
+        )
+        # ``model_fields_set`` distinguishes "field omitted" from "field
+        # explicitly set to ``None``" so a PATCH that drops ``base_url``
+        # can still null out the stored value via ``base_url=None``;
+        # when the field was omitted we forward ``_UNSET`` to keep the
+        # catalog's existing value.
+        base_url = data.base_url if "base_url" in data.model_fields_set else _UNSET
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.update(
                 name,
-                base_url=data.get("base_url", _UNSET),
-                metadata=metadata,
-                health_check_enabled=health_check_enabled,
+                base_url=base_url,
+                metadata=metadata_copy,
+                health_check_enabled=data.health_check_enabled,
             )
         except ConnectionNotFoundError as exc:
             logger.warning(

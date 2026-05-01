@@ -40,6 +40,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_ENCRYPTION_ERROR,
     SETTINGS_NOT_FOUND,
     SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
+    SETTINGS_VALIDATION_FAILED,
 )
 from synthorg.observability.sink_config_builder import (
     CONSOLE_SINK_ID,
@@ -442,7 +443,20 @@ class SettingsController(Controller):
             )
             raise NotFoundError(str(exc)) from exc
         except SettingValidationError as exc:
-            raise DomainValidationError(str(exc)) from exc
+            # Log the redacted exception detail server-side so operator
+            # triage retains the full reason; the 422 body keeps a
+            # client-safe generic message so backend exception text
+            # never leaks into the API response.
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                operation="update",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Invalid setting value"
+            raise DomainValidationError(msg) from exc
         except SettingsEncryptionError:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
