@@ -246,10 +246,17 @@ export default function WorkflowExecutionsPage() {
         confirmLabel="Cancel run"
         onOpenChange={(next) => { if (!next) setPendingCancel(null) }}
         onConfirm={async () => {
-          if (pendingCancel) {
-            await handleCancel(pendingCancel)
-            setPendingCancel(null)
-          }
+          // Capture the target id before awaiting so we can compare
+          // against the latest state after the cancel resolves. Without
+          // this, ``setPendingCancel(null)`` would close a *newly*
+          // opened dialog if the user re-targeted a different execution
+          // while the previous cancel was still in flight. The
+          // functional update only clears when the slot still holds
+          // our target.
+          const target = pendingCancel
+          if (!target) return
+          await handleCancel(target)
+          setPendingCancel((prev) => (prev === target ? null : prev))
         }}
       />
     </div>
