@@ -219,7 +219,7 @@ class HtmlParserTool(BaseWebTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"HTML parsing failed: {exc}",
+                content=f"HTML parsing failed: {safe_error_description(exc)}",
                 is_error=True,
             )
 

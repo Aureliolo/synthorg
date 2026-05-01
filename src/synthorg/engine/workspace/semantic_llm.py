@@ -236,6 +236,8 @@ class LlmSemanticAnalyzer:
                 )
         except asyncio.CancelledError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Drop exc_info + scrub the message -- provider
             # HTTPStatusError can carry the API key in str(exc), and

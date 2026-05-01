@@ -257,26 +257,21 @@ class TestReceiveWebhookEndToEnd:
     mocked :class:`State` so the full branch logic runs.
     """
 
-    async def _invoke_branch(
-        self,
+    @staticmethod
+    def _install_webhook_fakes(
         monkeypatch: pytest.MonkeyPatch,
         *,
         body_bytes: bytes,
-        request_headers: dict[str, str],
-    ) -> dict[str, Any]:
-        """Run ``receive_webhook`` once and return the captured kwargs.
+        captured: dict[str, Any],
+    ) -> None:
+        """Stub every collaborator ``receive_webhook`` calls.
 
-        Stubs every collaborator the controller calls (catalog,
-        signature verification, replay/freshness, payload-size guard,
-        bus publish) so the test surfaces exactly the
-        ``_publish_with_durable_idempotency`` arguments the orchestrator
-        assembled.
+        Replaces catalog lookup, payload size guard, signature
+        verification, timestamp parse, replay/freshness check, and
+        bus publish so the test isolates the orchestrator's branch
+        logic. ``captured`` accumulates the kwargs forwarded to
+        ``_publish_with_durable_idempotency`` for assertion.
         """
-        from synthorg.api.controllers.webhooks import (
-            WebhooksController,
-        )
-
-        captured: dict[str, Any] = {}
 
         async def fake_get_connection_or_404(
             state: Any,
@@ -327,46 +322,29 @@ class TestReceiveWebhookEndToEnd:
             captured.update(kwargs)
             return {"status": "accepted", "event_type": kwargs["event_type"]}
 
-        monkeypatch.setattr(
-            webhooks_module,
-            "_get_connection_or_404",
-            fake_get_connection_or_404,
-        )
-        monkeypatch.setattr(
-            webhooks_module,
-            "_enforce_max_payload",
-            fake_enforce_max_payload,
-        )
-        monkeypatch.setattr(
-            webhooks_module,
-            "_verify_signature",
-            fake_verify_signature,
-        )
-        monkeypatch.setattr(
-            webhooks_module,
-            "_parse_timestamp",
-            fake_parse_timestamp,
-        )
-        monkeypatch.setattr(
-            webhooks_module,
-            "_check_replay_or_freshness",
-            fake_check_replay_or_freshness,
-        )
-        monkeypatch.setattr(
-            webhooks_module,
-            "_publish_with_durable_idempotency",
-            spy_publish_with_durable_idempotency,
-        )
+        for name, fn in (
+            ("_get_connection_or_404", fake_get_connection_or_404),
+            ("_enforce_max_payload", fake_enforce_max_payload),
+            ("_verify_signature", fake_verify_signature),
+            ("_parse_timestamp", fake_parse_timestamp),
+            ("_check_replay_or_freshness", fake_check_replay_or_freshness),
+            ("_publish_with_durable_idempotency", spy_publish_with_durable_idempotency),
+        ):
+            monkeypatch.setattr(webhooks_module, name, fn)
 
-        # Litestar Request stub: the controller only reads
-        # ``request.headers`` after the payload guard, plus the
-        # connection-name/event-type path params it gets from
-        # arguments. We hand it a minimal object that returns the
-        # provided headers.
+    @staticmethod
+    def _build_state(request_headers: dict[str, str]) -> tuple[Any, Any]:
+        """Build minimal Litestar State + Request stubs.
+
+        Returns ``(state_dict, request_stub)``. The controller only
+        touches ``state["app_state"].connection_catalog`` /
+        ``config.integrations.webhooks.max_payload_bytes`` /
+        ``message_bus`` plus ``request.headers``.
+        """
+
         class _StubRequest:
             headers = request_headers
 
-        # AppState stub exposes only what the controller touches.
         class _ConfigWebhooks:
             max_payload_bytes = 1_000_000
 
@@ -382,21 +360,46 @@ class TestReceiveWebhookEndToEnd:
             message_bus = _FakeBus()
 
         state: dict[str, Any] = {"app_state": _AppState()}
+        return state, _StubRequest()
+
+    async def _invoke_branch(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        body_bytes: bytes,
+        request_headers: dict[str, str],
+    ) -> dict[str, Any]:
+        """Run ``receive_webhook`` once and return the captured kwargs.
+
+        Stubs every collaborator the controller calls (catalog,
+        signature verification, replay/freshness, payload-size guard,
+        bus publish) so the test surfaces exactly the
+        ``_publish_with_durable_idempotency`` arguments the
+        orchestrator assembled.
+        """
+        from synthorg.api.controllers.webhooks import WebhooksController
+
+        captured: dict[str, Any] = {}
+        self._install_webhook_fakes(
+            monkeypatch,
+            body_bytes=body_bytes,
+            captured=captured,
+        )
+        state, request_stub = self._build_state(request_headers)
+
         # Litestar's ``@post`` decorator wraps ``receive_webhook``
         # into an ``HTTPRouteHandler``; the original async function
         # is preserved at ``.fn`` and accepts ``self`` as the first
         # arg. Calling it directly bypasses Litestar's request
-        # parsing (which is what we want -- this test exercises the
-        # orchestrator's branch logic, not the framework wiring).
+        # parsing -- this test exercises the orchestrator's branch
+        # logic, not the framework wiring.
         receive_webhook_fn = WebhooksController.receive_webhook.fn
         from litestar import Router
 
-        self_stub = MagicMock(spec=Router)
-
         await receive_webhook_fn(
-            self_stub,
+            MagicMock(spec=Router),
             state=state,
-            request=_StubRequest(),
+            request=request_stub,
             connection_name="github-prod",
             event_type="issues.opened",
         )

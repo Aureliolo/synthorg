@@ -21,6 +21,7 @@ from synthorg.core.types import (
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     InvalidStateError,
+    SecretRetrievalError,
     TokenExchangeFailedError,
 )
 from synthorg.integrations.oauth.callback_handler import (
@@ -225,11 +226,15 @@ class OAuthController(Controller):
         try:
             credentials = await catalog.get_credentials(connection_name)
             has_access_token = bool(credentials.get("access_token"))
-        except Exception as exc:
+        except SecretRetrievalError as exc:
             # No traceback on a credential-lookup warning path --
             # frame-locals could carry decrypted secret material.
             # Operators get the type + scrubbed message via
-            # ``safe_error_description``.
+            # ``safe_error_description``. Narrow to
+            # ``SecretRetrievalError`` so an unexpected bug in
+            # ``catalog.get_credentials`` (KeyError, TypeError, etc.)
+            # surfaces as a 500 instead of being silently masked as
+            # "backend unavailable".
             logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 connection_name=connection_name,

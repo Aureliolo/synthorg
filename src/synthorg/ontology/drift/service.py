@@ -1,5 +1,6 @@
 """Drift detection background service."""
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger, safe_error_description
@@ -127,8 +128,6 @@ class DriftDetectionService:
         Returns:
             Drift reports for all entities.
         """
-        import asyncio  # noqa: PLC0415
-
         entities = await self._ontology.list_entities()
 
         results = await asyncio.gather(
@@ -139,19 +138,28 @@ class DriftDetectionService:
         reports: list[DriftReport] = []
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
-                # System-level failures must propagate so the caller
-                # can unwind cleanly; converting them to a logged
-                # warning would hide e.g. an interpreter-level
-                # ``MemoryError`` from operators while the batch
-                # quietly produced fewer reports than expected.
-                if isinstance(result, (MemoryError, RecursionError)):
+                # System-level failures and cancellation must
+                # propagate so the caller can unwind cleanly.
+                # ``asyncio.CancelledError`` is a ``BaseException``
+                # but NOT an ``Exception``; logging-and-continuing
+                # would silently break shutdown.
+                if isinstance(
+                    result,
+                    (MemoryError, RecursionError, asyncio.CancelledError),
+                ):
                     raise result
-                logger.error(
-                    ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
-                    entity_name=entities[i].name,
-                    error_type=type(result).__name__,
-                    error=safe_error_description(result),
-                )
+                if isinstance(result, Exception):
+                    logger.error(
+                        ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
+                        entity_name=entities[i].name,
+                        error_type=type(result).__name__,
+                        error=safe_error_description(result),
+                    )
+                else:
+                    # Any other ``BaseException`` subclass (e.g.
+                    # ``SystemExit``, future stdlib additions) must
+                    # propagate.
+                    raise result
             else:
                 reports.append(result)
         return tuple(reports)

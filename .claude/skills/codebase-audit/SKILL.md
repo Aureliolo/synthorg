@@ -153,7 +153,7 @@ Rules:
 
 ### Batch Execution
 
-Launch agents in 17 batches (A-Q). Most batches are ~10 agents each; batches M (121-123), N (124-130), and Q (151-153) are smaller because they cap each section at 153. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
+Launch agents in 18 batches (A-R). Most batches are ~10 agents each; batches M (121-123), N (124-130), Q (151-153), and R (154-155) are smaller because they cap each section at 155. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
 
 | Batch | Agents |
 |-------|----------|
@@ -174,8 +174,9 @@ Launch agents in 17 batches (A-Q). Most batches are ~10 agents each; batches M (
 | O | 131-140 (Wave 27 + first half of Wave 28) |
 | P | 141-150 (second half of Wave 28) |
 | Q | 151-153 (Waves 29 + 30) |
+| R | 154-155 (Wave 31) |
 
-Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (152 for `full`, fewer for scoped runs).
+Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (155 for `full`, fewer for scoped runs).
 
 ---
 
@@ -2895,7 +2896,7 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 **Required on every run.** Validation runs on all findings (critical, high, medium, low, and info) with no opt-out and no severity threshold. This skill is for huge audits; the false-positive filter must apply uniformly across severities so INDEX.md is not contaminated by un-validated noise.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (152 for `full`, fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (155 for `full`, fewer for scoped runs).
 
 ### Process
 
@@ -3123,7 +3124,7 @@ Also write `_audit/latest/findings.json` (machine-readable):
 {
   "run_id": "<run-id-timestamp>",
   "scope": "full",
-  "agents_launched": 152,
+  "agents_launched": 155,
   "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
   "findings": [
     {
@@ -3210,7 +3211,7 @@ Optional, best-effort. Each agent can have a golden-input test:
 
 A new command `/codebase-audit self-test` runs each agent against its golden input and verifies it finds the seeded issue. Catches prompt rot.
 
-Bootstrap: not all 152 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
+Bootstrap: not all 155 agents need golden tests upfront. Start with the 25 agents most prone to prompt drift (highest FP rates per metrics above, or doing semantic analysis). Add more over time. Tests are best-effort, not blocking.
 
 If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 

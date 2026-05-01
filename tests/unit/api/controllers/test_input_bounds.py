@@ -1,4 +1,4 @@
-"""Tests for #1682 input-bounds + typed-body DTOs on public controllers.
+"""Tests for input-bounds + typed-body DTOs on public controllers.
 
 Pin the contract at the model level: ``CreateConnectionRequest``,
 ``UpdateConnectionRequest``, and ``InitiateOAuthFlowRequest`` are
@@ -6,8 +6,8 @@ frozen, ``extra="forbid"``, and reject oversized strings.
 
 The Litestar route-level integration tests cover the 422 status
 mapping; these unit tests focus on the model contract so a future
-edit that loosens ``extra=`` or removes ``max_length`` is caught at
-unit-suite time.
+edit that loosens ``extra=`` or removes ``max_length`` is caught
+at unit-suite time.
 """
 
 import pytest

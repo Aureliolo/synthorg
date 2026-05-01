@@ -38,6 +38,8 @@ class TestClaimIdField:
 
     def test_default_claim_id_looks_like_uuid4(self) -> None:
         """Default factory yields a UUID4 string (8-4-4-4-12 hex)."""
+        import uuid
+
         rec = make_cost_record()
         # 36 chars: 32 hex + 4 hyphens, lowercase.
         expected_length = 36
@@ -46,6 +48,10 @@ class TestClaimIdField:
         assert [len(p) for p in parts] == [8, 4, 4, 4, 12]
         for part in parts:
             int(part, 16)  # raises ValueError if not hex
+        # Pin the UUID variant + version: a regression to v1/v7 would
+        # weaken the dedup key's randomness guarantees.
+        parsed = uuid.UUID(rec.claim_id)
+        assert parsed.version == 4
 
     def test_explicit_claim_id_is_preserved(self) -> None:
         """Caller-supplied claim_id is honoured (idempotent reconstruction)."""
