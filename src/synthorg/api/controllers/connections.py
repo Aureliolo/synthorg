@@ -52,6 +52,15 @@ _MAX_CRED_KEY_LEN = 128
 _MAX_CRED_VALUE_LEN = 8192
 _MAX_METADATA_KEY_LEN = 128
 _MAX_METADATA_VALUE_LEN = 4096
+# Map-entry caps complement the per-key/value length caps above so a
+# legitimate caller can't be tricked into receiving an
+# attacker-amplified payload of many small pairs (#1682, CodeRabbit
+# at connections.py:55). 128 entries is comfortably above the
+# largest realistic credential-bag (OAuth + provider metadata caps
+# at ~30 fields combined) without being so large it defeats the
+# point of bounding the input.
+_MAX_CRED_ITEMS = 128
+_MAX_METADATA_ITEMS = 128
 
 
 class CreateConnectionRequest(BaseModel):
@@ -78,7 +87,7 @@ class CreateConnectionRequest(BaseModel):
     credentials: dict[
         Annotated[NotBlankStr, Field(max_length=_MAX_CRED_KEY_LEN)],
         Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
-    ] = Field(default_factory=dict)
+    ] = Field(default_factory=dict, max_length=_MAX_CRED_ITEMS)
     # ``NotBlankStr`` rejects ``""`` so a client can't send a blank
     # ``base_url`` as an undocumented "clear" signal -- ``null`` is the
     # only sanctioned clear operation, matching the DTO contract
@@ -91,7 +100,7 @@ class CreateConnectionRequest(BaseModel):
             Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
         ]
         | None
-    ) = None
+    ) = Field(default=None, max_length=_MAX_METADATA_ITEMS)
     health_check_enabled: bool = True
 
 
@@ -129,7 +138,7 @@ class UpdateConnectionRequest(BaseModel):
             Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
         ]
         | None
-    ) = None
+    ) = Field(default=None, max_length=_MAX_METADATA_ITEMS)
     health_check_enabled: bool | None = None
 
 

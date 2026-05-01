@@ -197,25 +197,32 @@ class ConnectionCatalog:
             )
             try:
                 await self._repo.save(connection)
-            except Exception:
-                # Compensating cleanup: secret was already stored.
-                logger.exception(
+            except Exception as save_exc:
+                # SEC-1 (#1682, CodeRabbit at catalog.py:210): drop
+                # ``logger.exception`` on secret-bearing rollback
+                # paths -- the traceback frame-locals carry the
+                # secret_id and repo connection details. Use
+                # structured warning + safe_error_description.
+                logger.warning(
                     CONNECTION_CREATED,
                     connection_name=name,
-                    error="repo save failed, deleting orphaned secret",
+                    error_context="repo save failed, deleting orphaned secret",
+                    error_type=type(save_exc).__name__,
+                    error=safe_error_description(save_exc),
                 )
                 try:
                     await self._secret_backend.delete(secret_id)
                 except Exception as cleanup_exc:
-                    logger.exception(
+                    logger.warning(
                         CONNECTION_CREATED,
                         connection_name=name,
                         secret_id=secret_id,
-                        error=(
+                        error_context=(
                             "rollback delete failed; manual cleanup "
                             "required for orphaned secret"
                         ),
-                        cleanup_exception=str(cleanup_exc),
+                        error_type=type(cleanup_exc).__name__,
+                        error=safe_error_description(cleanup_exc),
                     )
                 raise
             self._invalidate_cache()
@@ -289,8 +296,20 @@ class ConnectionCatalog:
         async with lock:
             existing = await self.get_or_raise(name)
             updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
+            # Explicit ``is None`` check matches the documented
+            # three-way contract on ``UpdateConnectionRequest``:
+            # ``_UNSET`` skips, ``None`` clears, anything else
+            # overwrites. The previous truthiness check (``if
+            # base_url else None``) silently coerced the empty
+            # string into a clear, contradicting the DTO doc that
+            # promises only ``null`` clears (#1682, CodeRabbit at
+            # catalog.py:276). The DTO's ``NotBlankStr`` guard
+            # rejects ``""`` from API callers, but the catalog still
+            # has to handle non-DTO callers correctly.
             if base_url is not _UNSET:
-                updates["base_url"] = NotBlankStr(base_url) if base_url else None
+                updates["base_url"] = (
+                    None if base_url is None else NotBlankStr(base_url)
+                )
             if metadata is not _UNSET:
                 updates["metadata"] = metadata
             if health_check_enabled is not None:
@@ -507,17 +526,20 @@ class ConnectionCatalog:
             )
             try:
                 await self._repo.save(updated)
-            except Exception:
-                # Compensating cleanup: delete the freshly-written
-                # secret so we do not leak a bearer token when the
-                # repo row could not record it.
-                logger.exception(
+            except Exception as save_exc:
+                # SEC-1 (#1682, CodeRabbit at catalog.py:210): drop
+                # ``logger.exception`` on secret-bearing rollback;
+                # frame-locals on the traceback carry the
+                # ``new_secret_id`` and refresh-token bytes.
+                logger.warning(
                     OAUTH_TOKEN_EXCHANGED,
                     connection_name=name,
-                    error=(
+                    error_context=(
                         "repo save failed; deleting orphaned OAuth "
                         "secret to avoid leaking tokens"
                     ),
+                    error_type=type(save_exc).__name__,
+                    error=safe_error_description(save_exc),
                 )
                 try:
                     await self._secret_backend.delete(new_secret_id)
@@ -552,12 +574,19 @@ class ConnectionCatalog:
                             secret_id=old_ref.secret_id,
                         )
                 except Exception as del_exc:
+                    # SEC-1 (#1682, CodeRabbit at catalog.py:210):
+                    # secret-backend delete errors can carry the
+                    # backend's URL or internal token in the
+                    # exception text; scrub via
+                    # ``safe_error_description`` instead of raw
+                    # ``str(exc)``.
                     logger.warning(
                         OAUTH_TOKEN_EXCHANGED,
                         connection_name=name,
                         secret_id=old_ref.secret_id,
-                        error="failed to delete stale secret after rotation",
-                        cleanup_exception=str(del_exc),
+                        error_context=("failed to delete stale secret after rotation"),
+                        error_type=type(del_exc).__name__,
+                        error=safe_error_description(del_exc),
                     )
             self._invalidate_cache()
             logger.info(
