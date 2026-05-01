@@ -309,3 +309,7 @@ class TestSafeTaskIdSegment:
 
         assert _safe_task_id_segment("\n\t\r") == "___"
         assert _safe_task_id_segment(":::") == "___"
+        # The cleaned-or-"_" branch: only an empty input collapses to a
+        # single "_". Pin it explicitly so the fallback isn't deleted in
+        # a future "simplification" without surfacing here.
+        assert _safe_task_id_segment("") == "_"
