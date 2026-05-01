@@ -11,6 +11,7 @@ class SettingNamespace(StrEnum):
     """
 
     API = "api"
+    CLIENT = "client"
     COMPANY = "company"
     PROVIDERS = "providers"
     MEMORY = "memory"
@@ -25,6 +26,7 @@ class SettingNamespace(StrEnum):
     INTEGRATIONS = "integrations"
     META = "meta"
     NOTIFICATIONS = "notifications"
+    SIMULATIONS = "simulations"
     TOOLS = "tools"
     SETTINGS = "settings"
     DISPLAY = "display"

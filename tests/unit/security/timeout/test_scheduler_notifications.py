@@ -58,6 +58,7 @@ async def test_escalation_notification_failure_logs_error(
     scheduler = ApprovalTimeoutScheduler(
         approval_store=MagicMock(),
         timeout_checker=checker,
+        interval_seconds=60.0,
         notification_dispatcher=dispatcher,
     )
     monkeypatch.setattr(scheduler, "_notify_escalation", _raising_notify)
@@ -84,6 +85,7 @@ async def test_scheduler_stop_drains_pending_notifications() -> None:
     scheduler = ApprovalTimeoutScheduler(
         approval_store=MagicMock(),
         timeout_checker=MagicMock(),
+        interval_seconds=60.0,
         notification_dispatcher=None,
     )
 

@@ -35,6 +35,7 @@ from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
     resolve_sandbox_for_category,
 )
+from synthorg.tools.web.config import WebToolsConfig
 from synthorg.tools.web.html_parser import HtmlParserTool
 from synthorg.tools.web.http_request import HttpRequestTool
 
@@ -104,9 +105,14 @@ def _build_web_tools(
     network_policy: NetworkPolicy | None = None,
     search_provider: WebSearchProvider | None = None,
     max_response_bytes: int = 1_048_576,
-    request_timeout: float = 30.0,
+    request_timeout: float,
 ) -> tuple[BaseTool, ...]:
-    """Instantiate the built-in web tools."""
+    """Instantiate the built-in web tools.
+
+    ``request_timeout`` is operator-tunable; resolve via
+    ``ConfigResolver.get_float("tools", "web_request_timeout_seconds")``
+    at the call site or read from ``WebToolsConfig.request_timeout``.
+    """
     from synthorg.tools.web.web_search import WebSearchTool  # noqa: PLC0415
 
     tools: list[BaseTool] = [
@@ -317,6 +323,7 @@ def _build_analytics_tools(
 def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
+    web_request_timeout: float | None = None,
     git_clone_policy: GitCloneNetworkPolicy | None = None,
     sandbox: SandboxBackend | None = None,
     web_network_policy: NetworkPolicy | None = None,
@@ -340,6 +347,13 @@ def build_default_tools(  # noqa: PLR0913
 
     Args:
         workspace: Absolute path to the agent workspace root.
+        web_request_timeout: Maximum seconds an HTTP request issued by
+            a web tool may run before being cancelled.  When ``None``,
+            falls back to ``WebToolsConfig().request_timeout`` (the
+            documented default that mirrors the
+            ``tools.web_request_timeout_seconds`` setting).  Production
+            callers should resolve via ``ConfigResolver`` and pass the
+            value explicitly.
         git_clone_policy: Network policy for git clone SSRF
             prevention.  ``None`` uses the default (block all
             private IPs, empty hostname allowlist).
@@ -387,6 +401,16 @@ def build_default_tools(  # noqa: PLR0913
         CompactContextTool,
     )
 
+    # ``WebToolsConfig.request_timeout`` ships the documented default
+    # that mirrors the ``tools.web_request_timeout_seconds`` setting.
+    # Production callers should resolve via ``ConfigResolver`` and
+    # pass it explicitly; tests fall through to the documented default.
+    resolved_web_request_timeout = (
+        web_request_timeout
+        if web_request_timeout is not None
+        else WebToolsConfig().request_timeout
+    )
+
     all_tools: list[BaseTool] = [
         *_build_file_system_tools(workspace=workspace),
         *_build_git_tools(
@@ -397,6 +421,7 @@ def build_default_tools(  # noqa: PLR0913
         *_build_web_tools(
             network_policy=web_network_policy,
             search_provider=web_search_provider,
+            request_timeout=resolved_web_request_timeout,
         ),
         CompactContextTool(),
     ]
@@ -563,13 +588,21 @@ def build_default_tools_from_config(  # noqa: PLR0913
             ),
         )
 
-    # Extract web config
+    # Extract web config.  ``WebToolsConfig.request_timeout`` ships
+    # the documented default that mirrors the
+    # ``tools.web_request_timeout_seconds`` setting; the registry
+    # entry is the source of truth and overrides this default once
+    # the bridge composer is wired to overlay it on
+    # ``config.web``.
     web_policy: NetworkPolicy | None = None
+    web_request_timeout = WebToolsConfig().request_timeout
     if config.web is not None:
         web_policy = config.web.network_policy
+        web_request_timeout = config.web.request_timeout
 
     return build_default_tools(
         workspace=workspace,
+        web_request_timeout=web_request_timeout,
         git_clone_policy=config.git_clone,
         sandbox=vc_sandbox,
         web_network_policy=web_policy,

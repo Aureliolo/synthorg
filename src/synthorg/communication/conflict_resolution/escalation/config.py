@@ -44,6 +44,11 @@ class EscalationQueueConfig(BaseModel):
         sweeper_interval_seconds: How often the
             :class:`EscalationExpirationSweeper` runs.  Values below
             ``5`` are rejected to keep the background loop inexpensive.
+        reconnect_delay_seconds: Delay before the cross-instance
+            ``PostgresEscalationNotifySubscriber`` reconnects after
+            a connection drop.  Tunable via the
+            ``communication.escalation_subscriber_reconnect_delay_seconds``
+            setting.
         cross_instance_notify: Whether the escalation queue should
             publish/subscribe state-change signals across workers.
             ``auto`` enables LISTEN/NOTIFY when ``backend == "postgres"``
@@ -60,5 +65,6 @@ class EscalationQueueConfig(BaseModel):
     decision_strategy: Literal["winner", "hybrid"] = "winner"
     default_timeout_seconds: int | None = Field(default=None, ge=1)
     sweeper_interval_seconds: float = Field(default=30.0, ge=5.0)
+    reconnect_delay_seconds: float = Field(default=1.0, gt=0.0, le=60.0)
     cross_instance_notify: Literal["auto", "on", "off"] = "auto"
     notify_channel: NotifyChannel = Field(default="conflict_escalation_events")

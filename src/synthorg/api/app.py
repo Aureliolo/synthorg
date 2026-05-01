@@ -525,6 +525,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             escalation_config,
             _escalation_store,
             _escalation_registry,
+            reconnect_delay_seconds=escalation_config.reconnect_delay_seconds,
         ),
     )
 

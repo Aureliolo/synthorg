@@ -288,3 +288,21 @@ _r.register(
         yaml_path="engine.passive_drift_notify_threshold",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="shutdown_tool_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=(
+            "Maximum time the graceful-shutdown strategy waits for an"
+            " in-flight tool execution to complete before cancelling it."
+        ),
+        group="Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=600.0,
+        yaml_path="engine.shutdown_tool_timeout_seconds",
+    )
+)

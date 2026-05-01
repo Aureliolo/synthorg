@@ -94,3 +94,23 @@ _r.register(
         yaml_path="integrations.webhooks.receipt_retention_days",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="oauth_device_flow_poll_interval_seconds",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Initial polling interval for the OAuth device-code flow."
+            " The IETF spec lets the server widen this dynamically with"
+            " a slow_down response (the dynamic widening is preserved);"
+            " this setting controls only the starting cadence."
+        ),
+        group="OAuth",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=60,
+        yaml_path="integrations.oauth_device_flow_poll_interval_seconds",
+    )
+)

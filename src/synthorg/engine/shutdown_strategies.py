@@ -171,9 +171,12 @@ class FinishCurrentToolStrategy:
     def __init__(
         self,
         *,
-        tool_timeout_seconds: float = 60.0,
+        tool_timeout_seconds: float,
         cleanup_seconds: float = 5.0,
     ) -> None:
+        # ``tool_timeout_seconds`` is operator-tunable; resolve via
+        # ``ConfigResolver.get_float("engine",
+        # "shutdown_tool_timeout_seconds")`` at the call site.
         if tool_timeout_seconds <= 0:
             msg = f"tool_timeout_seconds must be positive, got {tool_timeout_seconds}"
             logger.warning(

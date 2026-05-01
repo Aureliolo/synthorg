@@ -177,3 +177,45 @@ _r.register(
         yaml_path="tools.subprocess.kill_grace_timeout_seconds",
     )
 )
+
+# ── Web tool HTTP request timeout ────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_request_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Maximum wall-clock time a web-tool HTTP request may run before"
+            " it is cancelled."
+        ),
+        group="Web Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=300.0,
+        yaml_path="tools.web_request_timeout_seconds",
+    )
+)
+
+# ── Git command timeout (overall execution bound) ────────────────
+# Distinct from ``git_kill_grace_timeout_seconds`` (post-SIGTERM grace);
+# this caps total git subprocess wall-clock.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="git_command_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=(
+            "Maximum wall-clock time a git subprocess invocation (clone,"
+            " fetch, commit, etc.) may run before it is cancelled."
+        ),
+        group="Git",
+        level=SettingLevel.ADVANCED,
+        min_value=10.0,
+        max_value=3600.0,
+        yaml_path="tools.git_command_timeout_seconds",
+    )
+)

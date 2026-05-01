@@ -116,11 +116,16 @@ async def _run_in_background(
                 error="No clients in pool",
             )
         return
+    resolver = app_state.config_resolver
+    task_timeout_sec = await resolver.get_float("simulations", "task_timeout_seconds")
+    review_timeout_sec = await resolver.get_float(
+        "simulations", "review_timeout_seconds"
+    )
     runner = SimulationRunner(
         config=SimulationRunnerConfig(
             max_concurrent_tasks=4,
-            task_timeout_sec=30.0,
-            review_timeout_sec=30.0,
+            task_timeout_sec=task_timeout_sec,
+            review_timeout_sec=review_timeout_sec,
         ),
         intake_engine=sim_state.intake_engine,
         feedback_sink=sim_state.feedback_store.record,

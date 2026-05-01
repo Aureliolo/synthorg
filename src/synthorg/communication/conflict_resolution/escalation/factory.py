@@ -105,6 +105,8 @@ def build_escalation_notify_subscriber(
     config: EscalationQueueConfig,
     store: EscalationQueueStore,
     registry: PendingFuturesRegistry,
+    *,
+    reconnect_delay_seconds: float,
 ) -> EscalationNotifySubscriber:
     """Construct the cross-instance notify subscriber for the queue.
 
@@ -121,6 +123,11 @@ def build_escalation_notify_subscriber(
             ``cross_instance_notify`` is enabled, the subscriber reuses
             its pool for LISTEN.
         registry: Process-local future registry to signal.
+        reconnect_delay_seconds: Delay before reconnecting after a
+            connection drop.  Resolve via
+            ``ConfigResolver.get_float("communication",
+            "escalation_subscriber_reconnect_delay_seconds")`` at the
+            call site.
 
     Returns:
         A concrete :class:`EscalationNotifySubscriber`.  Callers must
@@ -160,6 +167,7 @@ def build_escalation_notify_subscriber(
         store,
         registry,
         channel=config.notify_channel,
+        reconnect_delay_seconds=reconnect_delay_seconds,
     )
 
 

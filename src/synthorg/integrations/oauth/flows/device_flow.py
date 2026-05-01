@@ -51,9 +51,13 @@ class DeviceFlowResult:
         user_code: str,
         verification_uri: str,
         verification_uri_complete: str = "",
-        interval: int = 5,
+        interval: int,
         expires_in: int = 600,
     ) -> None:
+        # ``interval`` is operator-tunable; resolve via
+        # ``ConfigResolver.get_int("integrations",
+        # "oauth_device_flow_poll_interval_seconds")`` when the server
+        # response does not carry an explicit interval.
         self.device_code = device_code
         self.user_code = user_code
         self.verification_uri = verification_uri
@@ -224,7 +228,7 @@ class DeviceFlow:
         token_url: str,
         client_id: str,
         device_code: str,
-        interval: int = 5,
+        interval: int,
         max_wait_seconds: int = 600,
     ) -> OAuthToken:
         """Poll the token endpoint until the user authorizes.

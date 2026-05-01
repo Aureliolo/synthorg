@@ -348,3 +348,21 @@ _r.register(
         yaml_path="communication.escalation_sweeper_paused",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="escalation_subscriber_reconnect_delay_seconds",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "Delay before the Postgres LISTEN/NOTIFY escalation subscriber"
+            " retries after a connection drop."
+        ),
+        group="Escalation",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+        max_value=60.0,
+        yaml_path="communication.escalation_subscriber_reconnect_delay_seconds",
+    )
+)

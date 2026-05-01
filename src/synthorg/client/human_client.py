@@ -36,14 +36,16 @@ class HumanClient:
         *,
         profile: ClientProfile,
         queue: HumanInputQueue,
-        timeout: float = 60.0,
+        timeout: float,
     ) -> None:
         """Initialize the human client.
 
         Args:
             profile: Profile describing the client persona.
             queue: Transport used to reach the human operator.
-            timeout: Seconds to wait for a human response.
+            timeout: Seconds to wait for a human response.  Resolve via
+                ``ConfigResolver.get_float("client",
+                "human_response_timeout_seconds")`` at the call site.
 
         Raises:
             ValueError: If ``timeout`` is not positive.
