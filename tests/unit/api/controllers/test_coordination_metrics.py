@@ -177,10 +177,16 @@ class TestCoordinationMetricsController:
         )
         assert resp1.status_code == 200
         body1 = resp1.json()
+        # Explicit row count + set-size equality both gate the page:
+        # the row-count check catches a server that returns an empty
+        # body when one row was expected, and ``len(set) == len(data)``
+        # catches duplicated rows on a single page (a set-only check
+        # silently collapses duplicates).
+        assert len(body1["data"]) == 1
         cursor = body1["pagination"]["next_cursor"]
         assert cursor is not None
         page1_task_ids = {row["task_id"] for row in body1["data"]}
-        assert len(page1_task_ids) == 1
+        assert len(page1_task_ids) == len(body1["data"])
         resp = test_client.get(
             "/api/v1/coordination/metrics",
             params={"limit": 2, "cursor": cursor},
@@ -191,10 +197,12 @@ class TestCoordinationMetricsController:
         assert body["pagination"]["limit"] == 2
         assert len(body["data"]) == 2
         # Cursor-only contract: the second page must be disjoint from
-        # the first.  Without this assertion a backend that ignores the
-        # cursor and replays the first page (with the requested limit)
-        # would still pass on length alone.
+        # the first AND its rows must be unique within the page (a
+        # backend that replays the first page would fail the disjoint
+        # check; one that returns ``[same, same]`` would fail the
+        # uniqueness check).
         page2_task_ids = {row["task_id"] for row in body["data"]}
+        assert len(page2_task_ids) == len(body["data"])
         assert page1_task_ids.isdisjoint(page2_task_ids)
 
     def test_message_overhead_is_quadratic_surfaced(
