@@ -33,17 +33,18 @@
 #     names, run ids, and the exact ``gh run view`` invocation
 #     to inspect. Exception: the deny is downgraded to ALLOW when
 #     the local commits-ahead-of-origin look like a real fix
-#     attempt (commit subject prefixed with ``fix:`` or
-#     ``babysit``). This lets the babysit-loop's standard "fix and
-#     push" round flow through; non-fix pushes (chore-only, doc-
-#     only, force pushes) are blocked until either the CI failures
-#     are addressed or the override flag is set.
+#     attempt (commit subject matching ``^fix(\([^)]*\))?:``,
+#     i.e. the subject literally starts with ``fix:`` or
+#     ``fix(scope):``). This lets the babysit-loop's standard
+#     "fix and push" round flow through; non-fix pushes (chore-
+#     only, doc-only, force pushes) are blocked until either the
+#     CI failures are addressed or the override flag is set.
 #
-#     The ``fix:`` heuristic matches the commit subject prefix
-#     only (``^fix(\([^)]*\))?:``); a previous variant also
-#     accepted any subject containing the word ``babysit``,
-#     which let unrelated subjects (``docs: explain babysit
-#     flow``) slip through, and is no longer accepted.
+#     The ``babysit`` keyword is NOT accepted on its own: a prior
+#     variant also matched any subject containing the word
+#     ``babysit``, which let unrelated subjects (``docs: explain
+#     babysit flow``) slip through. The current heuristic is the
+#     strict ``^fix(\([^)]*\))?:`` prefix only.
 #
 # Override (one-shot, branch-bound, user-only):
 #   ``.claude/state/allow-failing-ci-push.flag`` whose first non-
@@ -175,11 +176,20 @@ if AHEAD_SUBJECTS="$(git log --format='%s' "origin/${BRANCH}..HEAD" 2>/dev/null)
 fi
 
 if [[ "${OVERRIDE}" -eq 1 || "${FIX_ATTEMPT}" -eq 1 ]]; then
-    # Allow path. Always print the failures to stderr-equivalent
-    # via the deny-style envelope's reason field so the model has
-    # them in context for the round even when the push is allowed.
-    # We use ``hookSpecificOutput`` with permissionDecision=allow
-    # so the message shows up but the push goes through.
+    # Allow path with an intentionally-visible single-line notice.
+    # The failures are surfaced to stderr alongside the authorised-
+    # by reason so the model carries CI context into the next round
+    # even though the push itself goes through. The two authorising
+    # rules emit distinct one-liners so logs make clear which path
+    # let the push land:
+    #   * FIX_ATTEMPT: a commit subject matching ``^fix(\([^)]*\))?:``
+    #     authorised the push (the babysit loop's normal flow).
+    #   * OVERRIDE=1: the user's one-shot
+    #     ``.claude/state/allow-failing-ci-push.flag`` authorised it
+    #     (and is consumed below).
+    # The notice is deliberately not silent: a red-CI push deserves
+    # an audit trail. Truly silent allow paths exit 0 with no output
+    # earlier in this script (e.g. non-PR push, no failures).
     FAIL_SUMMARY=$(printf '%s' "${ROLLUP_JSON}" \
         | jq -r '
             [.statusCheckRollup[]
@@ -187,12 +197,15 @@ if [[ "${OVERRIDE}" -eq 1 || "${FIX_ATTEMPT}" -eq 1 ]]; then
              | "  - " + .name + " :: " + (.targetUrl // "no targetUrl (rollup or external app)")]
             | join("\n")
         ' 2>/dev/null || echo "")
-    NOTICE="CI gate: PR #${PR_NUMBER} has ${FAILURE_COUNT} failing check(s) on the previous head. The push is authorised because the local commits look like a fix attempt (subject prefixed with 'fix:' or contains 'babysit'). Make sure the new commits actually address ALL of these failures before relying on the next CI run:\n${FAIL_SUMMARY}\n\nTo inspect each: gh run list --branch ${BRANCH} --json databaseId,name,conclusion --jq '.[]|select(.conclusion==\"failure\")' then gh run view <id> --log-failed."
+    if [[ "${OVERRIDE}" -eq 1 ]]; then
+        AUTH_REASON="OVERRIDE=1 allowed the push (.claude/state/allow-failing-ci-push.flag, consumed)"
+    else
+        AUTH_REASON="fix: commit subject allowed the push (matched ^fix(\\([^)]*\\))?:)"
+    fi
+    NOTICE="CI gate: PR #${PR_NUMBER} has ${FAILURE_COUNT} failing check(s) on the previous head. ${AUTH_REASON}. Make sure the new commits actually address ALL of these failures before relying on the next CI run:\n${FAIL_SUMMARY}\n\nTo inspect each: gh run list --branch ${BRANCH} --json databaseId,name,conclusion --jq '.[]|select(.conclusion==\"failure\")' then gh run view <id> --log-failed."
     if [[ "${OVERRIDE}" -eq 1 ]]; then
         rm -f "${OVERRIDE_FLAG}" 2>/dev/null || true
     fi
-    # Print the notice to stderr so it surfaces in the harness
-    # output without changing the permission decision.
     printf '%b\n' "${NOTICE}" >&2
     exit 0
 fi

@@ -74,17 +74,22 @@ class CreateConnectionRequest(BaseModel):
     name: NotBlankStr = Field(max_length=128)
     connection_type: ConnectionType
     auth_method: AuthMethod = AuthMethod.API_KEY
-    # ``dict[str, str]`` matches the catalog signature
+    # ``dict[NotBlankStr, ...]`` matches the catalog signature
     # (``catalog.create(..., credentials: dict[str, str], metadata:
     # dict[str, str])``) and the secret-backend reveal contract;
     # accepting non-string values would let a ``credentials["k"] = 42``
     # entry slip through and trigger ``SecretRetrievalError`` only at
-    # reveal time. ``max_length`` on the value type bounds payload size.
-    credentials: dict[str, Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)]] = (
-        Field(default_factory=dict)
-    )
+    # reveal time. The key type is ``NotBlankStr`` so blank or
+    # whitespace-only credential field names are rejected at the
+    # boundary rather than landing in the secret backend with a key
+    # that no reveal call can ever match. ``max_length`` on the value
+    # type bounds payload size.
+    credentials: dict[
+        NotBlankStr,
+        Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
+    ] = Field(default_factory=dict)
     base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
-    metadata: dict[str, str] | None = None
+    metadata: dict[NotBlankStr, str] | None = None
     health_check_enabled: bool = True
     # Per-connection override for the webhook-receipt cleanup window.
     # ``None`` falls back to the global ``integrations.webhook_receipt_retention_days``
@@ -111,11 +116,12 @@ class UpdateConnectionRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
-    # ``dict[str, str]`` matches the catalog signature and
-    # ``CreateConnectionRequest``; non-string metadata values are
-    # rejected at parse time rather than producing surprises later
-    # in the catalog / health-check path.
-    metadata: dict[str, str] | None = None
+    # Mirrors ``CreateConnectionRequest.metadata``: non-string values
+    # are rejected at parse time rather than producing surprises later
+    # in the catalog / health-check path, and ``NotBlankStr`` keys
+    # block blank/whitespace-only metadata field names from reaching
+    # the catalog.
+    metadata: dict[NotBlankStr, str] | None = None
     health_check_enabled: bool | None = None
     # Same tri-state semantics as ``CreateConnectionRequest``:
     # ``None`` clears the override (falls back to global default),

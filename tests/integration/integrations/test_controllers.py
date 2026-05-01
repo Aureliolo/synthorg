@@ -661,8 +661,70 @@ class TestOAuthController:
 
         from synthorg.api.controllers.oauth import InitiateOAuthFlowRequest
 
+        # DTO-level: the Pydantic model itself rejects a missing
+        # ``connection_name`` before any controller code runs.
         with pytest.raises(PydanticValidationError):
             InitiateOAuthFlowRequest()  # type: ignore[call-arg]
+
+        # HTTP-bound: posting an empty body to the real route through
+        # ``TestClient`` exercises the framework's request-body
+        # validation path, so a regression that bypasses Pydantic
+        # binding (e.g. switching the body annotation back to
+        # ``dict[str, Any]``) would surface here as a 200/500
+        # instead of the expected 422.
+        from litestar import Litestar, Router
+        from litestar.datastructures import State as LitestarState
+        from litestar.middleware import ASGIMiddleware
+
+        from synthorg.api.controllers.oauth import OAuthController
+        from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+
+        class _TestUser:
+            role = "ceo"
+            id = "test-user"
+            username = "test"
+            must_change_password = False
+
+        class _InjectUserMiddleware(ASGIMiddleware):
+            async def handle(
+                self,
+                scope: Any,
+                receive: Any,
+                send: Any,
+                next_app: Any,
+            ) -> None:
+                if scope["type"] == "http":
+                    scope["user"] = _TestUser()
+                await next_app(scope, receive, send)
+
+        from synthorg.api.state import AppState
+
+        app_state_stub = MagicMock(spec=AppState)
+        api_router = Router(
+            path="/api/v1",
+            route_handlers=[OAuthController],
+        )
+        app = Litestar(
+            route_handlers=[api_router],
+            state=LitestarState({"app_state": app_state_stub}),
+            middleware=[_InjectUserMiddleware()],
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
+        )
+        with TestClient(app) as http:
+            resp = http.post("/api/v1/oauth/initiate", json={})
+        # Litestar surfaces request-body Pydantic-bind failures as
+        # its built-in ``ValidationException`` which is mapped to
+        # HTTP 400 by default. The project's domain
+        # ``ValidationError`` maps to 422, but that handler runs
+        # after controller code, not at the body-bind stage. The
+        # important property here is that the empty body is rejected
+        # before the controller runs (any switch back to
+        # ``dict[str, Any]`` would let it through with a 500/404)
+        # AND that the response cites the missing field so the
+        # client can self-correct.
+        assert resp.status_code == 400
+        rendered = str(resp.json())
+        assert "connection_name" in rendered or "validation" in rendered.lower()
 
     async def test_status_returns_false_when_no_token(self) -> None:
         from synthorg.api.controllers.oauth import OAuthController

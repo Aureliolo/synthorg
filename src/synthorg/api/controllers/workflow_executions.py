@@ -29,6 +29,7 @@ from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_execution import (
+    WORKFLOW_EXEC_CANCEL_CONFLICT,
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
@@ -267,13 +268,18 @@ class WorkflowExecutionController(Controller):
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
         except (WorkflowExecutionError, VersionConflictError) as exc:
+            # Cancel was rejected (already-terminal status, version
+            # mismatch). Emit a distinct conflict event so audit
+            # streams and dashboards do NOT mistake a failed cancel
+            # for a successful one; the success path emits
+            # ``WORKFLOW_EXEC_CANCELLED`` only after the persistence
+            # write succeeds, below.
             scrubbed = safe_error_description(exc)
             logger.warning(
-                WORKFLOW_EXEC_CANCELLED,
+                WORKFLOW_EXEC_CANCEL_CONFLICT,
                 execution_id=execution_id,
                 error_type=type(exc).__name__,
                 error=scrubbed,
-                note="cancel conflict",
             )
             return Response(
                 content=ApiResponse[WorkflowExecution](error=scrubbed),
@@ -294,6 +300,11 @@ class WorkflowExecutionController(Controller):
                 status_code=500,
             )
 
+        logger.info(
+            WORKFLOW_EXEC_CANCELLED,
+            execution_id=execution_id,
+            cancelled_by=cancelled_by,
+        )
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
         )
