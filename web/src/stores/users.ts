@@ -118,12 +118,19 @@ export const useUsersStore = create<UsersState>()((set, get) => {
       // Use the functional setter so concurrent mutations (e.g. a
       // grantOrgRole that lands while this page is in flight) are
       // not clobbered by the pre-await ``state.users`` snapshot.
-      set((current) => ({
-        users: [...current.users, ...page.data],
-        nextCursor: page.nextCursor,
-        hasMore: page.hasMore,
-        loadingMore: false,
-      }))
+      // Recompute ``total`` from the merged list so the count does
+      // not go stale once additional pages land (the wire envelope
+      // is cursor-only and no longer carries a server-side total).
+      set((current) => {
+        const merged = [...current.users, ...page.data]
+        return {
+          users: merged,
+          total: merged.length,
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+          loadingMore: false,
+        }
+      })
     } catch (err) {
       log.error('Failed to fetch more users', sanitizeForLog(err))
       if (token !== listRequestToken) return

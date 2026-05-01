@@ -19,11 +19,19 @@ import type {
 
 const log = createLogger('workflows')
 
+// Page size for the cursor-paginated workflows list.  Centralised
+// so the initial fetch and load-more agree on the same limit (the
+// cursor-pagination contract requires it on every fetch-more call).
+const WORKFLOWS_PAGE_LIMIT = 200
+
 interface WorkflowsState {
   // List
   workflows: readonly WorkflowDefinition[]
   totalWorkflows: number
+  nextCursor: string | null
+  hasMore: boolean
   listLoading: boolean
+  listLoadingMore: boolean
   listError: string | null
 
   // Blueprints
@@ -37,6 +45,7 @@ interface WorkflowsState {
 
   // Actions
   fetchWorkflows: () => Promise<void>
+  fetchMoreWorkflows: () => Promise<void>
   loadBlueprints: () => Promise<void>
   createWorkflow: (data: CreateWorkflowDefinitionRequest) => Promise<WorkflowDefinition | null>
   createFromBlueprint: (data: CreateFromBlueprintRequest) => Promise<WorkflowDefinition | null>
@@ -81,10 +90,13 @@ function upsertWorkflow(
   })
 }
 
-export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
+export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
   workflows: [],
   totalWorkflows: 0,
+  nextCursor: null,
+  hasMore: false,
   listLoading: false,
+  listLoadingMore: false,
   listError: null,
 
   blueprints: [],
@@ -110,19 +122,65 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
 
   fetchWorkflows: async () => {
     const token = ++_listRequestToken
-    set({ listLoading: true, listError: null })
+    set({
+      listLoading: true,
+      listLoadingMore: false,
+      listError: null,
+      // Reset the cursor pair on a fresh fetch so a leftover cursor
+      // from a stale dataset cannot trigger a fetch-more against an
+      // already-replaced page.
+      nextCursor: null,
+      hasMore: false,
+    })
     try {
-      const result = await listWorkflows({ limit: 200 })
+      const result = await listWorkflows({ limit: WORKFLOWS_PAGE_LIMIT })
       if (isStaleListRequest(token)) return
       set({
         workflows: result.data,
         totalWorkflows: result.data.length,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
         listLoading: false,
       })
     } catch (err) {
       if (isStaleListRequest(token)) return
       log.warn('Failed to fetch workflows', sanitizeForLog(err))
       set({ listLoading: false, listError: getErrorMessage(err) })
+    }
+  },
+
+  fetchMoreWorkflows: async () => {
+    // Snapshot the request token so a concurrent ``fetchWorkflows``
+    // (which bumps the token) supersedes this load-more rather than
+    // appending stale page data onto the replacement dataset.
+    const token = _listRequestToken
+    const { hasMore, nextCursor, listLoading, listLoadingMore } = get()
+    if (!hasMore || !nextCursor) return
+    if (listLoading || listLoadingMore) return
+    set({ listLoadingMore: true, listError: null })
+    try {
+      const result = await listWorkflows({
+        cursor: nextCursor,
+        limit: WORKFLOWS_PAGE_LIMIT,
+      })
+      if (isStaleListRequest(token)) return
+      // Recompute ``totalWorkflows`` from the merged list so the count
+      // does not go stale once additional pages land (the wire envelope
+      // is cursor-only and no longer carries a server-side total).
+      set((state) => {
+        const merged = [...state.workflows, ...result.data]
+        return {
+          workflows: merged,
+          totalWorkflows: merged.length,
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
+          listLoadingMore: false,
+        }
+      })
+    } catch (err) {
+      if (isStaleListRequest(token)) return
+      log.warn('Failed to fetch more workflows', sanitizeForLog(err))
+      set({ listLoadingMore: false, listError: getErrorMessage(err) })
     }
   },
 

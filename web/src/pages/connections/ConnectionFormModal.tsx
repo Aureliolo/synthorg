@@ -240,13 +240,35 @@ export function ConnectionFormModal({
     setSubmitted(true)
     if (!validateAll() || !form.type || !spec) return
 
-    const retention = parseRetentionDays(form.webhookRetention)
-    if (!retention.ok) {
-      setErrors((prev) => ({
-        ...prev,
-        webhook_receipt_retention_days: retention.error,
-      }))
-      return
+    // Only validate / submit the webhook retention field for connection
+    // types that actually receive webhooks.  Without this guard, an
+    // invalid string typed into the field while the user was on a
+    // webhook-supporting type silently blocks form submission once
+    // the user switches to a non-webhook type (the field hides but
+    // ``parseRetentionDays`` still rejects the stale string).
+    const supportsWebhookRetention = connectionTypeUsesWebhookReceipts(form.type)
+    let retentionValue: number | null = null
+    if (supportsWebhookRetention) {
+      const retention = parseRetentionDays(form.webhookRetention)
+      if (!retention.ok) {
+        setErrors((prev) => ({
+          ...prev,
+          webhook_receipt_retention_days: retention.error,
+        }))
+        return
+      }
+      retentionValue = retention.value
+    } else {
+      // Clear any stale error left over from a webhook-supporting
+      // type the user backed out of -- otherwise the form's error
+      // panel would show a stale validation message even though the
+      // field is no longer rendered.
+      setErrors((prev) => {
+        if (prev.webhook_receipt_retention_days === undefined) return prev
+        const next = { ...prev }
+        delete next.webhook_receipt_retention_days
+        return next
+      })
     }
 
     if (mode === 'create') {
@@ -261,14 +283,18 @@ export function ConnectionFormModal({
         auth_method: spec.defaultAuthMethod,
         credentials,
         base_url: form.topLevel.base_url?.trim() || null,
-        webhook_receipt_retention_days: retention.value,
+        ...(supportsWebhookRetention
+          ? { webhook_receipt_retention_days: retentionValue }
+          : {}),
       }
       const result = await createConnection(body)
       if (result) onClose()
     } else if (connection) {
       const result = await updateConnection(connection.name, {
         base_url: form.topLevel.base_url?.trim() || null,
-        webhook_receipt_retention_days: retention.value,
+        ...(supportsWebhookRetention
+          ? { webhook_receipt_retention_days: retentionValue }
+          : {}),
       })
       if (result) onClose()
     }

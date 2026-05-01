@@ -116,9 +116,12 @@ class TestCoordinationMetricsController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        # Filter is honoured: every returned row carries agent_id="alice".
+        # Filter is honoured: exactly one ``alice`` record was seeded so
+        # the response must carry exactly one row.  ``len >= 1`` would
+        # silently pass if the endpoint started duplicating rows or
+        # returning extra ``alice`` records.
         assert isinstance(body["data"], list)
-        assert len(body["data"]) >= 1
+        assert len(body["data"]) == 1
         assert all(row.get("agent_id") == "alice" for row in body["data"])
 
     def test_filter_by_time_range(
