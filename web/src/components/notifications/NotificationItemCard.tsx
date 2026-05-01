@@ -1,5 +1,6 @@
 import { AlertTriangle, Check, Info, X, XCircle } from 'lucide-react'
-import { useNavigate } from 'react-router'
+import { Link } from 'react-router'
+import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
@@ -37,27 +38,87 @@ export function NotificationItemCard({
   onMarkRead,
   onDismiss,
 }: NotificationItemCardProps) {
-  const navigate = useNavigate()
   const Icon = SEVERITY_ICONS[item.severity]
 
-  // ``safeHref`` mirrors the URL-validation that ``handleClick`` was
-  // doing inline (only navigate to internal paths starting with a
-  // single slash). ``isActionable`` decides whether the main button
-  // does anything at all: an already-read notification with no valid
-  // internal href would otherwise become a focusable-but-inert
-  // keyboard stop.
+  // ``safeHref`` only accepts internal absolute paths (a single
+  // leading slash, not the protocol-relative ``//host`` form).
+  // External / malformed hrefs collapse to ``null`` so we never
+  // hand them to react-router's <Link>.
   const safeHref =
     item.href && item.href.startsWith('/') && !item.href.startsWith('//')
       ? item.href
       : null
   const isActionable = !item.read || safeHref !== null
 
-  function handleClick() {
-    if (!isActionable) return
+  // Three render modes for the main click target:
+  //   1. ``<Link>`` when the notification carries a safe internal
+  //      href: native anchor semantics (right-click open in new
+  //      tab, Cmd-click, etc.) and react-router takes care of the
+  //      transition. ``onClick`` still drives the mark-as-read.
+  //   2. ``<button>`` when the only side-effect is marking as read
+  //      (no navigation): native keyboard support without an
+  //      onKeyDown shim.
+  //   3. Plain ``<div>`` when the row is inert (already read AND no
+  //      valid href): no role, not focusable, no hover affordance.
+  //      This keeps screen readers from announcing a redundant
+  //      interactive element for a row that does nothing.
+  const innerContent: ReactNode = (
+    <>
+      <Icon
+        className={cn('mt-0.5 size-4 shrink-0', SEVERITY_COLORS[item.severity])}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1">
+        {/* Severity surfaced as an sr-only prefix so the accessible
+            name still mentions it without overriding the rich text
+            content the way a hardcoded ``aria-label`` would. The
+            click target's accessible name is otherwise derived
+            from the visible title + description + timestamp,
+            matching what the operator reads on screen. */}
+        <span className="sr-only">{`${item.severity} notification: `}</span>
+        <span className="block truncate text-sm font-medium text-foreground">
+          {item.title}
+        </span>
+        {item.description && (
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+            {item.description}
+          </span>
+        )}
+        <span className="mt-1 block text-xs text-muted-foreground/70">
+          {formatRelativeTime(item.timestamp)}
+        </span>
+      </span>
+    </>
+  )
+
+  const innerClassName = cn(
+    'flex flex-1 items-start gap-3 text-left -m-px',
+    isActionable ? 'cursor-pointer' : 'cursor-default',
+  )
+
+  function handleMarkOnNavigate() {
     if (!item.read) onMarkRead(item.id)
-    if (safeHref) {
-      void navigate(safeHref)
-    }
+  }
+
+  function handleMarkOnly() {
+    if (!item.read) onMarkRead(item.id)
+  }
+
+  let mainTarget: ReactNode
+  if (safeHref) {
+    mainTarget = (
+      <Link to={safeHref} onClick={handleMarkOnNavigate} className={innerClassName}>
+        {innerContent}
+      </Link>
+    )
+  } else if (!item.read) {
+    mainTarget = (
+      <button type="button" onClick={handleMarkOnly} className={innerClassName}>
+        {innerContent}
+      </button>
+    )
+  } else {
+    mainTarget = <div className={innerClassName}>{innerContent}</div>
   }
 
   return (
@@ -75,50 +136,7 @@ export function NotificationItemCard({
         !item.read && 'bg-accent/5',
       )}
     >
-      {/* Main click target as a real button: native keyboard support
-          (Enter/Space) without a manual onKeyDown shim, native disabled
-          semantics, and the right role for screen readers. The click
-          handler still does the mark-as-read + optional navigate; the
-          per-action icons (Mark / Dismiss) live as sibling buttons
-          outside this one to avoid invalid nested-button HTML.
-          ``disabled`` + ``tabIndex=-1`` keep the button out of the
-          keyboard tab order when the row has nothing actionable to do
-          (already read with no valid href). */}
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={!isActionable}
-        tabIndex={isActionable ? 0 : -1}
-        className={cn(
-          'flex flex-1 items-start gap-3 text-left -m-px',
-          isActionable ? 'cursor-pointer' : 'cursor-default',
-        )}
-      >
-        <Icon
-          className={cn('mt-0.5 size-4 shrink-0', SEVERITY_COLORS[item.severity])}
-          aria-hidden="true"
-        />
-        <span className="min-w-0 flex-1">
-          {/* Severity surfaced as an sr-only prefix so the accessible
-              name still mentions it without overriding the rich text
-              content the way a hardcoded ``aria-label`` would. The
-              button's accessible name is otherwise derived from the
-              visible title + description + timestamp, matching what
-              the operator reads on screen. */}
-          <span className="sr-only">{`${item.severity} notification: `}</span>
-          <span className="block truncate text-sm font-medium text-foreground">
-            {item.title}
-          </span>
-          {item.description && (
-            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-              {item.description}
-            </span>
-          )}
-          <span className="mt-1 block text-xs text-muted-foreground/70">
-            {formatRelativeTime(item.timestamp)}
-          </span>
-        </span>
-      </button>
+      {mainTarget}
 
       <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         {!item.read && (

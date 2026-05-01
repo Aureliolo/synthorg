@@ -15,6 +15,8 @@ import { ProgressIndicator } from '@/components/ui/progress-indicator'
 import { SectionCard } from '@/components/ui/section-card'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SelectField } from '@/components/ui/select-field'
+import { StatusBadge } from '@/components/ui/status-badge'
+import type { AgentRuntimeStatus } from '@/lib/utils'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
@@ -27,6 +29,20 @@ import {
 } from '@/api/endpoints/webhooks'
 
 const log = createLogger('WebhookReceiptsPage')
+
+// Backend ``WebhookReceipt.status`` is a free-form string; map known
+// values onto the four-tone AgentRuntimeStatus the StatusBadge
+// understands. Anything unrecognised falls back to ``idle`` so the
+// dot still renders without a misleading colour.
+function mapWebhookStatus(status: string): AgentRuntimeStatus {
+  const lower = status.toLowerCase()
+  if (lower === 'delivered' || lower === 'processed' || lower === 'success') {
+    return 'active'
+  }
+  if (lower === 'failed' || lower === 'error') return 'error'
+  if (lower === 'rejected' || lower === 'cancelled') return 'offline'
+  return 'idle'
+}
 
 export default function WebhookReceiptsPage() {
   const { connections } = useConnectionsData()
@@ -58,10 +74,19 @@ export default function WebhookReceiptsPage() {
   // issued id can be compared against; a mismatch unambiguously
   // marks the response as stale.
   const requestSeqRef = useRef(0)
+  // Latest connection name, mirrored into a ref so the in-flight
+  // reload can compare against the most recent dropdown value at
+  // settle time. The sequence guard alone leaves a window between
+  // selection change and the next ``reload`` call where a still-
+  // pending request could pass the sequence check; the selection-
+  // ref check closes that window.
+  const latestSelectedRef = useRef<string>(selected)
+  latestSelectedRef.current = selected
 
   // If the operator changes the selection mid-flight, the older
   // request's response is dropped: the captured ``requestId`` no
-  // longer matches ``requestSeqRef.current`` when the await resolves.
+  // longer matches ``requestSeqRef.current`` AND/OR the captured
+  // ``requestedFor`` no longer matches the latest selection.
   // Without this guard, switching from connection A to B during a
   // slow A response would render A's receipts under B's label.
   const reload = useCallback(async () => {
@@ -71,12 +96,18 @@ export default function WebhookReceiptsPage() {
     const requestId = requestSeqRef.current
     setLoading(true)
     setError(null)
+    function isStale(): boolean {
+      return (
+        requestId !== requestSeqRef.current
+        || latestSelectedRef.current !== requestedFor
+      )
+    }
     try {
       const rows = await listWebhookActivity(requestedFor)
-      if (requestId !== requestSeqRef.current) return
+      if (isStale()) return
       setEntries(rows)
     } catch (err) {
-      if (requestId !== requestSeqRef.current) return
+      if (isStale()) return
       const message = getErrorMessage(err)
       // SEC-1: connectionName is operator-controlled (URL / dropdown
       // value); sanitize before structured logging.
@@ -86,7 +117,7 @@ export default function WebhookReceiptsPage() {
       })
       setError(message)
     } finally {
-      if (requestId === requestSeqRef.current) setLoading(false)
+      if (!isStale()) setLoading(false)
     }
   }, [selected])
 
@@ -185,8 +216,14 @@ export default function WebhookReceiptsPage() {
                     <td className="py-2 pr-4 font-mono text-xs">{formatDateTime(row.received_at)}</td>
                     <td className="py-2 pr-4 text-foreground">{row.event_type || '-'}</td>
                     <td className="py-2 pr-4">
-                      <span className="rounded-md border border-border bg-card px-2 py-0.5 text-xs uppercase text-text-secondary">
-                        {row.status}
+                      <span className="inline-flex items-center gap-1.5">
+                        <StatusBadge
+                          status={mapWebhookStatus(row.status)}
+                          ariaLabel={`Receipt status: ${row.status}`}
+                        />
+                        <span className="text-xs uppercase text-text-secondary">
+                          {row.status}
+                        </span>
                       </span>
                     </td>
                     <td className="py-2 pr-4 font-mono text-xs text-text-secondary">

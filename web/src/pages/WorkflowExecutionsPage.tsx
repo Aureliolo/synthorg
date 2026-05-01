@@ -14,6 +14,8 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { ProgressIndicator } from '@/components/ui/progress-indicator'
 import { SectionCard } from '@/components/ui/section-card'
+import { StatusBadge } from '@/components/ui/status-badge'
+import type { AgentRuntimeStatus } from '@/lib/utils'
 import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
@@ -34,6 +36,19 @@ const TERMINAL_STATUSES = new Set<WorkflowExecution['status']>([
   'cancelled',
 ])
 
+// Map the workflow execution lifecycle onto the four-tone
+// AgentRuntimeStatus that ``StatusBadge`` understands. ``running``
+// maps to active (live, in flight), ``completed`` to active too
+// (terminal-success), ``failed`` to error, ``cancelled`` to offline
+// (terminal-but-not-an-error), ``pending`` to idle.
+const STATUS_BADGE_MAP: Record<WorkflowExecution['status'], AgentRuntimeStatus> = {
+  pending: 'idle',
+  running: 'active',
+  completed: 'active',
+  failed: 'error',
+  cancelled: 'offline',
+}
+
 export default function WorkflowExecutionsPage() {
   const { id } = useParams<{ id: string }>()
   const [executions, setExecutions] = useState<readonly WorkflowExecution[]>([])
@@ -49,14 +64,26 @@ export default function WorkflowExecutionsPage() {
   // own id, the ref always reads the latest issued one, and a
   // mismatch unambiguously identifies a stale response.
   const requestSeqRef = useRef(0)
+  // Latest workflow id, mirrored into a ref so the in-flight reload
+  // can compare against the most recent route param at settle time.
+  // The sequence guard alone leaves a window between the route
+  // change and the next ``reload`` call where a still-pending
+  // request could pass the sequence check and write the previous
+  // workflow's rows into the new workflow's view; the id-ref check
+  // closes that window by demanding the in-flight ``requestedFor``
+  // still match the latest route param.
+  const latestIdRef = useRef<string | undefined>(id)
+  latestIdRef.current = id
 
   // When the operator navigates between workflows quickly (URL
   // changes drive ``id``), an in-flight response for the previous
   // workflow could otherwise land in the new workflow's table.
   // ``setExecutions([])`` clears the previous workflow's rows
   // immediately so the operator sees a clean transition instead of
-  // stale data + spinner; the sequence guard drops responses whose
-  // captured ``requestId`` no longer matches the latest issued one.
+  // stale data + spinner; the dual guard (sequence + id ref) drops
+  // responses whose captured ``requestId`` no longer matches the
+  // latest issued one OR whose captured ``requestedFor`` no longer
+  // matches the latest route param.
   const reload = useCallback(async () => {
     if (!id) return
     const requestedFor = id
@@ -65,12 +92,18 @@ export default function WorkflowExecutionsPage() {
     setExecutions([])
     setLoading(true)
     setError(null)
+    function isStale(): boolean {
+      return (
+        requestId !== requestSeqRef.current
+        || latestIdRef.current !== requestedFor
+      )
+    }
     try {
       const rows = await listWorkflowExecutions(requestedFor)
-      if (requestId !== requestSeqRef.current) return
+      if (isStale()) return
       setExecutions(rows)
     } catch (err) {
-      if (requestId !== requestSeqRef.current) return
+      if (isStale()) return
       const message = getErrorMessage(err)
       // SEC-1: workflowId is URL-controlled, sanitize.
       log.error('listWorkflowExecutions failed', {
@@ -79,7 +112,7 @@ export default function WorkflowExecutionsPage() {
       })
       setError(message)
     } finally {
-      if (requestId === requestSeqRef.current) setLoading(false)
+      if (!isStale()) setLoading(false)
     }
   }, [id])
 
@@ -163,7 +196,11 @@ export default function WorkflowExecutionsPage() {
               return (
                 <li key={row.id} className="flex items-center gap-4 py-2">
                   <span className="font-mono text-xs text-foreground">{row.id.slice(0, 8)}</span>
-                  <span className="rounded-md border border-border bg-card px-2 py-0.5 text-xs uppercase tracking-wide text-text-secondary">
+                  <StatusBadge
+                    status={STATUS_BADGE_MAP[row.status]}
+                    ariaLabel={`Execution status: ${row.status}`}
+                  />
+                  <span className="text-xs uppercase tracking-wide text-text-secondary">
                     {row.status}
                   </span>
                   <span className="flex-1 text-xs text-text-secondary">

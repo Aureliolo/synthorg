@@ -337,6 +337,7 @@ Failure handling: if a gate fails, fix the failure in this round (don't push bro
 
 1. Update `state.json`:
    - `round += 1`
+   - **If `current_head_sha != state.last_head_sha`:** clear `state.last_merge_attempt_headRefOid = ""` so the next time Phase 3 reaches convergence on this branch, the merge guard does not block a fresh attempt against the new head. Without this reset the merge would only ever fire once per babysit lifetime, regardless of how many later commits land. Do this BEFORE updating `last_head_sha` so the comparison is against the previous tick's value.
    - `last_head_sha = current_head_sha`
    - `last_review_id = max(review.id, last_review_id)` (same for the two comment streams)
    - `last_action_at = <ISO-now>`
