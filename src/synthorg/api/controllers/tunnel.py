@@ -46,7 +46,12 @@ class TunnelController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ServiceUnavailableError(str(exc)) from exc
+            # SEC-1 (#1682): the tunnel provider's exception text can
+            # carry ngrok URLs / auth-token fragments. Surface a
+            # stable generic message to the client; details land in
+            # the scrubbed log above.
+            client_msg = "Tunnel service is unavailable"
+            raise ServiceUnavailableError(client_msg) from exc
         logger.info(
             TUNNEL_STARTED,
             public_url=url,
@@ -73,7 +78,9 @@ class TunnelController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ServiceUnavailableError(str(exc)) from exc
+            # SEC-1 (#1682): same client-facing redaction as ``start``.
+            client_msg = "Tunnel service is unavailable"
+            raise ServiceUnavailableError(client_msg) from exc
         logger.info(TUNNEL_STOPPED)
         return ApiResponse(data=None)
 

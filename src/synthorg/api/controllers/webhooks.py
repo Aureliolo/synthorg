@@ -467,7 +467,16 @@ class WebhooksController(Controller):
             headers=headers,
         )
 
-        nonce = headers.get("x-nonce") or headers.get("x-request-id")
+        # CodeRabbit #1682: a blank/whitespace ``x-nonce`` header
+        # must be treated as missing -- otherwise the empty string
+        # bypasses the body-SHA256 fallback and lands in the
+        # idempotency table as a meaningless key. ``.strip()``
+        # collapses both shapes (header absent / header empty) into
+        # ``None`` so the synthesised body-hash key is used.
+        raw_nonce = headers.get("x-nonce") or headers.get("x-request-id")
+        nonce = raw_nonce.strip() if raw_nonce else None
+        if not nonce:
+            nonce = None
         timestamp = _parse_timestamp(headers, connection_name=connection_name)
         _check_replay_or_freshness(
             state=state,

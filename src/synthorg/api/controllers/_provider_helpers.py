@@ -52,7 +52,7 @@ async def enrich_with_usage(
         logger.warning(
             API_PROVIDER_USAGE_ENRICHMENT_FAILED,
             provider=name,
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            error_type=type(exc).__qualname__,
         )
         return summary

@@ -502,12 +502,18 @@ class MessageBusBridge:
                     if isinstance(result, MemoryError | RecursionError):
                         raise result
                     if isinstance(result, BaseException):
+                        # SEC-1 (#1682): ``exc_info=<exception>`` emits
+                        # the same traceback frame-locals as
+                        # ``exc_info=True`` per the Python logging
+                        # contract, undoing the scrub from
+                        # ``safe_error_description``. Operators get
+                        # the type + scrubbed message; tracebacks are
+                        # not attached on shutdown-warning paths.
                         logger.warning(
                             API_APP_SHUTDOWN,
                             component="bus_bridge",
                             error_type=type(result).__name__,
                             error=safe_error_description(result),
-                            exc_info=result,
                         )
             self._tasks.clear()
             self._running = False

@@ -146,7 +146,12 @@ class TestReportGeneratorTool:
             }
         )
         assert result.is_error
-        assert "query failed" in result.content
+        # SEC-1 (#1682): the tool result now surfaces a stable
+        # generic message; raw exception text would leak DB
+        # connection strings on real failures. Operators see the
+        # scrubbed detail in the ANALYTICS_TOOL_REPORT_FAILED log.
+        assert "Report generation failed" in result.content
+        assert "query failed" not in result.content
 
     def test_parameters_schema_required_fields(
         self,

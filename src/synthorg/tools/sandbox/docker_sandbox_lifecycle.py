@@ -49,10 +49,14 @@ class DockerSandboxLifecycleMixin:
         try:
             return await self._collect_logs(container_obj)
         except Exception as exc:
+            # SEC-1 (#1682): aiodocker exceptions can carry the
+            # Docker socket path or registry auth header in str(exc).
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 container_id=container_id[:12],
-                error=f"Log collection failed: {exc}",
+                reason="log_collection_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ("", "")
 

@@ -214,16 +214,23 @@ class TestLlmCalibrationSamplerWraps:
             recorded_at=_FIXED_TIME,
             interaction_summary="conversation summary text",
         )
-        prompt = sampler._build_prompt(record)
-
-        assert wrap_untrusted(TAG_TASK_DATA, "conversation summary text") in prompt
-        # Metrics block is plain text outside the fence.
-        assert "delegation_success: not observed" in prompt
+        # SEC-1: the user-prompt body carries the wrapped summary
+        # and the bounded metrics block; the directive itself lives
+        # in the SYSTEM message header (asserted separately below).
+        user_prompt = sampler._build_user_prompt(record)
+        assert wrap_untrusted(TAG_TASK_DATA, "conversation summary text") in user_prompt
+        assert "delegation_success: not observed" in user_prompt
         # No more brace-doubling artefacts.
-        assert "{{" not in prompt
-        assert "---BEGIN SUMMARY---" not in prompt
-        # Directive is appended somewhere in the prompt.
-        assert untrusted_content_directive((TAG_TASK_DATA,)) in prompt
+        assert "{{" not in user_prompt
+        assert "---BEGIN SUMMARY---" not in user_prompt
+        # The directive is on the SYSTEM header constant, not on the
+        # user-prompt payload (CodeRabbit critical at #1682:55).
+        assert untrusted_content_directive((TAG_TASK_DATA,)) not in user_prompt
+        from synthorg.hr.performance.llm_calibration_sampler import (
+            _SYSTEM_PROMPT_HEADER,
+        )
+
+        assert untrusted_content_directive((TAG_TASK_DATA,)) in _SYSTEM_PROMPT_HEADER
 
     def test_build_prompt_escapes_closing_tag_breakout(self) -> None:
         """A literal ``</task-data>`` inside the summary cannot escape."""
@@ -245,7 +252,7 @@ class TestLlmCalibrationSamplerWraps:
             recorded_at=_FIXED_TIME,
             interaction_summary=attacker,
         )
-        prompt = sampler._build_prompt(record)
+        prompt = sampler._build_user_prompt(record)
         # Exactly one closing fence (the wrapper's).
         assert prompt.count("</task-data>") == 1
 

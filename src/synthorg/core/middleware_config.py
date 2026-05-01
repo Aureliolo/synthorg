@@ -61,13 +61,17 @@ class AuthorityDeferenceConfig(BaseModel):
             try:
                 re.compile(pattern)
             except re.error as exc:
-                msg = f"Invalid regex pattern {pattern!r}: {exc}"
+                # SEC-1 (#1682): re.error.msg can include offending
+                # regex source which the operator-supplied pattern
+                # might quote a credential into; scrub before
+                # surfacing in the message field too.
+                scrubbed = safe_error_description(exc)
+                msg = f"Invalid regex pattern {pattern!r}: {scrubbed}"
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
-                    message=msg,
                     pattern=pattern,
                     error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                    error=scrubbed,
                 )
                 raise ValueError(msg) from exc
         return self

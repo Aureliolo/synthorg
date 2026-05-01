@@ -398,7 +398,12 @@ class CompositeBackend:
                             id(backend),
                             "?",
                         )
-                        errors.append(f"{name}: {exc}")
+                        # SEC-1 (#1682): the ``errors`` list flows
+                        # into the aggregate ``MemoryRetrievalError``
+                        # and out to higher layers; scrub the
+                        # exception text so backend connection
+                        # strings don't leak via the aggregate.
+                        errors.append(f"{name}: {safe_error_description(exc)}")
                         logger.warning(
                             MEMORY_COMPOSITE_FANOUT_PARTIAL,
                             operation="retrieve",

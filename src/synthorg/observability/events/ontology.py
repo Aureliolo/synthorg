@@ -129,6 +129,9 @@ ONTOLOGY_DRIFT_CHECK_COMPLETED: Final[str] = "ontology.drift.check_completed"
 ONTOLOGY_DRIFT_DETECTED: Final[str] = "ontology.drift.detected"
 """Semantic drift detected for entity above threshold."""
 
+ONTOLOGY_DRIFT_DETECT_FAILED: Final[str] = "ontology.drift.detect_failed"
+"""Drift detection strategy raised; report could not be produced."""
+
 ONTOLOGY_DRIFT_STORE_WRITE_FAILED: Final[str] = "ontology.drift.store_write_failed"
 """Drift report repository failed to persist a report."""
 

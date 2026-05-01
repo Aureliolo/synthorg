@@ -134,10 +134,15 @@ class WorkspaceIsolationService:
                     workspace=ws,
                 )
             except Exception as exc:
+                # SEC-1 (#1682): rollback cleanup errors can wrap
+                # filesystem / DB exceptions whose str() embeds
+                # paths or connection strings.
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,
                     workspace_id=ws.workspace_id,
-                    error=f"Rollback cleanup failed: {exc}",
+                    reason="rollback_cleanup_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     async def merge_group(

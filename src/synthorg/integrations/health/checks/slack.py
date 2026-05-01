@@ -67,15 +67,21 @@ class SlackHealthCheck:
         try:
             credentials = await self._catalog.get_credentials(connection.name)
         except Exception as exc:
+            # SEC-1 (#1682): the secret-backend exception text can
+            # carry encrypted token blobs; scrub before logging /
+            # surfacing.
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
-                error=f"credential resolution failed: {exc}",
+                reason="credential_resolution_failed",
+                error_type=type(exc).__name__,
+                error=scrubbed,
             )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
-                error_detail=f"credential resolution failed: {exc}",
+                error_detail=f"credential resolution failed: {scrubbed}",
                 checked_at=now,
             )
         token = credentials.get("token")

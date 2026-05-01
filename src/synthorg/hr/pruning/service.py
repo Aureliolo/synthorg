@@ -609,12 +609,16 @@ class PruningService:
                 await callback(record)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
+                # SEC-1 (#1682): no traceback on the notification
+                # callback path -- frame-locals could carry the
+                # ``record`` body the callback was about to deliver.
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     agent_id=agent_id,
-                    error="notification callback failed",
-                    exc_info=True,
+                    reason="notification callback failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     def _handle_rejected(self, item: ApprovalItem) -> None:

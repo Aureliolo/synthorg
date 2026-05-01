@@ -218,12 +218,14 @@ class ProceduralMemoryProposer:
             )
             return None
         except Exception as exc:
+            # SEC-1 (#1682): drop exc_info + scrub the message --
+            # provider exceptions can carry the API key in str(exc).
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
                 task_id=payload.task_id,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="unexpected_error",
-                exc_info=True,
             )
             return None
 

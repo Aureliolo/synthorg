@@ -265,12 +265,16 @@ class BackupService(BackupServiceArchiveMixin):
 
         try:
             await self._retention.prune()
-        except Exception:
-            logger.error(
+        except Exception as exc:
+            # SEC-1 (#1682): drop exc_info on retention failure so the
+            # filesystem path / connection details that ``str(exc)``
+            # would carry don't leak via the traceback frame-locals.
+            logger.error(  # noqa: TRY400 -- SEC-1 fail-loud, no traceback
                 BACKUP_RETENTION_FAILED,
                 backup_id=backup_id,
-                error="Retention pruning failed",
-                exc_info=True,
+                reason="retention_pruning_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def restore_from_backup(

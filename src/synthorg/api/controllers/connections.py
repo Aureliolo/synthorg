@@ -243,8 +243,11 @@ class ConnectionsController(Controller):
     async def update_connection(
         self,
         state: State,
-        name: str,
         data: UpdateConnectionRequest,
+        name: str = Parameter(
+            description="Connection name",
+            max_length=_MAX_NAME_LEN,
+        ),
     ) -> ApiResponse[Connection]:
         """Update mutable fields of a connection.
 
@@ -279,7 +282,10 @@ class ConnectionsController(Controller):
     async def delete_connection(
         self,
         state: State,
-        name: str,
+        name: str = Parameter(
+            description="Connection name",
+            max_length=_MAX_NAME_LEN,
+        ),
     ) -> ApiResponse[None]:
         """Delete a connection and its secrets."""
         catalog = state["app_state"].connection_catalog
@@ -297,7 +303,10 @@ class ConnectionsController(Controller):
     async def check_health(
         self,
         state: State,
-        name: str,
+        name: str = Parameter(
+            description="Connection name",
+            max_length=_MAX_NAME_LEN,
+        ),
     ) -> ApiResponse[HealthReport]:
         """Run an on-demand health check for a connection."""
         from synthorg.integrations.health.service import (  # noqa: PLC0415
@@ -324,8 +333,14 @@ class ConnectionsController(Controller):
     async def reveal_secret(
         self,
         state: State,
-        name: str,
-        field: str,
+        name: str = Parameter(
+            description="Connection name",
+            max_length=_MAX_NAME_LEN,
+        ),
+        field: str = Parameter(
+            description="Credential field name",
+            max_length=_MAX_NAME_LEN,
+        ),
     ) -> ApiResponse[dict[str, str]]:
         """Return the plaintext value of one credential field.
 

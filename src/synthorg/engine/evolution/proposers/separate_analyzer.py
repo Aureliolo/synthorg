@@ -376,13 +376,15 @@ class SeparateAnalyzerProposer:
         except ProviderError as exc:
             if not exc.is_retryable:
                 raise
+            # SEC-1 (#1682): drop exc_info + scrub the message --
+            # provider HTTPStatusError can carry the API key.
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,
                 agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="provider_error_retryable",
                 is_retryable=True,
-                exc_info=True,
             )
             return ()
         except Exception as exc:

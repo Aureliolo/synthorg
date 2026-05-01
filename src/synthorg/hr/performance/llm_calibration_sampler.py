@@ -226,16 +226,24 @@ class LlmCalibrationSampler:
             return None
         return round(sum(r.drift for r in records) / len(records), 4)
 
-    def _build_prompt(self, record: CollaborationMetricRecord) -> str:
-        """Build the LLM evaluation prompt from a metric record.
+    def _build_user_prompt(self, record: CollaborationMetricRecord) -> str:
+        """Build the user-message body for the LLM evaluation call.
 
         Bounded behavioural metrics (numeric scores, booleans) are
         rendered as a metadata block; the free-form
         ``interaction_summary`` (the only attacker-controllable field)
         is wrapped via :func:`wrap_untrusted` under
-        :data:`TAG_TASK_DATA` so the calibrator LLM cannot be
-        instructed by an upstream-injected summary. The system prompt
-        already appends the matching ``untrusted_content_directive``.
+        :data:`TAG_TASK_DATA`. The SEC-1 instructional directive
+        lives in the SYSTEM message (see :data:`_SYSTEM_PROMPT_HEADER`)
+        rather than the user payload so an attacker-controlled
+        summary cannot dilute the directive's authority.
+
+        Pre-PR review finding (#1682, CodeRabbit critical at
+        ``llm_calibration_sampler.py:55``): the prior implementation
+        prepended ``_SYSTEM_PROMPT_HEADER`` to the user message,
+        sending the SEC-1 directive at user-priority instead of
+        system-priority -- which left the call site prompt-injectable
+        even though the summary was fenced.
         """
 
         def _display(val: object) -> str:
@@ -259,11 +267,7 @@ class LlmCalibrationSampler:
             TAG_TASK_DATA,
             str(record.interaction_summary),
         )
-        return (
-            f"{_SYSTEM_PROMPT_HEADER}\n\n"
-            f"{metrics_block}\n\n"
-            f"Interaction summary:\n{wrapped_summary}"
-        )
+        return f"{metrics_block}\n\nInteraction summary:\n{wrapped_summary}"
 
     def _parse_llm_response(
         self,
@@ -338,7 +342,7 @@ class LlmCalibrationSampler:
                 (missing keys, malformed JSON), contains an
                 out-of-range score, or has a blank rationale.
         """
-        prompt = self._build_prompt(record)
+        user_prompt = self._build_user_prompt(record)
 
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
@@ -353,9 +357,18 @@ class LlmCalibrationSampler:
         ):
             response = await self._provider.complete(
                 messages=[
+                    # SEC-1 (#1682): the untrusted-content directive
+                    # belongs in a SYSTEM-role message so the model
+                    # treats it as instruction with higher priority
+                    # than the USER-role payload that carries the
+                    # attacker-controllable interaction summary.
+                    ChatMessage(
+                        role=MessageRole.SYSTEM,
+                        content=_SYSTEM_PROMPT_HEADER,
+                    ),
                     ChatMessage(
                         role=MessageRole.USER,
-                        content=prompt,
+                        content=user_prompt,
                     ),
                 ],
                 model=self._model,

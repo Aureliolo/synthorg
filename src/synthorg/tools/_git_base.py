@@ -328,14 +328,18 @@ class _BaseGitTool(BaseTool, ABC):
                 env=env,
             )
         except OSError as exc:
+            # SEC-1 (#1682): drop exc_info + scrub. Git OSError
+            # messages can carry the working-directory path which
+            # may include user namespaces / repo URLs.
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
-                error=f"subprocess start failed: {exc}",
-                exc_info=True,
+                reason="subprocess_start_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Failed to start git process: {exc}",
+                content="Failed to start git process",
                 is_error=True,
             )
 

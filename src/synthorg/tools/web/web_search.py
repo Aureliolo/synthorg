@@ -159,12 +159,16 @@ class WebSearchTool(BaseWebTool):
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
+                # SEC-1 (#1682): drop exc_info + scrub -- the
+                # malformed provider result might still be readable
+                # in frame-locals on the traceback.
                 logger.warning(
                     WEB_SEARCH_FAILED,
                     query=query,
-                    error="malformed_provider_result",
-                    exc_info=True,
+                    reason="malformed_provider_result",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 continue
 

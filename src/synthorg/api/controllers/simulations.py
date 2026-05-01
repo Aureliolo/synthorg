@@ -155,10 +155,14 @@ async def _run_in_background(
             )
         return
     except Exception as exc:
-        logger.exception(
+        # SEC-1 (#1682): logger.exception attaches the traceback;
+        # frame-locals on a simulation-run-failed path can carry the
+        # entire simulation config. Scrub + drop exc_info.
+        logger.warning(
             SIMULATION_RUN_FAILED,
             simulation_id=record.simulation_id,
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         with contextlib.suppress(ValueError):
             await sim_state.simulation_store.update_status(

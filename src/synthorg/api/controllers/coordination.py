@@ -76,12 +76,15 @@ def _publish_ws_event(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
+        # SEC-1 (#1682): drop exc_info -- channels_plugin internals
+        # can carry connection metadata; surface scrubbed type+msg.
         logger.warning(
             API_WS_SEND_FAILED,
             note="Failed to publish coordination WebSocket event",
             event_type=event_type.value,
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 

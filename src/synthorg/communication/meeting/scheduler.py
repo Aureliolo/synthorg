@@ -288,12 +288,15 @@ class MeetingScheduler:
                         # need to diagnose a periodic-task shutdown
                         # failure that may have leaked a resource
                         # (connection, lock, file handle).
+                        # SEC-1 (#1682): ``exc_info=<exception>`` emits
+                        # the same traceback as ``exc_info=True`` and
+                        # would re-leak credential frame-locals that
+                        # ``safe_error_description`` already scrubbed.
                         logger.error(
                             MEETING_SCHEDULER_ERROR,
                             note="periodic task error during shutdown",
-                            error=safe_error_description(result),
                             error_type=type(result).__name__,
-                            exc_info=result,
+                            error=safe_error_description(result),
                         )
             self._tasks = []
             self._running = False

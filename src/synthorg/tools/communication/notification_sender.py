@@ -190,13 +190,17 @@ class NotificationSenderTool(BaseCommunicationTool):
                 timestamp=datetime.now(UTC),
             )
         except (ValueError, TypeError, ValidationError) as exc:
+            # SEC-1 (#1682): scrub the exception payload before
+            # logging or returning -- Pydantic's ValidationError can
+            # echo entire input dicts including secret-bearing fields.
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
-                error="invalid_notification_fields",
-                detail=str(exc),
+                reason="invalid_notification_fields",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Invalid notification fields: {exc}",
+                content="Invalid notification fields",
                 is_error=True,
             )
 

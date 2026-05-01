@@ -189,11 +189,17 @@ class OffboardingService:
                 await self._task_repository.save(task)
             return tuple(t.id for t in interrupted)
         except (TaskReassignmentError, OSError, ValueError) as exc:
-            msg = f"Task reassignment failed for agent {agent_id!r}: {exc}"
-            logger.exception(
+            # SEC-1 (#1682): logger.exception attaches the traceback
+            # whose frame-locals could carry the in-flight task
+            # payload; switch to the warning + scrubbed-error pattern.
+            scrubbed = safe_error_description(exc)
+            msg = f"Task reassignment failed for agent {agent_id!r}: {scrubbed}"
+            logger.warning(
                 HR_FIRING_REASSIGNMENT_FAILED,
                 agent_id=agent_id,
-                error=msg,
+                reason="task_reassignment_failed",
+                error_type=type(exc).__name__,
+                error=scrubbed,
             )
             raise OffboardingError(msg) from exc
 

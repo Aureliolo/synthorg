@@ -29,7 +29,7 @@ from synthorg.integrations.oauth.callback_handler import (
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import SECRET_RETRIEVAL_FAILED
 
 logger = get_logger(__name__)
@@ -58,7 +58,9 @@ class InitiateOAuthFlowRequest(BaseModel):
         NotBlankStr,
         Field(max_length=_MAX_CONNECTION_NAME_LEN),
     ]
-    scopes: tuple[Annotated[str, Field(max_length=_MAX_SCOPE_LEN)], ...] = ()
+    # Scope items are themselves NotBlankStr so an empty / whitespace
+    # element cannot be silently forwarded to the OAuth provider call.
+    scopes: tuple[Annotated[NotBlankStr, Field(max_length=_MAX_SCOPE_LEN)], ...] = ()
 
 
 class OAuthController(Controller):
@@ -223,12 +225,17 @@ class OAuthController(Controller):
         try:
             credentials = await catalog.get_credentials(connection_name)
             has_access_token = bool(credentials.get("access_token"))
-        except Exception:
+        except Exception as exc:
+            # SEC-1 (#1682): no traceback on a credential-lookup
+            # warning path -- frame-locals could carry decrypted
+            # secret material. Operators get the type + scrubbed
+            # message via ``safe_error_description``.
             logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 connection_name=connection_name,
-                error="credential lookup failed in /status",
-                exc_info=True,
+                reason="credential lookup failed in /status",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             has_access_token = None
         if has_access_token is None:

@@ -79,35 +79,44 @@ class TestConnectionsController:
             await ctrl.get_connection.fn(ctrl, state=state, name="missing")
 
     async def test_create_validates_missing_name(self) -> None:
-        from synthorg.api.controllers.connections import ConnectionsController
+        """Missing ``name`` is rejected at the DTO boundary (#1682).
 
-        catalog = MagicMock()
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        After the Pydantic-DTO refactor, ``name`` is a required
+        field on :class:`CreateConnectionRequest` and Litestar's
+        request parser surfaces missing-field violations as 422
+        before the controller method runs.  This test pins the
+        contract at the model layer instead of the controller body
+        because the controller no longer performs the validation.
+        """
+        from pydantic import ValidationError as PydanticValidationError
 
-        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with pytest.raises(ValidationError):
-            await ctrl.create_connection.fn(
-                ctrl,
-                state=state,
-                data={"connection_type": "github"},
+        from synthorg.api.controllers.connections import (
+            CreateConnectionRequest,
+        )
+
+        with pytest.raises(PydanticValidationError):
+            CreateConnectionRequest.model_validate(
+                {"connection_type": "github"},
             )
 
     async def test_create_validates_bad_connection_type(self) -> None:
-        from synthorg.api.controllers.connections import ConnectionsController
+        """Unknown ``connection_type`` is rejected at the DTO boundary."""
+        from pydantic import ValidationError as PydanticValidationError
 
-        catalog = MagicMock()
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        from synthorg.api.controllers.connections import (
+            CreateConnectionRequest,
+        )
 
-        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with pytest.raises(ValidationError):
-            await ctrl.create_connection.fn(
-                ctrl,
-                state=state,
-                data={"name": "x", "connection_type": "not-a-type"},
+        with pytest.raises(PydanticValidationError):
+            CreateConnectionRequest.model_validate(
+                {"name": "x", "connection_type": "not-a-type"},
             )
 
     async def test_create_duplicate_raises_conflict(self) -> None:
-        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.api.controllers.connections import (
+            ConnectionsController,
+            CreateConnectionRequest,
+        )
 
         catalog = MagicMock()
         catalog.create = AsyncMock(
@@ -116,15 +125,16 @@ class TestConnectionsController:
         state = {"app_state": MagicMock(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        request_body = CreateConnectionRequest(
+            name=NotBlankStr("x"),
+            connection_type=ConnectionType.GITHUB,
+            credentials={"token": "t"},
+        )
         with pytest.raises(ConflictError):
             await ctrl.create_connection.fn(
                 ctrl,
                 state=state,
-                data={
-                    "name": "x",
-                    "connection_type": "github",
-                    "credentials": {"token": "t"},
-                },
+                data=request_body,
             )
 
     async def test_reveal_secret_returns_field(self) -> None:
@@ -662,12 +672,15 @@ class TestTunnelController:
 @pytest.mark.integration
 class TestOAuthController:
     async def test_initiate_requires_connection_name(self) -> None:
-        from synthorg.api.controllers.oauth import OAuthController
+        """Missing ``connection_name`` is rejected at the DTO boundary (#1682)."""
+        from pydantic import ValidationError as PydanticValidationError
 
-        ctrl = OAuthController(owner=OAuthController)  # type: ignore[arg-type]
-        state = {"app_state": MagicMock()}
-        with pytest.raises(ValidationError):
-            await ctrl.initiate_flow.fn(ctrl, state=state, data={})
+        from synthorg.api.controllers.oauth import (
+            InitiateOAuthFlowRequest,
+        )
+
+        with pytest.raises(PydanticValidationError):
+            InitiateOAuthFlowRequest.model_validate({})
 
     async def test_status_returns_false_when_no_token(self) -> None:
         from synthorg.api.controllers.oauth import OAuthController

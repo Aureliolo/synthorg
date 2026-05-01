@@ -142,10 +142,14 @@ class SupervisorRouter:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            # SEC-1 (#1682): provider exceptions in str(exc) can
+            # carry the API key; scrub before logging.
             logger.warning(
                 MEMORY_HIERARCHICAL_ROUTING,
                 action="fallback",
-                reason=f"LLM routing failed: {exc}",
+                reason="llm_routing_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 query_length=len(query.text),
             )
             return WorkerRoutingDecision(

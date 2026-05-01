@@ -6,6 +6,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_STARTED,
+    ONTOLOGY_DRIFT_DETECT_FAILED,
     ONTOLOGY_DRIFT_DETECTED,
 )
 
@@ -71,12 +72,15 @@ class DriftDetectionService:
 
         try:
             report = await self._strategy.detect(entity_name, agent_ids)
-        except Exception:
-            logger.error(
-                "ontology.drift.detect_failed",
+        except Exception as exc:
+            # SEC-1 (#1682): drop exc_info + use the canonical event
+            # constant instead of a string literal.
+            logger.error(  # noqa: TRY400 -- SEC-1 fail-loud, no traceback
+                ONTOLOGY_DRIFT_DETECT_FAILED,
                 entity_name=entity_name,
                 agent_count=len(agent_ids),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

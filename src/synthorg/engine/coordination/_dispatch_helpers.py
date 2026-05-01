@@ -105,7 +105,13 @@ async def setup_workspaces(
             phase=phase_name,
             success=False,
             duration_seconds=elapsed,
-            error=str(exc),
+            # SEC-1 (#1682): the error string is surfaced through
+            # ``CoordinationPhaseResult`` to upstream consumers and
+            # downstream logs; route through
+            # ``safe_error_description`` so URL/form-body credentials
+            # in HTTPStatusError-style messages are scrubbed at the
+            # source.
+            error=safe_error_description(exc),
         )
         logger.warning(
             COORDINATION_PHASE_FAILED,
@@ -152,7 +158,9 @@ async def merge_workspaces(
             phase=phase_name,
             success=False,
             duration_seconds=elapsed,
-            error=str(exc),
+            # SEC-1 (#1682): same scrub-at-source rationale as the
+            # earlier ``setup_group`` failure handler.
+            error=safe_error_description(exc),
         )
         logger.warning(
             COORDINATION_PHASE_FAILED,
@@ -291,7 +299,8 @@ async def execute_waves(
                     phase=phase_name,
                     success=False,
                     duration_seconds=elapsed,
-                    error=str(exc),
+                    # SEC-1 (#1682): same scrub-at-source rationale.
+                    error=safe_error_description(exc),
                 )
             )
             if fail_fast:

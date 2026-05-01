@@ -182,25 +182,12 @@ class CostTracker(CostTrackerSummaryMixin):
             MixedCurrencyAggregationError: If the record's currency
                 does not match the configured ``budget.currency``.
         """
-        # Idempotency fast-path. We hold the lock so a concurrent
-        # second call on the same claim_id can't race past us into the
-        # currency check + append; the lock is released for the rest
-        # of the (potentially-blocking) flow once the LRU has been
-        # consulted.
-        async with self._lock:
-            if cost_record.claim_id in self._seen_claims:
-                self._seen_claims.move_to_end(cost_record.claim_id)
-                logger.info(
-                    BUDGET_RECORD_DEDUPED,
-                    claim_id=cost_record.claim_id,
-                    agent_id=cost_record.agent_id,
-                    task_id=cost_record.task_id,
-                    provider=cost_record.provider,
-                    model=cost_record.model,
-                    cost=cost_record.cost,
-                )
-                return
-
+        # Currency check first -- it's synchronous, has no in-flight
+        # state to roll back, and a mismatch is a hard caller-contract
+        # violation that must surface BEFORE we reserve a claim_id
+        # slot. Per-project same-currency invariant is enforced by
+        # ``ProjectCostAggregateRepository.increment``; no tracker-
+        # side pin is required there.
         if (
             self._budget_config is not None
             and cost_record.currency != self._budget_config.currency
@@ -222,29 +209,54 @@ class CostTracker(CostTrackerSummaryMixin):
                 task_id=cost_record.task_id,
                 project_id=cost_record.project_id,
             )
-        # Per-project same-currency invariant is enforced by the
-        # repository (``ProjectCostAggregateRepository.increment``)
-        # which raises ``MixedCurrencyAggregationError`` when the
-        # incoming currency differs from the project's pinned
-        # currency.  No tracker-side pin is required.
 
-        # Run the durable aggregate update FIRST -- a
-        # ``MixedCurrencyAggregationError`` from the per-project pin
-        # must surface before the in-memory list is mutated.  Appending
-        # only on success closes the concurrency window where a
-        # ``_snapshot()`` call could observe the entry between an
-        # append and a rollback.  DB I/O runs outside ``_lock`` so
-        # concurrent in-memory readers/writers don't block on it.
-        await self._update_project_aggregate(cost_record)
+        # Idempotency fast-path with in-flight reservation. We hold
+        # the lock to either (a) detect that this claim_id is already
+        # being processed or has already been recorded, or
+        # (b) reserve the claim_id so a concurrent second call sees
+        # it and dedupes immediately, even though the rest of this
+        # method's flow ``await``s outside the lock.  Pre-PR review
+        # finding (#1682, CodeRabbit critical at tracker.py:203):
+        # without the reservation, two concurrent calls could both
+        # pass the membership check and both append, double-billing.
+        async with self._lock:
+            if cost_record.claim_id in self._seen_claims:
+                self._seen_claims.move_to_end(cost_record.claim_id)
+                logger.info(
+                    BUDGET_RECORD_DEDUPED,
+                    claim_id=cost_record.claim_id,
+                    agent_id=cost_record.agent_id,
+                    task_id=cost_record.task_id,
+                    provider=cost_record.provider,
+                    model=cost_record.model,
+                    cost=cost_record.cost,
+                )
+                return
+            # In-flight reservation. The slot is created NOW so a
+            # concurrent caller racing past the membership check
+            # above will see the entry and dedupe. The reservation
+            # is rolled back on the error path below.
+            self._seen_claims[cost_record.claim_id] = None
+
+        # Run the durable aggregate update OUTSIDE the lock -- DB I/O
+        # must not block concurrent in-memory readers/writers. Any
+        # failure rolls the in-flight reservation back so a retry
+        # with the same claim_id is not falsely deduped.
+        try:
+            await self._update_project_aggregate(cost_record)
+        except BaseException:
+            async with self._lock:
+                self._seen_claims.pop(cost_record.claim_id, None)
+            raise
 
         async with self._lock:
             self._records.append(cost_record)
-            # Mark the claim as seen so a JetStream redelivery / retry
-            # of the same record cannot double-bill. Eviction keeps
-            # memory bounded; once a claim ages out, a re-submission
-            # is treated as fresh, which is the documented best-effort
-            # contract.
-            self._seen_claims[cost_record.claim_id] = None
+            # Promote the in-flight reservation to recorded by moving
+            # it to the LRU tail and enforcing capacity. Eviction
+            # keeps memory bounded; once a claim ages out, a re-
+            # submission is treated as fresh, which is the
+            # documented best-effort contract.
+            self._seen_claims.move_to_end(cost_record.claim_id)
             while len(self._seen_claims) > self._claim_lru_capacity:
                 self._seen_claims.popitem(last=False)
             logger.info(
@@ -523,9 +535,14 @@ class CostTracker(CostTrackerSummaryMixin):
         can race with this method, and ``list.clear()`` is a single
         atomic C-level operation under the GIL.  Calling this method
         from production / async code is unsupported.
+
+        Also resets the ``_seen_claims`` LRU so a reused ``claim_id``
+        on a fresh test does not get falsely deduped (#1682
+        CodeRabbit minor at tracker.py:137).
         """
         cleared_count = len(self._records)
         self._records.clear()
+        self._seen_claims.clear()
         logger.info(BUDGET_TRACKER_CLEARED, cleared_count=cleared_count)
 
     # ── Private helpers ──────────────────────────────────────────────

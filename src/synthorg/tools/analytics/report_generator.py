@@ -249,8 +249,12 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 error=safe_error_description(exc),
                 report_type=report_type,
             )
+            # SEC-1 (#1682): the tool result is surfaced to the agent
+            # turn; raw exception text on persistence/database errors
+            # can carry connection strings. Use a stable generic
+            # message; the scrubbed log above carries operator detail.
             return ToolExecutionResult(
-                content=f"Report generation failed: {exc}",
+                content="Report generation failed",
                 is_error=True,
             )
 

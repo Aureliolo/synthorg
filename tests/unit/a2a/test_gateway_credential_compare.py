@@ -12,6 +12,7 @@ strings, length mismatch handling, encoding stability) and act as the
 gate against future regressions back to ``!=``.
 """
 
+import ast
 import inspect
 from collections.abc import Callable
 
@@ -108,18 +109,46 @@ class TestCredentialsMatch:
     ) -> None:
         """Source uses `hmac.compare_digest`, not `==` or `!=`.
 
-        Inspect the helper's source so a future regression that swaps
-        in plain `==` is caught at unit-test time. We accept either
-        ``hmac.compare_digest(...)`` or ``compare_digest(...)`` because
-        a future refactor may import the function directly.
+        Pre-PR review #1682: AST-based check (was string heuristics
+        which can false-positive on docstrings or false-negative on
+        equivalent rewrites). Asserts that a real ``Call`` node
+        invokes ``compare_digest`` (either ``hmac.compare_digest`` or
+        the bare ``compare_digest`` name), AND that no
+        equality/inequality ``Compare`` nodes exist on the helper's
+        body -- so a future regression replacing the call with
+        ``stored == presented`` is caught even if the docstring
+        still mentions ``compare_digest``.
         """
-        source = inspect.getsource(credentials_match)
-        assert "compare_digest" in source, (
+        tree = ast.parse(inspect.getsource(credentials_match))
+
+        compare_digest_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and (
+                (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "compare_digest"
+                )
+                or (
+                    isinstance(node.func, ast.Name) and node.func.id == "compare_digest"
+                )
+            )
+        ]
+        assert compare_digest_calls, (
             "_credentials_match must call hmac.compare_digest; "
             "do not regress to `==` or `!=` for credential equality"
         )
-        assert " == " not in source.replace("compare_digest", ""), (
-            "_credentials_match must not use plain `==` for credential bytes"
+
+        plain_equality = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Compare)
+            and any(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops)
+        ]
+        assert not plain_equality, (
+            "_credentials_match must not use plain `==` / `!=` for "
+            "credential bytes; route through hmac.compare_digest"
         )
 
 
@@ -152,13 +181,23 @@ class TestGatewayUsesConstantTimeCompare:
     def test_helper_is_used_at_least_twice(self) -> None:
         """Both API-key and OAuth-token paths route through the helper.
 
-        #1682 lists two sites (lines 525, 536) that must switch to
-        constant-time compare. Asserting the helper is referenced at
-        least twice catches a partial conversion.
+        Pre-PR review #1682: AST-based check (was substring count
+        which would pass after a partial conversion if the symbol
+        appears only in docstrings). Walks the gateway module's
+        ``ast.Call`` nodes and counts every ``_credentials_match(...)``
+        invocation. Two call sites (API-key + OAuth-token) is the
+        floor; a regression to a single call site is caught.
         """
-        source = inspect.getsource(gateway)
-        # One occurrence is the definition, plus two call sites = 3 total.
-        assert source.count("_credentials_match") >= 3, (
-            "expected at least 3 references to _credentials_match in gateway.py "
-            "(definition + two call sites); a partial conversion was detected"
+        tree = ast.parse(inspect.getsource(gateway))
+        helper_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_credentials_match"
+        ]
+        assert len(helper_calls) >= 2, (
+            "expected at least two _credentials_match call sites in "
+            "gateway.py (API-key path + OAuth/bearer path); a partial "
+            "conversion was detected"
         )

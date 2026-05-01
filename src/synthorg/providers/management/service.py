@@ -329,9 +329,13 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            # SEC-1 (#1682): the response error is consumed by the
+            # /providers/test endpoint and surfaced to the dashboard;
+            # scrub it so the API key embedded in HTTPStatusError
+            # messages does not round-trip back over HTTP.
             return TestConnectionResponse(
                 success=False,
-                error=str(exc),
+                error=safe_error_description(exc),
                 model_tested=model_id,
             )
         except asyncio.CancelledError:
