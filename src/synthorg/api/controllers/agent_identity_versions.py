@@ -137,10 +137,13 @@ class AgentIdentityVersionController(Controller):
             agent_id=agent_id,
             count=len(safe_versions),
         )
-        # ``has_more`` and the cursor advance against the repo's full
-        # ``total`` and ``len(versions)`` so a page that drops forged
-        # rows does not strand the client before reaching later
-        # legitimate rows.
+        # Forged-row filtering: rows whose encoded owner does not match
+        # the path agent_id are dropped from ``safe_versions`` (above)
+        # but still counted in the cursor advance.  ``has_more`` is
+        # driven by the repo's full ``total`` and the cursor steps by
+        # ``len(versions)`` (consumed repo rows, NOT filtered slice
+        # length) so a page where the filter discards rows does not
+        # strand the client before reaching later legitimate rows.
         meta = encode_repo_seek_meta(
             offset=offset,
             page_len=len(versions),

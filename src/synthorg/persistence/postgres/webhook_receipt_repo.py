@@ -201,7 +201,7 @@ class PostgresWebhookReceiptRepository:
                 await cur.execute(
                     "DELETE FROM webhook_receipts "
                     "WHERE connection_name = %s AND received_at < %s",
-                    (str(connection_name), cutoff),
+                    (str(connection_name), normalize_utc(cutoff)),
                 )
                 removed = cur.rowcount
         except Exception as exc:

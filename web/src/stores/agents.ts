@@ -217,6 +217,11 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         const merged = [...state.activity, ...result.data].slice(0, MAX_ACTIVITIES)
         return {
           activity: merged,
+          // ``activityTotal`` reflects the in-memory display count
+          // (post-cap, post-merge), not a server-reported total.  The
+          // wire envelope no longer carries ``total`` (cursor-only
+          // pagination); UI badges/counters use this for the visible
+          // "X items shown" label.
           activityTotal: merged.length,
           activityNextCursor: result.nextCursor,
           activityHasMore: result.hasMore,

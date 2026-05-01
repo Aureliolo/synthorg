@@ -22,6 +22,15 @@ from pydantic import (
 from synthorg.core.resilience_config import RateLimiterConfig  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 
+# Per-connection webhook-receipt retention window in days. Tri-state:
+#   None    -- fall back to the global
+#              ``integrations.webhook_receipt_retention_days`` setting
+#   0       -- never sweep this connection's receipts (opt-out)
+#   N > 0   -- retain receipts up to N days, sweep older
+# The constraint is enforced via Pydantic ``Field(ge=0)`` at the
+# ``Connection.webhook_receipt_retention_days`` site below.
+WebhookRetentionDays = int | None
+
 
 class ConnectionType(StrEnum):
     """Supported external service connection types."""
@@ -108,7 +117,7 @@ class Connection(BaseModel):
     health_status: ConnectionStatus = ConnectionStatus.UNKNOWN
     last_health_check_at: AwareDatetime | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
-    webhook_receipt_retention_days: int | None = Field(
+    webhook_receipt_retention_days: WebhookRetentionDays = Field(
         default=None,
         ge=0,
         description=(

@@ -597,8 +597,8 @@ class MemoryAdminController(Controller):
         """
         # ``require_fine_tune=False`` -- entry deletion only needs the
         # ``MemoryBackend``; eagerly resolving the fine-tune repos
-        # would 501 every memory-only deployment, which the memory-entry
-        # delete path must support.
+        # would 501 every memory-only deployment, which the
+        # ``DELETE /memory/entries/...`` path must support.
         service = _build_memory_service(state.app_state, require_fine_tune=False)
         try:
             deleted = await service.delete_memory_entry(

@@ -167,6 +167,14 @@ class SQLiteWebhookReceiptRepository:
 
         ``retention_days <= 0`` is treated as a no-op so callers cannot
         accidentally truncate the log via misconfiguration.
+
+        Note: holds ``self._write_lock`` for the duration of the DELETE
+        + COMMIT.  On a large ``webhook_receipts`` table this can
+        briefly block other writers (the daily sweep is serialised
+        against the rest of the SQLite write traffic by design).
+        Batching the delete is left as a future optimisation; current
+        deployment scale (handful of connections, days-scale retention)
+        keeps each per-connection sweep small.
         """
         if retention_days <= 0:
             return 0

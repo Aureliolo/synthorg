@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import {
   CONNECTION_TYPE_VALUES,
+  connectionTypeUsesWebhookReceipts,
   type Connection,
   type ConnectionType,
   type CreateConnectionRequest,
@@ -366,23 +367,26 @@ export function ConnectionFormModal({
                   </p>
                 )}
 
-                <InputField
-                  label="Webhook receipt retention (days)"
-                  type="number"
-                  value={form.webhookRetention}
-                  placeholder="Use system default"
-                  hint="Leave blank to use the system default. Set to 0 to never delete this connection's webhook receipts."
-                  error={submitted ? errors.webhook_receipt_retention_days : null}
-                  onValueChange={(v) => {
-                    setForm((prev) => ({ ...prev, webhookRetention: v }))
-                    if (errors.webhook_receipt_retention_days) {
-                      setErrors((prev) => ({
-                        ...prev,
-                        webhook_receipt_retention_days: null,
-                      }))
-                    }
-                  }}
-                />
+                {form.type !== null
+                  && connectionTypeUsesWebhookReceipts(form.type) && (
+                  <InputField
+                    label="Webhook receipt retention (days)"
+                    type="number"
+                    value={form.webhookRetention}
+                    placeholder="Use system default"
+                    hint="Leave blank to use the system default. Set to 0 to never delete this connection's webhook receipts."
+                    error={submitted ? errors.webhook_receipt_retention_days : null}
+                    onValueChange={(v) => {
+                      setForm((prev) => ({ ...prev, webhookRetention: v }))
+                      if (errors.webhook_receipt_retention_days) {
+                        setErrors((prev) => ({
+                          ...prev,
+                          webhook_receipt_retention_days: null,
+                        }))
+                      }
+                    }}
+                  />
+                )}
 
                 <div className="mt-2 flex justify-end gap-2">
                   <Button type="button" variant="ghost" onClick={onClose}>

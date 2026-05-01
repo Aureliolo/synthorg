@@ -248,7 +248,6 @@ class TestActivityFeed:
             params={"agent_id": _AGENT_ID},
         )
         assert resp.status_code == 200
-        resp.json()
 
     def test_last_n_hours_default(
         self,
@@ -449,7 +448,6 @@ class TestActivityFeed:
 
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
-        resp.json()
 
     async def test_graceful_degradation_broken_delegation_store(
         self,
@@ -473,7 +471,6 @@ class TestActivityFeed:
 
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
-        resp.json()
 
     def test_filter_by_invalid_type_returns_400(
         self,

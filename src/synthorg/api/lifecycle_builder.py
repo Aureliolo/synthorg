@@ -22,8 +22,8 @@ from synthorg.api.lifecycle_helpers import (
     _maybe_bootstrap_agents,
     _maybe_promote_first_owner,
     _ticket_cleanup_loop,
-    _webhook_receipt_cleanup_loop,
 )
+from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,

@@ -259,7 +259,7 @@ tests/unit/api/controllers/conftest.py:13:17
 tests/unit/api/controllers/conftest.py:20:27
 tests/unit/api/controllers/conftest.py:23:16
 tests/unit/api/controllers/conftest.py:24:31
-tests/unit/api/controllers/test_activities.py:711:54
+tests/unit/api/controllers/test_activities.py:708:54
 tests/unit/api/controllers/test_approvals_helpers.py:53:14
 tests/unit/api/controllers/test_approvals_helpers.py:134:23
 tests/unit/api/controllers/test_approvals_helpers.py:135:20

@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.api import lifecycle_helpers
+from synthorg.api import webhook_cleanup
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
@@ -82,7 +82,7 @@ async def test_tick_skips_when_persistence_absent() -> None:
     """``has_persistence=False`` short-circuits without touching anything."""
     app_state = _build_app_state(has_persistence=False)
 
-    await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
     app_state.persistence.connections.list_all.assert_not_awaited()
     app_state.persistence.webhook_receipts.cleanup_old_for_connection.assert_not_awaited()
@@ -94,7 +94,7 @@ async def test_tick_uses_global_default_for_unconfigured_connection() -> None:
         connections=[_make_connection("github-bot", retention_days=None)],
     )
 
-    await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
     repo = app_state.persistence.webhook_receipts
     repo.cleanup_old_for_connection.assert_awaited_once()
@@ -112,7 +112,7 @@ async def test_tick_applies_per_connection_override() -> None:
         ],
     )
 
-    await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
     repo = app_state.persistence.webhook_receipts
     assert repo.cleanup_old_for_connection.await_count == 2
@@ -133,7 +133,7 @@ async def test_tick_skips_zero_retention_connection() -> None:
         ],
     )
 
-    await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
     repo = app_state.persistence.webhook_receipts
     repo.cleanup_old_for_connection.assert_awaited_once()
@@ -151,7 +151,7 @@ async def test_tick_skips_all_when_global_default_is_zero() -> None:
         ],
     )
 
-    await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
     app_state.persistence.webhook_receipts.cleanup_old_for_connection.assert_not_awaited()
 
@@ -169,7 +169,7 @@ async def test_tick_failure_in_one_connection_does_not_abort_others() -> None:
         cleanup_side_effects={"flaky": _BoomError("repo died")},
     )
 
-    await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
     repo = app_state.persistence.webhook_receipts
     # Both connections were attempted, even though the first raised.
@@ -184,7 +184,7 @@ async def test_tick_memory_error_propagates() -> None:
     )
 
     with pytest.raises(MemoryError):
-        await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+        await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
 
 async def test_tick_cancellation_propagates() -> None:
@@ -195,7 +195,7 @@ async def test_tick_cancellation_propagates() -> None:
     )
 
     with pytest.raises(asyncio.CancelledError):
-        await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+        await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
 
 async def test_tick_swallows_list_all_failure() -> None:
@@ -204,7 +204,7 @@ async def test_tick_swallows_list_all_failure() -> None:
         list_all_side_effect=RuntimeError("list connections failed"),
     )
 
-    await lifecycle_helpers._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
 
     app_state.persistence.webhook_receipts.cleanup_old_for_connection.assert_not_awaited()
 
@@ -212,9 +212,9 @@ async def test_tick_swallows_list_all_failure() -> None:
 async def test_resolve_falls_back_when_no_config_resolver() -> None:
     app_state = _build_app_state(has_config_resolver=False)
 
-    days = await lifecycle_helpers._resolve_webhook_receipt_retention(app_state)  # type: ignore[arg-type]
+    days = await webhook_cleanup._resolve_webhook_receipt_retention(app_state)  # type: ignore[arg-type]
 
-    assert days == lifecycle_helpers._DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+    assert days == webhook_cleanup._DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
 
 
 async def test_resolve_falls_back_on_resolver_error() -> None:
@@ -226,9 +226,9 @@ async def test_resolve_falls_back_on_resolver_error() -> None:
         config_resolver=config_resolver,
     )
 
-    days = await lifecycle_helpers._resolve_webhook_receipt_retention(app_state)  # type: ignore[arg-type]
+    days = await webhook_cleanup._resolve_webhook_receipt_retention(app_state)  # type: ignore[arg-type]
 
-    assert days == lifecycle_helpers._DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
+    assert days == webhook_cleanup._DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS
 
 
 async def test_loop_drives_tick_at_each_iteration(
@@ -246,7 +246,7 @@ async def test_loop_drives_tick_at_each_iteration(
         await real_sleep(0)
 
     monkeypatch.setattr(
-        "synthorg.api.lifecycle_helpers.asyncio.sleep",
+        "synthorg.api.webhook_cleanup.asyncio.sleep",
         _deterministic_sleep,
     )
     tick_calls = MagicMock()
@@ -255,13 +255,13 @@ async def test_loop_drives_tick_at_each_iteration(
         tick_calls()
 
     monkeypatch.setattr(
-        "synthorg.api.lifecycle_helpers._webhook_receipt_cleanup_tick",
+        "synthorg.api.webhook_cleanup._webhook_receipt_cleanup_tick",
         _stub_tick,
     )
 
     app_state = _build_app_state()
     task = asyncio.create_task(
-        lifecycle_helpers._webhook_receipt_cleanup_loop(app_state),  # type: ignore[arg-type]
+        webhook_cleanup._webhook_receipt_cleanup_loop(app_state),  # type: ignore[arg-type]
     )
     with pytest.raises(asyncio.CancelledError):
         await task
