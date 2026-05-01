@@ -196,6 +196,16 @@ class TestCodeApplier:
         self,
         tmp_path: Path,
     ) -> None:
+        """``create_branch`` failure is a no-cleanup path (#1682).
+
+        Pre-PR review #1693 (CodeRabbit critical at code_applier.py:189):
+        the outer exception handler used to call ``delete_branch``
+        unconditionally, which would clobber a stale remote branch
+        from a previous run when ``create_branch()`` itself raised.
+        The fix removes the outer delete; ``_apply_pipeline`` keeps
+        owning orphan-branch cleanup along the push / draft-PR
+        paths where ``create_branch()`` is known to have run.
+        """
         ci = _mock_ci_validator(_ci_pass())
         gh = _mock_github_client()
         gh.create_branch = AsyncMock(
@@ -218,8 +228,10 @@ class TestCodeApplier:
 
         assert not result.success
         assert "Code apply failed" in (result.error_message or "")
-        # Cleanup was attempted.
-        gh.delete_branch.assert_awaited_once()
+        # ``create_branch`` raised -- no remote branch was created,
+        # so ``delete_branch`` MUST NOT fire (would clobber a stale
+        # branch from a previous run).
+        gh.delete_branch.assert_not_awaited()
 
     async def test_apply_pr_creation_failure(
         self,

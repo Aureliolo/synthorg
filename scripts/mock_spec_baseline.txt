@@ -2391,9 +2391,9 @@ tests/unit/meta/test_code_applier.py:114:25
 tests/unit/meta/test_code_applier.py:117:23
 tests/unit/meta/test_code_applier.py:118:22
 tests/unit/meta/test_code_applier.py:119:16
-tests/unit/meta/test_code_applier.py:201:27
-tests/unit/meta/test_code_applier.py:230:29
-tests/unit/meta/test_code_applier.py:350:25
+tests/unit/meta/test_code_applier.py:211:27
+tests/unit/meta/test_code_applier.py:242:29
+tests/unit/meta/test_code_applier.py:362:25
 tests/unit/meta/test_code_modification_strategy.py:102:15
 tests/unit/meta/test_code_modification_strategy.py:103:20
 tests/unit/meta/test_code_modification_strategy.py:105:24

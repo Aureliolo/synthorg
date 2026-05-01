@@ -169,24 +169,18 @@ class CodeApplier:
                     error_type=type(revert_exc).__name__,
                     error=safe_error_description(revert_exc),
                 )
-            try:
-                await self._github.delete_branch(branch)
-            except MemoryError, RecursionError:
-                raise
-            except Exception as cleanup_exc:
-                # SEC-1 (#1682): GitHub-client errors can carry the
-                # remote URL with credential-bearing query params in
-                # the traceback frame-locals; drop ``exc_info`` and
-                # surface the scrubbed description only.
-                logger.warning(
-                    META_APPLY_FAILED,
-                    altitude="code_modification",
-                    proposal_id=str(proposal.id),
-                    reason="cleanup_failed",
-                    branch=branch,
-                    error_type=type(cleanup_exc).__name__,
-                    error=safe_error_description(cleanup_exc),
-                )
+            # NOTE (#1682, CodeRabbit critical at code_applier.py:189):
+            # Do NOT call ``self._github.delete_branch(branch)`` here.
+            # This outer handler also runs when the failure happens
+            # BEFORE ``create_branch()`` (e.g. lint / type-check /
+            # test failures during ``_apply_pipeline``), in which
+            # case ``branch`` only refers to a planned name -- the
+            # actual remote branch may belong to a previous run or
+            # an unrelated proposal that happens to hash-collide on
+            # the 8-char prefix. ``_apply_pipeline`` already owns
+            # orphan-branch cleanup along the push / draft-PR paths
+            # where ``create_branch()`` IS known to have run, so we
+            # leave that responsibility solely to the inner block.
             return ApplyResult(
                 success=False,
                 error_message="Code apply failed. Check logs for details.",
