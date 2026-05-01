@@ -39,6 +39,12 @@
 #     only, force pushes) are blocked until either the CI failures
 #     are addressed or the override flag is set.
 #
+#     The ``fix:`` heuristic matches the commit subject prefix
+#     only (``^fix(\([^)]*\))?:``); a previous variant also
+#     accepted any subject containing the word ``babysit``,
+#     which let unrelated subjects (``docs: explain babysit
+#     flow``) slip through, and is no longer accepted.
+#
 # Override (one-shot, branch-bound, user-only):
 #   ``.claude/state/allow-failing-ci-push.flag`` whose first non-
 #   empty line is the current branch name. Consumed on use.
@@ -69,17 +75,36 @@ if [[ -z "${PAYLOAD}" ]]; then
 fi
 
 COMMAND=$(printf '%s' "${PAYLOAD}" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
-PUSH_REGEX='(^|[[:space:]]|[|&;(])git[[:space:]]+push([[:space:]]|$|[|&;)])'
-# Strip single- and double-quoted strings before matching so a
-# ``git commit -m "feat: block git push when ..."`` does NOT trip
-# the gate just because the literal text "git push" appears
-# inside the commit message. Collapse newlines first because sed
-# regex is line-oriented and multi-line commit bodies would
-# otherwise leak through the strip.
-COMMAND_STRIPPED=$(printf '%s' "${COMMAND}" \
+# Boundary class includes shell-quote characters (' and ") so
+# wrapper forms like ``bash -lc 'git push'`` and
+# ``sh -c "git push"`` -- where the inner ``git push`` IS the
+# command being executed -- are detected. Without the quote
+# chars in the boundary the regex would only fire on bare
+# ``git push`` and any nested-shell wrapper would silently
+# bypass the gate.
+PUSH_REGEX=$'(^|[[:space:]|&;(\'"])git[[:space:]]+push([[:space:]]|$|[|&;)\'"])'
+# Strip ONLY ``-m`` / ``--message`` argument values before
+# matching the push regex. A blanket quote strip would turn
+# wrapper invocations like ``bash -lc 'git push'`` and
+# ``sh -c "git push"`` into bypass paths -- the inner quoted
+# text IS the command being executed in those forms, so it
+# must survive the strip. Targeting the commit-message
+# argument keeps the false-positive fix in place (a
+# ``git commit -m "feat: block git push when..."`` body no
+# longer trips the regex) without erasing wrapper payloads.
+# Collapse newlines first because sed is line-oriented and
+# multi-line ``-m '...'`` bodies would otherwise leak.
+COMMAND_FOR_PUSH_CHECK=$(printf '%s' "${COMMAND}" \
     | tr '\n\r' '  ' \
-    | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g")
-if [[ -z "${COMMAND}" ]] || ! printf '%s\n' "${COMMAND_STRIPPED}" | grep -qE "${PUSH_REGEX}"; then
+    | sed -E "
+        s/-m[[:space:]]+'[^']*'/-m _MSG_/g
+        s/-m[[:space:]]+\"[^\"]*\"/-m _MSG_/g
+        s/--message=[[:space:]]*'[^']*'/--message=_MSG_/g
+        s/--message=[[:space:]]*\"[^\"]*\"/--message=_MSG_/g
+        s/--message[[:space:]]+'[^']*'/--message _MSG_/g
+        s/--message[[:space:]]+\"[^\"]*\"/--message _MSG_/g
+    ")
+if [[ -z "${COMMAND}" ]] || ! printf '%s\n' "${COMMAND_FOR_PUSH_CHECK}" | grep -qE "${PUSH_REGEX}"; then
     exit 0
 fi
 
@@ -133,16 +158,18 @@ fi
 
 # Best-effort fix-attempt detection: if the local commits-ahead of
 # ``origin/<branch>`` carry any commit whose subject starts with
-# ``fix:`` or ``fix(`` or contains ``babysit``, treat the push as
-# a remediation push and let it through. The babysit loop ALWAYS
-# uses ``fix: babysit round R, M findings (...)`` for its commit
-# subject, so this is a safe heuristic for the loop's normal flow
-# while still blocking accidental chore-only / docs-only pushes
-# that ignore CI.
+# ``fix:`` or ``fix(scope):``, treat the push as a remediation
+# push and let it through. The babysit loop ALWAYS uses
+# ``fix: babysit round R, M findings (...)`` for its commit
+# subject, so the ``fix:`` prefix already covers the loop's normal
+# flow. Earlier the regex also matched any subject containing the
+# word ``babysit`` anywhere, which let unrelated subjects like
+# ``docs: explain babysit flow`` slip through; tightened to a
+# strict ``fix:``-prefix match.
 FIX_ATTEMPT=0
 if AHEAD_SUBJECTS="$(git log --format='%s' "origin/${BRANCH}..HEAD" 2>/dev/null)"; then
     if printf '%s\n' "${AHEAD_SUBJECTS}" \
-        | grep -qE '^(fix(\([^)]*\))?:|.*babysit)'; then
+        | grep -qE '^fix(\([^)]*\))?:'; then
         FIX_ATTEMPT=1
     fi
 fi
@@ -179,7 +206,7 @@ FAIL_SUMMARY=$(printf '%s' "${ROLLUP_JSON}" \
          | "  - " + .name + " :: " + (.targetUrl // "no targetUrl (rollup or external app)")]
         | join("\n")
     ' 2>/dev/null || echo "")
-REASON="Push to '${BRANCH}' blocked: PR #${PR_NUMBER} has ${FAILURE_COUNT} failing CI check(s) on the current remote head, and the commits-ahead do not look like a fix attempt (no commit subject starting with 'fix:' or containing 'babysit'). /babysit-pr Phase 6 + 7 require these failures to be diagnosed and addressed BEFORE the next push -- pushing chore / docs / unrelated work over a red branch wastes the CI + reviewer cycle and lets real failures hide. Failing checks: ${FAIL_SUMMARY}. Investigate with: gh run list --branch ${BRANCH} --json databaseId,name,conclusion then gh run view <id> --log-failed for each FAILURE entry. Fix the underlying issues, commit with a 'fix:' subject (or 'fix: babysit round N, ...' for the loop), and retry. Override (rare): the user (not the model) writes \`printf '%s\\n' \"\$(git branch --show-current)\" > .claude/state/allow-failing-ci-push.flag\` and re-runs git push. The flag is consumed on use."
+REASON="Push to '${BRANCH}' blocked: PR #${PR_NUMBER} has ${FAILURE_COUNT} failing CI check(s) on the current remote head, and the commits-ahead do not look like a fix attempt (no commit subject starting with 'fix:'). /babysit-pr Phase 6 + 7 require these failures to be diagnosed and addressed BEFORE the next push -- pushing chore / docs / unrelated work over a red branch wastes the CI + reviewer cycle and lets real failures hide. Failing checks: ${FAIL_SUMMARY}. Investigate with: gh run list --branch ${BRANCH} --json databaseId,name,conclusion then gh run view <id> --log-failed for each FAILURE entry. Fix the underlying issues, commit with a 'fix:' subject (or 'fix: babysit round N, ...' for the loop), and retry. Override (rare): the user (not the model) writes \`printf '%s\\n' \"\$(git branch --show-current)\" > .claude/state/allow-failing-ci-push.flag\` and re-runs git push. The flag is consumed on use."
 jq -n --arg reason "${REASON}" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",

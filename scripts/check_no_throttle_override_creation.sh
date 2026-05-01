@@ -85,19 +85,29 @@ case "$TOOL" in
         ;;
     Bash)
         COMMAND=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
-        # Strip quoted strings so a flag basename mentioned inside
-        # a commit message body or here-doc does not trip the gate.
-        # Real creation commands (``touch .claude/state/<flag>``,
-        # ``cp ... <flag>``) reference the path UNQUOTED at the
-        # verb position, so this strip preserves the protection
-        # while killing the false positives. Collapse newlines to
-        # spaces FIRST -- sed regex is line-oriented and
-        # multi-line quoted commit-message bodies otherwise leak
-        # the flag basename through the strip.
-        COMMAND_STRIPPED=$(printf '%s' "$COMMAND" \
+        # Strip ONLY ``-m`` / ``--message`` argument values so a
+        # commit message body (``git commit -m 'docs: explain
+        # allow-failing-ci-push.flag override'``) does not trip
+        # the gate. A blanket quote strip would erase the actual
+        # creation target in commands like
+        # ``touch ".claude/state/allow-failing-ci-push.flag"`` /
+        # ``cp foo '.claude/state/allow-double-push.flag'``,
+        # leaving the model an obvious bypass: just quote the
+        # path. Targeting the commit-message argument keeps the
+        # false-positive fix in place while the real path stays
+        # visible to the regex below. Newlines collapsed first so
+        # multi-line ``-m '...'`` bodies do not leak.
+        COMMAND_FOR_FLAG_CHECK=$(printf '%s' "$COMMAND" \
             | tr '\n\r' '  ' \
-            | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g")
-        if [[ -n "$COMMAND_STRIPPED" ]] && printf '%s\n' "$COMMAND_STRIPPED" | grep -qE "${COMMAND_REGEX}"; then
+            | sed -E "
+                s/-m[[:space:]]+'[^']*'/-m _MSG_/g
+                s/-m[[:space:]]+\"[^\"]*\"/-m _MSG_/g
+                s/--message=[[:space:]]*'[^']*'/--message=_MSG_/g
+                s/--message=[[:space:]]*\"[^\"]*\"/--message=_MSG_/g
+                s/--message[[:space:]]+'[^']*'/--message _MSG_/g
+                s/--message[[:space:]]+\"[^\"]*\"/--message _MSG_/g
+            ")
+        if [[ -n "$COMMAND_FOR_FLAG_CHECK" ]] && printf '%s\n' "$COMMAND_FOR_FLAG_CHECK" | grep -qE "${COMMAND_REGEX}"; then
             deny "Bash commands that reference any user-only override flag under .claude/state/ are not permitted from the model. Each gate's override flag (allow-double-push.flag, allow-failing-ci-push.flag) must be created by the user in their own shell."
         fi
         ;;
