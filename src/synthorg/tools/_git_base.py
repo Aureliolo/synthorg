@@ -557,8 +557,11 @@ class _BaseGitTool(BaseTool, ABC):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            # Generic content -- ``ToolExecutionResult.content`` reaches
+            # the LLM, so ``str(exc)`` would leak repo URLs / workspace
+            # paths past the SEC-1 log scrub above (#1682).
             return ToolExecutionResult(
-                content=str(exc),
+                content="Git command failed in sandbox",
                 is_error=True,
             )
         return self._sandbox_result_to_execution_result(

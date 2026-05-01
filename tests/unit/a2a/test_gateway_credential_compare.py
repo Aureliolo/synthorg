@@ -154,29 +154,39 @@ class TestCredentialsMatch:
 
 @pytest.mark.unit
 class TestGatewayUsesConstantTimeCompare:
-    """Gateway-level smoke checks: source no longer contains plain `!=`.
+    """Gateway-level smoke checks: no direct credential equality.
 
-    A regression that re-introduces ``request_key != stored_key`` (or
-    the OAuth-token equivalent) would silently reopen the timing
-    side-channel. This test reads the gateway source once and asserts
-    that the credential-compare lines are framed in terms of the
-    helper, not direct equality. It is intentionally string-based and
-    not parsing AST -- the helper name is short and unambiguous.
+    A regression that re-introduces ``request_key != stored_key``
+    (or its swapped order, or an ``==``) would silently reopen the
+    timing side-channel. AST-based detection catches every direct
+    comparison between the credential name pairs, not just the two
+    literal spellings the original commit replaced (#1682,
+    CodeRabbit at test_gateway_credential_compare.py:179).
     """
 
     def test_no_direct_inequality_on_credentials(self) -> None:
-        """Source does not contain `request_key != stored_key`-style lines."""
-        source = inspect.getsource(gateway)
-        # The two specific patterns that #1682 replaces.
-        forbidden = (
-            "request_key != stored_key",
-            "request_token != stored_token",
+        """Source has no Eq/NotEq between ``request_*`` and ``stored_*``."""
+        tree = ast.parse(inspect.getsource(gateway))
+        forbidden_pairs: frozenset[frozenset[str]] = frozenset(
+            {
+                frozenset(("request_key", "stored_key")),
+                frozenset(("request_token", "stored_token")),
+            }
         )
-        for needle in forbidden:
-            assert needle not in source, (
-                f"Found forbidden non-constant-time compare {needle!r} in "
-                "gateway.py; use _credentials_match (hmac.compare_digest)."
-            )
+        direct_compares = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Compare)
+            and any(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops)
+            and isinstance(node.left, ast.Name)
+            and len(node.comparators) == 1
+            and isinstance(node.comparators[0], ast.Name)
+            and frozenset((node.left.id, node.comparators[0].id)) in forbidden_pairs
+        ]
+        assert not direct_compares, (
+            "Found direct credential equality/inequality in gateway.py; "
+            "use _credentials_match (hmac.compare_digest)."
+        )
 
     def test_helper_is_used_at_least_twice(self) -> None:
         """Both API-key and OAuth-token paths route through the helper.

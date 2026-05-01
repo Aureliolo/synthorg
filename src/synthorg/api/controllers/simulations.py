@@ -262,10 +262,15 @@ class SimulationController(Controller):
                 )
                 raise
             except Exception as exc:
-                logger.exception(
+                # SEC-1 (#1682): drop ``logger.exception`` -- frame-
+                # locals on the simulation-run-failed traceback can
+                # carry the entire simulation config (matches the
+                # rationale documented in ``_run_in_background``).
+                logger.warning(
                     SIMULATION_RUN_FAILED,
                     simulation_id=record.simulation_id,
                     error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 try:
                     await sim_state.simulation_store.update_status(
@@ -273,11 +278,13 @@ class SimulationController(Controller):
                         status="failed",
                         error="Simulation failed unexpectedly",
                     )
-                except ValueError, KeyError:
-                    logger.exception(
+                except (ValueError, KeyError) as inner_exc:
+                    logger.warning(
                         SIMULATION_RUN_FAILED,
                         simulation_id=record.simulation_id,
                         stage="final_status_write",
+                        error_type=type(inner_exc).__name__,
+                        error=safe_error_description(inner_exc),
                     )
             try:
                 final = await sim_state.simulation_store.get(

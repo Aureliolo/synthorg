@@ -549,12 +549,18 @@ class PruningService:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # SEC-1 (#1682): drop ``logger.exception`` here -- the
+            # ``FiringRequest`` carries agent identity / reason and
+            # frame-locals on the traceback could leak that to logs.
+            # Mirror the notification-callback pattern: error_type +
+            # safe_error_description(exc) without exc_info.
+            logger.warning(
                 HR_PRUNING_POLICY_ERROR,
                 agent_id=agent_id,
                 approval_id=str(item.id),
-                error="Offboarding failed after approval",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 

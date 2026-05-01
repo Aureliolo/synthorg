@@ -467,16 +467,25 @@ class WebhooksController(Controller):
             headers=headers,
         )
 
-        # CodeRabbit #1682: a blank/whitespace ``x-nonce`` header
-        # must be treated as missing -- otherwise the empty string
-        # bypasses the body-SHA256 fallback and lands in the
-        # idempotency table as a meaningless key. ``.strip()``
-        # collapses both shapes (header absent / header empty) into
-        # ``None`` so the synthesised body-hash key is used.
-        raw_nonce = headers.get("x-nonce") or headers.get("x-request-id")
-        nonce = raw_nonce.strip() if raw_nonce else None
-        if not nonce:
-            nonce = None
+        # CodeRabbit #1682: each candidate header is stripped
+        # individually before fallback selection. The earlier
+        # ``headers.get("x-nonce") or headers.get("x-request-id")``
+        # short-circuited on a whitespace-only ``x-nonce`` (truthy
+        # before ``.strip()``) and never tried ``x-request-id``,
+        # which routed real retries down the body-hash path and
+        # changed the idempotency key. Stripping each candidate
+        # first picks the first non-empty value, or ``None``.
+        nonce = next(
+            (
+                candidate
+                for candidate in (
+                    (headers.get("x-nonce") or "").strip(),
+                    (headers.get("x-request-id") or "").strip(),
+                )
+                if candidate
+            ),
+            None,
+        )
         timestamp = _parse_timestamp(headers, connection_name=connection_name)
         _check_replay_or_freshness(
             state=state,

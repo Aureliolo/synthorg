@@ -201,8 +201,14 @@ class WorkspaceIsolationService:
                     workspace=workspace,
                 )
             except Exception as exc:
+                # SEC-1 (#1682): the ``errors`` list flows into
+                # ``WorkspaceCleanupError`` which callers may log as a
+                # message; raw ``exc`` text could leak DB credentials
+                # or container ids. Use the same scrubbed string as
+                # the warning log below.
                 errors.append(
-                    f"workspace {workspace.workspace_id}: {exc}",
+                    f"workspace {workspace.workspace_id}: "
+                    f"{safe_error_description(exc)}",
                 )
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,

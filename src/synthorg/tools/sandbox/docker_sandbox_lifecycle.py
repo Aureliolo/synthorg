@@ -180,7 +180,9 @@ class DockerSandboxLifecycleMixin:
             except Exception as exc:
                 logger.warning(
                     DOCKER_CLEANUP,
-                    error=f"Docker client close failed: {exc}",
+                    reason="docker_client_close_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             finally:
                 self._docker = None

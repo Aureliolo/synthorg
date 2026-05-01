@@ -31,6 +31,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
+    BUDGET_MIXED_CURRENCY_REJECTED,
     BUDGET_PROJECT_COST_AGGREGATED,
     BUDGET_PROJECT_COST_AGGREGATION_FAILED,
     BUDGET_PROJECT_COST_QUERIED,
@@ -129,10 +130,17 @@ class CostTracker(CostTrackerSummaryMixin):
         self._department_resolver = department_resolver
         self._auto_prune_threshold = auto_prune_threshold
         self._project_cost_repo = project_cost_repo
-        # Bounded LRU of claim_ids the tracker has already accepted.
-        # Stored as ``OrderedDict[str, None]`` so re-submission moves
-        # the key to the tail in O(1) and the head can be popped on
-        # capacity overflow without scanning.
+        # Bounded LRU of finalised claim_ids the tracker has already
+        # appended.  Stored as ``OrderedDict[str, None]`` so re-
+        # submission moves the key to the tail in O(1) and the head
+        # can be popped on capacity overflow without scanning.
+        # In-flight reservations are kept in a separate set so the
+        # capacity trim never evicts a claim that is still being
+        # processed -- pre-PR review #1682 (CodeRabbit critical at
+        # tracker.py:261) flagged that a single ``OrderedDict`` mixing
+        # both states could pop a still-running reservation, allowing
+        # a duplicate to slip past the membership check.
+        self._inflight_claims: set[str] = set()
         self._seen_claims: OrderedDict[str, None] = OrderedDict()
         self._claim_lru_capacity = claim_lru_capacity
         logger.debug(
@@ -192,6 +200,18 @@ class CostTracker(CostTrackerSummaryMixin):
             self._budget_config is not None
             and cost_record.currency != self._budget_config.currency
         ):
+            # Log at WARNING with full record + budget context BEFORE
+            # raising so a downstream catch-and-translate cannot hide
+            # repeated mismatches from operators (pre-PR review #1682,
+            # CodeRabbit outside-diff at tracker.py:191-211).
+            logger.warning(
+                BUDGET_MIXED_CURRENCY_REJECTED,
+                agent_id=cost_record.agent_id,
+                task_id=cost_record.task_id,
+                project_id=cost_record.project_id,
+                record_currency=cost_record.currency,
+                budget_currency=self._budget_config.currency,
+            )
             msg = (
                 f"Record currency {cost_record.currency!r} does not match "
                 f"configured budget currency "
@@ -210,18 +230,24 @@ class CostTracker(CostTrackerSummaryMixin):
                 project_id=cost_record.project_id,
             )
 
-        # Idempotency fast-path with in-flight reservation. We hold
-        # the lock to either (a) detect that this claim_id is already
-        # being processed or has already been recorded, or
-        # (b) reserve the claim_id so a concurrent second call sees
-        # it and dedupes immediately, even though the rest of this
-        # method's flow ``await``s outside the lock.  Pre-PR review
-        # finding (#1682, CodeRabbit critical at tracker.py:203):
-        # without the reservation, two concurrent calls could both
-        # pass the membership check and both append, double-billing.
+        # Idempotency fast-path with in-flight reservation. ``_lock``
+        # protects both ``_inflight_claims`` (set of in-flight reservations)
+        # and ``_seen_claims`` (bounded LRU of finalised entries). We
+        # check both states under the lock, then either dedupe (if
+        # already seen / in flight) or reserve the claim in
+        # ``_inflight_claims`` so a concurrent second call sees the
+        # entry and dedupes immediately. Keeping in-flight separate
+        # from the LRU prevents the capacity trim from popping a
+        # still-running reservation, which would let a duplicate
+        # slip past the membership check (#1682, CodeRabbit critical
+        # at tracker.py:261).
         async with self._lock:
-            if cost_record.claim_id in self._seen_claims:
-                self._seen_claims.move_to_end(cost_record.claim_id)
+            if (
+                cost_record.claim_id in self._inflight_claims
+                or cost_record.claim_id in self._seen_claims
+            ):
+                if cost_record.claim_id in self._seen_claims:
+                    self._seen_claims.move_to_end(cost_record.claim_id)
                 logger.info(
                     BUDGET_RECORD_DEDUPED,
                     claim_id=cost_record.claim_id,
@@ -232,30 +258,28 @@ class CostTracker(CostTrackerSummaryMixin):
                     cost=cost_record.cost,
                 )
                 return
-            # In-flight reservation. The slot is created NOW so a
-            # concurrent caller racing past the membership check
-            # above will see the entry and dedupe. The reservation
-            # is rolled back on the error path below.
-            self._seen_claims[cost_record.claim_id] = None
+            self._inflight_claims.add(cost_record.claim_id)
 
         # Run the durable aggregate update OUTSIDE the lock -- DB I/O
         # must not block concurrent in-memory readers/writers. Any
-        # failure rolls the in-flight reservation back so a retry
-        # with the same claim_id is not falsely deduped.
+        # failure releases the in-flight reservation so a retry with
+        # the same claim_id is not falsely deduped.
         try:
             await self._update_project_aggregate(cost_record)
         except BaseException:
             async with self._lock:
-                self._seen_claims.pop(cost_record.claim_id, None)
+                self._inflight_claims.discard(cost_record.claim_id)
             raise
 
         async with self._lock:
+            # Promote the reservation to a finalised LRU entry under
+            # the lock so the membership check above never observes
+            # a gap where the claim is in neither set. Eviction only
+            # affects ``_seen_claims``, so still-running reservations
+            # in ``_inflight_claims`` are untouched.
+            self._inflight_claims.discard(cost_record.claim_id)
             self._records.append(cost_record)
-            # Promote the in-flight reservation to recorded by moving
-            # it to the LRU tail and enforcing capacity. Eviction
-            # keeps memory bounded; once a claim ages out, a re-
-            # submission is treated as fresh, which is the
-            # documented best-effort contract.
+            self._seen_claims[cost_record.claim_id] = None
             self._seen_claims.move_to_end(cost_record.claim_id)
             while len(self._seen_claims) > self._claim_lru_capacity:
                 self._seen_claims.popitem(last=False)
@@ -536,13 +560,15 @@ class CostTracker(CostTrackerSummaryMixin):
         atomic C-level operation under the GIL.  Calling this method
         from production / async code is unsupported.
 
-        Also resets the ``_seen_claims`` LRU so a reused ``claim_id``
-        on a fresh test does not get falsely deduped (#1682
-        CodeRabbit minor at tracker.py:137).
+        Also resets ``_seen_claims`` and ``_inflight_claims`` so a
+        reused ``claim_id`` on a fresh test does not get falsely
+        deduped (#1682 CodeRabbit minor at tracker.py:137 + critical
+        at tracker.py:261).
         """
         cleared_count = len(self._records)
         self._records.clear()
         self._seen_claims.clear()
+        self._inflight_claims.clear()
         logger.info(BUDGET_TRACKER_CLEARED, cleared_count=cleared_count)
 
     # ── Private helpers ──────────────────────────────────────────────

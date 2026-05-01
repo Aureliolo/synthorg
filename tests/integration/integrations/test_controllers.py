@@ -715,7 +715,15 @@ class TestControllerHttpLayer:
         self,
         catalog: MagicMock,
     ) -> TestClient[Any]:
-        """Construct a minimal Litestar app + test client for smoke tests."""
+        """Construct a minimal Litestar app + test client for smoke tests.
+
+        Wires a no-op per-op rate-limit guard so write endpoints
+        (e.g. ``POST /connections``) don't 503 with the
+        "rate limiter not wired" deployment-error guard. The guard
+        is on by default to make production deployments fail-closed,
+        but smoke tests run against a stub store so the test layer
+        can verify routing/DTO/error translation in isolation.
+        """
         from litestar import Litestar, Router
         from litestar.datastructures import State
         from litestar.middleware import ASGIMiddleware
@@ -725,8 +733,27 @@ class TestControllerHttpLayer:
             IntegrationHealthController,
         )
         from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+        from synthorg.api.rate_limits._subject import (
+            STATE_KEY_CONFIG,
+            STATE_KEY_STORE,
+        )
+        from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 
-        app_state_stub = MagicMock(connection_catalog=catalog)
+        # Stub rate-limit store: the guard calls
+        # ``store.acquire(operation, subject, max_requests, window)``
+        # and treats a truthy result as "not throttled". Returning a
+        # token with no retry-after is the cheapest safe stub.
+        rate_limit_store = MagicMock()
+        rate_limit_store.acquire = AsyncMock(
+            return_value=(True, None),
+        )
+        rate_limit_config = PerOpRateLimitConfig(enabled=False)
+
+        app_state_stub = MagicMock(
+            connection_catalog=catalog,
+            has_per_op_rate_limit_config=True,
+            per_op_rate_limit_config=rate_limit_config,
+        )
 
         class _TestUser:
             role = "ceo"
@@ -770,7 +797,13 @@ class TestControllerHttpLayer:
         )
         app = Litestar(
             route_handlers=[api_router],
-            state=State({"app_state": app_state_stub}),
+            state=State(
+                {
+                    "app_state": app_state_stub,
+                    STATE_KEY_STORE: rate_limit_store,
+                    STATE_KEY_CONFIG: rate_limit_config,
+                },
+            ),
             middleware=[_InjectUserMiddleware()],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
@@ -809,3 +842,30 @@ class TestControllerHttpLayer:
         assert resp.status_code == 404
         body = resp.json()
         assert "missing" in body.get("detail", body.get("error", "")).lower()
+
+    async def test_create_connection_invalid_body_returns_4xx(self) -> None:
+        """Invalid POST body is rejected at the request boundary.
+
+        Pre-PR review #1682 (CodeRabbit at integrations/test_controllers.py:113):
+        the model-level ``test_create_validates_*`` cases assert the
+        Pydantic DTO rejects bad payloads, but only an end-to-end
+        ``TestClient`` round-trip proves the controller's signature
+        still binds the DTO and that Litestar's request parser
+        surfaces a structured client error before the handler body
+        runs.  A regression in either the route binding or the DTO
+        would fall back to 200/500, which the model-level tests
+        cannot detect.
+
+        Litestar's :class:`ValidationException` defaults to 400 in
+        the project's exception-handler registry; we accept any 4xx
+        in [400, 422] so a future tightening to 422 (RFC-aligned)
+        does not require touching this gate.
+        """
+        catalog = MagicMock()
+        client = self._build_client(catalog)
+        with client as http:
+            resp = http.post(
+                "/api/v1/connections",
+                json={"connection_type": "github"},
+            )
+        assert resp.status_code in {400, 422}

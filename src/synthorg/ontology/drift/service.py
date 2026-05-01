@@ -8,6 +8,8 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_STARTED,
     ONTOLOGY_DRIFT_DETECT_FAILED,
     ONTOLOGY_DRIFT_DETECTED,
+    ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
+    ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -101,12 +103,13 @@ class DriftDetectionService:
         if self._store is not None:
             try:
                 await self._store.store_report(report)
-            except Exception:
-                logger.error(
-                    "ontology.drift.store_failed",
+            except Exception as exc:
+                logger.error(  # noqa: TRY400
+                    ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
                     entity_name=entity_name,
                     divergence_score=report.divergence_score,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 
@@ -137,7 +140,7 @@ class DriftDetectionService:
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
                 logger.error(
-                    "ontology.drift.entity_check_failed",
+                    ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
                     entity_name=entities[i].name,
                     error_type=type(result).__name__,
                     error=safe_error_description(result),

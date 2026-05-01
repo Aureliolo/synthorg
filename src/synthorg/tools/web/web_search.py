@@ -136,8 +136,12 @@ class WebSearchTool(BaseWebTool):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            # Stable, generic message: ``ToolExecutionResult.content``
+            # is forwarded to the LLM, so interpolating ``exc`` would
+            # leak provider internals / API keys past the SEC-1 log
+            # scrub (#1682, CodeRabbit at web_search.py:141).
             return ToolExecutionResult(
-                content=f"Web search failed: {exc}",
+                content="Web search failed. Please try again.",
                 is_error=True,
             )
 

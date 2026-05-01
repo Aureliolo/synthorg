@@ -238,11 +238,11 @@ class OffboardingService:
                 agent_seniority=identity.level,
             )
         except (MemoryArchivalError, OSError, ValueError) as exc:
-            msg = f"Memory archival failed for agent {agent_id!r}: {exc}"
             logger.warning(
                 HR_FIRING_ARCHIVAL_FAILED,
                 agent_id=agent_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             # Non-fatal: continue with offboarding.
             return default_result
@@ -318,6 +318,12 @@ class OffboardingService:
                 warning="agent_not_found_during_termination",
             )
         except (OSError, ValueError) as exc:
-            msg = f"Failed to terminate agent {agent_id!r} in registry: {exc}"
-            logger.exception(HR_FIRING_COMPLETE, agent_id=agent_id, error=msg)
+            scrubbed = safe_error_description(exc)
+            msg = f"Failed to terminate agent {agent_id!r} in registry: {scrubbed}"
+            logger.error(  # noqa: TRY400
+                HR_FIRING_COMPLETE,
+                agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=scrubbed,
+            )
             raise OffboardingError(msg) from exc

@@ -126,7 +126,11 @@ class TestSandboxErrorSurfaces:
         tool = GitStatusTool(workspace=git_repo, sandbox=sandbox)
         result = await tool.execute(arguments={})
         assert result.is_error
-        assert "workspace violation" in result.content
+        # SEC-1 (#1682): the SandboxError text would leak repo URLs /
+        # workspace paths to the LLM via ``ToolExecutionResult.content``,
+        # so the tool now emits a stable generic message; the original
+        # exception lives only in the GIT_COMMAND_FAILED log line.
+        assert result.content == "Git command failed in sandbox"
 
 
 class TestUnexpectedSandboxException:

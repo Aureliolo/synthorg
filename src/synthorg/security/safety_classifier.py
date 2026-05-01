@@ -49,7 +49,16 @@ from synthorg.observability.events.security import (
     SECURITY_TIER_CLASSIFIED,
     SECURITY_TIER_SAFE_TOOL,
 )
-from synthorg.providers.cost_recording import cost_recording_scope
+
+# ``cost_recording_scope`` is imported lazily inside the call site
+# (``_run_classifier``) to break a latent circular boot path:
+# ``synthorg.providers.cost_recording`` -> ``synthorg.budget.cost_record``
+# -> ``synthorg.ontology`` -> ``synthorg.persistence`` ->
+# ``synthorg.persistence.audit_protocol`` -> ``synthorg.security`` ->
+# ``synthorg.security.safety_classifier``.  Hoisting the import back to
+# module scope reopens the cycle when ``synthorg.security`` is the
+# first package walked at boot (covered by
+# ``tests/unit/security/test_safety_classifier_circular_boot.py``).
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.family import get_family, providers_excluding_family
 from synthorg.providers.models import (
@@ -463,6 +472,12 @@ class SafetyClassifier:
             action_type,
             tool_name,
             risk_level,
+        )
+
+        # Lazy import: see module-level note for the boot-cycle
+        # rationale (#1682).
+        from synthorg.providers.cost_recording import (  # noqa: PLC0415
+            cost_recording_scope,
         )
 
         async with cost_recording_scope(

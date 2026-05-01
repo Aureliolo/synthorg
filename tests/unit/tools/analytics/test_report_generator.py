@@ -150,8 +150,9 @@ class TestReportGeneratorTool:
         # generic message; raw exception text would leak DB
         # connection strings on real failures. Operators see the
         # scrubbed detail in the ANALYTICS_TOOL_REPORT_FAILED log.
-        assert "Report generation failed" in result.content
-        assert "query failed" not in result.content
+        # Equality (not substring) so the gate fails if a future
+        # change appends raw exception text after the prefix.
+        assert result.content == "Report generation failed"
 
     def test_parameters_schema_required_fields(
         self,

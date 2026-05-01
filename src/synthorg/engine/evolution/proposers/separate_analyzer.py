@@ -391,10 +391,10 @@ class SeparateAnalyzerProposer:
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,
                 agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="provider_error",
                 is_retryable=False,
-                exc_info=True,
             )
             return ()
 

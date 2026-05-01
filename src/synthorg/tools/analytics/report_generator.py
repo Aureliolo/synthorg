@@ -269,8 +269,12 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 error=safe_error_description(exc),
                 report_type=report_type,
             )
+            # Generic content (mirrors the query-failure branch);
+            # ``ToolExecutionResult.content`` reaches the LLM so
+            # ``exc`` text would leak past the SEC-1 log scrub above
+            # (#1682, CodeRabbit at report_generator.py:265-274).
             return ToolExecutionResult(
-                content=f"Report formatting failed: {exc}",
+                content="Report formatting failed",
                 is_error=True,
             )
 

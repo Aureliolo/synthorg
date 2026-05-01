@@ -71,14 +71,18 @@ class CreateConnectionRequest(BaseModel):
     name: Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)]
     connection_type: ConnectionType
     auth_method: AuthMethod = AuthMethod.API_KEY
+    # ``NotBlankStr`` keys reject ``""`` and whitespace-only strings
+    # so an attacker can't slip a blank-keyed credential past the DTO
+    # (#1682, CodeRabbit at connections.py:77). Empty credential keys
+    # are never legitimate -- the catalog later normalises by name.
     credentials: dict[
-        Annotated[str, Field(max_length=_MAX_CRED_KEY_LEN)],
+        Annotated[NotBlankStr, Field(max_length=_MAX_CRED_KEY_LEN)],
         Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
     ] = Field(default_factory=dict)
     base_url: Annotated[str, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
         dict[
-            Annotated[str, Field(max_length=_MAX_METADATA_KEY_LEN)],
+            Annotated[NotBlankStr, Field(max_length=_MAX_METADATA_KEY_LEN)],
             Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
         ]
         | None
@@ -113,7 +117,7 @@ class UpdateConnectionRequest(BaseModel):
     base_url: Annotated[str, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
         dict[
-            Annotated[str, Field(max_length=_MAX_METADATA_KEY_LEN)],
+            Annotated[NotBlankStr, Field(max_length=_MAX_METADATA_KEY_LEN)],
             Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
         ]
         | None

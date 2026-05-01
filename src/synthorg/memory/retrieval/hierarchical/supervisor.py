@@ -194,7 +194,9 @@ class SupervisorRouter:
             logger.warning(
                 MEMORY_HIERARCHICAL_RETRY,
                 action="eval_failed",
-                reason=f"LLM retry evaluation failed: {exc}",
+                reason="llm_retry_evaluation_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -322,7 +324,8 @@ class SupervisorRouter:
                 logger.debug(
                     MEMORY_HIERARCHICAL_RETRY,
                     action="corrected_query_invalid",
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     corrected_length=len(str(corrected_text)),
                 )
                 corrected_query = None

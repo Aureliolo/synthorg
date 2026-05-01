@@ -185,11 +185,17 @@ class CoordinationController(Controller):
         try:
             budget_cfg = await app_state.config_resolver.get_budget_config()
             currency = budget_cfg.currency
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # SEC-1 (#1682): drop ``exc_info=True`` -- the
+            # config-resolver traceback can carry secret-store URLs
+            # in frame-locals.
             logger.warning(
                 API_COORDINATION_FAILED,
-                error="budget config unavailable, using default currency",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="budget config unavailable, using default currency",
             )
             currency = DEFAULT_CURRENCY
         return ApiResponse(
@@ -272,11 +278,15 @@ class CoordinationController(Controller):
             raise ValidationError(client_msg) from exc
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # SEC-1 (#1682): drop ``logger.exception`` -- frame-locals
+            # on the unexpected-coordination traceback can carry the
+            # full coordination context (task body, agent rosters).
+            logger.error(  # noqa: TRY400
                 API_COORDINATION_FAILED,
                 task_id=task_id,
-                error="Unexpected exception during coordination",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             _publish_ws_event(
                 request,

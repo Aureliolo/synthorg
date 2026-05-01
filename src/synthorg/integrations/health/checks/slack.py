@@ -66,6 +66,13 @@ class SlackHealthCheck:
         # TaskGroup.
         try:
             credentials = await self._catalog.get_credentials(connection.name)
+        except MemoryError, RecursionError:
+            # System-level failures must propagate so the surrounding
+            # TaskGroup can unwind cleanly; converting them to an
+            # UNHEALTHY report would mask the real problem and leave
+            # sibling probes running on a doomed process (project
+            # convention; #1682, CodeRabbit at slack.py:80).
+            raise
         except Exception as exc:
             # SEC-1 (#1682): the secret-backend exception text can
             # carry encrypted token blobs; scrub before logging /
@@ -115,17 +122,18 @@ class SlackHealthCheck:
                 )
         except httpx.HTTPError as exc:
             elapsed = (time.monotonic() - start) * 1000
+            scrubbed = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=scrubbed,
             )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
                 latency_ms=elapsed,
-                error_detail=str(exc),
+                error_detail=scrubbed,
                 checked_at=datetime.now(UTC),
             )
 
@@ -150,7 +158,9 @@ class SlackHealthCheck:
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
-                error=f"invalid JSON: {exc}",
+                reason="invalid_json",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return HealthReport(
                 connection_name=connection.name,

@@ -109,13 +109,19 @@ class ClarificationGateConfig(BaseModel):
             try:
                 re.compile(pattern)
             except re.error as exc:
-                msg = f"Invalid generic pattern {pattern!r}: {exc}"
+                scrubbed = safe_error_description(exc)
+                # SEC-1 (#1682): include only the scrubbed exception
+                # text in both the human-readable ``message`` and the
+                # raised ``ValueError``; raw ``str(exc)`` interpolation
+                # could leak attacker-controlled regex content into
+                # operator logs.
+                msg = f"Invalid generic pattern {pattern!r}: {scrubbed}"
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
                     message=msg,
                     pattern=pattern,
                     error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                    error=scrubbed,
                 )
                 raise ValueError(msg) from exc
         return self

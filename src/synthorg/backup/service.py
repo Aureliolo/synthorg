@@ -330,11 +330,12 @@ class BackupService(BackupServiceArchiveMixin):
                 backup_dir=backup_dir,
                 safety_backup_id=safety_manifest.backup_id,
             )
-        except RestoreError:
-            logger.error(
+        except RestoreError as exc:
+            logger.error(  # noqa: TRY400
                 BACKUP_RESTORE_FAILED,
                 backup_id=backup_id,
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         finally:

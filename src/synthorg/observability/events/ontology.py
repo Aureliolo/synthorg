@@ -132,6 +132,9 @@ ONTOLOGY_DRIFT_DETECTED: Final[str] = "ontology.drift.detected"
 ONTOLOGY_DRIFT_DETECT_FAILED: Final[str] = "ontology.drift.detect_failed"
 """Drift detection strategy raised; report could not be produced."""
 
+ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED: Final[str] = "ontology.drift.entity_check_failed"
+"""Per-entity drift check raised; the rest of the batch continues."""
+
 ONTOLOGY_DRIFT_STORE_WRITE_FAILED: Final[str] = "ontology.drift.store_write_failed"
 """Drift report repository failed to persist a report."""
 
