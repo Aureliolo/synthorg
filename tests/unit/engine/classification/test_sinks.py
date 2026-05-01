@@ -362,29 +362,48 @@ class TestSlidingWindowRateLimiterRaceConditions:
 
         Two same-agent admissions are alive concurrently. The OLDER
         one fails after the NEWER one has already been granted; the
-        old code would refund the newest slot and leave the failed
-        admission counted. The handle-based ``release`` must remove
-        the exact admission so the newer dispatch keeps its slot.
+        old code (``release`` pops the newest timestamp) would refund
+        the *newer* slot, leaving the failed admission counted and
+        squatting on capacity.
+
+        With ``max_events=2`` we hold two live handles at the same
+        time, release the FIRST one, then assert the limiter knows
+        exactly one slot reopened (a third take returns a fresh
+        handle that is neither of the originals; a fourth take is
+        rejected because the second admission still holds its slot).
+        Setting ``max_events=1`` cannot reproduce the bug -- only one
+        handle is ever live, so any release happens to land on the
+        right slot by luck.
         """
-        max_events = 1
+        max_events = 2
         fake_time = [0.0]
         limiter = _SlidingWindowRateLimiter(
             max_events=max_events,
             window_seconds=60.0,
             clock=lambda: fake_time[0],
         )
-        # First admission lands.
+        # Two same-agent admissions in-flight concurrently.
         first = await limiter.take("agent-A")
         assert first is not None
-        # Window is now saturated.
-        assert await limiter.take("agent-A") is None
-        # Release the first (older) admission *by handle* -- which
-        # corresponds to the failed dispatch's slot.
-        await limiter.release("agent-A", first)
-        # The window should be free again. A second take must
-        # succeed; before the fix this would still see the original
-        # timestamp because release popped a no-op (or the wrong
-        # entry).
         second = await limiter.take("agent-A")
         assert second is not None
         assert second is not first
+        # Window is saturated.
+        assert await limiter.take("agent-A") is None
+
+        # Release the FIRST (older) admission by handle. Under the
+        # old buggy ``release`` (pop newest), this would have removed
+        # ``second`` instead.
+        await limiter.release("agent-A", first)
+
+        # Exactly one slot must be free: a third take succeeds with
+        # a brand-new handle.
+        third = await limiter.take("agent-A")
+        assert third is not None
+        assert third is not first
+        assert third is not second
+        # The second admission is still occupying its slot, so a
+        # fourth take is rejected. If the buggy refund-newest logic
+        # were still in place, ``second`` would have been popped
+        # earlier and this take would unexpectedly succeed.
+        assert await limiter.take("agent-A") is None

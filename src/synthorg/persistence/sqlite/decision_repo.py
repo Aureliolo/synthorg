@@ -512,7 +512,9 @@ class SQLiteDecisionRepository:
 
         Returns:
             ``tuple[DecisionRecord, ...]`` ordered ascending by
-            ``version`` (oldest decision first).
+            ``(recorded_at, id)`` so a backfilled decision still
+            sorts to its true chronological position; the ``id``
+            tiebreaker matches the Postgres backend.
 
         Raises:
             QueryError: If ``limit`` / ``offset`` fail the type or
@@ -529,9 +531,15 @@ class SQLiteDecisionRepository:
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
             async with self._write_lock:
+                # ``recorded_at ASC, id ASC`` matches the protocol's
+                # "oldest first" contract; ``version ASC`` would
+                # mis-place a backfilled decision (low ``recorded_at``
+                # but a freshly-allocated high ``version``) at the end
+                # of the list. Mirrors the Postgres backend.
                 cursor = await self._db.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                    "WHERE task_id = ? ORDER BY version ASC LIMIT ? OFFSET ?",
+                    "WHERE task_id = ? "
+                    "ORDER BY recorded_at ASC, id ASC LIMIT ? OFFSET ?",
                     (task_id, effective_limit, offset),
                 )
                 rows = await cursor.fetchall()

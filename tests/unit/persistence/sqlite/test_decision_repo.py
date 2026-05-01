@@ -129,10 +129,20 @@ class TestSQLiteDecisionRepositoryAppendAndGet:
 
 @pytest.mark.unit
 class TestSQLiteDecisionRepositoryListByTask:
-    async def test_list_by_task_returns_version_asc(
+    async def test_list_by_task_returns_oldest_first(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """list_by_task returns records ordered by version ascending."""
+        """list_by_task returns records ordered (recorded_at ASC, id ASC).
+
+        Records are inserted with monotonically increasing
+        ``recorded_at`` (each ``_append`` resolves
+        ``datetime.now(UTC)`` afresh), so ``[1, 2, 3]`` versions are
+        the expected reading even with the protocol's chronological
+        ordering instead of the previous ``version ASC``. This test
+        catches regressions where the SQL drifts back to
+        ``ORDER BY version`` (which would mis-position a backfilled
+        decision).
+        """
         repo = SQLiteDecisionRepository(migrated_db)
         await _append(repo, record_id="dr-1", task_id="task-A")
         await _append(

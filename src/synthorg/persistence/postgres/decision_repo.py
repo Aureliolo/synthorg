@@ -449,7 +449,11 @@ class PostgresDecisionRepository:
 
         Returns:
             ``tuple[DecisionRecord, ...]`` ordered ascending by
-            ``version`` (oldest decision first).
+            ``(recorded_at, id)`` so paginated results are stable
+            and a backfilled decision (low ``recorded_at``, high
+            ``version``) still sorts to the correct chronological
+            position. The ``id`` tiebreaker matches the deterministic
+            ordering used by ``list_by_agent``.
 
         Raises:
             QueryError: If ``limit`` / ``offset`` fail the type or
@@ -469,9 +473,17 @@ class PostgresDecisionRepository:
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
+                # ``recorded_at ASC, id ASC`` matches the protocol's
+                # "oldest first" contract via the same wall-clock
+                # ordering ``list_by_agent`` uses (DESC there). A
+                # backfill that lands an old decision with a fresh
+                # high-numbered ``version`` would otherwise sort to
+                # the end under ``version ASC`` -- the exact scenario
+                # CodeRabbit flagged on round 4.
                 await cur.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
-                    "WHERE task_id = %s ORDER BY version ASC LIMIT %s OFFSET %s",
+                    "WHERE task_id = %s "
+                    "ORDER BY recorded_at ASC, id ASC LIMIT %s OFFSET %s",
                     (task_id, effective_limit, offset),
                 )
                 rows = await cur.fetchall()

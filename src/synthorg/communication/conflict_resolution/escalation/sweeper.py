@@ -152,8 +152,9 @@ class EscalationExpirationSweeper:
             # deadline would be soft. With ``shield``, the outer
             # ``wait_for`` times out the wait only; the shielded await
             # keeps running in the background but does not prevent
-            # ``stop()`` from exiting and releasing ``_start_lock``.
-            # Same pattern as ``MessageBusBridge.stop()``.
+            # ``stop()`` from exiting and releasing
+            # ``self._lifecycle_lock``. Same pattern as
+            # ``MessageBusBridge.stop()``.
             async def _drain() -> None:
                 try:
                     await task

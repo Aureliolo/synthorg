@@ -9,7 +9,6 @@ as failures (POST may not have been stored).
 """
 
 import asyncio
-import contextlib
 import time
 from typing import TYPE_CHECKING, Self
 
@@ -206,25 +205,55 @@ class HttpAnalyticsEmitter:
         iteration. We then ``cancel()`` to interrupt the in-progress
         ``asyncio.sleep`` (which is the only place the loop can be
         parked); a flush already in progress propagates its
-        ``CancelledError`` to the awaiter via ``suppress``. The
-        explicit final ``flush()`` then sweeps any events appended
-        between the cancellation request and this call.
+        ``CancelledError`` to the awaiter, which we suppress
+        explicitly. The explicit final ``flush()`` then sweeps any
+        events appended between the cancellation request and this
+        call.
 
         ``self._lifecycle_lock`` is held across the flag flip + task
         cancel + client close so a concurrent ``_enqueue`` cannot
         spawn a fresh ``_periodic_flush`` task in between -- otherwise
         the orphan would survive shutdown and call ``flush`` (which
         touches ``self._client``) after ``self._client.aclose()``.
+
+        Resource-close ordering: the ``httpx.AsyncClient`` MUST close
+        even if ``self._flush_task`` raised a non-CancelledError
+        exception or ``self.flush()`` failed. A naive ``contextlib.
+        suppress(CancelledError)`` around the await would let any
+        other exception (e.g. an unexpected ``RuntimeError`` raised
+        from the periodic loop) propagate before
+        ``self._client.aclose()`` ran, leaving the httpx connection
+        pool open for the rest of the process lifetime. We capture
+        the first non-CancelledError exception, finish the close
+        sequence, and re-raise at the end so shutdown is observable
+        without leaking the client.
         """
         async with self._lifecycle_lock:
             self._closed = True
+            deferred_exc: BaseException | None = None
             if self._flush_task is not None:
                 self._flush_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
+                try:
                     await self._flush_task
-            await self.flush()
+                except asyncio.CancelledError:
+                    pass  # expected: we just cancelled it
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    deferred_exc = exc
+            try:
+                await self.flush()
+            except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                if deferred_exc is None:
+                    deferred_exc = exc
             await self._client.aclose()
             logger.info(XDEPLOY_EMITTER_CLOSED)
+            if deferred_exc is not None:
+                raise deferred_exc
 
     async def __aenter__(self) -> Self:
         """Enter the async context manager."""
