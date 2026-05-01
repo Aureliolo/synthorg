@@ -2,10 +2,11 @@
 
 import json
 import math
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.models import OAuthToken
 from synthorg.integrations.errors import TokenExchangeFailedError
 from synthorg.observability import get_logger, safe_error_description
@@ -32,12 +33,17 @@ class ClientCredentialsFlow:
             are expected to pass the operator-tuned value from
             ``ConfigResolver.get_float('integrations',
             'oauth_http_timeout_seconds')`` at construction.
+        clock: Time source. Defaults to ``SystemClock``; tests inject
+            ``FakeClock`` from ``tests/_shared/fake_clock.py`` so
+            ``OAuthToken.expires_at`` is deterministic without real
+            time.
     """
 
     def __init__(
         self,
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         # Strict numeric + finite + positive: reject ``bool`` (which
         # is an ``int`` subclass and would silently flow into
@@ -57,6 +63,7 @@ class ClientCredentialsFlow:
             )
             raise ValueError(msg)
         self._http_timeout_seconds = float(http_timeout_seconds)
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def grant_type(self) -> str:
@@ -140,7 +147,7 @@ class ClientCredentialsFlow:
         expires_in = data.get("expires_in")
         expires_at = None
         if isinstance(expires_in, int) and expires_in > 0:
-            expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
+            expires_at = self._clock.now() + timedelta(seconds=expires_in)
 
         logger.info(OAUTH_TOKEN_EXCHANGED, grant_type="client_credentials")
         return OAuthToken(

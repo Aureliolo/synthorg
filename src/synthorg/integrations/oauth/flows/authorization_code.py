@@ -3,12 +3,13 @@
 import json
 import math
 import secrets as stdlib_secrets
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from urllib.parse import urlencode
 
 import httpx
 
 from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     OAuthState,
@@ -48,12 +49,17 @@ class AuthorizationCodeFlow:
     Args:
         http_timeout_seconds: HTTP timeout for token exchange + refresh
             calls (mirrors ``integrations.oauth_http_timeout_seconds``).
+        clock: Time source. Defaults to ``SystemClock``; tests inject
+            ``FakeClock`` from ``tests/_shared/fake_clock.py`` so
+            ``OAuthState`` and ``OAuthToken`` ``expires_at`` are
+            deterministic without real time.
     """
 
     def __init__(
         self,
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         # Strict numeric + finite + positive: reject ``bool`` (which
         # is an ``int`` subclass and would silently flow into
@@ -73,6 +79,7 @@ class AuthorizationCodeFlow:
             )
             raise ValueError(msg)
         self._http_timeout_seconds = float(http_timeout_seconds)
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def grant_type(self) -> str:
@@ -118,7 +125,7 @@ class AuthorizationCodeFlow:
         }
         authorization_url = f"{auth_url}?{urlencode(params)}"
 
-        now = datetime.now(UTC)
+        now = self._clock.now()
         oauth_state = OAuthState(
             state_token=NotBlankStr(state_token),
             connection_name=NotBlankStr("pending"),
@@ -238,8 +245,8 @@ class AuthorizationCodeFlow:
             )
             raise TokenRefreshFailedError(safe_error_description(exc)) from exc
 
-    @staticmethod
     def _parse_token_response(  # noqa: C901, PLR0912
+        self,
         data: object,
         operation: str,
     ) -> OAuthToken:
@@ -269,7 +276,7 @@ class AuthorizationCodeFlow:
         expires_in = data.get("expires_in")
         expires_at = None
         if isinstance(expires_in, int) and expires_in > 0:
-            expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
+            expires_at = self._clock.now() + timedelta(seconds=expires_in)
 
         # Fail fast on malformed optional fields instead of silently
         # coercing or defaulting them. A token endpoint that sends

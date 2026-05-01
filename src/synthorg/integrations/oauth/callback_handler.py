@@ -163,10 +163,10 @@ async def handle_oauth_callback(  # noqa: PLR0913
         auth_flow = flow
     else:
         timeout = await resolve_oauth_http_timeout(config_resolver)
-        flow_kwargs: dict[str, float] = (
-            {"http_timeout_seconds": timeout} if timeout is not None else {}
-        )
-        auth_flow = AuthorizationCodeFlow(**flow_kwargs)
+        if timeout is not None:
+            auth_flow = AuthorizationCodeFlow(http_timeout_seconds=timeout)
+        else:
+            auth_flow = AuthorizationCodeFlow()
     try:
         token = await auth_flow.exchange_code(
             token_url=token_url,
