@@ -199,9 +199,15 @@ class PruningService:
                 )
                 raise
             except asyncio.CancelledError:
-                # The running cycle was cancelled before it observed
-                # ``_stop_event``. Drained successfully.
-                pass
+                # Distinguish external cancellation of ``stop()`` from
+                # the running cycle being cancelled before observing
+                # ``_stop_event``. If the loop task is still alive, the
+                # cancel was aimed at us, not at it -- re-raise so the
+                # external cancellation propagates and we don't pretend
+                # the service drained when it actually didn't.
+                if not task.done():
+                    raise
+                # Loop already finished; drained successfully.
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:

@@ -18,9 +18,9 @@ from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
+    NGROK_TUNNEL_STARTED,
     TUNNEL_ALREADY_ACTIVE,
     TUNNEL_ERROR,
-    TUNNEL_STARTED,
     TUNNEL_STOPPED,
 )
 
@@ -174,8 +174,12 @@ class NgrokAdapter:
             self._public_url = public_url
             self._tunnel = tunnel
 
+            # Provider-scoped log only -- the tunnel controller emits
+            # the global ``TUNNEL_STARTED`` after this method returns.
+            # Emitting both events here would double-count metrics
+            # keyed on the global event.
             logger.info(
-                TUNNEL_STARTED,
+                NGROK_TUNNEL_STARTED,
                 public_url=self._public_url,
                 port=self._port,
                 note="tunnel exposes localhost publicly",
