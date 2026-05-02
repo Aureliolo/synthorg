@@ -24,7 +24,6 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import (
     cost_recording_scope,
     current_cost_context,
-    drain_pending_cost_records,
     resolve_currency,
 )
 from synthorg.providers.enums import FinishReason, MessageRole
@@ -119,7 +118,7 @@ class TestCostRecordingChokepoint:
         ):
             response = await provider.complete([_msg()], "test-model")
 
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert len(records) == 1
         record = records[0]
@@ -141,7 +140,7 @@ class TestCostRecordingChokepoint:
         provider = _StubProvider()
         tracker = CostTracker()
         await provider.complete([_msg()], "test-model")
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert records == ()
 
@@ -158,7 +157,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             await provider.complete([_msg()], "test-model")
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert records == ()
 
@@ -176,7 +175,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             await provider.complete([_msg()], "test-model")
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert len(records) == 1
         assert records[0].cost == 0.0
@@ -200,7 +199,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             response = await provider.complete([_msg()], "test-model")
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         # Provider call still returned the response despite recording failure
         assert response.content == "hello"
 
@@ -276,7 +275,7 @@ class TestCostRecordingChokepoint:
             tg.create_task(task_a())
             tg.create_task(task_b())
 
-        await drain_pending_cost_records()
+        await tracker_a.drain_pending_records()
         # task_b ran outside any scope -> nothing recorded on tracker_b
         records_a = await tracker_a.get_records()
         records_b = await tracker_b.get_records()
@@ -349,3 +348,75 @@ class TestContextValidation:
                 currency=CurrencyCode(DEFAULT_CURRENCY),
             ):
                 pass
+
+
+@pytest.mark.unit
+class TestPendingRecordIsolation:
+    """The strong-ref pending-tasks set lives on the tracker, not on a
+    module global, so xdist workers and ``--count N`` repeat runs never
+    inherit a Task object bound to a closed event loop from a prior
+    test. Each :class:`CostTracker` instance owns its own set; tests
+    construct fresh trackers, so isolation is automatic.
+    """
+
+    async def test_drain_leaves_pending_set_empty(self) -> None:
+        provider = _StubProvider()
+        tracker = CostTracker()
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("agent-1"),
+            task_id=NotBlankStr("task-1"),
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            await provider.complete([_msg()], "test-model")
+        await tracker.drain_pending_records()
+        # The done_callback wired by ``track_pending_record`` removes the
+        # task from the set as soon as it completes, and ``drain`` waits
+        # for every in-flight task to settle. Without the fix (when the
+        # set was a module global), this assertion would still pass for
+        # one test but a leftover task from a *different* test in the
+        # same xdist worker could survive across tests.
+        assert tracker._pending_record_tasks == set()
+
+    async def test_pending_set_is_per_tracker(self) -> None:
+        # The two trackers each have their own set; emitting on one
+        # must not surface tasks on the other.
+        provider = _StubProvider()
+        tracker_a = CostTracker()
+        tracker_b = CostTracker()
+        async with cost_recording_scope(
+            cost_tracker=tracker_a,
+            agent_id=NotBlankStr("agent-a"),
+            task_id=NotBlankStr("task-a"),
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            await provider.complete([_msg()], "test-model-a")
+        # Before draining, tracker_a's set may carry the in-flight task;
+        # tracker_b must remain empty regardless of timing.
+        assert tracker_b._pending_record_tasks == set()
+        await tracker_a.drain_pending_records()
+        await tracker_b.drain_pending_records()
+        assert tracker_a._pending_record_tasks == set()
+        assert tracker_b._pending_record_tasks == set()
+
+    async def test_repeated_emission_on_same_tracker_drains_clean(self) -> None:
+        # Mirrors what ``--count 2`` exercises: two consecutive scopes
+        # on the same tracker should both drain to empty without
+        # cross-contamination.
+        provider = _StubProvider()
+        tracker = CostTracker()
+        for cycle in ("first", "second"):
+            async with cost_recording_scope(
+                cost_tracker=tracker,
+                agent_id=NotBlankStr(f"agent-{cycle}"),
+                task_id=NotBlankStr(f"task-{cycle}"),
+                call_category=LLMCallCategory.SYSTEM,
+                currency=CurrencyCode(DEFAULT_CURRENCY),
+            ):
+                await provider.complete([_msg()], "test-model")
+            await tracker.drain_pending_records()
+            assert tracker._pending_record_tasks == set()
+        records = await tracker.get_records()
+        assert len(records) == 2

@@ -16,7 +16,6 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.types import NotBlankStr
-from synthorg.providers.cost_recording import drain_pending_cost_records
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.management.service import ProviderManagementService
@@ -78,7 +77,7 @@ class TestProbeCostRecording:
             )
 
         assert result.success is True
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
 
         records = await tracker.get_records()
         assert len(records) == 1
@@ -118,7 +117,7 @@ class TestProbeCostRecording:
             )
 
         assert result.success is True
-        await drain_pending_cost_records()
+        # No tracker passed -> no scope opened with one -> nothing to drain.
         # Scope tore down cleanly: no leaked context in the caller.
         assert current_cost_context() is None
 
@@ -147,7 +146,7 @@ class TestProbeCostRecording:
             )
 
         assert result.success is False
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert records == ()
 
@@ -192,7 +191,7 @@ class TestProbeCostRecording:
         assert result.success is False
         assert result.error is not None
         # No CostRecord: the exception bypasses the chokepoint.
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         assert await tracker.get_records() == ()
 
         # Verify the WARNING fired with retry_exhausted=True. structlog
