@@ -201,6 +201,7 @@ function countUnread(items: readonly NotificationItem[]): number {
 // import from ``@/stores/notifications`` keep working unchanged.
 export {
   MAX_WS_STRING_LEN as MAX_STRING_LEN,
+  sanitizeWsEnum,
   sanitizeWsString,
 } from '@/utils/ws-sanitize'
 

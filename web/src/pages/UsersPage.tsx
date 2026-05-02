@@ -26,13 +26,7 @@ import type { OrgRole } from '@/api/types/enums'
 import type { UserResponse } from '@/api/endpoints/users'
 import { GrantRoleDialog } from './users/GrantRoleDialog'
 import { cn } from '@/lib/utils'
-
-const ROLE_PILL_CLASS: Record<OrgRole, string> = {
-  owner: 'bg-accent/10 text-accent border-accent/20',
-  department_admin: 'bg-warning/10 text-warning border-warning/20',
-  editor: 'bg-info/10 text-info border-info/20',
-  viewer: 'bg-surface text-text-secondary border-border',
-}
+import { ROLE_BADGE_COLORS } from '@/styles/status-colors'
 
 function RolePill({
   role,
@@ -53,7 +47,7 @@ function RolePill({
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium',
-        ROLE_PILL_CLASS[role],
+        ROLE_BADGE_COLORS[role],
       )}
     >
       {role}
@@ -112,18 +106,11 @@ export default function UsersPage() {
   }, [users, trimmedQuery])
 
   return (
-    <div className="flex flex-col gap-section-gap">
-      <ListHeader title="Users" count={sortedUsers.length} />
-
-      <SearchFilterSort
-        search={
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search users by name or role"
-            ariaLabel="Search users"
-          />
-        }
+    <div className="space-y-section-gap">
+      <ListHeader
+        title="Users"
+        description="Human operators with dashboard access and their org-role grants."
+        count={sortedUsers.length}
       />
 
       {error && (
@@ -136,6 +123,17 @@ export default function UsersPage() {
           }}
         />
       )}
+
+      <SearchFilterSort
+        search={
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search users by name or role"
+            ariaLabel="Search users"
+          />
+        }
+      />
 
       {loading && users.length === 0 ? (
         <div className="flex flex-col gap-grid-gap">
@@ -161,7 +159,11 @@ export default function UsersPage() {
           }
         />
       ) : sortedUsers.length > 0 ? (
-        <ul className="flex flex-col gap-grid-gap">
+        // Grid mirrors ClientListPage's layout so the two list pages
+        // share visual rhythm; per-card header keeps the "Grant role"
+        // mutation prominent while the grid scales density on wider
+        // viewports.
+        <ul className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
           {sortedUsers.map((user) => (
             <li key={user.id}>
               <SectionCard

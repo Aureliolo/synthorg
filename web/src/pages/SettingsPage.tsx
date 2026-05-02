@@ -60,7 +60,7 @@ function SettingsActionCard({ to, title, description }: { to: string; title: str
         <span className="text-sm font-medium text-foreground">{title}</span>
         <p className="text-xs text-text-secondary">{description}</p>
       </div>
-      <div className="w-56 shrink-0">
+      <div className="w-full max-w-[14rem] shrink-0 md:w-56">
         <span
           className="inline-flex h-9 w-full items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground"
           aria-hidden
@@ -390,13 +390,27 @@ export default function SettingsPage() {
         </ErrorBoundary>
       ) : (
         <>
-          <NamespaceTabBar
-            namespaces={NAMESPACE_ORDER}
-            activeNamespace={effectiveNamespace}
-            onSelect={setActiveNamespace}
-            namespaceCounts={namespaceCounts}
-            namespaceIcons={NAMESPACE_ICONS}
-          />
+          <div className="flex items-center justify-between gap-2">
+            <NamespaceTabBar
+              namespaces={NAMESPACE_ORDER}
+              activeNamespace={effectiveNamespace}
+              onSelect={setActiveNamespace}
+              namespaceCounts={namespaceCounts}
+              namespaceIcons={NAMESPACE_ICONS}
+            />
+            {advancedMode && (
+              // Subtle indicator next to the namespace tabs so the
+              // operator knows they're seeing advanced settings even
+              // after dismissing the AdvancedModeBanner. The visible
+              // "Advanced" text IS the accessible name; an explicit
+              // aria-label would just duplicate it.
+              <span
+                className="shrink-0 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning"
+              >
+                Advanced
+              </span>
+            )}
+          </div>
 
           {filteredByNamespace.size === 0 && (
             <EmptyState

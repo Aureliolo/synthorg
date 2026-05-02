@@ -48,6 +48,7 @@ export {
   apiError,
   apiPaginatedError,
   apiSuccess,
+  buildValidationError,
   emptyPage,
   paginatedFor,
   successFor,

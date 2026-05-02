@@ -33,6 +33,12 @@ export interface TaskColumnProps {
   column: KanbanColumn
   tasks: Task[]
   onSelectTask: (taskId: string) => void
+  /**
+   * Whether this column contains the currently-selected task. The
+   * column header gets a subtle highlight to help operators map the
+   * detail-drawer-open task back to its lifecycle phase on the board.
+   */
+  highlighted?: boolean
 }
 
 const SortableTaskCard = memo(function SortableTaskCard({
@@ -63,7 +69,7 @@ const SortableTaskCard = memo(function SortableTaskCard({
   )
 })
 
-export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
+export function TaskColumn({ column, tasks, onSelectTask, highlighted }: TaskColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
     data: { columnId: column.id, statuses: column.statuses },
@@ -78,8 +84,12 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
 
   return (
     <section
-      className="flex w-72 shrink-0 snap-start flex-col"
+      className={cn(
+        'flex w-72 shrink-0 snap-start flex-col rounded-lg transition-colors',
+        highlighted && 'bg-accent/5 ring-1 ring-accent/30',
+      )}
       data-column-id={column.id}
+      data-selected-column={highlighted ? '' : undefined}
       aria-labelledby={`task-column-${column.id}-label`}
     >
       {/* Column header */}

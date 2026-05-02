@@ -10,7 +10,7 @@ import type {
 } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import type { ConnectionsGet, ConnectionsSet } from './types'
 
 const log = createLogger('connections-crud')
@@ -37,7 +37,7 @@ export function createCrudActions(set: ConnectionsSet, get: ConnectionsGet) {
         log.error('Create connection failed:', getErrorMessage(err))
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to create connection',
+          ...getCrudErrorTitle(err, 'Failed to create connection'),
           description: getErrorMessage(err),
         })
         set({ mutating: false })
@@ -68,7 +68,7 @@ export function createCrudActions(set: ConnectionsSet, get: ConnectionsGet) {
         log.error('Update connection failed:', getErrorMessage(err))
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to update connection',
+          ...getCrudErrorTitle(err, 'Failed to update connection'),
           description: getErrorMessage(err),
         })
         set({ mutating: false })
@@ -95,7 +95,7 @@ export function createCrudActions(set: ConnectionsSet, get: ConnectionsGet) {
         set({ mutating: false, connections: previous })
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to delete connection',
+          ...getCrudErrorTitle(err, 'Failed to delete connection'),
           description: getErrorMessage(err),
         })
         return false

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { AnimatePresence } from 'motion/react'
 import { ClipboardCheck } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { MetricCard } from '@/components/ui/metric-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -10,6 +11,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useApprovalsData } from '@/hooks/useApprovalsData'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useToastStore } from '@/stores/toast'
 import {
   filterApprovals,
@@ -178,7 +180,9 @@ export default function ApprovalsPage() {
     if (!batchReason.trim()) {
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Please provide a rejection reason',
+        title: 'Rejection reason required',
+        description:
+          'Rejection requires a reason for the approval record. Provide a brief explanation.',
       })
       return
     }
@@ -222,12 +226,34 @@ export default function ApprovalsPage() {
     return counts
   }, [approvals])
 
+  const hasFilters = !!(filters.status || filters.riskLevel || filters.actionType || filters.search)
+
+  // Hook must run before any early return (rules-of-hooks); loading
+  // state below short-circuits before the empty-state branch ever
+  // matters. ``filtered.length`` is the post-filter item count;
+  // ``grouped.size`` is the risk-bucket count (max 4) which works
+  // for the > 0 check today but is semantically wrong and would
+  // misreport when downstream code reads the count.
+  const emptyStateProps = useEmptyStateProps({
+    filteredCount: filtered.length,
+    totalCount: approvals.length,
+    filterActive: hasFilters,
+    icon: ClipboardCheck,
+    empty: {
+      title: 'No approvals',
+      description: "When agents request approval for actions, they'll appear here.",
+    },
+    filtered: {
+      title: 'No matching approvals',
+      description: 'Try adjusting your filters.',
+      action: { label: 'Clear filters', onClick: () => handleFiltersChange({}) },
+    },
+  })
+
   // Loading state
   if (loading && approvals.length === 0) {
     return <ApprovalsSkeleton />
   }
-
-  const hasFilters = !!(filters.status || filters.riskLevel || filters.actionType || filters.search)
 
   return (
     <div className="space-y-section-gap">
@@ -261,39 +287,74 @@ export default function ApprovalsPage() {
         actionTypes={actionTypes}
       />
 
-      {/* Pending counts by risk level */}
+      {/* Pending counts by risk level. Each card is a toggle for the
+          matching risk_level filter so operators can shortcut the
+          filter bar from the metric they're focused on. */}
       <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
         <StaggerItem>
-          <MetricCard label="Critical" value={riskCounts.critical} className="border-l-2 border-l-danger" />
+          <RiskFilterMetricCard
+            label="Critical"
+            value={riskCounts.critical}
+            riskLevel="critical"
+            activeFilter={filters.riskLevel}
+            onToggle={(level) =>
+              handleFiltersChange({
+                ...filters,
+                riskLevel: filters.riskLevel === level ? undefined : level,
+              })
+            }
+            className="border-l-2 border-l-danger"
+          />
         </StaggerItem>
         <StaggerItem>
-          <MetricCard label="High" value={riskCounts.high} className="border-l-2 border-l-warning" />
+          <RiskFilterMetricCard
+            label="High"
+            value={riskCounts.high}
+            riskLevel="high"
+            activeFilter={filters.riskLevel}
+            onToggle={(level) =>
+              handleFiltersChange({
+                ...filters,
+                riskLevel: filters.riskLevel === level ? undefined : level,
+              })
+            }
+            className="border-l-2 border-l-warning"
+          />
         </StaggerItem>
         <StaggerItem>
-          <MetricCard label="Medium" value={riskCounts.medium} className="border-l-2 border-l-accent" />
+          <RiskFilterMetricCard
+            label="Medium"
+            value={riskCounts.medium}
+            riskLevel="medium"
+            activeFilter={filters.riskLevel}
+            onToggle={(level) =>
+              handleFiltersChange({
+                ...filters,
+                riskLevel: filters.riskLevel === level ? undefined : level,
+              })
+            }
+            className="border-l-2 border-l-accent"
+          />
         </StaggerItem>
         <StaggerItem>
-          <MetricCard label="Low" value={riskCounts.low} className="border-l-2 border-l-accent-dim" />
+          <RiskFilterMetricCard
+            label="Low"
+            value={riskCounts.low}
+            riskLevel="low"
+            activeFilter={filters.riskLevel}
+            onToggle={(level) =>
+              handleFiltersChange({
+                ...filters,
+                riskLevel: filters.riskLevel === level ? undefined : level,
+              })
+            }
+            className="border-l-2 border-l-accent-dim"
+          />
         </StaggerItem>
       </StaggerGroup>
 
       {/* Risk-grouped sections */}
-      {grouped.size === 0 && !hasFilters && (
-        <EmptyState
-          icon={ClipboardCheck}
-          title="No approvals"
-          description="When agents request approval for actions, they'll appear here."
-        />
-      )}
-
-      {grouped.size === 0 && hasFilters && (
-        <EmptyState
-          icon={ClipboardCheck}
-          title="No matching approvals"
-          description="Try adjusting your filters."
-          action={{ label: 'Clear filters', onClick: () => handleFiltersChange({}) }}
-        />
-      )}
+      {emptyStateProps && <EmptyState {...emptyStateProps} />}
 
       {[...grouped.entries()].map(([riskLevel, items]) => (
         <ApprovalRiskGroupSection
@@ -393,5 +454,45 @@ export default function ApprovalsPage() {
         />
       </ConfirmDialog>
     </div>
+  )
+}
+
+interface RiskFilterMetricCardProps {
+  label: string
+  value: number
+  riskLevel: ApprovalRiskLevel
+  activeFilter: ApprovalRiskLevel | undefined
+  onToggle: (level: ApprovalRiskLevel) => void
+  className?: string
+}
+
+/**
+ * Wraps a MetricCard in a button so clicking the metric toggles the
+ * matching risk_level filter. ``aria-pressed`` exposes the toggle
+ * state to assistive tech.
+ */
+function RiskFilterMetricCard({
+  label,
+  value,
+  riskLevel,
+  activeFilter,
+  onToggle,
+  className,
+}: RiskFilterMetricCardProps) {
+  const active = activeFilter === riskLevel
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(riskLevel)}
+      aria-pressed={active}
+      aria-label={`Filter by ${label.toLowerCase()} risk (${value} pending)`}
+      className={cn(
+        'block w-full text-left rounded-lg transition-shadow',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+        active && 'ring-2 ring-accent',
+      )}
+    >
+      <MetricCard label={label} value={value} className={className} />
+    </button>
   )
 }

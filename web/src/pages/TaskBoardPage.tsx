@@ -352,14 +352,21 @@ export default function TaskBoardPage() {
           >
             <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 md:snap-none">
               {/* Each column is min-width-280 so narrow viewports scroll horizontally; keeps drag-drop working at every breakpoint. */}
-              {visibleColumns.map((col) => (
-                <TaskColumn
-                  key={col.id}
-                  column={col}
-                  tasks={columns[col.id] ?? []}
-                  onSelectTask={handleSelectTask}
-                />
-              ))}
+              {visibleColumns.map((col) => {
+                const columnTasks = columns[col.id] ?? []
+                const containsSelected =
+                  selectedTaskId !== null
+                  && columnTasks.some((t) => t.id === selectedTaskId)
+                return (
+                  <TaskColumn
+                    key={col.id}
+                    column={col}
+                    tasks={columnTasks}
+                    onSelectTask={handleSelectTask}
+                    highlighted={containsSelected}
+                  />
+                )
+              })}
             </div>
             <DragOverlay>
               {activeTask && (

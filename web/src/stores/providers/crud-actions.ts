@@ -13,7 +13,8 @@ import {
   updatePresetOverride as apiUpdatePresetOverride,
   deletePresetOverride as apiDeletePresetOverride,
 } from '@/api/endpoints/providers'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
   AddModelRequest,
@@ -74,9 +75,13 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         await get().fetchProviders()
         return config
       } catch (err) {
+        log.error('createProvider failed:', {
+          name: sanitizeForLog(data.name),
+          error: sanitizeForLog(getErrorMessage(err)),
+        })
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to create provider',
+          ...getCrudErrorTitle(err, 'Failed to create provider'),
           description: getErrorMessage(err),
         })
         return null
@@ -96,9 +101,14 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         await get().fetchProviders()
         return config
       } catch (err) {
+        log.error('createFromPreset failed:', {
+          name: sanitizeForLog(data.name),
+          preset: sanitizeForLog(data.preset_name),
+          error: sanitizeForLog(getErrorMessage(err)),
+        })
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to create provider',
+          ...getCrudErrorTitle(err, 'Failed to create provider'),
           description: getErrorMessage(err),
         })
         return null
@@ -122,9 +132,13 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         }
         return config
       } catch (err) {
+        log.error('updateProvider failed:', {
+          name: sanitizeForLog(name),
+          error: sanitizeForLog(getErrorMessage(err)),
+        })
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to update provider',
+          ...getCrudErrorTitle(err, 'Failed to update provider'),
           description: getErrorMessage(err),
         })
         return null
@@ -155,9 +169,13 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         })
         return true
       } catch (err) {
+        log.error('deleteProvider failed:', {
+          name: sanitizeForLog(name),
+          error: sanitizeForLog(getErrorMessage(err)),
+        })
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to delete provider',
+          ...getCrudErrorTitle(err, 'Failed to delete provider'),
           description: getErrorMessage(err),
         })
         // Refresh to restore accurate state

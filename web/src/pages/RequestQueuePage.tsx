@@ -196,7 +196,17 @@ export default function RequestQueuePage() {
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader title="Request Queue" count={requests.length} />
+      {/* Per-card actions (scope / approve / reject) only expose the
+          legal next transition for each status. A generic "move to
+          arbitrary status" menu would require backend support for
+          unrestricted transitions, which the request lifecycle
+          deliberately does not provide -- the state machine is
+          stage-gated to prevent operators from skipping triage. */}
+      <ListHeader
+        title="Request Queue"
+        description="Submitted → Triaging → Scoping → Approved → Task created."
+        count={requests.length}
+      />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load request queue" description={error} />

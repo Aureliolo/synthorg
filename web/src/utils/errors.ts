@@ -57,7 +57,11 @@ export function getErrorMessage(error: unknown): string {
       case 404:
         return 'The requested resource was not found.'
       case 409:
-        return 'Conflict: the resource was modified by another user. Please refresh and try again.'
+        // 409 covers optimistic-concurrency races, duplicate-resource
+        // attempts, and version-mismatch conflicts. The earlier copy
+        // assumed concurrency only, which misled users when the cause
+        // was a duplicate or version skew.
+        return 'The resource state changed. Refresh the page and try again.'
       case 422:
         return 'Validation error. Please check your input.'
       case 429:
@@ -132,4 +136,57 @@ export function getErrorDetail(error: unknown): ErrorDetail | null {
  */
 export function getErrorCode(error: unknown): ErrorCode | null {
   return getErrorDetail(error)?.error_code ?? null
+}
+
+/**
+ * Pick a category-aware toast title prefix for CRUD failures.
+ *
+ * Auth / validation / conflict / rate-limit failures get specific
+ * titles; everything else falls back to the caller's generic
+ * ``Failed to {action} {entity}`` shape. The category derives from
+ * ``error_category`` on the structured envelope, with HTTP-status
+ * fallbacks for network errors that never carry a structured
+ * ErrorDetail.
+ *
+ * Returns an object so callers can keep their existing
+ * ``description: getErrorMessage(err)`` line and only swap the title.
+ */
+export function getCrudErrorTitle(
+  error: unknown,
+  fallback: string,
+): { title: string } {
+  // 403 (authorization) is a distinct title from 401 (authentication)
+  // -- the user IS authenticated, just not allowed. Resolve the
+  // status FIRST so 403 short-circuits the structured-detail switch
+  // (the structured envelope's "auth" category covers both 401 and
+  // 403, but at the toast-title layer the user needs to know which).
+  const status = isAxiosError(error) ? error.response?.status : undefined
+  if (status === 403) return { title: 'Permission denied' }
+  const detail = getErrorDetail(error)
+  if (detail) {
+    switch (detail.error_category) {
+      case 'auth':
+        return { title: 'Authentication failed' }
+      case 'validation':
+        return { title: 'Validation failed' }
+      case 'conflict':
+        return { title: 'Resource conflict' }
+      case 'rate_limit':
+        return { title: 'Rate limit reached' }
+      case 'not_found':
+        return { title: 'Not found' }
+      case 'budget_exhausted':
+        return { title: 'Budget exhausted' }
+      default:
+        break
+    }
+  }
+  if (status !== undefined) {
+    if (status === 401) return { title: 'Authentication failed' }
+    if (status === 404) return { title: 'Not found' }
+    if (status === 409) return { title: 'Resource conflict' }
+    if (status === 422) return { title: 'Validation failed' }
+    if (status === 429) return { title: 'Rate limit reached' }
+  }
+  return { title: fallback }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Clock, ShieldOff, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ export interface ApprovalCardProps {
   className?: string
 }
 
-export function ApprovalCard({
+function ApprovalCardImpl({
   approval,
   selected,
   onSelect,
@@ -46,29 +46,67 @@ export function ApprovalCard({
     }
   }, [approval.status, triggerFlash])
 
-  // Local countdown -- tracks seconds_remaining with a 1s tick
+  // Local countdown -- tracks seconds_remaining with a 1s tick.
+  // Reset + interval-restart are intentionally collapsed into ONE
+  // effect keyed on the prop so a refresh from the WS layer
+  // (seconds_remaining bumped from e.g. 5 to 60) restarts the
+  // interval on a clean 1-second cadence instead of inheriting the
+  // previous interval's mid-tick offset (which can flicker by a
+  // sub-second when the prop changes mid-tick). setCountdown is
+  // deferred to a microtask so the effect body stays free of
+  // synchronous setState per the ESLint set-state-in-effect rule;
+  // setInterval starts immediately so the visible tick cadence
+  // matches the prop refresh. The ``cancelled`` flag is checked in
+  // BOTH the microtask AND the timer callback so a tick that fires
+  // between the prop refresh and the cleanup running cannot
+  // decrement a freshly-set countdown by one. The timer id is
+  // stashed in a ref so a sibling effect can stop the ticking once
+  // ``countdown`` reaches zero -- otherwise an expired card kept
+  // mounted in the paginated approvals queue would accumulate a
+  // dormant 1-Hz interval until unmount or the next prop refresh.
   const [countdown, setCountdown] = useState(approval.seconds_remaining)
-  const prevSecondsRef = useRef(approval.seconds_remaining)
-  if (approval.seconds_remaining !== prevSecondsRef.current) {
-    prevSecondsRef.current = approval.seconds_remaining
-    setCountdown(approval.seconds_remaining)
-  }
-
-  // Local countdown -- ticks seconds_remaining by -1 every second.
-  // Effect dep is a boolean (not countdown itself) to avoid restarting
-  // the interval on every tick. Also stops when card leaves pending status.
-  const shouldTick = isPending && countdown !== null && countdown > 0
-
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => {
-    if (!shouldTick) return
-    const timer = setInterval(() => {
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setCountdown(approval.seconds_remaining)
+    })
+    if (
+      !isPending
+      || approval.seconds_remaining === null
+      || approval.seconds_remaining <= 0
+    ) {
+      return () => {
+        cancelled = true
+      }
+    }
+    timerRef.current = setInterval(() => {
+      if (cancelled) return
       setCountdown((prev) => {
         if (prev === null || prev <= 1) return 0
         return prev - 1
       })
     }, 1000)
-    return () => clearInterval(timer)
-  }, [shouldTick])
+    return () => {
+      cancelled = true
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [approval.seconds_remaining, isPending])
+
+  // Stop ticking once the countdown lands on zero. Done in a sibling
+  // effect rather than inside the state updater so the updater stays
+  // pure (no side effects in render-phase state transitions, per the
+  // React-purity guideline).
+  useEffect(() => {
+    if (countdown !== null && countdown <= 0 && timerRef.current !== null) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }, [countdown])
 
   return (
     <div
@@ -200,3 +238,11 @@ export function ApprovalCard({
     </div>
   )
 }
+
+/**
+ * Memoised so a parent re-render that doesn't change the approval ref
+ * skips the per-card flash + countdown effects below. Card count is
+ * unbounded (paginated approvals queue); without memo every row
+ * re-renders on any sibling state change.
+ */
+export const ApprovalCard = memo(ApprovalCardImpl)

@@ -6,7 +6,7 @@ import {
   MEETING_STATUS_VALUES,
 } from '@/api/types/meetings'
 import { PRIORITY_VALUES } from '@/api/types/enums'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -25,8 +25,11 @@ const log = createLogger('meetings')
 
 // Runtime sets derived from the canonical enum tuples -- any drift
 // between validator and union is caught at compile time.
-const MEETING_STATUS_SET: ReadonlySet<string> = new Set<string>(MEETING_STATUS_VALUES)
-const MEETING_PROTOCOL_TYPE_SET: ReadonlySet<string> = new Set<string>(MEETING_PROTOCOL_TYPE_VALUES)
+// Status + protocol_type are no longer pre-validated against the
+// allowlist; sanitizeWsEnum owns that responsibility (see
+// sanitizeMeeting / sanitizeMeetingMinutes). Phase + priority are
+// still NOT routed through sanitizeWsEnum, so their allowlist guard
+// stays here to prevent malformed payloads from polluting state.
 const PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
 const MEETING_PHASE_SET: ReadonlySet<string> = new Set<string>(MEETING_PHASE_VALUES)
 
@@ -122,9 +125,10 @@ function isMeetingMinutesShape(value: unknown): boolean {
   if (typeof value !== 'object' || Array.isArray(value)) return false
   const m = value as Record<string, unknown>
   if (typeof m.meeting_id !== 'string') return false
-  if (typeof m.protocol_type !== 'string' || !MEETING_PROTOCOL_TYPE_SET.has(m.protocol_type)) {
-    return false
-  }
+  // Accept any non-empty string for protocol_type; sanitizeWsEnum
+  // applies the allowlist + fallback in sanitizeMeetingMinutes so
+  // a forward-deployed backend value doesn't drop the whole frame.
+  if (typeof m.protocol_type !== 'string') return false
   if (typeof m.leader_id !== 'string') return false
   if (
     !Array.isArray(m.participant_ids) ||
@@ -181,13 +185,15 @@ function isMeetingMinutesShape(value: unknown): boolean {
 function isMeetingShape(
   c: Record<string, unknown>,
 ): c is Record<string, unknown> & MeetingResponse {
+  // Enum fields (status, protocol_type) accept any non-empty string;
+  // sanitizeMeeting routes them through sanitizeWsEnum which applies
+  // the allowlist + safe fallback. Rejecting unknown values here
+  // would drop the whole frame on rolling backend deploys.
   return (
     typeof c.meeting_id === 'string' &&
     typeof c.status === 'string' &&
-    MEETING_STATUS_SET.has(c.status) &&
     typeof c.meeting_type_name === 'string' &&
     typeof c.protocol_type === 'string' &&
-    MEETING_PROTOCOL_TYPE_SET.has(c.protocol_type) &&
     // Budget must be finite + non-negative; NaN/Infinity/negatives
     // would break spend math downstream.
     Number.isFinite(c.token_budget) &&
@@ -267,8 +273,12 @@ function sanitizeMeetingMinutes(
   // construction is dropped rather than silently persisted raw.
   return {
     meeting_id: sanitizeWsString(minutes.meeting_id, 128) ?? '',
-    protocol_type:
-      (sanitizeWsString(minutes.protocol_type, 64) ?? '') as MeetingMinutes['protocol_type'],
+    protocol_type: sanitizeWsEnum(
+      minutes.protocol_type,
+      MEETING_PROTOCOL_TYPE_VALUES,
+      'round_robin',
+      { maxLen: 64, field: 'meeting.minutes.protocol_type' },
+    ),
     leader_id: sanitizeWsString(minutes.leader_id, 128) ?? '',
     participant_ids: minutes.participant_ids
       .map((id) => sanitizeWsString(id, 128) ?? '')
@@ -317,8 +327,16 @@ function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
   return {
     meeting_id: sanitizeWsString(c.meeting_id, 128) ?? '',
     meeting_type_name: sanitizeWsString(c.meeting_type_name, 128) ?? '',
-    protocol_type: (sanitizeWsString(c.protocol_type, 64) ?? '') as MeetingResponse['protocol_type'],
-    status: (sanitizeWsString(c.status, 64) ?? '') as MeetingResponse['status'],
+    protocol_type: sanitizeWsEnum(
+      c.protocol_type,
+      MEETING_PROTOCOL_TYPE_VALUES,
+      'round_robin',
+      { maxLen: 64, field: 'meeting.protocol_type' },
+    ),
+    status: sanitizeWsEnum(c.status, MEETING_STATUS_VALUES, 'scheduled', {
+      maxLen: 64,
+      field: 'meeting.status',
+    }),
     minutes: sanitizeMeetingMinutes(c.minutes),
     // Preserve the ``string | null`` contract: if sanitization strips
     // a non-null error_message down to empty, report ``null`` rather

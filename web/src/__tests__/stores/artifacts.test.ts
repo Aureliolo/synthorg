@@ -131,7 +131,10 @@ describe('useArtifactsStore', () => {
       const state = useArtifactsStore.getState()
       expect(state.selectedArtifact).toEqual(artifact)
       expect(state.contentPreview).toBeNull()
-      expect(state.detailError).toMatch(/content preview/)
+      // Restructured copy: title-style "Preview failed to load" prefix
+       // with the metadata-still-shown reassurance. The user-facing
+       // wording is now "Preview" rather than "content preview".
+       expect(state.detailError).toMatch(/Preview failed to load/)
     })
   })
 

@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { Users } from 'lucide-react'
 import { Link } from 'react-router'
 
@@ -5,8 +6,10 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { SearchInput } from '@/components/ui/search-input'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useClientsData } from '@/hooks/useClientsData'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { ROUTES } from '@/router/routes'
 
 /**
@@ -18,6 +21,36 @@ import { ROUTES } from '@/router/routes'
  */
 export default function ClientListPage() {
   const { clients, loading, error, wsConnected } = useClientsData()
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filteredClients = useMemo(() => {
+    const trimmed = searchQuery.trim().toLowerCase()
+    if (!trimmed) return clients
+    return clients.filter(
+      (c) =>
+        c.name.toLowerCase().includes(trimmed) ||
+        c.persona.toLowerCase().includes(trimmed),
+    )
+  }, [clients, searchQuery])
+
+  // Hook before any early-return (rules-of-hooks): the loading
+  // branch below short-circuits before the empty state matters.
+  const emptyStateProps = useEmptyStateProps({
+    filteredCount: filteredClients.length,
+    totalCount: clients.length,
+    filterActive: searchQuery.trim().length > 0,
+    icon: Users,
+    empty: {
+      title: 'No clients yet',
+      description:
+        'Create simulated clients via the API to exercise the intake and review pipeline.',
+    },
+    filtered: {
+      title: 'No matching clients',
+      description: 'Try a different search term or clear the field above.',
+      action: { label: 'Clear search', onClick: () => setSearchQuery('') },
+    },
+  })
 
   if (loading && clients.length === 0) {
     return (
@@ -34,7 +67,7 @@ export default function ClientListPage() {
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader title="Clients" count={clients.length} />
+      <ListHeader title="Clients" count={filteredClients.length} />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load clients" description={error} />
@@ -48,15 +81,20 @@ export default function ClientListPage() {
         />
       )}
 
-      {clients.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title="No clients yet"
-          description="Create simulated clients via the API to exercise the intake and review pipeline."
+      {clients.length > 0 && (
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search clients by name or persona"
+          ariaLabel="Search clients"
         />
+      )}
+
+      {emptyStateProps ? (
+        <EmptyState {...emptyStateProps} />
       ) : (
         <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
-          {clients.map((client) => (
+          {filteredClients.map((client) => (
             <SectionCard
               key={client.client_id}
               title={client.name}

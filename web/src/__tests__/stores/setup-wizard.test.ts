@@ -625,6 +625,100 @@ describe('setup wizard store', () => {
       expect(useSetupWizardStore.getState().providersError).toBe('Auth failed')
     })
 
+    // The lighter `createProviderFromPreset` variant returns a
+    // result-object so callers can branch on `ok` without a try/catch.
+    // Pinning the return shape directly so a regression to throw-on-
+    // failure (or to a different result shape) breaks the test.
+    it('createProviderFromPreset returns { ok: true } on full success', async () => {
+      server.use(
+        http.post('/api/v1/providers/from-preset', () =>
+          HttpResponse.json(apiSuccess(mockProvider), { status: 201 }),
+        ),
+      )
+
+      const result = await useSetupWizardStore
+        .getState()
+        .createProviderFromPreset('test-preset', 'my-provider', 'sk-test')
+
+      expect(result).toEqual({ ok: true })
+      expect(useSetupWizardStore.getState().providersError).toBeNull()
+      expect(useSetupWizardStore.getState().providersWarning).toBeNull()
+    })
+
+    it('createProviderFromPreset returns { ok: true, warning } when discovery yields empty', async () => {
+      const emptyProvider = { ...mockProvider, models: [] }
+      server.use(
+        http.post('/api/v1/providers/from-preset', () =>
+          HttpResponse.json(apiSuccess(emptyProvider), { status: 201 }),
+        ),
+        http.post('/api/v1/providers/:name/discover-models', () =>
+          HttpResponse.json(
+            apiSuccess({ discovered_models: [], provider_name: 'my-provider' }),
+          ),
+        ),
+        http.get('/api/v1/providers/:name', () =>
+          HttpResponse.json(apiSuccess(emptyProvider)),
+        ),
+      )
+
+      const result = await useSetupWizardStore
+        .getState()
+        .createProviderFromPreset('test-preset', 'my-provider')
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.warning).toMatch(/no models were discovered/)
+      }
+      expect(useSetupWizardStore.getState().providersError).toBeNull()
+      expect(useSetupWizardStore.getState().providersWarning).toMatch(
+        /no models were discovered/,
+      )
+    })
+
+    it('createProviderFromPreset returns { ok: true, warning } when discovery throws', async () => {
+      const emptyProvider = { ...mockProvider, models: [] }
+      server.use(
+        http.post('/api/v1/providers/from-preset', () =>
+          HttpResponse.json(apiSuccess(emptyProvider), { status: 201 }),
+        ),
+        http.post('/api/v1/providers/:name/discover-models', () =>
+          HttpResponse.json(apiError('discovery boom')),
+        ),
+      )
+
+      const result = await useSetupWizardStore
+        .getState()
+        .createProviderFromPreset('test-preset', 'my-provider')
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.warning).toMatch(/model discovery failed/)
+      }
+      expect(useSetupWizardStore.getState().providersError).toBeNull()
+      expect(useSetupWizardStore.getState().providersWarning).toMatch(
+        /model discovery failed/,
+      )
+    })
+
+    it('createProviderFromPreset returns { ok: false, error } when create fails', async () => {
+      server.use(
+        http.post('/api/v1/providers/from-preset', () =>
+          HttpResponse.json(apiError('Auth failed')),
+        ),
+      )
+
+      const result = await useSetupWizardStore
+        .getState()
+        .createProviderFromPreset('test-preset', 'my-provider', 'sk-bad')
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error).toBe('Auth failed')
+      }
+      expect(useSetupWizardStore.getState().providersError).toBe('Auth failed')
+      expect(useSetupWizardStore.getState().providersWarning).toBeNull()
+    })
+
     it('createProviderCustom stores provider on success', async () => {
       const customProvider = {
         ...mockProvider,

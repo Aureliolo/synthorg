@@ -7,6 +7,7 @@
  * payload size, and any backend-captured error.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -46,7 +47,40 @@ function mapWebhookStatus(status: string): AgentRuntimeStatus {
 
 export default function WebhookReceiptsPage() {
   const { connections } = useConnectionsData()
+  const [searchParams] = useSearchParams()
+  // Pre-select via URL ?connection=... so the cross-link from
+  // ConnectionsPage's row action lands directly on that connection's
+  // receipts. Seeded from '' and applied by the effect below once the
+  // connections list confirms the URL value is valid -- otherwise the
+  // initial render would fire reload() against an unvalidated name.
+  const urlConnection = searchParams.get('connection') ?? ''
   const [selected, setSelected] = useState<string>('')
+  // Keep the selection in sync with the URL: a deep-link change
+  // mid-session (e.g. user clicks another View receipts cross-link
+  // while this page is mounted) should re-target the receipts
+  // fetch, not stay on the originally-seeded value. Two extra
+  // guards beyond the simple "URL changed" trigger:
+  //  - Re-run when ``connections`` arrives so the deep-link can fire
+  //    even on a cold mount where the initial state had an empty
+  //    list (otherwise the reconciliation effect below races and
+  //    overwrites the seeded selection).
+  //  - Only apply the URL value if the target connection actually
+  //    exists in the loaded list -- a stale URL should not stomp a
+  //    valid current selection.
+  // setState deferred to a microtask per ESLint set-state-in-effect.
+  useEffect(() => {
+    if (!urlConnection) return
+    if (connections.length === 0) return
+    if (!connections.some((c) => c.name === urlConnection)) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setSelected((prev) => (prev === urlConnection ? prev : urlConnection))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [urlConnection, connections])
   const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,16 +93,24 @@ export default function WebhookReceiptsPage() {
   // showing a stale name. The setState is deferred to a microtask so
   // the effect body itself stays free of synchronous setState calls
   // per the ESLint set-state-in-effect rule.
+  // Guard against clobbering a URL-seeded value: when a valid
+  // ``urlConnection`` is present in the loaded list, the seed effect
+  // above is in charge of applying it, so this fallback effect must
+  // not race ahead and set ``selected`` to ``connections[0]`` while
+  // the seed effect's microtask is still pending. ``urlConnection``
+  // is in the dep array so the guard re-evaluates if the URL changes
+  // mid-session.
   useEffect(() => {
     const exists = selected !== '' && connections.some((c) => c.name === selected)
     if (exists) return
+    if (urlConnection && connections.some((c) => c.name === urlConnection)) return
     let cancelled = false
     void Promise.resolve().then(() => {
       if (cancelled) return
       setSelected(connections[0]?.name ?? '')
     })
     return () => { cancelled = true }
-  }, [connections, selected])
+  }, [connections, selected, urlConnection])
 
   // Per-request sequence number, bumped on every reload. The earlier
   // ``requestedFor !== selected`` check compared two values from the
@@ -159,6 +201,15 @@ export default function WebhookReceiptsPage() {
       <Breadcrumbs items={[{ label: 'Integrations', to: ROUTES.CONNECTIONS }, { label: 'Webhook receipts' }]} />
       <ListHeader title="Webhook receipts" count={entries.length} />
 
+      {error && (
+        <ErrorBanner
+          severity="error"
+          title="Could not load webhook activity"
+          description={error}
+          onRetry={() => void reload()}
+        />
+      )}
+
       <SearchFilterSort
         filters={
           <SelectField
@@ -169,15 +220,6 @@ export default function WebhookReceiptsPage() {
           />
         }
       />
-
-      {error && (
-        <ErrorBanner
-          severity="error"
-          title="Could not load webhook activity"
-          description={error}
-          onRetry={() => void reload()}
-        />
-      )}
 
       {loading && entries.length === 0 ? (
         <ProgressIndicator

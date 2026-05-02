@@ -61,7 +61,9 @@ export function useTaskActionHandlers(task: Task | null | undefined): TaskAction
       if (!trimmed) {
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Please provide a cancellation reason',
+          title: 'Cancellation reason required',
+          description:
+            'Cancellation requires a reason for audit. Please enter why you are cancelling this task.',
         })
         return false
       }

@@ -68,7 +68,7 @@ export function OauthAppCard({
       log.warn('Reveal secret failed:', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Reveal failed',
+        title: 'Failed to reveal client secret',
         description: getErrorMessage(err),
       })
     } finally {
@@ -88,7 +88,7 @@ export function OauthAppCard({
       log.warn('Copy client_id failed:', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Copy failed',
+        title: 'Failed to copy client ID',
         description: getErrorMessage(err),
       })
     }

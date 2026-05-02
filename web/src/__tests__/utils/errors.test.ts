@@ -66,9 +66,12 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toBe('The requested resource was not found.')
   })
 
-  it('returns conflict message for 409', () => {
+  it('returns a refresh-and-retry message for 409', () => {
+    // 409 covers concurrency races, duplicate-resource, and version-
+    // mismatch; the refreshed copy avoids implying it is always a
+    // concurrency conflict.
     const error = makeAxiosError(409)
-    expect(getErrorMessage(error)).toContain('Conflict')
+    expect(getErrorMessage(error)).toMatch(/refresh/i)
   })
 
   it('returns validation message for 422', () => {

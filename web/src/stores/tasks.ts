@@ -3,17 +3,17 @@ import * as tasksApi from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { useToastStore } from '@/stores/toast'
 import {
   PRIORITY_VALUES,
+  TASK_SOURCE_VALUES,
   TASK_STATUS_VALUES as TASK_STATUS_VALUES_TUPLE,
   TASK_TYPE_VALUES as TASK_TYPE_VALUES_TUPLE,
 } from '@/api/types/enums'
 import type {
   Complexity,
   CoordinationTopology,
-  TaskSource,
   TaskStatus,
   TaskStructure,
 } from '@/api/types/enums'
@@ -32,9 +32,10 @@ import type { WsEvent } from '@/api/types/websocket'
 // literal list) keeps the validator in lockstep with the type union
 // -- drift between the runtime check and the declared enum is caught
 // at compile time.
-const TASK_STATUS_SET: ReadonlySet<string> = new Set<string>(TASK_STATUS_VALUES_TUPLE)
-const TASK_PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
-const TASK_TYPE_SET: ReadonlySet<string> = new Set<string>(TASK_TYPE_VALUES_TUPLE)
+// Status / priority / type / source are no longer pre-validated
+// against the allowlist; sanitizeWsEnum owns that responsibility
+// (see sanitizeTask). Rejecting unknown enum values here would drop
+// the whole frame on rolling backend deploys.
 
 // Enum sets for the remaining scalar/enum fields that ``sanitizeTask``
 // previously copied through unchecked. Declared here so the validator
@@ -58,12 +59,6 @@ const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>([
   'context_dependent',
   'auto',
 ] satisfies readonly CoordinationTopology[])
-const TASK_SOURCE_SET: ReadonlySet<string> = new Set<string>([
-  'internal',
-  'client',
-  'simulation',
-] satisfies readonly TaskSource[])
-
 const log = createLogger('tasks')
 
 interface TasksState {
@@ -142,9 +137,18 @@ function sanitizeTask(c: Task): Task {
     id: sanitizeWsString(c.id, 128) ?? '',
     title: sanitizeWsString(c.title, 256) ?? '',
     description: sanitizeWsString(c.description, 4096) ?? '',
-    type: (sanitizeWsString(c.type, 64) ?? '') as Task['type'],
-    status: (sanitizeWsString(c.status, 64) ?? '') as Task['status'],
-    priority: (sanitizeWsString(c.priority, 64) ?? '') as Task['priority'],
+    type: sanitizeWsEnum(c.type, TASK_TYPE_VALUES_TUPLE, 'admin', {
+      maxLen: 64,
+      field: 'task.type',
+    }),
+    status: sanitizeWsEnum(c.status, TASK_STATUS_VALUES_TUPLE, 'created', {
+      maxLen: 64,
+      field: 'task.status',
+    }),
+    priority: sanitizeWsEnum(c.priority, PRIORITY_VALUES, 'medium', {
+      maxLen: 64,
+      field: 'task.priority',
+    }),
     project: sanitizeWsString(c.project, 128) ?? '',
     created_by: sanitizeWsString(c.created_by, 128) ?? '',
     assigned_to: sanitizeNullable(c.assigned_to, 128),
@@ -170,7 +174,10 @@ function sanitizeTask(c: Task): Task {
     source:
       c.source === undefined || c.source === null
         ? c.source
-        : ((sanitizeWsString(c.source, 64) ?? '') as Task['source']),
+        : sanitizeWsEnum(c.source, TASK_SOURCE_VALUES, 'internal', {
+            maxLen: 64,
+            field: 'task.source',
+          }),
     version: c.version,
     created_at: sanitizeOptional(c.created_at, 64),
     updated_at: sanitizeOptional(c.updated_at, 64),
@@ -250,16 +257,17 @@ function arraysEqual(
  * and the nullable / optional scalars that ``sanitizeTask`` reads.
  */
 function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
+  // Enum fields routed through sanitizeWsEnum (status, priority, type,
+  // source) accept any non-empty string here; the sanitizer applies
+  // the allowlist + safe fallback. Rejecting unknown values would
+  // drop the whole frame on rolling backend deploys.
   return (
     typeof c.id === 'string' &&
     typeof c.status === 'string' &&
-    TASK_STATUS_SET.has(c.status) &&
     typeof c.title === 'string' &&
     typeof c.description === 'string' &&
     typeof c.priority === 'string' &&
-    TASK_PRIORITY_SET.has(c.priority) &&
     typeof c.type === 'string' &&
-    TASK_TYPE_SET.has(c.type) &&
     typeof c.project === 'string' &&
     typeof c.created_by === 'string' &&
     (c.assigned_to === null || typeof c.assigned_to === 'string') &&
@@ -274,9 +282,6 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     // non-string, breaking its length/bidi invariants.
     isNullableString(c.deadline) &&
     isNullableString(c.parent_task_id) &&
-    (c.source === undefined ||
-      c.source === null ||
-      typeof c.source === 'string') &&
     isOptionalString(c.created_at) &&
     isOptionalString(c.updated_at) &&
     // ``version`` is ``number | undefined``; without this guard a
@@ -288,8 +293,17 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     Number.isFinite(c.budget_limit) &&
     (c.cost === undefined || Number.isFinite(c.cost)) &&
     Number.isFinite(c.max_retries) &&
-    // Enum scalars: validate against the canonical tuples so a
-    // malformed frame cannot inject an unsupported value.
+    // Enum scalars: complexity / task_structure / coordination_topology
+    // are intentionally NOT routed through sanitizeWsEnum -- they're
+    // closed enums coupled to coordination + scheduling code paths
+    // that branch on the exact value (e.g. coordination_topology
+    // selects a specific orchestrator). A backend-only addition of
+    // a new value would silently degrade behaviour rather than just
+    // a label mismatch, so dropping the frame here is the safer
+    // failure mode. If/when a new value is rolled out, the frontend
+    // bumps in the same release. Status / priority / type / source
+    // (above) ARE forward-compat sanitized because they're display-
+    // facing labels with no behavioural branching.
     typeof c.estimated_complexity === 'string' &&
     COMPLEXITY_SET.has(c.estimated_complexity) &&
     (c.task_structure === null ||
@@ -299,7 +313,7 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     COORDINATION_TOPOLOGY_SET.has(c.coordination_topology) &&
     (c.source === undefined ||
       c.source === null ||
-      (typeof c.source === 'string' && TASK_SOURCE_SET.has(c.source)))
+      typeof c.source === 'string')
   )
 }
 

@@ -61,7 +61,7 @@ All store **mutation** actions (create / update / delete) follow the `stores/con
 
 **Async-leak ceiling (MANDATORY)**: CI fails if `vitest --detect-async-leaks` reports more than `MAX_ASYNC_LEAKS` (currently 90). Local floor is 49; CI baseline 77-80 (event-loop timing variance). Raise the ceiling only with documented per-PR justification; the structural floor is MSW 2.x + axios + tough-cookie and is tracked by #1468.
 
-**WS payload sanitization**: `sanitizeWsString()` (from `web/src/stores/notifications.ts`) normalizes every string field received from WebSocket events. Any new WS payload handler that ingests untrusted strings MUST route through it.
+**WS payload sanitization**: `sanitizeWsString()` and `sanitizeWsEnum()` live in `web/src/utils/ws-sanitize.ts` (pure helpers, re-exported from `@/stores/notifications`). `sanitizeWsString()` clamps every WS-supplied string (strips C0 controls + bidi-overrides + caps length). `sanitizeWsEnum<T>(value, allowlist, fallback, { field })` extends that with enum-allowlist validation: on unknown values it emits a structured `ws.enum.unknown` warning and returns the supplied fallback (must be a valid allowlist member), so a backend rolling out a new enum value cannot break UI rendering. Any new WS payload handler that ingests untrusted strings MUST route through one of these; raw `(sanitizeWsString(x, n) ?? '') as EnumType` casts are forbidden.
 
 **WS wire protocol (MANDATORY)**: the client-server contract lives in `web/src/utils/constants.ts` (`WS_PROTOCOL_VERSION`, `WS_MAX_MESSAGE_SIZE`, `WS_HEARTBEAT_INTERVAL_MS`, `WS_PONG_TIMEOUT_MS`, `LOG_SANITIZE_MAX_LENGTH`) and MUST stay in lockstep with `src/synthorg/api/ws_models.py` / `src/synthorg/api/controllers/ws.py`. Bump the protocol version on both sides together for breaking payload changes.
 
@@ -95,7 +95,9 @@ See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md
 - Form fields -> `<InputField>` / `<SelectField>` / `<SliderField>` / `<ToggleField>` / `<SegmentedControl>` / `<TagInput>` / `<SearchInput>`.
 - Slide-in panels -> `<Drawer width="compact|narrow|default|wide">` (Base UI; do NOT add inline `w-[40vw]` overrides).
 - Loading / empty / error states -> `<Skeleton>` family / `<EmptyState>` / `<ErrorBoundary>` / `<ErrorBanner>` / `<ProgressIndicator>`.
-- List-page primitives -> `<ListHeader>` / `<SearchFilterSort>` / `<Pagination>` / `<BulkActionBar>` / `<MetadataGrid>` / `<Breadcrumbs>`.
+- List-page primitives -> `<ListHeader>` / `<SearchFilterSort>` / `<Pagination>` / `<BulkActionBar>` / `<MetadataGrid>` / `<Breadcrumbs>`. Page conventions: root container uses `space-y-section-gap` (the majority pattern -- `flex flex-col gap-section-gap` is equivalent but discouraged); `<ErrorBanner>` lands immediately after `<ListHeader>`, before any filter / pagination row; pages with a one-line mission statement pass it via `<ListHeader description="..." />`. List layout choice: use Kanban grouping for status-flow domains where each row's column conveys lifecycle phase (Tasks, Requests); use a flat scrollable list for queues without explicit phase semantics (Escalations, Approvals).
+- Empty-state derivation -> `useEmptyStateProps({ filteredCount, totalCount, filterActive, empty, filtered })` from `@/hooks/use-empty-state-props` returns `EmptyStateProps | null` so the page branches on a single value instead of duplicating the "no data ever" / "no data after filter" discriminator.
+- Status / role / risk / urgency badge classes -> `STATUS_COLORS` family from `@/styles/status-colors` (typed `Record<EnumValue, string>` lookups; no inline `Record<EnumValue, string>` constants per page).
 - Confirmation / toasts -> `<ConfirmDialog>` / `<Toast>` (Zustand-backed queue, NOT Base UI's Toast).
 - Cmd+K / shortcuts -> `<CommandPalette>` / `<KeyboardShortcutHint>` / `<CommandCheatsheet>`.
 - Animation -> `<AnimatedPresence>` / `<StaggerGroup>` / `<LiveRegion>` (debounced ARIA live for WS updates).

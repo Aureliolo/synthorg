@@ -341,8 +341,14 @@ describe('handleWsEvent', () => {
     warnSpy.mockRestore()
   })
 
-  it('rejects frames whose status is outside the enum', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  it('falls back to a safe status enum when the payload value is outside the allowlist', () => {
+    // Forward-compat contract: when the backend ships a new enum
+    // value before the frontend learns about it, the payload is
+    // accepted (not dropped) and the unknown value is replaced with
+    // a safe fallback by sanitizeWsEnum. Use ``warn`` (not ``error``)
+    // -- the unknown-enum path emits a structured ws.enum.unknown
+    // warning, not an error.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const meeting = makeMeeting('ws-bad-status', {
       status: 'not_a_status' as MeetingResponse['status'],
     })
@@ -355,8 +361,13 @@ describe('handleWsEvent', () => {
 
     useMeetingsStore.getState().handleWsEvent(event)
 
-    expect(useMeetingsStore.getState().meetings).toHaveLength(0)
-    errorSpy.mockRestore()
+    const stored = useMeetingsStore.getState().meetings
+    expect(stored).toHaveLength(1)
+    // Fallback is the documented "safe default" for the meeting
+    // status field; see sanitizeMeeting in stores/meetings.ts.
+    expect(stored[0]?.status).toBe('scheduled')
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
   })
 
   it('rejects frames whose token_budget is non-finite', () => {

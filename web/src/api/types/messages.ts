@@ -12,9 +12,23 @@ export type MessageType =
   | 'meeting_contribution'
   | 'hr_notification'
 
+export const MESSAGE_TYPE_VALUES = [
+  'task_update', 'question', 'announcement', 'review_request', 'approval',
+  'delegation', 'status_report', 'escalation', 'meeting_contribution',
+  'hr_notification',
+] as const satisfies readonly MessageType[]
+
 export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent'
 
+export const MESSAGE_PRIORITY_VALUES = [
+  'low', 'normal', 'high', 'urgent',
+] as const satisfies readonly MessagePriority[]
+
 export type AttachmentType = 'artifact' | 'file' | 'link'
+
+export const ATTACHMENT_TYPE_VALUES = [
+  'artifact', 'file', 'link',
+] as const satisfies readonly AttachmentType[]
 
 export interface Attachment {
   type: AttachmentType

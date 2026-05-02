@@ -121,15 +121,28 @@ describe('BudgetPage', () => {
     expect(screen.getByText('Budget Status')).toBeInTheDocument()
   })
 
-  it('renders Spend Burn section', () => {
+  // SpendBurnChart and CostBreakdownChart are React.lazy-loaded so
+  // the recharts bundle defers to first chart render; the test must
+  // await the Suspense boundary to resolve before the section title
+  // is in the DOM. The 10000ms timeout (vs the default 1000ms) is a
+  // headroom band-aid for heavy parallel test load -- under normal
+  // sequential runs the dynamic import resolves in well under 1s.
+  // If these tests start consistently approaching 10s, treat that
+  // as a real performance regression in the lazy-import strategy
+  // rather than raising the timeout further.
+  it('renders Spend Burn section', async () => {
     renderBudget()
-    expect(screen.getByText('Spend Burn')).toBeInTheDocument()
-  })
+    expect(
+      await screen.findByText('Spend Burn', undefined, { timeout: 10000 }),
+    ).toBeInTheDocument()
+  }, 15000)
 
-  it('renders Cost Breakdown section', () => {
+  it('renders Cost Breakdown section', async () => {
     renderBudget()
-    expect(screen.getByText('Cost Breakdown')).toBeInTheDocument()
-  })
+    expect(
+      await screen.findByText('Cost Breakdown', undefined, { timeout: 10000 }),
+    ).toBeInTheDocument()
+  }, 15000)
 
   it('renders Cost Categories section', () => {
     renderBudget()

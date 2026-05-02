@@ -2,13 +2,22 @@ import { render, screen } from '@testing-library/react'
 import * as fc from 'fast-check'
 import { ProgressGauge } from '@/components/ui/progress-gauge'
 
+// The circular variant renders the percentage twice -- once as visible
+// SVG ``<text>`` and once inside the SVG ``<title>`` element that
+// screen readers announce. Tests use ``getAllByText`` to accept either
+// match without coupling to the DOM shape.
+function expectPercentageText(value: string) {
+  const matches = screen.getAllByText(value)
+  expect(matches.length).toBeGreaterThan(0)
+}
+
 describe.each<['circular' | 'linear']>([
   ['circular'],
   ['linear'],
 ])('ProgressGauge shared behavior (variant: %s)', (variant) => {
   it('renders the percentage value', () => {
     render(<ProgressGauge value={75} variant={variant} />)
-    expect(screen.getByText('75%')).toBeInTheDocument()
+    expectPercentageText('75%')
   })
 
   it('renders the label when provided', () => {
@@ -18,17 +27,17 @@ describe.each<['circular' | 'linear']>([
 
   it('clamps value to 0 minimum', () => {
     render(<ProgressGauge value={-10} variant={variant} />)
-    expect(screen.getByText('0%')).toBeInTheDocument()
+    expectPercentageText('0%')
   })
 
   it('clamps value to max', () => {
     render(<ProgressGauge value={150} max={100} variant={variant} />)
-    expect(screen.getByText('100%')).toBeInTheDocument()
+    expectPercentageText('100%')
   })
 
   it('computes percentage from custom max', () => {
     render(<ProgressGauge value={50} max={200} variant={variant} />)
-    expect(screen.getByText('25%')).toBeInTheDocument()
+    expectPercentageText('25%')
   })
 
   it('has accessible role and aria attributes', () => {
@@ -48,34 +57,34 @@ describe.each<['circular' | 'linear']>([
 
   it('handles max=0 without NaN', () => {
     render(<ProgressGauge value={50} max={0} variant={variant} />)
-    expect(screen.getByText('100%')).toBeInTheDocument()
+    expectPercentageText('100%')
   })
 
   it('handles negative max by clamping to 1', () => {
     render(<ProgressGauge value={50} max={-50} variant={variant} />)
     // safeMax becomes Math.max(-50, 1) = 1, clampedValue = min(50, 1) = 1, percentage = 100%
-    expect(screen.getByText('100%')).toBeInTheDocument()
+    expectPercentageText('100%')
   })
 
   it('handles NaN max as 1', () => {
     render(<ProgressGauge value={50} max={NaN} variant={variant} />)
     // safeMax becomes 1, clampedValue = min(50, 1) = 1, percentage = 100%
-    expect(screen.getByText('100%')).toBeInTheDocument()
+    expectPercentageText('100%')
   })
 
   it('treats NaN value as 0%', () => {
     render(<ProgressGauge value={NaN} variant={variant} />)
-    expect(screen.getByText('0%')).toBeInTheDocument()
+    expectPercentageText('0%')
   })
 
   it('treats Infinity as 0%', () => {
     render(<ProgressGauge value={Infinity} variant={variant} />)
-    expect(screen.getByText('0%')).toBeInTheDocument()
+    expectPercentageText('0%')
   })
 
   it('treats -Infinity as 0%', () => {
     render(<ProgressGauge value={-Infinity} variant={variant} />)
-    expect(screen.getByText('0%')).toBeInTheDocument()
+    expectPercentageText('0%')
   })
 
   it('always clamps percentage between 0 and 100 (property)', () => {
@@ -87,8 +96,9 @@ describe.each<['circular' | 'linear']>([
           const { unmount } = render(
             <ProgressGauge value={value} max={max} variant={variant} />,
           )
-          const text = screen.getByText(/%$/)
-          const percentage = parseInt(text.textContent ?? '0')
+          const matches = screen.getAllByText(/%$/)
+          expect(matches.length).toBeGreaterThan(0)
+          const percentage = parseInt(matches[0]!.textContent ?? '0')
           expect(percentage).toBeGreaterThanOrEqual(0)
           expect(percentage).toBeLessThanOrEqual(100)
           unmount()

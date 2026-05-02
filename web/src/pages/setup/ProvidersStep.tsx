@@ -2,9 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
+import { createLogger } from '@/lib/logger'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { useToastStore } from '@/stores/toast'
 import { validateProvidersStep } from '@/utils/setup-validation'
 import { ProviderFormModal, type ProviderFormOverrides } from '@/pages/providers/ProviderFormModal'
+
+const log = createLogger('setup:providers-step')
 
 /**
  * Wizard step: pick cloud presets, accept auto-detected local servers,
@@ -25,6 +29,7 @@ export function ProvidersStep() {
   const probing = useSetupWizardStore((s) => s.probing)
   const providersLoading = useSetupWizardStore((s) => s.providersLoading)
   const providersError = useSetupWizardStore((s) => s.providersError)
+  const providersWarning = useSetupWizardStore((s) => s.providersWarning)
   const presetsLoading = useSetupWizardStore((s) => s.presetsLoading)
   const presetsError = useSetupWizardStore((s) => s.presetsError)
 
@@ -85,9 +90,41 @@ export function ProvidersStep() {
       // Created provider keeps the preset's display_name as the
       // identifier so the configured-providers list matches what the
       // user just saw under "Detected on this machine".
-      await createProviderFromPreset(presetName, presetName, undefined, detectedUrl)
-      if (!useSetupWizardStore.getState().providersError) {
+      //
+      // Branch on the result-object so a downstream fetchProviders
+      // failure cannot retroactively make the create look like it
+      // failed (the previous race read providersError after the
+      // create returned, but providersError could be set BY the
+      // refresh).
+      const result = await createProviderFromPreset(
+        presetName,
+        presetName,
+        undefined,
+        detectedUrl,
+      )
+      if (result.ok) {
+        // fetchProviders swallows its own errors and writes them to
+        // providersError in the store, so a try/catch around it is
+        // dead code; read the store after the call. If the refresh
+        // failed, log and toast (so a dismissed toast still leaves
+        // an observability trace) AND clear providersError so the
+        // successfully-created provider is not surfaced as
+        // "Failed to load providers" -- the create genuinely
+        // succeeded; only the list refresh didn't.
         await fetchProviders()
+        const fetchErrMsg = useSetupWizardStore.getState().providersError
+        if (fetchErrMsg) {
+          log.warn('fetch_providers_after_create_failed', {
+            preset: presetName,
+            error: fetchErrMsg,
+          })
+          useSetupWizardStore.setState({ providersError: null })
+          useToastStore.getState().add({
+            variant: 'warning',
+            title: 'Provider added; could not refresh the list',
+            description: fetchErrMsg,
+          })
+        }
       }
     },
     [createProviderFromPreset, fetchProviders],
@@ -159,6 +196,18 @@ export function ProvidersStep() {
         <ErrorBanner
           title="Failed to load providers"
           description={providersError}
+          onRetry={() => void fetchProviders()}
+        />
+      )}
+
+      {providersWarning && !providersError && (
+        // Distinct from providersError: the provider was created OK,
+        // only model discovery had an issue. Surfaced as a warning so
+        // the user understands the create succeeded.
+        <ErrorBanner
+          severity="warning"
+          title="Provider added with warnings"
+          description={providersWarning}
           onRetry={() => void fetchProviders()}
         />
       )}

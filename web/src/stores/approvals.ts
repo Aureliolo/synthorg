@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as approvalsApi from '@/api/endpoints/approvals'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -11,7 +11,6 @@ import type {
   ApprovalResponse,
   ApproveRequest,
   EvidencePackage,
-  EvidencePackageSignature,
   RejectRequest,
 } from '@/api/types/approvals'
 import {
@@ -19,18 +18,10 @@ import {
   APPROVAL_STATUS_VALUES,
   URGENCY_LEVEL_VALUES,
 } from '@/api/types/enums'
+import { SIGNATURE_ALGORITHM_VALUES } from '@/api/types/approvals'
 import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('approvals')
-
-// Runtime sets derived from the canonical enum tuples in
-// `@/api/types/enums`. Building them here rather than re-declaring the
-// literal list keeps the validator in lockstep with the type union;
-// any drift between the runtime check and the declared enum surfaces
-// at compile time.
-const APPROVAL_STATUS_SET: ReadonlySet<string> = new Set<string>(APPROVAL_STATUS_VALUES)
-const APPROVAL_RISK_LEVEL_SET: ReadonlySet<string> = new Set<string>(APPROVAL_RISK_LEVEL_VALUES)
-const APPROVAL_URGENCY_LEVEL_SET: ReadonlySet<string> = new Set<string>(URGENCY_LEVEL_VALUES)
 
 /** All metadata keys and values must be plain strings. */
 function isStringStringRecord(value: unknown): value is Record<string, string> {
@@ -103,7 +94,12 @@ function isEvidencePackageShape(value: unknown): boolean {
   }
   if (typeof v.source_agent_id !== 'string') return false
   if (v.task_id !== null && typeof v.task_id !== 'string') return false
-  if (typeof v.risk_level !== 'string' || !APPROVAL_RISK_LEVEL_SET.has(v.risk_level)) return false
+  // Accept any non-empty string for risk_level here -- sanitizeWsEnum
+  // applies the allowlist + fallback in sanitizeEvidencePackage. A
+  // hard reject at this layer would drop the whole payload when the
+  // backend rolls out a new enum value, defeating the point of the
+  // typed sanitizer's forward-compat contract.
+  if (typeof v.risk_level !== 'string') return false
   // ``EvidencePackage.metadata`` is a string->unknown map on the
   // declared TS side, but the server emits it with string values
   // only. Validate that shape here so ``sanitizeEvidencePackage``
@@ -146,15 +142,18 @@ function isNullableFiniteNumber(value: unknown): boolean {
 function isApprovalShape(
   c: Record<string, unknown>,
 ): c is Record<string, unknown> & ApprovalResponse {
+  // Enum fields (status, risk_level, urgency_level) are checked as
+  // non-empty strings only; sanitizeApproval routes them through
+  // sanitizeWsEnum which applies the allowlist + safe fallback when
+  // a new backend value reaches the wire ahead of a frontend bump.
+  // Treating an unknown enum here as "malformed payload" would defeat
+  // the typed sanitizer's forward-compat contract.
   return (
     typeof c.id === 'string' &&
     typeof c.status === 'string' &&
-    APPROVAL_STATUS_SET.has(c.status) &&
     typeof c.title === 'string' &&
     typeof c.risk_level === 'string' &&
-    APPROVAL_RISK_LEVEL_SET.has(c.risk_level) &&
     typeof c.urgency_level === 'string' &&
-    APPROVAL_URGENCY_LEVEL_SET.has(c.urgency_level) &&
     typeof c.action_type === 'string' &&
     typeof c.description === 'string' &&
     typeof c.requested_by === 'string' &&
@@ -212,14 +211,18 @@ function sanitizeEvidencePackage(
     source_agent_id: sanitizeWsString(pkg.source_agent_id, 128) ?? '',
     task_id:
       pkg.task_id === null ? null : sanitizeWsString(pkg.task_id, 128) ?? '',
-    risk_level:
-      (sanitizeWsString(pkg.risk_level, 64) ?? '') as EvidencePackage['risk_level'],
+    risk_level: sanitizeWsEnum(pkg.risk_level, APPROVAL_RISK_LEVEL_VALUES, 'low', {
+      maxLen: 64,
+      field: 'evidence_package.risk_level',
+    }),
     metadata: pkgMetadata,
     signature_threshold: pkg.signature_threshold,
     signatures: pkg.signatures.map((s) => ({
       approver_id: sanitizeWsString(s.approver_id, 128) ?? '',
-      algorithm:
-        (sanitizeWsString(s.algorithm, 64) ?? '') as EvidencePackageSignature['algorithm'],
+      algorithm: sanitizeWsEnum(s.algorithm, SIGNATURE_ALGORITHM_VALUES, 'ed25519', {
+        maxLen: 64,
+        field: 'evidence_package.signatures[].algorithm',
+      }),
       signature_bytes: sanitizeWsString(s.signature_bytes, 2048) ?? '',
       signed_at: sanitizeWsString(s.signed_at, 64) ?? '',
       chain_position: s.chain_position,
@@ -262,9 +265,14 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     title: sanitizeWsString(c.title, 256) ?? '',
     description: sanitizeWsString(c.description, 2048) ?? '',
     requested_by: sanitizeWsString(c.requested_by, 128) ?? '',
-    risk_level:
-      (sanitizeWsString(c.risk_level, 64) ?? '') as ApprovalResponse['risk_level'],
-    status: (sanitizeWsString(c.status, 64) ?? '') as ApprovalResponse['status'],
+    risk_level: sanitizeWsEnum(c.risk_level, APPROVAL_RISK_LEVEL_VALUES, 'low', {
+      maxLen: 64,
+      field: 'approval.risk_level',
+    }),
+    status: sanitizeWsEnum(c.status, APPROVAL_STATUS_VALUES, 'pending', {
+      maxLen: 64,
+      field: 'approval.status',
+    }),
     task_id: sanitizeNullable(c.task_id, 128),
     metadata,
     decided_by: sanitizeNullable(c.decided_by, 128),
@@ -274,8 +282,10 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     expires_at: sanitizeNullable(c.expires_at, 64),
     evidence_package: sanitizeEvidencePackage(c.evidence_package),
     seconds_remaining: c.seconds_remaining,
-    urgency_level:
-      (sanitizeWsString(c.urgency_level, 64) ?? '') as ApprovalResponse['urgency_level'],
+    urgency_level: sanitizeWsEnum(c.urgency_level, URGENCY_LEVEL_VALUES, 'normal', {
+      maxLen: 64,
+      field: 'approval.urgency_level',
+    }),
   }
 }
 

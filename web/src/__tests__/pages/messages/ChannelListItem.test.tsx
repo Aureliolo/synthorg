@@ -8,7 +8,7 @@ describe('ChannelListItem', () => {
     channel: makeChannel('#engineering'),
     active: false,
     unreadCount: 0,
-    onClick: vi.fn(),
+    onSelect: vi.fn(),
   }
 
   it('renders channel name', () => {
@@ -62,11 +62,12 @@ describe('ChannelListItem', () => {
     expect(screen.getByText('#all-hands')).toBeInTheDocument()
   })
 
-  it('calls onClick when clicked', async () => {
+  it('calls onSelect with the channel name when clicked', async () => {
     const user = userEvent.setup()
-    const onClick = vi.fn()
-    render(<ChannelListItem {...defaultProps} onClick={onClick} />)
+    const onSelect = vi.fn()
+    render(<ChannelListItem {...defaultProps} onSelect={onSelect} />)
     await user.click(screen.getByRole('button'))
-    expect(onClick).toHaveBeenCalledTimes(1)
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect).toHaveBeenCalledWith('#engineering')
   })
 })

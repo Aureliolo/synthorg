@@ -179,7 +179,7 @@ describe('ApprovalDetailDrawer', () => {
     // Should show toast error -- onReject should NOT have been called
     expect(defaultHandlers.onReject).not.toHaveBeenCalled()
     const toasts = useToastStore.getState().toasts
-    expect(toasts.some((t) => t.title === 'Please provide a rejection reason')).toBe(true)
+    expect(toasts.some((t) => t.title === 'Rejection reason required')).toBe(true)
   })
 
   it('renders conditional fields for decided approvals', () => {
