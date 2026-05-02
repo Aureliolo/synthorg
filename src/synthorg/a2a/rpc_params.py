@@ -26,6 +26,7 @@ from pydantic import (
 )
 
 from synthorg.a2a.models import A2AMessage  # noqa: TC001 -- Pydantic field type
+from synthorg.api.boundary import parse_typed
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
 if TYPE_CHECKING:
@@ -121,7 +122,7 @@ def parse_rpc_params(rpc_request: JsonRpcRequest) -> A2ARpcParams:
             ``-32602 Invalid params`` response.
     """
     payload: dict[str, object] = {**rpc_request.params, "method": rpc_request.method}
-    return _PARAMS_ADAPTER.validate_python(payload)
+    return parse_typed("a2a.jsonrpc", payload, _PARAMS_ADAPTER)
 
 
 __all__ = [
