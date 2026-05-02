@@ -6,6 +6,7 @@ Holds typed references to core services, injected into
 """
 
 import asyncio
+import threading
 from typing import TYPE_CHECKING
 
 from synthorg.api.auth.presence import UserPresence
@@ -230,6 +231,8 @@ class AppState(AppStateServicesMixin):
         "_refresh_store",
         "_report_service",
         "_reports_service",
+        "_request_locks",
+        "_request_locks_guard",
         "_requests_facade_service",
         "_review_facade_service",
         "_review_gate_service",
@@ -465,6 +468,17 @@ class AppState(AppStateServicesMixin):
         self._refresh_store: RefreshStore | None = None
         self._ticket_store = WsTicketStore()
         self._user_presence = UserPresence()
+        # Per-request-id ``asyncio.Lock`` registry for serialising client-
+        # request lifecycle transitions (scope/approve/reject). Owned by
+        # AppState (one per app, fresh per test) so xdist workers cannot
+        # leak Lock objects bound to a closed event loop into the next
+        # test's loop. The guard is a plain ``threading.Lock`` because
+        # ``asyncio.Lock`` instances can only be constructed inside a
+        # running event loop, so the registry needs a thread-safe
+        # "check, then create" that does not require an active loop to
+        # serialise itself.
+        self._request_locks: dict[str, asyncio.Lock] = {}
+        self._request_locks_guard: threading.Lock = threading.Lock()
         self.startup_time = startup_time
 
     def _init_derived_services(

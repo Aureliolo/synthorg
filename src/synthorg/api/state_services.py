@@ -5,7 +5,11 @@ backup, integrations, escalation, A2A, and MCP services.  Extracted from
 ``state.py`` to keep that module's size under the project limit.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import threading
 
 from synthorg.api.auth.presence import UserPresence  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
@@ -195,6 +199,8 @@ class AppStateServicesMixin(_FacadesMixin):
     _ws_frame_timeout_seconds: int
     _ws_revalidation_window_seconds: int
     _ws_revalidation_max_failures: int
+    _request_locks: dict[str, asyncio.Lock]
+    _request_locks_guard: threading.Lock
 
     @property
     def settings_service(self) -> SettingsService:
@@ -436,6 +442,50 @@ class AppStateServicesMixin(_FacadesMixin):
     def ticket_store(self) -> WsTicketStore:
         """Return the WebSocket ticket store (always available)."""
         return self._ticket_store
+
+    def get_or_create_request_lock(self, request_id: str) -> asyncio.Lock:
+        """Return the per-request lifecycle lock, creating it if absent.
+
+        Used by the client-request controller to serialise
+        ``scope``/``approve``/``reject`` transitions per request id so two
+        concurrent calls cannot both pass the status precondition and
+        race at ``save`` time. The lock object is bound to the AppState
+        (one per app, fresh per test) so xdist workers cannot leak Lock
+        objects bound to a closed event loop into the next test's loop.
+
+        The dict is guarded by a plain ``threading.Lock`` because
+        ``asyncio.Lock`` instances can only be constructed inside a
+        running event loop, so the registry needs a thread-safe
+        "check, then create" that does not require an active loop to
+        serialise itself.
+        """
+        lock = self._request_locks.get(request_id)
+        if lock is not None:
+            return lock
+        with self._request_locks_guard:
+            lock = self._request_locks.get(request_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._request_locks[request_id] = lock
+            return lock
+
+    def release_request_lock_if_idle(self, request_id: str) -> None:
+        """Drop the lock for ``request_id`` after a terminal transition.
+
+        Called after the final ``save`` of a terminal state (approve,
+        reject) so the registry does not accumulate one entry per
+        lifetime request id. Only evicts when the lock is idle -- a
+        still-locked entry would strand any waiter who already holds a
+        reference to the same :class:`asyncio.Lock` object. The caller
+        must already have released the ``async with
+        get_or_create_request_lock`` block before invoking this helper,
+        otherwise the ``locked()`` probe reports the caller's own hold
+        and the eviction is a no-op.
+        """
+        with self._request_locks_guard:
+            lock = self._request_locks.get(request_id)
+            if lock is not None and not lock.locked():
+                self._request_locks.pop(request_id, None)
 
     @property
     def ws_auth_timeout_seconds(self) -> float:

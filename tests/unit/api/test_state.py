@@ -351,3 +351,75 @@ class TestAppStateTrainingService:
         state.set_training_service(mock_svc)
         with pytest.raises(RuntimeError, match="already configured"):
             state.set_training_service(mock_svc)
+
+
+@pytest.mark.unit
+class TestAppStateRequestLocks:
+    """Per-request-id ``asyncio.Lock`` registry lives on :class:`AppState`,
+    not on a module global, so xdist workers and ``--count N`` repeat
+    runs never inherit a Lock object bound to a closed event loop from
+    a prior test. Each AppState owns its own dict; tests construct
+    fresh AppStates, so isolation is automatic.
+    """
+
+    async def test_lock_is_cached_per_request_id(self) -> None:
+        state = _make_state()
+        first = state.get_or_create_request_lock("req-1")
+        second = state.get_or_create_request_lock("req-1")
+        # Same id returns the same Lock instance; without identity the
+        # ``async with`` ordering across two awaiters would not
+        # serialise.
+        assert first is second
+
+    async def test_locks_are_per_app_state(self) -> None:
+        # Two AppStates must hold independent dicts so a leaked Lock
+        # from one cannot poison the other (the precise xdist failure
+        # mode this fix addresses).
+        state_a = _make_state()
+        state_b = _make_state()
+        lock_a = state_a.get_or_create_request_lock("req-1")
+        lock_b = state_b.get_or_create_request_lock("req-1")
+        assert lock_a is not lock_b
+        assert "req-1" in state_a._request_locks
+        assert "req-1" in state_b._request_locks
+        # Cross-state dicts are independent.
+        assert state_a._request_locks is not state_b._request_locks
+
+    async def test_release_evicts_idle_lock(self) -> None:
+        state = _make_state()
+        lock = state.get_or_create_request_lock("req-1")
+        assert "req-1" in state._request_locks
+        # Lock is idle (never acquired), so release evicts.
+        assert not lock.locked()
+        state.release_request_lock_if_idle("req-1")
+        assert "req-1" not in state._request_locks
+
+    async def test_release_keeps_locked_entry(self) -> None:
+        # Releasing while a waiter holds the lock would strand them on
+        # an entry the next caller can no longer find. The helper must
+        # only evict idle locks.
+        state = _make_state()
+        lock = state.get_or_create_request_lock("req-1")
+        async with lock:
+            state.release_request_lock_if_idle("req-1")
+            assert "req-1" in state._request_locks
+
+    def test_release_is_noop_for_unknown_id(self) -> None:
+        state = _make_state()
+        # No registry entry yet -- helper must not raise.
+        state.release_request_lock_if_idle("never-seen")
+        assert "never-seen" not in state._request_locks
+
+    async def test_repeat_create_release_drains_clean(self) -> None:
+        # Mirrors what ``--count 2`` exercises: two consecutive
+        # create-release cycles on the same AppState should leave the
+        # registry empty without cross-contamination.
+        state = _make_state()
+        for cycle in ("first", "second"):
+            request_id = f"req-{cycle}"
+            lock = state.get_or_create_request_lock(request_id)
+            async with lock:
+                pass
+            state.release_request_lock_if_idle(request_id)
+            assert request_id not in state._request_locks
+        assert state._request_locks == {}
