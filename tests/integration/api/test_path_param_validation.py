@@ -94,19 +94,26 @@ def _build_client(
 
     # spec=AppState restricts attribute access to the production
     # AppState surface so the test's stub cannot drift if the real
-    # state class adds, renames, or removes a field. Optional
-    # collaborators (mcp_installations_repo, message_bus, cursor_secret,
-    # config) are configured as bare MagicMock attributes -- they are
-    # not exercised by the path-param validation path under test.
+    # state class adds, renames, or removes a field. The collaborator
+    # stubs each carry a concrete spec so a rename/removal of any
+    # method on the underlying interface fails this test instead of
+    # silently absorbing the attribute access (mock-spec gate #1604).
+    from synthorg.api.cursor import CursorSecret
+    from synthorg.communication.bus_protocol import MessageBus
+    from synthorg.config.schema import RootConfig
+    from synthorg.integrations.mcp_catalog.installations import (
+        McpInstallationRepository,
+    )
+
     app_state_stub = MagicMock(
         spec=AppState,
         connection_catalog=catalog,
         mcp_catalog_service=mcp_service,
-        mcp_installations_repo=MagicMock(spec=object),
+        mcp_installations_repo=MagicMock(spec=McpInstallationRepository),
         persistence=persistence,
-        message_bus=MagicMock(spec=object),
-        cursor_secret=MagicMock(spec=object),
-        config=MagicMock(spec=object),
+        message_bus=MagicMock(spec=MessageBus),
+        cursor_secret=MagicMock(spec=CursorSecret),
+        config=MagicMock(spec=RootConfig),
     )
 
     api_router = Router(
