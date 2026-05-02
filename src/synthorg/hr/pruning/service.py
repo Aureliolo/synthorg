@@ -13,7 +13,6 @@ Note:
 """
 
 import asyncio
-import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -22,6 +21,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
+from synthorg.hr.errors import PruningUnrestartableError
 from synthorg.hr.models import FiringRequest
 from synthorg.hr.pruning.models import (
     PruningEvaluation,
@@ -95,6 +95,14 @@ class PruningService:
         self._on_notification = on_notification
         self._task: asyncio.Task[None] | None = None
         self._wake_event = asyncio.Event()
+        self._stop_event: asyncio.Event = asyncio.Event()
+        # Per ``docs/reference/lifecycle-sync.md``: dedicated lifecycle
+        # primitives, kept distinct from the hot-path
+        # ``_processing_lock`` so a concurrent pruning cycle cannot
+        # block lifecycle transitions.
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        self._stop_failed: bool = False
+        self._stop_drain_timeout_seconds: float = 30.0
         self._pending_requests: dict[str, PruningRequest] = {}
         self._completed: list[PruningRecord] = []
         self._processed_approval_ids: set[str] = set()
@@ -125,26 +133,102 @@ class PruningService:
         """Whether the scheduler loop is currently active."""
         return self._task is not None and not self._task.done()
 
-    def start(self) -> None:
-        """Start the background pruning scheduler."""
-        if self.is_running:
-            return
-        self._wake_event.clear()
-        self._task = asyncio.create_task(
-            self._run_loop(),
-            name="pruning-scheduler",
-        )
-        logger.info(HR_PRUNING_SCHEDULER_STARTED)
+    async def start(self) -> None:
+        """Start the background pruning scheduler.
+
+        Idempotent + concurrent-safe per ``docs/reference/lifecycle-sync.md``:
+        serialises on ``self._lifecycle_lock`` so concurrent callers
+        cannot double-spawn the run loop.
+        """
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "PruningService is unrestartable after a "
+                    "timed-out stop; construct a fresh service instead"
+                )
+                logger.warning(
+                    HR_PRUNING_POLICY_ERROR,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise PruningUnrestartableError(msg)
+            if self.is_running:
+                return
+            self._wake_event.clear()
+            self._stop_event.clear()
+            self._task = asyncio.create_task(
+                self._run_loop(),
+                name="pruning-scheduler",
+            )
+            logger.info(HR_PRUNING_SCHEDULER_STARTED)
 
     async def stop(self) -> None:
-        """Stop the background scheduler gracefully."""
-        if self._task is None:
-            return
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
-        self._task = None
-        logger.info(HR_PRUNING_SCHEDULER_STOPPED)
+        """Stop the background scheduler gracefully.
+
+        First signals the run loop to exit cleanly via ``_stop_event``
+        and waits up to ``_stop_drain_timeout_seconds`` for the
+        in-flight pruning cycle to finish. Only escalates to
+        ``task.cancel()`` if the cooperative drain times out -- on
+        timeout the service is also marked unrestartable so a fresh
+        ``start()`` does not stack a second loop on top of the orphan
+        task that may still own pruning state.
+        """
+        async with self._lifecycle_lock:
+            self._stop_event.set()
+            self._wake_event.set()
+            task = self._task
+            if task is None:
+                return
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(task),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                # Cooperative drain missed the deadline. Cancel hard,
+                # mark unrestartable, and re-raise so the caller sees
+                # the timeout. The running cycle owns repository
+                # state we cannot safely interrupt twice, so we do
+                # NOT chase the cancellation with a second wait.
+                task.cancel()
+                self._stop_failed = True
+                logger.error(  # noqa: TRY400
+                    HR_PRUNING_POLICY_ERROR,
+                    error=("stop exceeded hard deadline; service marked unrestartable"),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
+            except asyncio.CancelledError:
+                # Distinguish external cancellation of ``stop()`` from
+                # the running cycle being cancelled before observing
+                # ``_stop_event``. If the loop task is still alive, the
+                # cancel was aimed at us, not at it -- re-raise so the
+                # external cancellation propagates and we don't pretend
+                # the service drained when it actually didn't.
+                if not task.done():
+                    raise
+                # Loop already finished; drained successfully.
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    HR_PRUNING_POLICY_ERROR,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="shutdown",
+                )
+            self._task = None
+            # Recreate the loop-bound events WHILE holding the
+            # lifecycle lock. Outside the lock, a racing ``start()``
+            # could spawn the run loop bound to the OLD events
+            # before these assignments land, leaving a later stop()
+            # signalling different events than the running task is
+            # waiting on. ``self._lifecycle_lock`` itself MUST stay
+            # the same instance for the service's lifetime; only the
+            # events are swapped.
+            self._stop_event = asyncio.Event()
+            self._wake_event = asyncio.Event()
+            logger.info(HR_PRUNING_SCHEDULER_STOPPED)
 
     def wake(self) -> None:
         """Trigger an early pruning cycle."""
@@ -676,17 +760,30 @@ class PruningService:
     # ── Scheduler Loop ────────────────────────────────────────
 
     async def _run_loop(self) -> None:
-        """Sleep-and-check scheduler loop."""
-        while True:
-            with contextlib.suppress(TimeoutError):
+        """Sleep-and-check scheduler loop.
+
+        Honors ``self._stop_event`` so the canonical ``stop()`` drain
+        wakes the loop cooperatively. ``self._wake_event`` continues
+        to interrupt the sleep for ad-hoc ``wake()`` triggers.
+        """
+        while not self._stop_event.is_set():
+            try:
                 await asyncio.wait_for(
                     self._wake_event.wait(),
                     timeout=self._config.evaluation_interval_seconds,
                 )
+            except TimeoutError:
+                pass
+            except asyncio.CancelledError:
+                raise
             self._wake_event.clear()
+            if self._stop_event.is_set():
+                return
             try:
                 await self.run_pruning_cycle()
             except MemoryError, RecursionError:
+                raise
+            except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 # Drop ``logger.exception`` -- the scheduler-loop

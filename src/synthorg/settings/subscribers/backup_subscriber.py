@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 
 if TYPE_CHECKING:
@@ -110,7 +110,28 @@ class BackupSettingsSubscriber:
         enabled = str(result.value).lower() == "true"
 
         if enabled and not scheduler.is_running:
-            scheduler.start()
+            try:
+                await scheduler.start()
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # Surface a startup failure here -- without this branch
+                # the exception would propagate from the subscriber
+                # callback with no context tying it back to the
+                # setting that triggered it. The structured log entry
+                # gives the operator the namespace/key plus the
+                # scrubbed error before re-raising so the dispatcher
+                # still records the failure.
+                logger.error(  # noqa: TRY400
+                    SETTINGS_SUBSCRIBER_NOTIFIED,
+                    subscriber=self.subscriber_name,
+                    namespace="backup",
+                    key="enabled",
+                    note="scheduler.start() failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,

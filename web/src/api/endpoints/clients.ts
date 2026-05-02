@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 
@@ -259,14 +261,45 @@ export async function getSimulation(
   return unwrap(response)
 }
 
+function configsEqual(a: SimulationConfig, b: SimulationConfig): boolean {
+  // Field-by-field compare matches the actual ``SimulationConfig``
+  // shape (five primitive fields) and stays correct under key-order
+  // shifts that ``JSON.stringify`` would silently misreport.
+  return (
+    a.simulation_id === b.simulation_id &&
+    a.project_id === b.project_id &&
+    a.rounds === b.rounds &&
+    a.clients_per_round === b.clients_per_round &&
+    a.requirements_per_client === b.requirements_per_client
+  )
+}
+
 export async function startSimulation(
   config: SimulationConfig,
 ): Promise<SimulationStatus> {
-  const response = await apiClient.post<ApiResponse<SimulationStatus>>(
-    '/simulations/',
-    { config },
-  )
-  return unwrap(response)
+  try {
+    const response = await apiClient.post<ApiResponse<SimulationStatus>>(
+      '/simulations/',
+      { config },
+    )
+    return unwrap(response)
+  } catch (err) {
+    // The backend returns HTTP 409 when a simulation with
+    // ``config.simulation_id`` is already registered (a redelivery
+    // or 5xx-driven retry of the same request). Make the retry path
+    // idempotent only when the existing run was started with the
+    // SAME config -- if the configs differ, the caller passed a
+    // different request that happened to collide on
+    // ``simulation_id`` and should see the 409 surface instead of
+    // silently inheriting an unrelated in-flight runner.
+    if (axios.isAxiosError(err) && err.response?.status === 409) {
+      const existing = await getSimulation(config.simulation_id)
+      if (configsEqual(existing.config, config)) {
+        return existing
+      }
+    }
+    throw err
+  }
 }
 
 export async function cancelSimulation(

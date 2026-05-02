@@ -10,8 +10,23 @@ import math
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, Literal
 
-from synthorg.core.domain_errors import DomainError
+from synthorg.core.domain_errors import ConflictError, DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+
+class ProviderLifecycleConflictError(ConflictError):
+    """Raised when ``ProviderHealthProber.start()`` is called after a timed-out stop.
+
+    Mirrors :class:`BackupUnrestartableError` -- a stuck drain leaves
+    the prober's loop alive on the original instance, so the canonical
+    lifecycle pattern marks the prober unrestartable rather than
+    layering a second loop on top of an orphan task.
+    """
+
+    default_message: ClassVar[str] = (
+        "ProviderHealthProber is unrestartable after a timed-out stop"
+    )
+
 
 ProviderErrorLabel = Literal[
     "rate_limit",

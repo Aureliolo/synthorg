@@ -769,7 +769,7 @@ class TestSchedulerLifecycle:
             policies=(NeverEligiblePolicy(),),
             config=PruningServiceConfig(evaluation_interval_seconds=60.0),
         )
-        service.start()
+        await service.start()
         assert service.is_running
         await service.stop()
         assert not service.is_running
@@ -779,8 +779,8 @@ class TestSchedulerLifecycle:
             policies=(NeverEligiblePolicy(),),
             config=PruningServiceConfig(evaluation_interval_seconds=60.0),
         )
-        service.start()
-        service.start()  # Should not raise or create a second task.
+        await service.start()
+        await service.start()  # Should not raise or create a second task.
         assert service.is_running
         await service.stop()
 
@@ -831,7 +831,7 @@ class TestSchedulerLifecycle:
         service.run_pruning_cycle = patched_cycle  # type: ignore[assignment]
 
         with patch("asyncio.wait_for", side_effect=patched_wait_for):
-            service.start()
+            await service.start()
             await loop_waiting.wait()
             service.wake()
 

@@ -1,9 +1,18 @@
-"""Factories for the escalation queue backend and decision processor."""
+"""Factories for the escalation queue backend and decision processor.
 
+Both factories dispatch via small registry maps so adding a new backend
+or decision strategy is a single registry entry rather than a new
+branch in an if/elif chain. The shape mirrors
+``synthorg.persistence.registry.PersistenceBackendRegistry`` and the
+``match/case`` dispatch in ``synthorg.communication.bus``.
+"""
+
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.communication.conflict_resolution.escalation.config import (
-    EscalationQueueConfig,  # noqa: TC001
+    EscalationQueueConfig,
 )
 from synthorg.communication.conflict_resolution.escalation.in_memory_store import (
     InMemoryEscalationStore,
@@ -17,8 +26,8 @@ from synthorg.communication.conflict_resolution.escalation.processors import (
     WinnerSelectProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
-    DecisionProcessor,  # noqa: TC001
-    EscalationQueueStore,  # noqa: TC001
+    DecisionProcessor,
+    EscalationQueueStore,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -33,11 +42,26 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+type _QueueStoreFactory = Callable[
+    [EscalationQueueConfig, "PersistenceBackend | None"],
+    EscalationQueueStore,
+]
+type _DecisionProcessorFactory = Callable[[], DecisionProcessor]
+
+
 def _require_persistence(
     config_backend: str,
     persistence: PersistenceBackend | None,
 ) -> PersistenceBackend:
-    """Reject a missing or mismatched persistence backend, logging before raise."""
+    """Reject a missing or mismatched persistence backend, logging before raise.
+
+    The escalation queue store's backend (``memory`` / ``sqlite`` /
+    ``postgres``) MUST line up with the operator's persistence choice.
+    A mismatch -- typically because someone hand-injected a backend
+    instance that does not match the configuration -- is surfaced at
+    construction time rather than allowed to silently fall back to an
+    in-memory state or to interact with the wrong driver.
+    """
     if persistence is None:
         msg = f"{config_backend} backend requires a connected persistence backend"
         logger.warning(
@@ -64,6 +88,46 @@ def _require_persistence(
     return persistence
 
 
+def _build_memory_store(
+    config: EscalationQueueConfig,
+    persistence: PersistenceBackend | None,
+) -> EscalationQueueStore:
+    del config, persistence
+    return InMemoryEscalationStore()
+
+
+def _build_sqlite_store(
+    config: EscalationQueueConfig,
+    persistence: PersistenceBackend | None,
+) -> EscalationQueueStore:
+    del config
+    backend = _require_persistence("sqlite", persistence)
+    return backend.build_escalations()
+
+
+def _build_postgres_store(
+    config: EscalationQueueConfig,
+    persistence: PersistenceBackend | None,
+) -> EscalationQueueStore:
+    backend = _require_persistence("postgres", persistence)
+    # Pass the notify channel only when cross-instance notify is
+    # enabled so the repo's NOTIFY publishing is a true no-op for
+    # single-worker deployments.
+    notify_channel: str | None = None
+    if config.cross_instance_notify in {"auto", "on"}:
+        notify_channel = config.notify_channel
+    return backend.build_escalations(notify_channel=notify_channel)
+
+
+_QUEUE_STORE_FACTORIES: Mapping[str, _QueueStoreFactory] = MappingProxyType(
+    {
+        "memory": _build_memory_store,
+        "sqlite": _build_sqlite_store,
+        "postgres": _build_postgres_store,
+    },
+)
+
+
 def build_escalation_queue_store(
     config: EscalationQueueConfig,
     persistence: PersistenceBackend | None = None,
@@ -80,25 +144,29 @@ def build_escalation_queue_store(
 
     Raises:
         ValueError: ``backend`` is ``sqlite`` or ``postgres`` but the
-            persistence backend is missing or of a mismatched type.
+            persistence backend is missing or of a mismatched type, or
+            ``backend`` is not a registered key.
     """
-    if config.backend == "memory":
-        return InMemoryEscalationStore()
-    if config.backend == "sqlite":
-        store_backend = _require_persistence("sqlite", persistence)
-        return store_backend.build_escalations()
-    if config.backend == "postgres":
-        store_backend = _require_persistence("postgres", persistence)
-        # Pass the notify channel only when cross-instance notify is
-        # enabled so the repo's NOTIFY publishing is a true no-op for
-        # single-worker deployments.
-        notify_channel: str | None = None
-        if config.cross_instance_notify in {"auto", "on"}:
-            notify_channel = config.notify_channel
-        return store_backend.build_escalations(notify_channel=notify_channel)
-    # Defensive: the Literal union is exhaustive today.
-    msg = f"Unknown escalation queue backend: {config.backend!r}"  # type: ignore[unreachable]
-    raise ValueError(msg)
+    factory = _QUEUE_STORE_FACTORIES.get(config.backend)
+    if factory is None:
+        available = sorted(_QUEUE_STORE_FACTORIES) or ["(none)"]
+        msg = (
+            f"Unknown escalation queue backend: {config.backend!r}. "
+            f"Registered backends: {', '.join(available)}"
+        )
+        # Log the misconfiguration before raising so the operator's
+        # log inventory carries the full context (config value +
+        # registered keys) even if the caller swallows the exception
+        # higher up.
+        logger.warning(
+            API_APP_STARTUP,
+            component="escalation_factory",
+            error=msg,
+            config_backend=config.backend,
+            registered=available,
+        )
+        raise ValueError(msg)
+    return factory(config, persistence)
 
 
 def build_escalation_notify_subscriber(
@@ -171,6 +239,16 @@ def build_escalation_notify_subscriber(
     )
 
 
+_DECISION_PROCESSOR_FACTORIES: Mapping[str, _DecisionProcessorFactory] = (
+    MappingProxyType(
+        {
+            "winner": WinnerSelectProcessor,
+            "hybrid": HybridDecisionProcessor,
+        },
+    )
+)
+
+
 def build_decision_processor(
     config: EscalationQueueConfig,
 ) -> DecisionProcessor:
@@ -182,11 +260,23 @@ def build_decision_processor(
     Returns:
         The concrete decision processor selected by
         ``config.decision_strategy``.
+
+    Raises:
+        ValueError: ``decision_strategy`` is not a registered key.
     """
-    if config.decision_strategy == "winner":
-        return WinnerSelectProcessor()
-    if config.decision_strategy == "hybrid":
-        return HybridDecisionProcessor()
-    # Defensive: the Literal union is exhaustive today.
-    msg = f"Unknown decision_strategy: {config.decision_strategy!r}"  # type: ignore[unreachable]
-    raise ValueError(msg)
+    factory = _DECISION_PROCESSOR_FACTORIES.get(config.decision_strategy)
+    if factory is None:
+        available = sorted(_DECISION_PROCESSOR_FACTORIES) or ["(none)"]
+        msg = (
+            f"Unknown decision_strategy: {config.decision_strategy!r}. "
+            f"Registered strategies: {', '.join(available)}"
+        )
+        logger.warning(
+            API_APP_STARTUP,
+            component="escalation_factory",
+            error=msg,
+            decision_strategy=config.decision_strategy,
+            registered=available,
+        )
+        raise ValueError(msg)
+    return factory()

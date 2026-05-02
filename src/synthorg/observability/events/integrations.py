@@ -110,6 +110,14 @@ MCP_SERVER_INSTALL_VALIDATION_FAILED: Final[str] = (
 TUNNEL_STARTED: Final[str] = "integrations.tunnel.started"
 TUNNEL_STOPPED: Final[str] = "integrations.tunnel.stopped"
 TUNNEL_ERROR: Final[str] = "integrations.tunnel.error"
+TUNNEL_ALREADY_ACTIVE: Final[str] = "integrations.tunnel.already_active"
+# Provider-scoped twin of ``TUNNEL_STARTED``. The high-level
+# ``TUNNEL_STARTED`` is emitted by the tunnel controller after the
+# adapter returns; the adapter emits this provider-scoped variant so
+# operators can distinguish "the controller started a tunnel" from
+# "the ngrok provider opened the upstream connection" without
+# double-counting metrics keyed on the global event.
+NGROK_TUNNEL_STARTED: Final[str] = "integrations.tunnel.ngrok.started"
 
 # -- Webhook bridge ------------------------------------------------------
 

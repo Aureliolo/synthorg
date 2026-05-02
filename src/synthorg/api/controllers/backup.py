@@ -44,9 +44,10 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
 )
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
+    BACKUP_FAILED,
     BACKUP_NOT_FOUND,
     BACKUP_RESTORE_FAILED,
 )
@@ -88,24 +89,31 @@ class BackupController(Controller):
         self,
         state: State,
         idempotency_key: Annotated[
-            str | None,
+            NotBlankStr,
             Parameter(
                 header="Idempotency-Key",
                 description=(
-                    "RFC-style retry-safe key. Same key within 24h "
-                    "returns the cached manifest instead of starting "
-                    "a second backup."
+                    "RFC-style retry-safe key. Required: identical keys "
+                    "within 24h return the cached manifest instead of "
+                    "starting a second backup. Without a key a 5xx-driven "
+                    "client retry could launch concurrent backups, "
+                    "violating the at-most-one-running invariant."
                 ),
-                required=False,
+                required=True,
                 min_length=1,
+                # Bound the key length so a malicious client cannot
+                # exhaust the durable idempotency store with arbitrarily
+                # large keys; 255 chars is plenty for UUIDs / SHAs and
+                # matches common header-value column widths.
+                max_length=255,
             ),
-        ] = None,
+        ],
     ) -> ApiResponse[BackupManifest]:
         """Trigger a manual backup.
 
         Args:
             state: Application state.
-            idempotency_key: Optional caller-supplied retry token.
+            idempotency_key: Required caller-supplied retry token.
 
         Returns:
             Manifest of the created backup.
@@ -127,26 +135,48 @@ class BackupController(Controller):
                 BackupTrigger.MANUAL,
             )
 
-        if idempotency_key:
-            outcome = await app_state.idempotency_service.run_idempotent(
-                scope=NotBlankStr("backup"),
-                key=NotBlankStr(idempotency_key),
-                callback=lambda: _do_backup_as_dict(_do_backup),
+        # ``NotBlankStr`` is an Annotated type alias, not a callable
+        # constructor; calling it at runtime returns the underlying
+        # ``str`` without running the AfterValidator (which only fires
+        # through Pydantic). The literal "backup" and the
+        # already-validated header value satisfy the parameter contract
+        # directly, so pass them as plain strings instead of fake-
+        # wrapping them in a no-op call.
+        outcome = await app_state.idempotency_service.run_idempotent(
+            scope="backup",
+            key=idempotency_key,
+            callback=lambda: _do_backup_as_dict(_do_backup),
+        )
+        if outcome.timed_out:
+            # Discriminated 409 path: distinct from a callback that
+            # legitimately returned ``None``.
+            logger.warning(
+                IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                scope="backup",
+                idempotency_key=idempotency_key,
+                endpoint="backup.create",
             )
-            if outcome.timed_out:
-                # Discriminated 409 path: distinct from a callback
-                # that legitimately returned ``None``.
-                logger.warning(
-                    IDEMPOTENCY_CLAIM_IN_FLIGHT,
-                    scope="backup",
-                    idempotency_key=idempotency_key,
-                    endpoint="backup.create",
-                )
-                msg = "Concurrent in-flight backup with this idempotency key"
-                raise ConflictError(msg)
-            return ApiResponse(data=BackupManifest.model_validate(outcome.result))
-
-        manifest = await _do_backup()
+            msg = "Concurrent in-flight backup with this idempotency key"
+            raise ConflictError(msg)
+        try:
+            manifest = BackupManifest.model_validate(outcome.result)
+        except (ValueError, TypeError) as exc:
+            # A corrupt or stale cached payload (e.g. schema added a
+            # field after the entry was stored) would otherwise leak
+            # the raw pydantic ValidationError. Surface a 5xx instead
+            # so the operator gets a stable error and the failure is
+            # visible in logs.
+            logger.error(  # noqa: TRY400
+                BACKUP_FAILED,
+                scope="backup",
+                idempotency_key=idempotency_key,
+                endpoint="backup.create",
+                stage="cached_manifest_validate",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Cached backup manifest failed validation; rerun the backup"
+            raise InternalServerException(msg) from exc
         return ApiResponse(data=manifest)
 
     @get()

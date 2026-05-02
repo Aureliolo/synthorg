@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.budget._tracker_helpers import _assert_single_currency
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 
 if TYPE_CHECKING:
@@ -231,15 +232,30 @@ def bucket_cost_records(
 
     Returns:
         Sorted tuple of data points, one per bucket.
+
+    Raises:
+        MixedCurrencyAggregationError: If the records remaining after
+            filtering to ``[start, end)`` span multiple currencies.
+            Summing across currencies would produce a meaningless
+            monetary total. Records outside the window are not part
+            of the aggregation and are not validated.
     """
     bucket_starts = generate_bucket_starts(start, end, bucket_size)
+    # Filter to the requested ``[start, end)`` window before
+    # validating currency uniformity. Validating the raw input would
+    # reject otherwise-valid partial-range queries when the caller
+    # passes a multi-currency dataset and asks for a single-currency
+    # slice -- the rows outside the window do not contribute to the
+    # aggregation, so they are not part of the "is this bucket
+    # meaningful?" question.
+    in_window_records = tuple(
+        record for record in records if start <= record.timestamp < end
+    )
+    _assert_single_currency(in_window_records)
     sums: dict[datetime, list[float]] = defaultdict(list)
 
-    for record in records:
-        ts = record.timestamp
-        if ts < start or ts >= end:
-            continue
-        key = _bucket_key(ts, bucket_size)
+    for record in in_window_records:
+        key = _bucket_key(record.timestamp, bucket_size)
         sums[key].append(record.cost)
 
     return tuple(
@@ -431,6 +447,13 @@ def project_daily_spend(
 
     Returns:
         Budget forecast with daily projections.
+
+    Raises:
+        MixedCurrencyAggregationError: If *records* span multiple
+            currencies. The forecast would conflate currencies on the
+            avg-daily-spend computation and return a meaningless
+            projection; raising at the boundary surfaces the bug at
+            the call site.
     """
     today = (now or datetime.now(UTC)).date()
 
@@ -443,6 +466,7 @@ def project_daily_spend(
             avg_daily_spend=0.0,
         )
 
+    _assert_single_currency(records)
     avg_daily, confidence, _ = _compute_daily_spend(records)
     projections = _build_projections(avg_daily, horizon_days, today)
     projected_total = round(

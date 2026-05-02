@@ -112,6 +112,72 @@ async def _mark_failed(
         )
 
 
+def _attach_runner_callbacks(
+    task: asyncio.Task[None],
+    *,
+    sim_state: Any,
+    simulation_id: str,
+) -> None:
+    """Wire the failure logger + background-task discard to a runner.
+
+    The exception logger is registered FIRST so a task that finishes
+    between ``create_task`` and the ``add`` below still has its
+    failure surfaced -- asyncio invokes done-callbacks in the order
+    they were registered. Adding the task to the set before attaching
+    the logger would let a fast-completing failure fire ``discard``
+    first and silently drop the error.
+    """
+    task.add_done_callback(
+        log_task_exceptions(
+            logger,
+            SIMULATION_RUN_FAILED,
+            simulation_id=simulation_id,
+        ),
+    )
+    task.add_done_callback(sim_state.background_tasks.discard)
+    sim_state.background_tasks.add(task)
+
+
+async def _rollback_register_if_absent(
+    spawned_task: asyncio.Task[None] | None,
+    *,
+    sim_state: Any,
+    record: SimulationRecord,
+) -> None:
+    """Tear down a partially-constructed simulation start.
+
+    If the runner task was spawned before the post-claim setup raised,
+    cancel and drain it before unregistering -- otherwise the orphan
+    runner would race the unregister and either re-claim the
+    ``simulation_id`` via ``update_status`` or silently corrupt the
+    store. ``shield`` is unnecessary here because the caller is the
+    request handler, not a coroutine guarding against external
+    cancellation.
+
+    Passes the originally-claimed ``record`` to ``unregister`` so the
+    compare-and-delete semantics protect a fresh retry that might have
+    won the slot between the failure and this rollback running.
+    """
+    simulation_id = record.simulation_id
+    if spawned_task is not None:
+        spawned_task.cancel()
+        try:
+            await spawned_task
+        except asyncio.CancelledError:
+            pass
+        except MemoryError, RecursionError:
+            raise
+        except Exception as drain_exc:
+            logger.warning(
+                SIMULATION_RUN_FAILED,
+                simulation_id=simulation_id,
+                stage="rollback_drain",
+                error_type=type(drain_exc).__name__,
+                error=safe_error_description(drain_exc),
+            )
+    await sim_state.simulation_store.unregister(simulation_id, expected=record)
+
+
 async def _run_in_background(
     *,
     app_state: AppState,
@@ -280,8 +346,21 @@ class SimulationController(Controller):
             status="running",
             started_at=datetime.now(UTC),
         )
-        await sim_state.simulation_store.save(record)
-        _publish_event(request, WsEventType.SIMULATION_STARTED, record)
+        # A JetStream redelivery or HTTP 5xx retry of /simulations/start
+        # with the same ``simulation_id`` would otherwise spawn a second
+        # runner that races the first on
+        # ``simulation_store.update_status``, corrupting metrics with
+        # last-write-wins. ``register_if_absent`` performs the check
+        # and insert atomically under the store's lock, so two
+        # concurrent callers cannot both observe absence and proceed.
+        # The losing caller gets HTTP 409 and can fall back to
+        # ``GET /simulations/{id}`` to observe the in-flight run.
+        if not await sim_state.simulation_store.register_if_absent(record):
+            msg = (
+                f"Simulation {data.config.simulation_id!r} already exists; "
+                "cannot start a second runner for the same id"
+            )
+            raise ConflictError(msg)
 
         async def runner_task() -> None:
             try:
@@ -332,25 +411,45 @@ class SimulationController(Controller):
             if event is not None:
                 _publish_event(request, event, final)
 
-        task = asyncio.create_task(
-            runner_task(),
-            name=f"simulation-runner[{record.simulation_id}]",
-        )
-        # Register the exception logger FIRST so a task that finishes
-        # between ``create_task`` and ``background_tasks.add`` still has
-        # its failure surfaced -- asyncio invokes done-callbacks in the
-        # order they were registered.  Adding the task to the set
-        # before attaching the logger would let a fast-completing
-        # failure fire ``discard`` first and silently drop the error.
-        task.add_done_callback(
-            log_task_exceptions(
-                logger,
+        # Roll back the ``register_if_absent`` claim if any post-claim
+        # step (publish, runner spawn, callback registration) raises.
+        # Without rollback the ``simulation_id`` would stay claimed
+        # forever and block every retry, defeating the very 409-on-
+        # duplicate guard the claim provides.
+        spawned_task: asyncio.Task[None] | None = None
+        try:
+            _publish_event(request, WsEventType.SIMULATION_STARTED, record)
+            spawned_task = asyncio.create_task(
+                runner_task(),
+                name=f"simulation-runner[{record.simulation_id}]",
+            )
+            _attach_runner_callbacks(
+                spawned_task,
+                sim_state=sim_state,
+                simulation_id=record.simulation_id,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except BaseException as exc:
+            # Log the rollback trigger before tearing down -- without
+            # this entry, a failure between ``register_if_absent`` and
+            # the callback wiring would leave only the rollback drain
+            # log, with no record of the original cause for the start
+            # that the operator would have to chase across components.
+            logger.warning(
                 SIMULATION_RUN_FAILED,
                 simulation_id=record.simulation_id,
-            ),
-        )
-        task.add_done_callback(sim_state.background_tasks.discard)
-        sim_state.background_tasks.add(task)
+                stage="post_claim_setup",
+                spawned_task=spawned_task is not None,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            await _rollback_register_if_absent(
+                spawned_task,
+                sim_state=sim_state,
+                record=record,
+            )
+            raise
         return ApiResponse(data=_to_response(record))
 
     @post(
