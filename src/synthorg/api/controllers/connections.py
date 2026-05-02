@@ -19,7 +19,9 @@ from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
     PathName,
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- Pydantic field type at runtime
 )
@@ -186,11 +188,15 @@ class ConnectionsController(Controller):
     ) -> ApiResponse[Connection]:
         """Get a single connection by name."""
         catalog = state["app_state"].connection_catalog
-        conn = await catalog.get(name)
-        if conn is None:
-            msg = f"Connection '{name}' not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=msg)
-            raise NotFoundError(msg) from None
+        conn = require_resource_or_404(
+            await catalog.get(name),
+            resource_type="Connection",
+            identifier=name,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+            extra_log_kwargs={"connection": name},
+            code=ErrorCode.CONNECTION_NOT_FOUND,
+        )
         return ApiResponse(data=conn)
 
     @post(

@@ -13,6 +13,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact
 from synthorg.core.domain_errors import (
@@ -251,15 +252,14 @@ class ArtifactController(Controller):
         Raises:
             NotFoundError: If the artifact does not exist (HTTP 404).
         """
-        artifact = await _service(state).get(artifact_id)
-        if artifact is None:
-            msg = f"Artifact {artifact_id!r} not found"
-            logger.warning(
-                PERSISTENCE_ARTIFACT_METADATA_MISSING,
-                artifact_id=artifact_id,
-                operation="read",
-            )
-            raise NotFoundError(msg)
+        artifact = require_resource_or_404(
+            await _service(state).get(artifact_id),
+            resource_type="Artifact",
+            identifier=artifact_id,
+            log_event=PERSISTENCE_ARTIFACT_METADATA_MISSING,
+            operation="read",
+            extra_log_kwargs={"artifact_id": artifact_id},
+        )
         return ApiResponse[Artifact](data=artifact)
 
     @post(
@@ -332,15 +332,14 @@ class ArtifactController(Controller):
             NotFoundError: If the artifact does not exist (HTTP 404).
         """
         service = _service(state)
-        artifact = await service.get(artifact_id)
-        if artifact is None:
-            msg = f"Artifact {artifact_id!r} not found"
-            logger.warning(
-                PERSISTENCE_ARTIFACT_METADATA_MISSING,
-                artifact_id=artifact_id,
-                operation="delete",
-            )
-            raise NotFoundError(msg)
+        artifact = require_resource_or_404(
+            await service.get(artifact_id),
+            resource_type="Artifact",
+            identifier=artifact_id,
+            log_event=PERSISTENCE_ARTIFACT_METADATA_MISSING,
+            operation="delete",
+            extra_log_kwargs={"artifact_id": artifact_id},
+        )
         # Storage-first delete + persistence delete with the right
         # error taxonomy is owned by the service so the controller
         # stays out of the mixed-orchestration role; see
@@ -403,16 +402,17 @@ class ArtifactController(Controller):
             Updated artifact metadata with size_bytes set.
         """
         service = _service(state)
-        artifact = await service.get(artifact_id)
-        if artifact is None:
-            msg = f"Artifact {artifact_id!r} not found"
-            logger.warning(
-                PERSISTENCE_ARTIFACT_METADATA_MISSING,
-                artifact_id=artifact_id,
-                operation="upload",
-                note="upload_content_target_missing",
-            )
-            raise NotFoundError(msg)
+        artifact = require_resource_or_404(
+            await service.get(artifact_id),
+            resource_type="Artifact",
+            identifier=artifact_id,
+            log_event=PERSISTENCE_ARTIFACT_METADATA_MISSING,
+            operation="upload",
+            extra_log_kwargs={
+                "artifact_id": artifact_id,
+                "note": "upload_content_target_missing",
+            },
+        )
 
         storage = state.app_state.artifact_storage
         try:
@@ -504,15 +504,14 @@ class ArtifactController(Controller):
             NotFoundError: If the artifact metadata or content is
                 missing (HTTP 404).
         """
-        artifact = await _service(state).get(artifact_id)
-        if artifact is None:
-            msg = f"Artifact {artifact_id!r} not found"
-            logger.warning(
-                PERSISTENCE_ARTIFACT_METADATA_MISSING,
-                artifact_id=artifact_id,
-                operation="download",
-            )
-            raise NotFoundError(msg)
+        artifact = require_resource_or_404(
+            await _service(state).get(artifact_id),
+            resource_type="Artifact",
+            identifier=artifact_id,
+            log_event=PERSISTENCE_ARTIFACT_METADATA_MISSING,
+            operation="download",
+            extra_log_kwargs={"artifact_id": artifact_id},
+        )
 
         storage = state.app_state.artifact_storage
         try:
