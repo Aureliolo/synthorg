@@ -88,9 +88,15 @@ class TestOrgInflectionMonitorLifecycleLock:
         monitor = _make_monitor()
         await monitor.start()
         await monitor.stop()
-        # Cannot assert ``_task is None`` here -- mypy narrows the
-        # type and flags the subsequent ``start()`` as unreachable.
+        # Cannot assert ``_task is None`` between the calls -- mypy
+        # narrows the type and flags the subsequent ``start()`` as
+        # unreachable.
         await monitor.start()
+        # Positive assertion: the second ``start()`` actually
+        # rebuilds the loop task. Without this, a regression where
+        # ``start()`` silently no-ops after a stop would still pass
+        # the test.
+        assert monitor._task is not None
         await monitor.stop()
 
     async def test_unrestartable_after_drain_timeout(self) -> None:
