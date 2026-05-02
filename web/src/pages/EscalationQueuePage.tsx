@@ -16,6 +16,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useEscalationsStore } from '@/stores/escalations'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { formatDateTime } from '@/utils/format'
 import { EscalationDetailDrawer } from './escalations/EscalationDetailDrawer'
 import type { ConflictType, EscalationStatus } from '@/api/types/escalations'
@@ -91,31 +92,32 @@ export default function EscalationQueuePage() {
   }, [escalations, priorityFilter])
 
   // Choose the empty-state copy outside the JSX so we don't trip
-  // ``@eslint-react/unsupported-syntax`` (no IIFEs in JSX, since
-  // React Compiler skips them). When no filters are active the
-  // queue itself is empty; otherwise the current view is.
-  const emptyStateProps = useMemo(() => {
-    if (visibleEscalations.length > 0) return null
-    const hasFilters =
-      (statusFilter !== null && statusFilter !== undefined)
-      || priorityFilter !== 'all'
-    if (hasFilters && escalations.length > 0) {
-      return {
-        title: 'No escalations match your filters',
-        description:
-          'Adjust the status or priority filter above to see more escalations.',
-      }
-    }
-    return {
+  const filterActive =
+    (statusFilter !== null && statusFilter !== undefined)
+    || priorityFilter !== 'all'
+  const emptyStateProps = useEmptyStateProps({
+    filteredCount: visibleEscalations.length,
+    totalCount: escalations.length,
+    filterActive,
+    empty: {
       title: 'No escalations',
       description:
         'Conflicts that the autonomous resolvers cannot decide land here for human review.',
-    }
-  }, [visibleEscalations.length, statusFilter, priorityFilter, escalations.length])
+    },
+    filtered: {
+      title: 'No escalations match your filters',
+      description:
+        'Adjust the status or priority filter above to see more escalations.',
+    },
+  })
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <ListHeader title="Escalation queue" count={visibleEscalations.length} />
+      <ListHeader
+        title="Escalation queue"
+        description="Conflicts the org has flagged for human review."
+        count={visibleEscalations.length}
+      />
 
       {/* Status + priority filters wrapped in the shared
           SearchFilterSort layout primitive so the escalation queue
@@ -184,10 +186,7 @@ export default function EscalationQueuePage() {
         // just the current view). Differentiate so the empty state
         // points at the right next action.
         emptyStateProps !== null ? (
-          <EmptyState
-            title={emptyStateProps.title}
-            description={emptyStateProps.description}
-          />
+          <EmptyState {...emptyStateProps} />
         ) : null
       ) : visibleEscalations.length > 0 ? (
         <ul className="flex flex-col gap-grid-gap">

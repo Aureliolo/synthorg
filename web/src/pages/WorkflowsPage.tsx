@@ -119,6 +119,7 @@ export default function WorkflowsPage() {
     <div className="space-y-section-gap">
       <ListHeader
         title="Workflows"
+        description="Reusable orchestration recipes your agents run."
         count={filteredWorkflows.length}
         countLabel={filteredWorkflows.length === totalWorkflows ? undefined : `${filteredWorkflows.length} of ${totalWorkflows}`}
         primaryAction={

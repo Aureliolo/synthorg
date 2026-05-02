@@ -95,7 +95,9 @@ See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md
 - Form fields -> `<InputField>` / `<SelectField>` / `<SliderField>` / `<ToggleField>` / `<SegmentedControl>` / `<TagInput>` / `<SearchInput>`.
 - Slide-in panels -> `<Drawer width="compact|narrow|default|wide">` (Base UI; do NOT add inline `w-[40vw]` overrides).
 - Loading / empty / error states -> `<Skeleton>` family / `<EmptyState>` / `<ErrorBoundary>` / `<ErrorBanner>` / `<ProgressIndicator>`.
-- List-page primitives -> `<ListHeader>` / `<SearchFilterSort>` / `<Pagination>` / `<BulkActionBar>` / `<MetadataGrid>` / `<Breadcrumbs>`.
+- List-page primitives -> `<ListHeader>` / `<SearchFilterSort>` / `<Pagination>` / `<BulkActionBar>` / `<MetadataGrid>` / `<Breadcrumbs>`. Page conventions: root container uses `space-y-section-gap` (the majority pattern -- `flex flex-col gap-section-gap` is equivalent but discouraged); `<ErrorBanner>` lands immediately after `<ListHeader>`, before any filter / pagination row; pages with a one-line mission statement pass it via `<ListHeader description="..." />`. List layout choice: use Kanban grouping for status-flow domains where each row's column conveys lifecycle phase (Tasks, Requests); use a flat scrollable list for queues without explicit phase semantics (Escalations, Approvals).
+- Empty-state derivation -> `useEmptyStateProps({ filteredCount, totalCount, filterActive, empty, filtered })` from `@/hooks/use-empty-state-props` returns `EmptyStateProps | null` so the page branches on a single value instead of duplicating the "no data ever" / "no data after filter" discriminator.
+- Status / role / risk / urgency badge classes -> `STATUS_COLORS` family from `@/styles/status-colors` (typed `Record<EnumValue, string>` lookups; no inline `Record<EnumValue, string>` constants per page).
 - Confirmation / toasts -> `<ConfirmDialog>` / `<Toast>` (Zustand-backed queue, NOT Base UI's Toast).
 - Cmd+K / shortcuts -> `<CommandPalette>` / `<KeyboardShortcutHint>` / `<CommandCheatsheet>`.
 - Animation -> `<AnimatedPresence>` / `<StaggerGroup>` / `<LiveRegion>` (debounced ARIA live for WS updates).

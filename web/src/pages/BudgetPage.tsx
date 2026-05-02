@@ -99,6 +99,7 @@ export default function BudgetPage() {
     <div className="space-y-section-gap">
       <ListHeader
         title="Budget"
+        description="Live spend, burn-rate forecast, and cost breakdowns."
         primaryAction={
           <PeriodSelector value={aggregationPeriod} onChange={setAggregationPeriod} />
         }

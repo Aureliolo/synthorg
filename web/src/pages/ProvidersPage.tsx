@@ -138,8 +138,12 @@ export default function ProvidersPage() {
   const hasData = filteredProviders.length > 0 || providers.length > 0
 
   return (
-    <div className="flex flex-col gap-section-gap">
-      <ListHeader title="Providers" count={providers.length} />
+    <div className="space-y-section-gap">
+      <ListHeader
+        title="Providers"
+        description="Configured LLM providers and presets your agents call."
+        count={providers.length}
+      />
 
       {error && (
         <ErrorBanner

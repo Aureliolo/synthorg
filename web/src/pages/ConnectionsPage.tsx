@@ -57,9 +57,10 @@ export default function ConnectionsPage() {
   } = useListPagination({ items: filteredConnections, namespace: 'connections' })
 
   return (
-    <div className="flex flex-col gap-section-gap">
+    <div className="space-y-section-gap">
       <ListHeader
         title="Connections"
+        description="External integrations your agents authenticate against."
         // ``totalItems`` is the count after filters, which matches
         // what pagination paginates and what the user actually sees
         // in the grid. Showing the raw connections.length here would
@@ -73,11 +74,14 @@ export default function ConnectionsPage() {
         }
       />
 
-      <TunnelCard />
-
+      {/* Convention: page-level <ErrorBanner> sits immediately after
+          <ListHeader>, before any filter / pagination / informational
+          card. Documented in web/CLAUDE.md "List-page primitives". */}
       {error && (
         <ErrorBanner severity="error" title="Could not load connections" description={error} />
       )}
+
+      <TunnelCard />
 
       {/* Wrap the existing filter component in SearchFilterSort so the
           layout matches the rest of the dashboard's list pages. */}

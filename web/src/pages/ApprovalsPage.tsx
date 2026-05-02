@@ -10,6 +10,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useApprovalsData } from '@/hooks/useApprovalsData'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useToastStore } from '@/stores/toast'
 import {
   filterApprovals,
@@ -222,12 +223,31 @@ export default function ApprovalsPage() {
     return counts
   }, [approvals])
 
+  const hasFilters = !!(filters.status || filters.riskLevel || filters.actionType || filters.search)
+
+  // Hook must run before any early return (rules-of-hooks); loading
+  // state below short-circuits before the empty-state branch ever
+  // matters.
+  const emptyStateProps = useEmptyStateProps({
+    filteredCount: grouped.size,
+    totalCount: approvals.length,
+    filterActive: hasFilters,
+    icon: ClipboardCheck,
+    empty: {
+      title: 'No approvals',
+      description: "When agents request approval for actions, they'll appear here.",
+    },
+    filtered: {
+      title: 'No matching approvals',
+      description: 'Try adjusting your filters.',
+      action: { label: 'Clear filters', onClick: () => handleFiltersChange({}) },
+    },
+  })
+
   // Loading state
   if (loading && approvals.length === 0) {
     return <ApprovalsSkeleton />
   }
-
-  const hasFilters = !!(filters.status || filters.riskLevel || filters.actionType || filters.search)
 
   return (
     <div className="space-y-section-gap">
@@ -278,22 +298,7 @@ export default function ApprovalsPage() {
       </StaggerGroup>
 
       {/* Risk-grouped sections */}
-      {grouped.size === 0 && !hasFilters && (
-        <EmptyState
-          icon={ClipboardCheck}
-          title="No approvals"
-          description="When agents request approval for actions, they'll appear here."
-        />
-      )}
-
-      {grouped.size === 0 && hasFilters && (
-        <EmptyState
-          icon={ClipboardCheck}
-          title="No matching approvals"
-          description="Try adjusting your filters."
-          action={{ label: 'Clear filters', onClick: () => handleFiltersChange({}) }}
-        />
-      )}
+      {emptyStateProps && <EmptyState {...emptyStateProps} />}
 
       {[...grouped.entries()].map(([riskLevel, items]) => (
         <ApprovalRiskGroupSection

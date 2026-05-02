@@ -106,8 +106,12 @@ export default function UsersPage() {
   }, [users, trimmedQuery])
 
   return (
-    <div className="flex flex-col gap-section-gap">
-      <ListHeader title="Users" count={sortedUsers.length} />
+    <div className="space-y-section-gap">
+      <ListHeader
+        title="Users"
+        description="Human operators with dashboard access and their org-role grants."
+        count={sortedUsers.length}
+      />
 
       <SearchFilterSort
         search={
@@ -155,7 +159,11 @@ export default function UsersPage() {
           }
         />
       ) : sortedUsers.length > 0 ? (
-        <ul className="flex flex-col gap-grid-gap">
+        // Grid mirrors ClientListPage's layout so the two list pages
+        // share visual rhythm; per-card header keeps the "Grant role"
+        // mutation prominent while the grid scales density on wider
+        // viewports.
+        <ul className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
           {sortedUsers.map((user) => (
             <li key={user.id}>
               <SectionCard
