@@ -1,8 +1,8 @@
 """Unit tests for :class:`ArtifactService`.
 
-Verifies that the audit events emitted by the service are the new
-``API_ARTIFACT_*`` constants (renamed from ``PERSISTENCE_ARTIFACT_*``
-in #1562) and that mutations only emit when they actually mutate.
+Verifies that the audit events emitted by the service use the
+``API_ARTIFACT_*`` constants and that mutations only emit when they
+actually mutate.
 """
 
 import pytest

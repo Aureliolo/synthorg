@@ -47,12 +47,11 @@ Each subsystem still owns its config discriminator; the registries replace only 
 
 ### Rollout strategies
 
-- `meta/rollout/clock.py`: `Clock`.
 - `meta/rollout/roster.py`: `OrgRoster`.
 - `meta/rollout/group_aggregator.py`: `GroupSignalAggregator`.
 - `meta/rollout/inverse_dispatch.py`: `RollbackHandler` + 4 mutator protocols.
 - `meta/factory.py::build_rollout_strategies()` + `build_rollback_executor()`.
-- All plumbed through frozen `SelfImprovementConfig`, with safe defaults (`RealClock`, `NoOpOrgRoster`, null aggregator) so the behaviour is opt-in.
+- All plumbed through frozen `SelfImprovementConfig`, with safe defaults (`SystemClock` from `synthorg.core.clock`, `NoOpOrgRoster`, null aggregator) so the behaviour is opt-in.
 
 ### API rate limits
 

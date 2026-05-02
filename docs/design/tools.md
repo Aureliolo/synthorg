@@ -120,7 +120,8 @@ the local-first experience lightweight while providing strong isolation where it
 
 Docker MVP uses `aiodocker` (async-native) with a pre-built image
 (Python 3.14 + Node.js LTS + basic utils, <500MB). If Docker is unavailable, the framework
-fails with a clear error; no unsafe subprocess fallback for code execution
+fails with a clear error for any tool category whose configured backend is Docker;
+low-risk categories (file_system, git) continue to run via subprocess
 ([Decision Log](../architecture/decisions.md) D16).
 
 ### Container Log Shipping

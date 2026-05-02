@@ -75,7 +75,6 @@ src/synthorg/meta/
     ab_test.py         -- A/B test group assignment and observation loop
     ab_comparator.py   -- Control vs treatment comparison (Welch-backed)
     ab_models.py       -- GroupAssignment, ABTestVerdict, GroupMetrics (sample-backed)
-    clock.py           -- Clock protocol + RealClock (wall-time abstraction for tests)
     roster.py          -- OrgRoster protocol + CallableOrgRoster / NoOpOrgRoster
     group_aggregator.py -- GroupSignalAggregator protocol + TrackerGroupAggregator
     inverse_dispatch.py -- RollbackHandler protocol + 4 mutator protocols + default handlers
