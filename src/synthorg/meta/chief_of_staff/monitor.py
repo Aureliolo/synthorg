@@ -149,9 +149,12 @@ class OrgInflectionMonitor:
             self._task = None
             self._last_snapshot = None
             logger.info(COS_MONITOR_STOPPED)
-        # Recreate primitives outside the (released) lock so a fresh
-        # event loop binding works for subsequent ``start()`` calls.
-        self._lifecycle_lock = asyncio.Lock()
+        # Recreate the loop-bound stop event outside the (released)
+        # lock so a fresh event loop binding works for subsequent
+        # ``start()`` calls. ``self._lifecycle_lock`` MUST stay the
+        # same instance for the service lifetime: replacing it would
+        # let a caller queued on the old lock and a fresh caller
+        # acquiring the new lock both proceed concurrently.
         self._stop_event = asyncio.Event()
 
     async def _loop(self) -> None:

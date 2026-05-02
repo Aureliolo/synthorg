@@ -16,6 +16,7 @@ from litestar.testing import TestClient
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
@@ -29,6 +30,7 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
+from synthorg.backup.service import BackupService
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from tests.unit.api.conftest import make_auth_headers
 
@@ -70,13 +72,15 @@ def _make_state_and_service() -> tuple[MagicMock, AsyncMock]:
     Returns:
         Tuple of (mock_state, mock_backup_service).
     """
-    service = AsyncMock()
+    service = AsyncMock(spec=BackupService)
     app_state = MagicMock()
     app_state.backup_service = service
     # The controller now wraps every backup in idempotency_service.
     # Mock the service so run_idempotent invokes the callback inline
-    # and returns a fresh outcome with the manifest dict.
-    idempotency_service = MagicMock()
+    # and returns a fresh outcome with the manifest dict. ``spec=`` on
+    # the wrapper enforces the interface; ``run_idempotent`` is set to
+    # an inline async helper that exercises the awaitable contract.
+    idempotency_service = MagicMock(spec=IdempotencyService)
 
     async def _run_idempotent(
         *,

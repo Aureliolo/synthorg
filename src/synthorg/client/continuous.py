@@ -9,9 +9,15 @@ The canonical pattern's drain timeout / unrestartable flag therefore
 does not apply here -- there is no orphan task to drain post-stop.
 
 What carries over from the canonical pattern is the
-``self._lifecycle_lock``: it serialises the running-flag check and
-spans the full body of ``start()`` and ``stop()`` so concurrent
-callers cannot both observe ``_running=False`` and proceed.
+``self._lifecycle_lock``: it serialises the ``_running`` flag check
+and is held only briefly at the top of ``start()`` (acquire, check,
+set, release) and again in the ``finally`` to clear the flag. The
+lock does NOT span the loop body -- holding it across the run loop
+would deadlock a concurrent ``start()`` caller (it would queue on
+the lock until the first finished, then enter an empty state).
+``stop()`` is synchronous and does not acquire the lock; it merely
+sets ``self._stop_event`` so the running ``start()`` coroutine
+observes the signal on its next iteration.
 """
 
 import asyncio

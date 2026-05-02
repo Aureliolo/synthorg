@@ -128,13 +128,18 @@ class ReplayProtector:
             return False
         return True
 
-    def check(  # noqa: PLR0911
+    def check(
         self,
         *,
         nonce: str | None,
         timestamp: float | None,
     ) -> bool:
         """Check whether a request is a replay.
+
+        Delegates timestamp freshness to :meth:`check_freshness` and
+        nonce dedup to :meth:`_check_nonce` so each concern stays
+        isolated and the function body fits comfortably under the
+        50-line limit.
 
         Args:
             nonce: Request nonce (optional).
@@ -144,8 +149,6 @@ class ReplayProtector:
             ``True`` if the request is safe (not a replay).
             ``False`` if the request should be rejected.
         """
-        now = self._clock.now().timestamp()
-
         # Fail closed: when neither a nonce nor a timestamp is supplied
         # the protector has nothing to check against, so accepting the
         # request would silently downgrade replay protection to a
@@ -157,36 +160,29 @@ class ReplayProtector:
                 reason="no freshness signal (nonce and timestamp both missing)",
             )
             return False
-
-        # ``float("nan")`` would bypass the window check because
-        # ``abs(now - nan) > window`` evaluates to ``False``. Reject
-        # any non-finite timestamp up-front so a malformed header
-        # cannot silently pass freshness validation.
-        if timestamp is not None and not math.isfinite(timestamp):
-            logger.warning(
-                WEBHOOK_REPLAY_DETECTED,
-                reason="non-finite timestamp",
-            )
+        if not self.check_freshness(timestamp):
             return False
+        now = self._clock.now().timestamp()
+        return self._check_nonce(nonce=nonce, now=now)
 
-        if timestamp is not None and abs(now - timestamp) > self._window:
-            logger.warning(
-                WEBHOOK_REPLAY_DETECTED,
-                reason="timestamp outside window",
-                skew=abs(now - timestamp),
-            )
-            return False
+    def _check_nonce(self, *, nonce: str | None, now: float) -> bool:
+        """Validate the nonce dedup window.
 
+        Caller is responsible for freshness checks; this method only
+        handles the nonce side of replay protection. ``now`` is taken
+        from the same clock read the caller used so eviction and
+        dedup observe the same instant.
+        """
         if nonce is None:
             with self._lock:
                 self._evict_locked(now)
             return True
 
-        # Reject oversized nonces before touching the cache.
-        # An attacker who could send arbitrarily long nonces
-        # would otherwise be able to make each hash computation
-        # increasingly expensive even though the cache entry
-        # itself is fixed-size.
+        # Reject oversized nonces before touching the cache. An
+        # attacker who could send arbitrarily long nonces would
+        # otherwise be able to make each hash computation
+        # increasingly expensive even though the cache entry itself
+        # is fixed-size.
         if len(nonce) > MAX_NONCE_CHARS:
             logger.warning(
                 WEBHOOK_REPLAY_DETECTED,
@@ -198,8 +194,8 @@ class ReplayProtector:
 
         # Store a fixed-size SHA-256 digest instead of the raw
         # attacker-controlled string. Bounds per-entry memory
-        # independent of nonce length and removes any concern
-        # about echoing the nonce back in log output below.
+        # independent of nonce length and removes any concern about
+        # echoing the nonce back in log output below.
         key = _fingerprint_nonce(nonce)
         with self._lock:
             self._evict_locked(now)
@@ -216,7 +212,6 @@ class ReplayProtector:
                 nonce_fingerprint=key[:16],
             )
             return False
-
         return True
 
     def _evict_locked(self, now: float) -> None:

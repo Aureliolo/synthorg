@@ -21,12 +21,22 @@ class TestMCPResultCacheThreadSafety:
 
     def test_concurrent_get_put_no_corruption(self) -> None:
         cache = MCPResultCache(max_size=64, ttl_seconds=120.0)
+        # Seed a shared key so the reader path actually exercises the
+        # locked hit branch (``move_to_end`` + deepcopy) rather than
+        # only the miss branch. Without this seed the reader and
+        # writer payloads never collide, so the test only stresses
+        # concurrent misses + writes.
+        shared_args = {"i": -1}
+        cache.put("shared-tool", shared_args, ToolExecutionResult(content="seed"))
 
         def writer(i: int) -> None:
-            cache.put(f"tool-{i % 8}", {"i": i}, ToolExecutionResult(content=str(i)))
+            cache.put("shared-tool", shared_args, ToolExecutionResult(content=str(i)))
 
         def reader(i: int) -> None:
-            cache.get(f"tool-{i % 8}", {"i": i})
+            del i
+            # Reader hits the seeded entry on every iteration, exercising
+            # the get -> move_to_end -> deepcopy path under contention.
+            cache.get("shared-tool", shared_args)
 
         with ThreadPoolExecutor(max_workers=16) as pool:
             futures = []

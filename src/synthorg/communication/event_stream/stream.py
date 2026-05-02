@@ -61,6 +61,24 @@ class EventStreamHub:
         dedup_max_entries_per_session: int = _DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION,
         clock: Clock | None = None,
     ) -> None:
+        # Fail-fast on bad inputs; otherwise the trim loop in
+        # ``_record_published_locked`` would call ``popitem`` on an
+        # empty OrderedDict at publish time when
+        # ``dedup_max_entries_per_session`` is non-positive, and a
+        # negative TTL would short-circuit the eviction sweep into
+        # always-stale (every entry instantly "expired").
+        if max_queue_size < 1:
+            msg = f"max_queue_size must be >= 1, got {max_queue_size}"
+            raise ValueError(msg)
+        if dedup_ttl_seconds < 0:
+            msg = f"dedup_ttl_seconds must be >= 0, got {dedup_ttl_seconds}"
+            raise ValueError(msg)
+        if dedup_max_entries_per_session < 1:
+            msg = (
+                "dedup_max_entries_per_session must be >= 1, got "
+                f"{dedup_max_entries_per_session}"
+            )
+            raise ValueError(msg)
         self._max_queue_size = max_queue_size
         self._dedup_ttl_seconds = dedup_ttl_seconds
         self._dedup_max_entries_per_session = dedup_max_entries_per_session

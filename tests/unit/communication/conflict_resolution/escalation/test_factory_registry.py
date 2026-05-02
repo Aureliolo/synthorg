@@ -102,3 +102,27 @@ class TestDecisionProcessorRegistry:
         config = EscalationQueueConfig(decision_strategy="hybrid")
         processor = build_decision_processor(config)
         assert isinstance(processor, HybridDecisionProcessor)
+
+
+class TestRegistryFallback:
+    """The defensive ValueError fallback fires for unregistered keys.
+
+    Pydantic rejects unknown literals at config-construction time, so
+    these tests bypass validation via ``model_construct`` to drive the
+    factory directly and confirm that an unknown key surfaces a
+    helpful error message rather than silently returning ``None`` or
+    crashing inside the factory closure.
+    """
+
+    def test_unknown_queue_backend_raises_value_error(self) -> None:
+        # Bypass Pydantic literal validation via ``model_construct`` so
+        # the factory's defensive ValueError fires for the registered
+        # unknown-key path.
+        config = EscalationQueueConfig.model_construct(backend="unknown")  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match=r"Unknown escalation queue backend"):
+            build_escalation_queue_store(config)
+
+    def test_unknown_decision_strategy_raises_value_error(self) -> None:
+        config = EscalationQueueConfig.model_construct(decision_strategy="unknown")  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match=r"Unknown decision_strategy"):
+            build_decision_processor(config)

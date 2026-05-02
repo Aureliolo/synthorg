@@ -37,6 +37,7 @@ from synthorg.observability.events.api import (
     API_WS_TICKET_EXPIRED,
     API_WS_TICKET_INVALID,
     API_WS_TICKET_ISSUED,
+    API_WS_TICKET_LIMIT_EXCEEDED,
 )
 
 logger = get_logger(__name__)
@@ -154,6 +155,13 @@ class WsTicketStore:
                 if e.user.user_id == user.user_id and now <= e.expires_at
             )
             if user_pending >= self._max_pending:
+                logger.warning(
+                    API_WS_TICKET_LIMIT_EXCEEDED,
+                    user_id=user.user_id,
+                    username=user.username,
+                    pending=user_pending,
+                    cap=self._max_pending,
+                )
                 msg = f"Ticket limit exceeded for user {user.user_id}"
                 raise TicketLimitExceededError(msg)
 

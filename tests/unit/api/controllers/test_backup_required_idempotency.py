@@ -15,14 +15,18 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar.datastructures import State
 
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.cursor import CursorSecret
+from synthorg.api.services.idempotency_service import IdempotencyService
+from synthorg.api.state import AppState
 from synthorg.backup.models import (
     BackupComponent,
     BackupManifest,
     BackupTrigger,
 )
+from synthorg.backup.service import BackupService
 
 pytestmark = pytest.mark.unit
 
@@ -40,17 +44,20 @@ def _make_manifest() -> BackupManifest:
 
 
 def _make_state(*, run_idempotent: Any) -> MagicMock:
-    service = AsyncMock()
-    service.create_backup = AsyncMock(return_value=_make_manifest())
-    app_state = MagicMock()
+    service = MagicMock(spec=BackupService)
+    service.create_backup = AsyncMock(
+        spec=BackupService.create_backup,
+        return_value=_make_manifest(),
+    )
+    app_state = MagicMock(spec=AppState)
     app_state.backup_service = service
-    idempotency_service = MagicMock()
+    idempotency_service = MagicMock(spec=IdempotencyService)
     idempotency_service.run_idempotent = run_idempotent
     app_state.idempotency_service = idempotency_service
     app_state.cursor_secret = CursorSecret.from_key(
         "test-key-32-bytes-padding0000000",
     )
-    state = MagicMock()
+    state = MagicMock(spec=State)
     state.app_state = app_state
     return state
 

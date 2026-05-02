@@ -10,13 +10,19 @@ import contextlib
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar.connection import Request
+from litestar.datastructures import State
 
 from synthorg.api.controllers.simulations import (
     SimulationController,
     StartSimulationPayload,
 )
+from synthorg.api.state import AppState
 from synthorg.client.models import SimulationConfig
+from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.client.store import SimulationStore
 from synthorg.core.domain_errors import ConflictError
+from synthorg.settings.resolver import ConfigResolver
 
 pytestmark = pytest.mark.unit
 
@@ -37,27 +43,30 @@ def _make_state(*, claim_succeeds: bool) -> MagicMock:
     True (fresh id), simulating the first request. When ``False`` it
     returns False (id already registered), simulating a duplicate.
     """
-    sim_state = MagicMock()
-    sim_state.simulation_store.register_if_absent = AsyncMock(
+    sim_store = MagicMock(spec=SimulationStore)
+    sim_store.register_if_absent = AsyncMock(
+        spec=SimulationStore.register_if_absent,
         return_value=claim_succeeds,
     )
-    sim_state.simulation_store.save = AsyncMock()
+    sim_store.save = AsyncMock(spec=SimulationStore.save)
+    sim_state = MagicMock(spec=ClientSimulationState)
+    sim_state.simulation_store = sim_store
     sim_state.background_tasks = set()
     sim_state.intake_engine = MagicMock()
     sim_state.pool = MagicMock()
     sim_state.pool.list_clients = AsyncMock(return_value=())
     sim_state.feedback_store = MagicMock()
     sim_state.feedback_store.record = MagicMock()
-    app_state = MagicMock()
+    app_state = MagicMock(spec=AppState)
     app_state.client_simulation_state = sim_state
-    app_state.config_resolver = MagicMock()
-    state = MagicMock()
+    app_state.config_resolver = MagicMock(spec=ConfigResolver)
+    state = MagicMock(spec=State)
     state.app_state = app_state
     return state
 
 
 def _make_request() -> MagicMock:
-    return MagicMock()
+    return MagicMock(spec=Request)
 
 
 class TestSimulationsIdempotency:

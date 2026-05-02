@@ -79,6 +79,12 @@ class NgrokAdapter:
         """
         async with self._lifecycle_lock:
             if self._tunnel is not None:
+                logger.warning(
+                    TUNNEL_ERROR,
+                    phase="start",
+                    reason="already_active",
+                    port=self._port,
+                )
                 msg = "ngrok tunnel already active on this adapter"
                 raise RuntimeError(msg)
             auth_token = os.environ.get(self._auth_token_env, "").strip()

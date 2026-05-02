@@ -13,13 +13,16 @@ import pytest
 
 from synthorg.meta.chief_of_staff.inflection import OrgInflectionDetector
 from synthorg.meta.chief_of_staff.monitor import OrgInflectionMonitor
+from synthorg.meta.signals.snapshot import SnapshotBuilder
 
 pytestmark = pytest.mark.unit
 
 
 def _make_monitor() -> OrgInflectionMonitor:
-    builder = AsyncMock()
-    builder.build = AsyncMock(return_value=None)
+    # ``spec=SnapshotBuilder`` auto-mocks ``build`` as an AsyncMock;
+    # set ``return_value`` instead of reassigning ``builder.build``.
+    builder = AsyncMock(spec=SnapshotBuilder)
+    builder.build.return_value = None
     return OrgInflectionMonitor(
         detector=OrgInflectionDetector(),
         snapshot_builder=builder,

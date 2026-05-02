@@ -125,9 +125,12 @@ class BackupScheduler:
                 raise
             self._task = None
             logger.info(BACKUP_SCHEDULER_STOPPED)
-        # Recreate primitives outside the (released) lock so a
-        # subsequent ``start()`` on a different event loop can rebind.
-        self._lifecycle_lock = asyncio.Lock()
+        # Recreate the loop-bound events outside the (released) lock
+        # so a subsequent ``start()`` on a different event loop can
+        # rebind them. ``self._lifecycle_lock`` MUST stay the same
+        # instance for the service's lifetime: replacing it would let
+        # a caller queued on the old lock and a fresh caller acquiring
+        # the new lock both proceed concurrently.
         self._stop_event = asyncio.Event()
         self._wake_event = asyncio.Event()
 

@@ -10,6 +10,7 @@ cap or double-consume a ticket.
 """
 
 import contextlib
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -36,8 +37,15 @@ class TestWsTicketStoreThreadSafety:
         """100 threads racing on create() for one user yield exactly cap accepts."""
         store = WsTicketStore(max_pending_per_user=5)
         user = _make_user()
+        # Hold all worker threads until every future is submitted, then
+        # release together. Without the gate, futures execute as the
+        # pool fills, which under-stresses the lock by spreading the
+        # contention across submission time. With the gate, all 100
+        # threads hit ``store.create`` in the same instant.
+        start_gate = threading.Event()
 
         def attempt() -> str | None:
+            start_gate.wait()
             try:
                 return store.create(user)
             except TicketLimitExceededError:
@@ -45,6 +53,7 @@ class TestWsTicketStoreThreadSafety:
 
         with ThreadPoolExecutor(max_workers=16) as pool:
             futures = [pool.submit(attempt) for _ in range(100)]
+            start_gate.set()
             results = [f.result() for f in futures]
 
         successes = [r for r in results if r is not None]
@@ -54,8 +63,10 @@ class TestWsTicketStoreThreadSafety:
     def test_concurrent_create_distinct_users_independent(self) -> None:
         """Different users do not share the cap under concurrency."""
         store = WsTicketStore(max_pending_per_user=3)
+        start_gate = threading.Event()
 
         def attempt(user_id: str) -> str | None:
+            start_gate.wait()
             try:
                 return store.create(_make_user(user_id=user_id))
             except TicketLimitExceededError:
@@ -63,6 +74,7 @@ class TestWsTicketStoreThreadSafety:
 
         with ThreadPoolExecutor(max_workers=16) as pool:
             futures = [pool.submit(attempt, f"user-{i % 4}") for i in range(40)]
+            start_gate.set()
             results = [f.result() for f in futures]
 
         successes = [r for r in results if r is not None]
@@ -74,12 +86,15 @@ class TestWsTicketStoreThreadSafety:
         store = WsTicketStore()
         user = _make_user()
         ticket = store.create(user)
+        start_gate = threading.Event()
 
         def attempt() -> AuthenticatedUser | None:
+            start_gate.wait()
             return store.validate_and_consume(ticket)
 
         with ThreadPoolExecutor(max_workers=16) as pool:
             futures = [pool.submit(attempt) for _ in range(32)]
+            start_gate.set()
             results = [f.result() for f in futures]
 
         accepted = [r for r in results if r is not None]
@@ -89,8 +104,10 @@ class TestWsTicketStoreThreadSafety:
     def test_concurrent_create_and_cleanup_no_corruption(self) -> None:
         """Mixed create / cleanup_expired calls do not raise or corrupt state."""
         store = WsTicketStore(ttl_seconds=30.0, max_pending_per_user=5)
+        start_gate = threading.Event()
 
         def task(i: int) -> None:
+            start_gate.wait()
             if i % 3 == 0:
                 store.cleanup_expired()
                 return
@@ -99,6 +116,7 @@ class TestWsTicketStoreThreadSafety:
 
         with ThreadPoolExecutor(max_workers=16) as pool:
             futures = [pool.submit(task, i) for i in range(80)]
+            start_gate.set()
             for f in futures:
                 f.result()
         # If we reach here without RuntimeError ("dictionary changed size

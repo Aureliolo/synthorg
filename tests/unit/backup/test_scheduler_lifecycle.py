@@ -13,13 +13,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.backup.scheduler import BackupScheduler
+from synthorg.backup.service import BackupService
 
 pytestmark = pytest.mark.unit
 
 
 def _make_scheduler() -> BackupScheduler:
-    service = MagicMock()
-    service.create_backup = AsyncMock()
+    service = MagicMock(spec=BackupService)
+    service.create_backup = AsyncMock(spec=BackupService.create_backup)
     return BackupScheduler(service, interval_hours=1)
 
 
