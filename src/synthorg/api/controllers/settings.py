@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.api.boundary import parse_typed
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.cursor import decode_keyset_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -664,7 +665,11 @@ class SettingsController(Controller):
         """
         app_state: AppState = state.app_state
         try:
-            validated = SecurityConfig.model_validate(data.config)
+            validated = parse_typed(
+                "settings.security",
+                data.config,
+                SecurityConfig,
+            )
         except ValidationError as exc:
             # Redact: ``str(exc)`` (and the f-string substitution below)
             # would surface rejected input values from the import payload,
