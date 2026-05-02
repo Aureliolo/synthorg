@@ -197,6 +197,12 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 
 All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths (never `logger.exception(..., error=str(exc))`) to avoid leaking secrets through traceback frame-locals (SEC-1).
 
+**API entry-point boundary events (`observability/events/api.py`):**
+
+| Constant | Level | When fired |
+|----------|-------|------------|
+| `API_BOUNDARY_VALIDATION_FAILED` | WARNING | `synthorg.api.boundary.parse_typed` rejected a payload at one of the registered API entry-point boundaries (MCP handler args, JWT decode, WebSocket control message, audit-chain payload, A2A JSON-RPC params, settings security export). Carries `boundary` (hardcoded literal label for log search), `error_type`, `error_count`, `error` (redacted via `safe_error_description`), `error_locations` (first 5 field paths), and `truncated` (true when `error_count > 5` so operators know the listed locations are a sample). The helper re-raises the `ValidationError` for the caller to translate into the appropriate HTTP / RPC / envelope response. |
+
 **Self-improvement meta-loop events (`observability/events/meta.py`):**
 
 | Constant | Level | When fired |

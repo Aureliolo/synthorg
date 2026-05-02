@@ -247,8 +247,9 @@ API_BOUNDARY_VALIDATION_FAILED: Final[str] = "api.boundary.validation_failed"
 """Emitted when ``synthorg.api.boundary.parse_typed`` rejects a payload
 at a registered API boundary (MCP handler args, JWT decode, WebSocket
 control message, audit-chain payload, A2A JSON-RPC params, settings
-export). Carries the boundary name and the failing field locations so a
-misshape can be diagnosed without re-running the request."""
+export). Carries the boundary name, error count, the redacted error
+description, the failing field locations, and a ``truncated`` flag so
+validation failures can be diagnosed without re-running the request."""
 
 # Audit chain entries written from controllers (Wave 2.B B4 / B5 / B6)
 AGENT_IDENTITY_MODIFIED: Final[str] = "audit.agent.identity_modified"

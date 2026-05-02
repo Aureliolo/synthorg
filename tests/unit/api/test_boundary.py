@@ -14,6 +14,17 @@ class _Sample(BaseModel):
     age: int
 
 
+class _SixRequiredFields(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    a: int
+    b: int
+    c: int
+    d: int
+    e: int
+    f: int
+
+
 @pytest.mark.unit
 class TestParseTyped:
     def test_returns_typed_instance_on_valid_input(self) -> None:
@@ -60,7 +71,25 @@ class TestParseTyped:
         assert record["error_type"] == "ValidationError"
         assert record["error_count"] == 1
         assert record["error_locations"] == ("age",)
+        assert record["truncated"] is False
+        assert record.get("error")
         assert record["log_level"] == "warning"
+
+    def test_log_signals_truncation_when_more_than_five_errors(self) -> None:
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ValidationError),
+        ):
+            parse_typed("test", {}, _SixRequiredFields)
+
+        boundary_logs = [
+            log for log in logs if log.get("event") == "api.boundary.validation_failed"
+        ]
+        assert len(boundary_logs) == 1
+        record = boundary_logs[0]
+        assert record["error_count"] == 6
+        assert len(record["error_locations"]) == 5
+        assert record["truncated"] is True
 
     def test_boundary_label_propagates_to_log(self) -> None:
         with (
