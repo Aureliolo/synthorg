@@ -7,8 +7,8 @@ The mutating ``check`` method holds a ``threading.Lock`` so concurrent
 threadpool-dispatched webhook handlers cannot both pass the nonce
 duplicate test and insert the same nonce.  Without the lock, two
 identical webhook deliveries arriving simultaneously could each see
-the nonce as fresh (line 192) and both proceed (line 199), losing the
-replay-protection guarantee.
+the nonce as fresh and both proceed, losing the replay-protection
+guarantee.
 """
 
 import hashlib

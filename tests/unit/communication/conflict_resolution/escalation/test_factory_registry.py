@@ -26,6 +26,9 @@ from synthorg.communication.conflict_resolution.escalation.processors import (
     HybridDecisionProcessor,
     WinnerSelectProcessor,
 )
+from synthorg.communication.conflict_resolution.escalation.protocol import (
+    EscalationQueueStore,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.unit
@@ -34,7 +37,11 @@ pytestmark = pytest.mark.unit
 def _fake_persistence(backend_name: str) -> PersistenceBackend:
     backend = MagicMock(spec=PersistenceBackend)
     backend.backend_name = backend_name
-    backend.build_escalations = MagicMock(return_value=MagicMock())
+    # ``backend.build_escalations`` is auto-mocked by ``spec=`` to mirror
+    # ``PersistenceBackend.build_escalations``; setting ``return_value``
+    # avoids replacing the auto-mock with a bare MagicMock and keeps the
+    # interface contract enforced.
+    backend.build_escalations.return_value = MagicMock(spec=EscalationQueueStore)
     return cast(PersistenceBackend, backend)
 
 

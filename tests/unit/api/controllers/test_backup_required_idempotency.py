@@ -11,15 +11,18 @@ correctly invokes the idempotency service when the key is supplied.
 """
 
 import inspect
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
-from litestar.datastructures import State
 
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.cursor import CursorSecret
-from synthorg.api.services.idempotency_service import IdempotencyService
+from synthorg.api.services.idempotency_service import (
+    IdempotencyResult,
+    IdempotencyService,
+)
 from synthorg.api.state import AppState
 from synthorg.backup.models import (
     BackupComponent,
@@ -43,12 +46,17 @@ def _make_manifest() -> BackupManifest:
     )
 
 
-def _make_state(*, run_idempotent: Any) -> MagicMock:
+def _make_state(
+    *,
+    run_idempotent: Any,
+) -> tuple[SimpleNamespace, MagicMock]:
+    # ``MagicMock(spec=BackupService)`` auto-mocks ``create_backup``
+    # as an AsyncMock. Set ``return_value`` on the auto-mock directly
+    # so the spec-bound interface is preserved (replacing the
+    # auto-mock with a fresh AsyncMock would discard the bound
+    # signature).
     service = MagicMock(spec=BackupService)
-    service.create_backup = AsyncMock(
-        spec=BackupService.create_backup,
-        return_value=_make_manifest(),
-    )
+    service.create_backup.return_value = _make_manifest()
     app_state = MagicMock(spec=AppState)
     app_state.backup_service = service
     idempotency_service = MagicMock(spec=IdempotencyService)
@@ -57,9 +65,14 @@ def _make_state(*, run_idempotent: Any) -> MagicMock:
     app_state.cursor_secret = CursorSecret.from_key(
         "test-key-32-bytes-padding0000000",
     )
-    state = MagicMock(spec=State)
-    state.app_state = app_state
-    return state
+    # ``SimpleNamespace`` is the right sentinel for the ``state``
+    # carrier here: it has no auto-mocking magic, so ``state.app_state``
+    # always returns the assigned object. ``MagicMock(spec=State)``
+    # would intercept via Litestar's ``State.__getattr__`` and might
+    # hand back a fresh auto-mock instead of the spec-bound
+    # ``AppState`` we just built; a plain ``MagicMock()`` would trip
+    # the no-bare-mock gate.
+    return SimpleNamespace(app_state=app_state), service
 
 
 class TestRequiredIdempotencyKey:
@@ -80,18 +93,18 @@ class TestRequiredIdempotencyKey:
             scope: object,
             key: object,
             callback: Any,
-        ) -> Any:
+        ) -> IdempotencyResult:
             captured["scope"] = scope
             captured["key"] = key
             await callback()
-            outcome = MagicMock()
-            outcome.timed_out = False
-            outcome.result = _make_manifest().model_dump(mode="json")
-            outcome.fresh = True
-            return outcome
+            return IdempotencyResult(
+                result=_make_manifest().model_dump(mode="json"),
+                fresh=True,
+                timed_out=False,
+            )
 
         ctrl = BackupController(owner=BackupController)  # type: ignore[arg-type]
-        state = _make_state(run_idempotent=fake_run_idempotent)
+        state, service = _make_state(run_idempotent=fake_run_idempotent)
         await ctrl.create_backup.fn(
             ctrl,
             state=state,
@@ -99,3 +112,11 @@ class TestRequiredIdempotencyKey:
         )
         assert str(captured["scope"]) == "backup"
         assert str(captured["key"]) == "key-abc-123"
+        # The fake_run_idempotent helper above ``await callback()``-s
+        # the controller's wrapper, which must delegate to
+        # ``BackupService.create_backup``. Without this assertion the
+        # test would pass even if the controller stopped invoking the
+        # service entirely (e.g. a refactor that returned a stale
+        # cached manifest from the idempotency layer without ever
+        # producing a fresh one).
+        service.create_backup.assert_awaited_once_with(BackupTrigger.MANUAL)

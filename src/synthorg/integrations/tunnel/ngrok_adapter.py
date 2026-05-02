@@ -15,7 +15,10 @@ import os
 
 from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
-from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.errors import (
+    TunnelAlreadyActiveError,
+    TunnelError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     TUNNEL_ERROR,
@@ -86,13 +89,29 @@ class NgrokAdapter:
                     port=self._port,
                 )
                 msg = "ngrok tunnel already active on this adapter"
-                raise RuntimeError(msg)
+                raise TunnelAlreadyActiveError(msg)
+            # Build a per-call ``PyngrokConfig`` instead of mutating
+            # ``conf.get_default().auth_token``. The default config is
+            # process-global; mutating it from one adapter would
+            # silently overwrite the auth token any other adapter or
+            # caller had previously set, and leaving a blank token in
+            # place would cause subsequent unauthenticated calls to
+            # silently reuse stale credentials. Per-call config keeps
+            # the token instance-local.
             auth_token = os.environ.get(self._auth_token_env, "").strip()
-            if auth_token:
-                conf.get_default().auth_token = auth_token
+            pyngrok_config = (
+                conf.PyngrokConfig(auth_token=auth_token)
+                if auth_token
+                else conf.PyngrokConfig()
+            )
 
             try:
-                tunnel = await asyncio.to_thread(ngrok.connect, self._port, "http")
+                tunnel = await asyncio.to_thread(
+                    ngrok.connect,
+                    self._port,
+                    "http",
+                    pyngrok_config=pyngrok_config,
+                )
                 self._tunnel = tunnel
                 self._public_url = str(tunnel.public_url)
             except Exception as exc:

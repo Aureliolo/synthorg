@@ -124,15 +124,17 @@ class BackupScheduler:
                 )
                 raise
             self._task = None
+            # Recreate the loop-bound events WHILE holding the
+            # lifecycle lock. Outside the lock, a racing ``start()``
+            # could spawn the scheduler loop bound to the OLD events
+            # before these assignments land, leaving a later stop()
+            # signalling different events than the running task is
+            # waiting on. ``self._lifecycle_lock`` itself MUST stay
+            # the same instance for the service's lifetime; only the
+            # events are swapped.
+            self._stop_event = asyncio.Event()
+            self._wake_event = asyncio.Event()
             logger.info(BACKUP_SCHEDULER_STOPPED)
-        # Recreate the loop-bound events outside the (released) lock
-        # so a subsequent ``start()`` on a different event loop can
-        # rebind them. ``self._lifecycle_lock`` MUST stay the same
-        # instance for the service's lifetime: replacing it would let
-        # a caller queued on the old lock and a fresh caller acquiring
-        # the new lock both proceed concurrently.
-        self._stop_event = asyncio.Event()
-        self._wake_event = asyncio.Event()
 
     def reschedule(self, interval_hours: int) -> None:
         """Update the interval and interrupt the current sleep.

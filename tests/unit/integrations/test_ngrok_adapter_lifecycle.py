@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
+from synthorg.integrations.errors import TunnelAlreadyActiveError
 from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
 
 pytestmark = pytest.mark.unit
@@ -21,7 +22,9 @@ class _FakeTunnel:
         self.public_url = public_url
 
 
-def _fake_connect(_port: int, _proto: str) -> _FakeTunnel:
+def _fake_connect(_port: int, _proto: str, **_kwargs: Any) -> _FakeTunnel:
+    # The real ngrok.connect now receives ``pyngrok_config=`` as a
+    # keyword arg from the adapter; accept and ignore it in the fake.
     return _FakeTunnel()
 
 
@@ -33,7 +36,7 @@ class TestNgrokAdapterLifecycle:
     """Adapter must serialise concurrent start / stop calls."""
 
     async def test_double_start_raises(self) -> None:
-        """A second start() while a tunnel is active raises RuntimeError."""
+        """A second start() while a tunnel is active raises a domain error."""
         adapter = NgrokAdapter()
         with (
             patch(
@@ -47,7 +50,7 @@ class TestNgrokAdapterLifecycle:
         ):
             url = await adapter.start()
             assert url == "https://fake.ngrok.io"
-            with pytest.raises(RuntimeError, match="already active"):
+            with pytest.raises(TunnelAlreadyActiveError, match="already active"):
                 await adapter.start()
             await adapter.stop()
 
@@ -70,7 +73,7 @@ class TestNgrokAdapterLifecycle:
                 return_exceptions=True,
             )
             successes = [r for r in results if isinstance(r, str)]
-            errors = [r for r in results if isinstance(r, RuntimeError)]
+            errors = [r for r in results if isinstance(r, TunnelAlreadyActiveError)]
             assert len(successes) == 1
             assert len(errors) == 1
             await adapter.stop()

@@ -41,6 +41,19 @@ class EventStreamHub:
         max_queue_size: Maximum events buffered per subscriber queue.
             When full, new events are dropped (never blocks the
             publisher).
+        dedup_ttl_seconds: TTL for the per-session dedup window in
+            seconds. Identical ``event.id`` values published within
+            this window are skipped. ``0`` disables the time-based
+            eviction (entries only fall out via the per-session size
+            bound). Default 60.
+        dedup_max_entries_per_session: Maximum dedup entries kept per
+            session. When the bound is hit, the oldest entry is
+            evicted FIFO. Bounds memory growth even for noisy
+            sessions that never get TTL-evicted. Default 1024.
+        clock: Time source used for the dedup TTL. Inject a
+            ``FakeClock`` from ``tests._shared.fake_clock`` to drive
+            virtual time in tests; production wiring leaves this
+            ``None`` so the hub uses ``SystemClock``.
     """
 
     __slots__ = (
@@ -163,6 +176,17 @@ class EventStreamHub:
         """
         now = self._clock.monotonic()
         async with self._lock:
+            queues_snapshot = list(self._subscribers.get(event.session_id, ()))
+            # If no subscribers, the event would be dropped anyway.
+            # Don't record it in the dedup window: a later retry that
+            # arrives after the client reconnects within the TTL must
+            # be delivered, not silently suppressed because the first
+            # attempt fell on an empty session. Also drop any orphan
+            # dedup-window state for that session so it cannot grow
+            # without bound across publish-without-subscribers cycles.
+            if not queues_snapshot:
+                self._seen_event_ids.pop(event.session_id, None)
+                return
             if self._is_duplicate_locked(event, now):
                 logger.warning(
                     EVENT_STREAM_HUB_PUBLISH_DEDUPED,
@@ -172,7 +196,6 @@ class EventStreamHub:
                 )
                 return
             self._record_published_locked(event, now)
-            queues_snapshot = list(self._subscribers.get(event.session_id, ()))
         if not queues_snapshot:
             return
         for queue in queues_snapshot:

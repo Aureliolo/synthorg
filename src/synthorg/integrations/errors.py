@@ -192,6 +192,20 @@ class TunnelError(IntegrationError):
     retryable: ClassVar[bool] = True
 
 
+class TunnelAlreadyActiveError(IntegrationError):
+    """A tunnel is already active on the adapter; refuse re-start.
+
+    Lifecycle conflict, not a transient I/O error: the operator must
+    ``stop()`` the running tunnel before issuing a fresh ``start()``.
+    Marked non-retryable so the resilience layer does not loop on a
+    permanent state error and so the API surface returns a 409-style
+    domain error instead of a generic 500.
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
+
+
 # -- MCP catalog errors --------------------------------------------------
 
 

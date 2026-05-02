@@ -260,15 +260,22 @@ class ProviderHealthProber:
                 )
                 raise
             self._task = None
+            # Recreate the loop-bound stop event WHILE holding the
+            # lifecycle lock. Doing it outside the lock leaves a
+            # window where a racing ``start()`` could acquire the
+            # lock, spawn a probe task that captures
+            # ``self._stop_event`` (still the OLD event), and then
+            # this stop()'s ``self._stop_event = asyncio.Event()``
+            # outside the lock would swap in a NEW event. A later
+            # stop() would signal the new event, but the running
+            # task is still waiting on the old one, so shutdown
+            # stalls until the interval timeout. Holding the lock
+            # across the swap eliminates that race.
+            # ``self._lifecycle_lock`` itself MUST stay the same
+            # instance for the service lifetime; only the event is
+            # swapped.
+            self._stop_event = asyncio.Event()
             logger.info(PROVIDER_HEALTH_PROBER_STOPPED)
-        # Recreate the loop-bound stop event outside the (released)
-        # lock so a subsequent ``start()`` on a different event loop
-        # can rebind it. ``self._lifecycle_lock`` MUST stay the same
-        # instance for the service's lifetime: replacing it would let a
-        # caller queued on the old lock and a fresh caller acquiring
-        # the new lock both proceed concurrently, breaking the
-        # serialisation the canonical pattern guarantees.
-        self._stop_event = asyncio.Event()
 
     async def _run_loop(self) -> None:
         """Main loop: probe all, then sleep until next cycle or stop."""

@@ -199,21 +199,20 @@ class EscalationExpirationSweeper:
                 )
                 raise
             self._task = None
+            # Re-create the loop-bound stop event WHILE holding the
+            # lifecycle lock. Doing it outside the lock would leave a
+            # window where a racing ``start()`` could spawn ``_run()``
+            # bound to the OLD event before this assignment lands; a
+            # later stop() would then signal a different event than
+            # the running task is waiting on, stalling shutdown until
+            # the interval timeout. ``asyncio.Event`` binds to the
+            # running loop on first ``set()``, so a fresh instance is
+            # always required across loops; ``self._lifecycle_lock``
+            # itself MUST stay the same instance for the service's
+            # lifetime. Tests that span multiple event loops construct
+            # a fresh sweeper per loop instead of reusing one.
+            self._stop_event = asyncio.Event()
             logger.info(CONFLICT_ESCALATION_SWEEPER_STOPPED)
-        # Re-create the loop-bound stop event outside the (now
-        # released) lock so a subsequent ``start()`` on a different
-        # event loop can re-bind it. ``asyncio.Event`` binds to the
-        # running loop on first ``set()``; the loop it was last bound
-        # to may be closed (test pattern: fresh-per-test event loops),
-        # so reusing the instance would raise ``RuntimeError: ... is
-        # bound to a different event loop``. ``self._lifecycle_lock``
-        # MUST stay the same instance for the service's lifetime:
-        # replacing it would let a caller queued on the old lock and a
-        # fresh caller acquiring the new lock both proceed
-        # concurrently, breaking the start/stop serialisation. Tests
-        # that span multiple event loops construct a fresh sweeper
-        # instance per loop instead of reusing one across loops.
-        self._stop_event = asyncio.Event()
 
     async def _run(self) -> None:
         """Main loop body."""

@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.backup.scheduler import BackupScheduler
 from synthorg.backup.service import BackupService
+from synthorg.settings.models import SettingValue
 from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.backup_subscriber import (
@@ -42,7 +43,8 @@ def _make_subscriber(
     settings_service = MagicMock(spec=SettingsService)
 
     async def _mock_get(namespace: str, key: str) -> MagicMock:
-        result = MagicMock()
+        del namespace
+        result = MagicMock(spec=SettingValue)
         if key == "enabled":
             result.value = str(enabled)
         elif key == "schedule_hours":
@@ -51,7 +53,7 @@ def _make_subscriber(
             result.value = ""
         return result
 
-    settings_service.get = AsyncMock(side_effect=_mock_get)
+    settings_service.get = AsyncMock(spec=SettingsService.get, side_effect=_mock_get)
 
     sub = BackupSettingsSubscriber(
         backup_service=service,
