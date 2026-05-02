@@ -61,11 +61,12 @@ def _make_state(*, claim_succeeds: bool) -> SimpleNamespace:
     app_state = MagicMock(spec=AppState)
     app_state.client_simulation_state = sim_state
     app_state.config_resolver = MagicMock(spec=ConfigResolver)
-    # ``SimpleNamespace`` is the right sentinel for the ``state``
-    # carrier here: it has no auto-mocking magic, so ``state.app_state``
-    # always returns the assigned object. ``MagicMock(spec=State)``
-    # would intercept via Litestar's ``State.__getattr__``; a plain
-    # ``MagicMock()`` would trip the no-bare-mock gate.
+    # ``state.app_state`` must return the bound ``AppState`` exactly
+    # as assigned. ``SimpleNamespace`` is a plain attribute container
+    # with no auto-mocking, so the read is a direct attribute lookup.
+    # ``MagicMock(spec=State)`` would route the read through
+    # Litestar's ``State.__getattr__`` and could return a fresh
+    # auto-mock instead of the bound object.
     return SimpleNamespace(app_state=app_state)
 
 

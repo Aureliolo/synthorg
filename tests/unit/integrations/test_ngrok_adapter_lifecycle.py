@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.integrations.errors import TunnelAlreadyActiveError
 from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
 
 pytestmark = pytest.mark.unit
@@ -35,47 +34,59 @@ def _fake_disconnect(_url: Any) -> None:
 class TestNgrokAdapterLifecycle:
     """Adapter must serialise concurrent start / stop calls."""
 
-    async def test_double_start_raises(self) -> None:
-        """A second start() while a tunnel is active raises a domain error."""
+    async def test_double_start_is_idempotent(self) -> None:
+        """A second start() while active returns the existing URL."""
         adapter = NgrokAdapter()
+        connect_calls: list[int] = []
+
+        def _counting_connect(*args: Any, **kwargs: Any) -> _FakeTunnel:
+            connect_calls.append(1)
+            return _fake_connect(*args, **kwargs)
+
         with (
             patch(
                 "synthorg.integrations.tunnel.ngrok_adapter.ngrok.connect",
-                _fake_connect,
+                _counting_connect,
             ),
             patch(
                 "synthorg.integrations.tunnel.ngrok_adapter.ngrok.disconnect",
                 _fake_disconnect,
             ),
         ):
-            url = await adapter.start()
-            assert url == "https://fake.ngrok.io"
-            with pytest.raises(TunnelAlreadyActiveError, match="already active"):
-                await adapter.start()
+            first = await adapter.start()
+            second = await adapter.start()
+            assert first == "https://fake.ngrok.io"
+            assert second == first
+            # The second call must NOT invoke ngrok.connect a second
+            # time -- idempotency means the existing tunnel is reused
+            # rather than a fresh one being negotiated upstream.
+            assert len(connect_calls) == 1
             await adapter.stop()
 
     async def test_concurrent_starts_yield_one_tunnel(self) -> None:
-        """Two simultaneous start() calls: exactly one wins."""
+        """Two simultaneous start() calls connect once and return the same URL."""
         adapter = NgrokAdapter()
+        connect_calls: list[int] = []
+
+        def _counting_connect(*args: Any, **kwargs: Any) -> _FakeTunnel:
+            connect_calls.append(1)
+            return _fake_connect(*args, **kwargs)
+
         with (
             patch(
                 "synthorg.integrations.tunnel.ngrok_adapter.ngrok.connect",
-                _fake_connect,
+                _counting_connect,
             ),
             patch(
                 "synthorg.integrations.tunnel.ngrok_adapter.ngrok.disconnect",
                 _fake_disconnect,
             ),
         ):
-            results = await asyncio.gather(
-                adapter.start(),
-                adapter.start(),
-                return_exceptions=True,
+            results = list(
+                await asyncio.gather(adapter.start(), adapter.start()),
             )
-            successes = [r for r in results if isinstance(r, str)]
-            errors = [r for r in results if isinstance(r, TunnelAlreadyActiveError)]
-            assert len(successes) == 1
-            assert len(errors) == 1
+            assert results == ["https://fake.ngrok.io", "https://fake.ngrok.io"]
+            assert len(connect_calls) == 1
             await adapter.stop()
 
     async def test_stop_without_start_is_noop(self) -> None:

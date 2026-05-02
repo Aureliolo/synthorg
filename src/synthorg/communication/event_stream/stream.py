@@ -219,12 +219,20 @@ class EventStreamHub:
         seen = self._seen_event_ids.get(event.session_id)
         if seen is None:
             return False
-        cutoff = now - self._dedup_ttl_seconds
-        while seen:
-            oldest_id, oldest_ts = next(iter(seen.items()))
-            if oldest_ts >= cutoff:
-                break
-            del seen[oldest_id]
+        # ``dedup_ttl_seconds == 0`` is the documented "disable
+        # time-based eviction" knob: entries fall out only via the
+        # per-session size bound. Without this guard the eviction
+        # cutoff would equal ``now`` and every previously recorded
+        # entry would test as expired (its ``oldest_ts`` was captured
+        # at an earlier monotonic reading), draining the window on
+        # every publish and silently disabling deduplication too.
+        if self._dedup_ttl_seconds > 0:
+            cutoff = now - self._dedup_ttl_seconds
+            while seen:
+                oldest_id, oldest_ts = next(iter(seen.items()))
+                if oldest_ts >= cutoff:
+                    break
+                del seen[oldest_id]
         if not seen:
             del self._seen_event_ids[event.session_id]
             return False

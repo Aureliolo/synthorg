@@ -104,13 +104,12 @@ def _make_state_and_service() -> tuple[SimpleNamespace, AsyncMock]:
     # which ultimately fails the HMAC pipeline.
     app_state.cursor_secret = CursorSecret.from_key("test-key-32-bytes-padding0000000")
 
-    # ``SimpleNamespace`` is the right sentinel for the ``state``
-    # carrier here: it has no auto-mocking magic, so ``state.app_state``
-    # always returns the assigned object. ``MagicMock(spec=State)``
-    # would intercept attribute access via Litestar's
-    # ``State.__getattr__`` and might hand back a fresh auto-mock
-    # instead of the spec-bound ``AppState`` we just built; a plain
-    # ``MagicMock()`` would trip the no-bare-mock gate.
+    # ``state.app_state`` must return the bound ``AppState`` exactly
+    # as assigned. ``SimpleNamespace`` is a plain attribute container
+    # with no auto-mocking, so the read is a direct attribute lookup.
+    # ``MagicMock(spec=State)`` would route the read through
+    # Litestar's ``State.__getattr__`` and could return a fresh
+    # auto-mock instead of the bound object.
     return SimpleNamespace(app_state=app_state), service
 
 

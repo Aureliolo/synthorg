@@ -82,6 +82,21 @@ class TestQueueStoreRegistry:
             notify_channel=None,
         )
 
+    def test_postgres_backend_auto_passes_notify_channel(self) -> None:
+        # ``auto`` and ``on`` share the same factory branch; covering
+        # ``auto`` explicitly catches a regression where the equality
+        # check is narrowed back to ``== "on"``.
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="auto",
+            notify_channel="escalations",
+        )
+        backend = _fake_persistence("postgres")
+        build_escalation_queue_store(config, backend)
+        backend.build_escalations.assert_called_once_with(  # type: ignore[attr-defined]
+            notify_channel="escalations",
+        )
+
     def test_sqlite_without_persistence_raises(self) -> None:
         config = EscalationQueueConfig(backend="sqlite")
         with pytest.raises(ValueError, match="connected persistence backend"):
@@ -126,10 +141,20 @@ class TestRegistryFallback:
         # the factory's defensive ValueError fires for the registered
         # unknown-key path.
         config = EscalationQueueConfig.model_construct(backend="unknown")  # type: ignore[arg-type]
-        with pytest.raises(ValueError, match=r"Unknown escalation queue backend"):
+        match = r"Unknown escalation queue backend"
+        with pytest.raises(ValueError, match=match) as exc:
             build_escalation_queue_store(config)
+        # Error message must enumerate the registered backends so a
+        # caller hitting a typo learns the valid options without
+        # spelunking the factory module.
+        message = str(exc.value)
+        for expected in ("memory", "sqlite", "postgres"):
+            assert expected in message
 
     def test_unknown_decision_strategy_raises_value_error(self) -> None:
         config = EscalationQueueConfig.model_construct(decision_strategy="unknown")  # type: ignore[arg-type]
-        with pytest.raises(ValueError, match=r"Unknown decision_strategy"):
+        with pytest.raises(ValueError, match=r"Unknown decision_strategy") as exc:
             build_decision_processor(config)
+        message = str(exc.value)
+        for expected in ("winner", "hybrid"):
+            assert expected in message

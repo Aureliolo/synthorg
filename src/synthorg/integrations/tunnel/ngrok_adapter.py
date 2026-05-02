@@ -15,10 +15,7 @@ import os
 
 from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
-from synthorg.integrations.errors import (
-    TunnelAlreadyActiveError,
-    TunnelError,
-)
+from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     TUNNEL_ERROR,
@@ -69,27 +66,36 @@ class NgrokAdapter:
     async def start(self) -> str:
         """Start the ngrok tunnel.
 
+        Idempotent: if a tunnel is already active on this adapter the
+        existing public URL is returned and the call is logged as a
+        no-op. Callers (``mcp_service.connect`` and the tunnel facade)
+        treat ``start()`` as a reconnect-safe entry point, so raising
+        here would force every caller to wrap the call in a
+        try/except just to ignore the already-active case.
+
         Returns:
-            The public URL.
+            The public URL of the active tunnel.
 
         Raises:
             TunnelError: If the tunnel fails to start (auth rejected,
                 ngrok service down, etc.). ``pyngrok`` itself is a
                 required runtime dependency so an ImportError here is
                 a build / install bug rather than a runtime concern.
-            RuntimeError: If a tunnel is already active on this
-                adapter instance.
         """
         async with self._lifecycle_lock:
-            if self._tunnel is not None:
+            # ``_public_url`` is the active-tunnel sentinel; it is set
+            # in lock-step with ``_tunnel`` below and cleared together
+            # in ``stop()``, so a non-None URL is the canonical
+            # "tunnel is up" check and avoids a second ``cast``/assert
+            # to satisfy the type narrowing.
+            if self._public_url is not None:
                 logger.warning(
                     TUNNEL_ERROR,
                     phase="start",
                     reason="already_active",
                     port=self._port,
                 )
-                msg = "ngrok tunnel already active on this adapter"
-                raise TunnelAlreadyActiveError(msg)
+                return self._public_url
             # Build a per-call ``PyngrokConfig`` instead of mutating
             # ``conf.get_default().auth_token``. The default config is
             # process-global; mutating it from one adapter would

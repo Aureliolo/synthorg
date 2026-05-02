@@ -137,3 +137,28 @@ class TestEventStreamHubDedup:
         await hub.unsubscribe("session-1", q1)
         # Other subscriber still present, dedup map should persist.
         assert "session-1" in hub._seen_event_ids
+
+    async def test_zero_ttl_disables_time_based_eviction(self) -> None:
+        """``dedup_ttl_seconds=0`` keeps entries until the size bound."""
+        clock = FakeClock()
+        hub = EventStreamHub(
+            dedup_ttl_seconds=0.0,
+            dedup_max_entries_per_session=8,
+            clock=clock,
+        )
+        queue = await hub.subscribe("session-1")
+        await hub.publish(_event(event_id="evt-001"))
+        # Advancing the clock far past any reasonable TTL must NOT
+        # evict the entry: ``ttl=0`` disables time-based eviction by
+        # contract, so the dedup window survives indefinitely until
+        # the per-session size bound trims the oldest entry.
+        clock.advance(3600.0)
+        await hub.publish(_event(event_id="evt-001"))  # duplicate
+
+        delivered: list[StreamEvent] = []
+        try:
+            while True:
+                delivered.append(queue.get_nowait())
+        except asyncio.QueueEmpty:
+            pass
+        assert len(delivered) == 1

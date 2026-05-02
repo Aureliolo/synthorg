@@ -301,8 +301,6 @@ tests/unit/api/controllers/test_approvals_helpers.py:493:22
 tests/unit/api/controllers/test_approvals_helpers.py:494:38
 tests/unit/api/controllers/test_approvals_helpers.py:511:22
 tests/unit/api/controllers/test_approvals_helpers.py:512:38
-tests/unit/api/controllers/test_backup.py:112:12
-tests/unit/api/controllers/test_backup_required_idempotency.py:72:12
 tests/unit/api/controllers/test_collaboration.py:357:23
 tests/unit/api/controllers/test_company.py:108:31
 tests/unit/api/controllers/test_coordination.py:77:18
@@ -392,7 +390,6 @@ tests/unit/api/controllers/test_setup_has_gpu.py:76:27
 tests/unit/api/controllers/test_setup_locales.py:246:33
 tests/unit/api/controllers/test_setup_locales.py:269:33
 tests/unit/api/controllers/test_setup_locales.py:316:33
-tests/unit/api/controllers/test_simulations_idempotency.py:69:12
 tests/unit/api/controllers/test_sse_keepalive_setting.py:28:31
 tests/unit/api/controllers/test_sse_keepalive_setting.py:29:41
 tests/unit/api/controllers/test_sse_revalidate.py:44:21
