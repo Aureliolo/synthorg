@@ -161,7 +161,7 @@ class ContextDependentDispatcher:
                     phase=f"workspace_setup_wave_{wave_idx}",
                     success=False,
                     duration_seconds=ws_elapsed,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
             )
             return (), None
@@ -279,7 +279,7 @@ class ContextDependentDispatcher:
                     phase=f"execute_wave_{wave_idx}",
                     success=False,
                     duration_seconds=elapsed,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
             )
         finally:

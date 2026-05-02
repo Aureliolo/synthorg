@@ -109,7 +109,16 @@ class RetrievalResult(BaseModel):
     )
     error: NotBlankStr | None = Field(
         default=None,
-        description="Error message if retrieval failed",
+        description=(
+            "Error description produced by `safe_error_description(exc)` "
+            "(`from synthorg.observability import safe_error_description`); "
+            "typically `{ExceptionType}: {scrubbed_message}`, or just "
+            "`{ExceptionType}` when the exception message is empty. "
+            "`None` on success. Always populate via the helper, never via "
+            "raw `str(exc)`, so credential material in exception messages "
+            "is scrubbed before the value crosses any persistence / API / "
+            "RPC boundary."
+        ),
     )
 
 

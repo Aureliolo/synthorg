@@ -4,7 +4,7 @@ On-demand reference for the SEC-1 cluster. Short rules in `CLAUDE.md`:
 
 - Wrap untrusted strings at LLM call sites via `wrap_untrusted()` from `synthorg.engine.prompt_safety`.
 - Never call `lxml.html.fromstring` directly; use `HTMLParseGuard`.
-- Never `logger.exception(EVENT, error=str(exc))` on credential-bearing paths; use `logger.warning(..., error=safe_error_description(exc))`.
+- Never call any `logger` severity (`exception` / `warning` / `error` / `info` / `debug`) with `error=str(exc)` (or any wrapper that smuggles `str(exc)` through, including `[:200]`, `or fallback`, f-strings, and `**{"error": ...}` dict-unpack); use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` instead. The rule is global, not credential-bearing-paths-only: `logger.exception` adds traceback frame-locals, and `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / OAuth provider errors embeds URL or POSTed body content into the log record at every severity level.
 
 ## Untrusted-content fences at LLM call sites
 
@@ -86,12 +86,14 @@ NEVER use these patterns, anywhere in the codebase:
 logger.exception(EVENT, error=str(exc))
 logger.warning(EVENT,   error=str(exc))
 logger.error(EVENT,     error=str(exc))
+logger.info(EVENT,      error=str(exc))
+logger.debug(EVENT,     error=str(exc))
 ```
 
 The rule is unconditional. The risk is most acute on credential-bearing paths (OAuth flows, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), but the pattern is forbidden globally because:
 
 - `logger.exception` attaches a traceback whose serialized frame-locals can leak `client_secret` / `refresh_token` / Fernet ciphertext sitting on the stack at any call site.
-- `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / similar embeds URL or posted credential bodies into the message field. This last risk applies equally to `logger.warning` and `logger.error` (no traceback attached, but the embedded URL / form body still leaks); #1682 extended the gate to cover all three methods.
+- `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / similar embeds URL or posted credential bodies into the message field. The embedded-URL/body risk is independent of severity: a `debug` / `info` / `warning` / `error` call still ends up shipping the credential to whatever sink the operator wires the logger to. The gate therefore covers all five severity methods.
 
 A site that "doesn't handle credentials today" can be one refactor away from carrying a request body or connection string into its frame.
 
@@ -116,4 +118,4 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
 
 ### Pre-commit gate
 
-`scripts/check_logger_exception_str_exc.py` blocks every `logger.<method>(..., error=str(exc))` site unconditionally (no allowlist, no baseline) where `<method>` is one of `exception`, `warning`, or `error` (#1682 extended the gate from exception-only). The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions, so any new occurrence -- regardless of receiver shape -- is rejected. The script's filename is preserved (rather than renamed) so the pre-commit hook ID and historical CI references stay stable.
+`scripts/check_logger_exception_str_exc.py` blocks every `logger.<method>(..., error=str(exc))` site unconditionally (no allowlist, no baseline) where `<method>` is one of `exception`, `warning`, `error`, `info`, or `debug`. The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions, and the `error=` value subtree is walked via `ast.walk` so wrapped forms (`str(exc)[:200]` truncation, `str(exc) or fallback` boolop, `str(exc) if cond else fallback` ifexp, `BinOp` concatenation, f-string `JoinedStr`) are caught alongside the bare form. The script's filename is preserved (rather than renamed) so the pre-commit hook ID `no-new-logger-exception-str-exc` stays stable in `.pre-commit-config.yaml` and CI job references.

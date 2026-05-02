@@ -258,11 +258,21 @@ class ModelResolver:
                 ref=ref,
                 candidate_count=len(candidates),
                 selector=type(self._selector).__name__,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="selector_raised_resolution_error",
             )
             return None
         except Exception as exc:
+            # Defensive fallback: any non-domain selector error converts
+            # to a "no model found" outcome rather than propagating up
+            # the model-resolution stack, where the caller would have
+            # to plumb a second failure mode through every routing /
+            # provider-management code path. The WARNING below (with
+            # ``reason="unexpected_selector_error"``) is loud enough
+            # for operators to see the underlying cause; ``MemoryError``
+            # and ``RecursionError`` are already re-raised above so
+            # interpreter-state failures are not silenced here.
             logger.warning(
                 ROUTING_SELECTION_FAILED,
                 ref=ref,

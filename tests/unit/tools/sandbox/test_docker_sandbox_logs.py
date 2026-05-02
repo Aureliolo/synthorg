@@ -322,7 +322,7 @@ class TestShipContainerLogs:
         config = ContainerLogShippingConfig()
         with patch(f"{_SHIPPER_MODULE}.logger") as mock_logger:
             mock_logger.info.side_effect = RuntimeError("logging broken")
-            mock_logger.debug = MagicMock()
+            mock_logger.warning = MagicMock()
 
             await ship_container_logs(
                 config=config,
@@ -334,10 +334,11 @@ class TestShipContainerLogs:
                 execution_time_ms=100,
             )
 
-            mock_logger.debug.assert_called_once_with(
+            mock_logger.warning.assert_called_once_with(
                 SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
                 container_id="abc123",
-                error="logging broken",
+                error_type="RuntimeError",
+                error="RuntimeError: logging broken",
             )
 
     async def test_shared_byte_budget_truncation(self) -> None:

@@ -9,7 +9,7 @@ import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_LOGS_COLLECTED,
     SANDBOX_CONTAINER_LOGS_MALFORMED,
@@ -139,21 +139,34 @@ async def collect_sidecar_logs(
             ),
             timeout=config.collection_timeout_seconds,
         )
-    except TimeoutError:
-        logger.debug(
+    except TimeoutError as exc:
+        # WARNING (matched to the broader collection-failure path
+        # below): a timeout still leaves the operator with empty logs
+        # they can't distinguish from "container had nothing to say",
+        # so the structured ``error_type`` / ``error`` fields make the
+        # cause grep-able.
+        logger.warning(
             SANDBOX_CONTAINER_LOGS_COLLECTED,
             sidecar_id=sidecar_id[:12],
             status="timeout",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return ()
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.debug(
+        # WARNING (not DEBUG) so a Docker-API failure during sidecar log
+        # collection surfaces in operator dashboards. Returning ``()``
+        # yields an empty log set indistinguishable from "container
+        # produced no output", which masks the failure unless the
+        # severity is high enough to alert on.
+        logger.warning(
             SANDBOX_CONTAINER_LOGS_COLLECTED,
             sidecar_id=sidecar_id[:12],
             status="error",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return ()
 
@@ -183,9 +196,12 @@ async def ship_container_logs(  # noqa: PLR0913
 ) -> None:
     """Ship container logs through the structlog pipeline.
 
-    Failure-tolerant: shipping errors are logged at debug level and
+    Failure-tolerant: shipping errors are logged at WARNING level and
     never propagated (except ``MemoryError`` and ``RecursionError``
-    which always propagate).
+    which always propagate). WARNING is intentional -- a shipping
+    failure means agent / task logs are absent from the operator's
+    pipeline, which is silent data loss unless the symptom ("no logs
+    for this run") is paired with an audible cause.
 
     When ``config.ship_raw_logs`` is ``False`` (default), only
     metadata is shipped -- no raw stdout/stderr/sidecar payloads.
@@ -244,8 +260,13 @@ async def ship_container_logs(  # noqa: PLR0913
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.debug(
+        # WARNING (not DEBUG): a shipping failure means agent / task
+        # logs are absent from the operator's pipeline, so the symptom
+        # ("no logs for this run") needs to be paired with an audible
+        # cause to triage.
+        logger.warning(
             SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
             container_id=container_id[:12],
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )

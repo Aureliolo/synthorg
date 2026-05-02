@@ -3,9 +3,9 @@
 ``EvidencePackage`` is the structured payload carried by ``ApprovalItem``
 and emitted as the content of ``APPROVAL_INTERRUPT`` /
 ``INFO_REQUEST_INTERRUPT`` SSE events.  It extends
-``StructuredArtifact`` (shared base with ``HandoffArtifact`` from R2
-#1262) to prevent schema drift between role-transition handoffs and
-HITL approvals.
+``StructuredArtifact`` (shared base with ``HandoffArtifact``) to
+prevent schema drift between role-transition handoffs and HITL
+approvals.
 
 Lives in ``core`` (not ``communication``) because ``ApprovalItem``
 references it as a field type, and ``core`` must not depend on

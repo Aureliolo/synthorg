@@ -211,7 +211,7 @@ class SemanticWorker:
             return RetrievalResult(
                 worker_name=self.name,
                 execution_ms=elapsed_ms,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
 
     def _rank_rrf(
@@ -388,7 +388,7 @@ class EpisodicWorker:
             return RetrievalResult(
                 worker_name=self.name,
                 execution_ms=elapsed_ms,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
 
 
@@ -490,5 +490,5 @@ class ProceduralWorker:
             return RetrievalResult(
                 worker_name=self.name,
                 execution_ms=elapsed_ms,
-                error=str(exc),
+                error=safe_error_description(exc),
             )

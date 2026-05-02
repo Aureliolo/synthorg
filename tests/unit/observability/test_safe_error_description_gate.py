@@ -1,14 +1,21 @@
 """Tests for the extended secret-log gate.
 
-``scripts/check_logger_exception_str_exc.py`` now flags
-``logger.exception``, ``logger.warning``, and ``logger.error`` calls
-that pass ``error=str(exc)``. The script's filename is preserved
-(historical pre-commit hook ID) but the method coverage has been
-broadened.
+``scripts/check_logger_exception_str_exc.py`` flags every logger
+severity (``exception`` / ``warning`` / ``error`` / ``info`` /
+``debug``) that passes ``error=str(exc)``. The script's filename is
+preserved (historical pre-commit hook ID) but the method coverage and
+matcher are broader than the original ``exception``-only gate.
 
-These tests pin the gate's contract: the three credential-bearing
-method names trip; ``info`` / ``debug`` are unaffected; non-logger
-sites with the same shape are not flagged.
+These tests pin the gate's contract:
+
+* Every severity method trips on the bare ``error=str(exc)`` form.
+* Wrapped forms (``str(exc)[:200]``, ``str(exc) or fallback``,
+  ``str(exc) if cond else fallback``) trip too: the matcher walks the
+  kwarg value subtree and flags any descendant ``str(<exc_like>)``
+  call. Truncating or fallback-fusing the credential-bearing string
+  still leaks the prefix.
+* Non-logger receivers and the canonical ``safe_error_description``
+  replacement are not flagged.
 """
 
 import ast
@@ -53,47 +60,20 @@ def _scan_source(source: str) -> list[tuple[int, int]]:
 
 @pytest.mark.unit
 class TestExtendedGate:
-    """The gate flags exception/warning/error and skips info/debug."""
+    """The gate flags every logger severity, including wrapped str() forms."""
 
-    def test_logger_exception_str_exc_flagged(self) -> None:
+    @pytest.mark.parametrize(
+        "method",
+        ["exception", "warning", "error", "info", "debug"],
+    )
+    def test_logger_method_str_exc_flagged(self, method: str) -> None:
+        """Every severity method trips the gate on bare ``error=str(exc)``."""
         hits = _scan_source(
-            """
-            logger.exception("E", error=str(exc))
+            f"""
+            logger.{method}("E", error=str(exc))
             """,
         )
-        assert hits, "logger.exception(..., error=str(exc)) must be flagged"
-
-    def test_logger_warning_str_exc_flagged(self) -> None:
-        hits = _scan_source(
-            """
-            logger.warning("E", error=str(exc))
-            """,
-        )
-        assert hits, "logger.warning(..., error=str(exc)) must be flagged"
-
-    def test_logger_error_str_exc_flagged(self) -> None:
-        hits = _scan_source(
-            """
-            logger.error("E", error=str(exc))
-            """,
-        )
-        assert hits, "logger.error(..., error=str(exc)) must be flagged"
-
-    def test_logger_info_str_exc_not_flagged(self) -> None:
-        hits = _scan_source(
-            """
-            logger.info("E", error=str(exc))
-            """,
-        )
-        assert not hits, "logger.info is out of scope -- gate must skip"
-
-    def test_logger_debug_str_exc_not_flagged(self) -> None:
-        hits = _scan_source(
-            """
-            logger.debug("E", error=str(exc))
-            """,
-        )
-        assert not hits, "logger.debug is out of scope -- gate must skip"
+        assert hits, f"logger.{method}(..., error=str(exc)) must be flagged"
 
     def test_attribute_logger_warning_flagged(self) -> None:
         """Attribute-chain receivers (``self._logger.warning(...)``) trip."""
@@ -143,6 +123,98 @@ class TestExtendedGate:
             """,
         )
         assert hits
+
+    def test_str_exc_subscript_wrapper_flagged(self) -> None:
+        """``error=str(exc)[:200]`` truncates but still leaks the prefix."""
+        hits = _scan_source(
+            """
+            logger.error("E", error=str(exc)[:200])
+            """,
+        )
+        assert hits, "subscript-wrapped str(exc) leaks the prefix; must be flagged"
+
+    def test_str_exc_boolop_wrapper_flagged(self) -> None:
+        """``error=str(exc) or fallback`` leaks str(exc) when truthy.
+
+        Bare ``or`` only -- no ``[:200]`` slice -- so a regression in
+        ``BoolOp`` traversal cannot be masked by a still-working
+        ``Subscript`` traversal. ``test_str_exc_subscript_wrapper_flagged``
+        already covers slicing; this test pins ``BoolOp`` independently.
+        """
+        hits = _scan_source(
+            """
+            logger.error("E", error=str(exc) or type(exc).__name__)
+            """,
+        )
+        assert hits, "boolop-wrapped str(exc) is still a leak; must be flagged"
+
+    def test_str_exc_ifexp_wrapper_flagged(self) -> None:
+        """``error=str(exc) if cond else fallback`` leaks on the truthy arm."""
+        hits = _scan_source(
+            """
+            logger.warning("E", error=str(exc) if condition else fallback)
+            """,
+        )
+        assert hits, "ifexp-wrapped str(exc) is still a leak; must be flagged"
+
+    def test_str_exc_binop_wrapper_flagged(self) -> None:
+        """``error=str(exc) + " context"`` concatenates without scrubbing."""
+        hits = _scan_source(
+            """
+            logger.warning("E", error=str(exc) + " context")
+            """,
+        )
+        assert hits, "binop-wrapped str(exc) is still a leak; must be flagged"
+
+    def test_str_exc_joinedstr_wrapper_flagged(self) -> None:
+        """f-string interpolation of ``str(exc)`` carries the credential too."""
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"failed: {str(exc)}")
+            """,
+        )
+        assert hits, "f-string-wrapped str(exc) is still a leak; must be flagged"
+
+    def test_str_exc_dict_unpack_flagged(self) -> None:
+        """``**{"error": str(exc)}`` dict-unpack must trip the gate.
+
+        Python represents this as ``ast.keyword(arg=None, value=Dict(...))``,
+        so a naive ``kw.arg == "error"`` check sees no match -- the
+        canonical bypass for an unconditional gate.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", **{"error": str(exc)})
+            """,
+        )
+        assert hits, "dict-unpack `error` value with str(exc) must be flagged"
+
+    def test_str_exc_dict_unpack_wrapped_flagged(self) -> None:
+        """Dict-unpack values are walked, so wrapped forms still trip.
+
+        Bare ``or`` only, for the same isolation reason as
+        ``test_str_exc_boolop_wrapper_flagged`` -- the dict-unpack path
+        and the BoolOp-traversal path each get their own regression
+        coverage.
+        """
+        hits = _scan_source(
+            """
+            logger.error("E", **{"error": str(exc) or "fallback"})
+            """,
+        )
+        assert hits, "dict-unpack with wrapped str(exc) must be flagged"
+
+    def test_dict_unpack_without_error_key_not_flagged(self) -> None:
+        """Dict-unpack with no ``error`` key is left alone."""
+        hits = _scan_source(
+            """
+            logger.warning("E", **{"context": str(exc)})
+            """,
+        )
+        assert not hits, (
+            "dict-unpack on a non-error key is out of scope -- the gate is "
+            "specifically about the `error=` field"
+        )
 
 
 @pytest.mark.unit

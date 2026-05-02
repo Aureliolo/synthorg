@@ -1,8 +1,7 @@
 """Organization-layer domain models.
 
-Holds the input model for company-level mutations so the
-organization service no longer imports from the API layer
-(audit-144 layer violation).
+Holds the input model for company-level mutations so the organization
+service can validate input without importing from the API layer.
 """
 
 from pydantic import BaseModel, ConfigDict, Field

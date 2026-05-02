@@ -222,7 +222,21 @@ class DefaultHierarchicalRetriever:
         worker_names: list[str],
         query: RetrievalQuery,
     ) -> list[RetrievalResult]:
-        """Execute named workers in parallel with error isolation."""
+        """Execute named workers in parallel with error isolation.
+
+        Each worker failure is independently logged at WARNING via
+        ``MEMORY_HIERARCHICAL_WORKER_FAILED`` and converted to an empty
+        :class:`RetrievalResult` whose ``error`` field carries the
+        scrubbed description. Downstream aggregation in :meth:`retrieve`
+        merges per-worker candidate tuples and tolerates an empty list
+        on any individual worker; the design intent is partial-result
+        retrieval (a vector-store outage drops the semantic worker
+        but leaves episodic / procedural matches alive) rather than
+        all-or-nothing
+        propagation. The WARNING log is the operator-visible signal;
+        the returned ``error`` field is for callers that *do* want to
+        branch on a per-worker failure.
+        """
 
         async def _run_worker(name: str) -> RetrievalResult:
             worker = self._workers[name]
@@ -239,7 +253,7 @@ class DefaultHierarchicalRetriever:
                 )
                 return RetrievalResult(
                     worker_name=name,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
 
         async with asyncio.TaskGroup() as tg:
