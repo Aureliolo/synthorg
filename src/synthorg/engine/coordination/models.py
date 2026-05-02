@@ -81,7 +81,15 @@ class CoordinationPhaseResult(BaseModel):
     )
     error: str | None = Field(
         default=None,
-        description="Error description on failure",
+        description=(
+            "Error description in `{ExceptionType}: {scrubbed_message}` "
+            "format produced by `safe_error_description(exc)` "
+            "(`from synthorg.observability import safe_error_description`); "
+            "`None` on success. Always populate via the helper, never via "
+            "raw `str(exc)`, so credential material in exception messages "
+            "is scrubbed before the value crosses any persistence / API / "
+            "RPC boundary."
+        ),
     )
 
     @model_validator(mode="after")

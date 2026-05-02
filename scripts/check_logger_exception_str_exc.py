@@ -21,8 +21,9 @@ paths:
 This gate walks each file's AST and refuses any match. The rule is
 unconditional: there is no allowlist, no ``--refresh-baseline``
 escape hatch, and any match is a violation. The script's filename
-is preserved (rather than renamed) so the pre-commit hook ID and
-historical CI references stay stable.
+is preserved (rather than renamed) so the pre-commit hook ID
+``no-new-logger-exception-str-exc`` (registered in
+``.pre-commit-config.yaml``) stays stable across CI job references.
 
 What we match
 -------------
@@ -33,6 +34,10 @@ forms that truncate or fall back to a type name (``str(exc)[:200]``,
 even 200 bytes of an OAuth error can carry a ``client_secret`` query
 parameter.
 
+The example wrappers below are non-exhaustive; the matcher works by
+descending the kwarg value subtree via ``ast.walk`` and flagging any
+descendant ``str(<exc_like>)`` call regardless of how it is wrapped:
+
 * ``logger.<method>(..., error=str(exc))``
 * ``self._logger.<method>(..., error=str(exc))``
 * ``audit_logger.<method>(..., error=str(exc))``
@@ -40,6 +45,8 @@ parameter.
 * ``error=str(exc)[:200]`` (subscript wrapper)
 * ``error=str(exc)[:N] or type(exc).__name__`` (boolop wrapper)
 * ``error=str(exc) if cond else fallback`` (ifexp wrapper)
+* ``error=str(exc) + " context"`` (binop / concatenation wrapper)
+* ``error=f"failed: {str(exc)}"`` (joinedstr / f-string wrapper)
 
 Specifically, we flag a call when *all* of the following hold:
 
@@ -54,9 +61,11 @@ Specifically, we flag a call when *all* of the following hold:
    contains *anywhere* a ``Call`` to the builtin ``str`` with a single
    positional argument that is a ``Name``, ``Attribute``, or
    ``Subscript`` (covering ``str(exc)``, ``str(self._inner)``,
-   ``str(exc.args[0])``). ``ast.walk`` covers ``Subscript``,
-   ``BoolOp``, ``IfExp``, ``BinOp``, ``JoinedStr`` and any future
-   wrapper without per-shape special-casing.
+   ``str(exc.args[0])``). ``ast.walk`` descends through any wrapper
+   construct (``Subscript`` / ``BoolOp`` / ``IfExp`` / ``BinOp`` /
+   ``JoinedStr`` / ``Compare`` / future shapes) so no per-shape
+   special-casing is needed; the gate stays current as the language
+   adds new expression types.
 
 To convert a flagged site, replace::
 

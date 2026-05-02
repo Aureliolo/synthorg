@@ -20,12 +20,17 @@ from synthorg.hr.training.models import (
     TrainingResult,
 )
 from synthorg.hr.training.service import TrainingService
+from synthorg.observability.events.hr import (
+    HR_TRAINING_SESSION_RECORD_FAILED as _RECORD_FAILED_EVENT,
+)
+from synthorg.observability.events.hr import (
+    HR_TRAINING_SESSION_RECORDED as _RECORDED_EVENT,
+)
+from synthorg.observability.events.training import (
+    HR_TRAINING_PLAN_STATUS_TRANSITIONED as _TRANSITION_EVENT,
+)
 
 pytestmark = pytest.mark.unit
-
-_TRANSITION_EVENT = "hr.training.plan.status_transitioned"
-_RECORDED_EVENT = "hr.training.session_recorded"
-_RECORD_FAILED_EVENT = "hr.training.session_record_failed"
 
 _NOW = datetime(2026, 4, 24, 12, 0, tzinfo=UTC)
 
@@ -309,23 +314,37 @@ class TestStatusTransitionLogs:
         )
 
     async def test_status_transitioned_skipped_when_record_fails(self) -> None:
-        """No transition log when the persistence write itself raised.
+        """No EXECUTED transition log when the executed-branch persistence write raised.
 
         The session-store write is the persistence gate; a failure there
         means the state change is not durable and the audit stream must
-        not falsely record the hop.
+        not falsely record the hop. Tests the EXECUTED branch (line 326
+        of `start_session`): entry write succeeds, pipeline runs, then
+        the terminal-record write blows up.
         """
         service = _build_service()
         plan = _plan("plan-4")
 
-        async def _exploding_record(_plan: TrainingPlan) -> None:
+        # Stub the entry write to succeed once; raise on the terminal
+        # (executed-branch) write. Without this counter, replacing
+        # `_record_session` with an unconditionally-raising stub would
+        # also blow up the entry write (line 288 of start_session) and
+        # the test would not actually exercise the executed-branch
+        # contract its docstring claims to pin.
+        call_count = 0
+        original_record = service._record_session
+
+        async def _exploding_on_terminal(plan: TrainingPlan) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Entry write: succeed via the real implementation.
+                await original_record(plan)
+                return
             msg = "session store offline"
             raise RuntimeError(msg)
 
-        # Patch the executed-branch persistence write only. The entry
-        # write at the top of ``start_session`` runs first; we let it
-        # succeed so the test focuses on the executed-branch contract.
-        service._record_session = _exploding_record  # type: ignore[assignment, method-assign]
+        service._record_session = _exploding_on_terminal  # type: ignore[method-assign]
 
         with structlog.testing.capture_logs() as events:
             await service.start_session(plan)
@@ -334,9 +353,100 @@ class TestStatusTransitionLogs:
         record_failed = [e for e in events if e.get("event") == _RECORD_FAILED_EVENT]
 
         assert transitions == [], (
-            "transition log must NOT fire when the persistence write fails"
+            "transition log must NOT fire when the executed-branch persistence "
+            "write fails"
         )
-        assert record_failed, (
-            "the persistence-failure WARNING must still fire so operators see "
-            "the durable-write failure"
+        executed_failures = [e for e in record_failed if e.get("stage") == "executed"]
+        assert executed_failures, (
+            "the executed-stage persistence-failure WARNING must still fire so "
+            "operators see the durable-write failure"
         )
+
+    async def test_failed_branch_record_failure_skips_transition(self) -> None:
+        """No FAILED transition log when the failed-branch persistence write raised.
+
+        Mirror of the executed-branch test but for the FAILED side
+        (line 307 of `start_session`): the pipeline raises, the
+        failed-record write also raises, and the transition log MUST
+        NOT fire.
+        """
+        boom = RuntimeError("pipeline exploded")
+        service = _build_service(raises=boom)
+        plan = _plan("plan-4b")
+
+        call_count = 0
+        original_record = service._record_session
+
+        async def _exploding_on_terminal(plan: TrainingPlan) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                await original_record(plan)
+                return
+            msg = "session store offline"
+            raise RuntimeError(msg)
+
+        service._record_session = _exploding_on_terminal  # type: ignore[method-assign]
+
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(RuntimeError, match="pipeline exploded"),
+        ):
+            await service.start_session(plan)
+
+        transitions = [e for e in events if e.get("event") == _TRANSITION_EVENT]
+        record_failed = [e for e in events if e.get("event") == _RECORD_FAILED_EVENT]
+
+        assert transitions == [], (
+            "transition log must NOT fire when the failed-branch persistence "
+            "write fails"
+        )
+        failed_stage = [e for e in record_failed if e.get("stage") == "failed"]
+        assert failed_stage, (
+            "the failed-stage persistence-failure WARNING must still fire"
+        )
+
+    async def test_idempotent_reentry_no_duplicate_transition_log(self) -> None:
+        """A second `start_session` on a terminal plan emits no transition log.
+
+        Re-entry on a plan whose terminal session was already recorded
+        must short-circuit (`ran_pipeline=False`) without emitting
+        another `*_STATUS_TRANSITIONED` event. Without this contract,
+        an idempotent retry loop would amplify the audit stream with
+        phantom transitions.
+
+        The default ``_build_service`` fake makes ``_execute_locked``
+        always report ``ran_pipeline=True``; that masks the
+        idempotency short-circuit we need to pin here, so this test
+        installs a counter-aware fake that returns ``ran_pipeline=False``
+        on the second call to mirror the real ``_execute_locked``
+        behavior when the plan id is already in
+        ``self._executed_plan_ids``.
+        """
+        service = _build_service()
+        plan = _plan("plan-5")
+
+        invocations = 0
+
+        async def _idempotent_execute_locked(
+            plan_arg: TrainingPlan,
+        ) -> tuple[TrainingResult, bool]:
+            nonlocal invocations
+            invocations += 1
+            ran_pipeline = invocations == 1
+            return _result(str(plan_arg.id), str(plan_arg.new_agent_id)), ran_pipeline
+
+        service._execute_locked = _idempotent_execute_locked  # type: ignore[assignment, method-assign]
+
+        await service.start_session(plan)
+
+        with structlog.testing.capture_logs() as events:
+            result = await service.start_session(plan)
+
+        transitions = [e for e in events if e.get("event") == _TRANSITION_EVENT]
+        assert transitions == [], (
+            "second start_session on an already-executed plan must NOT emit a "
+            "transition log; the EXECUTED branch is gated on ran_pipeline=True"
+        )
+        assert result is not None
+        assert invocations == 2

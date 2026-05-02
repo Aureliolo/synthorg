@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.hr.training._storage import store_guarded_items
 from synthorg.hr.training.models import (
     ContentType,
     TrainingApprovalHandle,
@@ -18,8 +18,6 @@ from synthorg.hr.training.models import (
     TrainingPlanStatus,
     TrainingResult,
 )
-from synthorg.memory.errors import MemoryError as _MemoryError
-from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_TRAINING_SESSION_INVALID_REQUEST,
@@ -39,7 +37,6 @@ from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_STATUS_TRANSITIONED,
     HR_TRAINING_REVIEW_PENDING,
     HR_TRAINING_SKIPPED,
-    HR_TRAINING_STORE_FAILED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
@@ -56,13 +53,6 @@ if TYPE_CHECKING:
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
-
-# Map content types to memory categories for storage.
-_CONTENT_TYPE_TO_CATEGORY: dict[ContentType, MemoryCategory] = {
-    ContentType.PROCEDURAL: MemoryCategory.PROCEDURAL,
-    ContentType.SEMANTIC: MemoryCategory.SEMANTIC,
-    ContentType.TOOL_PATTERNS: MemoryCategory.PROCEDURAL,
-}
 
 # Internal type alias for curated items map passed through pipeline.
 _CuratedMap = dict[ContentType, tuple[TrainingItem, ...]]
@@ -749,72 +739,20 @@ class TrainingService:
         plan: TrainingPlan,
         guarded_items: _CuratedMap,
     ) -> tuple[tuple[ContentType, int], ...]:
-        """Store approved items to memory backend in parallel per type."""
-        stored_counts: list[tuple[ContentType, int]] = []
+        """Store approved items to memory backend in parallel per type.
 
-        for ct in sorted(guarded_items.keys(), key=lambda c: c.value):
-            items = guarded_items[ct]
-            stored = await self._store_items_for_type(plan, ct, items)
-            stored_counts.append((ct, stored))
-
-        return tuple(stored_counts)
-
-    async def _store_items_for_type(
-        self,
-        plan: TrainingPlan,
-        ct: ContentType,
-        items: tuple[TrainingItem, ...],
-    ) -> int:
-        """Store a single content type's items concurrently."""
-        if not items:
-            return 0
-
-        category = _CONTENT_TYPE_TO_CATEGORY.get(ct, MemoryCategory.PROCEDURAL)
-
-        async with asyncio.TaskGroup() as tg:
-            store_tasks = [
-                tg.create_task(self._store_one_item(plan, ct, category, item))
-                for item in items
-            ]
-
-        return sum(1 for task in store_tasks if task.result())
-
-    async def _store_one_item(
-        self,
-        plan: TrainingPlan,
-        ct: ContentType,
-        category: MemoryCategory,
-        item: TrainingItem,
-    ) -> bool:
-        """Store a single training item, logging any store failure."""
-        tags = (
-            *self._training_tags,
-            f"training:{plan.id}",
-            f"source:{item.source_agent_id}",
+        Delegates to :func:`synthorg.hr.training._storage.store_guarded_items`
+        so this module stays under the 800-line ceiling; the helper is
+        a thin function pulling the persistence dependencies from the
+        service.
+        """
+        return await store_guarded_items(
+            plan,
+            guarded_items,
+            memory_backend=self._memory_backend,
+            training_namespace=self._training_namespace,
+            training_tags=self._training_tags,
         )
-        request = MemoryStoreRequest(
-            category=category,
-            namespace=self._training_namespace,
-            content=item.content,
-            metadata=MemoryMetadata(
-                source=f"training:{plan.id}",
-                confidence=item.relevance_score,
-                tags=tags,
-            ),
-        )
-        try:
-            await self._memory_backend.store(plan.new_agent_id, request)
-        except _MemoryError as exc:
-            logger.warning(
-                HR_TRAINING_STORE_FAILED,
-                plan_id=str(plan.id),
-                item_id=str(item.id),
-                content_type=ct.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return False
-        return True
 
     @staticmethod
     def _empty_result(

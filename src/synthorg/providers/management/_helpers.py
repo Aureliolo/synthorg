@@ -337,7 +337,12 @@ def _parse_litellm_entry(
             ),
         )
     except (TypeError, ValueError) as exc:
-        logger.debug(
+        # WARNING (not DEBUG) so an upstream LiteLLM data-shape change
+        # that suddenly invalidates a provider's model surface is
+        # visible to operators -- the alternative is a silent "no
+        # models loaded" outcome at line ~413 that is indistinguishable
+        # from a provider that genuinely has zero models.
+        logger.warning(
             PROVIDER_LITELLM_LOOKUP_SKIPPED,
             reason="malformed_model_entry",
             model=model_name,

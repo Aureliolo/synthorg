@@ -140,7 +140,14 @@ class ApiResponse[T](BaseModel):
 
     Attributes:
         data: Response payload (``None`` on error).
-        error: Error message (``None`` on success).
+        error: Operator-facing error message (``None`` on success). Must be
+            either a static, generic, non-secret-bearing string or the
+            output of ``safe_error_description(exc)`` (`from
+            synthorg.observability import safe_error_description`); never
+            raw ``str(exc)`` because the value is serialised over HTTP and
+            can leak credential material from
+            ``httpx.HTTPStatusError`` / ``psycopg.Error`` / OAuth provider
+            exception messages otherwise.
         error_detail: Structured error metadata (``None`` on success).
         success: Whether the request succeeded (computed from ``error``).
     """

@@ -439,7 +439,13 @@ class ScalingController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return ApiResponse(data=(), error=safe_error_description(exc))
+            # HTTP body carries a generic message: the structured detail
+            # is on the WARNING log above. Returning the raw exception
+            # type prefix (`safe_error_description` includes
+            # `{ExceptionType}: ...`) over the wire would leak internal
+            # class names without operator benefit (CWE-200); operators
+            # debug via the log, not the response body.
+            return ApiResponse(data=(), error="Invalid priority order")
 
         try:
             scaling.update_priority_order(order)
@@ -452,7 +458,7 @@ class ScalingController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return ApiResponse(data=(), error=safe_error_description(exc))
+            return ApiResponse(data=(), error="Invalid priority order")
         logger.info(
             HR_SCALING_PRIORITY_ORDER_UPDATED,
             order=[n.value for n in order],

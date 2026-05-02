@@ -317,7 +317,18 @@ class TaskMutationResult(BaseModel):
         default=None,
         description="Status before mutation",
     )
-    error: str | None = Field(default=None, description="Error description")
+    error: str | None = Field(
+        default=None,
+        description=(
+            "Error description in `{ExceptionType}: {scrubbed_message}` "
+            "format produced by `safe_error_description(exc)` "
+            "(`from synthorg.observability import safe_error_description`); "
+            "`None` on success. Always populate via the helper, never via "
+            "raw `str(exc)`, so credential material in exception messages "
+            "is scrubbed before the value crosses any persistence / API / "
+            "RPC boundary."
+        ),
+    )
     error_code: TaskErrorCode | None = Field(
         default=None,
         description="Machine-readable error classification",

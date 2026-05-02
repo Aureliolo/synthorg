@@ -149,7 +149,12 @@ async def collect_sidecar_logs(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.debug(
+        # WARNING (not DEBUG) so a Docker-API failure during sidecar log
+        # collection surfaces in operator dashboards. Returning ``()``
+        # yields an empty log set indistinguishable from "container
+        # produced no output", which masks the failure unless the
+        # severity is high enough to alert on.
+        logger.warning(
             SANDBOX_CONTAINER_LOGS_COLLECTED,
             sidecar_id=sidecar_id[:12],
             status="error",
@@ -245,7 +250,11 @@ async def ship_container_logs(  # noqa: PLR0913
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.debug(
+        # WARNING (not DEBUG): a shipping failure means agent / task
+        # logs are absent from the operator's pipeline, so the symptom
+        # ("no logs for this run") needs to be paired with an audible
+        # cause to triage.
+        logger.warning(
             SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
             container_id=container_id[:12],
             error_type=type(exc).__name__,

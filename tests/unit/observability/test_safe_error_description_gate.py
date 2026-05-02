@@ -178,6 +178,24 @@ class TestExtendedGate:
         )
         assert hits, "ifexp-wrapped str(exc) is still a leak; must be flagged"
 
+    def test_str_exc_binop_wrapper_flagged(self) -> None:
+        """``error=str(exc) + " context"`` concatenates without scrubbing."""
+        hits = _scan_source(
+            """
+            logger.warning("E", error=str(exc) + " context")
+            """,
+        )
+        assert hits, "binop-wrapped str(exc) is still a leak; must be flagged"
+
+    def test_str_exc_joinedstr_wrapper_flagged(self) -> None:
+        """f-string interpolation of ``str(exc)`` carries the credential too."""
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"failed: {str(exc)}")
+            """,
+        )
+        assert hits, "f-string-wrapped str(exc) is still a leak; must be flagged"
+
 
 @pytest.mark.unit
 class TestRepoIsClean:
