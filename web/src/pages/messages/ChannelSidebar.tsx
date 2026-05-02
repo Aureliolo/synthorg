@@ -41,7 +41,7 @@ function ChannelGroupSection({
             channel={ch}
             active={ch.name === activeChannel}
             unreadCount={unreadCounts[ch.name] ?? 0}
-            onClick={() => onSelectChannel(ch.name)}
+            onSelect={onSelectChannel}
           />
         ))}
       </div>
@@ -131,7 +131,7 @@ function ChannelListBody({
                   channel={ch}
                   active={ch.name === activeChannel}
                   unreadCount={unreadCounts[ch.name] ?? 0}
-                  onClick={() => handleSelect(ch.name)}
+                  onSelect={handleSelect}
                 />
               ))}
             </div>

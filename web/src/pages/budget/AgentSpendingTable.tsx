@@ -4,6 +4,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency } from '@/utils/format'
+import { getLocale } from '@/utils/locale'
 import { ArrowDown, ArrowUp, Users } from 'lucide-react'
 import type { AgentSpendingRow } from '@/utils/budget'
 
@@ -45,7 +46,7 @@ function compareRows(
 ): number {
   let cmp = 0
   switch (key) {
-    case 'agentName': cmp = a.agentName.localeCompare(b.agentName); break
+    case 'agentName': cmp = a.agentName.localeCompare(b.agentName, getLocale()); break
     case 'totalCost': cmp = a.totalCost - b.totalCost; break
     case 'budgetPercent': cmp = a.budgetPercent - b.budgetPercent; break
     case 'taskCount': cmp = a.taskCount - b.taskCount; break
@@ -96,7 +97,11 @@ function SpendingRow({ row, currency }: {
         {formatCurrency(row.totalCost, currency)}
       </span>
       <span className={cn(COLUMN_WIDTHS.budgetPercent, 'text-right font-mono text-xs text-text-secondary')}>
-        {row.budgetPercent.toFixed(1)}%
+        {new Intl.NumberFormat(getLocale(), {
+          style: 'percent',
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        }).format(row.budgetPercent / 100)}
       </span>
       <span className={cn(COLUMN_WIDTHS.taskCount, 'text-right font-mono text-xs text-text-secondary')}>
         {row.taskCount}

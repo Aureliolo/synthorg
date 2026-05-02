@@ -7,7 +7,11 @@ import { createLogger } from '@/lib/logger'
 // the notifications store -- avoids cross-store coupling and any
 // circular-init risk.
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
-import { ATTACHMENT_TYPE_VALUES } from '@/api/types/messages'
+import {
+  ATTACHMENT_TYPE_VALUES,
+  MESSAGE_PRIORITY_VALUES,
+  MESSAGE_TYPE_VALUES,
+} from '@/api/types/messages'
 import type { Channel, Message } from '@/api/types/messages'
 import type { WsEvent } from '@/api/types/websocket'
 
@@ -121,10 +125,20 @@ function parseWsMessage(
   const to = sanitizeWsString(c.to) ?? ''
   const channel = sanitizeWsString(c.channel) ?? ''
   const content = sanitizeWsString(c.content, 4096) ?? ''
-  const type = sanitizeWsString(c.type, 64) ?? ''
-  const priority = sanitizeWsString(c.priority, 64) ?? ''
+  // Route enum-typed fields through sanitizeWsEnum so an unknown
+  // backend value falls back to a safe default + emits a structured
+  // ws.enum.unknown warning instead of being rendered verbatim. The
+  // raw cast was the documented anti-pattern this PR replaces.
+  const type = sanitizeWsEnum(c.type, MESSAGE_TYPE_VALUES, 'announcement', {
+    maxLen: 64,
+    field: 'message.type',
+  })
+  const priority = sanitizeWsEnum(c.priority, MESSAGE_PRIORITY_VALUES, 'normal', {
+    maxLen: 64,
+    field: 'message.priority',
+  })
 
-  if (!id || !timestamp || !sender || !channel || !type || !priority) {
+  if (!id || !timestamp || !sender || !channel) {
     log.error('WS message blanked by sanitization, skipping', {
       id: sanitizeForLog(c.id),
       hasBlankId: id.length === 0,
@@ -176,8 +190,8 @@ function parseWsMessage(
     to,
     channel,
     content,
-    type: type as Message['type'],
-    priority: priority as Message['priority'],
+    type,
+    priority,
     attachments,
     metadata,
   }

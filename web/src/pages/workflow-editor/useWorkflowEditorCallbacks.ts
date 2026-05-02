@@ -119,11 +119,13 @@ export function useWorkflowEditorCallbacks(
     await validate()
     const result = useWorkflowEditorStore.getState().validationResult
     if (result) {
+      const errorCount = result.errors.length
+      const errorWord = errorCount === 1 ? 'error' : 'errors'
       addToast({
         variant: result.valid ? 'success' : 'warning',
         title: result.valid
           ? 'Workflow is valid'
-          : `Validation found ${result.errors.length} error(s)`,
+          : `Validation found ${errorCount} ${errorWord}`,
         description: result.valid
           ? undefined
           : 'Review the marked fields below.',

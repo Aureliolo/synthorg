@@ -74,6 +74,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         await get().fetchProviders()
         return config
       } catch (err) {
+        log.error('createProvider failed:', { name: data.name, error: getErrorMessage(err) })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to create provider'),
@@ -96,6 +97,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         await get().fetchProviders()
         return config
       } catch (err) {
+        log.error('createFromPreset failed:', { name: data.name, preset: data.preset_name, error: getErrorMessage(err) })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to create provider'),
@@ -122,6 +124,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         }
         return config
       } catch (err) {
+        log.error('updateProvider failed:', { name, error: getErrorMessage(err) })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to update provider'),
@@ -155,6 +158,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         })
         return true
       } catch (err) {
+        log.error('deleteProvider failed:', { name, error: getErrorMessage(err) })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to delete provider'),

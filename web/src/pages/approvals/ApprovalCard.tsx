@@ -46,13 +46,25 @@ function ApprovalCardImpl({
     }
   }, [approval.status, triggerFlash])
 
-  // Local countdown -- tracks seconds_remaining with a 1s tick
+  // Local countdown -- tracks seconds_remaining with a 1s tick.
+  // The reset-on-prop-change is deferred to a microtask so the
+  // effect body itself contains no synchronous setState (matches
+  // the connections-reconciliation pattern in WebhookReceiptsPage
+  // and satisfies the ESLint set-state-in-effect rule). Without the
+  // defer the setCountdown call would run in the same commit-phase
+  // tick as the parent, which the rule flags because it can cause
+  // an extra render on memoised components.
   const [countdown, setCountdown] = useState(approval.seconds_remaining)
-  const prevSecondsRef = useRef(approval.seconds_remaining)
-  if (approval.seconds_remaining !== prevSecondsRef.current) {
-    prevSecondsRef.current = approval.seconds_remaining
-    setCountdown(approval.seconds_remaining)
-  }
+  useEffect(() => {
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setCountdown(approval.seconds_remaining)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [approval.seconds_remaining])
 
   // Local countdown -- ticks seconds_remaining by -1 every second.
   // Effect dep is a boolean (not countdown itself) to avoid restarting

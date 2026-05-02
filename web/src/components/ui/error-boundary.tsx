@@ -97,7 +97,7 @@ function DefaultErrorFallback({
           </h2>
           <p className="max-w-md text-sm text-muted-foreground">{message}</p>
         </div>
-        <Button onClick={resetErrorBoundary}>Try Again</Button>
+        <Button type="button" onClick={resetErrorBoundary}>Try Again</Button>
       </div>
     )
   }
@@ -110,7 +110,7 @@ function DefaultErrorFallback({
       >
         <AlertTriangle className="size-4" aria-hidden="true" />
         <span>{message}</span>
-        <Button variant="link" size="sm" onClick={resetErrorBoundary}>
+        <Button type="button" variant="link" size="sm" onClick={resetErrorBoundary}>
           Try Again
         </Button>
       </div>
@@ -130,7 +130,7 @@ function DefaultErrorFallback({
         </p>
         <p className="text-xs text-muted-foreground">{message}</p>
       </div>
-      <Button size="sm" onClick={resetErrorBoundary}>
+      <Button type="button" size="sm" onClick={resetErrorBoundary}>
         Try Again
       </Button>
     </div>

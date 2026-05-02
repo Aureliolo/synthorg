@@ -293,8 +293,17 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     Number.isFinite(c.budget_limit) &&
     (c.cost === undefined || Number.isFinite(c.cost)) &&
     Number.isFinite(c.max_retries) &&
-    // Enum scalars: validate against the canonical tuples so a
-    // malformed frame cannot inject an unsupported value.
+    // Enum scalars: complexity / task_structure / coordination_topology
+    // are intentionally NOT routed through sanitizeWsEnum -- they're
+    // closed enums coupled to coordination + scheduling code paths
+    // that branch on the exact value (e.g. coordination_topology
+    // selects a specific orchestrator). A backend-only addition of
+    // a new value would silently degrade behaviour rather than just
+    // a label mismatch, so dropping the frame here is the safer
+    // failure mode. If/when a new value is rolled out, the frontend
+    // bumps in the same release. Status / priority / type / source
+    // (above) ARE forward-compat sanitized because they're display-
+    // facing labels with no behavioural branching.
     typeof c.estimated_complexity === 'string' &&
     COMPLEXITY_SET.has(c.estimated_complexity) &&
     (c.task_structure === null ||

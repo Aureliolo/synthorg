@@ -56,12 +56,20 @@ export default function WebhookReceiptsPage() {
   // Keep the selection in sync with the URL: a deep-link change
   // mid-session (e.g. user clicks another View receipts cross-link
   // while this page is mounted) should re-target the receipts
-  // fetch, not stay on the originally-seeded value. Defer the
-  // setState to a microtask so this effect body stays free of
-  // synchronous setState per the ESLint set-state-in-effect rule
-  // (matches the connections-reconciliation effect below).
+  // fetch, not stay on the originally-seeded value. Two extra
+  // guards beyond the simple "URL changed" trigger:
+  //  - Re-run when ``connections`` arrives so the deep-link can fire
+  //    even on a cold mount where the initial state had an empty
+  //    list (otherwise the reconciliation effect below races and
+  //    overwrites the seeded selection).
+  //  - Only apply the URL value if the target connection actually
+  //    exists in the loaded list -- a stale URL should not stomp a
+  //    valid current selection.
+  // setState deferred to a microtask per ESLint set-state-in-effect.
   useEffect(() => {
     if (!urlConnection) return
+    if (connections.length === 0) return
+    if (!connections.some((c) => c.name === urlConnection)) return
     let cancelled = false
     void Promise.resolve().then(() => {
       if (cancelled) return
@@ -70,7 +78,7 @@ export default function WebhookReceiptsPage() {
     return () => {
       cancelled = true
     }
-  }, [urlConnection])
+  }, [urlConnection, connections])
   const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -183,6 +191,15 @@ export default function WebhookReceiptsPage() {
       <Breadcrumbs items={[{ label: 'Integrations', to: ROUTES.CONNECTIONS }, { label: 'Webhook receipts' }]} />
       <ListHeader title="Webhook receipts" count={entries.length} />
 
+      {error && (
+        <ErrorBanner
+          severity="error"
+          title="Could not load webhook activity"
+          description={error}
+          onRetry={() => void reload()}
+        />
+      )}
+
       <SearchFilterSort
         filters={
           <SelectField
@@ -193,15 +210,6 @@ export default function WebhookReceiptsPage() {
           />
         }
       />
-
-      {error && (
-        <ErrorBanner
-          severity="error"
-          title="Could not load webhook activity"
-          description={error}
-          onRetry={() => void reload()}
-        />
-      )}
 
       {loading && entries.length === 0 ? (
         <ProgressIndicator

@@ -36,11 +36,11 @@ type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
  * 6. HTTP healthy AND WS connected     -> green  "all systems normal"
  *
  * **A11y contract**: callers MUST render the returned ``label`` as
- * visible text next to the colour-bearing ``Dot`` so high-contrast and
- * screen-reader users receive the status name. The colour-only path
- * is never sufficient. The render below at line 198-205 satisfies
- * this by pairing ``Dot`` with ``<span>{label}</span>`` and an outer
- * ``aria-label`` on the wrapping button.
+ * visible text next to the colour-bearing ``Dot`` so high-contrast
+ * and screen-reader users receive the status name. The colour-only
+ * path is never sufficient. The health-button render below
+ * satisfies this by pairing ``Dot`` with ``<span>{label}</span>``
+ * and an outer ``aria-label`` on the wrapping button.
  */
 function resolveCombinedStatus(
   healthStatus: SystemStatus,

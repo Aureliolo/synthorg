@@ -13,21 +13,25 @@ interface ChannelListItemProps {
   channel: Channel
   active: boolean
   unreadCount: number
-  onClick: () => void
+  // ``onSelect`` receives the channel name so callers can pass a
+  // stable reference (typically the parent's ``onSelectChannel`` /
+  // ``handleSelect`` directly) instead of an inline arrow that breaks
+  // memo on every render.
+  onSelect: (name: string) => void
 }
 
 function ChannelListItemImpl({
   channel,
   active,
   unreadCount,
-  onClick,
+  onSelect,
 }: ChannelListItemProps) {
   const Icon = CHANNEL_ICONS[channel.type]
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onSelect(channel.name)}
       aria-current={active ? 'page' : undefined}
       className={cn(
         'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',

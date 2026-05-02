@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { WizardStep } from '@/stores/setup-wizard'
@@ -33,6 +34,11 @@ export function WizardNavigation({
   const currentIdx = rawIdx === -1 ? 0 : rawIdx
   const isFirst = currentIdx === 0
   const isLast = currentIdx === stepOrder.length - 1
+  // Stable id for the disabled-reason caption so the Next button can
+  // associate it via aria-describedby. Only attached on the button
+  // when the caption is actually rendered.
+  const reasonId = useId()
+  const showReason = Boolean(nextDisabled) && Boolean(nextDisabledReason) && !isLast
 
   return (
     <div className="flex flex-col gap-2 border-t border-border px-2 pt-4">
@@ -52,6 +58,7 @@ export function WizardNavigation({
             type="button"
             onClick={onNext}
             disabled={nextDisabled || loading}
+            aria-describedby={showReason ? reasonId : undefined}
             className="gap-2"
           >
             {loading ? 'Loading...' : nextLabel ?? 'Next'}
@@ -59,8 +66,8 @@ export function WizardNavigation({
           </Button>
         )}
       </div>
-      {nextDisabled && nextDisabledReason && !isLast && (
-        <p className="text-right text-xs text-text-secondary">
+      {showReason && (
+        <p id={reasonId} className="text-right text-xs text-text-secondary">
           {nextDisabledReason}
         </p>
       )}

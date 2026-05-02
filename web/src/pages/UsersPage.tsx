@@ -113,17 +113,6 @@ export default function UsersPage() {
         count={sortedUsers.length}
       />
 
-      <SearchFilterSort
-        search={
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search users by name or role"
-            ariaLabel="Search users"
-          />
-        }
-      />
-
       {error && (
         <ErrorBanner
           severity="error"
@@ -134,6 +123,17 @@ export default function UsersPage() {
           }}
         />
       )}
+
+      <SearchFilterSort
+        search={
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search users by name or role"
+            ariaLabel="Search users"
+          />
+        }
+      />
 
       {loading && users.length === 0 ? (
         <div className="flex flex-col gap-grid-gap">

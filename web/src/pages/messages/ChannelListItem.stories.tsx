@@ -6,7 +6,7 @@ const meta: Meta<typeof ChannelListItem> = {
   title: 'Pages/Messages/ChannelListItem',
   component: ChannelListItem,
   parameters: { a11y: { test: 'error' } },
-  args: { onClick: fn() },
+  args: { onSelect: fn() },
   decorators: [(Story) => <div className="w-56"><Story /></div>],
 }
 export default meta
