@@ -8,13 +8,13 @@ reset the probe interval for that provider.
 """
 
 import asyncio
-import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_FAILED,
@@ -144,6 +144,7 @@ class ProviderHealthProber:
     """
 
     __slots__ = (
+        "_clock",
         "_config_resolver",
         "_discovery_policy_loader",
         "_health_tracker",
@@ -164,6 +165,7 @@ class ProviderHealthProber:
             Callable[[], Awaitable[ProviderDiscoveryPolicy]] | None
         ) = None,
         interval_seconds: int = _DEFAULT_INTERVAL_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         if interval_seconds < 1:
             msg = f"interval_seconds must be >= 1, got {interval_seconds}"
@@ -172,6 +174,10 @@ class ProviderHealthProber:
         self._config_resolver = config_resolver
         self._discovery_policy_loader = discovery_policy_loader
         self._interval = interval_seconds
+        # ``Clock`` seam per ``CLAUDE.md`` -- tests inject ``FakeClock``
+        # so the lifecycle drain timeout and probe-cycle interval can
+        # be driven on virtual time instead of wall time.
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         # Per ``docs/reference/lifecycle-sync.md`` the lifecycle lock,
@@ -427,8 +433,8 @@ class ProviderHealthProber:
                 latency_ms=round(elapsed_ms, 1),
             )
 
-    @staticmethod
     async def _execute_probe(
+        self,
         url: str,
         headers: dict[str, str],
     ) -> tuple[float, bool, str | None]:
@@ -441,7 +447,7 @@ class ProviderHealthProber:
         Returns:
             Tuple of (elapsed_ms, success, error_message).
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
         success = False
         error_msg: str | None = None
 
@@ -465,5 +471,5 @@ class ProviderHealthProber:
         except Exception as exc:
             error_msg = _truncate(f"{type(exc).__name__}: {exc}")
 
-        elapsed_ms = (time.monotonic() - start) * 1000
+        elapsed_ms = (self._clock.monotonic() - start) * 1000
         return elapsed_ms, success, error_msg

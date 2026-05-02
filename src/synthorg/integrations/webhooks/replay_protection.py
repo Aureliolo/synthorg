@@ -230,13 +230,19 @@ class ReplayProtector:
     def _evict_locked(self, now: float) -> None:
         """Remove nonces older than the window.
 
-        Caller must hold ``self._lock``.
+        Caller must hold ``self._lock``. Walks every entry instead of
+        early-exiting on the first non-expired one: the caller in
+        ``check()`` samples ``now`` BEFORE acquiring the lock, which
+        means under contention the insertion order in ``self._seen``
+        no longer matches timestamp order (a thread that read an
+        older ``now`` can win the lock after a thread with a newer
+        ``now`` already inserted, leaving an older timestamp behind a
+        newer one in the ordered map). Walking all entries keeps the
+        duplicate-reject window pinned to ``self._window`` even when
+        that ordering invariant is broken. The walk is O(n) but
+        bounded by ``self._max_entries``.
         """
         cutoff = now - self._window
-        # OrderedDict preserves insertion order; stop at the first
-        # non-expired entry since later insertions are always newer.
-        while self._seen:
-            nonce, ts = next(iter(self._seen.items()))
-            if ts >= cutoff:
-                break
+        expired = [nonce for nonce, ts in self._seen.items() if ts < cutoff]
+        for nonce in expired:
             del self._seen[nonce]

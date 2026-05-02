@@ -7,6 +7,7 @@ clean stop, and unrestartable flag after a drain timeout.
 """
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -139,9 +140,17 @@ class TestOrgInflectionMonitorLifecycleLock:
                 # releases the hung loop and drains the orphan task.
                 # Otherwise the leak would silently propagate into
                 # the next test run.
+                #
+                # ``suppress(CancelledError)`` covers the canonical
+                # post-cancel state: ``stop()`` called ``task.cancel()``
+                # and the hung loop caught it, but the task remains
+                # marked cancelled in Python 3.11+ semantics. Awaiting
+                # it after ``release.set()`` re-raises the residual
+                # cancellation; that's expected, not a regression.
                 release.set()
                 if saved_task is not None:
-                    await saved_task
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await saved_task
 
         with pytest.raises(InflectionMonitorLifecycleError, match="unrestartable"):
             await monitor.start()

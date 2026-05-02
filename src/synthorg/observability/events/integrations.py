@@ -110,6 +110,7 @@ MCP_SERVER_INSTALL_VALIDATION_FAILED: Final[str] = (
 TUNNEL_STARTED: Final[str] = "integrations.tunnel.started"
 TUNNEL_STOPPED: Final[str] = "integrations.tunnel.stopped"
 TUNNEL_ERROR: Final[str] = "integrations.tunnel.error"
+TUNNEL_ALREADY_ACTIVE: Final[str] = "integrations.tunnel.already_active"
 
 # -- Webhook bridge ------------------------------------------------------
 

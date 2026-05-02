@@ -45,7 +45,7 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
 )
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_FAILED,
@@ -140,9 +140,16 @@ class BackupController(Controller):
                 msg = "Backup operation failed"
                 raise InternalServerException(msg) from exc
 
+        # ``NotBlankStr`` is an Annotated type alias, not a callable
+        # constructor; calling it at runtime returns the underlying
+        # ``str`` without running the AfterValidator (which only fires
+        # through Pydantic). The literal "backup" and the
+        # already-validated header value satisfy the parameter contract
+        # directly, so pass them as plain strings instead of fake-
+        # wrapping them in a no-op call.
         outcome = await app_state.idempotency_service.run_idempotent(
-            scope=NotBlankStr("backup"),
-            key=NotBlankStr(idempotency_key),
+            scope="backup",
+            key=idempotency_key,
             callback=lambda: _do_backup_as_dict(_do_backup),
         )
         if outcome.timed_out:

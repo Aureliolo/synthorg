@@ -165,8 +165,13 @@ class PruningService:
     async def stop(self) -> None:
         """Stop the background scheduler gracefully.
 
-        Drain is shielded with a hard deadline; on timeout the service
-        is marked unrestartable.
+        First signals the run loop to exit cleanly via ``_stop_event``
+        and waits up to ``_stop_drain_timeout_seconds`` for the
+        in-flight pruning cycle to finish. Only escalates to
+        ``task.cancel()`` if the cooperative drain times out -- on
+        timeout the service is also marked unrestartable so a fresh
+        ``start()`` does not stack a second loop on top of the orphan
+        task that may still own pruning state.
         """
         async with self._lifecycle_lock:
             self._stop_event.set()
@@ -174,30 +179,18 @@ class PruningService:
             task = self._task
             if task is None:
                 return
-            task.cancel()
-
-            async def _drain() -> None:
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as exc:
-                    logger.warning(
-                        HR_PRUNING_POLICY_ERROR,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                        note="shutdown",
-                    )
-
-            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
             try:
                 await asyncio.wait_for(
-                    asyncio.shield(drain_task),
+                    asyncio.shield(task),
                     timeout=self._stop_drain_timeout_seconds,
                 )
             except TimeoutError:
+                # Cooperative drain missed the deadline. Cancel hard,
+                # mark unrestartable, and re-raise so the caller sees
+                # the timeout. The running cycle owns repository
+                # state we cannot safely interrupt twice, so we do
+                # NOT chase the cancellation with a second wait.
+                task.cancel()
                 self._stop_failed = True
                 logger.error(  # noqa: TRY400
                     HR_PRUNING_POLICY_ERROR,
@@ -205,6 +198,19 @@ class PruningService:
                     timeout_seconds=self._stop_drain_timeout_seconds,
                 )
                 raise
+            except asyncio.CancelledError:
+                # The running cycle was cancelled before it observed
+                # ``_stop_event``. Drained successfully.
+                pass
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    HR_PRUNING_POLICY_ERROR,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="shutdown",
+                )
             self._task = None
             # Recreate the loop-bound events WHILE holding the
             # lifecycle lock. Outside the lock, a racing ``start()``

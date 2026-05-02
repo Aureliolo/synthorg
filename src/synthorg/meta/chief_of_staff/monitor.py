@@ -130,30 +130,24 @@ class OrgInflectionMonitor:
             task = self._task
             if task is None:
                 return
-            task.cancel()
-
-            async def _drain() -> None:
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as exc:
-                    logger.warning(
-                        COS_INFLECTION_CHECK_FAILED,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                        note="shutdown",
-                    )
-
-            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
             try:
+                # Cooperative drain: ``_stop_event`` is already set,
+                # so the loop wakes from its ``wait_for`` and exits.
+                # ``shield`` keeps the drain timeout from cancelling
+                # an in-flight check that's about to terminate
+                # naturally. No helper task is created -- a direct
+                # await means there is no orphan wrapper to leak when
+                # ``wait_for`` times out.
                 await asyncio.wait_for(
-                    asyncio.shield(drain_task),
+                    asyncio.shield(task),
                     timeout=self._stop_drain_timeout_seconds,
                 )
             except TimeoutError:
+                # Cooperative drain missed the deadline. Cancel hard
+                # and mark the monitor unrestartable so a later
+                # ``start()`` cannot stack a second loop on top of an
+                # orphan task that may still own snapshot state.
+                task.cancel()
                 self._stop_failed = True
                 logger.error(  # noqa: TRY400
                     COS_INFLECTION_CHECK_FAILED,
@@ -161,6 +155,19 @@ class OrgInflectionMonitor:
                     timeout_seconds=self._stop_drain_timeout_seconds,
                 )
                 raise
+            except asyncio.CancelledError:
+                # Loop was already cancelled before observing
+                # ``_stop_event``; treat as drained successfully.
+                pass
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    COS_INFLECTION_CHECK_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="shutdown",
+                )
             self._task = None
             self._last_snapshot = None
             # Recreate the loop-bound stop event WHILE holding the

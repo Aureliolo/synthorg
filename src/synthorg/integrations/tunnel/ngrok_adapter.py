@@ -18,6 +18,7 @@ from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
+    TUNNEL_ALREADY_ACTIVE,
     TUNNEL_ERROR,
     TUNNEL_STARTED,
     TUNNEL_STOPPED,
@@ -99,10 +100,13 @@ class NgrokAdapter:
             # "tunnel is up" check and avoids a second ``cast``/assert
             # to satisfy the type narrowing.
             if self._public_url is not None:
-                logger.warning(
-                    TUNNEL_ERROR,
+                # Idempotent reconnect path -- a legitimate caller
+                # observing an already-active tunnel is not a failure.
+                # Logging at WARNING with ``TUNNEL_ERROR`` would
+                # trigger tunnel-failure alerting on every retry.
+                logger.info(
+                    TUNNEL_ALREADY_ACTIVE,
                     phase="start",
-                    reason="already_active",
                     port=self._port,
                 )
                 return self._public_url
