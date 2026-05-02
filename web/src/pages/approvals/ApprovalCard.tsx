@@ -47,13 +47,16 @@ function ApprovalCardImpl({
   }, [approval.status, triggerFlash])
 
   // Local countdown -- tracks seconds_remaining with a 1s tick.
-  // The reset-on-prop-change is deferred to a microtask so the
-  // effect body itself contains no synchronous setState (matches
-  // the connections-reconciliation pattern in WebhookReceiptsPage
-  // and satisfies the ESLint set-state-in-effect rule). Without the
-  // defer the setCountdown call would run in the same commit-phase
-  // tick as the parent, which the rule flags because it can cause
-  // an extra render on memoised components.
+  // Reset + interval-restart are intentionally collapsed into ONE
+  // effect keyed on the prop so a refresh from the WS layer
+  // (seconds_remaining bumped from e.g. 5 to 60) restarts the
+  // interval on a clean 1-second cadence instead of inheriting the
+  // previous interval's mid-tick offset (which can flicker by a
+  // sub-second when the prop changes mid-tick). setCountdown is
+  // deferred to a microtask so the effect body stays free of
+  // synchronous setState per the ESLint set-state-in-effect rule;
+  // setInterval starts immediately so the visible tick cadence
+  // matches the prop refresh.
   const [countdown, setCountdown] = useState(approval.seconds_remaining)
   useEffect(() => {
     let cancelled = false
@@ -61,26 +64,26 @@ function ApprovalCardImpl({
       if (cancelled) return
       setCountdown(approval.seconds_remaining)
     })
-    return () => {
-      cancelled = true
+    if (
+      !isPending
+      || approval.seconds_remaining === null
+      || approval.seconds_remaining <= 0
+    ) {
+      return () => {
+        cancelled = true
+      }
     }
-  }, [approval.seconds_remaining])
-
-  // Local countdown -- ticks seconds_remaining by -1 every second.
-  // Effect dep is a boolean (not countdown itself) to avoid restarting
-  // the interval on every tick. Also stops when card leaves pending status.
-  const shouldTick = isPending && countdown !== null && countdown > 0
-
-  useEffect(() => {
-    if (!shouldTick) return
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev === null || prev <= 1) return 0
         return prev - 1
       })
     }, 1000)
-    return () => clearInterval(timer)
-  }, [shouldTick])
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [approval.seconds_remaining, isPending])
 
   return (
     <div

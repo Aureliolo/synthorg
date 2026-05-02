@@ -138,10 +138,11 @@ function parseWsMessage(
     field: 'message.priority',
   })
 
-  if (!id || !timestamp || !sender || !channel) {
+  if (!id || !timestamp || !sender || !to || !channel) {
     log.error('WS message blanked by sanitization, skipping', {
       id: sanitizeForLog(c.id),
       hasBlankId: id.length === 0,
+      hasBlankTo: to.length === 0,
       hasBlankChannel: channel.length === 0,
     })
     return null

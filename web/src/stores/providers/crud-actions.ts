@@ -14,6 +14,7 @@ import {
   deletePresetOverride as apiDeletePresetOverride,
 } from '@/api/endpoints/providers'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
   AddModelRequest,
@@ -74,7 +75,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         await get().fetchProviders()
         return config
       } catch (err) {
-        log.error('createProvider failed:', { name: data.name, error: getErrorMessage(err) })
+        log.error('createProvider failed:', { name: sanitizeForLog(data.name), error: getErrorMessage(err) })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to create provider'),
@@ -97,7 +98,11 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         await get().fetchProviders()
         return config
       } catch (err) {
-        log.error('createFromPreset failed:', { name: data.name, preset: data.preset_name, error: getErrorMessage(err) })
+        log.error('createFromPreset failed:', {
+          name: sanitizeForLog(data.name),
+          preset: sanitizeForLog(data.preset_name),
+          error: getErrorMessage(err),
+        })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to create provider'),
@@ -124,7 +129,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         }
         return config
       } catch (err) {
-        log.error('updateProvider failed:', { name, error: getErrorMessage(err) })
+        log.error('updateProvider failed:', { name: sanitizeForLog(name), error: getErrorMessage(err) })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to update provider'),
@@ -158,7 +163,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         })
         return true
       } catch (err) {
-        log.error('deleteProvider failed:', { name, error: getErrorMessage(err) })
+        log.error('deleteProvider failed:', { name: sanitizeForLog(name), error: getErrorMessage(err) })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to delete provider'),

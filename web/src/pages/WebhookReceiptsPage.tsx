@@ -50,9 +50,11 @@ export default function WebhookReceiptsPage() {
   const [searchParams] = useSearchParams()
   // Pre-select via URL ?connection=... so the cross-link from
   // ConnectionsPage's row action lands directly on that connection's
-  // receipts.
+  // receipts. Seeded from '' and applied by the effect below once the
+  // connections list confirms the URL value is valid -- otherwise the
+  // initial render would fire reload() against an unvalidated name.
   const urlConnection = searchParams.get('connection') ?? ''
-  const [selected, setSelected] = useState<string>(urlConnection)
+  const [selected, setSelected] = useState<string>('')
   // Keep the selection in sync with the URL: a deep-link change
   // mid-session (e.g. user clicks another View receipts cross-link
   // while this page is mounted) should re-target the receipts
