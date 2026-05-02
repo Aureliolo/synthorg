@@ -7,11 +7,10 @@ consumers.
 """
 
 import asyncio
-import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.chief_of_staff import (
     COS_INFLECTION_CHECK_FAILED,
@@ -62,37 +61,108 @@ class OrgInflectionMonitor:
         self._interval_s = check_interval_minutes * 60
         self._last_snapshot: OrgSignalSnapshot | None = None
         self._task: asyncio.Task[None] | None = None
+        # Per ``docs/reference/lifecycle-sync.md`` the lifecycle
+        # primitives are constructed eagerly so a racing ``stop()``
+        # cannot observe a half-published lock attribute.
+        self._stop_event: asyncio.Event = asyncio.Event()
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        self._stop_failed: bool = False
+        self._stop_drain_timeout_seconds: float = 30.0
 
     async def start(self) -> None:
-        """Start the background monitoring loop."""
-        if self._task is not None:
-            return
-        self._task = asyncio.create_task(
-            self._loop(),
-            name="cos-monitor-loop",
-        )
-        self._task.add_done_callback(
-            log_task_exceptions(logger, COS_MONITOR_LOOP_DIED),
-        )
-        logger.info(
-            COS_MONITOR_STARTED,
-            interval_minutes=self._interval_s // 60,
-        )
+        """Start the background monitoring loop.
+
+        Idempotent + concurrent-safe per the canonical lifecycle
+        pattern: serialises on ``self._lifecycle_lock`` so concurrent
+        callers cannot both observe ``_task is None`` and double-spawn.
+        """
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "OrgInflectionMonitor is unrestartable after a "
+                    "timed-out stop; construct a fresh monitor instead"
+                )
+                logger.warning(
+                    COS_INFLECTION_CHECK_FAILED,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise RuntimeError(msg)
+            if self._task is not None and not self._task.done():
+                return
+            self._stop_event.clear()
+            self._task = asyncio.create_task(
+                self._loop(),
+                name="cos-monitor-loop",
+            )
+            self._task.add_done_callback(
+                log_task_exceptions(logger, COS_MONITOR_LOOP_DIED),
+            )
+            logger.info(
+                COS_MONITOR_STARTED,
+                interval_minutes=self._interval_s // 60,
+            )
 
     async def stop(self) -> None:
-        """Stop the monitoring loop gracefully."""
-        if self._task is None:
-            return
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
-        self._task = None
-        self._last_snapshot = None
-        logger.info(COS_MONITOR_STOPPED)
+        """Stop the monitoring loop gracefully.
+
+        Holds ``self._lifecycle_lock`` so a concurrent ``start()``
+        cannot recreate the task mid-stop. Drain is shielded with a
+        hard deadline; on timeout the monitor is marked unrestartable.
+        """
+        async with self._lifecycle_lock:
+            self._stop_event.set()
+            task = self._task
+            if task is None:
+                return
+            task.cancel()
+
+            async def _drain() -> None:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        COS_INFLECTION_CHECK_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                self._stop_failed = True
+                logger.error(  # noqa: TRY400
+                    COS_INFLECTION_CHECK_FAILED,
+                    error=("stop exceeded hard deadline; monitor marked unrestartable"),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
+            self._task = None
+            self._last_snapshot = None
+            logger.info(COS_MONITOR_STOPPED)
+        # Recreate primitives outside the (released) lock so a fresh
+        # event loop binding works for subsequent ``start()`` calls.
+        self._lifecycle_lock = asyncio.Lock()
+        self._stop_event = asyncio.Event()
 
     async def _loop(self) -> None:
-        """Periodic snapshot collection and inflection check."""
-        while True:
+        """Periodic snapshot collection and inflection check.
+
+        Uses ``wait_for(_stop_event.wait(), timeout=interval)`` instead
+        of plain ``asyncio.sleep`` so cancellation cooperatively wakes
+        the loop and the canonical drain timeout has a chance to
+        complete the shutdown promptly.
+        """
+        while not self._stop_event.is_set():
             try:
                 await self._tick()
             except asyncio.CancelledError:
@@ -101,7 +171,15 @@ class OrgInflectionMonitor:
                 raise
             except Exception:
                 logger.exception(COS_INFLECTION_CHECK_FAILED)
-            await asyncio.sleep(self._interval_s)
+            try:
+                await asyncio.wait_for(
+                    self._stop_event.wait(),
+                    timeout=self._interval_s,
+                )
+            except TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                raise
 
     async def _tick(self) -> None:
         """Single monitoring tick."""

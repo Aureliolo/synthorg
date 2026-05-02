@@ -5,6 +5,7 @@ reduce redundant calls to external MCP servers.
 """
 
 import copy
+import threading
 from collections import OrderedDict
 from typing import Any
 
@@ -26,8 +27,9 @@ logger = get_logger(__name__)
 class MCPResultCache:
     """TTL + LRU-bounded cache for MCP tool results.
 
-    Safe for use within a single asyncio event loop, where coroutine
-    interleaving cannot cause concurrent mutations to the cache dict.
+    Thread-safe via an internal ``threading.Lock`` so concurrent
+    threadpool-dispatched tool invocations cannot interleave the
+    read-decision-write blocks in :meth:`get` and :meth:`put`.
     Keys are derived from tool name and arguments.
 
     Args:
@@ -48,6 +50,7 @@ class MCPResultCache:
         self._cache: OrderedDict[tuple[str, Any], tuple[float, ToolExecutionResult]] = (
             OrderedDict()
         )
+        self._lock = threading.Lock()
 
     def get(
         self,
@@ -67,27 +70,34 @@ class MCPResultCache:
             Cached ``ToolExecutionResult`` or ``None``.
         """
         key = self._make_key(tool_name, arguments)
-        entry = self._cache.get(key)
-        if entry is None:
-            logger.debug(MCP_CACHE_MISS, tool_name=tool_name)
+        hit: ToolExecutionResult | None = None
+        miss_reason: str | None = None
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is not None:
+                timestamp, result = entry
+                if self._clock.monotonic() - timestamp > self._ttl_seconds:
+                    del self._cache[key]
+                    miss_reason = "expired"
+                else:
+                    self._cache.move_to_end(key)
+                    hit = result
+
+        if hit is None:
+            if miss_reason is None:
+                logger.debug(MCP_CACHE_MISS, tool_name=tool_name)
+            else:
+                logger.debug(
+                    MCP_CACHE_MISS,
+                    tool_name=tool_name,
+                    reason=miss_reason,
+                )
             record_cache_operation(cache_name=_CACHE_NAME, outcome="miss")
             return None
 
-        timestamp, result = entry
-        if self._clock.monotonic() - timestamp > self._ttl_seconds:
-            del self._cache[key]
-            logger.debug(
-                MCP_CACHE_MISS,
-                tool_name=tool_name,
-                reason="expired",
-            )
-            record_cache_operation(cache_name=_CACHE_NAME, outcome="miss")
-            return None
-
-        self._cache.move_to_end(key)
         logger.debug(MCP_CACHE_HIT, tool_name=tool_name)
         record_cache_operation(cache_name=_CACHE_NAME, outcome="hit")
-        return copy.deepcopy(result)
+        return copy.deepcopy(hit)
 
     def put(
         self,
@@ -106,22 +116,25 @@ class MCPResultCache:
             result: The ``ToolExecutionResult`` to cache.
         """
         key = self._make_key(tool_name, arguments)
+        evicted: list[tuple[str, Any]] = []
+        with self._lock:
+            # Remove existing entry to refresh position
+            if key in self._cache:
+                del self._cache[key]
 
-        # Remove existing entry to refresh position
-        if key in self._cache:
-            del self._cache[key]
+            # Evict oldest if at capacity
+            while len(self._cache) >= self._max_size > 0:
+                evicted_key, _ = self._cache.popitem(last=False)
+                evicted.append(evicted_key)
 
-        # Evict oldest if at capacity
-        while len(self._cache) >= self._max_size > 0:
-            evicted_key, _ = self._cache.popitem(last=False)
+            if self._max_size > 0:
+                self._cache[key] = (self._clock.monotonic(), copy.deepcopy(result))
+        for evicted_key in evicted:
             logger.debug(
                 MCP_CACHE_EVICT,
                 evicted_tool=evicted_key[0],
             )
             record_cache_operation(cache_name=_CACHE_NAME, outcome="evict")
-
-        if self._max_size > 0:
-            self._cache[key] = (self._clock.monotonic(), copy.deepcopy(result))
 
     def invalidate(
         self,
@@ -133,13 +146,14 @@ class MCPResultCache:
             tool_name: If provided, only invalidate entries for this
                 tool. If ``None``, clear all entries.
         """
-        if tool_name is None:
-            self._cache.clear()
-            return
+        with self._lock:
+            if tool_name is None:
+                self._cache.clear()
+                return
 
-        keys_to_remove = [k for k in self._cache if k[0] == tool_name]
-        for key in keys_to_remove:
-            del self._cache[key]
+            keys_to_remove = [k for k in self._cache if k[0] == tool_name]
+            for key in keys_to_remove:
+                del self._cache[key]
 
     @staticmethod
     def _make_key(

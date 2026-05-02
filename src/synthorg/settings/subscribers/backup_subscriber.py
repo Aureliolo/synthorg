@@ -110,7 +110,7 @@ class BackupSettingsSubscriber:
         enabled = str(result.value).lower() == "true"
 
         if enabled and not scheduler.is_running:
-            scheduler.start()
+            await scheduler.start()
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,

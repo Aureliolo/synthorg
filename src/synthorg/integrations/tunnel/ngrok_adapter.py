@@ -54,6 +54,14 @@ class NgrokAdapter:
         self._port = port
         self._public_url: str | None = None
         self._tunnel: object | None = None
+        # Per ``docs/reference/lifecycle-sync.md``: a dedicated
+        # lifecycle lock serialises ``start`` / ``stop``.  No drain
+        # timeout / unrestartable flag here because the adapter does
+        # not own a background task; it forwards to pyngrok in a
+        # worker thread and the lock is sufficient to prevent two
+        # ``start()`` calls from racing on the single-tunnel
+        # invariant.
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
 
     async def start(self) -> str:
         """Start the ngrok tunnel.
@@ -66,33 +74,39 @@ class NgrokAdapter:
                 ngrok service down, etc.). ``pyngrok`` itself is a
                 required runtime dependency so an ImportError here is
                 a build / install bug rather than a runtime concern.
+            RuntimeError: If a tunnel is already active on this
+                adapter instance.
         """
-        auth_token = os.environ.get(self._auth_token_env, "").strip()
-        if auth_token:
-            conf.get_default().auth_token = auth_token
+        async with self._lifecycle_lock:
+            if self._tunnel is not None:
+                msg = "ngrok tunnel already active on this adapter"
+                raise RuntimeError(msg)
+            auth_token = os.environ.get(self._auth_token_env, "").strip()
+            if auth_token:
+                conf.get_default().auth_token = auth_token
 
-        try:
-            tunnel = await asyncio.to_thread(ngrok.connect, self._port, "http")
-            self._tunnel = tunnel
-            self._public_url = str(tunnel.public_url)
-        except Exception as exc:
-            # ngrok auth token env var may be echoed in exception
-            # messages; scrub + drop traceback.
-            logger.warning(
-                TUNNEL_ERROR,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            try:
+                tunnel = await asyncio.to_thread(ngrok.connect, self._port, "http")
+                self._tunnel = tunnel
+                self._public_url = str(tunnel.public_url)
+            except Exception as exc:
+                # ngrok auth token env var may be echoed in exception
+                # messages; scrub + drop traceback.
+                logger.warning(
+                    TUNNEL_ERROR,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                msg = f"Failed to start ngrok tunnel: {type(exc).__name__}"
+                raise TunnelError(msg) from exc
+
+            logger.info(
+                TUNNEL_STARTED,
+                public_url=self._public_url,
+                port=self._port,
+                note="tunnel exposes localhost publicly",
             )
-            msg = f"Failed to start ngrok tunnel: {type(exc).__name__}"
-            raise TunnelError(msg) from exc
-
-        logger.info(
-            TUNNEL_STARTED,
-            public_url=self._public_url,
-            port=self._port,
-            note="tunnel exposes localhost publicly",
-        )
-        return self._public_url
+            return self._public_url
 
     async def stop(self) -> None:
         """Stop the ngrok tunnel (best-effort cleanup).
@@ -105,20 +119,21 @@ class NgrokAdapter:
         anyway, and retaining the handle would block subsequent
         ``start()`` calls on this adapter instance.
         """
-        if self._tunnel is None:
-            return
-        try:
-            await asyncio.to_thread(ngrok.disconnect, self._public_url)
-        except Exception as exc:
-            logger.warning(
-                TUNNEL_ERROR,
-                phase="disconnect",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        self._tunnel = None
-        self._public_url = None
-        logger.info(TUNNEL_STOPPED)
+        async with self._lifecycle_lock:
+            if self._tunnel is None:
+                return
+            try:
+                await asyncio.to_thread(ngrok.disconnect, self._public_url)
+            except Exception as exc:
+                logger.warning(
+                    TUNNEL_ERROR,
+                    phase="disconnect",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+            self._tunnel = None
+            self._public_url = None
+            logger.info(TUNNEL_STOPPED)
 
     async def get_url(self) -> str | None:
         """Return the current public URL, or ``None`` if stopped."""

@@ -29,7 +29,7 @@ def _make_subscriber(
     """
     scheduler = MagicMock()
     type(scheduler).is_running = PropertyMock(return_value=scheduler_running)
-    scheduler.start = MagicMock()
+    scheduler.start = AsyncMock()
     scheduler.stop = AsyncMock()
     scheduler.reschedule = MagicMock()
 

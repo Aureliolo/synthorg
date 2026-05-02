@@ -109,6 +109,19 @@ This means:
 
 ---
 
+## Third-Party Dependency Licenses
+
+SynthOrg's default install (SQLite-only) carries only permissive licenses (MIT, Apache-2.0, BSD, ISC). The optional `[postgres]` extra adds two LGPL-3.0-or-later components:
+
+- `psycopg[binary]`: PostgreSQL adapter
+- `psycopg-pool`: connection pool for psycopg
+
+These are linked dynamically (separate `pip`-installable packages) and the LGPL anti-circumvention clause is satisfied by the standard `pip` replacement workflow. Operators who redistribute combined binaries that include the `postgres` extra must publish a NOTICE listing the LGPL components and preserve replacement-version flexibility. Operators using SQLite (the default) carry no LGPL obligations.
+
+See [`docs/research/lgpl-postgres-driver-decision.md`](research/lgpl-postgres-driver-decision.md) for the full rationale.
+
+---
+
 ## Contributor License Agreement (CLA)
 
 We require a [Contributor License Agreement](https://github.com/Aureliolo/synthorg/blob/main/.github/CLA.md) before merging external contributions. The CLA:

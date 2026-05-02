@@ -86,24 +86,26 @@ class BackupController(Controller):
         self,
         state: State,
         idempotency_key: Annotated[
-            str | None,
+            str,
             Parameter(
                 header="Idempotency-Key",
                 description=(
-                    "RFC-style retry-safe key. Same key within 24h "
-                    "returns the cached manifest instead of starting "
-                    "a second backup."
+                    "RFC-style retry-safe key. Required: identical keys "
+                    "within 24h return the cached manifest instead of "
+                    "starting a second backup. Without a key a 5xx-driven "
+                    "client retry could launch concurrent backups, "
+                    "violating the at-most-one-running invariant."
                 ),
-                required=False,
+                required=True,
                 min_length=1,
             ),
-        ] = None,
+        ],
     ) -> ApiResponse[BackupManifest]:
         """Trigger a manual backup.
 
         Args:
             state: Application state.
-            idempotency_key: Optional caller-supplied retry token.
+            idempotency_key: Required caller-supplied retry token.
 
         Returns:
             Manifest of the created backup.
@@ -133,27 +135,23 @@ class BackupController(Controller):
                 msg = "Backup operation failed"
                 raise InternalServerException(msg) from exc
 
-        if idempotency_key:
-            outcome = await app_state.idempotency_service.run_idempotent(
-                scope=NotBlankStr("backup"),
-                key=NotBlankStr(idempotency_key),
-                callback=lambda: _do_backup_as_dict(_do_backup),
+        outcome = await app_state.idempotency_service.run_idempotent(
+            scope=NotBlankStr("backup"),
+            key=NotBlankStr(idempotency_key),
+            callback=lambda: _do_backup_as_dict(_do_backup),
+        )
+        if outcome.timed_out:
+            # Discriminated 409 path: distinct from a callback that
+            # legitimately returned ``None``.
+            logger.warning(
+                IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                scope="backup",
+                idempotency_key=idempotency_key,
+                endpoint="backup.create",
             )
-            if outcome.timed_out:
-                # Discriminated 409 path: distinct from a callback
-                # that legitimately returned ``None``.
-                logger.warning(
-                    IDEMPOTENCY_CLAIM_IN_FLIGHT,
-                    scope="backup",
-                    idempotency_key=idempotency_key,
-                    endpoint="backup.create",
-                )
-                msg = "Concurrent in-flight backup with this idempotency key"
-                raise ConflictError(msg)
-            return ApiResponse(data=BackupManifest.model_validate(outcome.result))
-
-        manifest = await _do_backup()
-        return ApiResponse(data=manifest)
+            msg = "Concurrent in-flight backup with this idempotency key"
+            raise ConflictError(msg)
+        return ApiResponse(data=BackupManifest.model_validate(outcome.result))
 
     @get()
     async def list_backups(

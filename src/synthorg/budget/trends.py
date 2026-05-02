@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.budget._tracker_helpers import _assert_single_currency
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 
 if TYPE_CHECKING:
@@ -231,7 +232,13 @@ def bucket_cost_records(
 
     Returns:
         Sorted tuple of data points, one per bucket.
+
+    Raises:
+        MixedCurrencyAggregationError: If *records* span multiple
+            currencies. Summing across currencies would produce a
+            meaningless monetary total.
     """
+    _assert_single_currency(records)
     bucket_starts = generate_bucket_starts(start, end, bucket_size)
     sums: dict[datetime, list[float]] = defaultdict(list)
 
@@ -431,6 +438,13 @@ def project_daily_spend(
 
     Returns:
         Budget forecast with daily projections.
+
+    Raises:
+        MixedCurrencyAggregationError: If *records* span multiple
+            currencies. The forecast would conflate currencies on the
+            avg-daily-spend computation and return a meaningless
+            projection; raising at the boundary surfaces the bug at
+            the call site.
     """
     today = (now or datetime.now(UTC)).date()
 
@@ -443,6 +457,7 @@ def project_daily_spend(
             avg_daily_spend=0.0,
         )
 
+    _assert_single_currency(records)
     avg_daily, confidence, _ = _compute_daily_spend(records)
     projections = _build_projections(avg_daily, horizon_days, today)
     projected_total = round(

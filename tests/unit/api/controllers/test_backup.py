@@ -73,6 +73,27 @@ def _make_state_and_service() -> tuple[MagicMock, AsyncMock]:
     service = AsyncMock()
     app_state = MagicMock()
     app_state.backup_service = service
+    # The controller now wraps every backup in idempotency_service.
+    # Mock the service so run_idempotent invokes the callback inline
+    # and returns a fresh outcome with the manifest dict.
+    idempotency_service = MagicMock()
+
+    async def _run_idempotent(
+        *,
+        scope: object,
+        key: object,
+        callback: Any,
+    ) -> Any:
+        del scope, key
+        result = await callback()
+        outcome = MagicMock()
+        outcome.timed_out = False
+        outcome.result = result
+        outcome.fresh = True
+        return outcome
+
+    idempotency_service.run_idempotent = _run_idempotent
+    app_state.idempotency_service = idempotency_service
     # Pagination requires a real cursor secret; MagicMock's default
     # attribute resolution would hand back a Mock to ``paginate_cursor``
     # which ultimately fails the HMAC pipeline.
@@ -98,11 +119,15 @@ class TestCreateBackup:
         service.create_backup = AsyncMock(return_value=manifest)
 
         ctrl = _controller()
-        result = await ctrl.create_backup.fn(ctrl, state=state)
+        result = await ctrl.create_backup.fn(
+            ctrl,
+            state=state,
+            idempotency_key="test-key-001",
+        )
 
         service.create_backup.assert_awaited_once_with(BackupTrigger.MANUAL)
         assert isinstance(result, ApiResponse)
-        assert result.data is manifest
+        assert result.data == manifest
 
     async def test_create_backup_returns_409_on_in_progress(self) -> None:
         state, service = _make_state_and_service()
@@ -112,7 +137,11 @@ class TestCreateBackup:
 
         ctrl = _controller()
         with pytest.raises(ConflictError) as exc_info:
-            await ctrl.create_backup.fn(ctrl, state=state)
+            await ctrl.create_backup.fn(
+                ctrl,
+                state=state,
+                idempotency_key="test-key-002",
+            )
 
         assert exc_info.value.status_code == 409
 

@@ -5,6 +5,14 @@ forces re-authentication (correct security behaviour).  The store
 uses ``time.monotonic()`` for expiry so it is immune to wall-clock
 adjustments.
 
+The mutating methods (``create``, ``validate_and_consume``,
+``cleanup_expired``) hold a ``threading.Lock`` so the store is safe
+under both single-threaded asyncio handlers and Litestar's threadpool
+dispatch.  The lock spans count-and-insert, pop-and-validate, and
+bulk eviction blocks where a thread switch between the read and the
+mutating step would otherwise let a racing caller exceed the per-user
+cap or observe a half-mutated dict.
+
 .. note::
 
    The store is per-process -- if the ASGI server runs multiple
@@ -15,6 +23,7 @@ adjustments.
 
 import math
 import secrets
+import threading
 
 from pydantic import BaseModel, ConfigDict
 
@@ -105,6 +114,7 @@ class WsTicketStore:
         self._max_pending = max_pending_per_user
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._tickets: dict[str, _TicketEntry] = {}
+        self._lock = threading.Lock()
 
     @property
     def ttl_seconds(self) -> float:
@@ -136,22 +146,23 @@ class WsTicketStore:
         Returns:
             URL-safe random token string.
         """
-        now = self._clock.monotonic()
-        user_pending = sum(
-            1
-            for e in self._tickets.values()
-            if e.user.user_id == user.user_id and now <= e.expires_at
-        )
-        if user_pending >= self._max_pending:
-            msg = f"Ticket limit exceeded for user {user.user_id}"
-            raise TicketLimitExceededError(msg)
+        with self._lock:
+            now = self._clock.monotonic()
+            user_pending = sum(
+                1
+                for e in self._tickets.values()
+                if e.user.user_id == user.user_id and now <= e.expires_at
+            )
+            if user_pending >= self._max_pending:
+                msg = f"Ticket limit exceeded for user {user.user_id}"
+                raise TicketLimitExceededError(msg)
 
-        ticket = secrets.token_urlsafe(get_auth_token_bytes())
-        entry = _TicketEntry(
-            user=user,
-            expires_at=self._clock.monotonic() + self._ttl,
-        )
-        self._tickets[ticket] = entry
+            ticket = secrets.token_urlsafe(get_auth_token_bytes())
+            entry = _TicketEntry(
+                user=user,
+                expires_at=self._clock.monotonic() + self._ttl,
+            )
+            self._tickets[ticket] = entry
         logger.info(
             API_WS_TICKET_ISSUED,
             user_id=user.user_id,
@@ -164,9 +175,8 @@ class WsTicketStore:
         """Validate and consume a ticket (single-use).
 
         Atomically removes the ticket via ``dict.pop`` before
-        checking expiry.  In the single-threaded asyncio event loop,
-        ``dict.pop`` cannot be interleaved with another coroutine,
-        so concurrent calls on the same ticket are safely serialised.
+        checking expiry, holding ``self._lock`` so concurrent threads
+        racing on the same ticket cannot both succeed.
 
         Args:
             ticket: Raw ticket string from the client.
@@ -174,7 +184,8 @@ class WsTicketStore:
         Returns:
             The bound ``AuthenticatedUser``, or ``None``.
         """
-        entry = self._tickets.pop(ticket, None)
+        with self._lock:
+            entry = self._tickets.pop(ticket, None)
         if entry is None:
             logger.warning(API_WS_TICKET_INVALID, reason="not_found")
             return None
@@ -200,19 +211,23 @@ class WsTicketStore:
 
         Called periodically by a background task to prevent
         unbounded memory growth from tickets that are requested
-        but never consumed.
+        but never consumed.  Holds ``self._lock`` across the
+        snapshot-and-delete pass so a concurrent ``create()`` cannot
+        change the dict size mid-iteration.
 
         Returns:
             Number of entries removed.
         """
-        now = self._clock.monotonic()
-        expired = [k for k, v in self._tickets.items() if now > v.expires_at]
-        for k in expired:
-            self._tickets.pop(k, None)
+        with self._lock:
+            now = self._clock.monotonic()
+            expired = [k for k, v in self._tickets.items() if now > v.expires_at]
+            for k in expired:
+                self._tickets.pop(k, None)
+            remaining = len(self._tickets)
         if expired:
             logger.info(
                 API_WS_TICKET_CLEANUP,
                 removed=len(expired),
-                remaining=len(self._tickets),
+                remaining=remaining,
             )
         return len(expired)

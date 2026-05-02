@@ -2,10 +2,18 @@
 
 Prevents replay attacks by tracking nonces and validating
 timestamps within a configurable window.
+
+The mutating ``check`` method holds a ``threading.Lock`` so concurrent
+threadpool-dispatched webhook handlers cannot both pass the nonce
+duplicate test and insert the same nonce.  Without the lock, two
+identical webhook deliveries arriving simultaneously could each see
+the nonce as fresh (line 192) and both proceed (line 199), losing the
+replay-protection guarantee.
 """
 
 import hashlib
 import math
+import threading
 from collections import OrderedDict
 
 from synthorg.core.clock import Clock, SystemClock
@@ -81,6 +89,7 @@ class ReplayProtector:
         self._max_entries = max_entries
         self._seen: OrderedDict[str, float] = OrderedDict()
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._lock = threading.Lock()
 
     def check_freshness(self, timestamp: float | None) -> bool:
         """Validate timestamp staleness only (no nonce dedup).
@@ -119,7 +128,7 @@ class ReplayProtector:
             return False
         return True
 
-    def check(
+    def check(  # noqa: PLR0911
         self,
         *,
         nonce: str | None,
@@ -168,43 +177,55 @@ class ReplayProtector:
             )
             return False
 
-        self._evict(now)
+        if nonce is None:
+            with self._lock:
+                self._evict_locked(now)
+            return True
 
-        if nonce is not None:
-            # Reject oversized nonces before touching the cache.
-            # An attacker who could send arbitrarily long nonces
-            # would otherwise be able to make each hash computation
-            # increasingly expensive even though the cache entry
-            # itself is fixed-size.
-            if len(nonce) > MAX_NONCE_CHARS:
-                logger.warning(
-                    WEBHOOK_REPLAY_DETECTED,
-                    reason="nonce exceeds max size",
-                    nonce_length=len(nonce),
-                    max_nonce_chars=MAX_NONCE_CHARS,
-                )
-                return False
-            # Store a fixed-size SHA-256 digest instead of the raw
-            # attacker-controlled string. Bounds per-entry memory
-            # independent of nonce length and removes any concern
-            # about echoing the nonce back in log output below.
-            key = _fingerprint_nonce(nonce)
+        # Reject oversized nonces before touching the cache.
+        # An attacker who could send arbitrarily long nonces
+        # would otherwise be able to make each hash computation
+        # increasingly expensive even though the cache entry
+        # itself is fixed-size.
+        if len(nonce) > MAX_NONCE_CHARS:
+            logger.warning(
+                WEBHOOK_REPLAY_DETECTED,
+                reason="nonce exceeds max size",
+                nonce_length=len(nonce),
+                max_nonce_chars=MAX_NONCE_CHARS,
+            )
+            return False
+
+        # Store a fixed-size SHA-256 digest instead of the raw
+        # attacker-controlled string. Bounds per-entry memory
+        # independent of nonce length and removes any concern
+        # about echoing the nonce back in log output below.
+        key = _fingerprint_nonce(nonce)
+        with self._lock:
+            self._evict_locked(now)
             if key in self._seen:
-                logger.warning(
-                    WEBHOOK_REPLAY_DETECTED,
-                    reason="duplicate nonce",
-                    nonce_fingerprint=key[:16],
-                )
-                return False
-            self._seen[key] = now
-            # Bound the store: evict oldest insertion(s) if over limit.
-            while len(self._seen) > self._max_entries:
-                self._seen.popitem(last=False)
+                duplicate = True
+            else:
+                duplicate = False
+                self._seen[key] = now
+                # Bound the store: evict oldest insertion(s) if over limit.
+                while len(self._seen) > self._max_entries:
+                    self._seen.popitem(last=False)
+        if duplicate:
+            logger.warning(
+                WEBHOOK_REPLAY_DETECTED,
+                reason="duplicate nonce",
+                nonce_fingerprint=key[:16],
+            )
+            return False
 
         return True
 
-    def _evict(self, now: float) -> None:
-        """Remove nonces older than the window."""
+    def _evict_locked(self, now: float) -> None:
+        """Remove nonces older than the window.
+
+        Caller must hold ``self._lock``.
+        """
         cutoff = now - self._window
         # OrderedDict preserves insertion order; stop at the first
         # non-expired entry since later insertions are always newer.

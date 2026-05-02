@@ -8,6 +8,7 @@ receives projected ``StreamEvent`` objects.
 
 import asyncio
 import contextlib
+from collections import OrderedDict
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -15,14 +16,18 @@ from synthorg.communication.event_stream.types import (
     AgUiEventType,
     StreamEvent,
 )
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.event_stream import (
+    EVENT_STREAM_HUB_PUBLISH_DEDUPED,
     EVENT_STREAM_HUB_PUBLISH_FAILED,
 )
 
 logger = get_logger(__name__)
 
 _DEFAULT_MAX_QUEUE_SIZE = 256
+_DEFAULT_DEDUP_TTL_SECONDS = 60.0
+_DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION = 1024
 
 
 class EventStreamHub:
@@ -38,14 +43,36 @@ class EventStreamHub:
             publisher).
     """
 
-    __slots__ = ("_lock", "_max_queue_size", "_subscribers")
+    __slots__ = (
+        "_clock",
+        "_dedup_max_entries_per_session",
+        "_dedup_ttl_seconds",
+        "_lock",
+        "_max_queue_size",
+        "_seen_event_ids",
+        "_subscribers",
+    )
 
     def __init__(
         self,
         max_queue_size: int = _DEFAULT_MAX_QUEUE_SIZE,
+        *,
+        dedup_ttl_seconds: float = _DEFAULT_DEDUP_TTL_SECONDS,
+        dedup_max_entries_per_session: int = _DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION,
+        clock: Clock | None = None,
     ) -> None:
         self._max_queue_size = max_queue_size
+        self._dedup_ttl_seconds = dedup_ttl_seconds
+        self._dedup_max_entries_per_session = dedup_max_entries_per_session
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._subscribers: dict[str, list[asyncio.Queue[StreamEvent]]] = {}
+        # Per-session insertion-ordered map of ``event.id`` ->
+        # ``monotonic_seen_at``. Bounded per session and TTL-evicted on
+        # publish so a long-lived session cannot grow the dedup window
+        # without bound. Audit #133: retried publishes (e.g. webhook
+        # handler that catches a transient publish failure and retries)
+        # would otherwise emit the same event twice to all subscribers.
+        self._seen_event_ids: dict[str, OrderedDict[str, float]] = {}
         self._lock = asyncio.Lock()
 
     async def subscribe(
@@ -93,6 +120,12 @@ class EventStreamHub:
         Best-effort: if a subscriber queue is full, the event is
         dropped for that subscriber (never blocks the publisher).
 
+        Deduplicates by ``event.id`` within a per-session sliding
+        window so an upstream retry (e.g. webhook handler that
+        catches a transient publish failure and retries) cannot
+        double-deliver. The first publish wins; subsequent publishes
+        with the same id within the TTL are skipped and logged.
+
         The subscriber list is snapshotted under the lock and
         ``put_nowait`` is invoked outside the lock so a slow consumer's
         ``QueueFull`` warning cannot serialize other publishers behind
@@ -101,7 +134,17 @@ class EventStreamHub:
         Args:
             event: The stream event to publish.
         """
+        now = self._clock.monotonic()
         async with self._lock:
+            if self._is_duplicate_locked(event, now):
+                logger.warning(
+                    EVENT_STREAM_HUB_PUBLISH_DEDUPED,
+                    session_id=event.session_id,
+                    event_id=event.id,
+                    ttl_seconds=self._dedup_ttl_seconds,
+                )
+                return
+            self._record_published_locked(event, now)
             queues_snapshot = list(self._subscribers.get(event.session_id, ()))
         if not queues_snapshot:
             return
@@ -115,6 +158,43 @@ class EventStreamHub:
                     event_id=event.id,
                     note="Subscriber queue full, event dropped",
                 )
+
+    def _is_duplicate_locked(self, event: StreamEvent, now: float) -> bool:
+        """Return ``True`` if *event* was already published within the TTL.
+
+        Caller must hold ``self._lock``. Evicts expired entries from
+        the per-session window before testing membership so a stale
+        entry does not falsely register as a duplicate.
+        """
+        seen = self._seen_event_ids.get(event.session_id)
+        if seen is None:
+            return False
+        cutoff = now - self._dedup_ttl_seconds
+        while seen:
+            oldest_id, oldest_ts = next(iter(seen.items()))
+            if oldest_ts >= cutoff:
+                break
+            del seen[oldest_id]
+        if not seen:
+            del self._seen_event_ids[event.session_id]
+            return False
+        return event.id in seen
+
+    def _record_published_locked(
+        self,
+        event: StreamEvent,
+        now: float,
+    ) -> None:
+        """Record *event* as published in the per-session dedup window.
+
+        Caller must hold ``self._lock``. Bounds each session's window
+        by ``self._dedup_max_entries_per_session`` so a single noisy
+        session cannot exhaust memory.
+        """
+        seen = self._seen_event_ids.setdefault(event.session_id, OrderedDict())
+        seen[event.id] = now
+        while len(seen) > self._dedup_max_entries_per_session:
+            seen.popitem(last=False)
 
     async def publish_raw(
         self,
