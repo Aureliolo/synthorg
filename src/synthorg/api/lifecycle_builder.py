@@ -258,11 +258,11 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 )
                 task_engine.register_observer(_wf_observer)
 
-        # Wire OAuthStateService once persistence + the
-        # ``oauth_states`` repository is available.  Audit
-        # ``68-state-mutation-leaks`` flagged the direct
-        # ``persistence.oauth_states.save(...)`` write in
-        # ``OAuthController.initiate_flow``.
+        # Wire ``OAuthStateService`` once persistence + the
+        # ``oauth_states`` repository are available.  Owns the only
+        # durable write for OAuth-flow initiation so the
+        # ``SECURITY_OAUTH_STATE_PERSISTED`` event fires alongside
+        # every save.
         if (
             persistence is not None
             and getattr(persistence, "is_connected", False)
@@ -291,12 +291,11 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     exc_info=True,
                 )
 
-        # Wire TrainingPlanService once persistence + the
+        # Wire ``TrainingPlanService`` once persistence + the
         # ``training_plans`` / ``training_results`` repositories are
-        # available.  Audit ``68-state-mutation-leaks`` flagged the
-        # five direct ``persistence.training_plans.save(...)`` writes
-        # in ``TrainingController``; routing them through the service
-        # centralises the audit log without changing wire behaviour.
+        # available.  Centralises every plan-CRUD write the
+        # controller previously made directly so audit logging
+        # cannot regress when a new write path is added.
         if (
             persistence is not None
             and getattr(persistence, "is_connected", False)

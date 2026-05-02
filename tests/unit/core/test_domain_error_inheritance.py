@@ -1,23 +1,23 @@
 """Every registered domain-error base inherits from ``DomainError``.
 
-Audit ``34-error-handling-consistency`` flagged eight error hierarchies
-(plus the memory family) whose base classes declared the RFC 9457
+Several error hierarchies (budget, engine, providers, tools,
+communication, ontology, integrations, memory) declared the RFC 9457
 ClassVars (``status_code``, ``error_code``, ``error_category``,
 ``retryable``, ``default_message``) but inherited from bare
-``Exception``.  That meant ``DomainError.__init_subclass__`` never ran
-on any subclass, so a typo'd ``error_code`` whose first digit no
-longer matches the declared ``error_category`` would slip through to
-runtime.
+``Exception``.  Without ``DomainError`` on the MRO,
+``DomainError.__init_subclass__`` never ran on any subclass -- a
+typo'd ``error_code`` whose first digit no longer matches the
+declared ``error_category`` would slip through to runtime.
 
-Bundle B re-bases each of those classes onto ``DomainError`` so the
-prefix-vs-category contract is enforced at class-definition time.
-This test pins the inheritance so a future revert (back to ``Exception``)
+Re-basing each of those classes onto ``DomainError`` enforces the
+prefix-vs-category contract at class-definition time.  This test
+pins the inheritance so a future revert (back to ``Exception``)
 fails the suite immediately.
 
-The test also imports each module so the ``__init_subclass__`` validator
-runs once for every subclass in the hierarchy -- if a typed mismatch
-slips into a future subclass, the import side-effect raises ``TypeError``
-before the assertions ever run.
+The test also imports each module so the ``__init_subclass__``
+validator runs once for every subclass in the hierarchy -- if a
+typed mismatch slips into a future subclass, the import side-effect
+raises ``TypeError`` before the assertions ever run.
 """
 
 import pytest
@@ -102,7 +102,7 @@ def test_base_inherits_from_domain_error(cls: type[BaseException]) -> None:
     assert issubclass(cls, DomainError), (
         f"{cls.__name__} must inherit from DomainError so the "
         f"error_code-prefix-vs-error_category validator runs on its "
-        f"subclasses (audit 34-error-handling-consistency)."
+        f"subclasses."
     )
 
 

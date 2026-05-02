@@ -107,10 +107,10 @@ class TestCreateBackup:
     async def test_create_backup_propagates_in_progress(self) -> None:
         """BackupInProgressError propagates to handle_backup_error.
 
-        Audit 147-error-mapping-inconsistency: the controller no
-        longer translates BackupInProgressError to ConflictError --
-        ``handle_backup_error`` already maps it to 409 with the
-        domain-specific RESOURCE_CONFLICT envelope.
+        The controller does not translate ``BackupInProgressError``
+        to ``ConflictError``; ``handle_backup_error`` maps it to
+        409 with the domain-specific ``RESOURCE_CONFLICT`` envelope
+        so clients can discriminate the conflict source.
         """
         state, service = _make_state_and_service()
         service.create_backup = AsyncMock(
@@ -163,10 +163,10 @@ class TestGetBackup:
     async def test_get_backup_propagates_not_found(self) -> None:
         """BackupNotFoundError propagates to handle_backup_error.
 
-        Audit 147-error-mapping-inconsistency: the controller no
-        longer translates BackupNotFoundError to the generic
-        NotFoundError (RESOURCE_NOT_FOUND) -- ``handle_backup_error``
-        maps it to 404 with the domain-specific RECORD_NOT_FOUND
+        The controller does not translate ``BackupNotFoundError``
+        to the generic ``NotFoundError`` (which would collapse to
+        ``RESOURCE_NOT_FOUND``).  ``handle_backup_error`` maps it
+        to 404 with the domain-specific ``RECORD_NOT_FOUND``
         envelope so clients can discriminate which resource type
         was missing.
         """
@@ -203,8 +203,12 @@ class TestDeleteBackup:
         assert result is None
 
     async def test_delete_backup_propagates_not_found(self) -> None:
-        """BackupNotFoundError propagates to handle_backup_error
-        (audit 147-error-mapping-inconsistency)."""
+        """BackupNotFoundError propagates to handle_backup_error.
+
+        ``handle_backup_error`` owns the 404 + ``RECORD_NOT_FOUND``
+        translation; controller-level translation would collapse
+        the type into the generic ``NotFoundError``.
+        """
         state, service = _make_state_and_service()
         service.delete_backup = AsyncMock(
             side_effect=BackupNotFoundError("gone"),

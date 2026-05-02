@@ -4,12 +4,7 @@ The :class:`WorkflowVersionController.rollback_workflow` handler
 previously called ``repo.save(rolled_back)`` directly on the
 workflow_definitions repository, then constructed a fresh
 :class:`VersioningService` to record the post-rollback snapshot.
-Audit ``68-state-mutation-leaks`` flagged the direct repo write as a
-service-boundary bypass that must route through one cohesive service
-so audit logging cannot regress when a new write path is added to the
-rollback contract.
-
-This service centralises:
+Routing both writes through one cohesive service centralises:
 
 1. The durable definition save (raises :class:`VersionConflictError`
    on optimistic-concurrency mismatch -- the controller still owns

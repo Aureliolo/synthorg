@@ -52,8 +52,7 @@ class BackendUnsupportedError(DomainError):
     event).
 
     Inherits :class:`DomainError` so the prefix-vs-category validator
-    runs at class-definition time (audit
-    ``34-error-handling-consistency``); the inherited
+    runs at class-definition time; the inherited
     ``ErrorCode.INTERNAL_ERROR`` default (8000, ``INTERNAL`` category)
     matches the prefix and emits a 500 by default through the API
     handler.  ``__slots__`` is kept on the local attribute set so

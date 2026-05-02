@@ -1,11 +1,10 @@
 """Cross-cutting controller response helpers.
 
-Audit ``138-inline-cross-cutting-concerns`` flagged 17+ controller call
-sites that hand-rolled the same ``if resource is None: log + raise
-NotFoundError`` block.  This module centralises that pattern so the
-log-then-raise ordering, the structured kwargs, and the
-domain-specific :class:`ErrorCode` selection are owned by one helper
-that every controller reuses.
+Many controllers used to hand-roll the same ``if resource is None:
+log + raise NotFoundError`` block.  This module centralises that
+pattern so the log-then-raise ordering, the structured kwargs, and
+the domain-specific :class:`ErrorCode` selection are owned by one
+helper that every controller reuses.
 """
 
 from collections.abc import Mapping  # noqa: TC003 -- runtime annotation
@@ -32,7 +31,7 @@ def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surf
 
     The single canonical spelling for the ``if resource is None: log
     then raise`` pattern that recurred across 17+ controller call
-    sites (audit ``138-inline-cross-cutting-concerns``).  The helper:
+    sites.  The helper:
 
     1. Logs ``log_event`` at WARNING with structured kwargs so the
        miss is observable in the audit trail.

@@ -39,7 +39,7 @@ from synthorg.meta.rules.custom import (
     DeclarativeRule,
     MetricDescriptor,
 )
-from synthorg.meta.rules.service import CustomRuleNotFoundError, CustomRulesService
+from synthorg.meta.rules.service import CustomRulesService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
@@ -339,19 +339,15 @@ class CustomRuleController(Controller):
         Returns:
             The updated rule definition.
         """
+        # ``CustomRuleNotFoundError`` inherits ``NotFoundError`` so
+        # the central handler maps it to 404 directly; the previous
+        # controller-level ``raise NotFoundError(str(exc))`` collapsed
+        # the type and lost the discriminating envelope.
         try:
             updated = await _service(state).update(
                 NotBlankStr(rule_id),
                 data.model_dump(exclude_none=True),
             )
-        except CustomRuleNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="custom_rule",
-                rule_id=rule_id,
-                operation="update",
-            )
-            raise NotFoundError(str(exc)) from exc
         except ConstraintViolationError as exc:
             logger.warning(
                 API_RESOURCE_CONFLICT,
@@ -390,16 +386,9 @@ class CustomRuleController(Controller):
             state: Litestar application state.
             rule_id: UUID of the rule to delete.
         """
-        try:
-            await _service(state).delete(NotBlankStr(rule_id))
-        except CustomRuleNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="custom_rule",
-                rule_id=rule_id,
-                operation="delete",
-            )
-            raise NotFoundError(str(exc)) from exc
+        # ``CustomRuleNotFoundError`` propagates with its inherited
+        # ``NotFoundError`` envelope.
+        await _service(state).delete(NotBlankStr(rule_id))
         logger.info(
             SECURITY_CUSTOM_RULE_DELETED,
             rule=rule_id,
@@ -426,16 +415,9 @@ class CustomRuleController(Controller):
         Returns:
             The updated rule definition.
         """
-        try:
-            toggled = await _service(state).toggle(NotBlankStr(rule_id))
-        except CustomRuleNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="custom_rule",
-                rule_id=rule_id,
-                operation="toggle",
-            )
-            raise NotFoundError(str(exc)) from exc
+        # ``CustomRuleNotFoundError`` propagates with its inherited
+        # ``NotFoundError`` envelope.
+        toggled = await _service(state).toggle(NotBlankStr(rule_id))
         logger.info(
             SECURITY_CUSTOM_RULE_TOGGLED,
             rule=rule_id,

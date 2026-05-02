@@ -365,12 +365,11 @@ class WorkflowVersionController(Controller):
         )
 
         # Route the durable save + post-rollback snapshot through
-        # WorkflowRollbackService so audit logging cannot regress when
-        # a new write path lands in the rollback contract (audit
-        # 68-state-mutation-leaks).  The service raises
-        # VersionConflictError on optimistic-concurrency mismatch; the
-        # 409 translation stays here so the controller owns the HTTP
-        # response shape.
+        # ``WorkflowRollbackService`` so audit logging cannot regress
+        # when a new write path lands in the rollback contract.  The
+        # service raises ``VersionConflictError`` on
+        # optimistic-concurrency mismatch; the 409 translation stays
+        # here so the controller owns the HTTP response shape.
         rollback_service = WorkflowRollbackService(
             definition_repo=repo,
             version_repo=version_repo,

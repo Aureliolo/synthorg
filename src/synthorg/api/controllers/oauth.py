@@ -15,12 +15,11 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathName  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- Pydantic field annotation evaluated at runtime
 )
 from synthorg.integrations.errors import (
-    ConnectionNotFoundError,
     InvalidStateError,
     SecretRetrievalError,
     TokenExchangeFailedError,
@@ -85,12 +84,13 @@ class OAuthController(Controller):
 
         Returns the authorization URL for the user to visit.
         """
+        # ``ConnectionNotFoundError`` propagates to the central
+        # handler with its class-level 404 + ``CONNECTION_NOT_FOUND``
+        # mapping; controller-level translation collapses the type
+        # into the generic ``NotFoundError``.
         connection_name = data.connection_name
         catalog = state["app_state"].connection_catalog
-        try:
-            conn = await catalog.get_or_raise(connection_name)
-        except ConnectionNotFoundError as exc:
-            raise NotFoundError(str(exc)) from exc
+        conn = await catalog.get_or_raise(connection_name)
 
         credentials = await catalog.get_credentials(connection_name)
 
@@ -126,11 +126,10 @@ class OAuthController(Controller):
             redirect_uri=redirect_uri,
         )
 
-        # Route the persistence write through OAuthStateService so the
-        # audit-grade SECURITY_OAUTH_STATE_PERSISTED event accompanies
-        # every save (audit 68-state-mutation-leaks). Raises 503 when
-        # the service is not yet wired (matches every other
-        # persistence-bound facade).
+        # Route the persistence write through ``OAuthStateService`` so
+        # the audit-grade ``SECURITY_OAUTH_STATE_PERSISTED`` event
+        # accompanies every save. Raises 503 when the service is not
+        # yet wired (matches every other persistence-bound facade).
         bound_state = await state["app_state"].oauth_state_service.persist_initiation(
             oauth_state,
             connection_name=conn.name,
@@ -209,11 +208,10 @@ class OAuthController(Controller):
         connection_name: PathName,
     ) -> ApiResponse[dict[str, Any]]:
         """Check the OAuth token status for a connection."""
+        # ``ConnectionNotFoundError`` propagates with its class-level
+        # 404 + ``CONNECTION_NOT_FOUND`` envelope.
         catalog = state["app_state"].connection_catalog
-        try:
-            conn = await catalog.get_or_raise(connection_name)
-        except ConnectionNotFoundError as exc:
-            raise NotFoundError(str(exc)) from exc
+        conn = await catalog.get_or_raise(connection_name)
 
         # ``has_token`` is true only when the OAuth exchange has
         # actually completed -- derive it from the token expiry

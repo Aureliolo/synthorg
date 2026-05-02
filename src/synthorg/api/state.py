@@ -364,7 +364,8 @@ class AppState(AppStateServicesMixin):
         # Wired in lifecycle_builder once persistence is connected;
         # the OAuth controller raises 503 via the
         # ``oauth_state_service`` property when accessed before it
-        # is available (audit 68-state-mutation-leaks).
+        # is available, matching every other persistence-bound
+        # service facade.
         self._oauth_state_service: OAuthStateService | None = None
         self._health_prober_service = health_prober_service
         self._tunnel_provider = tunnel_provider

@@ -19,6 +19,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -27,6 +28,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.enums import TaskStatus  # noqa: TC001
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
@@ -226,10 +228,14 @@ class TaskController(Controller):
             task = await app_state.task_engine.get_task(task_id)
         except TaskInternalError as exc:
             raise _map_task_engine_errors(exc, task_id=task_id) from exc
-        if task is None:
-            msg = f"Task {task_id!r} not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="task", id=task_id)
-            raise NotFoundError(msg)
+        task = require_resource_or_404(
+            task,
+            resource_type="task",
+            identifier=task_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+            code=ErrorCode.TASK_NOT_FOUND,
+        )
         return ApiResponse(data=task)
 
     @post(

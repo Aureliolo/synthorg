@@ -11,8 +11,7 @@ class OrgMemoryError(DomainError):
     """Base exception for all org memory operations.
 
     Inherits :class:`DomainError` so subclasses get the prefix-vs-category
-    validator at class-definition time (audit
-    ``34-error-handling-consistency``).
+    validator at class-definition time.
     """
 
 

@@ -113,15 +113,16 @@ class BackupController(Controller):
         app_state: AppState = state.app_state
 
         async def _do_backup() -> BackupManifest:
-            # Audit 147-error-mapping-inconsistency: BackupError +
-            # subclasses propagate directly to ``handle_backup_error``
-            # which already maps BackupInProgressError to 409,
-            # BackupNotFoundError to 404, and other BackupError types
-            # to a scrubbed 5xx with the right RFC 9457 envelope.
-            # The previous controller-level translation lost the
-            # domain-specific BackupError hierarchy by routing through
-            # the generic ConflictError / InternalServerException
-            # paths.
+            # ``BackupError`` and its subclasses propagate directly to
+            # ``handle_backup_error`` which maps
+            # ``BackupInProgressError`` to 409,
+            # ``BackupNotFoundError`` to 404, and any other
+            # ``BackupError`` type to a scrubbed 5xx with the
+            # RFC 9457 envelope. Translating here would route
+            # through the generic ``ConflictError`` /
+            # ``InternalServerException`` paths and drop the
+            # domain-specific ``BackupError`` type the handler
+            # discriminates on.
             return await app_state.backup_service.create_backup(
                 BackupTrigger.MANUAL,
             )
@@ -176,11 +177,10 @@ class BackupController(Controller):
             if cursor is None
             else decode_cursor(cursor, secret=app_state.cursor_secret)
         )
-        # Audit 147-error-mapping-inconsistency: let BackupError
-        # propagate to handle_backup_error so the response carries
-        # the structured RFC 9457 envelope; the previous
-        # InternalServerException re-raise dropped the BackupError
-        # type and forced an unstructured 500 response.
+        # ``BackupError`` propagates to ``handle_backup_error`` so the
+        # response carries the structured RFC 9457 envelope; an
+        # ``InternalServerException`` re-raise here would drop the
+        # ``BackupError`` type and force an unstructured 500.
         # Fetch ``limit + 1`` so we can detect that another page
         # follows without a second full-directory scan.
         backups = await app_state.backup_service.list_backups(
@@ -211,13 +211,12 @@ class BackupController(Controller):
         Returns:
             Full backup manifest.
         """
-        # Audit 147-error-mapping-inconsistency: BackupNotFoundError
-        # propagates to handle_backup_error which maps it to 404
-        # with error_code=RECORD_NOT_FOUND -- preserves the
-        # domain-specific BackupNotFoundError type instead of
-        # collapsing it into the generic NotFoundError /
-        # RESOURCE_NOT_FOUND that controller-level translation
-        # produced.
+        # ``BackupNotFoundError`` propagates to
+        # ``handle_backup_error`` which maps it to 404 with
+        # ``error_code=RECORD_NOT_FOUND``. A controller-level
+        # translation to the generic ``NotFoundError`` collapses
+        # the type into ``RESOURCE_NOT_FOUND`` and clients lose
+        # the ability to discriminate which resource was missing.
         app_state: AppState = state.app_state
         manifest = await app_state.backup_service.get_backup(backup_id)
         return ApiResponse(data=manifest)
@@ -247,11 +246,11 @@ class BackupController(Controller):
                 so all three backup-mutation endpoints share the same
                 domain-error mapping.
         """
-        # Audit 147-error-mapping-inconsistency: BackupError +
-        # subclasses propagate to handle_backup_error so the
-        # response carries the structured envelope (404 +
-        # RECORD_NOT_FOUND for BackupNotFoundError, 409 +
-        # RESOURCE_CONFLICT for BackupInProgressError).
+        # ``BackupError`` and its subclasses propagate to
+        # ``handle_backup_error`` so the response carries the
+        # structured envelope (404 + ``RECORD_NOT_FOUND`` for
+        # ``BackupNotFoundError``, 409 + ``RESOURCE_CONFLICT`` for
+        # ``BackupInProgressError``).
         app_state: AppState = state.app_state
         await app_state.backup_service.delete_backup(backup_id)
 

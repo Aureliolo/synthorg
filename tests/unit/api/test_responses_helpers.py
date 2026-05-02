@@ -1,8 +1,7 @@
 """Unit tests for :func:`synthorg.api.responses.require_resource_or_404`.
 
-The helper centralises the ``if resource is None: log + raise`` pattern
-that recurred across 17+ controllers (audit
-``138-inline-cross-cutting-concerns``).  These tests pin:
+The helper centralises the ``if resource is None: log + raise``
+pattern that recurred across many controllers.  These tests pin:
 
 - Happy path: returns the value unchanged when not ``None``.
 - Sad path: raises :class:`NotFoundError` with the

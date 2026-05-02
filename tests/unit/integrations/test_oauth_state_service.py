@@ -2,8 +2,7 @@
 
 The service is the audit-aware facade ``OAuthController.initiate_flow``
 routes its single ``persistence.oauth_states.save(...)`` write
-through (audit ``68-state-mutation-leaks``).  These tests pin the
-delegate-and-bind contract:
+through.  These tests pin the delegate-and-bind contract:
 
 - ``persist_initiation`` calls the repo's ``save`` exactly once.
 - The persisted state has its ``connection_name`` bound to the value

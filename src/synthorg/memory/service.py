@@ -83,12 +83,11 @@ _PriorSettingState = Literal["was_set", "was_unset", "read_failed"]
 class CheckpointNotFoundError(DomainError):
     """Raised when a deploy/rollback/delete targets a missing checkpoint.
 
-    Inherits :class:`DomainError` (audit ``34-error-handling-consistency``)
-    so the ``__init_subclass__`` validator sees the inherited
-    ``ErrorCode.INTERNAL_ERROR`` (8000, prefix 8) matches the
-    ``INTERNAL`` category.  Subclasses that need a more specific 404
-    code should override the ``error_code`` / ``error_category`` /
-    ``status_code`` ClassVars.
+    Inherits :class:`DomainError` so the ``__init_subclass__``
+    validator sees the inherited ``ErrorCode.INTERNAL_ERROR`` (8000,
+    prefix 8) matches the ``INTERNAL`` category.  Subclasses that
+    need a more specific 404 code should override the ``error_code``
+    / ``error_category`` / ``status_code`` ClassVars.
     """
 
     __slots__ = ()

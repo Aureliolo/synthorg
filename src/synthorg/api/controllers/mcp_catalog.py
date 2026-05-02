@@ -18,17 +18,14 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
-from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
 from synthorg.integrations.errors import (
-    CatalogEntryNotFoundError,
-    ConnectionNotFoundError,
     InvalidConnectionAuthError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
-    MCP_CATALOG_ENTRY_NOT_FOUND,
     MCP_SERVER_INSTALL_FAILED,
     MCP_SERVER_UNINSTALL_NOOP,
 )
@@ -189,18 +186,17 @@ class MCPCatalogController(Controller):
         state: State,
         entry_id: PathId,
     ) -> ApiResponse[CatalogEntry]:
-        """Get a single catalog entry by ID."""
+        """Get a single catalog entry by ID.
+
+        ``CatalogEntryNotFoundError`` propagates directly to the
+        central exception handler (its class-level ``status_code``
+        / ``error_code`` map it to 404 + ``RECORD_NOT_FOUND``).  The
+        previous controller-level translation collapsed the type
+        into the generic ``NotFoundError`` and lost the discriminating
+        envelope.
+        """
         service = state["app_state"].mcp_catalog_service
-        try:
-            entry = await service.get_entry(entry_id)
-        except CatalogEntryNotFoundError as exc:
-            logger.warning(
-                MCP_CATALOG_ENTRY_NOT_FOUND,
-                entry_id=entry_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise NotFoundError(str(exc)) from exc
+        entry = await service.get_entry(entry_id)
         return ApiResponse(data=entry)
 
     @post(
@@ -243,24 +239,6 @@ class MCPCatalogController(Controller):
                 connection_catalog=connection_catalog,
                 installations_repo=installations_repo,
             )
-        except CatalogEntryNotFoundError as exc:
-            logger.warning(
-                MCP_CATALOG_ENTRY_NOT_FOUND,
-                entry_id=entry_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise NotFoundError(str(exc)) from exc
-        except ConnectionNotFoundError as exc:
-            logger.warning(
-                MCP_SERVER_INSTALL_FAILED,
-                entry_id=entry_id,
-                connection_name=connection_name,
-                reason="connection_not_found",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise NotFoundError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,

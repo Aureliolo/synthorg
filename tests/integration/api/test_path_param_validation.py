@@ -1,10 +1,12 @@
 """Path-parameter length validation on integration controllers.
 
-The audit (``22-input-validation-gaps``) flagged 7 endpoints whose path
-parameters were typed as bare ``str`` with no length cap.  Bundle B
-replaced them with ``PathName``/``PathId``/``PathField``/``PathEventType``
-aliases (``synthorg.api.path_params``) -- each carries
-``Parameter(min_length=1, max_length=...)``.
+The connections, mcp_catalog, oauth, and webhooks controllers expose
+path parameters that flow into database queries, secret lookups, and
+external-facing webhook routes.  ``PathName`` / ``PathId`` /
+``PathField`` / ``PathEventType`` aliases (``synthorg.api.path_params``)
+each carry ``Parameter(min_length=1, max_length=...)`` so an
+attacker-controllable identifier cannot reach the persistence layer
+unbounded.
 
 These tests drive the real Litestar route through ``TestClient`` so a
 regression that switches a typed alias back to bare ``str`` (or
@@ -12,9 +14,8 @@ removes the bound) surfaces here, not in production.
 
 Run targets a 200-character path component on every covered endpoint
 and asserts the framework rejects it with a 4xx (the alias caps at 64
-or 128 depending on slot).  Per audit-22 these endpoints had no upper
-bound at all before this bundle; the new typed alias is the only line
-of defence at the edge.
+or 128 depending on slot).  The typed alias is the only line of
+defence at the edge for these endpoints.
 """
 
 from collections.abc import Iterator
@@ -180,7 +181,7 @@ def path_param_client() -> Iterator[TestClient[Any]]:
 
 @pytest.mark.integration
 class TestConnectionsPathParams:
-    """``connections.py`` -- 5 endpoints with bare ``str`` path params (audit 22)."""
+    """``connections.py`` -- typed path params on the 5 GET endpoints."""
 
     def test_get_connection_rejects_oversized_name(
         self, path_param_client: TestClient[Any]
@@ -217,7 +218,7 @@ class TestConnectionsPathParams:
 
 @pytest.mark.integration
 class TestMcpCatalogPathParams:
-    """``mcp_catalog.py`` -- get + uninstall (audit 22)."""
+    """``mcp_catalog.py`` -- typed entry_id on get + uninstall."""
 
     def test_get_entry_rejects_oversized_id(
         self, path_param_client: TestClient[Any]
@@ -238,7 +239,7 @@ class TestMcpCatalogPathParams:
 
 @pytest.mark.integration
 class TestOAuthPathParams:
-    """``oauth.py`` -- token_status (audit 22)."""
+    """``oauth.py`` -- typed connection_name on token_status."""
 
     def test_token_status_rejects_oversized_connection_name(
         self, path_param_client: TestClient[Any]
@@ -251,7 +252,7 @@ class TestOAuthPathParams:
 
 @pytest.mark.integration
 class TestWebhooksPathParams:
-    """``webhooks.py`` -- list_activity (audit 22).
+    """``webhooks.py`` -- typed connection_name on list_activity.
 
     The POST ``/{connection_name}/{event_type}`` receive endpoint is
     covered by ``test_path_param_aliases`` below.  Driving it through

@@ -197,7 +197,18 @@ class TunnelError(IntegrationError):
 
 
 class CatalogEntryNotFoundError(IntegrationError):
-    """A catalog entry with the given ID does not exist."""
+    """A catalog entry with the given ID does not exist.
+
+    Overrides the parent ``IntegrationError`` 502 default with a
+    semantic 404 + ``RECORD_NOT_FOUND`` envelope so the central
+    exception handler maps it directly without per-controller
+    catch + re-raise as ``NotFoundError``.
+    """
+
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Catalog entry not found"
 
 
 class MCPInstallError(IntegrationError):

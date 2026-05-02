@@ -356,7 +356,7 @@ class AppStateServicesMixin(_FacadesMixin):
         ``training_plans`` + ``training_results`` repositories.  The
         ``TrainingController`` routes every plan-CRUD write through
         this service so audit logging cannot regress when a new write
-        path is added (audit ``68-state-mutation-leaks``).
+        path is added.
         """
         return self._require_service(
             self._training_plan_service,
@@ -904,7 +904,7 @@ class AppStateServicesMixin(_FacadesMixin):
         ``OAuthStateService`` is the audit-aware facade over
         ``persistence.oauth_states``; the OAuth controller routes its
         single ``save(...)`` write through this service so audit
-        logging cannot regress (audit ``68-state-mutation-leaks``).
+        logging cannot regress.
         """
         return self._require_service(
             self._oauth_state_service,

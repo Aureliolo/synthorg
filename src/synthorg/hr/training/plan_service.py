@@ -2,10 +2,8 @@
 
 The :class:`TrainingController` previously called
 ``persistence.training_plans.save(...)`` and
-``persistence.training_results.save(...)`` directly.  Audit
-``68-state-mutation-leaks`` flagged five direct writes that bypass the
-service boundary every other domain mutation routes through.  This
-service centralises:
+``persistence.training_results.save(...)`` directly.  Routing every
+write through this service centralises:
 
 1. The four save sites (create, overrides update, failure, executed +
    result), each emitting a structured audit event so the durable
@@ -19,12 +17,17 @@ methods) that map one-to-one onto the controller call sites; broader
 plan-lifecycle orchestration (preview, execute, source selection,
 guards) stays on :class:`TrainingService`, which this service
 complements rather than replaces.
+
+Every other persistence-layer mutation in the controller stack
+already routes through a service for the same reason; centralising
+this one closes the remaining gap.
 """
 
 from collections.abc import Mapping  # noqa: TC003 -- runtime annotation
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.hr.training.models import (
     TrainingPlan,
     TrainingPlanStatus,
@@ -116,6 +119,11 @@ class TrainingPlanService:
         the save we WARN with the original ``plan_id`` plus the
         scrubbed error and continue, so the original execute-time
         exception still bubbles to the caller.
+
+        The catch is narrowed to :class:`PersistenceError` so a
+        non-persistence bug (typing, validation, programming error)
+        in this code path surfaces as the unexpected error it is
+        rather than getting swallowed under the best-effort label.
         """
         failed_plan = plan.model_copy(
             update={
@@ -125,7 +133,7 @@ class TrainingPlanService:
         )
         try:
             await self._plan_repo.save(failed_plan)
-        except Exception as save_exc:
+        except PersistenceError as save_exc:
             logger.warning(
                 HR_TRAINING_PLAN_FAILED,
                 plan_id=str(plan.id),

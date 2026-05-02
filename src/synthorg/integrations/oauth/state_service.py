@@ -2,14 +2,14 @@
 
 The :class:`OAuthController` previously called
 ``persistence.oauth_states.save(...)`` directly from the
-``initiate_flow`` handler.  Audit ``68-state-mutation-leaks`` flagged
-that direct write because every other persistence-layer mutation in
-the controller stack routes through a service so audit logging cannot
-silently regress when a new field or write path is added.
+``initiate_flow`` handler.  Routing the write through this service
+centralises the durable save and the audit-grade
+:data:`SECURITY_OAUTH_STATE_PERSISTED` event so audit logging cannot
+silently regress when a new field or write path is added; every other
+persistence-layer mutation in the controller stack already follows the
+same shape.
 
-This service is the minimum surface required to centralise the one
-flagged write and the audit-grade
-:data:`SECURITY_OAUTH_STATE_PERSISTED` event that accompanies it.
+This service is the minimum surface required to cover that one write.
 The OAuth callback path (which deletes the consumed state token)
 already routes through ``handle_oauth_callback`` in
 :mod:`synthorg.integrations.oauth.callback_handler`, so it is out of

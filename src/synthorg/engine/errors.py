@@ -14,8 +14,7 @@ class EngineError(DomainError):
     """Base exception for all engine-layer errors.
 
     Inherits from :class:`DomainError` so the prefix-vs-category
-    validator runs on every subclass (audit
-    ``34-error-handling-consistency``); a typo in a subclass
+    validator runs on every subclass; a typo in a subclass
     ``error_code`` whose first digit no longer matches the declared
     ``error_category`` is rejected at class-definition time.
 

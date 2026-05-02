@@ -1,13 +1,11 @@
 """Every request DTO must reject unknown fields (``extra="forbid"``).
 
-Audit ``31-model-convention-violations`` flagged 23 request DTOs that
-silently accepted extra payload keys; the
-``scripts/check_request_dto_forbid_extra.py`` lint gate (added in the same
-bundle) widened the surface to every ``*Request`` DTO under
-``src/synthorg/api/`` -- 47 in total.  This test parametrises over that
-full inventory and asserts ``model_validate`` raises ``ValidationError``
-whose error list contains the ``extra_forbidden`` sentinel for an unknown
-``synthorg_unexpected_field`` key.
+Without ``extra="forbid"`` a request DTO silently accepts unknown
+payload keys, which masks client typos and lets fabricated capability
+flags slip through to handler logic.  The
+``scripts/check_request_dto_forbid_extra.py`` lint gate enforces the
+convention statically; this test asserts the runtime behaviour for
+every ``*Request`` DTO under ``src/synthorg/api/`` (47 in total).
 
 The bare-extra-key probe uses an empty otherwise-invalid payload on
 purpose: Pydantic still records the ``extra_forbidden`` error alongside
@@ -168,7 +166,8 @@ def test_request_dto_rejects_unknown_field(model_cls: type[BaseModel]) -> None:
     assert "extra_forbidden" in error_types, (
         f"{model_cls.__name__} accepted an unknown field; expected "
         f"'extra_forbidden' in {error_types}.  Add ``extra=\"forbid\"`` to "
-        f"its ``ConfigDict`` so the API boundary rejects typos."
+        f"its ``ConfigDict`` so the API boundary rejects typos and "
+        f"fabricated capability flags."
     )
 
 

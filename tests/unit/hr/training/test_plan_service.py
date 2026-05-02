@@ -1,8 +1,7 @@
 """Unit tests for :class:`TrainingPlanService`.
 
 The service is the audit-aware facade ``TrainingController`` routes
-its plan + result writes through (audit ``68-state-mutation-leaks``).
-These tests pin:
+its plan + result writes through.  These tests pin:
 
 - Each method delegates to the right repo with the right object.
 - ``update_overrides`` applies the diff before saving and returns
@@ -26,6 +25,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.enums import SeniorityLevel
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     ContentType,
@@ -124,13 +124,27 @@ class TestRecordFailure:
         # The original plan must not mutate -- frozen-by-default.
         assert plan.status != TrainingPlanStatus.FAILED
 
-    async def test_save_error_is_swallowed(self) -> None:
+    async def test_persistence_error_is_swallowed(self) -> None:
+        """Persistence errors swallowed; original execute exception bubbles.
+
+        ``record_failure`` is called from the controller's
+        ``execute_plan`` exception path AFTER a pipeline exception
+        already raised.  Swallowing a persistence-side save failure
+        here keeps the original failure as the one the caller sees.
+        Non-persistence exceptions still propagate.
+        """
         service, plan_repo, _ = _build_service()
-        plan_repo.save.side_effect = RuntimeError("backend down")
-        # No exception bubbles -- the controller relies on this so the
-        # original execute-time exception stays the one the caller sees.
+        plan_repo.save.side_effect = QueryError("backend down")
+        # No exception bubbles for persistence errors.
         await service.record_failure(_plan())
         plan_repo.save.assert_awaited_once()
+
+    async def test_non_persistence_error_propagates(self) -> None:
+        """Programming errors (TypeError etc.) escape the swallow scope."""
+        service, plan_repo, _ = _build_service()
+        plan_repo.save.side_effect = TypeError("programming bug")
+        with pytest.raises(TypeError):
+            await service.record_failure(_plan())
 
 
 class TestRecordExecuted:

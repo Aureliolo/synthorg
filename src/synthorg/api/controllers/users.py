@@ -18,6 +18,7 @@ from synthorg.api.guards import HumanRole, require_ceo
 from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -139,12 +140,13 @@ async def _get_user_or_404(
     user_id: str,
 ) -> User:
     """Fetch a user by ID, raising NotFoundError if missing."""
-    user = await service.get(NotBlankStr(user_id))
-    if user is None:
-        msg = f"User not found: {user_id}"
-        logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
-        raise NotFoundError(msg)
-    return user
+    return require_resource_or_404(
+        await service.get(NotBlankStr(user_id)),
+        resource_type="User",
+        identifier=user_id,
+        log_event=API_RESOURCE_NOT_FOUND,
+        operation="read",
+    )
 
 
 # -- Controller --------------------------------------------------------

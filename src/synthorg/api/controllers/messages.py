@@ -111,13 +111,12 @@ class MessageController(Controller):
                 actor_id=str(request.user.user_id),
                 reason="not_found",
             )
-            # Audit 147-error-mapping-inconsistency: previously the
-            # controller raised litestar's NotFoundException which
-            # bypasses handle_domain_error and loses the RFC 9457
-            # category / error_code triple. ``resource_not_found``
-            # routes through handle_domain_error so the response
-            # body carries the structured error envelope every other
-            # 404 in the API uses.
+            # ``resource_not_found`` routes through
+            # ``handle_domain_error`` so the response body carries
+            # the structured RFC 9457 envelope every other 404 in
+            # the API uses; ``litestar.NotFoundException`` would
+            # bypass ``handle_domain_error`` and lose the category
+            # / error_code triple.
             resource_type = "message"
             raise resource_not_found(
                 resource_type,

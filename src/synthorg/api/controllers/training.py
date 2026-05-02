@@ -203,10 +203,9 @@ class TrainingController(Controller):
             plan_kwargs["volume_caps"] = caps
 
         plan = TrainingPlan(**plan_kwargs)  # type: ignore[arg-type]
-        # Route through ``TrainingPlanService`` (audit
-        # 68-state-mutation-leaks) so the durable write + the
-        # ``HR_TRAINING_PLAN_CREATED`` audit event happen in one
-        # place.  Raises 503 when the service is not yet wired
+        # Route through ``TrainingPlanService`` so the durable write
+        # and the ``HR_TRAINING_PLAN_CREATED`` audit event happen in
+        # one place.  Raises 503 when the service is not yet wired
         # (matches every other persistence-bound facade).
         await app_state.training_plan_service.create_plan(plan)
         return ApiResponse(data=_plan_to_response(plan))
@@ -262,7 +261,7 @@ class TrainingController(Controller):
             # ``record_failure`` flips the plan to FAILED, persists it,
             # and swallows any best-effort save error after WARNing
             # so the original pipeline exception below still bubbles
-            # up to the caller (audit 68-state-mutation-leaks).
+            # up to the caller.
             await plan_service.record_failure(plan)
             logger.warning(
                 HR_TRAINING_PLAN_FAILED,
@@ -472,8 +471,8 @@ class TrainingController(Controller):
             updates["skip_training"] = data.skip_training
 
         # ``update_overrides`` applies the diff, persists the new
-        # plan, and emits HR_TRAINING_PLAN_OVERRIDES_UPDATED inside
-        # the service (audit 68-state-mutation-leaks).
+        # plan, and emits ``HR_TRAINING_PLAN_OVERRIDES_UPDATED``
+        # inside the service.
         updated = await app_state.training_plan_service.update_overrides(
             plan,
             updates=updates,

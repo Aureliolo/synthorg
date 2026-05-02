@@ -16,7 +16,7 @@ class MemoryError(DomainError):  # noqa: A001
     """Base exception for all memory operations.
 
     Inherits :class:`DomainError` so the prefix-vs-category validator
-    runs on every subclass (audit ``34-error-handling-consistency``).
+    runs on every subclass.
     Subclasses keep the inherited ``ErrorCode.INTERNAL_ERROR`` default
     (8000, ``INTERNAL`` category) -- callers that need a more specific
     code per memory failure mode should override the ClassVars on the

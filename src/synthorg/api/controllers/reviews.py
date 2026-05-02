@@ -11,6 +11,7 @@ from synthorg.api.channels import CHANNEL_REVIEWS, publish_ws_event
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import (
@@ -18,6 +19,7 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ServiceUnavailableError,
 )
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.review.models import (
     PipelineResult,
@@ -100,9 +102,15 @@ class ReviewController(Controller):
             logger.warning(REVIEW_TASK_LOOKUP_FAILED, task_id=task_id)
             msg = f"Task {task_id!r} not found"
             raise NotFoundError(msg) from exc
-        if task is None:
-            msg = f"Task {task_id!r} not found"
-            raise NotFoundError(msg)
+        task = require_resource_or_404(
+            task,
+            resource_type="Task",
+            identifier=task_id,
+            log_event=REVIEW_TASK_LOOKUP_FAILED,
+            operation="read",
+            extra_log_kwargs={"task_id": task_id},
+            code=ErrorCode.TASK_NOT_FOUND,
+        )
         result = await pipeline.run(task)
         return ApiResponse(data=result)
 
@@ -147,9 +155,15 @@ class ReviewController(Controller):
             logger.warning(REVIEW_TASK_LOOKUP_FAILED, task_id=task_id)
             msg = f"Task {task_id!r} not found"
             raise NotFoundError(msg) from exc
-        if task is None:
-            msg = f"Task {task_id!r} not found"
-            raise NotFoundError(msg)
+        task = require_resource_or_404(
+            task,
+            resource_type="Task",
+            identifier=task_id,
+            log_event=REVIEW_TASK_LOOKUP_FAILED,
+            operation="decide",
+            extra_log_kwargs={"task_id": task_id},
+            code=ErrorCode.TASK_NOT_FOUND,
+        )
         stage = _find_stage(pipeline.stages, stage_name)
         if stage is None:
             msg = f"Stage {stage_name!r} not found in pipeline"

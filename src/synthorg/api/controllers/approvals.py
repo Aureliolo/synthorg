@@ -36,12 +36,12 @@ from synthorg.api.guards import (
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import (
     ConflictError,
-    NotFoundError,
     UnauthorizedError,
     ValidationError,
 )
@@ -395,16 +395,13 @@ async def _get_approval_or_404(
     Raises:
         NotFoundError: If the approval is not found.
     """
-    item = await app_state.approval_store.get(approval_id)
-    if item is None:
-        msg = f"Approval {approval_id!r} not found"
-        logger.warning(
-            API_RESOURCE_NOT_FOUND,
-            resource="approval",
-            id=approval_id,
-        )
-        raise NotFoundError(msg)
-    return item
+    return require_resource_or_404(
+        await app_state.approval_store.get(approval_id),
+        resource_type="Approval",
+        identifier=approval_id,
+        log_event=API_RESOURCE_NOT_FOUND,
+        operation="read",
+    )
 
 
 async def _save_decision_and_notify(  # noqa: PLR0913
