@@ -97,11 +97,22 @@ class CheckpointNotFoundError(NotFoundError):
     default_message: ClassVar[str] = "Checkpoint not found"
 
 
-class CheckpointRollbackUnavailableError(DomainError):
-    """Raised when a rollback is requested but no backup config exists."""
+class CheckpointRollbackUnavailableError(ConflictError):
+    """Raised when a rollback is requested but no backup config exists.
+
+    Inherits :class:`ConflictError` so ``EXCEPTION_HANDLERS`` emits a
+    409 envelope: the checkpoint exists, but its rollback prerequisite
+    (a stored backup config) does not, so the operation cannot proceed
+    in the current state.  The prior bare ``DomainError`` base
+    misclassified this as INTERNAL/500.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: no backup exists
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "No backup config available for this checkpoint"
 
 
 class CheckpointRollbackCorruptError(DomainError):
