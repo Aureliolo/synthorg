@@ -14,6 +14,8 @@ the full :class:`TrainingService` graph.
 
 import asyncio
 import builtins
+import copy
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory
@@ -27,6 +29,8 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import HR_TRAINING_STORE_FAILED
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
@@ -39,11 +43,22 @@ logger = get_logger(__name__)
 # ``KeyError`` rather than being silently routed to ``PROCEDURAL``;
 # storing semantic items under the procedural category would surface
 # only at retrieval time, which is far too late.
-_CONTENT_TYPE_TO_CATEGORY: dict[ContentType, MemoryCategory] = {
-    ContentType.PROCEDURAL: MemoryCategory.PROCEDURAL,
-    ContentType.SEMANTIC: MemoryCategory.SEMANTIC,
-    ContentType.TOOL_PATTERNS: MemoryCategory.PROCEDURAL,
-}
+#
+# Wrapped in ``MappingProxyType`` over a ``copy.deepcopy`` per the
+# project rule for non-Pydantic registries: a misbehaving import-site
+# cannot mutate the canonical content-type-to-category routing at
+# runtime, and the deepcopy guarantees the registry holds its own
+# entries even if a future caller passes the dict literal here as a
+# reference.
+_CONTENT_TYPE_TO_CATEGORY: Mapping[ContentType, MemoryCategory] = MappingProxyType(
+    copy.deepcopy(
+        {
+            ContentType.PROCEDURAL: MemoryCategory.PROCEDURAL,
+            ContentType.SEMANTIC: MemoryCategory.SEMANTIC,
+            ContentType.TOOL_PATTERNS: MemoryCategory.PROCEDURAL,
+        },
+    ),
+)
 
 
 async def store_guarded_items(
