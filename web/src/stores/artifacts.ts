@@ -123,7 +123,14 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
           set({ contentPreview: preview })
         } catch (err) {
           if (isStaleDetailRequest(token)) return
-          set({ detailError: `Some data failed to load: content preview: ${getErrorMessage(err)}. Displayed data may be incomplete.` })
+          // Two-clause copy: title-style preface tells the user the
+          // metadata IS fine, then offers the next action. The raw
+          // backend message is routed through getErrorMessage so a
+          // JSON / stack trace cannot leak through.
+          set({
+            detailError:
+              `Preview failed to load: ${getErrorMessage(err)}. The full metadata is shown above; try again or download to view offline.`,
+          })
         }
       }
     } catch (err) {

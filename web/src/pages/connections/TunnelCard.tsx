@@ -87,10 +87,17 @@ export function TunnelCard() {
       })
     } catch (err) {
       log.warn('Failed to copy tunnel URL', sanitizeForLog(err))
+      // Most failures are clipboard permissions denied or no Clipboard
+      // API in the current document context. Differentiate the two so
+      // the user knows whether to grant permission or use Ctrl+C.
+      const isPermissionDenied =
+        err instanceof DOMException && err.name === 'NotAllowedError'
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not copy URL',
-        description: 'Try copying the URL manually from the Public URL field.',
+        description: isPermissionDenied
+          ? 'Clipboard access denied. Use Ctrl+C to copy the URL manually.'
+          : 'Clipboard API not available in this browser. Copy manually from the Public URL field.',
       })
     }
   }

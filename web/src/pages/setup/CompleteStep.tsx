@@ -77,7 +77,13 @@ export function CompleteStep() {
           variant="section"
           severity="error"
           title="Could not complete setup"
-          description={completionError}
+          description={
+            // Append a contextual help line for users hitting this
+            // repeatedly: setup may have already completed in a
+            // previous attempt and the wizard just hasn't observed
+            // the new state. A page refresh confirms.
+            `${completionError} If you see this repeatedly, setup may have already completed; refresh the page to confirm.`
+          }
           onRetry={() => void handleComplete()}
         />
       )}

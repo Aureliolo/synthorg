@@ -183,7 +183,12 @@ export function ApprovalDetailDrawer({
   const handleReject = useCallback(async (): Promise<boolean | void> => {
     if (!approval || approval.status !== 'pending') return
     if (!reason.trim()) {
-      useToastStore.getState().add({ variant: 'error', title: 'Please provide a rejection reason' })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Rejection reason required',
+        description:
+          'Rejection requires a reason for the approval record. Provide a brief explanation.',
+      })
       return false
     }
     setSubmitting(true)

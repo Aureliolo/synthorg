@@ -66,6 +66,16 @@ export function CompanyStep() {
     }
   }, [validation.valid, markStepComplete, markStepIncomplete])
 
+  // Clear a stale companyError when the user leaves the step (e.g.
+  // navigates back to Providers to fix tier coverage). Without this,
+  // a tier-coverage error from a prior Apply attempt persists and
+  // re-renders even after the user has fixed the upstream condition.
+  useEffect(() => {
+    return () => {
+      useSetupWizardStore.setState({ companyError: null, companyErrorCode: null })
+    }
+  }, [])
+
   const handleApplyTemplate = useCallback(async () => {
     await submitCompany()
   }, [submitCompany])
@@ -136,6 +146,10 @@ export function CompanyStep() {
           value={companyName}
           onChange={(e) => setCompanyName(e.currentTarget.value)}
           placeholder="Your organization name"
+          // Hint sets expectations up front; the error below fires
+          // only once the user crosses the boundary, so the two
+          // never display together.
+          hint="Max 200 characters. Apply Template stays disabled until this is valid."
           error={
             companyName.trim() === ''
               ? null

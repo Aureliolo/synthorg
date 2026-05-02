@@ -3,7 +3,9 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { useToastStore } from '@/stores/toast'
 import { validateProvidersStep } from '@/utils/setup-validation'
+import { getErrorMessage } from '@/utils/errors'
 import { ProviderFormModal, type ProviderFormOverrides } from '@/pages/providers/ProviderFormModal'
 
 /**
@@ -85,9 +87,31 @@ export function ProvidersStep() {
       // Created provider keeps the preset's display_name as the
       // identifier so the configured-providers list matches what the
       // user just saw under "Detected on this machine".
-      await createProviderFromPreset(presetName, presetName, undefined, detectedUrl)
-      if (!useSetupWizardStore.getState().providersError) {
-        await fetchProviders()
+      //
+      // Branch on the result-object so a downstream fetchProviders
+      // failure cannot retroactively make the create look like it
+      // failed (the previous race read providersError after the
+      // create returned, but providersError could be set BY the
+      // refresh).
+      const result = await createProviderFromPreset(
+        presetName,
+        presetName,
+        undefined,
+        detectedUrl,
+      )
+      if (result.ok) {
+        try {
+          await fetchProviders()
+        } catch (fetchErr) {
+          // Provider exists; only the refresh failed. Toast so the
+          // operator can manually refresh, but don't poison the step's
+          // error banner.
+          useToastStore.getState().add({
+            variant: 'warning',
+            title: 'Provider added; could not refresh the list',
+            description: getErrorMessage(fetchErr),
+          })
+        }
       }
     },
     [createProviderFromPreset, fetchProviders],

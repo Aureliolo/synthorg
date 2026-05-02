@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'motion/react'
 import { Filter, Plus, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
@@ -33,6 +33,7 @@ export default function WorkflowsPage() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const {
     filteredWorkflows,
@@ -143,7 +144,7 @@ export default function WorkflowsPage() {
         <ErrorBanner severity="error" title="Could not load workflows" description={error} />
       )}
 
-      <WorkflowFilters />
+      <WorkflowFilters searchInputRef={searchInputRef} />
       {totalWorkflows > 0 && filteredWorkflows.length === 0 ? (
         <EmptyState
           icon={Filter}
@@ -154,6 +155,9 @@ export default function WorkflowsPage() {
             onClick: () => {
               useWorkflowsStore.getState().setSearchQuery('')
               useWorkflowsStore.getState().setWorkflowTypeFilter(null)
+              // Re-focus the search input so the user can immediately
+              // re-filter without a second click.
+              requestAnimationFrame(() => searchInputRef.current?.focus())
             },
           }}
         />

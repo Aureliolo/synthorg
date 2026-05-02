@@ -10,7 +10,16 @@ const WORKFLOW_TYPE_OPTIONS: readonly SelectOption[] = [
   ...WORKFLOW_TYPES.map((t) => ({ value: t, label: formatLabel(t) })),
 ]
 
-export function WorkflowFilters() {
+export interface WorkflowFiltersProps {
+  /**
+   * Optional ref forwarded to the search input so the parent page
+   * can focus it (e.g. after clicking "Clear filters" -- see audit
+   * 47#1).
+   */
+  searchInputRef?: React.Ref<HTMLInputElement>
+}
+
+export function WorkflowFilters({ searchInputRef }: WorkflowFiltersProps = {}) {
   const searchQuery = useWorkflowsStore((s) => s.searchQuery)
   const workflowTypeFilter = useWorkflowsStore((s) => s.workflowTypeFilter)
   const setSearchQuery = useWorkflowsStore((s) => s.setSearchQuery)
@@ -19,6 +28,7 @@ export function WorkflowFilters() {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <InputField
+        ref={searchInputRef}
         label="Search workflows"
         type="text"
         placeholder="Search workflows..."

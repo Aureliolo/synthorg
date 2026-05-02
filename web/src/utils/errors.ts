@@ -57,7 +57,11 @@ export function getErrorMessage(error: unknown): string {
       case 404:
         return 'The requested resource was not found.'
       case 409:
-        return 'Conflict: the resource was modified by another user. Please refresh and try again.'
+        // 409 covers optimistic-concurrency races, duplicate-resource
+        // attempts, and version-mismatch conflicts. The earlier copy
+        // assumed concurrency only, which misled users when the cause
+        // was a duplicate or version skew.
+        return 'The resource state changed. Refresh the page and try again.'
       case 422:
         return 'Validation error. Please check your input.'
       case 429:

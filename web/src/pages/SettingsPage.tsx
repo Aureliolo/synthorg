@@ -390,13 +390,26 @@ export default function SettingsPage() {
         </ErrorBoundary>
       ) : (
         <>
-          <NamespaceTabBar
-            namespaces={NAMESPACE_ORDER}
-            activeNamespace={effectiveNamespace}
-            onSelect={setActiveNamespace}
-            namespaceCounts={namespaceCounts}
-            namespaceIcons={NAMESPACE_ICONS}
-          />
+          <div className="flex items-center justify-between gap-2">
+            <NamespaceTabBar
+              namespaces={NAMESPACE_ORDER}
+              activeNamespace={effectiveNamespace}
+              onSelect={setActiveNamespace}
+              namespaceCounts={namespaceCounts}
+              namespaceIcons={NAMESPACE_ICONS}
+            />
+            {advancedMode && (
+              // Subtle indicator next to the namespace tabs so the
+              // operator knows they're seeing advanced settings even
+              // after dismissing the AdvancedModeBanner.
+              <span
+                aria-label="Advanced mode is on"
+                className="shrink-0 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning"
+              >
+                Advanced
+              </span>
+            )}
+          </div>
 
           {filteredByNamespace.size === 0 && (
             <EmptyState

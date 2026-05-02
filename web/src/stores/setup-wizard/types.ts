@@ -145,7 +145,25 @@ export interface ProvidersSlice {
   providersError: string | null
   fetchProviders: () => Promise<void>
   fetchPresets: () => Promise<void>
-  createProviderFromPreset: (presetName: string, name: string, apiKey?: string, baseUrl?: string) => Promise<void>
+  /**
+   * Create a provider from a preset.
+   *
+   * Returns a result-object so callers can branch on `ok` without a
+   * surrounding try/catch. The store still owns the error UX
+   * (sets `providersError`, logs the failure once); the result
+   * shape lets the caller decide whether subsequent steps (e.g.
+   * `fetchProviders`) should run.
+   *
+   * `warning` is set when the provider WAS created but model
+   * discovery returned no models -- distinct from `error` because
+   * the caller may want to navigate forward despite the warning.
+   */
+  createProviderFromPreset: (
+    presetName: string,
+    name: string,
+    apiKey?: string,
+    baseUrl?: string,
+  ) => Promise<{ ok: true; warning?: string } | { ok: false; error: string }>
   createProviderFromPresetFull: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>
   createProviderCustom: (data: CreateProviderRequest) => Promise<ProviderConfig | null>
   testProviderConnection: (name: string) => Promise<TestConnectionResponse>

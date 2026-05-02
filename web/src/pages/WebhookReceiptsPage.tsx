@@ -7,6 +7,7 @@
  * payload size, and any backend-captured error.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -46,7 +47,12 @@ function mapWebhookStatus(status: string): AgentRuntimeStatus {
 
 export default function WebhookReceiptsPage() {
   const { connections } = useConnectionsData()
-  const [selected, setSelected] = useState<string>('')
+  const [searchParams] = useSearchParams()
+  // Pre-select via URL ?connection=... so the cross-link from
+  // ConnectionsPage's row action lands directly on that connection's
+  // receipts.
+  const initialFromUrl = searchParams.get('connection') ?? ''
+  const [selected, setSelected] = useState<string>(initialFromUrl)
   const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

@@ -49,6 +49,21 @@ const PRIORITY_OPTIONS: ReadonlyArray<{
   { value: 'standard', label: 'Standard' },
 ]
 
+const SORT_OPTIONS: ReadonlyArray<{
+  value: 'priority' | 'created' | 'conflict_type'
+  label: string
+}> = [
+  { value: 'created', label: 'Newest' },
+  { value: 'priority', label: 'Priority' },
+  { value: 'conflict_type', label: 'Conflict type' },
+]
+
+function priorityRank(type: ConflictType): number {
+  if (PRIORITY_BUCKET_TYPES.critical.includes(type)) return 0
+  if (PRIORITY_BUCKET_TYPES.high.includes(type)) return 1
+  return 2
+}
+
 const STATUS_OPTIONS: ReadonlyArray<{
   value: EscalationStatus | 'all'
   label: string
@@ -75,21 +90,50 @@ export default function EscalationQueuePage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [priorityFilter, setPriorityFilter] = useState<PriorityBucket | 'all'>('all')
+  const [sortKey, setSortKey] = useState<'priority' | 'created' | 'conflict_type'>('created')
 
   useEffect(() => {
     void fetchEscalations()
   }, [fetchEscalations])
 
-  // Client-side priority filter: applied on top of the server-side
-  // status filter so the operator can narrow further to critical /
-  // high / standard buckets without an extra round-trip. The bucket
-  // list is intentionally small; the underlying ConflictType is the
-  // source of truth, the bucket is a UX shortcut.
+  // Client-side priority filter + sort: applied on top of the server-
+  // side status filter so the operator can narrow / re-order without
+  // an extra round-trip. The bucket list is intentionally small; the
+  // underlying ConflictType is the source of truth, the bucket is a
+  // UX shortcut.
   const visibleEscalations = useMemo(() => {
-    if (priorityFilter === 'all') return escalations
-    const allowed = PRIORITY_BUCKET_TYPES[priorityFilter]
-    return escalations.filter((row) => allowed.includes(row.escalation.conflict.type))
-  }, [escalations, priorityFilter])
+    const filtered = priorityFilter === 'all'
+      ? escalations
+      : escalations.filter((row) =>
+          PRIORITY_BUCKET_TYPES[priorityFilter].includes(row.escalation.conflict.type),
+        )
+    const sorted = [...filtered]
+    switch (sortKey) {
+      case 'priority':
+        // Sort by bucket: critical first, then high, then standard.
+        // Within a bucket, fall back to created_at desc for stability.
+        sorted.sort((a, b) => {
+          const ra = priorityRank(a.escalation.conflict.type)
+          const rb = priorityRank(b.escalation.conflict.type)
+          if (ra !== rb) return ra - rb
+          return new Date(b.escalation.created_at).getTime()
+            - new Date(a.escalation.created_at).getTime()
+        })
+        break
+      case 'conflict_type':
+        sorted.sort((a, b) =>
+          a.escalation.conflict.type.localeCompare(b.escalation.conflict.type),
+        )
+        break
+      case 'created':
+      default:
+        sorted.sort((a, b) =>
+          new Date(b.escalation.created_at).getTime()
+            - new Date(a.escalation.created_at).getTime(),
+        )
+    }
+    return sorted
+  }, [escalations, priorityFilter, sortKey])
 
   // Choose the empty-state copy outside the JSX so we don't trip
   const filterActive =
@@ -156,6 +200,18 @@ export default function EscalationQueuePage() {
                 }
               }}
               options={PRIORITY_OPTIONS}
+              size="sm"
+            />
+            <SegmentedControl
+              label="Sort by"
+              value={sortKey}
+              onChange={(value) => {
+                const allowed = SORT_OPTIONS.some((option) => option.value === value)
+                if (allowed) {
+                  setSortKey(value as 'priority' | 'created' | 'conflict_type')
+                }
+              }}
+              options={SORT_OPTIONS}
               size="sm"
             />
           </>

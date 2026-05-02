@@ -27,9 +27,11 @@ export function SkipWizardForm() {
     }
     setLoading(true)
     setError(null)
+    setCompanyNameStore(trimmed)
+    let companyCreated = false
     try {
-      setCompanyNameStore(trimmed)
       await submitCompany()
+      companyCreated = true
       await wizardCompleteSetup()
       useSetupStore.setState({ setupComplete: true })
       useToastStore.getState().add({
@@ -39,7 +41,16 @@ export function SkipWizardForm() {
       })
       navigate('/')
     } catch (err) {
-      setError(getErrorMessage(err))
+      // Discriminate between "company create failed" (clean retry path)
+      // and "company created, setup completion failed" (partial-success
+      // path) so the user knows whether retrying re-creates the company
+      // or just completes setup.
+      const baseMessage = getErrorMessage(err)
+      setError(
+        companyCreated
+          ? `Company '${trimmed}' was created, but setup completion failed: ${baseMessage}. Open the wizard's Complete step or reload the page to retry.`
+          : baseMessage,
+      )
     } finally {
       setLoading(false)
     }

@@ -142,6 +142,11 @@ export function WizardShell() {
               onBack={handleBack}
               onNext={handleNext}
               nextDisabled={!stepsCompleted[currentStep]}
+              nextDisabledReason={
+                !stepsCompleted[currentStep]
+                  ? 'Complete the required fields on this step to continue.'
+                  : null
+              }
             />
           </div>
         )}

@@ -1,4 +1,5 @@
-import { MoreVertical, Plug, RefreshCw, Trash2 } from 'lucide-react'
+import { Inbox, MoreVertical, Plug, RefreshCw, Trash2 } from 'lucide-react'
+import { Link } from 'react-router'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConnectionHealthBadge } from '@/components/ui/connection-health-badge'
@@ -116,6 +117,17 @@ export function ConnectionCard({
         {report?.error_detail && (
           <p className="line-clamp-2 text-xs text-danger">{report.error_detail}</p>
         )}
+        {/* Cross-link into the receipt inspector pre-selected on this
+            connection. Webhook receipts are scoped per-connection in
+            the inspector, so jumping straight there saves a manual
+            dropdown selection. */}
+        <Link
+          to={`/webhooks/receipts?connection=${encodeURIComponent(connection.name)}`}
+          className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"
+        >
+          <Inbox className="size-3.5" aria-hidden />
+          View webhook receipts
+        </Link>
       </div>
 
     </div>

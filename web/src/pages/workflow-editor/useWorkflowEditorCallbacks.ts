@@ -121,7 +121,12 @@ export function useWorkflowEditorCallbacks(
     if (result) {
       addToast({
         variant: result.valid ? 'success' : 'warning',
-        title: result.valid ? 'Workflow is valid' : `${result.errors.length} validation error(s)`,
+        title: result.valid
+          ? 'Workflow is valid'
+          : `Validation found ${result.errors.length} error(s)`,
+        description: result.valid
+          ? undefined
+          : 'Review the marked fields below.',
       })
     }
   }, [validate, addToast])
