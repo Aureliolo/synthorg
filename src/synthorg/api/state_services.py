@@ -33,6 +33,7 @@ from synthorg.communication.conflict_resolution.escalation.sweeper import (
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,  # noqa: TC001
 )
+from synthorg.hr.training.plan_service import TrainingPlanService  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
@@ -86,6 +87,7 @@ if TYPE_CHECKING:
         McpInstallationRepository,
     )
     from synthorg.integrations.mcp_catalog.service import CatalogService
+    from synthorg.integrations.oauth.state_service import OAuthStateService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
     from synthorg.integrations.tunnel.protocol import TunnelProvider
     from synthorg.memory.protocol import MemoryBackend
@@ -150,6 +152,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _provider_health_tracker: ProviderHealthTracker | None
     _tool_invocation_tracker: ToolInvocationTracker | None
     _training_service: TrainingService | None
+    _training_plan_service: TrainingPlanService | None
     _memory_backend: MemoryBackend | None
     _delegation_record_store: DelegationRecordStore | None
     _auth_service: AuthService | None
@@ -170,6 +173,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _connection_catalog: ConnectionCatalog | None
     _tunnel_provider: TunnelProvider | None
     _oauth_token_manager: OAuthTokenManager | None
+    _oauth_state_service: OAuthStateService | None
     _health_prober_service: HealthProberService | None
     _webhook_event_bridge: WebhookEventBridge | None
     _escalation_store: EscalationQueueStore | None
@@ -338,6 +342,30 @@ class AppStateServicesMixin(_FacadesMixin):
     def set_training_service(self, service: TrainingService) -> None:
         """Attach the training service (once-only)."""
         self._set_once("_training_service", service, "Training service")
+
+    @property
+    def has_training_plan_service(self) -> bool:
+        """Check whether the training plan service is configured."""
+        return self._training_plan_service is not None
+
+    @property
+    def training_plan_service(self) -> TrainingPlanService:
+        """Return training plan service or raise 503.
+
+        ``TrainingPlanService`` is the audit-aware facade over the
+        ``training_plans`` + ``training_results`` repositories.  The
+        ``TrainingController`` routes every plan-CRUD write through
+        this service so audit logging cannot regress when a new write
+        path is added (audit ``68-state-mutation-leaks``).
+        """
+        return self._require_service(
+            self._training_plan_service,
+            "training_plan_service",
+        )
+
+    def set_training_plan_service(self, service: TrainingPlanService) -> None:
+        """Attach the training plan service (once-only)."""
+        self._set_once("_training_plan_service", service, "Training plan service")
 
     @property
     def has_memory_backend(self) -> bool:
@@ -863,6 +891,29 @@ class AppStateServicesMixin(_FacadesMixin):
     def oauth_token_manager(self) -> OAuthTokenManager | None:
         """Return OAuth token manager, or None if not configured."""
         return self._oauth_token_manager
+
+    @property
+    def has_oauth_state_service(self) -> bool:
+        """Check whether the OAuth state service is configured."""
+        return self._oauth_state_service is not None
+
+    @property
+    def oauth_state_service(self) -> OAuthStateService:
+        """Return OAuth state service or raise 503.
+
+        ``OAuthStateService`` is the audit-aware facade over
+        ``persistence.oauth_states``; the OAuth controller routes its
+        single ``save(...)`` write through this service so audit
+        logging cannot regress (audit ``68-state-mutation-leaks``).
+        """
+        return self._require_service(
+            self._oauth_state_service,
+            "oauth_state_service",
+        )
+
+    def set_oauth_state_service(self, service: OAuthStateService) -> None:
+        """Attach the OAuth state service (once-only)."""
+        self._set_once("_oauth_state_service", service, "OAuth state service")
 
     @property
     def health_prober_service(self) -> HealthProberService | None:

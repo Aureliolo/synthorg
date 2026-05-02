@@ -126,17 +126,20 @@ class OAuthController(Controller):
             redirect_uri=redirect_uri,
         )
 
-        # Persist the OAuth state
-        updated_state = oauth_state.model_copy(
-            update={"connection_name": conn.name},
+        # Route the persistence write through OAuthStateService so the
+        # audit-grade SECURITY_OAUTH_STATE_PERSISTED event accompanies
+        # every save (audit 68-state-mutation-leaks). Raises 503 when
+        # the service is not yet wired (matches every other
+        # persistence-bound facade).
+        bound_state = await state["app_state"].oauth_state_service.persist_initiation(
+            oauth_state,
+            connection_name=conn.name,
         )
-        persistence = state["app_state"].persistence
-        await persistence.oauth_states.save(updated_state)
 
         return ApiResponse(
             data={
                 "authorization_url": auth_url,
-                "state_token": updated_state.state_token,
+                "state_token": bound_state.state_token,
             },
         )
 

@@ -64,6 +64,7 @@ from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noq
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
+from synthorg.hr.training.plan_service import TrainingPlanService  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
@@ -120,6 +121,7 @@ if TYPE_CHECKING:
         McpInstallationRepository,
     )
     from synthorg.integrations.mcp_catalog.service import CatalogService
+    from synthorg.integrations.oauth.state_service import OAuthStateService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
     from synthorg.integrations.tunnel.protocol import TunnelProvider
 
@@ -202,6 +204,7 @@ class AppState(AppStateServicesMixin):
         "_model_router",
         "_notification_dispatcher",
         "_oauth_facade_service",
+        "_oauth_state_service",
         "_oauth_token_manager",
         "_ontology_facade_service",
         "_ontology_service",
@@ -246,6 +249,7 @@ class AppState(AppStateServicesMixin):
         "_ticket_store",
         "_tool_invocation_tracker",
         "_trace_handler",
+        "_training_plan_service",
         "_training_service",
         "_trust_service",
         "_tunnel_provider",
@@ -346,11 +350,22 @@ class AppState(AppStateServicesMixin):
         self._provider_health_tracker = provider_health_tracker
         self._tool_invocation_tracker = tool_invocation_tracker
         self._training_service = training_service
+        # Lazily constructed in lifecycle_builder when persistence is
+        # available; ``TrainingController`` raises 503 via the
+        # ``training_plan_service`` property when accessed before it
+        # is wired (matching every other persistence-bound service
+        # facade).
+        self._training_plan_service: TrainingPlanService | None = None
         self._delegation_record_store = delegation_record_store
         self._event_stream_hub = event_stream_hub
         self._interrupt_store = interrupt_store
         self._connection_catalog = connection_catalog
         self._oauth_token_manager = oauth_token_manager
+        # Wired in lifecycle_builder once persistence is connected;
+        # the OAuth controller raises 503 via the
+        # ``oauth_state_service`` property when accessed before it
+        # is available (audit 68-state-mutation-leaks).
+        self._oauth_state_service: OAuthStateService | None = None
         self._health_prober_service = health_prober_service
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge

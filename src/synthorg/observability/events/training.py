@@ -11,6 +11,7 @@ from typing import Final
 HR_TRAINING_PLAN_CREATED: Final[str] = "hr.training.plan_created"
 HR_TRAINING_PLAN_EXECUTED: Final[str] = "hr.training.plan_executed"
 HR_TRAINING_PLAN_IDEMPOTENT: Final[str] = "hr.training.plan_idempotent"
+HR_TRAINING_PLAN_OVERRIDES_UPDATED: Final[str] = "hr.training.plan_overrides_updated"
 HR_TRAINING_PLAN_FAILED: Final[str] = "hr.training.plan_failed"
 HR_TRAINING_SKIPPED: Final[str] = "hr.training.skipped"
 

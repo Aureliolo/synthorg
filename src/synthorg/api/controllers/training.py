@@ -34,11 +34,7 @@ from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_RESOURCE_NOT_FOUND,
 )
-from synthorg.observability.events.training import (
-    HR_TRAINING_PLAN_CREATED,
-    HR_TRAINING_PLAN_EXECUTED,
-    HR_TRAINING_PLAN_FAILED,
-)
+from synthorg.observability.events.training import HR_TRAINING_PLAN_FAILED
 
 logger = get_logger(__name__)
 
@@ -207,14 +203,12 @@ class TrainingController(Controller):
             plan_kwargs["volume_caps"] = caps
 
         plan = TrainingPlan(**plan_kwargs)  # type: ignore[arg-type]
-        await app_state.persistence.training_plans.save(plan)
-
-        logger.info(
-            HR_TRAINING_PLAN_CREATED,
-            plan_id=str(plan.id),
-            agent_name=str(agent_name),
-        )
-
+        # Route through ``TrainingPlanService`` (audit
+        # 68-state-mutation-leaks) so the durable write + the
+        # ``HR_TRAINING_PLAN_CREATED`` audit event happen in one
+        # place.  Raises 503 when the service is not yet wired
+        # (matches every other persistence-bound facade).
+        await app_state.training_plan_service.create_plan(plan)
         return ApiResponse(data=_plan_to_response(plan))
 
     @post(
@@ -259,31 +253,17 @@ class TrainingController(Controller):
         # Raises 503 ServiceUnavailableError when not wired.
         service = app_state.training_service
 
+        plan_service = app_state.training_plan_service
         try:
             result = await service.execute(plan)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            # Transition plan to FAILED on pipeline error.
-            failed_plan = plan.model_copy(
-                update={
-                    "status": TrainingPlanStatus.FAILED,
-                    "executed_at": datetime.now(UTC),
-                }
-            )
-            try:
-                await app_state.persistence.training_plans.save(
-                    failed_plan,
-                )
-            except Exception as save_exc:
-                logger.warning(
-                    HR_TRAINING_PLAN_FAILED,
-                    plan_id=str(plan.id),
-                    error="Failed to persist FAILED status",
-                    error_type=type(save_exc).__name__,
-                    persistence_error=safe_error_description(save_exc),
-                    exc_info=True,
-                )
+            # ``record_failure`` flips the plan to FAILED, persists it,
+            # and swallows any best-effort save error after WARNing
+            # so the original pipeline exception below still bubbles
+            # up to the caller (audit 68-state-mutation-leaks).
+            await plan_service.record_failure(plan)
             logger.warning(
                 HR_TRAINING_PLAN_FAILED,
                 plan_id=str(plan.id),
@@ -293,22 +273,9 @@ class TrainingController(Controller):
             )
             raise
 
-        # Transition plan to EXECUTED and persist the result.
-        executed_plan = plan.model_copy(
-            update={
-                "status": TrainingPlanStatus.EXECUTED,
-                "executed_at": result.completed_at,
-            }
-        )
-        await app_state.persistence.training_plans.save(executed_plan)
-        await app_state.persistence.training_results.save(result)
-
-        logger.info(
-            HR_TRAINING_PLAN_EXECUTED,
-            plan_id=str(plan.id),
-            agent_id=agent_id,
-        )
-
+        # ``record_executed`` persists the EXECUTED plan + result pair
+        # and emits HR_TRAINING_PLAN_EXECUTED inside the service.
+        await plan_service.record_executed(plan, result)
         return ApiResponse(data=_result_to_response(result))
 
     @get(
@@ -504,9 +471,13 @@ class TrainingController(Controller):
         if data.skip_training is not None:
             updates["skip_training"] = data.skip_training
 
-        updated = plan.model_copy(update=updates)
-        await app_state.persistence.training_plans.save(updated)
-
+        # ``update_overrides`` applies the diff, persists the new
+        # plan, and emits HR_TRAINING_PLAN_OVERRIDES_UPDATED inside
+        # the service (audit 68-state-mutation-leaks).
+        updated = await app_state.training_plan_service.update_overrides(
+            plan,
+            updates=updates,
+        )
         return ApiResponse(data=_plan_to_response(updated))
 
 
