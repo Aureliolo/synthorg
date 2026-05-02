@@ -59,8 +59,13 @@ function ApprovalCardImpl({
   // matches the prop refresh. The ``cancelled`` flag is checked in
   // BOTH the microtask AND the timer callback so a tick that fires
   // between the prop refresh and the cleanup running cannot
-  // decrement a freshly-set countdown by one.
+  // decrement a freshly-set countdown by one. The timer id is
+  // stashed in a ref so a sibling effect can stop the ticking once
+  // ``countdown`` reaches zero -- otherwise an expired card kept
+  // mounted in the paginated approvals queue would accumulate a
+  // dormant 1-Hz interval until unmount or the next prop refresh.
   const [countdown, setCountdown] = useState(approval.seconds_remaining)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => {
     let cancelled = false
     void Promise.resolve().then(() => {
@@ -76,7 +81,7 @@ function ApprovalCardImpl({
         cancelled = true
       }
     }
-    const timer = setInterval(() => {
+    timerRef.current = setInterval(() => {
       if (cancelled) return
       setCountdown((prev) => {
         if (prev === null || prev <= 1) return 0
@@ -85,9 +90,23 @@ function ApprovalCardImpl({
     }, 1000)
     return () => {
       cancelled = true
-      clearInterval(timer)
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
     }
   }, [approval.seconds_remaining, isPending])
+
+  // Stop ticking once the countdown lands on zero. Done in a sibling
+  // effect rather than inside the state updater so the updater stays
+  // pure (no side effects in render-phase state transitions, per the
+  // React-purity guideline).
+  useEffect(() => {
+    if (countdown !== null && countdown <= 0 && timerRef.current !== null) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }, [countdown])
 
   return (
     <div
