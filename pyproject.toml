@@ -357,6 +357,7 @@ markers = [
     "timescaledb: Integration tests that require the TimescaleDB extension (self-hosted Postgres only)",
     "agent_eval: Agent evaluation tests (skipped unless --run-agent-evals, 300s timeout)",
     "benchmark: CodSpeed CPU-instruction performance benchmarks (run only via `pytest --codspeed`; not part of `-m unit` runs)",
+    "serial: Tests that legitimately require serial execution (route to a no-xdist suite); do not apply without prior approval",
 ]
 addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=worksteal", "-n=8", "-p", "no:randomly", "-p", "no:unraisableexception"]
 filterwarnings = [
