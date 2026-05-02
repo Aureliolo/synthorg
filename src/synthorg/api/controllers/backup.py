@@ -81,7 +81,11 @@ class BackupController(Controller):
     tags = ("admin", "backup")
     guards = [require_roles(HumanRole.CEO, HumanRole.SYSTEM)]  # noqa: RUF012
 
-    @post()
+    @post(
+        guards=[
+            per_op_rate_limit_from_policy("admin.backup_create", key="user"),
+        ],
+    )
     async def create_backup(
         self,
         state: State,
@@ -236,7 +240,13 @@ class BackupController(Controller):
             raise NotFoundError(msg) from exc
         return ApiResponse(data=manifest)
 
-    @delete("/{backup_id:str}", status_code=HTTP_204_NO_CONTENT)
+    @delete(
+        "/{backup_id:str}",
+        status_code=HTTP_204_NO_CONTENT,
+        guards=[
+            per_op_rate_limit_from_policy("admin.backup_delete", key="user"),
+        ],
+    )
     async def delete_backup(
         self,
         state: State,

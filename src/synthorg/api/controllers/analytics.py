@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -505,7 +506,13 @@ class AnalyticsController(Controller):
     path = "/analytics"
     tags = ("analytics",)
 
-    @get("/overview", guards=[require_read_access])
+    @get(
+        "/overview",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("analytics.overview"),
+        ],
+    )
     async def get_overview(
         self,
         state: State,
@@ -562,7 +569,13 @@ class AnalyticsController(Controller):
             ),
         )
 
-    @get("/trends", guards=[require_read_access])
+    @get(
+        "/trends",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("analytics.trends"),
+        ],
+    )
     async def get_trends(
         self,
         state: State,
@@ -615,7 +628,13 @@ class AnalyticsController(Controller):
             ),
         )
 
-    @get("/forecast", guards=[require_read_access])
+    @get(
+        "/forecast",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("analytics.forecast"),
+        ],
+    )
     async def get_forecast(
         self,
         state: State,
