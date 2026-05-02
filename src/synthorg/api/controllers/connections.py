@@ -345,7 +345,11 @@ class ConnectionsController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(str(exc)) from exc
+            # Let the domain error propagate so EXCEPTION_HANDLERS
+            # routes it through the ConnectionNotFoundError envelope
+            # (404 + ``CONNECTION_NOT_FOUND``) rather than collapsing
+            # it into the generic NotFoundError shape.
+            raise
         logger.info(
             SECURITY_CONNECTION_UPDATED,
             connection=name,
@@ -379,7 +383,9 @@ class ConnectionsController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(str(exc)) from exc
+            # Same rationale as ``update_connection`` above -- preserve
+            # the ConnectionNotFoundError envelope.
+            raise
         logger.info(
             SECURITY_CONNECTION_DELETED,
             connection=name,
@@ -421,7 +427,11 @@ class ConnectionsController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(str(exc)) from exc
+            # Same rationale as ``update_connection`` above -- preserve
+            # the ConnectionNotFoundError envelope so a concurrent
+            # delete during health-probe surfaces with the correct
+            # ``CONNECTION_NOT_FOUND`` error code.
+            raise
         return ApiResponse(data=report)
 
     @get(

@@ -16,7 +16,6 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import (
     ConflictError,
-    NotFoundError,
     ServiceUnavailableError,
 )
 from synthorg.core.error_taxonomy import ErrorCode
@@ -98,10 +97,12 @@ class ReviewController(Controller):
             raise ServiceUnavailableError(msg)
         try:
             task = await app_state.task_engine.get_task(task_id)
-        except (KeyError, ValueError) as exc:
-            logger.warning(REVIEW_TASK_LOOKUP_FAILED, task_id=task_id)
-            msg = f"Task {task_id!r} not found"
-            raise NotFoundError(msg) from exc
+        except KeyError, ValueError:
+            # Coalesce the task-engine miss into the same None-sentinel
+            # the helper raises on so both the engine-throws-KeyError
+            # path and the engine-returns-None path emit one stable
+            # 404 envelope with ``ErrorCode.TASK_NOT_FOUND``.
+            task = None
         task = require_resource_or_404(
             task,
             resource_type="Task",
@@ -151,10 +152,11 @@ class ReviewController(Controller):
             raise ServiceUnavailableError(msg)
         try:
             task = await app_state.task_engine.get_task(task_id)
-        except (KeyError, ValueError) as exc:
-            logger.warning(REVIEW_TASK_LOOKUP_FAILED, task_id=task_id)
-            msg = f"Task {task_id!r} not found"
-            raise NotFoundError(msg) from exc
+        except KeyError, ValueError:
+            # Same coalescing pattern as ``run_pipeline`` -- both the
+            # engine-throws and engine-returns-None paths emit one
+            # stable 404 envelope through the helper.
+            task = None
         task = require_resource_or_404(
             task,
             resource_type="Task",

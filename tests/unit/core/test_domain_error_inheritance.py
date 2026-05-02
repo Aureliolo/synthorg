@@ -42,7 +42,7 @@ from synthorg.engine.errors import (
 )
 from synthorg.integrations.errors import IntegrationError
 from synthorg.memory.errors import MemoryError as DomainMemoryError
-from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 from synthorg.memory.org.errors import OrgMemoryError
 from synthorg.memory.service import (
     CheckpointNotFoundError,
@@ -72,7 +72,7 @@ DOMAIN_ERROR_BASES: tuple[type[BaseException], ...] = (
     IntegrationError,
     DomainMemoryError,
     OrgMemoryError,
-    BackendUnsupportedError,
+    MemoryBackendUnsupportedError,
     CheckpointNotFoundError,
     CheckpointRollbackUnavailableError,
     CheckpointRollbackCorruptError,

@@ -15,6 +15,9 @@ from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
 )
 from synthorg.api.services.org_mutations import OrgMutationService  # noqa: TC001
+from synthorg.api.services.workflow_rollback_service import (
+    WorkflowRollbackService,  # noqa: TC001
+)
 from synthorg.api.state_services_facades import _FacadesMixin
 from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.communication.conflict_resolution.escalation.notify import (
@@ -153,6 +156,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _tool_invocation_tracker: ToolInvocationTracker | None
     _training_service: TrainingService | None
     _training_plan_service: TrainingPlanService | None
+    _workflow_rollback_service: WorkflowRollbackService | None
     _memory_backend: MemoryBackend | None
     _delegation_record_store: DelegationRecordStore | None
     _auth_service: AuthService | None
@@ -366,6 +370,32 @@ class AppStateServicesMixin(_FacadesMixin):
     def set_training_plan_service(self, service: TrainingPlanService) -> None:
         """Attach the training plan service (once-only)."""
         self._set_once("_training_plan_service", service, "Training plan service")
+
+    @property
+    def has_workflow_rollback_service(self) -> bool:
+        """Check whether the workflow rollback service is configured."""
+        return self._workflow_rollback_service is not None
+
+    @property
+    def workflow_rollback_service(self) -> WorkflowRollbackService:
+        """Return workflow rollback service or raise 503.
+
+        ``WorkflowRollbackService`` centralises the live save +
+        post-rollback snapshot writes the controller previously made
+        directly on the workflow_definitions repository, so audit
+        logging cannot regress when a new write path lands in the
+        rollback contract.
+        """
+        return self._require_service(
+            self._workflow_rollback_service,
+            "workflow_rollback_service",
+        )
+
+    def set_workflow_rollback_service(self, service: WorkflowRollbackService) -> None:
+        """Attach the workflow rollback service (once-only)."""
+        self._set_once(
+            "_workflow_rollback_service", service, "Workflow rollback service"
+        )
 
     @property
     def has_memory_backend(self) -> bool:

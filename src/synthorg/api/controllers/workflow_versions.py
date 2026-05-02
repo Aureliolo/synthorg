@@ -21,7 +21,6 @@ from synthorg.api.pagination import (
     encode_repo_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.api.services.workflow_rollback_service import WorkflowRollbackService
 from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -364,16 +363,13 @@ class WorkflowVersionController(Controller):
             datetime.now(UTC),
         )
 
-        # Route the durable save + post-rollback snapshot through
-        # ``WorkflowRollbackService`` so audit logging cannot regress
-        # when a new write path lands in the rollback contract.  The
-        # service raises ``VersionConflictError`` on
+        # Route the durable save + post-rollback snapshot through the
+        # AppState-wired ``WorkflowRollbackService`` so audit logging
+        # cannot regress when a new write path lands in the rollback
+        # contract.  The service raises ``VersionConflictError`` on
         # optimistic-concurrency mismatch; the 409 translation stays
         # here so the controller owns the HTTP response shape.
-        rollback_service = WorkflowRollbackService(
-            definition_repo=repo,
-            version_repo=version_repo,
-        )
+        rollback_service = state.app_state.workflow_rollback_service
         try:
             await rollback_service.rollback(
                 rolled_back,

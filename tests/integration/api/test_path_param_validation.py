@@ -303,15 +303,23 @@ class TestPathParamAliases:
         """Each alias's ``Parameter`` metadata declares the audit-22 bounds."""
         from typing import get_args
 
+        from litestar.params import ParameterKwarg
+
         from synthorg.api import path_params as pp
 
         alias = getattr(pp, alias_name)
         # Annotated aliases expose ``(underlying_type, *metadata)`` via
-        # ``typing.get_args``.  The Parameter() instance is the metadata
-        # entry whose attributes carry the audited bounds.
+        # ``typing.get_args``.  Aliases that nest ``NotBlankStr`` (which
+        # is itself ``Annotated[str, StringConstraints(min_length=1),
+        # AfterValidator(...)]``) flatten through ``get_args`` so the
+        # metadata tuple carries StringConstraints + AfterValidator
+        # entries before the ``Parameter()``.  Filter on the concrete
+        # ``ParameterKwarg`` (Litestar's runtime type for
+        # ``Parameter()``) so the assertion picks the audit bound, not
+        # the StringConstraints whose ``max_length`` is ``None``.
         meta = get_args(alias)
         assert meta[0] is str, f"{alias_name} should annotate ``str``"
-        params = [m for m in meta[1:] if hasattr(m, "max_length")]
+        params = [m for m in meta[1:] if isinstance(m, ParameterKwarg)]
         assert params, f"{alias_name} is missing a Parameter() metadata entry"
         param = params[0]
         assert param.max_length == expected_max, (

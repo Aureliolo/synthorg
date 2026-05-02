@@ -330,6 +330,45 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     exc_info=True,
                 )
 
+        # Wire ``WorkflowRollbackService`` once persistence + the
+        # ``workflow_definitions`` / ``versions`` repositories are
+        # available.  Centralises the live save + post-rollback
+        # snapshot writes the controller previously made directly so
+        # audit logging cannot regress when a new write path lands in
+        # the rollback contract.
+        if (
+            persistence is not None
+            and getattr(persistence, "is_connected", False)
+            and not app_state.has_workflow_rollback_service
+            and hasattr(persistence, "workflow_definitions")
+            and hasattr(persistence, "workflow_versions")
+        ):
+            try:
+                from synthorg.api.services.workflow_rollback_service import (  # noqa: PLC0415
+                    WorkflowRollbackService,
+                )
+
+                app_state.set_workflow_rollback_service(
+                    WorkflowRollbackService(
+                        definition_repo=persistence.workflow_definitions,
+                        version_repo=persistence.workflow_versions,
+                    ),
+                )
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="workflow_rollback_service",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_SERVICE_AUTO_WIRE_FAILED,
+                    service="workflow_rollback_service",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    exc_info=True,
+                )
+
         # Phase 2 auto-wire: SettingsService (needs connected persistence)
         if (
             should_auto_wire_settings

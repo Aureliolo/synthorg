@@ -6,7 +6,7 @@ bootstrap; handlers route through that facade exclusively and never
 reach into ``app_state.persistence.*`` directly (CLAUDE.md
 persistence-boundary rule).
 
-Backend-unsupported routing. :class:`BackendUnsupportedError` is
+Backend-unsupported routing. :class:`MemoryBackendUnsupportedError` is
 raised in two well-defined places: (1) :class:`MemoryService`
 fine-tune lifecycle methods when the active persistence backend does
 not expose fine-tune repos, and (2) :func:`_service` here when no
@@ -35,8 +35,8 @@ from synthorg.core.persistence_errors import PersistenceConnectionError, QueryEr
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
 from synthorg.memory.fine_tune_plan import (
-    BackendUnsupportedError,
     FineTunePlan,
+    MemoryBackendUnsupportedError,
 )
 from synthorg.memory.service import (
     CheckpointNotFoundError,
@@ -117,7 +117,7 @@ def _service(app_state: Any) -> MemoryService:
     to construct a service on the fly from
     ``persistence.fine_tune_checkpoints`` / ``.fine_tune_runs``.
 
-    Every failure mode raises :class:`BackendUnsupportedError` so the
+    Every failure mode raises :class:`MemoryBackendUnsupportedError` so the
     calling handler returns a uniform ``not_supported`` envelope:
 
     * No wired service **and** the raw backend is absent / doesn't expose
@@ -129,7 +129,7 @@ def _service(app_state: Any) -> MemoryService:
       :class:`~synthorg.core.persistence_errors.PersistenceConnectionError`.
 
     Raises:
-        BackendUnsupportedError: In any of the above cases.
+        MemoryBackendUnsupportedError: In any of the above cases.
     """
     if getattr(app_state, "has_memory_service", False):
         attached: MemoryService = app_state.memory_service
@@ -152,7 +152,7 @@ def _service(app_state: Any) -> MemoryService:
         return raw_cached
     backend = getattr(app_state, "persistence", None)
     if backend is None:
-        raise BackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
+        raise MemoryBackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
     try:
         checkpoint_repo = backend.fine_tune_checkpoints
         run_repo = backend.fine_tune_runs
@@ -165,7 +165,7 @@ def _service(app_state: Any) -> MemoryService:
         # the property altogether; without catching it here the handler
         # would surface a generic 500 instead of the contract-stipulated
         # ``not_supported`` envelope.
-        raise BackendUnsupportedError(_WHY_BACKEND_NO_FINE_TUNE) from exc
+        raise MemoryBackendUnsupportedError(_WHY_BACKEND_NO_FINE_TUNE) from exc
     has_settings = getattr(app_state, "has_settings_service", False)
     has_backend = getattr(app_state, "has_memory_backend", False)
     return MemoryService(
@@ -200,7 +200,7 @@ def _delete_entry_service(app_state: Any) -> MemoryService:
        repos are intentionally left as ``None``.
 
     Raises:
-        BackendUnsupportedError: When no service or backend is wired at
+        MemoryBackendUnsupportedError: When no service or backend is wired at
             all -- the only case where deletion truly cannot proceed.
     """
     if getattr(app_state, "has_memory_service", False):
@@ -214,7 +214,7 @@ def _delete_entry_service(app_state: Any) -> MemoryService:
     if isinstance(raw_cached, MemoryService):
         return raw_cached
     if not getattr(app_state, "has_memory_backend", False):
-        raise BackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
+        raise MemoryBackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
     has_settings = getattr(app_state, "has_settings_service", False)
     return MemoryService(
         memory_backend=getattr(app_state, "memory_backend", None),
@@ -242,7 +242,7 @@ async def _memory_start_fine_tune(
     try:
         service = _service(app_state)
         run = await service.start_fine_tune(plan)
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
         raise
@@ -275,7 +275,7 @@ async def _memory_resume_fine_tune(
     try:
         service = _service(app_state)
         run = await service.resume_fine_tune(NotBlankStr(run_id))
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except RuntimeError as exc:
         # Another run is already active -- same ``conflict`` mapping
@@ -317,7 +317,7 @@ async def _memory_get_fine_tune_status(
     try:
         service = _service(app_state)
         status = await service.get_fine_tune_status(run_id)
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except ValueError as exc:
         log_handler_invoke_failed(tool, exc)
@@ -349,7 +349,7 @@ async def _memory_cancel_fine_tune(
     try:
         service = _service(app_state)
         target_id = await service.cancel_fine_tune()
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
         raise
@@ -389,7 +389,7 @@ async def _memory_run_preflight(
     try:
         service = _service(app_state)
         result = await service.run_preflight(plan)
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
         raise
@@ -414,7 +414,7 @@ async def _memory_list_checkpoints(
         return err(exc)
     try:
         service = _service(app_state)
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     try:
         checkpoints, total = await service.list_checkpoints(
@@ -445,7 +445,7 @@ async def _memory_deploy_checkpoint(
         return err(exc)
     try:
         service = _service(app_state)
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     try:
         cp = await service.deploy_checkpoint(checkpoint_id)
@@ -489,7 +489,7 @@ async def _memory_rollback_checkpoint(  # noqa: PLR0911
         return err(exc)
     try:
         service = _service(app_state)
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     try:
         cp = await service.rollback_checkpoint(checkpoint_id)
@@ -541,7 +541,7 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
 
     try:
         service = _service(app_state)
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     try:
         await service.delete_checkpoint(checkpoint_id)
@@ -599,7 +599,7 @@ async def _memory_delete_entry(
             agent_id,
             memory_id,
         )
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
         raise
@@ -642,7 +642,7 @@ async def _memory_list_runs(
     try:
         service = _service(app_state)
         runs, total = await service.list_runs(limit=limit, offset=offset)
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
         raise
@@ -664,7 +664,7 @@ async def _memory_get_active_embedder(
     try:
         service = _service(app_state)
         snap = await service.get_active_embedder()
-    except BackendUnsupportedError as exc:
+    except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
         raise

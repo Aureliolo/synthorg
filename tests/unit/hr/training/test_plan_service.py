@@ -108,8 +108,12 @@ class TestUpdateOverrides:
         updated = await service.update_overrides(plan, updates={})
         # ``model_copy(update={})`` returns a fresh instance, so the
         # returned object is not the input but is field-equal to it.
+        # Pin both halves of the contract so a future refactor that
+        # short-circuits the copy and returns ``plan`` itself fails
+        # here instead of silently violating copy-on-write.
+        assert updated is not plan
         assert updated == plan
-        plan_repo.save.assert_awaited_once()
+        plan_repo.save.assert_awaited_once_with(updated)
 
 
 class TestRecordFailure:

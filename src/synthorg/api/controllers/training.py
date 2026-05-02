@@ -34,7 +34,9 @@ from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_RESOURCE_NOT_FOUND,
 )
-from synthorg.observability.events.training import HR_TRAINING_PLAN_FAILED
+from synthorg.observability.events.training import (
+    HR_TRAINING_PLAN_EXECUTION_ERROR,
+)
 
 logger = get_logger(__name__)
 
@@ -263,8 +265,14 @@ class TrainingController(Controller):
             # so the original pipeline exception below still bubbles
             # up to the caller.
             await plan_service.record_failure(plan)
+            # ``record_failure`` already logged ``HR_TRAINING_PLAN_FAILED``
+            # for the persisted-transition path.  Re-using the same
+            # event here would double-count one execution error as two
+            # plan-failure events, skewing audit counts and alerting,
+            # so the controller-side warning rides a distinct
+            # ``EXECUTION_ERROR`` event with the original exc context.
             logger.warning(
-                HR_TRAINING_PLAN_FAILED,
+                HR_TRAINING_PLAN_EXECUTION_ERROR,
                 plan_id=str(plan.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

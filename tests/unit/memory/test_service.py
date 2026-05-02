@@ -555,7 +555,7 @@ class TestMemoryServiceDeleteEntry:
         assert backend.delete_calls == [("agent-a", "missing")]
 
     async def test_raises_backend_unsupported_when_no_backend(self) -> None:
-        from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+        from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 
         service = MemoryService(
             checkpoint_repo=_FakeCheckpointRepo(),
@@ -563,7 +563,7 @@ class TestMemoryServiceDeleteEntry:
             settings_service=None,
         )
 
-        with pytest.raises(BackendUnsupportedError):
+        with pytest.raises(MemoryBackendUnsupportedError):
             await service.delete_memory_entry(
                 NotBlankStr("agent-a"),
                 NotBlankStr("mem-1"),

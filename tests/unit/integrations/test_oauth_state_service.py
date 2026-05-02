@@ -66,3 +66,26 @@ class TestPersistInitiation:
             connection_name=NotBlankStr("github-prod"),
         )
         assert bound.connection_name == "github-prod"
+
+    async def test_repo_failure_propagates_after_audit_log(self) -> None:
+        """Save errors propagate; the failure-event logging path runs first.
+
+        ``OAuthStateService`` was extracted to centralise the
+        ``persistence.oauth_states.save(...)`` write AND the
+        ``SECURITY_OAUTH_STATE_PERSIST_FAILED`` audit log on the
+        unhappy path.  A future refactor that drops the try/except
+        around ``_repo.save`` would silently regress the audit
+        contract; this test pins the propagation so that path is
+        exercised end-to-end.
+        """
+        from synthorg.core.persistence_errors import PersistenceError
+
+        repo = AsyncMock(spec=OAuthStateRepository)
+        repo.save.side_effect = PersistenceError("backend down")
+        service = OAuthStateService(repo=repo)
+        with pytest.raises(PersistenceError, match="backend down"):
+            await service.persist_initiation(
+                _state(connection_name="placeholder"),
+                connection_name=NotBlankStr("github-prod"),
+            )
+        repo.save.assert_awaited_once()

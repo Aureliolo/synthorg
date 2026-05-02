@@ -13,6 +13,12 @@ HR_TRAINING_PLAN_EXECUTED: Final[str] = "hr.training.plan_executed"
 HR_TRAINING_PLAN_IDEMPOTENT: Final[str] = "hr.training.plan_idempotent"
 HR_TRAINING_PLAN_OVERRIDES_UPDATED: Final[str] = "hr.training.plan_overrides_updated"
 HR_TRAINING_PLAN_FAILED: Final[str] = "hr.training.plan_failed"
+# Distinct from ``HR_TRAINING_PLAN_FAILED``: the controller emits this
+# WARNING when the upstream pipeline raised AND ``record_failure``
+# already logged its own ``HR_TRAINING_PLAN_FAILED`` transition event.
+# Keeping the two events separate avoids inflating the
+# plan-failure count by 2x for every single execution error.
+HR_TRAINING_PLAN_EXECUTION_ERROR: Final[str] = "hr.training.plan_execution_error"
 HR_TRAINING_SKIPPED: Final[str] = "hr.training.skipped"
 
 HR_TRAINING_PLAN_STATUS_TRANSITIONED: Final[str] = (

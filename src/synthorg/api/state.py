@@ -114,6 +114,9 @@ if TYPE_CHECKING:
     from synthorg.a2a.agent_card import AgentCardBuilder
     from synthorg.a2a.client import A2AClient
     from synthorg.a2a.peer_registry import PeerRegistry
+    from synthorg.api.services.workflow_rollback_service import (
+        WorkflowRollbackService,
+    )
     from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.health.prober import HealthProberService
@@ -260,6 +263,7 @@ class AppState(AppStateServicesMixin):
         "_webhook_replay_protector",
         "_webhook_service",
         "_workflow_execution_service",
+        "_workflow_rollback_service",
         "_workflow_service",
         "_workflow_version_service",
         "_ws_auth_timeout_seconds",
@@ -367,6 +371,13 @@ class AppState(AppStateServicesMixin):
         # is available, matching every other persistence-bound
         # service facade.
         self._oauth_state_service: OAuthStateService | None = None
+        # Wired in lifecycle_builder once persistence + the workflow
+        # definition / version repos are connected; the workflow
+        # rollback controller falls through to the ``503`` raise on
+        # ``workflow_rollback_service`` when accessed before it is
+        # available, matching every other persistence-bound service
+        # facade.
+        self._workflow_rollback_service: WorkflowRollbackService | None = None
         self._health_prober_service = health_prober_service
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge

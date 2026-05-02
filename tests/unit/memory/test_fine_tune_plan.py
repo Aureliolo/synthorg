@@ -1,4 +1,4 @@
-"""Unit tests for :class:`FineTunePlan` + :class:`BackendUnsupportedError`.
+"""Unit tests for :class:`FineTunePlan` + :class:`MemoryBackendUnsupportedError`.
 
 ``FineTunePlan`` is the MCP-facing plan that shields the public
 contract from the runner's internal :class:`FineTuneRequest` type.
@@ -18,8 +18,8 @@ from synthorg.memory.embedding.fine_tune_models import (
 )
 from synthorg.memory.fine_tune_plan import (
     ActiveEmbedderSnapshot,
-    BackendUnsupportedError,
     FineTunePlan,
+    MemoryBackendUnsupportedError,
 )
 
 pytestmark = pytest.mark.unit
@@ -142,27 +142,27 @@ class TestFineTunePlan:
         assert not hasattr(request, "execution")
 
 
-class TestBackendUnsupportedError:
+class TestMemoryBackendUnsupportedError:
     """Typed exception carrying ``domain_code="not_supported"``."""
 
     def test_domain_code_is_not_supported(self) -> None:
-        exc = BackendUnsupportedError("postgres backend lacks fine-tune repos")
+        exc = MemoryBackendUnsupportedError("postgres backend lacks fine-tune repos")
         assert exc.domain_code == "not_supported"
 
     def test_reason_preserved(self) -> None:
         reason = "postgres backend lacks fine-tune repos"
-        exc = BackendUnsupportedError(reason)
+        exc = MemoryBackendUnsupportedError(reason)
         assert exc.reason == reason
         assert str(exc) == reason
 
     def test_is_exception_subclass(self) -> None:
         msg = "msg"
-        with pytest.raises(BackendUnsupportedError):
-            raise BackendUnsupportedError(msg)
+        with pytest.raises(MemoryBackendUnsupportedError):
+            raise MemoryBackendUnsupportedError(msg)
 
     def test_is_retryable_is_false(self) -> None:
         """The error is deterministic; the provider-retry layer must surface it."""
-        exc = BackendUnsupportedError("backend cannot support this")
+        exc = MemoryBackendUnsupportedError("backend cannot support this")
         assert exc.is_retryable is False
 
     @pytest.mark.parametrize(
@@ -179,7 +179,7 @@ class TestBackendUnsupportedError:
     def test_empty_or_whitespace_reason_rejected(self, bad_reason: str) -> None:
         """Reason must carry operator-actionable text; blank is rejected."""
         with pytest.raises(ValueError, match="non-empty"):
-            BackendUnsupportedError(bad_reason)
+            MemoryBackendUnsupportedError(bad_reason)
 
 
 class TestActiveEmbedderSnapshot:

@@ -10,6 +10,8 @@ from typing import Annotated
 
 from litestar.params import Parameter
 
+from synthorg.core.types import NotBlankStr
+
 PathId = Annotated[
     str,
     Parameter(max_length=128, min_length=1, description="Resource identifier"),
@@ -35,16 +37,27 @@ PathKey = Annotated[
 """Path parameter type for settings keys (1-128 chars)."""
 
 PathField = Annotated[
-    str,
+    NotBlankStr,
     Parameter(max_length=128, min_length=1, description="Credential field name"),
 ]
-"""Path parameter type for credential / secret field names (1-128 chars)."""
+"""Path parameter type for credential / secret field names (1-128 chars).
+
+``NotBlankStr`` rejects whitespace-only values in addition to the
+length bound -- a path segment of ``"   "`` is identifier-shaped on
+the wire but semantically blank, so refusing it at the boundary
+keeps audit logs and downstream lookups from carrying meaningless
+identifiers.
+"""
 
 PathEventType = Annotated[
-    str,
+    NotBlankStr,
     Parameter(max_length=64, min_length=1, description="Webhook event type"),
 ]
-"""Path parameter type for webhook event-type identifiers (1-64 chars)."""
+"""Path parameter type for webhook event-type identifiers (1-64 chars).
+
+``NotBlankStr`` rejects whitespace-only values; same rationale as
+:data:`PathField` above.
+"""
 
 # Max lengths for query parameter validation (shared with inline checks
 # where Litestar does not enforce Parameter constraints on optional params).

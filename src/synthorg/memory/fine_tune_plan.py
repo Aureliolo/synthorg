@@ -11,7 +11,7 @@ both models share the same path-traversal rejection so hostile
 ``source_dir`` / ``output_dir`` values fail validation before reaching
 the filesystem.
 
-:class:`BackendUnsupportedError` is raised by :class:`MemoryService`
+:class:`MemoryBackendUnsupportedError` is raised by :class:`MemoryService`
 fine-tune methods when the active persistence backend does not expose
 ``fine_tune_runs`` / ``fine_tune_checkpoints``. Its ``domain_code``
 maps directly to ``"not_supported"`` so MCP handlers can route the
@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 _MIN_DRIVE_LETTER_LEN: Literal[2] = 2
 
 
-class BackendUnsupportedError(DomainError):
+class MemoryBackendUnsupportedError(DomainError):
     """Raised when the active persistence backend lacks fine-tune support.
 
     Carries ``domain_code = "not_supported"`` so handlers can map the
@@ -74,7 +74,7 @@ class BackendUnsupportedError(DomainError):
             ValueError: If *reason* is empty or whitespace-only.
         """
         if not reason or not reason.strip():
-            msg = "BackendUnsupportedError.reason must be non-empty"
+            msg = "MemoryBackendUnsupportedError.reason must be non-empty"
             raise ValueError(msg)
         self.reason = reason
         super().__init__(reason)
@@ -243,6 +243,6 @@ class FineTunePlan(BaseModel):
 
 __all__ = [
     "ActiveEmbedderSnapshot",
-    "BackendUnsupportedError",
     "FineTunePlan",
+    "MemoryBackendUnsupportedError",
 ]
