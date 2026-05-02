@@ -4,7 +4,6 @@ from typing import Any
 
 from litestar import Controller, Request, delete, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import NotFoundException
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -13,6 +12,8 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.core.domain_errors import resource_not_found
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -110,7 +111,19 @@ class MessageController(Controller):
                 actor_id=str(request.user.user_id),
                 reason="not_found",
             )
-            raise NotFoundException(detail=f"message {message_id!r} not found")
+            # Audit 147-error-mapping-inconsistency: previously the
+            # controller raised litestar's NotFoundException which
+            # bypasses handle_domain_error and loses the RFC 9457
+            # category / error_code triple. ``resource_not_found``
+            # routes through handle_domain_error so the response
+            # body carries the structured error envelope every other
+            # 404 in the API uses.
+            resource_type = "message"
+            raise resource_not_found(
+                resource_type,
+                message_id,
+                code=ErrorCode.RESOURCE_NOT_FOUND,
+            )
         return ApiResponse(data=None)
 
     @get("/channels")

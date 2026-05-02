@@ -27,7 +27,6 @@ from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.backup.errors import (
-    BackupError,
     BackupInProgressError,
     BackupNotFoundError,
     ManifestError,
@@ -48,7 +47,6 @@ from synthorg.core.domain_errors import (
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
-    BACKUP_FAILED,
     BACKUP_NOT_FOUND,
     BACKUP_RESTORE_FAILED,
 )
@@ -115,27 +113,18 @@ class BackupController(Controller):
         app_state: AppState = state.app_state
 
         async def _do_backup() -> BackupManifest:
-            try:
-                return await app_state.backup_service.create_backup(
-                    BackupTrigger.MANUAL,
-                )
-            except BackupInProgressError as exc:
-                logger.warning(
-                    BACKUP_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                msg_in_progress = "A backup operation is already in progress"
-                raise ConflictError(msg_in_progress) from exc
-            except BackupError as exc:
-                logger.error(
-                    BACKUP_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                    exc_info=True,
-                )
-                msg = "Backup operation failed"
-                raise InternalServerException(msg) from exc
+            # Audit 147-error-mapping-inconsistency: BackupError +
+            # subclasses propagate directly to ``handle_backup_error``
+            # which already maps BackupInProgressError to 409,
+            # BackupNotFoundError to 404, and other BackupError types
+            # to a scrubbed 5xx with the right RFC 9457 envelope.
+            # The previous controller-level translation lost the
+            # domain-specific BackupError hierarchy by routing through
+            # the generic ConflictError / InternalServerException
+            # paths.
+            return await app_state.backup_service.create_backup(
+                BackupTrigger.MANUAL,
+            )
 
         if idempotency_key:
             outcome = await app_state.idempotency_service.run_idempotent(
@@ -187,21 +176,17 @@ class BackupController(Controller):
             if cursor is None
             else decode_cursor(cursor, secret=app_state.cursor_secret)
         )
-        try:
-            # Fetch ``limit + 1`` so we can detect that another page
-            # follows without a second full-directory scan.
-            backups = await app_state.backup_service.list_backups(
-                limit=limit + 1,
-                offset=offset,
-            )
-        except BackupError as exc:
-            logger.error(  # noqa: TRY400
-                BACKUP_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "Failed to list backups"
-            raise InternalServerException(msg) from exc
+        # Audit 147-error-mapping-inconsistency: let BackupError
+        # propagate to handle_backup_error so the response carries
+        # the structured RFC 9457 envelope; the previous
+        # InternalServerException re-raise dropped the BackupError
+        # type and forced an unstructured 500 response.
+        # Fetch ``limit + 1`` so we can detect that another page
+        # follows without a second full-directory scan.
+        backups = await app_state.backup_service.list_backups(
+            limit=limit + 1,
+            offset=offset,
+        )
         meta = encode_countless_seek_meta(
             offset=offset,
             fetched_rows=len(backups),
@@ -226,18 +211,15 @@ class BackupController(Controller):
         Returns:
             Full backup manifest.
         """
+        # Audit 147-error-mapping-inconsistency: BackupNotFoundError
+        # propagates to handle_backup_error which maps it to 404
+        # with error_code=RECORD_NOT_FOUND -- preserves the
+        # domain-specific BackupNotFoundError type instead of
+        # collapsing it into the generic NotFoundError /
+        # RESOURCE_NOT_FOUND that controller-level translation
+        # produced.
         app_state: AppState = state.app_state
-        try:
-            manifest = await app_state.backup_service.get_backup(backup_id)
-        except BackupNotFoundError as exc:
-            logger.warning(
-                BACKUP_NOT_FOUND,
-                backup_id=backup_id,
-            )
-            # Controller-authored message (not the raw service text)
-            # so the 404 response cannot leak backend internals.
-            msg = "Backup not found"
-            raise NotFoundError(msg) from exc
+        manifest = await app_state.backup_service.get_backup(backup_id)
         return ApiResponse(data=manifest)
 
     @delete(
@@ -265,26 +247,13 @@ class BackupController(Controller):
                 so all three backup-mutation endpoints share the same
                 domain-error mapping.
         """
+        # Audit 147-error-mapping-inconsistency: BackupError +
+        # subclasses propagate to handle_backup_error so the
+        # response carries the structured envelope (404 +
+        # RECORD_NOT_FOUND for BackupNotFoundError, 409 +
+        # RESOURCE_CONFLICT for BackupInProgressError).
         app_state: AppState = state.app_state
-        try:
-            await app_state.backup_service.delete_backup(backup_id)
-        except BackupNotFoundError as exc:
-            logger.warning(
-                BACKUP_NOT_FOUND,
-                backup_id=backup_id,
-            )
-            msg = "Backup not found"
-            raise NotFoundError(msg) from exc
-        except BackupInProgressError as exc:
-            logger.warning(
-                BACKUP_FAILED,
-                backup_id=backup_id,
-                operation="delete",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg_in_progress = "A backup operation is already in progress"
-            raise ConflictError(msg_in_progress) from exc
+        await app_state.backup_service.delete_backup(backup_id)
 
     @post(
         "/restore",

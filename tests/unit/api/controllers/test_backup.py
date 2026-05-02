@@ -104,17 +104,22 @@ class TestCreateBackup:
         assert isinstance(result, ApiResponse)
         assert result.data is manifest
 
-    async def test_create_backup_returns_409_on_in_progress(self) -> None:
+    async def test_create_backup_propagates_in_progress(self) -> None:
+        """BackupInProgressError propagates to handle_backup_error.
+
+        Audit 147-error-mapping-inconsistency: the controller no
+        longer translates BackupInProgressError to ConflictError --
+        ``handle_backup_error`` already maps it to 409 with the
+        domain-specific RESOURCE_CONFLICT envelope.
+        """
         state, service = _make_state_and_service()
         service.create_backup = AsyncMock(
             side_effect=BackupInProgressError("busy"),
         )
 
         ctrl = _controller()
-        with pytest.raises(ConflictError) as exc_info:
+        with pytest.raises(BackupInProgressError):
             await ctrl.create_backup.fn(ctrl, state=state)
-
-        assert exc_info.value.status_code == 409
 
 
 @pytest.mark.unit
@@ -155,14 +160,23 @@ class TestGetBackup:
         assert isinstance(result, ApiResponse)
         assert result.data is manifest
 
-    async def test_get_backup_raises_404_on_not_found(self) -> None:
+    async def test_get_backup_propagates_not_found(self) -> None:
+        """BackupNotFoundError propagates to handle_backup_error.
+
+        Audit 147-error-mapping-inconsistency: the controller no
+        longer translates BackupNotFoundError to the generic
+        NotFoundError (RESOURCE_NOT_FOUND) -- ``handle_backup_error``
+        maps it to 404 with the domain-specific RECORD_NOT_FOUND
+        envelope so clients can discriminate which resource type
+        was missing.
+        """
         state, service = _make_state_and_service()
         service.get_backup = AsyncMock(
             side_effect=BackupNotFoundError("gone"),
         )
 
         ctrl = _controller()
-        with pytest.raises(NotFoundError):
+        with pytest.raises(BackupNotFoundError):
             await ctrl.get_backup.fn(
                 ctrl,
                 state=state,
@@ -188,14 +202,16 @@ class TestDeleteBackup:
         service.delete_backup.assert_awaited_once_with("abc123def456")
         assert result is None
 
-    async def test_delete_backup_raises_404_on_not_found(self) -> None:
+    async def test_delete_backup_propagates_not_found(self) -> None:
+        """BackupNotFoundError propagates to handle_backup_error
+        (audit 147-error-mapping-inconsistency)."""
         state, service = _make_state_and_service()
         service.delete_backup = AsyncMock(
             side_effect=BackupNotFoundError("gone"),
         )
 
         ctrl = _controller()
-        with pytest.raises(NotFoundError):
+        with pytest.raises(BackupNotFoundError):
             await ctrl.delete_backup.fn(
                 ctrl,
                 state=state,

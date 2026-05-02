@@ -118,7 +118,7 @@ def test_class_attrs_are_consistent(cls: type[BaseException]) -> None:
     """
     assert hasattr(cls, "error_code"), f"{cls.__name__}.error_code missing"
     assert hasattr(cls, "error_category"), f"{cls.__name__}.error_category missing"
-    prefix = cls.error_code.value // 1000  # type: ignore[attr-defined]
+    prefix = cls.error_code.value // 1000
     # Prefix 0 (e.g. ``ErrorCode`` value 0) is reserved for code-not-set
     # cases; every error class must declare a non-zero code.
     assert prefix > 0, f"{cls.__name__}.error_code prefix is 0"
