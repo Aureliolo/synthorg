@@ -118,14 +118,21 @@ class TestOrgInflectionMonitorLifecycleLock:
         with patch.object(OrgInflectionMonitor, "_loop", hung_loop):
             await monitor.start()
             await entered.wait()
-
-            with pytest.raises(TimeoutError):
-                await monitor.stop()
-            assert monitor._stop_failed is True
-            task = monitor._task
-            assert task is not None
-            release.set()
-            await task
+            saved_task = monitor._task
+            try:
+                with pytest.raises(TimeoutError):
+                    await monitor.stop()
+                assert monitor._stop_failed is True
+                assert saved_task is not None
+            finally:
+                # ``finally`` so a failed assertion above (e.g. the
+                # service forgot to mark itself unrestartable) still
+                # releases the hung loop and drains the orphan task.
+                # Otherwise the leak would silently propagate into
+                # the next test run.
+                release.set()
+                if saved_task is not None:
+                    await saved_task
 
         with pytest.raises(RuntimeError, match="unrestartable"):
             await monitor.start()

@@ -425,7 +425,20 @@ class SimulationController(Controller):
             )
         except MemoryError, RecursionError:
             raise
-        except BaseException:
+        except BaseException as exc:
+            # Log the rollback trigger before tearing down -- without
+            # this entry, a failure between ``register_if_absent`` and
+            # the callback wiring would leave only the rollback drain
+            # log, with no record of the original cause for the start
+            # that the operator would have to chase across components.
+            logger.warning(
+                SIMULATION_RUN_FAILED,
+                simulation_id=record.simulation_id,
+                stage="post_claim_setup",
+                spawned_task=spawned_task is not None,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             await _rollback_register_if_absent(
                 spawned_task,
                 sim_state=sim_state,

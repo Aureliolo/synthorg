@@ -82,11 +82,16 @@ class TestPruningServiceLifecycleLock:
         await service.start()
         await service.stop()
         # After a clean stop, the service must accept a restart on a
-        # fresh ``_task``.  Cannot assert ``not is_running`` here:
-        # mypy narrows ``is_running`` to ``False`` after the property
-        # access and would then flag every subsequent ``await
-        # service.start()`` / ``stop()`` as unreachable.
+        # fresh ``_task``. Cannot assert ``not is_running`` between
+        # the calls because mypy narrows ``is_running`` to ``False``
+        # after the property access and would then flag every
+        # subsequent ``await service.start()`` / ``stop()`` as
+        # unreachable.
         await service.start()
+        # Positive assertion proves the second ``start()`` actually
+        # took effect: without this, a regression where ``start()``
+        # silently no-ops after a stop would still pass the test.
+        assert service.is_running
         await service.stop()
 
     async def test_unrestartable_after_drain_timeout(self) -> None:
@@ -111,14 +116,19 @@ class TestPruningServiceLifecycleLock:
         with patch.object(PruningService, "_run_loop", hung_loop):
             await service.start()
             await entered.wait()
-
-            with pytest.raises(TimeoutError):
-                await service.stop()
-            assert service._stop_failed is True
-            task = service._task
-            assert task is not None
-            release.set()
-            await task
+            saved_task = service._task
+            try:
+                with pytest.raises(TimeoutError):
+                    await service.stop()
+                assert service._stop_failed is True
+                assert saved_task is not None
+            finally:
+                # ``finally`` so a failed assertion above still
+                # releases the hung loop and drains the orphan task,
+                # rather than leaking it into the next test run.
+                release.set()
+                if saved_task is not None:
+                    await saved_task
 
         with pytest.raises(RuntimeError, match="unrestartable"):
             await service.start()

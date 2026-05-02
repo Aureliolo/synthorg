@@ -81,9 +81,13 @@ class TestContinuousModeLifecycleLock:
         first = asyncio.create_task(
             mode.start(sim_config=_sim_config(), clients=()),
         )
-        # Wait until the runner reports it has entered ``run()``; this
-        # guarantees the first ``start()`` already holds the lifecycle
-        # lock before the second call below races for it.
+        # ``runner.ready.wait()`` only proves ``run()`` has entered;
+        # it does NOT prove the lifecycle lock is still held (the
+        # current ``ContinuousMode`` releases the lock before the
+        # run loop body). What it gives us is sequencing: the first
+        # ``start()`` has already passed the ``_running`` check and
+        # set the flag, so the second call below sees ``_running ==
+        # True`` and is forced down the "already running" branch.
         await runner.ready.wait()
 
         with pytest.raises(RuntimeError, match="already running"):
