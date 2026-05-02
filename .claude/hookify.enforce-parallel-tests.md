@@ -1,6 +1,6 @@
 ---
 name: enforce-parallel-tests
-enabled: true
+enabled: false
 event: bash
 conditions:
   - field: command
