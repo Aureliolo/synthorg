@@ -31,15 +31,15 @@ Usage::
     user_id = claims.sub
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import (
+    Mapping,  # noqa: TC003 -- runtime-needed via annotation introspection
+)
+from typing import LiteralString
 
 from pydantic import BaseModel, ValidationError
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_BOUNDARY_VALIDATION_FAILED
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 
@@ -47,33 +47,46 @@ _MAX_LOGGED_LOCATIONS = 5
 
 
 def parse_typed[T: BaseModel](
-    boundary: str,
+    boundary: LiteralString,
     raw: Mapping[str, object] | None,
     model: type[T],
 ) -> T:
-    """Validate ``raw`` at ``boundary`` against ``model`` and return the typed instance.
+    """Validate a raw boundary payload against a typed Pydantic model.
 
-    ``boundary`` MUST be a hardcoded literal at the call site, never a
-    user-controlled or externally-derived string. Operators search the
-    structured logs by this label so a typo or operator-influenced value
-    silently misroutes diagnostics. Today the six registered labels are
-    ``mcp.tool``, ``jwt``, ``ws.control``, ``audit_chain``,
-    ``a2a.jsonrpc``, and ``settings.security``; new boundaries pick a
-    stable namespaced constant.
+    The helper is the canonical entry-point validator for the six
+    registered API boundaries (``mcp.tool``, ``jwt``, ``ws.control``,
+    ``audit_chain``, ``a2a.jsonrpc``, ``settings.security``). It logs
+    the structured failure event on rejection and re-raises the
+    underlying ``ValidationError`` so each boundary translates into its
+    native error envelope.
 
-    ``raw`` of ``None`` is treated as an empty dict before validation.
-    This lets callers normalise optional / nullable payloads (e.g. a
-    JSON-RPC ``params`` field that may be omitted) without branching;
-    Pydantic still raises loudly for required fields.
+    ``boundary`` is typed ``LiteralString`` so the static checker
+    rejects any caller passing a runtime-derived string -- the
+    operator-search log label cannot be operator-influenced.
 
-    Failures emit one ``API_BOUNDARY_VALIDATION_FAILED`` log carrying
-    the boundary name, the exception class, the failure count, the
-    safe-redacted error description, the first
-    ``_MAX_LOGGED_LOCATIONS`` field locations, and a ``truncated`` flag
-    indicating whether further locations exist beyond the cap, then
-    re-raise the ``ValidationError``. The caller is responsible for
-    translating that into the appropriate HTTP response or RPC error
-    envelope -- this helper does not swallow.
+    Args:
+        boundary: Hardcoded namespaced label used for operator log
+            search and grouping (e.g. ``"jwt"`` or ``"ws.control"``).
+            MUST be a string literal known at type-check time; passing
+            a runtime-derived string fails the type check.
+        raw: Incoming payload. ``None`` is normalised to ``{}`` so
+            callers do not branch on optional / nullable wire fields;
+            Pydantic still raises loudly for required fields.
+        model: Pydantic model class used for validation and coercion.
+
+    Returns:
+        The validated typed instance of ``model``.
+
+    Raises:
+        ValidationError: If the payload does not conform to ``model``.
+            Before re-raising, emits one ``API_BOUNDARY_VALIDATION_FAILED``
+            log carrying the boundary name, exception class, failure
+            count, redacted error description, the first
+            ``_MAX_LOGGED_LOCATIONS`` field locations, and a
+            ``truncated`` flag indicating whether further locations
+            exist beyond the cap. The caller is responsible for
+            translating the exception into the appropriate HTTP / RPC
+            / envelope response -- this helper does not swallow.
     """
     input_data = raw if raw is not None else {}
     try:
