@@ -439,7 +439,7 @@ class ScalingController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return ApiResponse(data=(), error=str(exc))
+            return ApiResponse(data=(), error=safe_error_description(exc))
 
         try:
             scaling.update_priority_order(order)
@@ -452,7 +452,7 @@ class ScalingController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return ApiResponse(data=(), error=str(exc))
+            return ApiResponse(data=(), error=safe_error_description(exc))
         logger.info(
             HR_SCALING_PRIORITY_ORDER_UPDATED,
             order=[n.value for n in order],

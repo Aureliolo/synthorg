@@ -14,6 +14,17 @@ HR_TRAINING_PLAN_IDEMPOTENT: Final[str] = "hr.training.plan_idempotent"
 HR_TRAINING_PLAN_FAILED: Final[str] = "hr.training.plan_failed"
 HR_TRAINING_SKIPPED: Final[str] = "hr.training.skipped"
 
+HR_TRAINING_PLAN_STATUS_TRANSITIONED: Final[str] = (
+    "hr.training.plan.status_transitioned"
+)
+"""Training plan status transition (any persisted hop).
+
+Emitted AFTER the in-memory session-store write succeeds, carrying
+``plan_id`` / ``from_status`` / ``to_status``. Mirrors
+``HR_AGENT_STATUS_TRANSITIONED`` (registry) and the workflow / sprint
+lifecycle transition events: every persisted hop is logged so the
+audit stream sees the actual state change."""
+
 # -- Source selection -------------------------------------------------
 
 HR_TRAINING_SELECTION_STARTED: Final[str] = "hr.training.selection_started"

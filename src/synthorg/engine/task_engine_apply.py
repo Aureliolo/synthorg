@@ -293,7 +293,7 @@ async def apply_update(
         return TaskMutationResult(
             request_id=mutation.request_id,
             success=False,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_code="version_conflict",
         )
 
@@ -379,7 +379,7 @@ async def apply_transition(
         return TaskMutationResult(
             request_id=mutation.request_id,
             success=False,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_code="version_conflict",
         )
 
@@ -416,7 +416,7 @@ async def apply_transition(
             return TaskMutationResult(
                 request_id=mutation.request_id,
                 success=False,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_code="validation",
             )
 
@@ -562,7 +562,7 @@ async def apply_cancel(
         return TaskMutationResult(
             request_id=mutation.request_id,
             success=False,
-            error=str(exc),
+            error=safe_error_description(exc),
             error_code="validation",
         )
 

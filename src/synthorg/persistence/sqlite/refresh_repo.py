@@ -86,7 +86,7 @@ class SQLiteRefreshTokenRepository:
                 msg = "Failed to persist refresh token"
                 # Storage failure -- NOT an auth decision; emit under
                 # api.* so the cryptographic audit chain is not polluted
-                # with DB errors (#1599 PR review feedback).
+                # with DB errors.
                 logger.warning(
                     API_AUTH_REFRESH_PERSISTENCE_ERROR,
                     operation="create",

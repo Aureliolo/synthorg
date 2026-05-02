@@ -14,7 +14,7 @@ from synthorg.engine.evolution.models import (
     AdaptationProposal,
     EvolutionEvent,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import (
     EVOLUTION_ADAPTATION_FAILED,
     EVOLUTION_ADAPTED,
@@ -319,7 +319,8 @@ class EvolutionService:
             logger.debug(
                 EVOLUTION_ADAPTATION_FAILED,
                 agent_id=str(agent_id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 source="service_fallback",
             )
             return False

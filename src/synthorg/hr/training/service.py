@@ -36,6 +36,7 @@ from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_EXECUTED,
     HR_TRAINING_PLAN_FAILED,
     HR_TRAINING_PLAN_IDEMPOTENT,
+    HR_TRAINING_PLAN_STATUS_TRANSITIONED,
     HR_TRAINING_REVIEW_PENDING,
     HR_TRAINING_SKIPPED,
     HR_TRAINING_STORE_FAILED,
@@ -313,6 +314,13 @@ class TrainingService:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+            else:
+                logger.info(
+                    HR_TRAINING_PLAN_STATUS_TRANSITIONED,
+                    plan_id=str(failed.id),
+                    from_status=plan.status.value,
+                    to_status=TrainingPlanStatus.FAILED.value,
+                )
             raise
         if not ran_pipeline:
             return result
@@ -331,6 +339,13 @@ class TrainingService:
                 stage="executed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+            )
+        else:
+            logger.info(
+                HR_TRAINING_PLAN_STATUS_TRANSITIONED,
+                plan_id=str(executed.id),
+                from_status=plan.status.value,
+                to_status=TrainingPlanStatus.EXECUTED.value,
             )
         return result
 

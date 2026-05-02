@@ -9,7 +9,7 @@ import json
 import re
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_PLAN_PARSE_ERROR,
 )
@@ -121,7 +121,8 @@ def _parse_json_plan(
         logger.debug(
             EXECUTION_PLAN_PARSE_ERROR,
             parser="json",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 
@@ -178,7 +179,8 @@ def _parse_text_plan(
         logger.debug(
             EXECUTION_PLAN_PARSE_ERROR,
             parser="text_fallback",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 
@@ -257,6 +259,7 @@ def _data_to_plan(
         logger.debug(
             EXECUTION_PLAN_PARSE_ERROR,
             parser="json_data",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None

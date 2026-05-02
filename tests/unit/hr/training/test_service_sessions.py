@@ -9,6 +9,7 @@ populates. The pipeline itself is mocked via a subclass override of
 from datetime import UTC, datetime
 
 import pytest
+import structlog.testing
 
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
@@ -21,6 +22,10 @@ from synthorg.hr.training.models import (
 from synthorg.hr.training.service import TrainingService
 
 pytestmark = pytest.mark.unit
+
+_TRANSITION_EVENT = "hr.training.plan.status_transitioned"
+_RECORDED_EVENT = "hr.training.session_recorded"
+_RECORD_FAILED_EVENT = "hr.training.session_record_failed"
 
 _NOW = datetime(2026, 4, 24, 12, 0, tzinfo=UTC)
 
@@ -232,3 +237,106 @@ class TestSessionCap:
         # Older entries dropped; the 3 most recent survive.
         assert total == 3
         assert [s.id for s in page] == ["plan-4", "plan-3", "plan-2"]
+
+
+class TestStatusTransitionLogs:
+    """Status-transition INFO log on every persisted PENDING -> EXECUTED /
+    PENDING -> FAILED hop in :meth:`TrainingService.start_session`."""
+
+    async def test_executed_transition_emits_status_transitioned_event(
+        self,
+    ) -> None:
+        service = _build_service()
+        plan = _plan("plan-1")
+
+        with structlog.testing.capture_logs() as events:
+            await service.start_session(plan)
+
+        transitions = [e for e in events if e.get("event") == _TRANSITION_EVENT]
+        assert len(transitions) == 1
+        entry = transitions[0]
+        assert entry["plan_id"] == "plan-1"
+        assert entry["from_status"] == TrainingPlanStatus.PENDING.value
+        assert entry["to_status"] == TrainingPlanStatus.EXECUTED.value
+
+    async def test_failed_transition_emits_status_transitioned_event(
+        self,
+    ) -> None:
+        boom = RuntimeError("pipeline exploded")
+        service = _build_service(raises=boom)
+        plan = _plan("plan-2")
+
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(RuntimeError, match="pipeline exploded"),
+        ):
+            await service.start_session(plan)
+
+        transitions = [e for e in events if e.get("event") == _TRANSITION_EVENT]
+        assert len(transitions) == 1
+        entry = transitions[0]
+        assert entry["plan_id"] == "plan-2"
+        assert entry["from_status"] == TrainingPlanStatus.PENDING.value
+        assert entry["to_status"] == TrainingPlanStatus.FAILED.value
+
+    async def test_status_transitioned_emitted_after_record_session(
+        self,
+    ) -> None:
+        """The transition log fires AFTER the persistence write succeeds.
+
+        Pinned by CLAUDE.md "every persisted hop logs at INFO using a
+        domain-scoped *_STATUS_TRANSITIONED constant ... AFTER the
+        persistence write succeeds".
+        """
+        service = _build_service()
+        plan = _plan("plan-3")
+
+        with structlog.testing.capture_logs() as events:
+            await service.start_session(plan)
+
+        ordering: list[str] = []
+        for event in events:
+            name = event.get("event")
+            if name == _RECORDED_EVENT:
+                if event.get("status") == TrainingPlanStatus.EXECUTED.value:
+                    ordering.append("recorded_executed")
+            elif name == _TRANSITION_EVENT:
+                ordering.append("transitioned")
+
+        assert ordering == ["recorded_executed", "transitioned"], (
+            f"transition log must come AFTER the executed session record; "
+            f"observed order: {ordering}"
+        )
+
+    async def test_status_transitioned_skipped_when_record_fails(self) -> None:
+        """No transition log when the persistence write itself raised.
+
+        The session-store write is the persistence gate; a failure there
+        means the state change is not durable and the audit stream must
+        not falsely record the hop.
+        """
+        service = _build_service()
+        plan = _plan("plan-4")
+
+        async def _exploding_record(_plan: TrainingPlan) -> None:
+            msg = "session store offline"
+            raise RuntimeError(msg)
+
+        # Patch the executed-branch persistence write only. The entry
+        # write at the top of ``start_session`` runs first; we let it
+        # succeed so the test focuses on the executed-branch contract.
+        service._record_session = _exploding_record  # type: ignore[assignment, method-assign]
+
+        with structlog.testing.capture_logs() as events:
+            await service.start_session(plan)
+
+        transitions = [e for e in events if e.get("event") == _TRANSITION_EVENT]
+        record_failed = [e for e in events if e.get("event") == _RECORD_FAILED_EVENT]
+
+        assert transitions == [], (
+            "transition log must NOT fire when the persistence write fails"
+        )
+        assert record_failed, (
+            "the persistence-failure WARNING must still fire so operators see "
+            "the durable-write failure"
+        )

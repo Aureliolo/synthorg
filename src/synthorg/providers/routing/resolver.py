@@ -258,7 +258,8 @@ class ModelResolver:
                 ref=ref,
                 candidate_count=len(candidates),
                 selector=type(self._selector).__name__,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="selector_raised_resolution_error",
             )
             return None

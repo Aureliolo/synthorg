@@ -337,7 +337,8 @@ class TestShipContainerLogs:
             mock_logger.debug.assert_called_once_with(
                 SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
                 container_id="abc123",
-                error="logging broken",
+                error_type="RuntimeError",
+                error="RuntimeError: logging broken",
             )
 
     async def test_shared_byte_budget_truncation(self) -> None:

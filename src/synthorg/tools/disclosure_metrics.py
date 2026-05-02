@@ -3,8 +3,8 @@
 Tracks per-session token usage across L1/L2/L3 tiers to measure
 the context cost reduction vs full upfront loading.
 
-Wire-up to ``EfficiencyRatios.tool_disclosure_token_savings``
-(R3 #1265) is pending.
+Wire-up to ``EfficiencyRatios.tool_disclosure_token_savings`` is
+pending.
 """
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field

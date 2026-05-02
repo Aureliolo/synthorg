@@ -239,7 +239,7 @@ class DefaultHierarchicalRetriever:
                 )
                 return RetrievalResult(
                     worker_name=name,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
 
         async with asyncio.TaskGroup() as tg:

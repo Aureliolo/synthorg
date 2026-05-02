@@ -1,9 +1,8 @@
 """Template-layer preset domain models.
 
-Moved here from ``synthorg.api.dto_personalities`` so the templates
-layer no longer imports from the API layer (audit-144 layer
-violation).  The API DTOs continue to consume :class:`PresetSource`
-from this module.
+Lives here so the templates layer does not import from the API layer.
+The API DTOs continue to consume :class:`PresetSource` from this
+module.
 """
 
 from enum import StrEnum

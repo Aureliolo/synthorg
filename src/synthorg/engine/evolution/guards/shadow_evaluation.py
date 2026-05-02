@@ -33,7 +33,7 @@ from synthorg.engine.evolution.models import (
     AdaptationDecision,
     AdaptationProposal,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import (
     EVOLUTION_GUARDS_PASSED,
     EVOLUTION_GUARDS_REJECTED,
@@ -316,7 +316,7 @@ class ShadowEvaluationGuard:
                     proposal_id=proposal_id,
                     pass_label=label,
                     task_id=task.id,
-                    error=str(exc)[:200] or type(exc).__name__,
+                    error=safe_error_description(exc),
                     error_type="infrastructure",
                     exc_info=True,
                 )

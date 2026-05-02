@@ -25,7 +25,7 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.engine.sanitization import sanitize_message
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.classification import (
     DETECTOR_COMPLETE,
     DETECTOR_ERROR,
@@ -91,7 +91,8 @@ def _parse_findings(
         logger.debug(
             DETECTOR_PARSE_ERROR,
             category=category.value,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             raw_snippet=raw[:200],
         )
         return ()

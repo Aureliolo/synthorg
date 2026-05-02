@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from pydantic import SecretStr
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_LITELLM_LOOKUP_SKIPPED,
@@ -341,7 +341,8 @@ def _parse_litellm_entry(
             PROVIDER_LITELLM_LOOKUP_SKIPPED,
             reason="malformed_model_entry",
             model=model_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 

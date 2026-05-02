@@ -291,7 +291,8 @@ class LlmSemanticAnalyzer:
                 analyzer="llm",
                 attempt=attempt,
                 reason="parse_error",
-                error=str(error),
+                error_type=type(error).__name__,
+                error=safe_error_description(error),
             )
             return None
         logger.warning(
