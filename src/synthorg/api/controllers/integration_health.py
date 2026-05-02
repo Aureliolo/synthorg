@@ -124,10 +124,9 @@ class IntegrationHealthController(Controller):
     ) -> ApiResponse[HealthReport]:
         """Return the health report for one connection.
 
-        ``ConnectionNotFoundError`` propagates with its class-level
-        404 + ``CONNECTION_NOT_FOUND`` envelope; controller-level
-        translation collapses the type into the generic
-        ``NotFoundError``.
+        ``ConnectionNotFoundError`` propagates unchanged and is
+        translated by centralized exception handlers into the
+        class-defined 404 + ``CONNECTION_NOT_FOUND`` envelope.
         """
         catalog = state["app_state"].connection_catalog
         report = await check_connection_health(

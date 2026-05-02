@@ -23,7 +23,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from synthorg.core.domain_errors import DomainError, NotFoundError
+from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -111,11 +111,20 @@ class CheckpointRollbackCorruptError(DomainError):
     is_retryable: bool = False  # deterministic: the stored payload is malformed
 
 
-class FineTuneRunNotFoundError(DomainError):
-    """Raised when a referenced fine-tune run id does not exist."""
+class FineTuneRunNotFoundError(NotFoundError):
+    """Raised when a referenced fine-tune run id does not exist.
+
+    Inherits :class:`NotFoundError` so ``EXCEPTION_HANDLERS`` routes
+    this through the 404 envelope instead of the generic INTERNAL
+    fallback the bare ``DomainError`` base would imply.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the run is absent
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Fine-tune run not found"
     # Wire-level ``domain_code`` so MCP handlers can route via the
     # shared ``err(exc)`` helper instead of regex-matching the
     # exception message -- that was the pre-existing anti-pattern
@@ -123,11 +132,20 @@ class FineTuneRunNotFoundError(DomainError):
     domain_code: str = "not_found"
 
 
-class FineTuneRunNotResumableError(DomainError):
-    """Raised when a fine-tune run exists but is not in a resumable stage."""
+class FineTuneRunNotResumableError(ConflictError):
+    """Raised when a fine-tune run exists but is not in a resumable stage.
+
+    Inherits :class:`ConflictError` so ``EXCEPTION_HANDLERS`` routes
+    this through the 409 envelope; the prior ``DomainError`` base
+    classified it as INTERNAL/500.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: stage is terminal or running
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Fine-tune run not resumable"
     domain_code: str = "conflict"
 
 

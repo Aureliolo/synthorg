@@ -24,9 +24,9 @@ this one closes the remaining gap.
 """
 
 from collections.abc import Mapping  # noqa: TC003 -- runtime annotation
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.hr.training.models import (
     TrainingPlan,
@@ -61,18 +61,24 @@ class TrainingPlanService:
     Args:
         plan_repo: Repository handling :class:`TrainingPlan` rows.
         result_repo: Repository handling :class:`TrainingResult` rows.
+        clock: Time seam for the FAILED ``executed_at`` stamp; defaults
+            to :class:`SystemClock` so the wall-clock path is unchanged
+            for production callers and ``FakeClock`` can be injected
+            in tests for deterministic transition timestamps.
     """
 
-    __slots__ = ("_plan_repo", "_result_repo")
+    __slots__ = ("_clock", "_plan_repo", "_result_repo")
 
     def __init__(
         self,
         *,
         plan_repo: TrainingPlanRepository,
         result_repo: TrainingResultRepository,
+        clock: Clock | None = None,
     ) -> None:
         self._plan_repo = plan_repo
         self._result_repo = result_repo
+        self._clock = clock or SystemClock()
 
     async def create_plan(self, plan: TrainingPlan) -> TrainingPlan:
         """Persist a freshly created plan and emit the creation audit event.
@@ -128,7 +134,7 @@ class TrainingPlanService:
         failed_plan = plan.model_copy(
             update={
                 "status": TrainingPlanStatus.FAILED,
-                "executed_at": datetime.now(UTC),
+                "executed_at": self._clock.now(),
             }
         )
         try:
