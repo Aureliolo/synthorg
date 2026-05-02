@@ -189,7 +189,7 @@ class TestGetBackup:
 
         service.get_backup.assert_awaited_once_with("abc123def456")
         assert isinstance(result, ApiResponse)
-        assert result.data is manifest
+        assert result.data == manifest
 
     async def test_get_backup_raises_404_on_not_found(self) -> None:
         state, service = _make_state_and_service()
@@ -260,7 +260,7 @@ class TestRestoreBackup:
             components=None,
         )
         assert isinstance(result, ApiResponse)
-        assert result.data is response
+        assert result.data == response
 
     async def test_restore_passes_components_to_service(self) -> None:
         state, service = _make_state_and_service()
@@ -364,8 +364,12 @@ class TestRestoreConfirmGate:
         with pytest.raises(ValidationError):
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
-        # Service must never be called when confirm is false
-        service.restore_from_backup.assert_not_awaited()
+        # Service must never be called when confirm is false.
+        # ``assert_not_called()`` is stricter than ``assert_not_awaited()``:
+        # the former trips even on an unawaited coroutine, catching a
+        # regression where the controller forgets the ``await`` but
+        # still creates the call.
+        service.restore_from_backup.assert_not_called()
 
 
 @pytest.mark.unit

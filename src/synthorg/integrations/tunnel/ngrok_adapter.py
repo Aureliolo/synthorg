@@ -50,8 +50,18 @@ class NgrokAdapter:
         auth_token_env: str = "NGROK_AUTHTOKEN",  # noqa: S107
         port: int = 8000,
     ) -> None:
-        self._auth_token_env = auth_token_env
         self._port = port
+        # The ngrok auth token is a bootstrap secret read from the
+        # process environment at construction time (the sanctioned
+        # init-time exception in the configuration-precedence policy:
+        # bootstrap secrets are env-only with no settings registry
+        # entry, since they have to be available before
+        # ``SettingsService`` itself can come up). Reading at
+        # ``__init__`` keeps the runtime ``start()`` path off the
+        # ``os.environ`` API and means rotating the token requires a
+        # fresh adapter instance, which matches how every other
+        # bootstrap-credential surface in this codebase behaves.
+        self._auth_token: str = os.environ.get(auth_token_env, "").strip()
         self._public_url: str | None = None
         self._tunnel: object | None = None
         # Per ``docs/reference/lifecycle-sync.md``: a dedicated
@@ -104,10 +114,9 @@ class NgrokAdapter:
             # place would cause subsequent unauthenticated calls to
             # silently reuse stale credentials. Per-call config keeps
             # the token instance-local.
-            auth_token = os.environ.get(self._auth_token_env, "").strip()
             pyngrok_config = (
-                conf.PyngrokConfig(auth_token=auth_token)
-                if auth_token
+                conf.PyngrokConfig(auth_token=self._auth_token)
+                if self._auth_token
                 else conf.PyngrokConfig()
             )
 

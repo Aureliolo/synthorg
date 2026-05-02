@@ -20,10 +20,18 @@ pytestmark = pytest.mark.unit
 
 
 class _FakeRunner:
-    """Records run() invocations and returns canned metrics."""
+    """Records ``run()`` invocations and signals readiness via ``Event``.
+
+    The ``ready`` event lets a test wait for the runner's first entry
+    deterministically instead of relying on ``asyncio.sleep(0)`` cycles
+    to let the inner loop schedule itself. Tests that need to drive
+    the second ``start()`` only after the first has actually entered
+    the runner await ``runner.ready.wait()``.
+    """
 
     def __init__(self) -> None:
         self.calls = 0
+        self.ready = asyncio.Event()
 
     async def run(
         self,
@@ -33,7 +41,7 @@ class _FakeRunner:
     ) -> tuple[SimulationMetrics, list[Any]]:
         del sim_config, clients
         self.calls += 1
-        await asyncio.sleep(0)
+        self.ready.set()
         return (
             SimulationMetrics(
                 total_requirements=1,
@@ -69,10 +77,10 @@ class TestContinuousModeLifecycleLock:
         first = asyncio.create_task(
             mode.start(sim_config=_sim_config(), clients=()),
         )
-        # Yield so the first task acquires the lock and starts the
-        # loop; without the yield, the second start() may run first.
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        # Wait until the runner reports it has entered ``run()``; this
+        # guarantees the first ``start()`` already holds the lifecycle
+        # lock before the second call below races for it.
+        await runner.ready.wait()
 
         with pytest.raises(RuntimeError, match="already running"):
             await mode.start(sim_config=_sim_config(), clients=())
@@ -104,8 +112,10 @@ class TestContinuousModeLifecycleLock:
         task = asyncio.create_task(
             mode.start(sim_config=_sim_config(), clients=()),
         )
-        # Let the loop run once.
-        await asyncio.sleep(0.01)
+        # Wait for the first run to enter (the runner sets ``ready``
+        # on every entry); racing the wall-clock with a fixed sleep
+        # is what makes lifecycle tests flaky on busy CI runners.
+        await runner.ready.wait()
         mode.stop()
         results = await task
         assert len(results) >= 1

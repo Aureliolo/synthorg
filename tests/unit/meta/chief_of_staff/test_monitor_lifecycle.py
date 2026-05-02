@@ -58,22 +58,36 @@ class TestOrgInflectionMonitorLifecycleLock:
     async def test_unrestartable_after_drain_timeout(self) -> None:
         monitor = _make_monitor()
         monitor._stop_drain_timeout_seconds = 0.05
+        # ``release`` lets the test wake the patched loop after the
+        # timeout assertion, so the test never leaves a wall-clock-
+        # sensitive ``asyncio.sleep(1.0)`` task hanging in the
+        # background. Without this, the next test can race the
+        # leftover task and observe `_task` from this one.
+        entered = asyncio.Event()
+        release = asyncio.Event()
 
         async def hung_loop(self: OrgInflectionMonitor) -> None:
             del self
+            entered.set()
             try:
                 await asyncio.Event().wait()
             except asyncio.CancelledError:
-                # Suppress cancellation -- simulates a stuck drain.
-                await asyncio.sleep(1.0)
+                # Suppress cancellation -- simulates a stuck drain --
+                # but block on a controllable event instead of sleep
+                # so the test can release the loop deterministically.
+                await release.wait()
 
         with patch.object(OrgInflectionMonitor, "_loop", hung_loop):
             await monitor.start()
-            await asyncio.sleep(0)
+            await entered.wait()
 
             with pytest.raises(TimeoutError):
                 await monitor.stop()
             assert monitor._stop_failed is True
+            task = monitor._task
+            assert task is not None
+            release.set()
+            await task
 
         with pytest.raises(RuntimeError, match="unrestartable"):
             await monitor.start()

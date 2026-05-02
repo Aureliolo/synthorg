@@ -238,15 +238,22 @@ def bucket_cost_records(
             currencies. Summing across currencies would produce a
             meaningless monetary total.
     """
-    _assert_single_currency(records)
     bucket_starts = generate_bucket_starts(start, end, bucket_size)
+    # Filter to the requested ``[start, end)`` window before
+    # validating currency uniformity. Validating the raw input would
+    # reject otherwise-valid partial-range queries when the caller
+    # passes a multi-currency dataset and asks for a single-currency
+    # slice -- the rows outside the window do not contribute to the
+    # aggregation, so they are not part of the "is this bucket
+    # meaningful?" question.
+    in_window_records = tuple(
+        record for record in records if start <= record.timestamp < end
+    )
+    _assert_single_currency(in_window_records)
     sums: dict[datetime, list[float]] = defaultdict(list)
 
-    for record in records:
-        ts = record.timestamp
-        if ts < start or ts >= end:
-            continue
-        key = _bucket_key(ts, bucket_size)
+    for record in in_window_records:
+        key = _bucket_key(record.timestamp, bucket_size)
         sums[key].append(record.cost)
 
     return tuple(

@@ -105,7 +105,10 @@ class TestBackupSubscriberEnabled:
         # awaited -- the call would still be recorded but the
         # scheduler would never actually launch.
         service.scheduler.start.assert_awaited_once()
-        service.scheduler.stop.assert_not_awaited()
+        # ``assert_not_called`` catches an unawaited coroutine
+        # (call recorded but never awaited) which ``assert_not_awaited``
+        # would silently pass through.
+        service.scheduler.stop.assert_not_called()
 
     async def test_enabled_stops_scheduler_when_running(self) -> None:
         sub, service = _make_subscriber(
@@ -151,7 +154,7 @@ class TestBackupSubscriberAdvisory:
         await sub.on_settings_changed("backup", key)
 
         service.scheduler.start.assert_not_called()
-        service.scheduler.stop.assert_not_awaited()
+        service.scheduler.stop.assert_not_called()
 
     async def test_schedule_hours_reschedules_without_toggle(self) -> None:
         """schedule_hours calls reschedule but does not stop/start scheduler."""
@@ -160,7 +163,7 @@ class TestBackupSubscriberAdvisory:
         await sub.on_settings_changed("backup", "schedule_hours")
 
         service.scheduler.start.assert_not_called()
-        service.scheduler.stop.assert_not_awaited()
+        service.scheduler.stop.assert_not_called()
         service.scheduler.reschedule.assert_called_once()
 
     @pytest.mark.parametrize(

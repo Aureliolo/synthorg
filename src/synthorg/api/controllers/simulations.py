@@ -295,7 +295,6 @@ class SimulationController(Controller):
                 "cannot start a second runner for the same id"
             )
             raise ConflictError(msg)
-        _publish_event(request, WsEventType.SIMULATION_STARTED, record)
 
         async def runner_task() -> None:
             try:
@@ -346,25 +345,38 @@ class SimulationController(Controller):
             if event is not None:
                 _publish_event(request, event, final)
 
-        task = asyncio.create_task(
-            runner_task(),
-            name=f"simulation-runner[{record.simulation_id}]",
-        )
-        # Register the exception logger FIRST so a task that finishes
-        # between ``create_task`` and ``background_tasks.add`` still has
-        # its failure surfaced -- asyncio invokes done-callbacks in the
-        # order they were registered.  Adding the task to the set
-        # before attaching the logger would let a fast-completing
-        # failure fire ``discard`` first and silently drop the error.
-        task.add_done_callback(
-            log_task_exceptions(
-                logger,
-                SIMULATION_RUN_FAILED,
-                simulation_id=record.simulation_id,
-            ),
-        )
-        task.add_done_callback(sim_state.background_tasks.discard)
-        sim_state.background_tasks.add(task)
+        # Roll back the ``register_if_absent`` claim if any post-claim
+        # step (publish, runner spawn, callback registration) raises.
+        # Without rollback the ``simulation_id`` would stay claimed
+        # forever and block every retry, defeating the very 409-on-
+        # duplicate guard the claim provides.
+        try:
+            _publish_event(request, WsEventType.SIMULATION_STARTED, record)
+            task = asyncio.create_task(
+                runner_task(),
+                name=f"simulation-runner[{record.simulation_id}]",
+            )
+            # Register the exception logger FIRST so a task that
+            # finishes between ``create_task`` and
+            # ``background_tasks.add`` still has its failure
+            # surfaced -- asyncio invokes done-callbacks in the order
+            # they were registered. Adding the task to the set before
+            # attaching the logger would let a fast-completing failure
+            # fire ``discard`` first and silently drop the error.
+            task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    SIMULATION_RUN_FAILED,
+                    simulation_id=record.simulation_id,
+                ),
+            )
+            task.add_done_callback(sim_state.background_tasks.discard)
+            sim_state.background_tasks.add(task)
+        except MemoryError, RecursionError:
+            raise
+        except BaseException:
+            await sim_state.simulation_store.unregister(record.simulation_id)
+            raise
         return ApiResponse(data=_to_response(record))
 
     @post(

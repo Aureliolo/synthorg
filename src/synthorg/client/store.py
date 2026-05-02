@@ -191,6 +191,19 @@ class SimulationStore:
             self._runs[record.simulation_id] = record
             return True
 
+    async def unregister(self, simulation_id: str) -> bool:
+        """Remove a registration if it has not produced state yet.
+
+        Returns ``True`` when the entry was removed, ``False`` when no
+        entry existed. Used by ``start_simulation`` to roll back a
+        successful ``register_if_absent`` if the post-claim setup
+        (event publish, runner spawn) raises -- without rollback the
+        ``simulation_id`` would stay claimed forever and block every
+        retry.
+        """
+        async with self._lock:
+            return self._runs.pop(simulation_id, None) is not None
+
     async def get(self, simulation_id: str) -> SimulationRecord:
         """Return the record by id or raise ``KeyError``."""
         async with self._lock:

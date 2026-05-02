@@ -7,9 +7,10 @@ tunnels under the single-tunnel invariant.
 
 import asyncio
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from pyngrok import ngrok  # type: ignore[import-untyped]
 
 from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
 
@@ -92,9 +93,15 @@ class TestNgrokAdapterLifecycle:
     async def test_stop_without_start_is_noop(self) -> None:
         """stop() before any start() returns cleanly without disconnecting."""
         adapter = NgrokAdapter()
+        # Use a strict ``MagicMock`` so we can prove ngrok.disconnect
+        # was never invoked. The previous swallowing fake silently
+        # absorbed any accidental call, hiding a regression where
+        # ``stop()`` would tear down state it never owned.
+        disconnect_mock = MagicMock(spec=ngrok.disconnect, return_value=None)
         with patch(
             "synthorg.integrations.tunnel.ngrok_adapter.ngrok.disconnect",
-            _fake_disconnect,
+            disconnect_mock,
         ):
             await adapter.stop()  # Must not raise.
+        disconnect_mock.assert_not_called()
         assert adapter._tunnel is None

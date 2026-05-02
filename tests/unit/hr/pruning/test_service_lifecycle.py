@@ -69,21 +69,33 @@ class TestPruningServiceLifecycleLock:
     async def test_unrestartable_after_drain_timeout(self) -> None:
         service = _make_service()
         service._stop_drain_timeout_seconds = 0.05
+        # ``release`` lets the test wake the patched loop after the
+        # timeout assertion. Without it, the suppressed-cancel branch
+        # would block on a wall-clock sleep and leak a pending task
+        # past the patch scope; later tests could then observe a
+        # ``_task`` that does not belong to them.
+        entered = asyncio.Event()
+        release = asyncio.Event()
 
         async def hung_loop(self: PruningService) -> None:
             del self
+            entered.set()
             try:
                 await asyncio.Event().wait()
             except asyncio.CancelledError:
-                await asyncio.sleep(1.0)
+                await release.wait()
 
         with patch.object(PruningService, "_run_loop", hung_loop):
             await service.start()
-            await asyncio.sleep(0)
+            await entered.wait()
 
             with pytest.raises(TimeoutError):
                 await service.stop()
             assert service._stop_failed is True
+            task = service._task
+            assert task is not None
+            release.set()
+            await task
 
         with pytest.raises(RuntimeError, match="unrestartable"):
             await service.start()

@@ -5,6 +5,7 @@ pass the nonce duplicate check. The ``threading.Lock`` around the
 check-and-insert block guarantees exactly one accept per nonce.
 """
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -26,11 +27,20 @@ class TestReplayProtectorThreadSafety:
         clock = FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
         ts = _epoch(clock)
+        # ``Barrier`` ensures every worker has been scheduled and is
+        # parked at the same instruction before any of them reaches
+        # ``protector.check``. Without it ``ThreadPoolExecutor.submit``
+        # spawns workers staggered, so the first attempt frequently
+        # finishes the check-and-insert before the rest even hit the
+        # lock -- which means the test passes even when the lock is
+        # ineffective.
+        barrier = threading.Barrier(64)
 
         def attempt() -> bool:
+            barrier.wait()
             return protector.check(nonce="duplicate-nonce", timestamp=ts)
 
-        with ThreadPoolExecutor(max_workers=16) as pool:
+        with ThreadPoolExecutor(max_workers=64) as pool:
             futures = [pool.submit(attempt) for _ in range(64)]
             results = [f.result() for f in futures]
 
@@ -43,11 +53,13 @@ class TestReplayProtectorThreadSafety:
         clock = FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
         ts = _epoch(clock)
+        barrier = threading.Barrier(64)
 
         def attempt(i: int) -> bool:
+            barrier.wait()
             return protector.check(nonce=f"nonce-{i}", timestamp=ts)
 
-        with ThreadPoolExecutor(max_workers=16) as pool:
+        with ThreadPoolExecutor(max_workers=64) as pool:
             futures = [pool.submit(attempt, i) for i in range(64)]
             results = [f.result() for f in futures]
 
@@ -61,11 +73,13 @@ class TestReplayProtectorThreadSafety:
             clock=clock,
         )
         ts = _epoch(clock)
+        barrier = threading.Barrier(128)
 
         def attempt(i: int) -> None:
+            barrier.wait()
             protector.check(nonce=f"nonce-{i}", timestamp=ts)
 
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=128) as pool:
             futures = [pool.submit(attempt, i) for i in range(128)]
             for f in futures:
                 f.result()

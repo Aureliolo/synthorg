@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.backup.models import BackupTrigger
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.backup import (
     BACKUP_FAILED,
     BACKUP_SCHEDULER_RESCHEDULED,
@@ -71,6 +72,13 @@ class BackupScheduler:
             self._task = asyncio.create_task(
                 self._run_loop(),
                 name="backup-scheduler",
+            )
+            # Surface unexpected loop deaths -- without this callback
+            # an exception inside ``_run_loop`` would set the task to
+            # ``done`` silently and ``is_running`` would flip to False
+            # without anyone noticing the scheduled backups stopped.
+            self._task.add_done_callback(
+                log_task_exceptions(logger, BACKUP_FAILED, note="scheduler_loop_died"),
             )
             logger.info(
                 BACKUP_SCHEDULER_STARTED,

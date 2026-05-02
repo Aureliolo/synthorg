@@ -154,6 +154,17 @@ def build_escalation_queue_store(
             f"Unknown escalation queue backend: {config.backend!r}. "
             f"Registered backends: {', '.join(available)}"
         )
+        # Log the misconfiguration before raising so the operator's
+        # log inventory carries the full context (config value +
+        # registered keys) even if the caller swallows the exception
+        # higher up.
+        logger.warning(
+            API_APP_STARTUP,
+            component="escalation_factory",
+            error=msg,
+            config_backend=config.backend,
+            registered=available,
+        )
         raise ValueError(msg)
     return factory(config, persistence)
 
@@ -259,6 +270,13 @@ def build_decision_processor(
         msg = (
             f"Unknown decision_strategy: {config.decision_strategy!r}. "
             f"Registered strategies: {', '.join(available)}"
+        )
+        logger.warning(
+            API_APP_STARTUP,
+            component="escalation_factory",
+            error=msg,
+            decision_strategy=config.decision_strategy,
+            registered=available,
         )
         raise ValueError(msg)
     return factory()
