@@ -99,10 +99,21 @@ class _WriteOnlyDatabase(ExampleDatabase):
 # write-only: failures are logged for analysis but never replayed
 # automatically (that would block all test runs until fixed).
 # Review captured failures with: ls ~/.synthorg/hypothesis-examples/
+#
+# The shared dir is namespaced by worktree basename (``Path.cwd``)
+# because pre-push hooks across multiple concurrent worktrees on the
+# same machine would otherwise contend for the same directory; on
+# Windows, two pytest sessions writing to the same hypothesis-examples
+# tree can hit ``WinError 32`` sharing-violation races. Per-worktree
+# subdirectories isolate the failure log per pre-push run while keeping
+# every worktree's history outside its own working tree (so a
+# ``git worktree remove`` does not destroy the captured examples).
 _local_db = DirectoryBasedExampleDatabase(".hypothesis/examples/")
 
 try:
-    _shared_dir = Path.home() / ".synthorg" / "hypothesis-examples"
+    _shared_dir = (
+        Path.home() / ".synthorg" / "hypothesis-examples" / Path.cwd().resolve().name
+    )
     _shared_dir.mkdir(parents=True, exist_ok=True)
     _shared_db: ExampleDatabase = _WriteOnlyDatabase(
         DirectoryBasedExampleDatabase(str(_shared_dir)),
