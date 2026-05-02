@@ -6,14 +6,16 @@ import hmac
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import argon2
 import jwt
 
+from synthorg.api.auth.claims import JwtClaims
 from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.api.boundary import parse_typed
 from synthorg.api.guards import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
@@ -185,6 +187,10 @@ class AuthService:
         future caller that accidentally passes a SYSTEM user
         surfaces the problem at mint time, not at the next request.
 
+        The claim shape is built through :class:`JwtClaims` so the
+        encode-side payload is statically typed and the decode-side
+        boundary helper validates against the same model.
+
         Args:
             user: Authenticated human user.
 
@@ -210,27 +216,27 @@ class AuthService:
         pwd_sig = hashlib.sha256(
             user.password_hash.encode(),
         ).hexdigest()[:16]
-        payload: dict[str, Any] = {
-            "iss": USER_ISSUER,
-            "aud": USER_AUDIENCE,
-            "sub": user.id,
-            "username": user.username,
-            "role": user.role.value,
-            "must_change_password": user.must_change_password,
-            "pwd_sig": pwd_sig,
-            "jti": session_id,
-            "iat": now,
-            "exp": now + timedelta(seconds=expiry_seconds),
-        }
+        claims = JwtClaims(
+            iss=USER_ISSUER,
+            aud=USER_AUDIENCE,
+            sub=user.id,
+            jti=session_id,
+            iat=int(now.timestamp()),
+            exp=int((now + timedelta(seconds=expiry_seconds)).timestamp()),
+            username=user.username,
+            role=user.role,
+            must_change_password=user.must_change_password,
+            pwd_sig=pwd_sig,
+        )
         token = jwt.encode(
-            payload,
+            claims.model_dump(mode="json"),
             secret,
             algorithm=self._config.jwt_algorithm,
         )
         return token, expiry_seconds, session_id
 
-    def decode_token(self, token: str) -> dict[str, Any]:
-        """Decode and validate a JWT.
+    def decode_token(self, token: str) -> JwtClaims:
+        """Decode and validate a JWT into a typed claim set.
 
         Issuer (``iss``) and audience (``aud``) verification is
         intentionally deferred to the auth middleware's
@@ -242,18 +248,30 @@ class AuthService:
         ``require``-listed here so a missing claim fails decode rather
         than reaching the middleware as ``None``.
 
+        After PyJWT validates the signature and required claims, the
+        raw payload is routed through
+        :func:`synthorg.api.boundary.parse_typed` so a malformed claim
+        set (extra keys, type mismatch, ``iat >= exp``) is rejected at
+        the boundary with a structured ``api.boundary.validation_failed``
+        log instead of slipping through and surprising a downstream
+        attribute access.
+
         Args:
             token: Encoded JWT string.
 
         Returns:
-            Decoded claims dictionary.
+            Validated :class:`JwtClaims` instance.
 
         Raises:
             SecretNotConfiguredError: If the JWT secret is empty.
-            jwt.InvalidTokenError: If the token is invalid or expired.
+            jwt.InvalidTokenError: If the token signature, expiry,
+                or required claim set is invalid.
+            ValidationError: If the decoded claim set does not
+                conform to :class:`JwtClaims` (extra keys, wrong
+                types, or violated invariants).
         """
         secret = self._require_secret("decode_token")
-        return jwt.decode(
+        raw_claims = jwt.decode(
             token,
             secret,
             algorithms=[self._config.jwt_algorithm],
@@ -263,6 +281,7 @@ class AuthService:
                 "verify_iss": False,
             },
         )
+        return parse_typed("jwt", raw_claims, JwtClaims)
 
     async def persist_refresh_token(
         self,

@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING, Any
 import jwt
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
+from pydantic import ValidationError
 
+from synthorg.api.auth.claims import JwtClaims  # noqa: TC001 -- runtime annotation
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.cookies import (
     generate_csrf_token,
@@ -224,11 +226,19 @@ def extract_jti(request: Request[Any, Any, Any]) -> str | None:
         token = auth_header[7:]
 
     try:
-        claims = app_state.auth_service.decode_token(token)
+        claims: JwtClaims = app_state.auth_service.decode_token(token)
     except jwt.InvalidTokenError:
         logger.debug(
             SECURITY_AUTH_FAILED,
             reason="jti_extraction_jwt_error",
+        )
+        return None
+    except ValidationError as exc:
+        logger.debug(
+            SECURITY_AUTH_FAILED,
+            reason="jti_extraction_claims_malformed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     except Exception as exc:
@@ -240,8 +250,7 @@ def extract_jti(request: Request[Any, Any, Any]) -> str | None:
         )
         return None
     else:
-        jti: str | None = claims.get("jti")
-        return jti
+        return claims.jti
 
 
 def get_auth_config(app_state: AppState) -> AuthConfig:

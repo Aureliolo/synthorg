@@ -12,7 +12,9 @@ from litestar.middleware import (
     AbstractAuthenticationMiddleware,
     AuthenticationResult,
 )
+from pydantic import ValidationError
 
+from synthorg.api.auth.claims import JwtClaims  # noqa: TC001 -- runtime annotation
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.service import SecretNotConfiguredError
 from synthorg.api.auth.system_user import (
@@ -219,6 +221,18 @@ async def _try_jwt_auth(
             path=path,
         )
         return None
+    except ValidationError as exc:
+        # parse_typed already emitted api.boundary.validation_failed at
+        # warning; surface the auth-specific reason here so operators
+        # searching SECURITY_AUTH_FAILED see the malformed-claim path.
+        logger.warning(
+            SECURITY_AUTH_FAILED,
+            reason="jwt_claims_malformed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            path=path,
+        )
+        return None
     except SecretNotConfiguredError as exc:
         logger.warning(
             SECURITY_AUTH_FAILED,
@@ -230,14 +244,13 @@ async def _try_jwt_auth(
         return None
 
     # Check session revocation (sync, O(1) in-memory lookup).
-    jti = claims.get("jti")
-    if jti and app_state.has_session_store:
+    if app_state.has_session_store:
         session_store = app_state.session_store
-        if session_store.is_revoked(jti):
+        if session_store.is_revoked(claims.jti):
             logger.warning(
                 SECURITY_AUTH_FAILED,
                 reason="session_revoked",
-                jti=jti[:8],
+                jti=claims.jti[:8],
                 path=path,
             )
             return None
@@ -246,7 +259,7 @@ async def _try_jwt_auth(
 
 
 async def _resolve_jwt_user(
-    claims: dict[str, Any],
+    claims: JwtClaims,
     app_state: AppState,
     path: str,
 ) -> AuthenticatedUser | None:
@@ -259,11 +272,7 @@ async def _resolve_jwt_user(
     their random password hash is never known to any caller.
     The JWT signature alone authenticates these tokens.
     """
-    user_id = claims.get("sub")
-    if not user_id:
-        logger.warning(SECURITY_AUTH_FAILED, reason="jwt_missing_sub", path=path)
-        return None
-
+    user_id = claims.sub
     db_user = await app_state.persistence.users.get(user_id)
     if db_user is None:
         logger.warning(
@@ -287,21 +296,21 @@ async def _resolve_jwt_user(
     else:
         expected_iss, expected_aud = USER_ISSUER, USER_AUDIENCE
         token_label = "user_token"  # noqa: S105 -- audit log discriminator
-    if claims.get("iss") != expected_iss:
+    if claims.iss != expected_iss:
         logger.warning(
             SECURITY_AUTH_FAILED,
             reason=f"{token_label}_wrong_issuer",
             user_id=user_id,
-            iss=claims.get("iss"),
+            iss=claims.iss,
             path=path,
         )
         return None
-    if claims.get("aud") != expected_aud:
+    if claims.aud != expected_aud:
         logger.warning(
             SECURITY_AUTH_FAILED,
             reason=f"{token_label}_wrong_audience",
             user_id=user_id,
-            aud=claims.get("aud"),
+            aud=claims.aud,
             path=path,
         )
         return None
@@ -310,7 +319,7 @@ async def _resolve_jwt_user(
             db_user.password_hash.encode(),
         ).hexdigest()[:16]
         if not _hmac.compare_digest(
-            claims.get("pwd_sig", ""),
+            claims.pwd_sig or "",
             expected_sig,
         ):
             logger.warning(
@@ -340,7 +349,7 @@ async def _resolve_jwt_user(
         # poll ``session_store.is_revoked`` on their own cadence; the
         # request-time middleware check above only protects this single
         # request.
-        session_id=claims.get("jti"),
+        session_id=claims.jti,
     )
 
 
