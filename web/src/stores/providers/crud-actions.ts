@@ -75,7 +75,10 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         await get().fetchProviders()
         return config
       } catch (err) {
-        log.error('createProvider failed:', { name: sanitizeForLog(data.name), error: getErrorMessage(err) })
+        log.error('createProvider failed:', {
+          name: sanitizeForLog(data.name),
+          error: sanitizeForLog(getErrorMessage(err)),
+        })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to create provider'),
@@ -101,7 +104,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         log.error('createFromPreset failed:', {
           name: sanitizeForLog(data.name),
           preset: sanitizeForLog(data.preset_name),
-          error: getErrorMessage(err),
+          error: sanitizeForLog(getErrorMessage(err)),
         })
         useToastStore.getState().add({
           variant: 'error',
@@ -129,7 +132,10 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         }
         return config
       } catch (err) {
-        log.error('updateProvider failed:', { name: sanitizeForLog(name), error: getErrorMessage(err) })
+        log.error('updateProvider failed:', {
+          name: sanitizeForLog(name),
+          error: sanitizeForLog(getErrorMessage(err)),
+        })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to update provider'),
@@ -163,7 +169,10 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         })
         return true
       } catch (err) {
-        log.error('deleteProvider failed:', { name: sanitizeForLog(name), error: getErrorMessage(err) })
+        log.error('deleteProvider failed:', {
+          name: sanitizeForLog(name),
+          error: sanitizeForLog(getErrorMessage(err)),
+        })
         useToastStore.getState().add({
           variant: 'error',
           ...getCrudErrorTitle(err, 'Failed to delete provider'),

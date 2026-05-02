@@ -56,7 +56,10 @@ function ApprovalCardImpl({
   // deferred to a microtask so the effect body stays free of
   // synchronous setState per the ESLint set-state-in-effect rule;
   // setInterval starts immediately so the visible tick cadence
-  // matches the prop refresh.
+  // matches the prop refresh. The ``cancelled`` flag is checked in
+  // BOTH the microtask AND the timer callback so a tick that fires
+  // between the prop refresh and the cleanup running cannot
+  // decrement a freshly-set countdown by one.
   const [countdown, setCountdown] = useState(approval.seconds_remaining)
   useEffect(() => {
     let cancelled = false
@@ -74,6 +77,7 @@ function ApprovalCardImpl({
       }
     }
     const timer = setInterval(() => {
+      if (cancelled) return
       setCountdown((prev) => {
         if (prev === null || prev <= 1) return 0
         return prev - 1

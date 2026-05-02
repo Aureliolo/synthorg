@@ -93,16 +93,24 @@ export default function WebhookReceiptsPage() {
   // showing a stale name. The setState is deferred to a microtask so
   // the effect body itself stays free of synchronous setState calls
   // per the ESLint set-state-in-effect rule.
+  // Guard against clobbering a URL-seeded value: when a valid
+  // ``urlConnection`` is present in the loaded list, the seed effect
+  // above is in charge of applying it, so this fallback effect must
+  // not race ahead and set ``selected`` to ``connections[0]`` while
+  // the seed effect's microtask is still pending. ``urlConnection``
+  // is in the dep array so the guard re-evaluates if the URL changes
+  // mid-session.
   useEffect(() => {
     const exists = selected !== '' && connections.some((c) => c.name === selected)
     if (exists) return
+    if (urlConnection && connections.some((c) => c.name === urlConnection)) return
     let cancelled = false
     void Promise.resolve().then(() => {
       if (cancelled) return
       setSelected(connections[0]?.name ?? '')
     })
     return () => { cancelled = true }
-  }, [connections, selected])
+  }, [connections, selected, urlConnection])
 
   // Per-request sequence number, bumped on every reload. The earlier
   // ``requestedFor !== selected`` check compared two values from the
