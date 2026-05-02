@@ -1,8 +1,10 @@
 """Tests for ``synthorg.api.boundary.parse_typed``."""
 
+from typing import Annotated, Literal
+
 import pytest
 import structlog
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Discriminator, TypeAdapter, ValidationError
 
 from synthorg.api.boundary import parse_typed
 
@@ -23,6 +25,24 @@ class _SixRequiredFields(BaseModel):
     d: int
     e: int
     f: int
+
+
+class _CatVariant(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    kind: Literal["cat"] = "cat"
+    whiskers: int
+
+
+class _DogVariant(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    kind: Literal["dog"] = "dog"
+    barks: bool
+
+
+_AnimalUnion = Annotated[_CatVariant | _DogVariant, Discriminator("kind")]
+_ANIMAL_ADAPTER: TypeAdapter[_AnimalUnion] = TypeAdapter(_AnimalUnion)
 
 
 @pytest.mark.unit
@@ -103,3 +123,67 @@ class TestParseTyped:
         ]
         assert len(boundary_logs) == 1
         assert boundary_logs[0]["boundary"] == "ws.control"
+
+
+@pytest.mark.unit
+class TestParseTypedTypeAdapter:
+    """Coverage for the ``TypeAdapter`` overload (e.g. A2A discriminated union)."""
+
+    def test_adapter_returns_typed_variant_on_valid_input(self) -> None:
+        result = parse_typed(
+            "a2a.jsonrpc",
+            {"kind": "cat", "whiskers": 12},
+            _ANIMAL_ADAPTER,
+        )
+        assert isinstance(result, _CatVariant)
+        assert result.whiskers == 12
+
+    def test_adapter_routes_by_discriminator(self) -> None:
+        result = parse_typed(
+            "a2a.jsonrpc",
+            {"kind": "dog", "barks": True},
+            _ANIMAL_ADAPTER,
+        )
+        assert isinstance(result, _DogVariant)
+        assert result.barks is True
+
+    def test_adapter_rejects_unknown_discriminator(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_typed(
+                "a2a.jsonrpc",
+                {"kind": "fish", "whiskers": 0},
+                _ANIMAL_ADAPTER,
+            )
+
+    def test_adapter_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_typed(
+                "a2a.jsonrpc",
+                {"kind": "cat", "whiskers": 12, "extra": 1},
+                _ANIMAL_ADAPTER,
+            )
+
+    def test_adapter_emits_structured_log_on_failure(self) -> None:
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ValidationError),
+        ):
+            parse_typed(
+                "a2a.jsonrpc",
+                {"kind": "cat"},
+                _ANIMAL_ADAPTER,
+            )
+
+        boundary_logs = [
+            log for log in logs if log.get("event") == "api.boundary.validation_failed"
+        ]
+        assert len(boundary_logs) == 1
+        record = boundary_logs[0]
+        assert record["boundary"] == "a2a.jsonrpc"
+        assert record["error_type"] == "ValidationError"
+        assert record["error_count"] == 1
+        assert record["log_level"] == "warning"
+
+    def test_adapter_none_input_treated_as_empty_dict(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_typed("a2a.jsonrpc", None, _ANIMAL_ADAPTER)

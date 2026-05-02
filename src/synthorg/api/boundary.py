@@ -34,9 +34,9 @@ Usage::
 from collections.abc import (
     Mapping,  # noqa: TC003 -- runtime-needed via annotation introspection
 )
-from typing import LiteralString
+from typing import LiteralString, overload
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_BOUNDARY_VALIDATION_FAILED
@@ -46,11 +46,27 @@ logger = get_logger(__name__)
 _MAX_LOGGED_LOCATIONS = 5
 
 
+@overload
 def parse_typed[T: BaseModel](
     boundary: LiteralString,
     raw: Mapping[str, object] | None,
     model: type[T],
-) -> T:
+) -> T: ...
+
+
+@overload
+def parse_typed[T](
+    boundary: LiteralString,
+    raw: Mapping[str, object] | None,
+    model: TypeAdapter[T],
+) -> T: ...
+
+
+def parse_typed[T](
+    boundary: LiteralString,
+    raw: Mapping[str, object] | None,
+    model: type[BaseModel] | TypeAdapter[T],
+) -> BaseModel | T:
     """Validate a raw boundary payload against a typed Pydantic model.
 
     The helper is the canonical entry-point validator for the six
@@ -64,6 +80,12 @@ def parse_typed[T: BaseModel](
     rejects any caller passing a runtime-derived string -- the
     operator-search log label cannot be operator-influenced.
 
+    Two validation backends are accepted: a Pydantic model class
+    (``type[T]``) for the single-shape boundaries, and a
+    :class:`pydantic.TypeAdapter` for boundaries whose contract is a
+    discriminated union (e.g. the A2A JSON-RPC params union, where the
+    method literal selects the variant).
+
     Args:
         boundary: Hardcoded namespaced label used for operator log
             search and grouping (e.g. ``"jwt"`` or ``"ws.control"``).
@@ -72,10 +94,11 @@ def parse_typed[T: BaseModel](
         raw: Incoming payload. ``None`` is normalised to ``{}`` so
             callers do not branch on optional / nullable wire fields;
             Pydantic still raises loudly for required fields.
-        model: Pydantic model class used for validation and coercion.
+        model: Pydantic model class or ``TypeAdapter`` used for
+            validation and coercion.
 
     Returns:
-        The validated typed instance of ``model``.
+        The validated typed instance.
 
     Raises:
         ValidationError: If the payload does not conform to ``model``.
@@ -90,6 +113,8 @@ def parse_typed[T: BaseModel](
     """
     input_data = raw if raw is not None else {}
     try:
+        if isinstance(model, TypeAdapter):
+            return model.validate_python(input_data)
         return model.model_validate(input_data)
     except ValidationError as exc:
         all_errors = exc.errors()
