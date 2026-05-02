@@ -34,7 +34,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     PreflightResult,
 )
 from synthorg.memory.errors import FineTuneDependencyError
-from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 from synthorg.memory.service import (
     CheckpointNotFoundError,
     CheckpointRollbackCorruptError,
@@ -605,7 +605,7 @@ class MemoryAdminController(Controller):
                 NotBlankStr(agent_id),
                 NotBlankStr(memory_id),
             )
-        except BackendUnsupportedError as exc:
+        except MemoryBackendUnsupportedError as exc:
             # ``MemoryService.delete_memory_entry`` already emits
             # ``MEMORY_ENTRY_DELETE_FAILED`` for this branch, so the
             # controller stays in the layering role of HTTP

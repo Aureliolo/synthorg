@@ -12,10 +12,11 @@ should propagate.
 
 from typing import ClassVar
 
+from synthorg.core.domain_errors import DomainError, NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
-class IntegrationError(Exception):
+class IntegrationError(DomainError):
     """Base exception for all integration operations.
 
     Class Attributes:
@@ -195,8 +196,19 @@ class TunnelError(IntegrationError):
 # -- MCP catalog errors --------------------------------------------------
 
 
-class CatalogEntryNotFoundError(IntegrationError):
-    """A catalog entry with the given ID does not exist."""
+class CatalogEntryNotFoundError(IntegrationError, NotFoundError):
+    """A catalog entry with the given ID does not exist.
+
+    Inherits the integration-error family for catch-all integration
+    handlers AND :class:`NotFoundError` so callers using
+    ``except NotFoundError`` (and the ``EXCEPTION_HANDLERS`` not-found
+    routing) catch this without per-controller catch + re-raise.
+    """
+
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Catalog entry not found"
 
 
 class MCPInstallError(IntegrationError):

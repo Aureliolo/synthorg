@@ -57,7 +57,7 @@ class AddAllowlistEntryRequest(BaseModel):
         host_port: Entry to add (e.g. ``"my-server:8080"``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     host_port: NotBlankStr = Field(
         max_length=256,
@@ -77,7 +77,7 @@ class RemoveAllowlistEntryRequest(BaseModel):
         host_port: Entry to remove.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     host_port: NotBlankStr = Field(
         max_length=256,

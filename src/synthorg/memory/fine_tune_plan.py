@@ -11,7 +11,7 @@ both models share the same path-traversal rejection so hostile
 ``source_dir`` / ``output_dir`` values fail validation before reaching
 the filesystem.
 
-:class:`BackendUnsupportedError` is raised by :class:`MemoryService`
+:class:`MemoryBackendUnsupportedError` is raised by :class:`MemoryService`
 fine-tune methods when the active persistence backend does not expose
 ``fine_tune_runs`` / ``fine_tune_checkpoints``. Its ``domain_code``
 maps directly to ``"not_supported"`` so MCP handlers can route the
@@ -24,6 +24,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic runtime
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneExecutionConfig,
@@ -39,7 +40,7 @@ logger = get_logger(__name__)
 _MIN_DRIVE_LETTER_LEN: Literal[2] = 2
 
 
-class BackendUnsupportedError(Exception):
+class MemoryBackendUnsupportedError(DomainError):
     """Raised when the active persistence backend lacks fine-tune support.
 
     Carries ``domain_code = "not_supported"`` so handlers can map the
@@ -50,9 +51,12 @@ class BackendUnsupportedError(Exception):
     additionally emits the ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING
     event).
 
-    ``__slots__`` locks the attribute surface so ``domain_code`` stays
-    a class constant (no instance-level shadowing) and no new fields
-    can be injected at runtime.
+    Inherits :class:`DomainError` so the prefix-vs-category validator
+    runs at class-definition time; the inherited
+    ``ErrorCode.INTERNAL_ERROR`` default (8000, ``INTERNAL`` category)
+    matches the prefix and emits a 500 by default through the API
+    handler.  ``__slots__`` is kept on the local attribute set so
+    ``domain_code`` stays a class constant.
     """
 
     __slots__ = ("reason",)
@@ -70,7 +74,7 @@ class BackendUnsupportedError(Exception):
             ValueError: If *reason* is empty or whitespace-only.
         """
         if not reason or not reason.strip():
-            msg = "BackendUnsupportedError.reason must be non-empty"
+            msg = "MemoryBackendUnsupportedError.reason must be non-empty"
             raise ValueError(msg)
         self.reason = reason
         super().__init__(reason)
@@ -239,6 +243,6 @@ class FineTunePlan(BaseModel):
 
 __all__ = [
     "ActiveEmbedderSnapshot",
-    "BackendUnsupportedError",
     "FineTunePlan",
+    "MemoryBackendUnsupportedError",
 ]

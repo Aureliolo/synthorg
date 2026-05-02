@@ -61,6 +61,7 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -225,11 +226,14 @@ class ProviderController(Controller):
         """
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
-        provider = providers.get(name)
-        if provider is None:
-            msg = f"Provider {name!r} not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
-            raise NotFoundError(msg)
+        provider = require_resource_or_404(
+            providers.get(name),
+            resource_type="Provider",
+            identifier=name,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+            extra_log_kwargs={"name": name},
+        )
         return ApiResponse(data=to_provider_response(provider))
 
     @get(
@@ -248,11 +252,14 @@ class ProviderController(Controller):
         """
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
-        provider = providers.get(name)
-        if provider is None:
-            msg = f"Provider {name!r} not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
-            raise NotFoundError(msg)
+        provider = require_resource_or_404(
+            providers.get(name),
+            resource_type="Provider",
+            identifier=name,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+            extra_log_kwargs={"name": name},
+        )
 
         driver = None
         if app_state.has_provider_registry and name in app_state.provider_registry:

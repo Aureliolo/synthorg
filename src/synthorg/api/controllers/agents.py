@@ -23,6 +23,7 @@ from synthorg.api.guards import (
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -81,11 +82,14 @@ async def _resolve_agent_id(
     Raises:
         NotFoundError: If the agent is not found in the registry.
     """
-    identity = await app_state.agent_registry.get_by_name(agent_name)
-    if identity is None:
-        msg = "Agent not found"
-        logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
-        raise NotFoundError(msg)
+    identity = require_resource_or_404(
+        await app_state.agent_registry.get_by_name(agent_name),
+        resource_type="agent",
+        identifier=agent_name,
+        log_event=API_RESOURCE_NOT_FOUND,
+        operation="read",
+        extra_log_kwargs={"name": agent_name},
+    )
     return str(identity.id)
 
 
@@ -98,16 +102,14 @@ async def _resolve_agent_identity(
     Raises:
         NotFoundError: If the agent is not found in the registry.
     """
-    identity = await app_state.agent_registry.get_by_name(agent_name)
-    if identity is None:
-        msg = "Agent not found"
-        logger.warning(
-            API_RESOURCE_NOT_FOUND,
-            resource="agent",
-            name=agent_name,
-        )
-        raise NotFoundError(msg)
-    return identity
+    return require_resource_or_404(
+        await app_state.agent_registry.get_by_name(agent_name),
+        resource_type="agent",
+        identifier=agent_name,
+        log_event=API_RESOURCE_NOT_FOUND,
+        operation="read",
+        extra_log_kwargs={"name": agent_name},
+    )
 
 
 class TrustSummary(BaseModel):

@@ -4,14 +4,16 @@ from typing import Any
 
 from litestar import Controller, Request, delete, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import NotFoundException
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.core.domain_errors import resource_not_found
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -69,7 +71,10 @@ class MessageController(Controller):
     @delete(
         "/{message_id:str}",
         status_code=200,
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("messages.delete", key="user"),
+        ],
     )
     async def delete_message(
         self,
@@ -106,7 +111,18 @@ class MessageController(Controller):
                 actor_id=str(request.user.user_id),
                 reason="not_found",
             )
-            raise NotFoundException(detail=f"message {message_id!r} not found")
+            # ``resource_not_found`` routes through
+            # ``handle_domain_error`` so the response body carries
+            # the structured RFC 9457 envelope every other 404 in
+            # the API uses; ``litestar.NotFoundException`` would
+            # bypass ``handle_domain_error`` and lose the category
+            # / error_code triple.
+            resource_type = "message"
+            raise resource_not_found(
+                resource_type,
+                message_id,
+                code=ErrorCode.RESOURCE_NOT_FOUND,
+            )
         return ApiResponse(data=None)
 
     @get("/channels")

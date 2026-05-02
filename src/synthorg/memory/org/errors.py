@@ -4,9 +4,15 @@ All org-memory-related errors inherit from ``OrgMemoryError`` so callers
 can catch the entire family with a single except clause.
 """
 
+from synthorg.core.domain_errors import DomainError
 
-class OrgMemoryError(Exception):
-    """Base exception for all org memory operations."""
+
+class OrgMemoryError(DomainError):
+    """Base exception for all org memory operations.
+
+    Inherits :class:`DomainError` so subclasses get the prefix-vs-category
+    validator at class-definition time.
+    """
 
 
 class OrgMemoryConnectionError(OrgMemoryError):

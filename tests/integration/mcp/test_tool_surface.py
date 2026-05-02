@@ -15,7 +15,7 @@ sweep layers the acceptance criteria on top:
      underlying primitive does not yet expose the required method, or
    - ``MCP_HANDLER_NOT_IMPLEMENTED`` (WARNING): the active backend
      cannot support the operation at all. META-MCP-4 introduced
-     :class:`BackendUnsupportedError` + :func:`not_supported` so the
+     :class:`MemoryBackendUnsupportedError` + :func:`not_supported` so the
      memory fine-tune handlers emit this variant when the wired
      :class:`MemoryService` refuses a lifecycle call.
 
@@ -260,7 +260,7 @@ class TestNoServiceFallbackEvents:
         #   expose the method yet (live-handler gap).
         # - NOT_IMPLEMENTED: the active persistence backend cannot
         #   support the operation at all (META-MCP-4 introduced
-        #   ``BackendUnsupportedError`` + ``not_supported()`` for
+        #   ``MemoryBackendUnsupportedError`` + ``not_supported()`` for
         #   memory fine-tune sites).
         gap_events = [
             e
@@ -307,16 +307,16 @@ class TestNoServiceFallbackEvents:
         actor: AgentIdentity,
         tool_name: str,
     ) -> None:
-        """A :class:`BackendUnsupportedError` must land as the not_supported envelope.
+        """A :class:`MemoryBackendUnsupportedError` lands as not_supported.
 
         Injects a ``memory_service`` stub whose methods raise
-        ``BackendUnsupportedError`` so the handler's catch + forward
+        ``MemoryBackendUnsupportedError`` so the handler's catch + forward
         to ``not_supported()`` is exercised end to end. The default
         ``fake_app_state`` fixture wires a working memory_service, so
         this branch is never hit by the generic blast; this test
         pins the behaviour explicitly.
         """
-        from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+        from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 
         unsupported_reason = "fine-tune repositories not available on active backend"
 
@@ -325,7 +325,7 @@ class TestNoServiceFallbackEvents:
                 self,
                 run_id: Any = None,
             ) -> None:
-                raise BackendUnsupportedError(unsupported_reason)
+                raise MemoryBackendUnsupportedError(unsupported_reason)
 
             async def list_runs(
                 self,
@@ -333,10 +333,10 @@ class TestNoServiceFallbackEvents:
                 offset: int,
                 limit: int,
             ) -> None:
-                raise BackendUnsupportedError(unsupported_reason)
+                raise MemoryBackendUnsupportedError(unsupported_reason)
 
             async def get_active_embedder(self) -> None:
-                raise BackendUnsupportedError(unsupported_reason)
+                raise MemoryBackendUnsupportedError(unsupported_reason)
 
         fake_app_state.memory_service = _UnsupportedMemoryService()
         fake_app_state.has_memory_service = True

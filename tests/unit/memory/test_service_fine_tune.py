@@ -13,7 +13,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRunConfig,
     FineTuneStatus,
 )
-from synthorg.memory.fine_tune_plan import BackendUnsupportedError, FineTunePlan
+from synthorg.memory.fine_tune_plan import FineTunePlan, MemoryBackendUnsupportedError
 from synthorg.memory.service import MemoryService
 
 pytestmark = pytest.mark.unit
@@ -201,31 +201,31 @@ class TestBackendUnsupported:
         service = _service()
         plan = FineTunePlan(source_dir=NotBlankStr("/data/org-docs"))
 
-        with pytest.raises(BackendUnsupportedError):
+        with pytest.raises(MemoryBackendUnsupportedError):
             await service.start_fine_tune(plan)
 
     async def test_resume_raises(self) -> None:
         service = _service()
 
-        with pytest.raises(BackendUnsupportedError):
+        with pytest.raises(MemoryBackendUnsupportedError):
             await service.resume_fine_tune(NotBlankStr("run-x"))
 
     async def test_status_raises(self) -> None:
         service = _service()
 
-        with pytest.raises(BackendUnsupportedError):
+        with pytest.raises(MemoryBackendUnsupportedError):
             await service.get_fine_tune_status()
 
     async def test_cancel_raises(self) -> None:
         service = _service()
 
-        with pytest.raises(BackendUnsupportedError):
+        with pytest.raises(MemoryBackendUnsupportedError):
             await service.cancel_fine_tune()
 
     async def test_preflight_raises(self) -> None:
         service = _service()
 
-        with pytest.raises(BackendUnsupportedError):
+        with pytest.raises(MemoryBackendUnsupportedError):
             await service.run_preflight(
                 FineTunePlan(source_dir=NotBlankStr("/data/org-docs")),
             )

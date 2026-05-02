@@ -95,7 +95,7 @@ class ScalingDecisionResponse(BaseModel):
 class StrategyUpdateRequest(BaseModel):
     """Request body for enabling/disabling a strategy."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(description="Whether the strategy should be active")
 
@@ -103,7 +103,7 @@ class StrategyUpdateRequest(BaseModel):
 class PriorityUpdateRequest(BaseModel):
     """Request body for updating priority order."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     order: tuple[NotBlankStr, ...] = Field(
         description="Strategy names in priority order (first = highest)",

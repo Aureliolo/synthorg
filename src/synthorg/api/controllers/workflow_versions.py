@@ -21,7 +21,7 @@ from synthorg.api.pagination import (
     encode_repo_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.core.persistence_errors import PersistenceError, VersionConflictError
+from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
 )
@@ -31,18 +31,14 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_DIFF_COMPUTED,
     WORKFLOW_DEF_INVALID_REQUEST,
     WORKFLOW_DEF_NOT_FOUND,
-    WORKFLOW_DEF_ROLLED_BACK,
     WORKFLOW_DEF_VERSION_CONFLICT,
     WORKFLOW_DEF_VERSION_LISTED,
-)
-from synthorg.observability.events.workflow_version import (
-    WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
 from synthorg.persistence.version_repo import VersionRepository  # noqa: TC001
 from synthorg.persistence.workflow_definition_repo import (
     WorkflowDefinitionRepository,  # noqa: TC001
 )
-from synthorg.versioning import VersioningService, VersionSnapshot
+from synthorg.versioning import VersionSnapshot
 
 logger = get_logger(__name__)
 
@@ -367,8 +363,19 @@ class WorkflowVersionController(Controller):
             datetime.now(UTC),
         )
 
+        # Route the durable save + post-rollback snapshot through the
+        # AppState-wired ``WorkflowRollbackService`` so audit logging
+        # cannot regress when a new write path lands in the rollback
+        # contract.  The service raises ``VersionConflictError`` on
+        # optimistic-concurrency mismatch; the 409 translation stays
+        # here so the controller owns the HTTP response shape.
+        rollback_service = state.app_state.workflow_rollback_service
         try:
-            await repo.save(rolled_back)
+            await rollback_service.rollback(
+                rolled_back,
+                target_version=data.target_version,
+                saved_by=updater,
+            )
         except VersionConflictError as exc:
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
@@ -383,30 +390,6 @@ class WorkflowVersionController(Controller):
                 status_code=409,
             )
 
-        svc = VersioningService(version_repo)
-        try:
-            await svc.snapshot_if_changed(
-                entity_id=rolled_back.id,
-                snapshot=rolled_back,
-                saved_by=updater,
-            )
-        except PersistenceError as exc:
-            # Best-effort: a snapshot failure here does not block the
-            # rollback. Use a sanitized warning instead of
-            # ``logger.exception`` (which can leak locals).
-            logger.warning(
-                WORKFLOW_VERSION_SNAPSHOT_FAILED,
-                definition_id=rolled_back.id,
-                revision=rolled_back.revision,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        logger.info(
-            WORKFLOW_DEF_ROLLED_BACK,
-            definition_id=workflow_id,
-            target_version=data.target_version,
-            new_revision=rolled_back.revision,
-        )
         return Response(
             content=ApiResponse[WorkflowDefinition](data=rolled_back),
         )

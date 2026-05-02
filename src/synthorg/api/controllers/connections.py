@@ -9,14 +9,19 @@ from typing import Annotated
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
+    PathField,
+    PathName,
+)
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- Pydantic field type at runtime
 )
@@ -179,15 +184,19 @@ class ConnectionsController(Controller):
     async def get_connection(
         self,
         state: State,
-        name: str = Parameter(description="Connection name"),
+        name: PathName,
     ) -> ApiResponse[Connection]:
         """Get a single connection by name."""
         catalog = state["app_state"].connection_catalog
-        conn = await catalog.get(name)
-        if conn is None:
-            msg = f"Connection '{name}' not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, connection=name, reason=msg)
-            raise NotFoundError(msg) from None
+        conn = require_resource_or_404(
+            await catalog.get(name),
+            resource_type="Connection",
+            identifier=name,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+            extra_log_kwargs={"connection": name},
+            code=ErrorCode.CONNECTION_NOT_FOUND,
+        )
         return ApiResponse(data=conn)
 
     @post(
@@ -280,7 +289,7 @@ class ConnectionsController(Controller):
     async def update_connection(
         self,
         state: State,
-        name: str,
+        name: PathName,
         data: UpdateConnectionRequest,
     ) -> ApiResponse[Connection]:
         """Update mutable fields of a connection.
@@ -336,7 +345,11 @@ class ConnectionsController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(str(exc)) from exc
+            # Let the domain error propagate so EXCEPTION_HANDLERS
+            # routes it through the ConnectionNotFoundError envelope
+            # (404 + ``CONNECTION_NOT_FOUND``) rather than collapsing
+            # it into the generic NotFoundError shape.
+            raise
         logger.info(
             SECURITY_CONNECTION_UPDATED,
             connection=name,
@@ -356,7 +369,7 @@ class ConnectionsController(Controller):
     async def delete_connection(
         self,
         state: State,
-        name: str,
+        name: PathName,
     ) -> ApiResponse[None]:
         """Delete a connection and its secrets."""
         catalog = state["app_state"].connection_catalog
@@ -370,7 +383,9 @@ class ConnectionsController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(str(exc)) from exc
+            # Same rationale as ``update_connection`` above -- preserve
+            # the ConnectionNotFoundError envelope.
+            raise
         logger.info(
             SECURITY_CONNECTION_DELETED,
             connection=name,
@@ -385,7 +400,7 @@ class ConnectionsController(Controller):
     async def check_health(
         self,
         state: State,
-        name: str,
+        name: PathName,
     ) -> ApiResponse[HealthReport]:
         """Run an on-demand health check for a connection."""
         from synthorg.integrations.health.service import (  # noqa: PLC0415
@@ -412,7 +427,11 @@ class ConnectionsController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise NotFoundError(str(exc)) from exc
+            # Same rationale as ``update_connection`` above -- preserve
+            # the ConnectionNotFoundError envelope so a concurrent
+            # delete during health-probe surfaces with the correct
+            # ``CONNECTION_NOT_FOUND`` error code.
+            raise
         return ApiResponse(data=report)
 
     @get(
@@ -423,8 +442,8 @@ class ConnectionsController(Controller):
     async def reveal_secret(
         self,
         state: State,
-        name: str,
-        field: str,
+        name: PathName,
+        field: PathField,
     ) -> ApiResponse[dict[str, str]]:
         """Return the plaintext value of one credential field.
 

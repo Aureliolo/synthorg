@@ -17,7 +17,9 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import PersistenceError, VersionConflictError
 from synthorg.engine.errors import (
     WorkflowConditionEvalError,
@@ -227,14 +229,15 @@ class WorkflowExecutionController(Controller):
                 ),
                 status_code=500,
             )
-        if execution is None:
-            logger.warning(
-                WORKFLOW_EXEC_NOT_FOUND,
-                execution_id=execution_id,
-            )
-            msg = f"Workflow execution {execution_id!r} not found"
-            raise NotFoundError(msg)
-
+        execution = require_resource_or_404(
+            execution,
+            resource_type="Workflow execution",
+            identifier=execution_id,
+            log_event=WORKFLOW_EXEC_NOT_FOUND,
+            operation="read",
+            extra_log_kwargs={"execution_id": execution_id},
+            code=ErrorCode.WORKFLOW_EXECUTION_NOT_FOUND,
+        )
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
         )

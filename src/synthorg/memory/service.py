@@ -13,7 +13,7 @@ conformance suite at ``tests/conformance/persistence/`` exercises both
 arms on every run. When an active backend still does not expose those
 repos (or the orchestrator has not been wired for the current
 deployment), the fine-tune lifecycle methods raise a typed
-:class:`BackendUnsupportedError` so MCP handlers can route the failure
+:class:`MemoryBackendUnsupportedError` so MCP handlers can route the failure
 through the standard ``not_supported()`` envelope.
 """
 
@@ -21,8 +21,10 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
@@ -34,8 +36,8 @@ from synthorg.memory.embedding.fine_tune_models import (
 )
 from synthorg.memory.fine_tune_plan import (
     ActiveEmbedderSnapshot,
-    BackendUnsupportedError,
     FineTunePlan,
+    MemoryBackendUnsupportedError,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
@@ -79,32 +81,61 @@ logger = get_logger(__name__)
 _PriorSettingState = Literal["was_set", "was_unset", "read_failed"]
 
 
-class CheckpointNotFoundError(Exception):
-    """Raised when a deploy/rollback/delete targets a missing checkpoint."""
+class CheckpointNotFoundError(NotFoundError):
+    """Raised when a deploy/rollback/delete targets a missing checkpoint.
+
+    Inherits :class:`NotFoundError` so ``EXCEPTION_HANDLERS`` routes
+    this through the 404 envelope rather than the generic INTERNAL
+    fallback the bare ``DomainError`` base would imply.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the checkpoint is absent
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Checkpoint not found"
 
 
-class CheckpointRollbackUnavailableError(Exception):
-    """Raised when a rollback is requested but no backup config exists."""
+class CheckpointRollbackUnavailableError(ConflictError):
+    """Raised when a rollback is requested but no backup config exists.
+
+    Inherits :class:`ConflictError` so ``EXCEPTION_HANDLERS`` emits a
+    409 envelope: the checkpoint exists, but its rollback prerequisite
+    (a stored backup config) does not, so the operation cannot proceed
+    in the current state.  The prior bare ``DomainError`` base
+    misclassified this as INTERNAL/500.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: no backup exists
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "No backup config available for this checkpoint"
 
 
-class CheckpointRollbackCorruptError(Exception):
+class CheckpointRollbackCorruptError(DomainError):
     """Raised when the stored backup config fails JSON parsing."""
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the stored payload is malformed
 
 
-class FineTuneRunNotFoundError(Exception):
-    """Raised when a referenced fine-tune run id does not exist."""
+class FineTuneRunNotFoundError(NotFoundError):
+    """Raised when a referenced fine-tune run id does not exist.
+
+    Inherits :class:`NotFoundError` so ``EXCEPTION_HANDLERS`` routes
+    this through the 404 envelope instead of the generic INTERNAL
+    fallback the bare ``DomainError`` base would imply.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the run is absent
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Fine-tune run not found"
     # Wire-level ``domain_code`` so MCP handlers can route via the
     # shared ``err(exc)`` helper instead of regex-matching the
     # exception message -- that was the pre-existing anti-pattern
@@ -112,11 +143,20 @@ class FineTuneRunNotFoundError(Exception):
     domain_code: str = "not_found"
 
 
-class FineTuneRunNotResumableError(Exception):
-    """Raised when a fine-tune run exists but is not in a resumable stage."""
+class FineTuneRunNotResumableError(ConflictError):
+    """Raised when a fine-tune run exists but is not in a resumable stage.
+
+    Inherits :class:`ConflictError` so ``EXCEPTION_HANDLERS`` routes
+    this through the 409 envelope; the prior ``DomainError`` base
+    classified it as INTERNAL/500.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: stage is terminal or running
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Fine-tune run not resumable"
     domain_code: str = "conflict"
 
 
@@ -153,7 +193,7 @@ class MemoryService:
         ``DELETE /memory/entries`` path) can construct the
         service without resolving fine-tune repositories. Each
         lifecycle method that needs a missing dep raises
-        :class:`BackendUnsupportedError` at call time.
+        :class:`MemoryBackendUnsupportedError` at call time.
 
         Args:
             checkpoint_repo: Fine-tune checkpoint persistence. ``None``
@@ -166,11 +206,11 @@ class MemoryService:
             orchestrator: Fine-tune pipeline orchestrator. ``None`` on
                 backends that do not support fine-tune runs (the
                 fine-tune lifecycle methods raise
-                :class:`BackendUnsupportedError` in that case).
+                :class:`MemoryBackendUnsupportedError` in that case).
             memory_backend: Shared memory backend exposed to admin
                 operations such as ``delete_memory_entry``. ``None``
                 when no backend is wired (the entry-delete method
-                raises :class:`BackendUnsupportedError` in that case).
+                raises :class:`MemoryBackendUnsupportedError` in that case).
         """
         self._checkpoints = checkpoint_repo
         self._runs = run_repo
@@ -188,7 +228,7 @@ class MemoryService:
         self._embedder_state_lock = asyncio.Lock()
 
     def _require_checkpoints(self) -> FineTuneCheckpointRepository:
-        """Return the checkpoint repo or raise ``BackendUnsupportedError``."""
+        """Return the checkpoint repo or raise ``MemoryBackendUnsupportedError``."""
         if self._checkpoints is None:
             msg = (
                 "fine-tune checkpoint repository is not wired on the "
@@ -200,11 +240,11 @@ class MemoryService:
                 repo="checkpoints",
                 reason="repository_not_wired",
             )
-            raise BackendUnsupportedError(msg)
+            raise MemoryBackendUnsupportedError(msg)
         return self._checkpoints
 
     def _require_runs(self) -> FineTuneRunRepository:
-        """Return the run repo or raise ``BackendUnsupportedError``."""
+        """Return the run repo or raise ``MemoryBackendUnsupportedError``."""
         if self._runs is None:
             msg = (
                 "fine-tune run repository is not wired on the active "
@@ -216,7 +256,7 @@ class MemoryService:
                 repo="runs",
                 reason="repository_not_wired",
             )
-            raise BackendUnsupportedError(msg)
+            raise MemoryBackendUnsupportedError(msg)
         return self._runs
 
     async def delete_memory_entry(
@@ -238,7 +278,7 @@ class MemoryService:
             ``True`` if the entry was deleted, ``False`` if not found.
 
         Raises:
-            BackendUnsupportedError: When no memory backend is wired.
+            MemoryBackendUnsupportedError: When no memory backend is wired.
         """
         if self._memory_backend is None:
             msg = (
@@ -251,7 +291,7 @@ class MemoryService:
                 memory_id=memory_id,
                 reason="backend_unsupported",
             )
-            raise BackendUnsupportedError(msg)
+            raise MemoryBackendUnsupportedError(msg)
         try:
             deleted = await self._memory_backend.delete(agent_id, memory_id)
         except MemoryError, RecursionError:
@@ -535,7 +575,7 @@ class MemoryService:
             The created run record.
 
         Raises:
-            BackendUnsupportedError: When the active backend does not
+            MemoryBackendUnsupportedError: When the active backend does not
                 expose fine-tune support.
             RuntimeError: If another run is already active.
         """
@@ -564,7 +604,7 @@ class MemoryService:
         ``exc.domain_code`` instead of regex-matching the message.
 
         Raises:
-            BackendUnsupportedError: When the active backend does not
+            MemoryBackendUnsupportedError: When the active backend does not
                 expose fine-tune support.
             FineTuneRunNotFoundError: If *run_id* does not exist.
             FineTuneRunNotResumableError: If the run exists but is not
@@ -594,7 +634,7 @@ class MemoryService:
         in-memory ``current_run`` slot rotates).
 
         Raises:
-            BackendUnsupportedError: When the backend does not support
+            MemoryBackendUnsupportedError: When the backend does not support
                 fine-tune runs.
             ValueError: If *run_id* is given but the run does not exist.
         """
@@ -636,7 +676,7 @@ class MemoryService:
             record.
 
         Raises:
-            BackendUnsupportedError: When the backend does not support
+            MemoryBackendUnsupportedError: When the backend does not support
                 fine-tune runs.
         """
         orchestrator = self._require_orchestrator()
@@ -663,7 +703,7 @@ class MemoryService:
         declared bounds.
 
         Raises:
-            BackendUnsupportedError: When the backend does not support
+            MemoryBackendUnsupportedError: When the backend does not support
                 fine-tune runs.
         """
         self._require_orchestrator()
@@ -722,7 +762,7 @@ class MemoryService:
         )
 
     def _require_orchestrator(self) -> FineTuneOrchestrator:
-        """Return the orchestrator or raise :class:`BackendUnsupportedError`.
+        """Return the orchestrator or raise :class:`MemoryBackendUnsupportedError`.
 
         Handlers catch the exception and surface a ``not_supported``
         envelope (see :mod:`synthorg.meta.mcp.handlers.memory`).
@@ -740,7 +780,7 @@ class MemoryService:
                 method="_require_orchestrator",
                 reason="orchestrator_not_wired",
             )
-            raise BackendUnsupportedError(msg)
+            raise MemoryBackendUnsupportedError(msg)
         return self._orchestrator
 
     async def _apply_deploy_settings(

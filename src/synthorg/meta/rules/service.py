@@ -8,6 +8,7 @@ Wraps :class:`CustomRuleRepository` so the
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.observability import get_logger
@@ -32,8 +33,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class CustomRuleNotFoundError(Exception):
-    """Raised when an id-targeted update/toggle/delete misses."""
+class CustomRuleNotFoundError(NotFoundError):
+    """Raised when an id-targeted update/toggle/delete misses.
+
+    Inherits :class:`NotFoundError` so the central exception
+    handler maps the exception directly to a 404 RFC 9457 response;
+    controllers no longer translate to the generic
+    :class:`NotFoundError` themselves.
+    """
 
 
 class CustomRulesService:

@@ -139,13 +139,20 @@ class TestMetaChatPolicy:
 # tuning change updates one line, not the assertions in three tests.
 _EXPENSIVE_ENDPOINT_POLICY_DEFAULTS: dict[str, tuple[int, int]] = {
     "a2a.gateway": (120, 60),
+    # admin / analytics / messages mutations.
+    "admin.backup_create": (5, 3600),
+    "admin.backup_delete": (10, 3600),
     "agents.autonomy_change": (10, 60),
+    "analytics.forecast": (30, 60),
+    "analytics.overview": (30, 60),
+    "analytics.trends": (30, 60),
     "artifacts.create": (60, 60),
     "auth.ws_ticket": (20, 60),
     "clients.create": (10, 60),
     "collaboration.override": (20, 60),
     "company.reorder_departments": (10, 60),
     "interrupts.resume": (60, 60),
+    "messages.delete": (100, 3600),
     "meta.ingest_events": (60, 60),
     "meta.trigger_cycle": (1, 60),
     "simulations.cancel": (30, 60),

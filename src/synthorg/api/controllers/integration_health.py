@@ -13,11 +13,10 @@ from litestar.datastructures import State  # noqa: TC002
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.core.domain_errors import NotFoundError
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionStatus
-from synthorg.integrations.errors import ConnectionNotFoundError
 from synthorg.integrations.health.models import HealthReport
 from synthorg.integrations.health.service import check_connection_health
 from synthorg.observability import get_logger, safe_error_description
@@ -121,15 +120,17 @@ class IntegrationHealthController(Controller):
     async def single_health(
         self,
         state: State,
-        connection_name: str,
+        connection_name: PathName,
     ) -> ApiResponse[HealthReport]:
-        """Return the health report for one connection."""
+        """Return the health report for one connection.
+
+        ``ConnectionNotFoundError`` propagates unchanged and is
+        translated by centralized exception handlers into the
+        class-defined 404 + ``CONNECTION_NOT_FOUND`` envelope.
+        """
         catalog = state["app_state"].connection_catalog
-        try:
-            report = await check_connection_health(
-                catalog,
-                connection_name,
-            )
-        except ConnectionNotFoundError as exc:
-            raise NotFoundError(str(exc)) from exc
+        report = await check_connection_health(
+            catalog,
+            connection_name,
+        )
         return ApiResponse(data=report)

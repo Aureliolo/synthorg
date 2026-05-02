@@ -17,7 +17,7 @@ from synthorg.ontology.models import (
 class EntityFieldInput(BaseModel):
     """Field definition for entity create/update."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Field name")
     type_hint: NotBlankStr = Field(description="Type annotation")
@@ -27,7 +27,7 @@ class EntityFieldInput(BaseModel):
 class EntityRelationInput(BaseModel):
     """Relationship definition for entity create/update."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     target: NotBlankStr = Field(description="Related entity name")
     relation: NotBlankStr = Field(description="Relationship type")
@@ -37,7 +37,7 @@ class EntityRelationInput(BaseModel):
 class CreateEntityRequest(BaseModel):
     """Payload for creating a new entity definition (USER tier only)."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Entity name", max_length=256)
     definition: str = Field(
@@ -67,7 +67,7 @@ class CreateEntityRequest(BaseModel):
 class UpdateEntityRequest(BaseModel):
     """Payload for updating an entity definition."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     definition: str | None = Field(
         default=None,

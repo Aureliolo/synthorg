@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, LiteralString
 
 from litestar import Controller, Request, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -18,6 +18,7 @@ from synthorg.api.guards import HumanRole, require_ceo
 from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -70,7 +71,7 @@ _FORBIDDEN_ROLES: frozenset[HumanRole] = frozenset({HumanRole.SYSTEM})
 class CreateUserRequest(BaseModel):
     """Request body for creating a new user."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     username: NotBlankStr = Field(max_length=128)
     password: NotBlankStr = Field(max_length=128)
@@ -80,7 +81,7 @@ class CreateUserRequest(BaseModel):
 class UpdateUserRoleRequest(BaseModel):
     """Request body for updating a user's role."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     role: HumanRole
 
@@ -88,7 +89,7 @@ class UpdateUserRoleRequest(BaseModel):
 class GrantOrgRoleRequest(BaseModel):
     """Request body for granting an org-level role."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     role: OrgRole
     scoped_departments: tuple[NotBlankStr, ...] = ()
@@ -137,14 +138,23 @@ def _validate_assignable_role(role: HumanRole) -> None:
 async def _get_user_or_404(
     service: UserService,
     user_id: str,
+    *,
+    operation: LiteralString,
 ) -> User:
-    """Fetch a user by ID, raising NotFoundError if missing."""
-    user = await service.get(NotBlankStr(user_id))
-    if user is None:
-        msg = f"User not found: {user_id}"
-        logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
-        raise NotFoundError(msg)
-    return user
+    """Fetch a user by ID, raising NotFoundError if missing.
+
+    ``operation`` discriminates the failing endpoint in the audit log
+    (``"read"`` / ``"update_user_role"`` / ``"delete_user"`` /
+    ``"grant_org_role"`` / ``"revoke_org_role"``) so the not-found
+    emissions are not all stamped as ``"read"``.
+    """
+    return require_resource_or_404(
+        await service.get(NotBlankStr(user_id)),
+        resource_type="User",
+        identifier=user_id,
+        log_event=API_RESOURCE_NOT_FOUND,
+        operation=operation,
+    )
 
 
 # -- Controller --------------------------------------------------------
@@ -307,7 +317,7 @@ class UserController(Controller):
         Raises:
             NotFoundError: If the user is not found.
         """
-        user = await _get_user_or_404(_service(state), user_id)
+        user = await _get_user_or_404(_service(state), user_id, operation="read")
         return ApiResponse(data=_to_response(user))
 
     @patch(
@@ -342,7 +352,7 @@ class UserController(Controller):
         service = _service(state)
 
         _validate_assignable_role(data.role)
-        user = await _get_user_or_404(service, user_id)
+        user = await _get_user_or_404(service, user_id, operation="update_user_role")
 
         if user.role == HumanRole.SYSTEM:
             msg = "Cannot modify the system user"
@@ -415,7 +425,7 @@ class UserController(Controller):
         service = _service(state)
         auth_user: AuthenticatedUser = request.scope["user"]
 
-        user = await _get_user_or_404(service, user_id)
+        user = await _get_user_or_404(service, user_id, operation="delete_user")
 
         if user.id == auth_user.user_id:
             msg = "Cannot delete your own account"
@@ -497,7 +507,7 @@ class UserController(Controller):
             ValidationError: If department_admin without departments.
         """
         service = _service(state)
-        user = await _get_user_or_404(service, user_id)
+        user = await _get_user_or_404(service, user_id, operation="grant_org_role")
 
         if user.role == HumanRole.SYSTEM:
             msg = "Cannot assign org roles to the system user"
@@ -601,7 +611,7 @@ class UserController(Controller):
             logger.warning(API_VALIDATION_FAILED, reason=msg)
             raise ValidationError(msg) from None
 
-        user = await _get_user_or_404(service, user_id)
+        user = await _get_user_or_404(service, user_id, operation="revoke_org_role")
 
         if org_role not in user.org_roles:
             msg = f"User does not have role: {role}"

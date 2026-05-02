@@ -27,7 +27,7 @@ class AutonomyLevelRequest(BaseModel):
         level: The requested autonomy level.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     level: AutonomyLevel = Field(description="Requested autonomy level")
 

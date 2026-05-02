@@ -36,7 +36,7 @@ from synthorg.backup.models import (
     RestoreResponse,
 )
 from synthorg.backup.service import BackupService
-from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.domain_errors import ConflictError, ValidationError
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -138,19 +138,24 @@ class TestCreateBackup:
         assert isinstance(result, ApiResponse)
         assert result.data == manifest
 
-    async def test_create_backup_returns_409_on_in_progress(self) -> None:
+    async def test_create_backup_propagates_in_progress(self) -> None:
+        """BackupInProgressError propagates to handle_backup_error.
+
+        The controller does not translate ``BackupInProgressError``
+        to ``ConflictError``; ``handle_backup_error`` maps it to
+        409 with the domain-specific ``RESOURCE_CONFLICT`` envelope
+        so clients can discriminate the conflict source.
+        """
         state, service = _make_state_and_service()
         service.create_backup.side_effect = BackupInProgressError("busy")
 
         ctrl = _controller()
-        with pytest.raises(ConflictError) as exc_info:
+        with pytest.raises(BackupInProgressError):
             await ctrl.create_backup.fn(
                 ctrl,
                 state=state,
                 idempotency_key="test-key-002",
             )
-
-        assert exc_info.value.status_code == 409
 
 
 @pytest.mark.unit
@@ -191,12 +196,21 @@ class TestGetBackup:
         assert isinstance(result, ApiResponse)
         assert result.data == manifest
 
-    async def test_get_backup_raises_404_on_not_found(self) -> None:
+    async def test_get_backup_propagates_not_found(self) -> None:
+        """BackupNotFoundError propagates to handle_backup_error.
+
+        The controller does not translate ``BackupNotFoundError``
+        to the generic ``NotFoundError`` (which would collapse to
+        ``RESOURCE_NOT_FOUND``).  ``handle_backup_error`` maps it
+        to 404 with the domain-specific ``RECORD_NOT_FOUND``
+        envelope so clients can discriminate which resource type
+        was missing.
+        """
         state, service = _make_state_and_service()
         service.get_backup.side_effect = BackupNotFoundError("gone")
 
         ctrl = _controller()
-        with pytest.raises(NotFoundError):
+        with pytest.raises(BackupNotFoundError):
             await ctrl.get_backup.fn(
                 ctrl,
                 state=state,
@@ -222,12 +236,18 @@ class TestDeleteBackup:
         service.delete_backup.assert_awaited_once_with("abc123def456")
         assert result is None
 
-    async def test_delete_backup_raises_404_on_not_found(self) -> None:
+    async def test_delete_backup_propagates_not_found(self) -> None:
+        """BackupNotFoundError propagates to handle_backup_error.
+
+        ``handle_backup_error`` owns the 404 + ``RECORD_NOT_FOUND``
+        translation; controller-level translation would collapse
+        the type into the generic ``NotFoundError``.
+        """
         state, service = _make_state_and_service()
         service.delete_backup.side_effect = BackupNotFoundError("gone")
 
         ctrl = _controller()
-        with pytest.raises(NotFoundError):
+        with pytest.raises(BackupNotFoundError):
             await ctrl.delete_backup.fn(
                 ctrl,
                 state=state,
@@ -294,7 +314,14 @@ class TestRestoreBackup:
 
         assert exc_info.value.status_code == 422
 
-    async def test_restore_raises_404_on_not_found(self) -> None:
+    async def test_restore_propagates_not_found(self) -> None:
+        """``BackupNotFoundError`` propagates to the centralized handler.
+
+        ``handle_backup_error`` maps the domain exception to 404 with
+        the ``RECORD_NOT_FOUND`` envelope; the controller-level
+        translation to a generic ``NotFoundError`` would have dropped
+        the discriminating error code.
+        """
         state, service = _make_state_and_service()
         service.restore_from_backup.side_effect = BackupNotFoundError("gone")
 
@@ -303,7 +330,7 @@ class TestRestoreBackup:
             confirm=True,
         )
         ctrl = _controller()
-        with pytest.raises(NotFoundError):
+        with pytest.raises(BackupNotFoundError):
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
     async def test_restore_raises_409_on_in_progress(self) -> None:

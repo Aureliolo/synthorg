@@ -64,6 +64,7 @@ from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noq
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
+from synthorg.hr.training.plan_service import TrainingPlanService  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
@@ -113,6 +114,9 @@ if TYPE_CHECKING:
     from synthorg.a2a.agent_card import AgentCardBuilder
     from synthorg.a2a.client import A2AClient
     from synthorg.a2a.peer_registry import PeerRegistry
+    from synthorg.api.services.workflow_rollback_service import (
+        WorkflowRollbackService,
+    )
     from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.health.prober import HealthProberService
@@ -120,6 +124,7 @@ if TYPE_CHECKING:
         McpInstallationRepository,
     )
     from synthorg.integrations.mcp_catalog.service import CatalogService
+    from synthorg.integrations.oauth.state_service import OAuthStateService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
     from synthorg.integrations.tunnel.protocol import TunnelProvider
 
@@ -202,6 +207,7 @@ class AppState(AppStateServicesMixin):
         "_model_router",
         "_notification_dispatcher",
         "_oauth_facade_service",
+        "_oauth_state_service",
         "_oauth_token_manager",
         "_ontology_facade_service",
         "_ontology_service",
@@ -246,6 +252,7 @@ class AppState(AppStateServicesMixin):
         "_ticket_store",
         "_tool_invocation_tracker",
         "_trace_handler",
+        "_training_plan_service",
         "_training_service",
         "_trust_service",
         "_tunnel_provider",
@@ -256,6 +263,7 @@ class AppState(AppStateServicesMixin):
         "_webhook_replay_protector",
         "_webhook_service",
         "_workflow_execution_service",
+        "_workflow_rollback_service",
         "_workflow_service",
         "_workflow_version_service",
         "_ws_auth_timeout_seconds",
@@ -346,11 +354,30 @@ class AppState(AppStateServicesMixin):
         self._provider_health_tracker = provider_health_tracker
         self._tool_invocation_tracker = tool_invocation_tracker
         self._training_service = training_service
+        # Lazily constructed in lifecycle_builder when persistence is
+        # available; ``TrainingController`` raises 503 via the
+        # ``training_plan_service`` property when accessed before it
+        # is wired (matching every other persistence-bound service
+        # facade).
+        self._training_plan_service: TrainingPlanService | None = None
         self._delegation_record_store = delegation_record_store
         self._event_stream_hub = event_stream_hub
         self._interrupt_store = interrupt_store
         self._connection_catalog = connection_catalog
         self._oauth_token_manager = oauth_token_manager
+        # Wired in lifecycle_builder once persistence is connected;
+        # the OAuth controller raises 503 via the
+        # ``oauth_state_service`` property when accessed before it
+        # is available, matching every other persistence-bound
+        # service facade.
+        self._oauth_state_service: OAuthStateService | None = None
+        # Wired in lifecycle_builder once persistence + the workflow
+        # definition / version repos are connected; the workflow
+        # rollback controller falls through to the ``503`` raise on
+        # ``workflow_rollback_service`` when accessed before it is
+        # available, matching every other persistence-bound service
+        # facade.
+        self._workflow_rollback_service: WorkflowRollbackService | None = None
         self._health_prober_service = health_prober_service
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge

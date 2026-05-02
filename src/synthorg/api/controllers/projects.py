@@ -17,6 +17,7 @@ from synthorg.api.dto import (
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import NotFoundError, ValidationError
@@ -129,10 +130,13 @@ class ProjectController(Controller):
         Returns:
             The project, or 404 if not found.
         """
-        project = await _service(state).get(project_id)
-        if project is None:
-            msg = f"Project {project_id!r} not found"
-            raise NotFoundError(msg)
+        project = require_resource_or_404(
+            await _service(state).get(project_id),
+            resource_type="Project",
+            identifier=project_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+        )
         return Response(
             content=ApiResponse[Project](data=project),
             status_code=200,
@@ -160,16 +164,14 @@ class ProjectController(Controller):
             NotFoundError: Project with ``project_id`` does not exist.
         """
         service = _service(state)
-        project = await service.get(project_id)
-        if project is None:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="project",
-                project_id=project_id,
-                operation="delete",
-            )
-            msg = f"Project {project_id!r} not found"
-            raise NotFoundError(msg)
+        project = require_resource_or_404(
+            await service.get(project_id),
+            resource_type="Project",
+            identifier=project_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="delete",
+            extra_log_kwargs={"project_id": project_id},
+        )
         deleted = await service.delete(project_id)
         if not deleted:
             # Race: row disappeared between get() and delete(). Log as a

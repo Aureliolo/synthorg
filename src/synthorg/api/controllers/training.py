@@ -35,9 +35,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
 )
 from synthorg.observability.events.training import (
-    HR_TRAINING_PLAN_CREATED,
-    HR_TRAINING_PLAN_EXECUTED,
-    HR_TRAINING_PLAN_FAILED,
+    HR_TRAINING_PLAN_EXECUTION_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -207,14 +205,11 @@ class TrainingController(Controller):
             plan_kwargs["volume_caps"] = caps
 
         plan = TrainingPlan(**plan_kwargs)  # type: ignore[arg-type]
-        await app_state.persistence.training_plans.save(plan)
-
-        logger.info(
-            HR_TRAINING_PLAN_CREATED,
-            plan_id=str(plan.id),
-            agent_name=str(agent_name),
-        )
-
+        # Route through ``TrainingPlanService`` so the durable write
+        # and the ``HR_TRAINING_PLAN_CREATED`` audit event happen in
+        # one place.  Raises 503 when the service is not yet wired
+        # (matches every other persistence-bound facade).
+        await app_state.training_plan_service.create_plan(plan)
         return ApiResponse(data=_plan_to_response(plan))
 
     @post(
@@ -259,33 +254,25 @@ class TrainingController(Controller):
         # Raises 503 ServiceUnavailableError when not wired.
         service = app_state.training_service
 
+        plan_service = app_state.training_plan_service
         try:
             result = await service.execute(plan)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            # Transition plan to FAILED on pipeline error.
-            failed_plan = plan.model_copy(
-                update={
-                    "status": TrainingPlanStatus.FAILED,
-                    "executed_at": datetime.now(UTC),
-                }
-            )
-            try:
-                await app_state.persistence.training_plans.save(
-                    failed_plan,
-                )
-            except Exception as save_exc:
-                logger.warning(
-                    HR_TRAINING_PLAN_FAILED,
-                    plan_id=str(plan.id),
-                    error="Failed to persist FAILED status",
-                    error_type=type(save_exc).__name__,
-                    persistence_error=safe_error_description(save_exc),
-                    exc_info=True,
-                )
+            # ``record_failure`` flips the plan to FAILED, persists it,
+            # and swallows any best-effort save error after WARNing
+            # so the original pipeline exception below still bubbles
+            # up to the caller.
+            await plan_service.record_failure(plan)
+            # ``record_failure`` already logged ``HR_TRAINING_PLAN_FAILED``
+            # for the persisted-transition path.  Re-using the same
+            # event here would double-count one execution error as two
+            # plan-failure events, skewing audit counts and alerting,
+            # so the controller-side warning rides a distinct
+            # ``EXECUTION_ERROR`` event with the original exc context.
             logger.warning(
-                HR_TRAINING_PLAN_FAILED,
+                HR_TRAINING_PLAN_EXECUTION_ERROR,
                 plan_id=str(plan.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -293,22 +280,9 @@ class TrainingController(Controller):
             )
             raise
 
-        # Transition plan to EXECUTED and persist the result.
-        executed_plan = plan.model_copy(
-            update={
-                "status": TrainingPlanStatus.EXECUTED,
-                "executed_at": result.completed_at,
-            }
-        )
-        await app_state.persistence.training_plans.save(executed_plan)
-        await app_state.persistence.training_results.save(result)
-
-        logger.info(
-            HR_TRAINING_PLAN_EXECUTED,
-            plan_id=str(plan.id),
-            agent_id=agent_id,
-        )
-
+        # ``record_executed`` persists the EXECUTED plan + result pair
+        # and emits HR_TRAINING_PLAN_EXECUTED inside the service.
+        await plan_service.record_executed(plan, result)
         return ApiResponse(data=_result_to_response(result))
 
     @get(
@@ -504,9 +478,13 @@ class TrainingController(Controller):
         if data.skip_training is not None:
             updates["skip_training"] = data.skip_training
 
-        updated = plan.model_copy(update=updates)
-        await app_state.persistence.training_plans.save(updated)
-
+        # ``update_overrides`` applies the diff, persists the new
+        # plan, and emits ``HR_TRAINING_PLAN_OVERRIDES_UPDATED``
+        # inside the service.
+        updated = await app_state.training_plan_service.update_overrides(
+            plan,
+            updates=updates,
+        )
         return ApiResponse(data=_plan_to_response(updated))
 
 

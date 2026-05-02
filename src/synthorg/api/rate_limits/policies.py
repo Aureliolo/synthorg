@@ -39,12 +39,18 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # a2a
     "a2a.gateway": (120, 60),
     # admin (backup controller)
+    "admin.backup_create": (5, 3600),
+    "admin.backup_delete": (10, 3600),
     "admin.backup_restore": (3, 3600),
     # agents
     "agents.autonomy_change": (10, 60),
     "agents.create": (10, 60),
     "agents.delete": (5, 60),
     "agents.update": (20, 60),
+    # analytics
+    "analytics.forecast": (30, 60),
+    "analytics.overview": (30, 60),
+    "analytics.trends": (30, 60),
     # approvals
     "approvals.approve": (100, 60),
     "approvals.create": (20, 60),
@@ -86,6 +92,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "interrupts.resume": (60, 60),
     # meetings
     "meetings.create": (20, 60),
+    # messages
+    "messages.delete": (100, 3600),
     # meta
     "meta.chat": (5, 60),
     "meta.ingest_events": (60, 60),

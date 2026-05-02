@@ -258,6 +258,117 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 )
                 task_engine.register_observer(_wf_observer)
 
+        # Wire ``OAuthStateService`` once persistence + the
+        # ``oauth_states`` repository are available.  Owns the only
+        # durable write for OAuth-flow initiation so the
+        # ``SECURITY_OAUTH_STATE_PERSISTED`` event fires alongside
+        # every save.
+        if (
+            persistence is not None
+            and getattr(persistence, "is_connected", False)
+            and not app_state.has_oauth_state_service
+            and hasattr(persistence, "oauth_states")
+        ):
+            try:
+                from synthorg.integrations.oauth.state_service import (  # noqa: PLC0415
+                    OAuthStateService,
+                )
+
+                app_state.set_oauth_state_service(
+                    OAuthStateService(repo=persistence.oauth_states),
+                )
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="oauth_state_service",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_SERVICE_AUTO_WIRE_FAILED,
+                    service="oauth_state_service",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    exc_info=True,
+                )
+
+        # Wire ``TrainingPlanService`` once persistence + the
+        # ``training_plans`` / ``training_results`` repositories are
+        # available.  Centralises every plan-CRUD write the
+        # controller previously made directly so audit logging
+        # cannot regress when a new write path is added.
+        if (
+            persistence is not None
+            and getattr(persistence, "is_connected", False)
+            and not app_state.has_training_plan_service
+            and hasattr(persistence, "training_plans")
+            and hasattr(persistence, "training_results")
+        ):
+            try:
+                from synthorg.hr.training.plan_service import (  # noqa: PLC0415
+                    TrainingPlanService,
+                )
+
+                app_state.set_training_plan_service(
+                    TrainingPlanService(
+                        plan_repo=persistence.training_plans,
+                        result_repo=persistence.training_results,
+                    ),
+                )
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="training_plan_service",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_SERVICE_AUTO_WIRE_FAILED,
+                    service="training_plan_service",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    exc_info=True,
+                )
+
+        # Wire ``WorkflowRollbackService`` once persistence + the
+        # ``workflow_definitions`` / ``versions`` repositories are
+        # available.  Centralises the live save + post-rollback
+        # snapshot writes the controller previously made directly so
+        # audit logging cannot regress when a new write path lands in
+        # the rollback contract.
+        if (
+            persistence is not None
+            and getattr(persistence, "is_connected", False)
+            and not app_state.has_workflow_rollback_service
+            and hasattr(persistence, "workflow_definitions")
+            and hasattr(persistence, "workflow_versions")
+        ):
+            try:
+                from synthorg.api.services.workflow_rollback_service import (  # noqa: PLC0415
+                    WorkflowRollbackService,
+                )
+
+                app_state.set_workflow_rollback_service(
+                    WorkflowRollbackService(
+                        definition_repo=persistence.workflow_definitions,
+                        version_repo=persistence.workflow_versions,
+                    ),
+                )
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="workflow_rollback_service",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_SERVICE_AUTO_WIRE_FAILED,
+                    service="workflow_rollback_service",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    exc_info=True,
+                )
+
         # Phase 2 auto-wire: SettingsService (needs connected persistence)
         if (
             should_auto_wire_settings

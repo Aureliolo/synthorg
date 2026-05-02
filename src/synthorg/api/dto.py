@@ -274,7 +274,7 @@ class CreateArtifactRequest(BaseModel):
         project_id: Optional project ID to link the artifact to.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: ArtifactType = Field(
         description="Artifact category (code, tests, documentation).",
@@ -322,7 +322,7 @@ class CreateProjectRequest(BaseModel):
         budget: Total budget in base currency.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(max_length=256)
     description: str = Field(default="", max_length=4096)
@@ -371,7 +371,7 @@ class CreateTaskRequest(BaseModel):
         budget_limit: Maximum spend in base currency.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     title: NotBlankStr = Field(max_length=256)
     description: NotBlankStr = Field(max_length=4096)
@@ -398,7 +398,7 @@ class UpdateTaskRequest(BaseModel):
         expected_version: Optimistic concurrency guard.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     title: NotBlankStr | None = Field(default=None, max_length=256)
     description: NotBlankStr | None = Field(default=None, max_length=4096)
@@ -421,7 +421,7 @@ class TransitionTaskRequest(BaseModel):
         expected_version: Optimistic concurrency guard.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     target_status: TaskStatus = Field(description="Desired target status")
     assigned_to: NotBlankStr | None = None
@@ -439,7 +439,7 @@ class CancelTaskRequest(BaseModel):
         reason: Reason for cancellation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     reason: NotBlankStr = Field(
         max_length=4096,
@@ -465,7 +465,7 @@ class CreateApprovalRequest(BaseModel):
         metadata: Additional key-value pairs.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     action_type: NotBlankStr = Field(
         max_length=128,
@@ -536,7 +536,7 @@ class ApproveRequest(BaseModel):
         comment: Optional comment explaining the approval.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     comment: NotBlankStr | None = Field(default=None, max_length=4096)
 
@@ -548,7 +548,7 @@ class RejectRequest(BaseModel):
         reason: Mandatory reason for rejection.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     reason: NotBlankStr = Field(max_length=4096)
 
@@ -568,7 +568,7 @@ class CoordinateTaskRequest(BaseModel):
             section config default).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_names: tuple[NotBlankStr, ...] | None = Field(
         default=None,
@@ -691,7 +691,7 @@ class RollbackAgentIdentityRequest(BaseModel):
             the evolution event for audit purposes.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     target_version: int = Field(
         ge=1,

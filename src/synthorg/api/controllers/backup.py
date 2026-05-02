@@ -27,7 +27,6 @@ from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.backup.errors import (
-    BackupError,
     BackupInProgressError,
     BackupNotFoundError,
     ManifestError,
@@ -42,7 +41,6 @@ from synthorg.backup.models import (
 )
 from synthorg.core.domain_errors import (
     ConflictError,
-    NotFoundError,
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -81,7 +79,11 @@ class BackupController(Controller):
     tags = ("admin", "backup")
     guards = [require_roles(HumanRole.CEO, HumanRole.SYSTEM)]  # noqa: RUF012
 
-    @post()
+    @post(
+        guards=[
+            per_op_rate_limit_from_policy("admin.backup_create", key="user"),
+        ],
+    )
     async def create_backup(
         self,
         state: State,
@@ -118,27 +120,19 @@ class BackupController(Controller):
         app_state: AppState = state.app_state
 
         async def _do_backup() -> BackupManifest:
-            try:
-                return await app_state.backup_service.create_backup(
-                    BackupTrigger.MANUAL,
-                )
-            except BackupInProgressError as exc:
-                logger.warning(
-                    BACKUP_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                msg_in_progress = "A backup operation is already in progress"
-                raise ConflictError(msg_in_progress) from exc
-            except BackupError as exc:
-                logger.error(
-                    BACKUP_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                    exc_info=True,
-                )
-                msg = "Backup operation failed"
-                raise InternalServerException(msg) from exc
+            # ``BackupError`` and its subclasses propagate directly to
+            # ``handle_backup_error`` which maps
+            # ``BackupInProgressError`` to 409,
+            # ``BackupNotFoundError`` to 404, and any other
+            # ``BackupError`` type to a scrubbed 5xx with the
+            # RFC 9457 envelope. Translating here would route
+            # through the generic ``ConflictError`` /
+            # ``InternalServerException`` paths and drop the
+            # domain-specific ``BackupError`` type the handler
+            # discriminates on.
+            return await app_state.backup_service.create_backup(
+                BackupTrigger.MANUAL,
+            )
 
         # ``NotBlankStr`` is an Annotated type alias, not a callable
         # constructor; calling it at runtime returns the underlying
@@ -212,21 +206,16 @@ class BackupController(Controller):
             if cursor is None
             else decode_cursor(cursor, secret=app_state.cursor_secret)
         )
-        try:
-            # Fetch ``limit + 1`` so we can detect that another page
-            # follows without a second full-directory scan.
-            backups = await app_state.backup_service.list_backups(
-                limit=limit + 1,
-                offset=offset,
-            )
-        except BackupError as exc:
-            logger.error(  # noqa: TRY400
-                BACKUP_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "Failed to list backups"
-            raise InternalServerException(msg) from exc
+        # ``BackupError`` propagates to ``handle_backup_error`` so the
+        # response carries the structured RFC 9457 envelope; an
+        # ``InternalServerException`` re-raise here would drop the
+        # ``BackupError`` type and force an unstructured 500.
+        # Fetch ``limit + 1`` so we can detect that another page
+        # follows without a second full-directory scan.
+        backups = await app_state.backup_service.list_backups(
+            limit=limit + 1,
+            offset=offset,
+        )
         meta = encode_countless_seek_meta(
             offset=offset,
             fetched_rows=len(backups),
@@ -251,21 +240,23 @@ class BackupController(Controller):
         Returns:
             Full backup manifest.
         """
+        # ``BackupNotFoundError`` propagates to
+        # ``handle_backup_error`` which maps it to 404 with
+        # ``error_code=RECORD_NOT_FOUND``. A controller-level
+        # translation to the generic ``NotFoundError`` collapses
+        # the type into ``RESOURCE_NOT_FOUND`` and clients lose
+        # the ability to discriminate which resource was missing.
         app_state: AppState = state.app_state
-        try:
-            manifest = await app_state.backup_service.get_backup(backup_id)
-        except BackupNotFoundError as exc:
-            logger.warning(
-                BACKUP_NOT_FOUND,
-                backup_id=backup_id,
-            )
-            # Controller-authored message (not the raw service text)
-            # so the 404 response cannot leak backend internals.
-            msg = "Backup not found"
-            raise NotFoundError(msg) from exc
+        manifest = await app_state.backup_service.get_backup(backup_id)
         return ApiResponse(data=manifest)
 
-    @delete("/{backup_id:str}", status_code=HTTP_204_NO_CONTENT)
+    @delete(
+        "/{backup_id:str}",
+        status_code=HTTP_204_NO_CONTENT,
+        guards=[
+            per_op_rate_limit_from_policy("admin.backup_delete", key="user"),
+        ],
+    )
     async def delete_backup(
         self,
         state: State,
@@ -284,26 +275,13 @@ class BackupController(Controller):
                 so all three backup-mutation endpoints share the same
                 domain-error mapping.
         """
+        # ``BackupError`` and its subclasses propagate to
+        # ``handle_backup_error`` so the response carries the
+        # structured envelope (404 + ``RECORD_NOT_FOUND`` for
+        # ``BackupNotFoundError``, 409 + ``RESOURCE_CONFLICT`` for
+        # ``BackupInProgressError``).
         app_state: AppState = state.app_state
-        try:
-            await app_state.backup_service.delete_backup(backup_id)
-        except BackupNotFoundError as exc:
-            logger.warning(
-                BACKUP_NOT_FOUND,
-                backup_id=backup_id,
-            )
-            msg = "Backup not found"
-            raise NotFoundError(msg) from exc
-        except BackupInProgressError as exc:
-            logger.warning(
-                BACKUP_FAILED,
-                backup_id=backup_id,
-                operation="delete",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg_in_progress = "A backup operation is already in progress"
-            raise ConflictError(msg_in_progress) from exc
+        await app_state.backup_service.delete_backup(backup_id)
 
     @post(
         "/restore",
@@ -354,13 +332,20 @@ class BackupController(Controller):
                 data.backup_id,
                 components=data.components,
             )
-        except BackupNotFoundError as exc:
+        except BackupNotFoundError:
             logger.warning(
                 BACKUP_NOT_FOUND,
                 backup_id=data.backup_id,
             )
-            msg = "Backup not found"
-            raise NotFoundError(msg) from exc
+            # Let ``BackupNotFoundError`` propagate so
+            # ``handle_backup_error`` maps it to 404 with the
+            # domain-specific ``RECORD_NOT_FOUND`` envelope; the prior
+            # translation to generic ``NotFoundError`` dropped the
+            # discriminating error code. ``ManifestError`` and
+            # ``BackupInProgressError`` below stay translated by
+            # design (they carry potentially internal detail in their
+            # messages and the controller authors a sanitized 4xx).
+            raise
         except ManifestError as exc:
             logger.warning(
                 BACKUP_RESTORE_FAILED,

@@ -2,10 +2,11 @@
 
 from typing import ClassVar
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
-class OntologyError(Exception):
+class OntologyError(DomainError):
     """Base exception for all ontology errors.
 
     Class Attributes:

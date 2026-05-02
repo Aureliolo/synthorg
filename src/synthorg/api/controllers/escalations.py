@@ -67,7 +67,7 @@ class SubmitDecisionRequest(BaseModel):
             strategy on the server decides which shapes are accepted.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     decision: EscalationDecision = Field(description="Operator decision payload")
 
@@ -75,7 +75,7 @@ class SubmitDecisionRequest(BaseModel):
 class CancelEscalationRequest(BaseModel):
     """Body for ``POST /escalations/{id}/cancel``."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     reason: NotBlankStr = Field(
         max_length=4096,

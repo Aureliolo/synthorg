@@ -207,6 +207,17 @@ SECURITY_CONNECTION_SECRET_REVEAL_FAILED: Final[str] = (
     "security.connection.secret_reveal_failed"  # noqa: S105
 )
 
+# OAuth state persistence (control plane).  An entry here means an
+# authorization-code flow was initiated for a connection -- the state
+# token will be matched against the provider's callback to bind the
+# resulting tokens to the right caller, so the persistence event is
+# audit-grade.
+SECURITY_OAUTH_STATE_PERSISTED: Final[str] = "security.oauth.state_persisted"
+# Persistence failure on the OAuth-initiate path.  Logged at WARNING
+# before the underlying repository exception re-raises so the audit
+# trail records the attempt even when the state row never lands.
+SECURITY_OAUTH_STATE_PERSIST_FAILED: Final[str] = "security.oauth.state_persist_failed"
+
 # ── Custom signal rules (signed) ───────────────────────────────
 # Custom rules define automation triggers (control plane) and are
 # comparable in impact to settings or autonomy changes.  Repository

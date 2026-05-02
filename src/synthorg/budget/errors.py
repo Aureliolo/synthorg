@@ -8,6 +8,7 @@ engine layer.
 
 from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     from synthorg.budget.quota import DegradationAction
 
 
-class BudgetExhaustedError(Exception):
+class BudgetExhaustedError(DomainError):
     """Budget exhaustion signal.
 
     Used in two contexts:
@@ -108,7 +109,7 @@ class ProjectBudgetExhaustedError(BudgetExhaustedError):
         self.project_spent = project_spent
 
 
-class MixedCurrencyAggregationError(Exception):
+class MixedCurrencyAggregationError(DomainError):
     """Raised when cost values in different currencies would be aggregated.
 
     Cost summation, averaging, and budget checks only produce meaningful

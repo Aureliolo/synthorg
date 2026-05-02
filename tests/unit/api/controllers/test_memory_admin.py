@@ -335,11 +335,11 @@ class TestDeleteMemoryEntryEndpoint:
         from synthorg.api.controllers import memory as memory_module
         from synthorg.api.controllers.memory import MemoryAdminController
         from synthorg.core.domain_errors import FeatureNotImplementedError
-        from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+        from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 
         fake_service = SimpleNamespace(
             delete_memory_entry=AsyncMock(
-                side_effect=BackendUnsupportedError("no memory backend wired"),
+                side_effect=MemoryBackendUnsupportedError("no memory backend wired"),
             ),
         )
 

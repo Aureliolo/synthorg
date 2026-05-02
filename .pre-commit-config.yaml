@@ -262,6 +262,17 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: request-dto-forbid-extra
+        name: request-DTO extra="forbid" gate (src/synthorg/api)
+        entry: uv run python scripts/check_request_dto_forbid_extra.py
+        language: system
+        # Trigger on any change to the scanned tree, the checker
+        # itself, or this config so a PR that weakens the gate cannot
+        # bypass the check by not touching api Python files.
+        files: ^(src/synthorg/api/.*\.py|scripts/check_request_dto_forbid_extra\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: provider-complete-chokepoint
         name: cost-recording chokepoint gate
         entry: uv run python scripts/check_provider_complete_chokepoint.py

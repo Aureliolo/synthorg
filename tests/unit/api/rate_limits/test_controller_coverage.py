@@ -182,6 +182,39 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
     ),
     (_A2A_GATEWAY_FILE, "handle_jsonrpc", "a2a.gateway"),
     (_AUTH_CONTROLLER_FILE, "ws_ticket", "auth.ws_ticket"),
+    # admin / analytics / messages mutations carry per-op rate limits
+    # so a deletion or analytics-fanout storm cannot exhaust resources
+    # unbounded.
+    (
+        _CONTROLLERS_DIR / "backup.py",
+        "create_backup",
+        "admin.backup_create",
+    ),
+    (
+        _CONTROLLERS_DIR / "backup.py",
+        "delete_backup",
+        "admin.backup_delete",
+    ),
+    (
+        _CONTROLLERS_DIR / "analytics.py",
+        "get_overview",
+        "analytics.overview",
+    ),
+    (
+        _CONTROLLERS_DIR / "analytics.py",
+        "get_trends",
+        "analytics.trends",
+    ),
+    (
+        _CONTROLLERS_DIR / "analytics.py",
+        "get_forecast",
+        "analytics.forecast",
+    ),
+    (
+        _CONTROLLERS_DIR / "messages.py",
+        "delete_message",
+        "messages.delete",
+    ),
 )
 
 

@@ -72,7 +72,7 @@ class UpdateSettingRequest(BaseModel):
         value: New value as a string (all types serialised).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     value: str = Field(max_length=65536, description="New value as string")
 
@@ -85,7 +85,7 @@ class TestSinkConfigRequest(BaseModel):
         custom_sinks: JSON array of custom sink definitions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     sink_overrides: str = Field(
         default="{}",
@@ -137,7 +137,7 @@ class SecurityConfigExportResponse(BaseModel):
 class SecurityConfigImportRequest(BaseModel):
     """Request body to import a security configuration."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     config: dict[str, Any]
 

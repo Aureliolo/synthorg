@@ -148,7 +148,7 @@ async def _user_revocation_reason(
 class ResumeInterruptRequest(BaseModel):
     """Request body for resuming an interrupt."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     decision: ResumeDecision | None = Field(
         default=None,
