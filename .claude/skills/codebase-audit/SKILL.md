@@ -75,7 +75,22 @@ Produce an **Architecture Brief** (~400 words) covering:
 - Async: `asyncio.TaskGroup` preferred, never bare `create_task`
 - Testing: markers, xdist, async auto mode, Hypothesis profiles
 
-**Python syntax note (PEP 758, Python 3.14)**: `except A, B:` without parentheses is *valid and preferred* when NOT binding the exception to a name. Do NOT flag this as a syntax error, style issue, or convention violation. Parentheses are only required when binding (`except (A, B) as exc:`). The codebase deliberately uses the unparenthesized form per `CLAUDE.md` and ruff configuration. This rule prevents a common false positive.
+**Python syntax note (PEP 758, Python 3.14) -- LOAD-BEARING -- DO NOT FLAG**: `except A, B:` without parentheses is *valid and preferred* when NOT binding the exception to a name. Parentheses are only required when binding (`except (A, B) as exc:`). The codebase deliberately uses the unparenthesized form per `CLAUDE.md` and ruff configuration.
+
+This is the SINGLE most common false positive across audit runs. Past runs flagged 50+ findings of this kind. Every Python audit agent MUST treat the following as VALID Python 3.14 syntax and NOT flag it as syntax error, style issue, Python 2 syntax, missing parentheses, or convention violation:
+
+```python
+except A, B:           # VALID (no binding)
+except A, B, C:        # VALID (no binding)
+except (A, B) as exc:  # ALSO VALID (binding requires parens)
+```
+
+INVALID (flag if you see this):
+```python
+except A, B as exc:    # INVALID -- binding without parens
+```
+
+If you find yourself about to write a finding like "PEP 2 syntax", "missing parentheses around exception types", "should be `except (A, B):`" -- STOP. That finding is a guaranteed false positive on this codebase. Move on.
 
 **Em-dash ban**: never emit em-dash characters in finding output, descriptions, or proposals. Use `--` instead. Pre-commit blocks em-dashes via `no-em-dashes` hook; findings that contain them are inadmissible.
 
@@ -151,11 +166,21 @@ Rules:
 - Do NOT use Bash to write files -- use the Write tool
 ```
 
-### Batch Execution
+### Streaming Pool Execution
 
-Launch agents in 18 batches (A-R). Most batches are ~10 agents each; batches M (121-123), N (124-130), Q (151-153), and R (154-155) are smaller because they cap each section at 155. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
+Maintain a **rolling pool of 10 active agents** at all times. Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send agents 01-10 in a single message (10 parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 155 agents have completed.
 
-| Batch | Agents |
+This pipelines I/O and end-to-end runtime: a slow Wave 1 agent never blocks Wave 2-31 from starting, and the model spends notification cycles dispatching new work instead of idling. Skill agents are independent (each writes its own file), so order-of-completion does not matter -- only that the pool stays saturated until the queue drains.
+
+**Pool size rationale**: 10 active agents matches what one main-loop cycle can usefully dispatch and track without notification fatigue. Going wider (20+) increases context spent on notification handling; going narrower (5) under-utilizes the agent runtime.
+
+**Order**: agents 01 → 155 in numeric order. Skipping forward when a later agent is "more interesting" wastes the streaming property -- the pool drains itself naturally.
+
+**Progress reporting**: every 10 completions, report "N/{AGENTS_LAUNCHED} done" to the user where `{AGENTS_LAUNCHED}` is the total for the current scope (155 for `full`, fewer for scoped runs). Do not report per-completion -- that is too chatty.
+
+The 18-batch grouping (A-R) below is retained ONLY as a reference for which agent IDs map to which wave, not as a scheduling boundary:
+
+| Group | Agents |
 |-------|----------|
 | A | 01-10 |
 | B | 11-20 |
@@ -176,30 +201,56 @@ Launch agents in 18 batches (A-R). Most batches are ~10 agents each; batches M (
 | Q | 151-153 (Waves 29 + 30) |
 | R | 154-155 (Wave 31) |
 
-Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents done)." where `{AGENTS_LAUNCHED}` is the total number of agents launched for the current scope (155 for `full`, fewer for scoped runs).
-
 ---
 
 ## Agent Roster
 
 ### Wave 1: Observability & Logging (5 agents)
 
-**Agent 01: missing-logger** (haiku)
+**Agent 01: missing-logger** (sonnet -- requires AST inspection, haiku produced 96-97% FP rate)
 File: `_audit/latest/findings/01-missing-logger.md`
 
 ```text
-Search every .py file in src/synthorg/ for modules that contain business logic
-but do NOT have `logger = get_logger(__name__)`.
+Search every .py file in src/synthorg/ for modules that ACTUALLY DO BUSINESS
+LOGIC but lack `logger = get_logger(__name__)`.
 
-Skip these (they legitimately don't need loggers):
-- __init__.py files that only re-export
-- Files containing ONLY: type aliases, enums, constants, Pydantic model definitions
+CRITICAL: past haiku runs of this agent produced 352 findings with 96-97% FP
+rate by sweeping every file lacking a logger. Sonnet must be SKEPTICAL and
+only flag files where the *absence* of a logger is a real defect.
+
+Skip ALL of the following (they legitimately don't need loggers -- never flag):
+- __init__.py files that only re-export (no def/class with bodies)
+- Files containing ONLY: type aliases, Literal/TypedDict/NamedTuple definitions,
+  enum class bodies (Enum/IntEnum/StrEnum), Pydantic model class bodies WITHOUT
+  methods other than @field_validator/@model_validator/@computed_field/@property,
+  Protocol class bodies (methods with `...` body or `pass`-only), abstract base
+  classes with only abstract methods, dataclass field declarations, Final[...]
+  module-level constants
 - Files under observability/ (they ARE the logging system)
+- Files under settings/definitions/ (pure setting registry data)
+- Files named *_protocol.py / *_protocols.py with only Protocol definitions
+- Files named *_types.py / types.py / *_enums.py / enums.py / *_constants.py
+  / constants.py / *_models.py / models.py / dto*.py when they contain only
+  data class declarations
+- Files where every public function is a Pydantic validator, computed_field,
+  or property accessor (no orchestration, no I/O, no try/except)
 
-For each missing logger, report severity=low with the file path.
-If a file has business logic (functions with if/try/for/while, service methods,
-handlers) but no logger, that's a finding.
+A FILE NEEDS A LOGGER ONLY IF it has at least one of:
+- A service method that performs I/O (DB call, HTTP call, file read/write)
+- A handler / controller method that processes a request
+- An orchestrator method that coordinates multiple subsystems
+- A function with try/except that handles real failure modes
+- A function that mutates persistent state
 
+Pydantic field validators and computed fields are NOT business logic for this
+purpose. A file that is "almost all Pydantic models with two short helper
+functions" is NOT a finding unless those helpers do real I/O.
+
+VERIFICATION REQUIREMENT: Before flagging a file, confirm at least one of the
+above triggers exists in the file body. If you cannot point to a specific
+function with I/O / orchestration / state mutation, do NOT flag the file.
+
+Severity: low.
 ```
 
 **Agent 02: missing-event-constants** (haiku)
@@ -382,6 +433,30 @@ api/controllers/ endpoints. Report:
 - Frontend calls targeting endpoints that don't exist in backend (high)
 - Backend endpoints with zero frontend consumers (low -- may be API-only)
 
+CRITICAL FALSE-POSITIVE GUARD: a previous run produced a 44-finding "high"
+list that was largely false-positives because the audit relied on regex
+endpoint extraction. Litestar registers many routes through patterns that a
+naive regex misses:
+- Conditionally-registered controllers (gated on `app_state.has_*`)
+- Controllers in BASE_CONTROLLERS / INTEGRATION_CONTROLLERS / OPTIONAL_CONTROLLERS
+  tuples (different files than the @get/@post decorators)
+- WebSocket handlers (@websocket_listener, @websocket)
+- Wrapper / proxy controllers that delegate to multiple sub-handlers
+- Path-parameter syntax: backend uses `{var:type}`, frontend uses `${var}`
+- Routes prefixed via Router(path=...) wrappers
+- Auth / OAuth flows split across multiple controller files
+
+VERIFICATION REQUIREMENT: before flagging a "frontend calls X but backend
+has no X" as severity high, you MUST search the entire backend tree (not
+just controllers/) using a different strategy than the one that found the
+miss. Use Grep with pattern `path="X"` AND pattern matching on the route
+constant. If you cannot rule out the route exists after a second search,
+downgrade to low severity and add note "regex matcher caveat -- needs
+manual verification".
+
+The audit's value is identifying drift; volume is not the goal. A 5-finding
+list of HIGH-CONFIDENCE confirmed mismatches is far more useful than 44
+findings with 80% FP rate.
 ```
 
 ### Wave 3: Dead Code & Unused (3 agents)
@@ -602,6 +677,24 @@ Find async antipatterns in src/synthorg/:
 - sync sleep() in async context
 Severity: high for missing await, medium for others.
 
+VERIFICATION REQUIREMENT for "fire-and-forget tasks with no error handling":
+before flagging a `task = asyncio.create_task(coro)` as an issue, you MUST
+read the next 10 lines of source AND grep the surrounding function for any of:
+- `task.add_done_callback(...)` -- task has explicit error-logging callback
+- `BackgroundTaskRegistry` / `_track_task(task)` / similar pattern that
+  registers the task for tracked exception handling
+- The task body itself wraps everything in try/except with logging
+- The task is awaited later in the same scope
+
+If ANY of these are present, the task is NOT fire-and-forget and is NOT a
+finding. Past runs flagged 2 of 3 lifecycle_builder.py tasks as antipatterns
+when the next-line registers a done_callback with logging -- false positive.
+
+A real fire-and-forget finding looks like:
+  task = asyncio.create_task(some_io())
+  # ... task is never referenced again, no callback, no try/except in body
+
+Where the task can fail silently with no observable trace.
 ```
 
 **Agent 34: error-handling-consistency** (sonnet)
@@ -1642,17 +1735,81 @@ Check shutdown path:
 Severity: high.
 ```
 
-**Agent 103: data-retention-gdpr** (sonnet)
-File: `_audit/latest/findings/103-data-retention-gdpr.md`
+**Agent 103: data-integrity-and-leaks** (sonnet)
+File: `_audit/latest/findings/103-data-integrity-and-leaks.md`
 
 ```text
-Find PII/user-data fields in Pydantic models and persistence schemas and
-check:
-- Retention policy documented?
-- Deletion flow exists?
-- Audit trail for PII reads?
+SynthOrg is an internal / self-hosted framework, not a public-facing SaaS.
+GDPR / data-retention / right-to-erasure / consent flows are explicitly
+OUT OF SCOPE -- do NOT flag missing user-export endpoints, missing message
+retention windows, missing per-PII deletion APIs, or "no audit trail for PII
+reads" as findings. Operators carry that burden if their deployment falls
+under a regulatory regime; the framework intentionally does not ship those
+primitives.
 
-Severity: medium.
+What IS in scope: data integrity and accidental leaks. Find:
+
+1. **Data leaks** -- domain data that escapes its intended boundary:
+   - Persistent fields serialized into API responses they should not be in
+     (e.g. internal-only audit IDs, encrypted-at-rest values, raw secret
+     payloads, model-cost intermediate fields)
+   - DTOs that include backend-only fields by default
+   - Logger calls that emit secrets / tokens / API keys / bearer headers
+     (Agent 90 covers most; flag what 90 misses, e.g. structured logs with
+     full request/response bodies)
+   - Error responses that leak internal stack traces, file paths, DB
+     connection strings, or framework internals to clients
+   - Exception messages re-raised verbatim through the API surface
+   - Telemetry events with un-allowlisted properties (the scrubber drops
+     them -- but flag the call site as wasted instrumentation)
+
+2. **Missing persistence** -- domain state that should survive restart but
+   does not:
+   - Module-level dicts/lists used for cross-request state (event registries,
+     in-flight tracking, idempotency keys) that are NOT also persisted to
+     the repository layer
+   - Caches that hold authoritative data the rest of the system depends on
+     (e.g. an in-memory ticket store that loses tickets on restart while
+     the rest of the system thinks they're valid)
+   - Counters / gauges / running totals computed in memory and never
+     reconciled with persisted source of truth
+   - Workflow / task / approval state held in a service field instead of
+     repo
+   - In-memory rate-limiter buckets that disappear on restart, allowing
+     burst on every redeploy
+   - Singletons holding "should-be-durable" state without a persistence
+     fallback flagged in their docstring
+
+3. **Stale / orphan persisted data** -- the inverse: data that IS persisted
+   but no longer has a consumer:
+   - Tables / columns referenced nowhere (DDL exists, no read or write)
+   - Row archetypes (status="LEGACY_X") never produced by current code
+   - Keys in idempotency / nonce / lock stores with no expiry path
+   - Audit-chain entries with op codes no live caller emits
+
+4. **Repository read/write asymmetry** -- writes without reads (write-only
+   sink that nobody queries) or reads without writes (orphan read path).
+
+For each finding, name the model / table / field and explain whether it's a
+LEAK (data escapes), MISSING_PERSISTENCE (in-memory only when it shouldn't
+be), STALE_PERSISTED (no consumer), or ASYMMETRY (write-only / read-only).
+
+Severity:
+- high for secrets / tokens / credentials in API responses or logs
+- high for in-memory state that other components treat as authoritative
+- medium for DTO field leakage of internal IDs / metadata
+- medium for missing persistence on state that survives a restart in user
+  expectation
+- low for stale persisted data
+- low for repository asymmetry that's not actively harmful
+
+Skip:
+- GDPR / right-to-erasure / consent / "no PII delete endpoint" framing.
+  This is an internal tool; that work is operator-side.
+- Telemetry allowlist completeness (the scrubber is the contract, not the
+  call site).
+- Anything that an operator would reasonably implement themselves at the
+  deployment boundary.
 ```
 
 **Agent 104: monitoring-dashboards** (sonnet)
@@ -2903,17 +3060,17 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 ## Phase 3: Validate Findings (sonnet agents)
 
-**Required on every run.** Validation runs on all findings (critical, high, medium, low, and info) with no opt-out and no severity threshold. This skill is for huge audits; the false-positive filter must apply uniformly across severities so INDEX.md is not contaminated by un-validated noise.
+**Required on every run. Every single finding gets validated. There is no severity threshold, no scope cap, no opt-out, no "spot-check" shortcut.** Validation runs on all findings (critical, high, medium, low, AND info) uniformly. This skill is for huge audits; the false-positive filter must apply to every finding so INDEX.md is not contaminated by un-validated noise. If an audit agent emits 400 findings of one type, all 400 get validated -- not a sample, not a top-N, not a severity-gated subset.
 
 After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (155 for `full`, fewer for scoped runs).
 
 ### Process
 
 1. Read all finding files present in `_audit/latest/findings/`
-2. Collect ALL findings (every severity, including low and info) into a validation queue
-3. If queue exceeds 50 findings, prioritize by clustering related findings (same file/module). Order batches by severity descending (critical first) so the highest-impact verdicts land earliest, but every finding still gets validated
-4. Split the queue into batches of ~12 findings each
-5. Launch one **sonnet** validation agent per batch (in parallel, `run_in_background: true`)
+2. Collect ALL findings (every severity, including low and info) into a validation queue. Zero-finding files have no rows to add and are skipped at the queue stage; everything else is queued
+3. Order batches by severity descending (critical first) so the highest-impact verdicts land earliest. Order is for prioritization only -- every finding still gets validated regardless of severity
+4. Cluster findings by audit-agent file when possible (a single validator can process all findings from one finding file in one batch, sharing context). If a single file has more than ~25 findings, split into multiple batches of ~12-25 findings each. Otherwise one validator per finding file is the default
+5. Launch **sonnet** validation agents in parallel (`run_in_background: true`). Maintain the same rolling-pool-of-10 cadence used in Phase 2 so no slot sits idle
 
 ### Validation Agent Prompt
 
