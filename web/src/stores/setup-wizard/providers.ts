@@ -61,6 +61,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
   probing: false,
   providersLoading: false,
   providersError: null,
+  providersWarning: null,
 
   async fetchProviders() {
     set({ providersLoading: true, providersError: null })
@@ -85,7 +86,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
   },
 
   async createProviderFromPreset(presetName, name, apiKey, baseUrl) {
-    set({ providersError: null })
+    set({ providersError: null, providersWarning: null })
     try {
       const provider = await createFromPreset({
         preset_name: presetName,
@@ -102,11 +103,11 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           set((s) => ({ providers: { ...s.providers, [name]: refreshed } }))
           if (refreshed.models.length === 0) {
             // Provider created OK; only model discovery returned empty.
-            // Surface as warning, not error, so the caller can offer
-            // a "refresh" action without implying the create failed.
+            // Surface as warning (separate slot from providersError) so
+            // the caller renders a non-error affordance.
             const warning =
               `Provider '${name}' was created, but no models were discovered. Ensure the provider is running with models available, then refresh the providers list.`
-            set({ providersError: warning })
+            set({ providersWarning: warning })
             return { ok: true, warning }
           }
         } catch (discoveryErr) {
@@ -114,7 +115,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           log.warn('Model discovery failed for', name, msg)
           const warning =
             `Provider '${name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh the providers list.`
-          set({ providersError: warning })
+          set({ providersWarning: warning })
           return { ok: true, warning }
         }
       }
@@ -128,7 +129,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
   },
 
   async createProviderFromPresetFull(data) {
-    set({ providersError: null })
+    set({ providersError: null, providersWarning: null })
     try {
       const provider = await createFromPreset(data)
       set((s) => ({ providers: { ...s.providers, [data.name]: provider } }))
@@ -140,7 +141,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           set((s) => ({ providers: { ...s.providers, [data.name]: refreshed } }))
           if (refreshed.models.length === 0) {
             set({
-              providersError:
+              providersWarning:
                 `Provider '${data.name}' was created, but no models were discovered. Ensure the provider is running with models available, then refresh.`,
             })
           }
@@ -149,7 +150,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
           const msg = getErrorMessage(discoveryErr)
           log.warn('Model discovery failed for', data.name, msg)
           set({
-            providersError:
+            providersWarning:
               `Provider '${data.name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh.`,
           })
         }

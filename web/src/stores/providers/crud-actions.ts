@@ -13,7 +13,7 @@ import {
   updatePresetOverride as apiUpdatePresetOverride,
   deletePresetOverride as apiDeletePresetOverride,
 } from '@/api/endpoints/providers'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type {
   AddModelRequest,
@@ -76,7 +76,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
       } catch (err) {
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to create provider',
+          ...getCrudErrorTitle(err, 'Failed to create provider'),
           description: getErrorMessage(err),
         })
         return null
@@ -98,7 +98,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
       } catch (err) {
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to create provider',
+          ...getCrudErrorTitle(err, 'Failed to create provider'),
           description: getErrorMessage(err),
         })
         return null
@@ -124,7 +124,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
       } catch (err) {
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to update provider',
+          ...getCrudErrorTitle(err, 'Failed to update provider'),
           description: getErrorMessage(err),
         })
         return null
@@ -157,7 +157,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
       } catch (err) {
         useToastStore.getState().add({
           variant: 'error',
-          title: 'Failed to delete provider',
+          ...getCrudErrorTitle(err, 'Failed to delete provider'),
           description: getErrorMessage(err),
         })
         // Refresh to restore accurate state

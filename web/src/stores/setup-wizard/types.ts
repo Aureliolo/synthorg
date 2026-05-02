@@ -143,6 +143,16 @@ export interface ProvidersSlice {
   probing: boolean
   providersLoading: boolean
   providersError: string | null
+  /**
+   * Soft-failure copy distinct from `providersError`: set when a
+   * provider was created successfully but model discovery returned
+   * empty (or threw) -- the caller renders a warning surface instead
+   * of an error banner so a successfully-created provider is not
+   * misrepresented as a failed create. `null` on the happy path AND
+   * when the actual create failed (use `providersError` for the
+   * latter).
+   */
+  providersWarning: string | null
   fetchProviders: () => Promise<void>
   fetchPresets: () => Promise<void>
   /**

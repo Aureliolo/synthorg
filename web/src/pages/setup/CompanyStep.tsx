@@ -67,12 +67,22 @@ export function CompanyStep() {
   }, [validation.valid, markStepComplete, markStepIncomplete])
 
   // Clear a stale companyError when the user leaves the step (e.g.
-  // navigates back to Providers to fix tier coverage). Without this,
-  // a tier-coverage error from a prior Apply attempt persists and
-  // re-renders even after the user has fixed the upstream condition.
+  // navigates back to Providers to fix tier coverage). Guard against
+  // racing an in-flight submit: if the user navigates away while
+  // companyLoading is true, leave the error slot alone so the
+  // eventual response can write to it. The next CompanyStep mount
+  // will see the error and surface it; without this guard a
+  // long-running submit that fails after unmount silently nulls its
+  // own error.
   useEffect(() => {
     return () => {
-      useSetupWizardStore.setState({ companyError: null, companyErrorCode: null })
+      const state = useSetupWizardStore.getState()
+      if (!state.companyLoading) {
+        useSetupWizardStore.setState({
+          companyError: null,
+          companyErrorCode: null,
+        })
+      }
     }
   }, [])
 

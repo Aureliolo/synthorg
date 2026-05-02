@@ -13,8 +13,9 @@ const WORKFLOW_TYPE_OPTIONS: readonly SelectOption[] = [
 export interface WorkflowFiltersProps {
   /**
    * Optional ref forwarded to the search input so the parent page
-   * can focus it (e.g. after clicking "Clear filters" -- see audit
-   * 47#1).
+   * can focus it after clearing filters; the user's attention
+   * lands on the now-empty search field instead of staying on the
+   * dismissed "Clear filters" button.
    */
   searchInputRef?: React.Ref<HTMLInputElement>
 }

@@ -28,10 +28,8 @@ export function SkipWizardForm() {
     setLoading(true)
     setError(null)
     setCompanyNameStore(trimmed)
-    let companyCreated = false
     try {
       await submitCompany()
-      companyCreated = true
       await wizardCompleteSetup()
       useSetupStore.setState({ setupComplete: true })
       useToastStore.getState().add({
@@ -41,10 +39,14 @@ export function SkipWizardForm() {
       })
       navigate('/')
     } catch (err) {
-      // Discriminate between "company create failed" (clean retry path)
-      // and "company created, setup completion failed" (partial-success
-      // path) so the user knows whether retrying re-creates the company
-      // or just completes setup.
+      // Discriminate via the store snapshot, not a local flag set
+      // between awaits: a local flag race-conditions with any throw
+      // that happens after submitCompany resolves but before the
+      // assignment line executes. The store's companyResponse is
+      // the durable source of truth for "did the company actually
+      // get created?".
+      const companyCreated =
+        useSetupWizardStore.getState().companyResponse !== null
       const baseMessage = getErrorMessage(err)
       setError(
         companyCreated

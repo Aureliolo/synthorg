@@ -68,6 +68,7 @@ export function ApprovalDetailDrawer({
   const [rejectOpen, setRejectOpen] = useState(false)
   const [comment, setComment] = useState('')
   const [reason, setReason] = useState('')
+  const [reasonError, setReasonError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const isPending = approval?.status === 'pending'
@@ -183,6 +184,12 @@ export function ApprovalDetailDrawer({
   const handleReject = useCallback(async (): Promise<boolean | void> => {
     if (!approval || approval.status !== 'pending') return
     if (!reason.trim()) {
+      // Inline field error so the user sees a red border + helper
+      // text on the InputField itself, not just a toast that flies
+      // away. The toast remains as a secondary live-region signal.
+      setReasonError(
+        'Rejection requires a reason for the approval record. Provide a brief explanation.',
+      )
       useToastStore.getState().add({
         variant: 'error',
         title: 'Rejection reason required',
@@ -191,6 +198,7 @@ export function ApprovalDetailDrawer({
       })
       return false
     }
+    setReasonError(null)
     setSubmitting(true)
     try {
       const ok = await onReject(approval.id, { reason: reason.trim() })
@@ -432,7 +440,7 @@ export function ApprovalDetailDrawer({
       {/* Reject dialog */}
       <ConfirmDialog
         open={rejectOpen}
-        onOpenChange={(o) => { setRejectOpen(o); if (!o) setReason('') }}
+        onOpenChange={(o) => { setRejectOpen(o); if (!o) { setReason(''); setReasonError(null) } }}
         title="Reject Action"
         description="Please provide a reason for rejection."
         confirmLabel="Reject"
@@ -444,12 +452,16 @@ export function ApprovalDetailDrawer({
           multiline
           label="Reason for rejection"
           value={reason}
-          onValueChange={setReason}
+          onValueChange={(value) => {
+            setReason(value)
+            if (reasonError && value.trim()) setReasonError(null)
+          }}
           placeholder="Give the requester enough context to iterate."
           rows={3}
           maxLength={2000}
           required
           autoFocus
+          error={reasonError}
           className="mt-2"
         />
       </ConfirmDialog>

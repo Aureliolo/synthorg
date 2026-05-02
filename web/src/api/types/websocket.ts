@@ -79,6 +79,19 @@ export interface WsEvent {
 // typed shape via ``WsEventOf<T>`` / ``WsTypedEvent<T>``. The dispatch
 // loop continues to deliver ``WsEvent`` (untyped payload) so per-store
 // migrations to the typed view can roll out incrementally.
+//
+// **Sanitisation contract (MANDATORY)**: every string field declared
+// below is attacker-reachable -- the server forwards strings the
+// frontend cannot trust (third-party agent output, untrusted user
+// input, error messages from misbehaving providers, etc.). Consumers
+// of these payloads MUST route every string through
+// ``sanitizeWsString()`` before display or persistence, and through
+// ``sanitizeWsEnum<T>()`` for any field whose type is a literal union
+// or enum allowlist. The TypeScript types declare structural shape
+// only; they do NOT prove a value has been clamped against C0
+// controls, bidi-overrides, length caps, or the enum allowlist.
+// Stores that ingest these payloads (approvals, meetings, messages,
+// tasks, etc.) own the sanitisation step at the dispatch boundary.
 
 export interface WsTaskCreatedPayload {
   task_id: string

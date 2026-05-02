@@ -16,6 +16,18 @@ import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('TunnelCard')
 
+const CLIPBOARD_ERROR_DESCRIPTIONS: Record<string, string> = {
+  NotAllowedError:
+    'Clipboard access denied. Use Ctrl+C to copy the URL manually.',
+  SecurityError:
+    'Clipboard access blocked by browser security. Copy the URL manually.',
+  InvalidStateError:
+    'The page is not focused. Click the page and try again.',
+  AbortError: 'Copy was cancelled. Try again.',
+  NotFoundError:
+    'Clipboard is not available in this context. Copy manually from the Public URL field.',
+}
+
 const PHASE_STATUS: Record<
   TunnelPhase,
   { status: 'active' | 'idle' | 'error' | 'offline'; label: string; pulse: boolean }
@@ -87,17 +99,20 @@ export function TunnelCard() {
       })
     } catch (err) {
       log.warn('Failed to copy tunnel URL', sanitizeForLog(err))
-      // Most failures are clipboard permissions denied or no Clipboard
-      // API in the current document context. Differentiate the two so
-      // the user knows whether to grant permission or use Ctrl+C.
-      const isPermissionDenied =
-        err instanceof DOMException && err.name === 'NotAllowedError'
+      // Common DOMException paths each get a specific recovery hint;
+      // anything else falls through to the generic copy-manually
+      // message. This avoids the misleading "API not available"
+      // message when the actual cause is e.g. a focus issue or an
+      // aborted operation that the user can simply retry.
+      const description =
+        err instanceof DOMException
+          ? CLIPBOARD_ERROR_DESCRIPTIONS[err.name]
+              ?? 'Clipboard error. Copy the URL manually from the Public URL field.'
+          : 'Clipboard not available in this context. Copy the URL manually from the Public URL field.'
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not copy URL',
-        description: isPermissionDenied
-          ? 'Clipboard access denied. Use Ctrl+C to copy the URL manually.'
-          : 'Clipboard API not available in this browser. Copy manually from the Public URL field.',
+        description,
       })
     }
   }

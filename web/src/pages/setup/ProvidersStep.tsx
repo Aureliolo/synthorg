@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
+import { createLogger } from '@/lib/logger'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
 import { validateProvidersStep } from '@/utils/setup-validation'
 import { getErrorMessage } from '@/utils/errors'
 import { ProviderFormModal, type ProviderFormOverrides } from '@/pages/providers/ProviderFormModal'
+
+const log = createLogger('setup:providers-step')
 
 /**
  * Wizard step: pick cloud presets, accept auto-detected local servers,
@@ -27,6 +30,7 @@ export function ProvidersStep() {
   const probing = useSetupWizardStore((s) => s.probing)
   const providersLoading = useSetupWizardStore((s) => s.providersLoading)
   const providersError = useSetupWizardStore((s) => s.providersError)
+  const providersWarning = useSetupWizardStore((s) => s.providersWarning)
   const presetsLoading = useSetupWizardStore((s) => s.presetsLoading)
   const presetsError = useSetupWizardStore((s) => s.presetsError)
 
@@ -103,13 +107,19 @@ export function ProvidersStep() {
         try {
           await fetchProviders()
         } catch (fetchErr) {
-          // Provider exists; only the refresh failed. Toast so the
-          // operator can manually refresh, but don't poison the step's
-          // error banner.
+          // Provider exists; only the refresh failed. Log AND toast so
+          // a dismissed toast does not leave the failure invisible in
+          // observability. The error banner stays clean: the create
+          // genuinely succeeded.
+          const fetchErrMsg = getErrorMessage(fetchErr)
+          log.warn('fetch_providers_after_create_failed', {
+            preset: presetName,
+            error: fetchErrMsg,
+          })
           useToastStore.getState().add({
             variant: 'warning',
             title: 'Provider added; could not refresh the list',
-            description: getErrorMessage(fetchErr),
+            description: fetchErrMsg,
           })
         }
       }
@@ -183,6 +193,18 @@ export function ProvidersStep() {
         <ErrorBanner
           title="Failed to load providers"
           description={providersError}
+          onRetry={() => void fetchProviders()}
+        />
+      )}
+
+      {providersWarning && !providersError && (
+        // Distinct from providersError: the provider was created OK,
+        // only model discovery had an issue. Surfaced as a warning so
+        // the user understands the create succeeded.
+        <ErrorBanner
+          severity="warning"
+          title="Provider added with warnings"
+          description={providersWarning}
           onRetry={() => void fetchProviders()}
         />
       )}
