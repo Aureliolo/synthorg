@@ -10,6 +10,12 @@ Foundational modules (core, config, observability) are imported by nearly every
 other module, so changes to them trigger a full test run. Same for any
 ``conftest.py`` and top-level source files (``__init__.py``, ``constants.py``).
 
+When the affected-tests run goes green, an isolation regression gate runs
+``pytest --count 2 -x`` over the same selection (issue #1713). Catches a
+new module-level-state offender the moment it lands, before push. Set
+``SYNTHORG_SKIP_ISOLATION_GATE=1`` to bypass for emergency pushes (the
+primary run still gates on first-run failures regardless).
+
 Exit codes match pytest: 0 (passed/nothing to run), 1 (failures), etc.
 Git command failures fall back to running the full unit suite.
 """
@@ -44,6 +50,12 @@ _BLAST_RADIUS_MODULES = frozenset({"core", "config", "observability"})
 
 # Top-level source files that aren't in a module directory.
 _TOP_LEVEL_SRC = frozenset({"__init__.py", "constants.py"})
+
+# Operator opt-out for the isolation regression gate. Set to "1" to skip
+# the second --count 2 pass on a single push; the primary run still
+# enforces first-run correctness regardless. Documented in the module
+# docstring so emergency-push semantics are discoverable.
+_SKIP_ISOLATION_GATE_ENV = "SYNTHORG_SKIP_ISOLATION_GATE"
 
 # Minimum path depth for src/synthorg/<module> or tests/unit/<module>.
 _MIN_MODULE_DEPTH = 3
@@ -435,6 +447,62 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
     return returncode
 
 
+def _run_isolation_gate(paths: list[str]) -> int:
+    """Run ``pytest --count 2 -x`` over the given paths.
+
+    Catches module-level-state isolation regressions (issue #1713) by
+    re-running each test exactly once and stopping on the first
+    failure. A test that passes the primary run but fails the second
+    run almost always means a fixture leaked process-global state that
+    polluted the second invocation.
+
+    Skipped when ``SYNTHORG_SKIP_ISOLATION_GATE=1`` (operator escape
+    hatch for emergency pushes; the primary run still enforces
+    first-run correctness regardless). Skipped when ``paths`` is empty.
+
+    Returns 0 on green or skip, non-zero on regression detected.
+    """
+    if os.environ.get(_SKIP_ISOLATION_GATE_ENV) == "1":
+        print(
+            f"Isolation gate skipped via {_SKIP_ISOLATION_GATE_ENV}=1.",
+            file=sys.stderr,
+        )
+        return 0
+    if not paths:
+        return 0
+    print("Isolation gate: re-running affected tests under --count 2 -x...")
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        *paths,
+        "-m",
+        "unit",
+        "-n",
+        "8",
+        "--dist",
+        "loadscope",
+        "--max-worker-restart=0",
+        "--count",
+        "2",
+        "-x",
+        "-q",
+    ]
+    returncode, _ = _stream_pytest(cmd)
+    if returncode != 0:
+        border = "!" * 60
+        print(
+            f"\n{border}\n"
+            "ISOLATION REGRESSION: a test passed once but failed on repeat.\n"
+            "Module-level state likely leaked across the two invocations.\n"
+            "See issue #1713 for the canonical offenders + fix patterns.\n"
+            f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1\n"
+            f"{border}",
+            file=sys.stderr,
+        )
+    return returncode
+
+
 def main() -> int:
     """Entry point."""
     try:
@@ -459,6 +527,11 @@ def main() -> int:
 
     if run_all:
         print("Foundational module or conftest changed -- running full unit suite.")
+        # Full-suite runs skip the isolation gate: doubling a multi-minute
+        # full-suite run gates a routine push on a 5+ minute extra wait,
+        # and the affected-test gate already covers the realistic delta
+        # surface. The isolation contract is enforced through targeted
+        # runs in active development, not by re-running the world.
         return _run_pytest(["tests/unit/"], run_all=True)
 
     if not test_dirs:
@@ -466,7 +539,12 @@ def main() -> int:
         return 0
 
     print(f"Running affected tests: {', '.join(test_dirs)}")
-    return _run_pytest(test_dirs)
+    primary_returncode = _run_pytest(test_dirs)
+    return (
+        primary_returncode
+        if primary_returncode != 0
+        else _run_isolation_gate(test_dirs)
+    )
 
 
 if __name__ == "__main__":

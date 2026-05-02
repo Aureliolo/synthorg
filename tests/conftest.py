@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -439,6 +439,28 @@ def clear_logging_state() -> None:
 # worker -- the original "module-level state" failure mode behind
 # issue #1713. Each fixture is O(1) (a dict ``.clear()`` or a single
 # rebind) so the suite-wide cost is negligible.
+
+
+@pytest.fixture(autouse=True)
+def _reset_structlog_state() -> Iterator[None]:
+    """Reset structlog defaults + stdlib root logger between every test.
+
+    structlog's defaults (processors, wrapper class, context-vars
+    binding) are process-level, so a test that calls
+    ``structlog.configure(...)`` or holds ``structlog.testing.capture
+    _logs()`` open across an unexpected exit leaves residual state for
+    the next test in the same xdist worker. Without this autouse the
+    canonical symptom is the one observed in #1713: a
+    settings-resolution test under ``-n 8`` finds only DEBUG events in
+    the capture buffer because a prior test left structlog wired to a
+    filter that swallows INFO emissions, even though the production
+    code emitted them. The reset puts every test back to library
+    defaults at entry AND on teardown so a failing test cannot leak
+    state to the next one either.
+    """
+    clear_logging_state()
+    yield
+    clear_logging_state()
 
 
 @pytest.fixture(autouse=True)
