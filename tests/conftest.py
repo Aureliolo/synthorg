@@ -131,7 +131,19 @@ settings.register_profile(
     # so the same 10 examples run every time.  Not random, not skipped.
     max_examples=10,
     derandomize=True,
-    suppress_health_check=[HealthCheck.too_slow],
+    # ``differing_executors`` warns when the same property test runs
+    # from multiple executor instances; pytest-repeat (used by the
+    # isolation regression gate, see scripts/run_affected_tests.py)
+    # legitimately invokes the same method twice from two separate
+    # pytest collection items, so the warning is a false positive in
+    # this codebase. Suppression is safe because our property tests do
+    # not depend on Hypothesis-database persistence between iterations
+    # (derandomize=True pins the seed, and the database is write-only
+    # for the shared failure log per ``_WriteOnlyDatabase``).
+    suppress_health_check=[
+        HealthCheck.too_slow,
+        HealthCheck.differing_executors,
+    ],
 )
 settings.register_profile(
     "dev",
@@ -443,7 +455,7 @@ def clear_logging_state() -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_structlog_state() -> Iterator[None]:
-    """Reset structlog defaults + stdlib root logger between every test.
+    """Reset structlog defaults between every test.
 
     structlog's defaults (processors, wrapper class, context-vars
     binding) are process-level, so a test that calls
@@ -454,13 +466,20 @@ def _reset_structlog_state() -> Iterator[None]:
     settings-resolution test under ``-n 8`` finds only DEBUG events in
     the capture buffer because a prior test left structlog wired to a
     filter that swallows INFO emissions, even though the production
-    code emitted them. The reset puts every test back to library
-    defaults at entry AND on teardown so a failing test cannot leak
-    state to the next one either.
+    code emitted them.
+
+    Scoped to ``structlog`` only -- the stdlib-root-handler reset that
+    ``clear_logging_state()`` performs is intentionally NOT applied
+    globally because tests that import ``synthorg.observability`` at
+    module load time hold long-lived handler references the global
+    reset would close out from under them. Observability tests retain
+    their dedicated ``_reset_logging`` autouse for that broader reset.
     """
-    clear_logging_state()
+    structlog.reset_defaults()
+    structlog.contextvars.clear_contextvars()
     yield
-    clear_logging_state()
+    structlog.reset_defaults()
+    structlog.contextvars.clear_contextvars()
 
 
 @pytest.fixture(autouse=True)
