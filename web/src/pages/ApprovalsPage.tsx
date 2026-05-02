@@ -230,9 +230,12 @@ export default function ApprovalsPage() {
 
   // Hook must run before any early return (rules-of-hooks); loading
   // state below short-circuits before the empty-state branch ever
-  // matters.
+  // matters. ``filtered.length`` is the post-filter item count;
+  // ``grouped.size`` is the risk-bucket count (max 4) which works
+  // for the > 0 check today but is semantically wrong and would
+  // misreport when downstream code reads the count.
   const emptyStateProps = useEmptyStateProps({
-    filteredCount: grouped.size,
+    filteredCount: filtered.length,
     totalCount: approvals.length,
     filterActive: hasFilters,
     icon: ClipboardCheck,

@@ -6,7 +6,6 @@ import { createLogger } from '@/lib/logger'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
 import { validateProvidersStep } from '@/utils/setup-validation'
-import { getErrorMessage } from '@/utils/errors'
 import { ProviderFormModal, type ProviderFormOverrides } from '@/pages/providers/ProviderFormModal'
 
 const log = createLogger('setup:providers-step')
@@ -104,18 +103,22 @@ export function ProvidersStep() {
         detectedUrl,
       )
       if (result.ok) {
-        try {
-          await fetchProviders()
-        } catch (fetchErr) {
-          // Provider exists; only the refresh failed. Log AND toast so
-          // a dismissed toast does not leave the failure invisible in
-          // observability. The error banner stays clean: the create
-          // genuinely succeeded.
-          const fetchErrMsg = getErrorMessage(fetchErr)
+        // fetchProviders swallows its own errors and writes them to
+        // providersError in the store, so a try/catch around it is
+        // dead code; read the store after the call. If the refresh
+        // failed, log and toast (so a dismissed toast still leaves
+        // an observability trace) AND clear providersError so the
+        // successfully-created provider is not surfaced as
+        // "Failed to load providers" -- the create genuinely
+        // succeeded; only the list refresh didn't.
+        await fetchProviders()
+        const fetchErrMsg = useSetupWizardStore.getState().providersError
+        if (fetchErrMsg) {
           log.warn('fetch_providers_after_create_failed', {
             preset: presetName,
             error: fetchErrMsg,
           })
+          useSetupWizardStore.setState({ providersError: null })
           useToastStore.getState().add({
             variant: 'warning',
             title: 'Provider added; could not refresh the list',

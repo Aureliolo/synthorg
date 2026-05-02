@@ -155,6 +155,13 @@ export function getCrudErrorTitle(
   error: unknown,
   fallback: string,
 ): { title: string } {
+  // 403 (authorization) is a distinct title from 401 (authentication)
+  // -- the user IS authenticated, just not allowed. Resolve the
+  // status FIRST so 403 short-circuits the structured-detail switch
+  // (the structured envelope's "auth" category covers both 401 and
+  // 403, but at the toast-title layer the user needs to know which).
+  const status = isAxiosError(error) ? error.response?.status : undefined
+  if (status === 403) return { title: 'Permission denied' }
   const detail = getErrorDetail(error)
   if (detail) {
     switch (detail.error_category) {
@@ -174,9 +181,8 @@ export function getCrudErrorTitle(
         break
     }
   }
-  if (isAxiosError(error)) {
-    const status = error.response?.status
-    if (status === 401 || status === 403) return { title: 'Authentication failed' }
+  if (status !== undefined) {
+    if (status === 401) return { title: 'Authentication failed' }
     if (status === 404) return { title: 'Not found' }
     if (status === 409) return { title: 'Resource conflict' }
     if (status === 422) return { title: 'Validation failed' }

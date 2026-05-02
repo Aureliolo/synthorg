@@ -135,11 +135,17 @@ export default function EscalationQueuePage() {
     return sorted
   }, [escalations, priorityFilter, sortKey])
 
-  // Choose the empty-state copy outside the JSX so we don't trip
+  // statusFilter is server-side: when active and the server returns
+  // zero rows, ``escalations.length === 0`` AND filterActive is true
+  // -- but useEmptyStateProps' default rule routes a zero totalCount
+  // to the "empty" branch regardless of filterActive. Force the
+  // filtered copy when a filter is active and the view is empty so
+  // the operator sees the right next-action ("Adjust your filters")
+  // rather than the misleading "queue is empty" message.
   const filterActive =
     (statusFilter !== null && statusFilter !== undefined)
     || priorityFilter !== 'all'
-  const emptyStateProps = useEmptyStateProps({
+  const baseEmptyStateProps = useEmptyStateProps({
     filteredCount: visibleEscalations.length,
     totalCount: escalations.length,
     filterActive,
@@ -154,6 +160,18 @@ export default function EscalationQueuePage() {
         'Adjust the status or priority filter above to see more escalations.',
     },
   })
+  const emptyStateProps =
+    baseEmptyStateProps !== null
+    && filterActive
+    && visibleEscalations.length === 0
+    && baseEmptyStateProps.title !== 'No escalations match your filters'
+      ? {
+          ...baseEmptyStateProps,
+          title: 'No escalations match your filters',
+          description:
+            'Adjust the status or priority filter above to see more escalations.',
+        }
+      : baseEmptyStateProps
 
   return (
     <div className="flex flex-col gap-section-gap">

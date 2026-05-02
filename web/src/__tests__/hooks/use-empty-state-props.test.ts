@@ -67,11 +67,14 @@ describe('useEmptyStateProps', () => {
 
   it('returns the empty branch when totalCount > 0 but filter is NOT active', () => {
     // Logical edge: filteredCount === 0 but filter inactive means the
-    // pool is genuinely empty (or out-of-sync); treat as empty branch.
+    // visible view is empty even though the pool has items
+    // (e.g. an out-of-sync render). The hook treats this as the
+    // "empty" branch, not "filtered", because the user did NOT
+    // apply a filter to cause the empty state.
     const { result } = renderHook(() =>
       useEmptyStateProps({
         filteredCount: 0,
-        totalCount: 0,
+        totalCount: 5,
         filterActive: false,
         empty,
         filtered,

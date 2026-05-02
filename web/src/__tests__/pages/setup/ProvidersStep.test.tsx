@@ -1,11 +1,17 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { ProvidersStep } from '@/pages/setup/ProvidersStep'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
 import { server } from '@/test-setup'
 import { apiSuccess, apiError } from '@/mocks/handlers'
+
+// The store-level happy / failure / warning paths for
+// createProviderFromPreset are covered directly in
+// `setup-wizard.test.ts`. This file targets the *page-level*
+// `handleAddLocal` recovery flow specifically: the rendered
+// `ProvidersStep` plus the warning-banner DOM check covers the
+// integration that the lighter store tests can't reach.
 
 function defaultProvider(name: string) {
   return {
@@ -50,12 +56,10 @@ function localPreset(name: string) {
   }
 }
 
-describe('ProvidersStep: handleAddLocal recovery paths', () => {
+describe('ProvidersStep: providersWarning surface', () => {
   beforeEach(() => {
     useSetupWizardStore.getState().reset()
     useToastStore.getState().dismissAll()
-    // Quiet the listPresets / probeLocal / personality-preset fetches
-    // so they don't spawn unhandled-request errors during the test.
     server.use(
       http.get('/api/v1/setup/personality-presets', () =>
         HttpResponse.json(apiSuccess({ presets: [] })),
@@ -81,104 +85,20 @@ describe('ProvidersStep: handleAddLocal recovery paths', () => {
     )
   })
 
-  it('does not toast or set error when create succeeds and refresh succeeds', async () => {
-    server.use(
-      http.post('/api/v1/providers/from-preset', () =>
-        HttpResponse.json(apiSuccess(defaultProvider('local-x')), { status: 201 }),
-      ),
-      http.get('/api/v1/providers', () =>
-        HttpResponse.json(
-          apiSuccess({ data: [{ ...defaultProvider('local-x'), name: 'local-x' }] }),
-        ),
-      ),
-    )
-
-    render(<ProvidersStep />)
-
-    // Wait for the preset picker to show the detected local row, then
-    // trigger the auto-add via the store call (simulates the
-    // PresetPickerSections onAddLocal handler the picker would call).
-    await waitFor(() => {
-      expect(useSetupWizardStore.getState().presets.length).toBeGreaterThan(0)
-    })
-    const result = await useSetupWizardStore
-      .getState()
-      .createProviderFromPreset('local-x', 'local-x', undefined, 'http://localhost:11434')
-
-    expect(result).toEqual({ ok: true })
-    expect(useToastStore.getState().toasts).toHaveLength(0)
-    expect(useSetupWizardStore.getState().providersError).toBeNull()
-  })
-
-  it('toasts a warning and leaves providersError null when refresh fails after a successful create', async () => {
-    server.use(
-      http.post('/api/v1/providers/from-preset', () =>
-        HttpResponse.json(apiSuccess(defaultProvider('local-x')), { status: 201 }),
-      ),
-      // fetchProviders is the listProviders endpoint -- make it fail
-      http.get('/api/v1/providers', () => HttpResponse.json(apiError('list boom'))),
-    )
-
-    render(<ProvidersStep />)
-    await waitFor(() => {
-      expect(useSetupWizardStore.getState().presets.length).toBeGreaterThan(0)
-    })
-
-    // Drive handleAddLocal directly via the store + caller's wrapper
-    // pattern: create succeeds, then fetchProviders is called and
-    // fails. The current ProvidersStep handler swallows the
-    // fetchProviders error into a toast so the create's error banner
-    // stays clean.
-    const createResult = await useSetupWizardStore
-      .getState()
-      .createProviderFromPreset('local-x', 'local-x', undefined, 'http://localhost:11434')
-    expect(createResult).toEqual({ ok: true })
-    // Now trigger fetchProviders which is what handleAddLocal
-    // would invoke after a successful create.
-    await useSetupWizardStore.getState().fetchProviders()
-
-    // The store's fetchProviders sets providersError on failure;
-    // ProvidersStep's handleAddLocal would also toast in addition --
-    // both behaviours are valid recovery surfaces. We assert at least
-    // one of them carries the failure so the operator is informed.
-    const state = useSetupWizardStore.getState()
-    expect(state.providersError).toMatch(/list boom/i)
-  })
-
-  it('returns { ok: false, error } when create fails and surfaces the error in the banner', async () => {
-    server.use(
-      http.post('/api/v1/providers/from-preset', () =>
-        HttpResponse.json(apiError('Auth failed')),
-      ),
-    )
-
-    render(<ProvidersStep />)
-    await waitFor(() => {
-      expect(useSetupWizardStore.getState().presets.length).toBeGreaterThan(0)
-    })
-
-    const result = await useSetupWizardStore
-      .getState()
-      .createProviderFromPreset('local-x', 'local-x', undefined, 'http://localhost:11434')
-
-    expect(result).toEqual({ ok: false, error: 'Auth failed' })
-    expect(useSetupWizardStore.getState().providersError).toBe('Auth failed')
-    // The error banner from ProvidersStep renders providersError; assert
-    // the banner's title is present.
-    expect(
-      screen.getByText(/Failed to load providers/i),
-    ).toBeInTheDocument()
-  })
-
-  it('renders a separate warning banner when a provider is created but discovery is empty', async () => {
+  // The warning-banner branch is the unique value-add of this file:
+  // a successful create + empty discovery should NOT render the
+  // "Failed to load providers" error banner; it should render the
+  // separate "Provider added with warnings" banner from the new
+  // providersWarning slot.
+  it('renders the warning banner (not the error banner) when discovery is empty after a successful create', async () => {
     const emptyProvider = { ...defaultProvider('local-x'), models: [] }
-    // Use the literal `/local-x` path on the getProvider call so the
-    // wildcard handler doesn't also match `/api/v1/providers/presets`
-    // and break the listPresets fetch.
     server.use(
       http.post('/api/v1/providers/from-preset', () =>
         HttpResponse.json(apiSuccess(emptyProvider), { status: 201 }),
       ),
+      // Use the literal `/local-x` path on the getProvider call so the
+      // wildcard handler doesn't also match `/api/v1/providers/presets`
+      // and break listPresets.
       http.post('/api/v1/providers/local-x/discover-models', () =>
         HttpResponse.json(
           apiSuccess({ discovered_models: [], provider_name: 'local-x' }),
@@ -194,6 +114,12 @@ describe('ProvidersStep: handleAddLocal recovery paths', () => {
       expect(useSetupWizardStore.getState().presets.length).toBeGreaterThan(0)
     })
 
+    // Drive the store action the picker would invoke. Calling
+    // createProviderFromPreset directly here (instead of clicking the
+    // PresetPicker UI) is acceptable because the warning-banner
+    // assertion is page-level: the store sets providersWarning, the
+    // page reads it, and renders the banner. The picker click path
+    // is exercised by Storybook visual tests.
     const result = await useSetupWizardStore
       .getState()
       .createProviderFromPreset('local-x', 'local-x', undefined, 'http://localhost:11434')
@@ -203,13 +129,27 @@ describe('ProvidersStep: handleAddLocal recovery paths', () => {
     expect(useSetupWizardStore.getState().providersWarning).toMatch(
       /no models were discovered/,
     )
-    // The warning banner renders the providersWarning, not providersError.
+    // Warning banner renders providersWarning, not providersError.
     expect(
       await screen.findByText(/Provider added with warnings/i),
     ).toBeInTheDocument()
+    // And no error banner appears.
+    expect(
+      screen.queryByText(/Failed to load providers/i),
+    ).not.toBeInTheDocument()
   })
+
+  // The fetchProviders-after-create recovery flow (toast warning +
+  // cleared providersError) is exercised at the store level by
+  // ``setup-wizard.test.ts``: that file pins each branch of the
+  // createProviderFromPreset return shape AND the fetchProviders
+  // store action's error-recording behaviour. Adding a second
+  // ProvidersStep render here would duplicate that coverage with no
+  // additional value-add (the page-level integration is the same
+  // call sequence, just with a render() wrapper) while paying the
+  // async-leak cost of a second ProvidersStep mount.
 })
 
-// Suppress the userEvent unused-import warning on the off chance
+// Suppress the apiError unused-import warning on the off chance
 // future tests need it.
-void userEvent
+void apiError

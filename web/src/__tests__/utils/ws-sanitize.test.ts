@@ -91,8 +91,12 @@ describe('sanitizeWsEnum', () => {
   })
 
   it('strips control chars first, validates the cleaned value', () => {
-    // The control char gets stripped, leaving 'completed' which IS valid.
-    expect(sanitizeWsEnum('completed', TASK_STATUS, 'created', FIELD)).toBe('completed')
+    // Embed a C0 control char (U+0001) inside the otherwise-valid
+    // value so the assertion actually exercises the strip-then-
+    // validate flow. Without the embedded char, the test would still
+    // pass even if validation ran before sanitization.
+    const withControl = `comp${String.fromCharCode(0x01)}leted`
+    expect(sanitizeWsEnum(withControl, TASK_STATUS, 'created', FIELD)).toBe('completed')
     expect(warnSpy).not.toHaveBeenCalled()
   })
 

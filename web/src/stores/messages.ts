@@ -3,7 +3,10 @@ import * as messagesApi from '@/api/endpoints/messages'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import { sanitizeWsEnum, sanitizeWsString } from '@/stores/notifications'
+// Import sanitizers from the dedicated utility module rather than
+// the notifications store -- avoids cross-store coupling and any
+// circular-init risk.
+import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { ATTACHMENT_TYPE_VALUES } from '@/api/types/messages'
 import type { Channel, Message } from '@/api/types/messages'
 import type { WsEvent } from '@/api/types/websocket'

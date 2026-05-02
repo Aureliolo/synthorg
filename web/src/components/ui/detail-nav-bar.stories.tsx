@@ -10,6 +10,9 @@ const meta = {
   args: {
     onPrev: fn(),
     onNext: fn(),
+    // Disable global keyboard shortcuts in stories by default so
+    // multiple stories rendered on the docs page don't all bind to
+    // window keydown at once. Individual stories opt back in.
     bindShortcuts: false,
   },
   argTypes: {
@@ -84,7 +87,7 @@ export const ShortcutsBound: Story = {
     docs: {
       description: {
         story:
-          'When `bindShortcuts` is `true` (the component default) the bar listens for J / ArrowLeft / K / ArrowRight on `window`. Inputs and contenteditable targets are excluded so typing in a form field does not advance the list.',
+          'When `bindShortcuts` is `true` (the component\'s real default; the meta sets it to `false` only to keep multiple stories on the docs page from all binding window keydown at once) the bar listens for J / ArrowLeft / K / ArrowRight on `window`. Inputs and contenteditable targets are excluded so typing in a form field does not advance the list.',
       },
     },
   },

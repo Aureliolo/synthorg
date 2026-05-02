@@ -39,12 +39,14 @@ export function SetupAgentCard({
     [personalityPresets],
   )
 
-  // Track the in-flight name save so we can disable the adjacent
-  // Randomize button -- otherwise the user can race a manual edit
-  // against a randomize click and the slower request wins, which is
-  // backwards from intent. InlineEdit already shows its own spinner
-  // and disables the input internally.
+  // Track the in-flight name save AND the in-flight randomize so we
+  // can disable the adjacent button on either side of the race.
+  // Without the randomizeSaving guard, rapid Randomize clicks enqueue
+  // concurrent backend writes and the slower response wins
+  // (last-response-wins is backwards from user intent). InlineEdit
+  // already shows its own spinner and disables the input internally.
   const [nameSaving, setNameSaving] = useState(false)
+  const [randomizeSaving, setRandomizeSaving] = useState(false)
   const handleNameSave = useCallback(
     async (name: string) => {
       setNameSaving(true)
@@ -56,6 +58,15 @@ export function SetupAgentCard({
     },
     [index, onNameChange],
   )
+  const handleRandomize = useCallback(async () => {
+    if (nameSaving || randomizeSaving) return
+    setRandomizeSaving(true)
+    try {
+      await onRandomizeName(index)
+    } finally {
+      setRandomizeSaving(false)
+    }
+  }, [index, nameSaving, onRandomizeName, randomizeSaving])
 
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-card p-card">
@@ -71,8 +82,8 @@ export function SetupAgentCard({
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={() => void onRandomizeName(index)}
-            disabled={nameSaving}
+            onClick={() => { void handleRandomize() }}
+            disabled={nameSaving || randomizeSaving}
             aria-label="Randomize name"
           >
             <Dices className="size-3.5" />

@@ -51,8 +51,26 @@ export default function WebhookReceiptsPage() {
   // Pre-select via URL ?connection=... so the cross-link from
   // ConnectionsPage's row action lands directly on that connection's
   // receipts.
-  const initialFromUrl = searchParams.get('connection') ?? ''
-  const [selected, setSelected] = useState<string>(initialFromUrl)
+  const urlConnection = searchParams.get('connection') ?? ''
+  const [selected, setSelected] = useState<string>(urlConnection)
+  // Keep the selection in sync with the URL: a deep-link change
+  // mid-session (e.g. user clicks another View receipts cross-link
+  // while this page is mounted) should re-target the receipts
+  // fetch, not stay on the originally-seeded value. Defer the
+  // setState to a microtask so this effect body stays free of
+  // synchronous setState per the ESLint set-state-in-effect rule
+  // (matches the connections-reconciliation effect below).
+  useEffect(() => {
+    if (!urlConnection) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setSelected((prev) => (prev === urlConnection ? prev : urlConnection))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [urlConnection])
   const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

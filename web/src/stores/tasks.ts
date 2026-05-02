@@ -3,7 +3,7 @@ import * as tasksApi from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import { sanitizeWsEnum, sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { useToastStore } from '@/stores/toast'
 import {
   PRIORITY_VALUES,
@@ -14,7 +14,6 @@ import {
 import type {
   Complexity,
   CoordinationTopology,
-  TaskSource,
   TaskStatus,
   TaskStructure,
 } from '@/api/types/enums'
@@ -33,9 +32,10 @@ import type { WsEvent } from '@/api/types/websocket'
 // literal list) keeps the validator in lockstep with the type union
 // -- drift between the runtime check and the declared enum is caught
 // at compile time.
-const TASK_STATUS_SET: ReadonlySet<string> = new Set<string>(TASK_STATUS_VALUES_TUPLE)
-const TASK_PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
-const TASK_TYPE_SET: ReadonlySet<string> = new Set<string>(TASK_TYPE_VALUES_TUPLE)
+// Status / priority / type / source are no longer pre-validated
+// against the allowlist; sanitizeWsEnum owns that responsibility
+// (see sanitizeTask). Rejecting unknown enum values here would drop
+// the whole frame on rolling backend deploys.
 
 // Enum sets for the remaining scalar/enum fields that ``sanitizeTask``
 // previously copied through unchecked. Declared here so the validator
@@ -59,12 +59,6 @@ const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>([
   'context_dependent',
   'auto',
 ] satisfies readonly CoordinationTopology[])
-const TASK_SOURCE_SET: ReadonlySet<string> = new Set<string>([
-  'internal',
-  'client',
-  'simulation',
-] satisfies readonly TaskSource[])
-
 const log = createLogger('tasks')
 
 interface TasksState {
@@ -263,16 +257,17 @@ function arraysEqual(
  * and the nullable / optional scalars that ``sanitizeTask`` reads.
  */
 function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
+  // Enum fields routed through sanitizeWsEnum (status, priority, type,
+  // source) accept any non-empty string here; the sanitizer applies
+  // the allowlist + safe fallback. Rejecting unknown values would
+  // drop the whole frame on rolling backend deploys.
   return (
     typeof c.id === 'string' &&
     typeof c.status === 'string' &&
-    TASK_STATUS_SET.has(c.status) &&
     typeof c.title === 'string' &&
     typeof c.description === 'string' &&
     typeof c.priority === 'string' &&
-    TASK_PRIORITY_SET.has(c.priority) &&
     typeof c.type === 'string' &&
-    TASK_TYPE_SET.has(c.type) &&
     typeof c.project === 'string' &&
     typeof c.created_by === 'string' &&
     (c.assigned_to === null || typeof c.assigned_to === 'string') &&
@@ -287,9 +282,6 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     // non-string, breaking its length/bidi invariants.
     isNullableString(c.deadline) &&
     isNullableString(c.parent_task_id) &&
-    (c.source === undefined ||
-      c.source === null ||
-      typeof c.source === 'string') &&
     isOptionalString(c.created_at) &&
     isOptionalString(c.updated_at) &&
     // ``version`` is ``number | undefined``; without this guard a
@@ -312,7 +304,7 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     COORDINATION_TOPOLOGY_SET.has(c.coordination_topology) &&
     (c.source === undefined ||
       c.source === null ||
-      (typeof c.source === 'string' && TASK_SOURCE_SET.has(c.source)))
+      typeof c.source === 'string')
   )
 }
 

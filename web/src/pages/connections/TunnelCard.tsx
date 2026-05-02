@@ -18,7 +18,7 @@ const log = createLogger('TunnelCard')
 
 const CLIPBOARD_ERROR_DESCRIPTIONS: Record<string, string> = {
   NotAllowedError:
-    'Clipboard access denied. Use Ctrl+C to copy the URL manually.',
+    'Clipboard access denied. Use Ctrl/Cmd+C to copy the URL manually.',
   SecurityError:
     'Clipboard access blocked by browser security. Copy the URL manually.',
   InvalidStateError:

@@ -9,6 +9,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { SearchInput } from '@/components/ui/search-input'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useClientsData } from '@/hooks/useClientsData'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { ROUTES } from '@/router/routes'
 
 /**
@@ -31,6 +32,25 @@ export default function ClientListPage() {
         c.persona.toLowerCase().includes(trimmed),
     )
   }, [clients, searchQuery])
+
+  // Hook before any early-return (rules-of-hooks): the loading
+  // branch below short-circuits before the empty state matters.
+  const emptyStateProps = useEmptyStateProps({
+    filteredCount: filteredClients.length,
+    totalCount: clients.length,
+    filterActive: searchQuery.trim().length > 0,
+    icon: Users,
+    empty: {
+      title: 'No clients yet',
+      description:
+        'Create simulated clients via the API to exercise the intake and review pipeline.',
+    },
+    filtered: {
+      title: 'No matching clients',
+      description: 'Try a different search term or clear the field above.',
+      action: { label: 'Clear search', onClick: () => setSearchQuery('') },
+    },
+  })
 
   if (loading && clients.length === 0) {
     return (
@@ -70,19 +90,8 @@ export default function ClientListPage() {
         />
       )}
 
-      {clients.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title="No clients yet"
-          description="Create simulated clients via the API to exercise the intake and review pipeline."
-        />
-      ) : filteredClients.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title="No matching clients"
-          description="Try a different search term or clear the field above."
-          action={{ label: 'Clear search', onClick: () => setSearchQuery('') }}
-        />
+      {emptyStateProps ? (
+        <EmptyState {...emptyStateProps} />
       ) : (
         <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
           {filteredClients.map((client) => (

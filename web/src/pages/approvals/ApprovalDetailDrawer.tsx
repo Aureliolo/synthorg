@@ -87,6 +87,7 @@ export function ApprovalDetailDrawer({
     setRejectOpen(false)
     setComment('')
     setReason('')
+    setReasonError(null)
     setSubmitting(false)
   }
 
@@ -96,6 +97,7 @@ export function ApprovalDetailDrawer({
     if (!isPending) {
       setApproveOpen(false)
       setRejectOpen(false)
+      setReasonError(null)
     }
     prevIsPendingRef.current = isPending
   }

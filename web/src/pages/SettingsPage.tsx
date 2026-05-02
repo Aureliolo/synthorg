@@ -401,9 +401,10 @@ export default function SettingsPage() {
             {advancedMode && (
               // Subtle indicator next to the namespace tabs so the
               // operator knows they're seeing advanced settings even
-              // after dismissing the AdvancedModeBanner.
+              // after dismissing the AdvancedModeBanner. The visible
+              // "Advanced" text IS the accessible name; an explicit
+              // aria-label would just duplicate it.
               <span
-                aria-label="Advanced mode is on"
                 className="shrink-0 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning"
               >
                 Advanced
