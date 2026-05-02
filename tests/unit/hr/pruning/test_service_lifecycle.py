@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.hr.errors import PruningUnrestartableError
 from synthorg.hr.pruning.models import PruningServiceConfig
 from synthorg.hr.pruning.service import PruningService
 from synthorg.hr.registry import AgentRegistryService
@@ -130,5 +131,5 @@ class TestPruningServiceLifecycleLock:
                 if saved_task is not None:
                     await saved_task
 
-        with pytest.raises(RuntimeError, match="unrestartable"):
+        with pytest.raises(PruningUnrestartableError, match="unrestartable"):
             await service.start()

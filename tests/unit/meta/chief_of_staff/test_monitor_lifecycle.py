@@ -12,7 +12,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from synthorg.meta.chief_of_staff.inflection import OrgInflectionDetector
-from synthorg.meta.chief_of_staff.monitor import OrgInflectionMonitor
+from synthorg.meta.chief_of_staff.monitor import (
+    InflectionMonitorLifecycleError,
+    OrgInflectionMonitor,
+)
 from synthorg.meta.signals.snapshot import SnapshotBuilder
 
 pytestmark = pytest.mark.unit
@@ -140,5 +143,5 @@ class TestOrgInflectionMonitorLifecycleLock:
                 if saved_task is not None:
                     await saved_task
 
-        with pytest.raises(RuntimeError, match="unrestartable"):
+        with pytest.raises(InflectionMonitorLifecycleError, match="unrestartable"):
             await monitor.start()

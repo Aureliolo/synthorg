@@ -21,6 +21,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
+from synthorg.hr.errors import PruningUnrestartableError
 from synthorg.hr.models import FiringRequest
 from synthorg.hr.pruning.models import (
     PruningEvaluation,
@@ -150,7 +151,7 @@ class PruningService:
                     error=msg,
                     note="unrestartable",
                 )
-                raise RuntimeError(msg)
+                raise PruningUnrestartableError(msg)
             if self.is_running:
                 return
             self._wake_event.clear()

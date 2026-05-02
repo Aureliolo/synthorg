@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.config.schema import ProviderConfig
+from synthorg.providers.errors import ProviderLifecycleConflictError
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_prober import ProviderHealthProber
 from synthorg.settings.resolver import ConfigResolver
@@ -74,29 +75,38 @@ class TestProviderHealthProberLifecycle:
         """A drain that exceeds the deadline marks the service unrestartable."""
         prober = _make_prober()
         prober._stop_drain_timeout_seconds = 0.05
-
         # Replace _run_loop with a coroutine that swallows cancellation
-        # so the drain hangs and triggers the timeout path.
-        cancel_started = asyncio.Event()
+        # so the drain hangs and triggers the timeout path. ``release``
+        # lets the test wake the patched loop after the timeout
+        # assertion so the orphan task drains deterministically
+        # instead of leaking past the patch scope and racing the next
+        # test.
+        entered = asyncio.Event()
+        release = asyncio.Event()
 
         async def hung_loop(self: ProviderHealthProber) -> None:
             del self
+            entered.set()
             try:
                 await asyncio.Event().wait()
             except asyncio.CancelledError:
-                cancel_started.set()
                 # Suppress cancellation; this simulates a stuck drain.
-                await asyncio.sleep(1.0)
+                await release.wait()
 
         with patch.object(ProviderHealthProber, "_run_loop", hung_loop):
             await prober.start()
-            # Let the hung loop start executing.
-            await asyncio.sleep(0)
-
-            with pytest.raises(TimeoutError):
-                await prober.stop()
-            assert prober._stop_failed is True
+            await entered.wait()
+            saved_task = prober._task
+            try:
+                with pytest.raises(TimeoutError):
+                    await prober.stop()
+                assert prober._stop_failed is True
+                assert saved_task is not None
+            finally:
+                release.set()
+                if saved_task is not None:
+                    await saved_task
 
         # Subsequent start must refuse.
-        with pytest.raises(RuntimeError, match="unrestartable"):
+        with pytest.raises(ProviderLifecycleConflictError, match="unrestartable"):
             await prober.start()

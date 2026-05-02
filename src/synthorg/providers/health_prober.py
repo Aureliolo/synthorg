@@ -29,6 +29,7 @@ from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
     is_url_allowed,
 )
+from synthorg.providers.errors import ProviderLifecycleConflictError
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
 
 if TYPE_CHECKING:
@@ -201,7 +202,7 @@ class ProviderHealthProber:
                     error=msg,
                     note="unrestartable",
                 )
-                raise RuntimeError(msg)
+                raise ProviderLifecycleConflictError(msg)
             if self._task is not None and not self._task.done():
                 return
             self._stop_event.clear()

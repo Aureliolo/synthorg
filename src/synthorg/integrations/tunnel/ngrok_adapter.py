@@ -127,8 +127,15 @@ class NgrokAdapter:
                     "http",
                     pyngrok_config=pyngrok_config,
                 )
-                self._tunnel = tunnel
-                self._public_url = str(tunnel.public_url)
+                # Materialise the public URL BEFORE assigning the
+                # tunnel handle so a converter / attribute-access
+                # failure on ``tunnel.public_url`` cannot leave the
+                # adapter in a half-started state where ``_tunnel``
+                # exists but ``_public_url`` is still ``None``. Such a
+                # half-state would later cause ``stop()`` to call
+                # ``ngrok.disconnect(None)`` on a tunnel the adapter
+                # never fully owned.
+                public_url = str(tunnel.public_url)
             except Exception as exc:
                 # ngrok auth token env var may be echoed in exception
                 # messages; scrub + drop traceback.
@@ -138,8 +145,30 @@ class NgrokAdapter:
                     error_type=type(exc).__name__,
                     error=safe_desc,
                 )
+                # If ``tunnel`` was created but the URL conversion
+                # failed afterwards, best-effort disconnect upstream
+                # so we don't orphan an open tunnel on the ngrok
+                # side. Failures here are logged but not raised --
+                # the caller already gets ``TunnelError``.
+                local_tunnel = locals().get("tunnel")
+                if local_tunnel is not None:
+                    try:
+                        await asyncio.to_thread(
+                            ngrok.disconnect,
+                            getattr(local_tunnel, "public_url", None),
+                        )
+                    except Exception as cleanup_exc:
+                        logger.warning(
+                            TUNNEL_ERROR,
+                            phase="cleanup",
+                            error_type=type(cleanup_exc).__name__,
+                            error=safe_error_description(cleanup_exc),
+                        )
                 msg = f"Failed to start ngrok tunnel: {safe_desc}"
                 raise TunnelError(msg) from exc
+
+            self._public_url = public_url
+            self._tunnel = tunnel
 
             logger.info(
                 TUNNEL_STARTED,

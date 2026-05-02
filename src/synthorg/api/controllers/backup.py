@@ -86,7 +86,7 @@ class BackupController(Controller):
         self,
         state: State,
         idempotency_key: Annotated[
-            str,
+            NotBlankStr,
             Parameter(
                 header="Idempotency-Key",
                 description=(
@@ -156,7 +156,26 @@ class BackupController(Controller):
             )
             msg = "Concurrent in-flight backup with this idempotency key"
             raise ConflictError(msg)
-        return ApiResponse(data=BackupManifest.model_validate(outcome.result))
+        try:
+            manifest = BackupManifest.model_validate(outcome.result)
+        except (ValueError, TypeError) as exc:
+            # A corrupt or stale cached payload (e.g. schema added a
+            # field after the entry was stored) would otherwise leak
+            # the raw pydantic ValidationError. Surface a 5xx instead
+            # so the operator gets a stable error and the failure is
+            # visible in logs.
+            logger.error(  # noqa: TRY400
+                BACKUP_FAILED,
+                scope="backup",
+                idempotency_key=idempotency_key,
+                endpoint="backup.create",
+                stage="cached_manifest_validate",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Cached backup manifest failed validation; rerun the backup"
+            raise InternalServerException(msg) from exc
+        return ApiResponse(data=manifest)
 
     @get()
     async def list_backups(

@@ -3,6 +3,7 @@
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.backup.errors import BackupUnrestartableError
 from synthorg.backup.models import BackupTrigger
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
@@ -64,7 +65,7 @@ class BackupScheduler:
                     error=msg,
                     note="unrestartable",
                 )
-                raise RuntimeError(msg)
+                raise BackupUnrestartableError(msg)
             if self.is_running:
                 return
             self._wake_event.clear()

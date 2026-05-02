@@ -196,8 +196,6 @@ class EventStreamHub:
                 )
                 return
             self._record_published_locked(event, now)
-        if not queues_snapshot:
-            return
         for queue in queues_snapshot:
             try:
                 queue.put_nowait(event)

@@ -107,6 +107,17 @@ class ReplayProtector:
             ``False`` if the timestamp is non-finite or outside the
             configured window.
         """
+        return self._check_freshness_at(timestamp, self._clock.now().timestamp())
+
+    def _check_freshness_at(self, timestamp: float | None, now: float) -> bool:
+        """Validate timestamp staleness against a caller-supplied *now*.
+
+        Allows :meth:`check` to sample the clock exactly once and pass
+        the same snapshot to both the freshness check and the nonce
+        eviction so a clock advance between two reads cannot open a
+        boundary replay window where the freshness check uses one
+        ``now`` and the nonce eviction uses another.
+        """
         if timestamp is None:
             return True
         if not math.isfinite(timestamp):
@@ -115,9 +126,6 @@ class ReplayProtector:
                 reason="non-finite timestamp",
             )
             return False
-        # Capture once so the comparison and the logged ``skew`` field
-        # cannot disagree if the clock advances between calls.
-        now = self._clock.now().timestamp()
         skew = abs(now - timestamp)
         if skew > self._window:
             logger.warning(
@@ -160,9 +168,14 @@ class ReplayProtector:
                 reason="no freshness signal (nonce and timestamp both missing)",
             )
             return False
-        if not self.check_freshness(timestamp):
-            return False
+        # Sample the clock once per ``check()`` call and reuse the
+        # snapshot for both freshness and nonce-eviction decisions so
+        # a clock advance mid-call cannot open a boundary replay
+        # window where the freshness check observes one ``now`` and
+        # the nonce eviction observes another.
         now = self._clock.now().timestamp()
+        if not self._check_freshness_at(timestamp, now):
+            return False
         return self._check_nonce(nonce=nonce, now=now)
 
     def _check_nonce(self, *, nonce: str | None, now: float) -> bool:

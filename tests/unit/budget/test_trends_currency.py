@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.trends import (
     BucketSize,
@@ -22,6 +23,13 @@ from synthorg.budget.trends import (
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
+# ``CurrencyCode`` validates against the project's known ISO 4217
+# allowlist, so the alternate currency MUST be a real ISO code -- we
+# can't substitute a synthetic string here. ``EUR`` is picked only
+# because it is distinct from ``DEFAULT_CURRENCY``; the specific
+# choice is irrelevant to what these tests prove.
+_PRIMARY_CURRENCY = DEFAULT_CURRENCY
+_ALTERNATE_CURRENCY = "USD" if DEFAULT_CURRENCY != "USD" else "EUR"
 
 
 def _record(
@@ -47,8 +55,8 @@ class TestBucketCostRecordsCurrency:
 
     def test_single_currency_aggregates_cleanly(self) -> None:
         records = (
-            _record("EUR", 0.10),
-            _record("EUR", 0.20),
+            _record(_PRIMARY_CURRENCY, 0.10),
+            _record(_PRIMARY_CURRENCY, 0.20),
         )
         result = bucket_cost_records(
             records,
@@ -60,8 +68,8 @@ class TestBucketCostRecordsCurrency:
 
     def test_mixed_currency_raises(self) -> None:
         records = (
-            _record("EUR", 0.10),
-            _record("USD", 0.20),
+            _record(_PRIMARY_CURRENCY, 0.10),
+            _record(_ALTERNATE_CURRENCY, 0.20),
         )
         with pytest.raises(MixedCurrencyAggregationError) as exc:
             bucket_cost_records(
@@ -70,11 +78,43 @@ class TestBucketCostRecordsCurrency:
                 _NOW + timedelta(hours=1),
                 BucketSize.HOUR,
             )
-        assert exc.value.currencies == frozenset({"EUR", "USD"})
+        assert exc.value.currencies == frozenset(
+            {_PRIMARY_CURRENCY, _ALTERNATE_CURRENCY},
+        )
 
     def test_empty_records_no_error(self) -> None:
         result = bucket_cost_records(
             (),
+            _NOW,
+            _NOW + timedelta(hours=1),
+            BucketSize.HOUR,
+        )
+        assert all(point.value == 0.0 for point in result)
+
+    def test_out_of_window_mixed_currency_no_error(self) -> None:
+        """Mixed currencies entirely outside ``[start, end)`` must not raise.
+
+        The ``_assert_single_currency`` guard runs on the post-filter
+        slice, so out-of-range rows do not contribute to the
+        aggregation and do not need to be currency-uniform. Without
+        this regression, a partial-range query against a long-lived
+        multi-currency dataset would raise even though the bucket
+        itself is consistent.
+        """
+        records = (
+            _record(
+                _PRIMARY_CURRENCY,
+                0.10,
+                ts=_NOW - timedelta(hours=10),
+            ),
+            _record(
+                _ALTERNATE_CURRENCY,
+                0.20,
+                ts=_NOW - timedelta(hours=20),
+            ),
+        )
+        result = bucket_cost_records(
+            records,
             _NOW,
             _NOW + timedelta(hours=1),
             BucketSize.HOUR,
@@ -87,20 +127,22 @@ class TestProjectDailySpendCurrency:
 
     def test_single_currency_projects_cleanly(self) -> None:
         records = (
-            _record("EUR", 1.00, _NOW - timedelta(days=2)),
-            _record("EUR", 2.00, _NOW - timedelta(days=1)),
+            _record(_PRIMARY_CURRENCY, 1.00, _NOW - timedelta(days=2)),
+            _record(_PRIMARY_CURRENCY, 2.00, _NOW - timedelta(days=1)),
         )
         forecast = project_daily_spend(records, horizon_days=7, now=_NOW)
         assert forecast.avg_daily_spend > 0
 
     def test_mixed_currency_raises(self) -> None:
         records = (
-            _record("EUR", 1.00, _NOW - timedelta(days=2)),
-            _record("USD", 2.00, _NOW - timedelta(days=1)),
+            _record(_PRIMARY_CURRENCY, 1.00, _NOW - timedelta(days=2)),
+            _record(_ALTERNATE_CURRENCY, 2.00, _NOW - timedelta(days=1)),
         )
         with pytest.raises(MixedCurrencyAggregationError) as exc:
             project_daily_spend(records, horizon_days=7, now=_NOW)
-        assert exc.value.currencies == frozenset({"EUR", "USD"})
+        assert exc.value.currencies == frozenset(
+            {_PRIMARY_CURRENCY, _ALTERNATE_CURRENCY},
+        )
 
     def test_empty_records_no_error(self) -> None:
         forecast = project_daily_spend((), horizon_days=7, now=_NOW)

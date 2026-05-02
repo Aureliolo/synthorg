@@ -8,8 +8,9 @@ consumers.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.core.domain_errors import ConflictError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.chief_of_staff import (
@@ -28,6 +29,20 @@ if TYPE_CHECKING:
     from synthorg.meta.signals.snapshot import SnapshotBuilder
 
 logger = get_logger(__name__)
+
+
+class InflectionMonitorLifecycleError(ConflictError):
+    """Raised when ``OrgInflectionMonitor.start()`` is called after a timed-out stop.
+
+    Mirrors :class:`BackupUnrestartableError`: a stuck drain leaves an
+    orphan loop the new instance would race; the canonical lifecycle
+    pattern marks the monitor unrestartable so operators must construct
+    a fresh one.
+    """
+
+    default_message: ClassVar[str] = (
+        "OrgInflectionMonitor is unrestartable after a timed-out stop"
+    )
 
 
 class OrgInflectionMonitor:
@@ -87,7 +102,7 @@ class OrgInflectionMonitor:
                     error=msg,
                     note="unrestartable",
                 )
-                raise RuntimeError(msg)
+                raise InflectionMonitorLifecycleError(msg)
             if self._task is not None and not self._task.done():
                 return
             self._stop_event.clear()

@@ -8,6 +8,10 @@ Subclasses that genuinely represent a transient network/I/O failure
 should override ``is_retryable = True`` explicitly.
 """
 
+from typing import ClassVar
+
+from synthorg.core.domain_errors import ConflictError
+
 
 class HRError(Exception):
     """Base error for all HR operations.
@@ -111,6 +115,20 @@ class PromotionApprovalRequiredError(PromotionError):
 
 class PruningError(HRError):
     """Error during the pruning process."""
+
+
+class PruningUnrestartableError(ConflictError):
+    """Raised when ``PruningService.start()`` is called after a timed-out stop.
+
+    Mirrors :class:`BackupUnrestartableError`: a stuck drain leaves an
+    orphan loop that may still hold references the new instance would
+    race; the canonical lifecycle pattern marks the service unrestartable
+    and forces operators to construct a fresh one.
+    """
+
+    default_message: ClassVar[str] = (
+        "Pruning service is unrestartable after a timed-out stop"
+    )
 
 
 # ── Personalities ───────────────────────────────────────────────

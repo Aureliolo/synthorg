@@ -142,7 +142,7 @@ async def _rollback_register_if_absent(
     spawned_task: asyncio.Task[None] | None,
     *,
     sim_state: Any,
-    simulation_id: str,
+    record: SimulationRecord,
 ) -> None:
     """Tear down a partially-constructed simulation start.
 
@@ -153,7 +153,12 @@ async def _rollback_register_if_absent(
     store. ``shield`` is unnecessary here because the caller is the
     request handler, not a coroutine guarding against external
     cancellation.
+
+    Passes the originally-claimed ``record`` to ``unregister`` so the
+    compare-and-delete semantics protect a fresh retry that might have
+    won the slot between the failure and this rollback running.
     """
+    simulation_id = record.simulation_id
     if spawned_task is not None:
         spawned_task.cancel()
         try:
@@ -170,7 +175,7 @@ async def _rollback_register_if_absent(
                 error_type=type(drain_exc).__name__,
                 error=safe_error_description(drain_exc),
             )
-    await sim_state.simulation_store.unregister(simulation_id)
+    await sim_state.simulation_store.unregister(simulation_id, expected=record)
 
 
 async def _run_in_background(
@@ -442,7 +447,7 @@ class SimulationController(Controller):
             await _rollback_register_if_absent(
                 spawned_task,
                 sim_state=sim_state,
-                simulation_id=record.simulation_id,
+                record=record,
             )
             raise
         return ApiResponse(data=_to_response(record))
