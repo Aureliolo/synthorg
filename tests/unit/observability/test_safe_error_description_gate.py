@@ -161,10 +161,16 @@ class TestExtendedGate:
         assert hits, "subscript-wrapped str(exc) leaks the prefix; must be flagged"
 
     def test_str_exc_boolop_wrapper_flagged(self) -> None:
-        """``error=str(exc) or fallback`` leaks str(exc) when truthy."""
+        """``error=str(exc) or fallback`` leaks str(exc) when truthy.
+
+        Bare ``or`` only -- no ``[:200]`` slice -- so a regression in
+        ``BoolOp`` traversal cannot be masked by a still-working
+        ``Subscript`` traversal. ``test_str_exc_subscript_wrapper_flagged``
+        already covers slicing; this test pins ``BoolOp`` independently.
+        """
         hits = _scan_source(
             """
-            logger.error("E", error=str(exc)[:200] or type(exc).__name__)
+            logger.error("E", error=str(exc) or type(exc).__name__)
             """,
         )
         assert hits, "boolop-wrapped str(exc) is still a leak; must be flagged"
@@ -211,10 +217,16 @@ class TestExtendedGate:
         assert hits, "dict-unpack `error` value with str(exc) must be flagged"
 
     def test_str_exc_dict_unpack_wrapped_flagged(self) -> None:
-        """Dict-unpack values are walked, so wrapped forms still trip."""
+        """Dict-unpack values are walked, so wrapped forms still trip.
+
+        Bare ``or`` only, for the same isolation reason as
+        ``test_str_exc_boolop_wrapper_flagged`` -- the dict-unpack path
+        and the BoolOp-traversal path each get their own regression
+        coverage.
+        """
         hits = _scan_source(
             """
-            logger.error("E", **{"error": str(exc)[:200] or "fallback"})
+            logger.error("E", **{"error": str(exc) or "fallback"})
             """,
         )
         assert hits, "dict-unpack with wrapped str(exc) must be flagged"

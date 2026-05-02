@@ -12,6 +12,7 @@ so they can be tested without instantiating the full
 """
 
 import asyncio
+import builtins
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory
@@ -20,7 +21,6 @@ from synthorg.hr.training.models import (
     TrainingItem,
     TrainingPlan,
 )
-from synthorg.memory.errors import MemoryError as _MemoryError
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import HR_TRAINING_STORE_FAILED
@@ -143,9 +143,18 @@ async def _store_one_item(  # noqa: PLR0913
             tags=tags,
         ),
     )
+    # Catch broadly so a single misbehaving backend, validator, or
+    # request-shape mismatch on one item does not unwind the parent
+    # ``asyncio.TaskGroup`` and cancel its sibling stores. Re-raise
+    # only ``MemoryError`` / ``RecursionError`` per the project async
+    # convention; everything else is logged and converted to a
+    # ``False`` return so the per-content-type aggregator can record
+    # a partial-store outcome instead of failing the whole pipeline.
     try:
         await memory_backend.store(plan.new_agent_id, request)
-    except _MemoryError as exc:
+    except builtins.MemoryError, RecursionError:
+        raise
+    except Exception as exc:
         logger.warning(
             HR_TRAINING_STORE_FAILED,
             plan_id=str(plan.id),

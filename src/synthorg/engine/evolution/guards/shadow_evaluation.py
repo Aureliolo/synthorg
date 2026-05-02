@@ -302,34 +302,68 @@ class ShadowEvaluationGuard:
         timeout_seconds = self._config.timeout_per_task_seconds
 
         async def _one(task: Task) -> ShadowTaskOutcome:
+            # Nested try/except shape: the inner block sits INSIDE
+            # ``asyncio.timeout`` so a ``TimeoutError`` raised by the
+            # runner itself (a transient HTTP timeout, a sub-step's
+            # own deadline) is caught and routed to ``runner_exception``
+            # before the outer ``asyncio.timeout`` deadline can fire.
+            # Only the OUTER ``except TimeoutError`` catches the guard
+            # deadline expiry, which preserves the docstring promise
+            # that this guard enforces its own timeout independently
+            # of the runner.
             try:
                 async with asyncio.timeout(timeout_seconds):
-                    return await self._runner.run(
-                        identity=identity,
-                        proposal=proposal,
-                        task=task,
-                        timeout_seconds=timeout_seconds,
-                    )
-            except (MemoryError, RecursionError, RetryExhaustedError) as exc:
-                logger.error(
-                    EVOLUTION_SHADOW_TASK_FAILED,
-                    proposal_id=proposal_id,
-                    pass_label=label,
-                    task_id=task.id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                    failure_category="infrastructure",
-                    exc_info=True,
-                )
-                raise
-            except TimeoutError:
+                    try:
+                        return await self._runner.run(
+                            identity=identity,
+                            proposal=proposal,
+                            task=task,
+                            timeout_seconds=timeout_seconds,
+                        )
+                    except (
+                        MemoryError,
+                        RecursionError,
+                        RetryExhaustedError,
+                    ) as exc:
+                        logger.error(
+                            EVOLUTION_SHADOW_TASK_FAILED,
+                            proposal_id=proposal_id,
+                            pass_label=label,
+                            task_id=task.id,
+                            error_type=type(exc).__name__,
+                            error=safe_error_description(exc),
+                            failure_category="infrastructure",
+                            exc_info=True,
+                        )
+                        raise
+                    except Exception as exc:
+                        # Includes runner-raised ``TimeoutError`` (HTTP
+                        # client timeout, etc.) -- distinguished from
+                        # guard-deadline timeout by virtue of being
+                        # caught inside ``asyncio.timeout``.
+                        error_desc = safe_error_description(exc)
+                        logger.warning(
+                            EVOLUTION_SHADOW_TASK_FAILED,
+                            proposal_id=proposal_id,
+                            pass_label=label,
+                            task_id=task.id,
+                            error_type=type(exc).__name__,
+                            error=error_desc,
+                            failure_category="runner_exception",
+                        )
+                        return ShadowTaskOutcome(
+                            success=False,
+                            quality_score=None,
+                            error=error_desc,
+                        )
+            except TimeoutError as exc:
                 timeout_msg = f"timeout after {timeout_seconds:.1f}s"
                 logger.warning(
                     EVOLUTION_SHADOW_TASK_FAILED,
                     proposal_id=proposal_id,
                     pass_label=label,
                     task_id=task.id,
-                    error_type="TimeoutError",
+                    error_type=type(exc).__name__,
                     error=timeout_msg,
                     failure_category="timeout",
                 )
@@ -337,22 +371,6 @@ class ShadowEvaluationGuard:
                     success=False,
                     quality_score=None,
                     error=timeout_msg,
-                )
-            except Exception as exc:
-                error_desc = safe_error_description(exc)
-                logger.warning(
-                    EVOLUTION_SHADOW_TASK_FAILED,
-                    proposal_id=proposal_id,
-                    pass_label=label,
-                    task_id=task.id,
-                    error_type=type(exc).__name__,
-                    error=error_desc,
-                    failure_category="runner_exception",
-                )
-                return ShadowTaskOutcome(
-                    success=False,
-                    quality_score=None,
-                    error=error_desc,
                 )
 
         async with asyncio.TaskGroup() as tg:

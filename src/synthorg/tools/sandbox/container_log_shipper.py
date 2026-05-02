@@ -139,11 +139,18 @@ async def collect_sidecar_logs(
             ),
             timeout=config.collection_timeout_seconds,
         )
-    except TimeoutError:
-        logger.debug(
+    except TimeoutError as exc:
+        # WARNING (matched to the broader collection-failure path
+        # below): a timeout still leaves the operator with empty logs
+        # they can't distinguish from "container had nothing to say",
+        # so the structured ``error_type`` / ``error`` fields make the
+        # cause grep-able.
+        logger.warning(
             SANDBOX_CONTAINER_LOGS_COLLECTED,
             sidecar_id=sidecar_id[:12],
             status="timeout",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return ()
     except MemoryError, RecursionError:

@@ -320,14 +320,20 @@ class TaskMutationResult(BaseModel):
     error: str | None = Field(
         default=None,
         description=(
-            "Error description produced by `safe_error_description(exc)` "
-            "(`from synthorg.observability import safe_error_description`); "
-            "typically `{ExceptionType}: {scrubbed_message}`, or just "
+            "Error description for failures; `None` on success. For "
+            "exception-derived errors (the dominant case across "
+            "`task_engine_apply`), populate via `safe_error_description(exc)` "
+            "(`from synthorg.observability import safe_error_description`) "
+            "-- typically `{ExceptionType}: {scrubbed_message}`, or just "
             "`{ExceptionType}` when the exception message is empty. "
-            "`None` on success. Always populate via the helper, never via "
-            "raw `str(exc)`, so credential material in exception messages "
-            "is scrubbed before the value crosses any persistence / API / "
-            "RPC boundary."
+            "Domain-shaped messages (`'Task <id> not found'`, formatted "
+            "`PydanticValidationError` summaries via `_format_validation_error`, "
+            "etc.) are also accepted because their content is producer-controlled "
+            "and carries no exception-frame credential surface. Never use raw "
+            "`str(exc)` directly; always go through the helper when the source "
+            "is an exception, so credential material in exception messages is "
+            "scrubbed before the value crosses any persistence / API / RPC "
+            "boundary."
         ),
     )
     error_code: TaskErrorCode | None = Field(
