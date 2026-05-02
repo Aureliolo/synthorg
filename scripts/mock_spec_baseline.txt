@@ -309,7 +309,7 @@ tests/unit/api/controllers/test_departments.py:225:19
 tests/unit/api/controllers/test_departments.py:272:19
 tests/unit/api/controllers/test_departments.py:275:19
 tests/unit/api/controllers/test_departments.py:276:27
-tests/unit/api/controllers/test_departments_health.py:503:35
+tests/unit/api/controllers/test_departments_health.py:504:35
 tests/unit/api/controllers/test_mcp_catalog_dtos.py:93:29
 tests/unit/api/controllers/test_mcp_catalog_dtos.py:94:33
 tests/unit/api/controllers/test_mcp_catalog_dtos.py:96:20

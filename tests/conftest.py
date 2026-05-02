@@ -468,18 +468,28 @@ def _reset_structlog_state() -> Iterator[None]:
     filter that swallows INFO emissions, even though the production
     code emitted them.
 
-    Scoped to ``structlog`` only -- the stdlib-root-handler reset that
-    ``clear_logging_state()`` performs is intentionally NOT applied
-    globally because tests that import ``synthorg.observability`` at
-    module load time hold long-lived handler references the global
-    reset would close out from under them. Observability tests retain
-    their dedicated ``_reset_logging`` autouse for that broader reset.
+    Scoped to ``structlog`` defaults + stdlib root *level* only --
+    the stdlib-root-handler close that ``clear_logging_state()``
+    performs is intentionally NOT applied globally because tests that
+    import ``synthorg.observability`` at module load time hold
+    long-lived handler references the global reset would close out
+    from under them. Observability tests retain their dedicated
+    ``_reset_logging`` autouse for that broader reset.
+
+    Also resets ``logging.root.level`` to NOTSET because production
+    boot code (``setup_logging``) may have left it at WARNING during a
+    prior test, which silently filters out INFO events that production
+    code emits via ``structlog.stdlib.BoundLogger`` -- the canonical
+    symptom for ``test_source_resolution_log.py`` and
+    ``test_service.py::test_emits_audit_event`` failing under -n 8.
     """
     structlog.reset_defaults()
     structlog.contextvars.clear_contextvars()
+    logging.getLogger().setLevel(logging.NOTSET)
     yield
     structlog.reset_defaults()
     structlog.contextvars.clear_contextvars()
+    logging.getLogger().setLevel(logging.NOTSET)
 
 
 @pytest.fixture(autouse=True)

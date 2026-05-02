@@ -19,9 +19,9 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.conftest import (
     FakeMessageBus,
-    FakePersistenceBackend,
     make_auth_headers,
 )
+from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 _NOW = datetime.now(UTC)
 _AGENT_ID_A = "00000000-0000-0000-0000-000000000aaa"
@@ -91,30 +91,40 @@ def _make_task_metric(
     )
 
 
-def _build_dept_client(  # noqa: PLR0913
+def _build_dept_client(
     *,
-    fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     config: RootConfig,
     cost_tracker: CostTracker | None = None,
     performance_tracker: PerformanceTracker | None = None,
     agent_registry: AgentRegistryService | None = None,
 ) -> TestClient[Any]:
-    """Build a TestClient with the given config for department tests."""
+    """Build a TestClient with the given config for department tests.
+
+    Constructs a fresh :class:`FakePersistenceBackend` per call so the
+    settings repository the controller reads through is empty at test
+    start. Sharing the session-scoped ``fake_persistence`` fixture
+    leaks settings written by other tests (via ``_shared_app``
+    consumers) into the config-resolver lookup, which surfaces as
+    spurious 404s on departments the test config explicitly declares
+    (#1713).
+    """
     from synthorg.api.app import create_app
     from synthorg.api.auth.service import AuthService
     from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
+    fake_persistence = FakePersistenceBackend()
+    fake_persistence._connected = True
     auth_service: AuthService = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
     settings_service = SettingsService(
-        repository=fake_persistence.settings,
+        repository=fake_persistence.settings,  # type: ignore[arg-type]
         registry=get_registry(),
         config=config,
     )
     app = create_app(
         config=config,
-        persistence=fake_persistence,
+        persistence=fake_persistence,  # type: ignore[arg-type]
         message_bus=fake_message_bus,
         cost_tracker=cost_tracker or CostTracker(),
         auth_service=auth_service,
@@ -147,7 +157,6 @@ class TestDepartmentHealth:
 
     def test_empty_department(
         self,
-        fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Department exists but has no agents."""
@@ -158,7 +167,6 @@ class TestDepartmentHealth:
             departments=(Department(name="eng", budget_percent=50.0),),
         )
         with _build_dept_client(
-            fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
@@ -178,7 +186,6 @@ class TestDepartmentHealth:
 
     async def test_with_agents_and_data(
         self,
-        fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Full scenario with agents, costs, and performance data."""
@@ -237,7 +244,6 @@ class TestDepartmentHealth:
         )
 
         with _build_dept_client(
-            fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             config=config,
             cost_tracker=cost_tracker,
@@ -263,7 +269,6 @@ class TestDepartmentHealth:
 
     def test_other_department_agents_excluded(
         self,
-        fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Agents from other departments are excluded."""
@@ -281,7 +286,6 @@ class TestDepartmentHealth:
             ),
         )
         with _build_dept_client(
-            fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
@@ -295,7 +299,6 @@ class TestDepartmentHealth:
 
     def test_cost_trend_is_daily_sparkline(
         self,
-        fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """cost_trend should contain daily-bucketed data points."""
@@ -307,7 +310,6 @@ class TestDepartmentHealth:
             agents=(AgentConfig(name="alice", role="dev", department="eng"),),
         )
         with _build_dept_client(
-            fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
@@ -486,7 +488,6 @@ class TestAggregateDeptCost:
 class TestDepartmentHealthDegradation:
     async def test_degraded_when_cost_tracker_fails(
         self,
-        fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Endpoint returns degraded health when Phase 1 queries fail."""
@@ -504,7 +505,6 @@ class TestDepartmentHealthDegradation:
             side_effect=RuntimeError("simulated cost failure"),
         )
         with _build_dept_client(
-            fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             config=config,
             cost_tracker=cost_tracker,
