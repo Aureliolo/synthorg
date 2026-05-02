@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { budgetConfigVersionsClient } from '@/api/endpoints/version-history'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { SkeletonChart } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import { useBudgetData } from '@/hooks/useBudgetData'
@@ -18,8 +19,17 @@ import {
 } from '@/utils/budget'
 import { BudgetSkeleton } from './budget/BudgetSkeleton'
 import { BudgetGauge } from './budget/BudgetGauge'
-import { SpendBurnChart } from './budget/SpendBurnChart'
-import { CostBreakdownChart } from './budget/CostBreakdownChart'
+
+// Lazy-loaded recharts wrappers: defers the ~150 KB recharts bundle
+// to first chart render so the BudgetPage's initial entry chunk
+// stays small. Vite splits a dedicated chunk via the dynamic
+// imports below.
+const SpendBurnChart = lazy(() =>
+  import('./budget/SpendBurnChart').then((m) => ({ default: m.SpendBurnChart })),
+)
+const CostBreakdownChart = lazy(() =>
+  import('./budget/CostBreakdownChart').then((m) => ({ default: m.CostBreakdownChart })),
+)
 import { CategoryBreakdown } from './budget/CategoryBreakdown'
 import { AgentSpendingTable } from './budget/AgentSpendingTable'
 import { CfoActivityFeed } from './budget/CfoActivityFeed'
@@ -127,27 +137,31 @@ export default function BudgetPage() {
         </ErrorBoundary>
         <ErrorBoundary level="section">
           <div className="col-span-2 max-[1023px]:col-span-1">
-            <SpendBurnChart
-              trendData={trends?.data_points ?? []}
-              forecast={forecast}
-              budgetTotal={budgetConfig?.total_monthly ?? 0}
-              budgetRemaining={overview?.budget_remaining}
-              alerts={budgetConfig?.alerts}
-              currency={currency}
-            />
+            <Suspense fallback={<SkeletonChart />}>
+              <SpendBurnChart
+                trendData={trends?.data_points ?? []}
+                forecast={forecast}
+                budgetTotal={budgetConfig?.total_monthly ?? 0}
+                budgetRemaining={overview?.budget_remaining}
+                alerts={budgetConfig?.alerts}
+                currency={currency}
+              />
+            </Suspense>
           </div>
         </ErrorBoundary>
       </div>
 
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <ErrorBoundary level="section">
-          <CostBreakdownChart
-            breakdown={costBreakdown}
-            dimension={breakdownDimension}
-            onDimensionChange={setBreakdownDimension}
-            deptDisabled={agentDeptMap.size === 0}
-            currency={currency}
-          />
+          <Suspense fallback={<SkeletonChart aspectRatio={1} />}>
+            <CostBreakdownChart
+              breakdown={costBreakdown}
+              dimension={breakdownDimension}
+              onDimensionChange={setBreakdownDimension}
+              deptDisabled={agentDeptMap.size === 0}
+              currency={currency}
+            />
+          </Suspense>
         </ErrorBoundary>
         <ErrorBoundary level="section">
           <CategoryBreakdown ratio={categoryRatio} currency={currency} />

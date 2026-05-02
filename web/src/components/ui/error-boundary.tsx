@@ -110,13 +110,9 @@ function DefaultErrorFallback({
       >
         <AlertTriangle className="size-4" aria-hidden="true" />
         <span>{message}</span>
-        <button
-          type="button"
-          onClick={resetErrorBoundary}
-          className="text-accent underline underline-offset-2 hover:text-accent-foreground"
-        >
+        <Button variant="link" size="sm" onClick={resetErrorBoundary}>
           Try Again
-        </button>
+        </Button>
       </div>
     )
   }

@@ -88,6 +88,28 @@ export function SkeletonMetric({ shimmer, className }: SkeletonProps) {
   )
 }
 
+export interface SkeletonChartProps extends SkeletonProps {
+  /** Aspect ratio for the chart placeholder. Default: ``2.4`` matches recharts ResponsiveContainer's default. */
+  aspectRatio?: number
+}
+
+/**
+ * Placeholder used as a Suspense fallback for lazy-loaded chart
+ * components. Sizes itself via ``aspect-ratio`` so the layout doesn't
+ * shift when recharts hydrates and the ResponsiveContainer measures
+ * its parent.
+ */
+export function SkeletonChart({ aspectRatio = 2.4, shimmer, className }: SkeletonChartProps) {
+  return (
+    <Skeleton
+      shimmer={shimmer}
+      data-testid="skeleton-chart"
+      className={cn('w-full rounded-lg', className)}
+      style={{ aspectRatio: String(aspectRatio) }}
+    />
+  )
+}
+
 export interface SkeletonTableProps extends SkeletonProps {
   /** Number of rows (default: 5). */
   rows?: number

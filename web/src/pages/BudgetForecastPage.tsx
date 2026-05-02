@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { Calendar } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { MetricCard } from '@/components/ui/metric-card'
@@ -6,14 +6,17 @@ import { SectionCard } from '@/components/ui/section-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
-import { SkeletonCard, SkeletonMetric, SkeletonTable } from '@/components/ui/skeleton'
+import { SkeletonCard, SkeletonChart, SkeletonMetric, SkeletonTable } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useBudgetData } from '@/hooks/useBudgetData'
 import { ROUTES } from '@/router/routes'
 import { formatCurrency } from '@/utils/format'
 import { computeExhaustionDate, type BudgetMetricCardData } from '@/utils/budget'
-import { SpendBurnChart } from './budget/SpendBurnChart'
 import type { ForecastPoint } from '@/api/types/analytics'
+
+const SpendBurnChart = lazy(() =>
+  import('./budget/SpendBurnChart').then((m) => ({ default: m.SpendBurnChart })),
+)
 
 function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
   point: ForecastPoint
@@ -132,14 +135,16 @@ export default function BudgetForecastPage() {
       </StaggerGroup>
 
       <ErrorBoundary level="section">
-        <SpendBurnChart
-          trendData={trends?.data_points ?? []}
-          forecast={forecast}
-          budgetTotal={budgetConfig?.total_monthly ?? 0}
-          budgetRemaining={overview?.budget_remaining}
-          alerts={budgetConfig?.alerts}
-          currency={currency}
-        />
+        <Suspense fallback={<SkeletonChart />}>
+          <SpendBurnChart
+            trendData={trends?.data_points ?? []}
+            forecast={forecast}
+            budgetTotal={budgetConfig?.total_monthly ?? 0}
+            budgetRemaining={overview?.budget_remaining}
+            alerts={budgetConfig?.alerts}
+            currency={currency}
+          />
+        </Suspense>
       </ErrorBoundary>
 
       <SectionCard title="Daily Projections" icon={Calendar}>

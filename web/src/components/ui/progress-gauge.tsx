@@ -101,6 +101,7 @@ export function ProgressGauge({
   const circumference = Math.PI * radius
   const filledLength = (percentage / 100) * circumference
   const dashOffset = circumference - filledLength
+  const accessibleLabel = label ? `${label}: ${percentage}%` : `${percentage}%`
 
   return (
     <div
@@ -108,7 +109,7 @@ export function ProgressGauge({
       aria-valuenow={percentage}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={label ? `${label}: ${percentage}%` : `${percentage}%`}
+      aria-label={accessibleLabel}
       className={cn('inline-flex flex-col items-center', className)}
     >
       <svg
@@ -117,6 +118,11 @@ export function ProgressGauge({
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         className="overflow-visible"
       >
+        {/* SVG <title> provides redundant accessible context: the
+            wrapping div already carries role="meter" + aria-label,
+            but readers that expose SVG content directly (some
+            assistive tech, browser hover tooltips) read this. */}
+        <title>{accessibleLabel}</title>
         {/* Track */}
         <path
           d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}

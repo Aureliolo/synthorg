@@ -113,9 +113,15 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Activity')).toBeInTheDocument()
   })
 
-  it('renders Budget Burn section', () => {
+  // BudgetBurnChart is React.lazy-loaded so the recharts bundle defers
+  // to first chart render; the test must await the Suspense boundary.
+  // The 5000ms timeout (vs default 1000ms) accommodates heavy parallel
+  // test loads where the dynamic import takes longer to resolve.
+  it('renders Budget Burn section', async () => {
     renderDashboard()
-    expect(screen.getByText('Budget Burn')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Budget Burn', undefined, { timeout: 5000 }),
+    ).toBeInTheDocument()
   })
 
   it('shows error banner when error is set', () => {

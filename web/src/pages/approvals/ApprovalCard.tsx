@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Clock, ShieldOff, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ export interface ApprovalCardProps {
   className?: string
 }
 
-export function ApprovalCard({
+function ApprovalCardImpl({
   approval,
   selected,
   onSelect,
@@ -200,3 +200,11 @@ export function ApprovalCard({
     </div>
   )
 }
+
+/**
+ * Memoised so a parent re-render that doesn't change the approval ref
+ * skips the per-card flash + countdown effects below. Card count is
+ * unbounded (paginated approvals queue); without memo every row
+ * re-renders on any sibling state change.
+ */
+export const ApprovalCard = memo(ApprovalCardImpl)

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link } from 'react-router'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
@@ -58,7 +59,7 @@ function getActionDotColor(actionType: ActivityEventType | WsEventType): string 
   return ACTION_DOT_COLORS[actionType] ?? 'bg-muted-foreground'
 }
 
-export function ActivityFeedItem({ activity, className }: ActivityFeedItemProps) {
+function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
   const dotColor = getActionDotColor(activity.action_type)
 
   return (
@@ -106,3 +107,11 @@ export function ActivityFeedItem({ activity, className }: ActivityFeedItemProps)
     </div>
   )
 }
+
+/**
+ * Memoised: the activity feed updates on every WebSocket event, and
+ * the parent re-renders the entire list each time. Without memo,
+ * unchanged sibling rows pay the cost of re-rendering Avatar +
+ * Link + formatRelativeTime on every WS update.
+ */
+export const ActivityFeedItem = memo(ActivityFeedItemImpl)

@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { ListTodo } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -11,21 +12,28 @@ interface TaskHistoryProps {
 }
 
 export function TaskHistory({ tasks, className }: TaskHistoryProps) {
-  // Sort by created_at descending (most recent first); skip tasks with invalid dates
-  const sorted = [...tasks]
-    .filter((t) => t.created_at && !Number.isNaN(new Date(t.created_at).getTime()))
-    .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
+  // Sort by created_at descending (most recent first); skip tasks with invalid dates.
+  // Memoised so a parent re-render with the same `tasks` reference doesn't
+  // rebuild the array, re-parse every Date, and re-sort.
+  const sorted = useMemo(() => {
+    return [...tasks]
+      .filter((t) => t.created_at && !Number.isNaN(new Date(t.created_at).getTime()))
+      .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
+  }, [tasks])
 
-  // Compute max duration for relative bar widths
-  // Mirrors effectiveEndMs logic: fall back to created_at if updated_at is unparseable or earlier
-  const maxDurationMs = sorted.reduce((max, task) => {
-    const createdMs = new Date(task.created_at!).getTime()
-    const endRaw = task.updated_at ?? task.created_at!
-    const endMs = new Date(endRaw).getTime()
-    const end = (Number.isNaN(endMs) || endMs < createdMs) ? createdMs : endMs
-    const duration = end - createdMs
-    return Math.max(max, duration)
-  }, 1)
+  // Compute max duration for relative bar widths.
+  // Mirrors effectiveEndMs logic: fall back to created_at if updated_at is
+  // unparseable or earlier.
+  const maxDurationMs = useMemo(() => {
+    return sorted.reduce((max, task) => {
+      const createdMs = new Date(task.created_at!).getTime()
+      const endRaw = task.updated_at ?? task.created_at!
+      const endMs = new Date(endRaw).getTime()
+      const end = (Number.isNaN(endMs) || endMs < createdMs) ? createdMs : endMs
+      const duration = end - createdMs
+      return Math.max(max, duration)
+    }, 1)
+  }, [sorted])
 
   return (
     <SectionCard title="Task History" icon={ListTodo} className={className}>

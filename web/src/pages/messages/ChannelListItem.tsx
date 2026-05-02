@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Hash, Megaphone, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Channel } from '@/api/types/messages'
@@ -15,7 +16,7 @@ interface ChannelListItemProps {
   onClick: () => void
 }
 
-export function ChannelListItem({
+function ChannelListItemImpl({
   channel,
   active,
   unreadCount,
@@ -48,3 +49,10 @@ export function ChannelListItem({
     </button>
   )
 }
+
+/**
+ * Memoised so re-renders of the surrounding ChannelListBody (driven by
+ * activeChannel + unreadCounts changes) don't ripple through every
+ * row when only one row's `active` / `unreadCount` actually changed.
+ */
+export const ChannelListItem = memo(ChannelListItemImpl)

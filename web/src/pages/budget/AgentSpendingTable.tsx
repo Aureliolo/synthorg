@@ -140,7 +140,7 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
         // the section card. The inner min-w sizes the row to its
         // natural width so the proportional column widths still hold.
         <div className="overflow-x-auto rounded-lg border border-border">
-          <div className="min-w-[40rem]">
+          <div className="md:min-w-[40rem]">
             <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
               {COLUMNS.map((col) => (
                 <ColumnHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />

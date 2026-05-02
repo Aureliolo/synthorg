@@ -60,7 +60,7 @@ function SettingsActionCard({ to, title, description }: { to: string; title: str
         <span className="text-sm font-medium text-foreground">{title}</span>
         <p className="text-xs text-text-secondary">{description}</p>
       </div>
-      <div className="w-56 shrink-0">
+      <div className="w-full max-w-[14rem] shrink-0 md:w-56">
         <span
           className="inline-flex h-9 w-full items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground"
           aria-hidden
