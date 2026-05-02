@@ -1,14 +1,15 @@
 """Memory-backend storage helpers for the training pipeline.
 
-Extracted from :mod:`synthorg.hr.training.service` to keep that module
-under the 800-line file ceiling. These helpers run after the guard
-chain has approved items: each content type's surviving items are
-stored to the recipient agent's memory backend in parallel.
+Runs the post-guard storage stage of training: each content type's
+guard-approved items are committed to the recipient agent's memory
+backend, in parallel per content type and per item, with per-item
+failures isolated from sibling stores so a single bad item does not
+abort the whole batch.
 
-The helpers are pure functions taking the dependencies they need as
-arguments (``memory_backend``, ``training_namespace``, ``training_tags``)
-so they can be tested without instantiating the full
-:class:`TrainingService` graph.
+The helpers are pure functions parameterised on the persistence
+dependencies they need (``memory_backend``, ``training_namespace``,
+``training_tags``), so they can be exercised without instantiating
+the full :class:`TrainingService` graph.
 """
 
 import asyncio

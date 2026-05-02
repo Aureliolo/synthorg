@@ -62,45 +62,18 @@ def _scan_source(source: str) -> list[tuple[int, int]]:
 class TestExtendedGate:
     """The gate flags every logger severity, including wrapped str() forms."""
 
-    def test_logger_exception_str_exc_flagged(self) -> None:
+    @pytest.mark.parametrize(
+        "method",
+        ["exception", "warning", "error", "info", "debug"],
+    )
+    def test_logger_method_str_exc_flagged(self, method: str) -> None:
+        """Every severity method trips the gate on bare ``error=str(exc)``."""
         hits = _scan_source(
-            """
-            logger.exception("E", error=str(exc))
+            f"""
+            logger.{method}("E", error=str(exc))
             """,
         )
-        assert hits, "logger.exception(..., error=str(exc)) must be flagged"
-
-    def test_logger_warning_str_exc_flagged(self) -> None:
-        hits = _scan_source(
-            """
-            logger.warning("E", error=str(exc))
-            """,
-        )
-        assert hits, "logger.warning(..., error=str(exc)) must be flagged"
-
-    def test_logger_error_str_exc_flagged(self) -> None:
-        hits = _scan_source(
-            """
-            logger.error("E", error=str(exc))
-            """,
-        )
-        assert hits, "logger.error(..., error=str(exc)) must be flagged"
-
-    def test_logger_info_str_exc_flagged(self) -> None:
-        hits = _scan_source(
-            """
-            logger.info("E", error=str(exc))
-            """,
-        )
-        assert hits, "logger.info(..., error=str(exc)) must be flagged"
-
-    def test_logger_debug_str_exc_flagged(self) -> None:
-        hits = _scan_source(
-            """
-            logger.debug("E", error=str(exc))
-            """,
-        )
-        assert hits, "logger.debug(..., error=str(exc)) must be flagged"
+        assert hits, f"logger.{method}(..., error=str(exc)) must be flagged"
 
     def test_attribute_logger_warning_flagged(self) -> None:
         """Attribute-chain receivers (``self._logger.warning(...)``) trip."""
