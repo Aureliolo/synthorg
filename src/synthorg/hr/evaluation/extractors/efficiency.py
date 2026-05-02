@@ -2,8 +2,7 @@
 
 Lifts cost / time / token efficiency sub-metrics from the
 performance snapshot's 30d window (or 7d fallback). Honors the
-runtime kill-switch resolver added by #1648 for the cost and
-latency sub-metrics:
+runtime kill-switch resolver for the cost and latency sub-metrics:
 
 - ``hr.evaluation_cost_enabled`` gates the ``cost`` sub-metric.
 - ``hr.evaluation_latency_enabled`` gates the ``time`` sub-metric.
@@ -35,8 +34,7 @@ class EfficiencyMetricExtractor:
     """Extract cost / time / tokens efficiency sub-metrics.
 
     Accepts an optional ``ConfigResolver`` so the operator-facing
-    cost/latency kill switches added in #1648 keep working after
-    the inline-Efficiency block is hoisted out of ``EvaluationService``.
+    cost/latency kill switches stay reachable from the extractor seam.
     """
 
     __slots__ = ("_config_resolver",)

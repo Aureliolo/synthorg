@@ -43,6 +43,7 @@ The design specification has been split into focused documentation pages for bet
 | [Client Simulation](design/client-simulation.md) | Client Types, Intake, Review Pipeline, Simulation | Synthetic client framework for workload generation and evaluation |
 | [Strategy & Trendslop Mitigation](design/strategy.md) | Lenses, Principles, Confidence, Impact | Anti-trendslop mitigation for strategic agents |
 | [Self-Improvement](design/self-improvement.md) | Meta-Loop, Signals, Rules, Proposals, Rollout | Self-improving company: signal aggregation, rule engine, improvement proposals, staged rollout |
+| [Internationalization](design/internationalization.md) | Locale Resolution, UI Text, Translation Scope | British English UI default, locale-aware Intl-based display formatting, no planned translation framework |
 
 ## Supporting Pages
 

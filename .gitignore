@@ -93,9 +93,6 @@ web/src/api/types/generated.d.ts
 # (hand-off artefact for issue #1417; regenerate locally as needed).
 web/src/i18n/_extracted_catalog.json
 
-# Generated comparison page (built by scripts/generate_comparison.py)
-docs/reference/comparison.md
-
 # Astro / Node.js (landing page)
 site/node_modules/
 site/dist/

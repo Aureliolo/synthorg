@@ -1,11 +1,9 @@
 """Parametrized coverage for the config-bridge settings.
 
-This is a single-file replacement for eleven per-namespace files
-that would have contained near-identical assertions.  Each row of
-``_EXPECTED`` describes one newly-added setting from #1398/#1400:
-expected namespace, key, type, default, numeric bounds, restart
-requirement, and required presence of ``yaml_path`` / ``group`` /
-``description``.
+Each row of ``_EXPECTED`` describes one settings entry covering the
+namespace bridge: expected namespace, key, type, default, numeric
+bounds, restart requirement, and required presence of ``yaml_path`` /
+``group`` / ``description``.
 
 Behaviour is asserted against the live registry after triggering
 registration via ``import synthorg.settings.definitions``.

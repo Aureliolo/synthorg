@@ -161,10 +161,9 @@ class MetricExtractor(Protocol):
     records, feedback, audit counts, trust level, ...) and return
     an ``ExtractedMetrics``. The composite scorer handles the rest.
 
-    ``extract`` is async because some extractors (notably
-    Efficiency, after rebase against the kill-switch resolver
-    landed in #1648) need to await ``ConfigResolver`` calls. CPU-bound
-    extractors simply ``return`` directly.
+    ``extract`` is async because some extractors (notably Efficiency)
+    need to await ``ConfigResolver`` calls for dynamic configuration.
+    CPU-bound extractors simply ``return`` directly.
     """
 
     @property

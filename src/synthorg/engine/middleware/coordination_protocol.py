@@ -45,8 +45,8 @@ class CoordinationMiddlewareContext(BaseModel):
         dispatch_result: Result of dispatch execution (set after phase 5).
         status_rollup: Aggregated subtask status rollup (set after phase 6).
         phases: Phase results accumulated so far.
-        task_ledger: TaskLedger populated by #1257 middleware.
-        progress_ledger: ProgressLedger populated by #1257 middleware.
+        task_ledger: TaskLedger populated by coordination middleware.
+        progress_ledger: ProgressLedger populated by coordination middleware.
         metadata: Middleware-to-middleware data pass-through.
     """
 
@@ -77,11 +77,11 @@ class CoordinationMiddlewareContext(BaseModel):
     )
     task_ledger: TaskLedger | None = Field(
         default=None,
-        description="TaskLedger from #1257 middleware",
+        description="TaskLedger from coordination middleware",
     )
     progress_ledger: ProgressLedger | None = Field(
         default=None,
-        description="ProgressLedger from #1257 middleware",
+        description="ProgressLedger from coordination middleware",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

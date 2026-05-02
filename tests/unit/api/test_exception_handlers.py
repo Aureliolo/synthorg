@@ -821,7 +821,7 @@ class TestExceptionHandlers:
 
 
 class TestNormalizeStatusCode:
-    """``_normalize_status_code`` warning paths added in #1659."""
+    """``_normalize_status_code`` warning path validation tests."""
 
     def test_invalid_type_logs_warning(self) -> None:
         """Non-numeric, non-string types (e.g. ``object``) emit a warning."""

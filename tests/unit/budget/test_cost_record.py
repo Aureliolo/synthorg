@@ -314,7 +314,7 @@ class TestCostRecord:
 
 @pytest.mark.unit
 class TestCostRecordAnalyticsFields:
-    """New per-call analytics fields added in #227."""
+    """Per-call analytics fields validation."""
 
     def _base(self) -> CostRecord:
         return CostRecord(

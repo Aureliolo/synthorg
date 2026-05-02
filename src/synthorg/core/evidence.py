@@ -48,8 +48,8 @@ class RecommendedAction(BaseModel):
 class EvidencePackageSignature(BaseModel):
     """Approver signature over an EvidencePackage.
 
-    Produced by the audit chain (new module in #1268) using
-    ML-DSA-65 (FIPS 204) or equivalent quantum-safe signature scheme.
+    Produced by the audit chain using ML-DSA-65 (FIPS 204) or equivalent
+    quantum-safe signature scheme.
 
     Attributes:
         approver_id: Identity of the approver.

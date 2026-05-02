@@ -312,12 +312,11 @@ class TestEventConstants:
             "verification",
             "versioning",
             "web",
-            # Added in #1395 -- logging convention cleanup:
+            # Logging convention namespaces:
             "capture",
             "fine_tune",
             "propagation",
-            # Added in #1436 to keep sink internal errors out of
-            # the audited "security.*" namespace.
+            # Separate from the audited "security.*" namespace.
             "audit_chain",
             # Trace handler lifecycle + config validation events.
             "tracing",
@@ -328,8 +327,7 @@ class TestEventConstants:
             # StrategyRegistry and the persistence/memory backend
             # registries that consolidate factory dispatch.
             "registry",
-            # Added in #1688 for ``GeneralRetryHandler`` constructor
-            # validation logs (max_attempts / base / cap rejection).
+            # Resilience handler validation and event logging.
             "resilience",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}

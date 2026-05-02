@@ -196,7 +196,7 @@ a bidirectional reference for the gateway translation layer.
 | `COMPLETED` | `completed` | Bidirectional | Successful completion |
 | `FAILED` | `failed` | Bidirectional | Unrecoverable failure |
 | `CANCELLED` | `canceled` | Bidirectional | Client-initiated cancellation |
-| `REJECTED` *(proposed)* | `rejected` | Bidirectional | Task refused by agent or guard (requires new TaskStatus value) |
+| `REJECTED` | `rejected` | Bidirectional | Task refused by agent or guard |
 
 **Gate verdict mapping** (not a task state):
 

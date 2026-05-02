@@ -15,7 +15,7 @@ responsibility of :meth:`get_effective_override` callers.  The legacy
 ``synthorg.providers.presets.get_preset(name)`` entry point still
 serves the in-code preset directly; consumers that need overrides
 applied call this service.  Migrating every caller to consult the
-override at read time is a follow-on task tracked in #1642.
+override at read time is a planned enhancement.
 """
 
 from datetime import UTC, datetime

@@ -2,8 +2,7 @@
 
 Defines ``IdealTrajectoryBaseline`` (per-task-type ideal reference)
 and ``EfficiencyRatios`` (per-run ratios against that baseline),
-including verbosity, structural erosion, and PTE metrics folded
-from #1244 (SlopCodeBench) and #1248 (PTE).
+including verbosity, structural erosion, and Program Test Efficiency (PTE) metrics.
 """
 
 from typing import Literal
