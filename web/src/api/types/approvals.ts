@@ -10,10 +10,16 @@ export interface RecommendedAction {
   confirmation_required: boolean
 }
 
+export type SignatureAlgorithm = 'ml-dsa-65' | 'ed25519'
+
+export const SIGNATURE_ALGORITHM_VALUES = [
+  'ml-dsa-65', 'ed25519',
+] as const satisfies readonly SignatureAlgorithm[]
+
 /** Mirrors `synthorg.core.evidence.EvidencePackageSignature`. */
 export interface EvidencePackageSignature {
   approver_id: string
-  algorithm: 'ml-dsa-65' | 'ed25519'
+  algorithm: SignatureAlgorithm
   /**
    * Signature bytes serialized as a base64 string.
    *

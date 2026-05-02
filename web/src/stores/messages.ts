@@ -3,7 +3,8 @@ import * as messagesApi from '@/api/endpoints/messages'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsEnum, sanitizeWsString } from '@/stores/notifications'
+import { ATTACHMENT_TYPE_VALUES } from '@/api/types/messages'
 import type { Channel, Message } from '@/api/types/messages'
 import type { WsEvent } from '@/api/types/websocket'
 
@@ -135,7 +136,10 @@ function parseWsMessage(
   // ``[string, string]`` tuples whose keys and values are attacker-
   // reachable.
   const attachments = c.attachments.map((att) => ({
-    type: (sanitizeWsString(att.type, 64) ?? '') as Message['attachments'][number]['type'],
+    type: sanitizeWsEnum(att.type, ATTACHMENT_TYPE_VALUES, 'file', {
+      maxLen: 64,
+      field: 'message.attachments[].type',
+    }),
     ref: sanitizeWsString(att.ref, 512) ?? '',
   }))
   const metadata = {

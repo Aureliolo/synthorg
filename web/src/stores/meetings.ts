@@ -6,7 +6,7 @@ import {
   MEETING_STATUS_VALUES,
 } from '@/api/types/meetings'
 import { PRIORITY_VALUES } from '@/api/types/enums'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsEnum, sanitizeWsString } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -267,8 +267,12 @@ function sanitizeMeetingMinutes(
   // construction is dropped rather than silently persisted raw.
   return {
     meeting_id: sanitizeWsString(minutes.meeting_id, 128) ?? '',
-    protocol_type:
-      (sanitizeWsString(minutes.protocol_type, 64) ?? '') as MeetingMinutes['protocol_type'],
+    protocol_type: sanitizeWsEnum(
+      minutes.protocol_type,
+      MEETING_PROTOCOL_TYPE_VALUES,
+      'round_robin',
+      { maxLen: 64, field: 'meeting.minutes.protocol_type' },
+    ),
     leader_id: sanitizeWsString(minutes.leader_id, 128) ?? '',
     participant_ids: minutes.participant_ids
       .map((id) => sanitizeWsString(id, 128) ?? '')
@@ -317,8 +321,16 @@ function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
   return {
     meeting_id: sanitizeWsString(c.meeting_id, 128) ?? '',
     meeting_type_name: sanitizeWsString(c.meeting_type_name, 128) ?? '',
-    protocol_type: (sanitizeWsString(c.protocol_type, 64) ?? '') as MeetingResponse['protocol_type'],
-    status: (sanitizeWsString(c.status, 64) ?? '') as MeetingResponse['status'],
+    protocol_type: sanitizeWsEnum(
+      c.protocol_type,
+      MEETING_PROTOCOL_TYPE_VALUES,
+      'round_robin',
+      { maxLen: 64, field: 'meeting.protocol_type' },
+    ),
+    status: sanitizeWsEnum(c.status, MEETING_STATUS_VALUES, 'scheduled', {
+      maxLen: 64,
+      field: 'meeting.status',
+    }),
     minutes: sanitizeMeetingMinutes(c.minutes),
     // Preserve the ``string | null`` contract: if sanitization strips
     // a non-null error_message down to empty, report ``null`` rather

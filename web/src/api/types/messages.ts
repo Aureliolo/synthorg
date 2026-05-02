@@ -16,6 +16,10 @@ export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent'
 
 export type AttachmentType = 'artifact' | 'file' | 'link'
 
+export const ATTACHMENT_TYPE_VALUES = [
+  'artifact', 'file', 'link',
+] as const satisfies readonly AttachmentType[]
+
 export interface Attachment {
   type: AttachmentType
   ref: string

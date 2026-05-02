@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as approvalsApi from '@/api/endpoints/approvals'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsEnum, sanitizeWsString } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -11,7 +11,6 @@ import type {
   ApprovalResponse,
   ApproveRequest,
   EvidencePackage,
-  EvidencePackageSignature,
   RejectRequest,
 } from '@/api/types/approvals'
 import {
@@ -19,6 +18,7 @@ import {
   APPROVAL_STATUS_VALUES,
   URGENCY_LEVEL_VALUES,
 } from '@/api/types/enums'
+import { SIGNATURE_ALGORITHM_VALUES } from '@/api/types/approvals'
 import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('approvals')
@@ -212,14 +212,18 @@ function sanitizeEvidencePackage(
     source_agent_id: sanitizeWsString(pkg.source_agent_id, 128) ?? '',
     task_id:
       pkg.task_id === null ? null : sanitizeWsString(pkg.task_id, 128) ?? '',
-    risk_level:
-      (sanitizeWsString(pkg.risk_level, 64) ?? '') as EvidencePackage['risk_level'],
+    risk_level: sanitizeWsEnum(pkg.risk_level, APPROVAL_RISK_LEVEL_VALUES, 'low', {
+      maxLen: 64,
+      field: 'evidence_package.risk_level',
+    }),
     metadata: pkgMetadata,
     signature_threshold: pkg.signature_threshold,
     signatures: pkg.signatures.map((s) => ({
       approver_id: sanitizeWsString(s.approver_id, 128) ?? '',
-      algorithm:
-        (sanitizeWsString(s.algorithm, 64) ?? '') as EvidencePackageSignature['algorithm'],
+      algorithm: sanitizeWsEnum(s.algorithm, SIGNATURE_ALGORITHM_VALUES, 'ed25519', {
+        maxLen: 64,
+        field: 'evidence_package.signatures[].algorithm',
+      }),
       signature_bytes: sanitizeWsString(s.signature_bytes, 2048) ?? '',
       signed_at: sanitizeWsString(s.signed_at, 64) ?? '',
       chain_position: s.chain_position,
@@ -262,9 +266,14 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     title: sanitizeWsString(c.title, 256) ?? '',
     description: sanitizeWsString(c.description, 2048) ?? '',
     requested_by: sanitizeWsString(c.requested_by, 128) ?? '',
-    risk_level:
-      (sanitizeWsString(c.risk_level, 64) ?? '') as ApprovalResponse['risk_level'],
-    status: (sanitizeWsString(c.status, 64) ?? '') as ApprovalResponse['status'],
+    risk_level: sanitizeWsEnum(c.risk_level, APPROVAL_RISK_LEVEL_VALUES, 'low', {
+      maxLen: 64,
+      field: 'approval.risk_level',
+    }),
+    status: sanitizeWsEnum(c.status, APPROVAL_STATUS_VALUES, 'pending', {
+      maxLen: 64,
+      field: 'approval.status',
+    }),
     task_id: sanitizeNullable(c.task_id, 128),
     metadata,
     decided_by: sanitizeNullable(c.decided_by, 128),
@@ -274,8 +283,10 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     expires_at: sanitizeNullable(c.expires_at, 64),
     evidence_package: sanitizeEvidencePackage(c.evidence_package),
     seconds_remaining: c.seconds_remaining,
-    urgency_level:
-      (sanitizeWsString(c.urgency_level, 64) ?? '') as ApprovalResponse['urgency_level'],
+    urgency_level: sanitizeWsEnum(c.urgency_level, URGENCY_LEVEL_VALUES, 'normal', {
+      maxLen: 64,
+      field: 'approval.urgency_level',
+    }),
   }
 }
 

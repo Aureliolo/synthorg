@@ -63,6 +63,10 @@ export const URGENCY_LEVEL_VALUES = [
   'critical', 'high', 'normal', 'no_expiry',
 ] as const satisfies readonly UrgencyLevel[]
 
+export const TASK_SOURCE_VALUES = [
+  'internal', 'client', 'simulation',
+] as const satisfies readonly TaskSource[]
+
 export const DEPARTMENT_NAME_VALUES = [
   'executive', 'product', 'design', 'engineering', 'quality_assurance',
   'data_analytics', 'operations', 'creative_marketing', 'security',

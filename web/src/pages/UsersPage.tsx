@@ -26,13 +26,7 @@ import type { OrgRole } from '@/api/types/enums'
 import type { UserResponse } from '@/api/endpoints/users'
 import { GrantRoleDialog } from './users/GrantRoleDialog'
 import { cn } from '@/lib/utils'
-
-const ROLE_PILL_CLASS: Record<OrgRole, string> = {
-  owner: 'bg-accent/10 text-accent border-accent/20',
-  department_admin: 'bg-warning/10 text-warning border-warning/20',
-  editor: 'bg-info/10 text-info border-info/20',
-  viewer: 'bg-surface text-text-secondary border-border',
-}
+import { ROLE_BADGE_COLORS } from '@/styles/status-colors'
 
 function RolePill({
   role,
@@ -53,7 +47,7 @@ function RolePill({
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium',
-        ROLE_PILL_CLASS[role],
+        ROLE_BADGE_COLORS[role],
       )}
     >
       {role}

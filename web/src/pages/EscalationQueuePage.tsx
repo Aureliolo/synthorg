@@ -20,6 +20,7 @@ import { formatDateTime } from '@/utils/format'
 import { EscalationDetailDrawer } from './escalations/EscalationDetailDrawer'
 import type { ConflictType, EscalationStatus } from '@/api/types/escalations'
 import { cn } from '@/lib/utils'
+import { ESCALATION_STATUS_BADGE_COLORS } from '@/styles/status-colors'
 
 /**
  * Conflict-type buckets surfaced as the "priority" filter; the data
@@ -57,13 +58,6 @@ const STATUS_OPTIONS: ReadonlyArray<{
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'all', label: 'All' },
 ]
-
-const STATUS_BADGE_CLASS: Record<EscalationStatus, string> = {
-  pending: 'bg-warning/10 text-warning border-warning/20',
-  decided: 'bg-success/10 text-success border-success/20',
-  expired: 'bg-danger/10 text-danger border-danger/20',
-  cancelled: 'bg-surface text-text-secondary border-border',
-}
 
 export default function EscalationQueuePage() {
   const escalations = useEscalationsStore((s) => s.escalations)
@@ -209,7 +203,7 @@ export default function EscalationQueuePage() {
                       aria-label={`Status ${e.status}`}
                       className={cn(
                         'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
-                        STATUS_BADGE_CLASS[e.status],
+                        ESCALATION_STATUS_BADGE_COLORS[e.status],
                       )}
                     >
                       {e.status.toUpperCase()}

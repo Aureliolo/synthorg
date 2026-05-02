@@ -3,10 +3,11 @@ import * as tasksApi from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsEnum, sanitizeWsString } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import {
   PRIORITY_VALUES,
+  TASK_SOURCE_VALUES,
   TASK_STATUS_VALUES as TASK_STATUS_VALUES_TUPLE,
   TASK_TYPE_VALUES as TASK_TYPE_VALUES_TUPLE,
 } from '@/api/types/enums'
@@ -142,9 +143,18 @@ function sanitizeTask(c: Task): Task {
     id: sanitizeWsString(c.id, 128) ?? '',
     title: sanitizeWsString(c.title, 256) ?? '',
     description: sanitizeWsString(c.description, 4096) ?? '',
-    type: (sanitizeWsString(c.type, 64) ?? '') as Task['type'],
-    status: (sanitizeWsString(c.status, 64) ?? '') as Task['status'],
-    priority: (sanitizeWsString(c.priority, 64) ?? '') as Task['priority'],
+    type: sanitizeWsEnum(c.type, TASK_TYPE_VALUES_TUPLE, 'admin', {
+      maxLen: 64,
+      field: 'task.type',
+    }),
+    status: sanitizeWsEnum(c.status, TASK_STATUS_VALUES_TUPLE, 'created', {
+      maxLen: 64,
+      field: 'task.status',
+    }),
+    priority: sanitizeWsEnum(c.priority, PRIORITY_VALUES, 'medium', {
+      maxLen: 64,
+      field: 'task.priority',
+    }),
     project: sanitizeWsString(c.project, 128) ?? '',
     created_by: sanitizeWsString(c.created_by, 128) ?? '',
     assigned_to: sanitizeNullable(c.assigned_to, 128),
@@ -170,7 +180,10 @@ function sanitizeTask(c: Task): Task {
     source:
       c.source === undefined || c.source === null
         ? c.source
-        : ((sanitizeWsString(c.source, 64) ?? '') as Task['source']),
+        : sanitizeWsEnum(c.source, TASK_SOURCE_VALUES, 'internal', {
+            maxLen: 64,
+            field: 'task.source',
+          }),
     version: c.version,
     created_at: sanitizeOptional(c.created_at, 64),
     updated_at: sanitizeOptional(c.updated_at, 64),
