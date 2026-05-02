@@ -311,7 +311,6 @@ class TestPathParamAliases:
         from typing import get_args
 
         from litestar.params import ParameterKwarg
-        from pydantic.functional_validators import AfterValidator
 
         from synthorg.api import path_params as pp
 
@@ -338,12 +337,12 @@ class TestPathParamAliases:
         )
         # ``PathField`` and ``PathEventType`` wrap ``NotBlankStr`` to
         # reject whitespace-only path segments in addition to the
-        # length bound.  Verify the ``AfterValidator`` flattened in
-        # from ``NotBlankStr`` is still present so a regression that
-        # silently swaps the alias back to bare ``str`` fails here.
+        # length bound.  Drive a behavioural assertion so a regression
+        # that swaps ``_check_not_whitespace`` for an unrelated
+        # ``AfterValidator`` (or drops the alias back to bare ``str``)
+        # fails here -- a metadata-shape check alone is spoofable.
         if alias_name in ("PathField", "PathEventType"):
-            after_validators = [m for m in meta[1:] if isinstance(m, AfterValidator)]
-            assert after_validators, (
-                f"{alias_name} is missing the NotBlankStr ``AfterValidator`` -- "
-                "the whitespace-only path segment guard is dropped"
-            )
+            from pydantic import TypeAdapter, ValidationError
+
+            with pytest.raises(ValidationError):
+                TypeAdapter(alias).validate_python("   ")
