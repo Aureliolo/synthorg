@@ -39,7 +39,7 @@ class GenerateReportRequest(BaseModel):
         period: The report period (daily/weekly/monthly).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     period: ReportPeriod = Field(description="Report period")
 

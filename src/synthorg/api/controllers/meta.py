@@ -24,7 +24,7 @@ from synthorg.observability.events.meta import META_CUSTOM_RULE_LIST_FAILED
 class ChatRequest(BaseModel):
     """Request body for the Chief of Staff chat endpoint."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     question: NotBlankStr = Field(max_length=2000)
 

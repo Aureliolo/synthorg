@@ -41,7 +41,7 @@ class SetupRequest(BaseModel):
         password: Admin password (minimum configured length).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     username: NotBlankStr = Field(max_length=128)
     password: NotBlankStr = Field(max_length=128)
@@ -61,7 +61,7 @@ class LoginRequest(BaseModel):
         password: Login password.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     username: NotBlankStr = Field(max_length=128)
     password: NotBlankStr = Field(max_length=128)
@@ -75,7 +75,7 @@ class ChangePasswordRequest(BaseModel):
         new_password: New password (minimum configured length).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     current_password: NotBlankStr = Field(max_length=128)
     new_password: NotBlankStr = Field(max_length=128)

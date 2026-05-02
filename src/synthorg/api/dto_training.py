@@ -14,7 +14,7 @@ PositiveInt = Annotated[int, Gt(0)]
 class CreateTrainingPlanRequest(BaseModel):
     """Request body for creating a training plan."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     override_sources: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -41,7 +41,7 @@ class CreateTrainingPlanRequest(BaseModel):
 class UpdateTrainingOverridesRequest(BaseModel):
     """Request body for updating training plan overrides."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     override_sources: tuple[NotBlankStr, ...] | None = Field(
         default=None,

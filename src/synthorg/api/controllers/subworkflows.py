@@ -72,7 +72,7 @@ class CreateSubworkflowRequest(BaseModel):
         edges: Graph edge payloads.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     subworkflow_id: NotBlankStr | None = Field(
         default=None,

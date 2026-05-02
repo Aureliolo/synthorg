@@ -37,7 +37,7 @@ class EntityRelationInput(BaseModel):
 class CreateEntityRequest(BaseModel):
     """Payload for creating a new entity definition (USER tier only)."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Entity name", max_length=256)
     definition: str = Field(
@@ -67,7 +67,7 @@ class CreateEntityRequest(BaseModel):
 class UpdateEntityRequest(BaseModel):
     """Payload for updating an entity definition."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     definition: str | None = Field(
         default=None,

@@ -70,7 +70,7 @@ _FORBIDDEN_ROLES: frozenset[HumanRole] = frozenset({HumanRole.SYSTEM})
 class CreateUserRequest(BaseModel):
     """Request body for creating a new user."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     username: NotBlankStr = Field(max_length=128)
     password: NotBlankStr = Field(max_length=128)
@@ -80,7 +80,7 @@ class CreateUserRequest(BaseModel):
 class UpdateUserRoleRequest(BaseModel):
     """Request body for updating a user's role."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     role: HumanRole
 
@@ -88,7 +88,7 @@ class UpdateUserRoleRequest(BaseModel):
 class GrantOrgRoleRequest(BaseModel):
     """Request body for granting an org-level role."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     role: OrgRole
     scoped_departments: tuple[NotBlankStr, ...] = ()

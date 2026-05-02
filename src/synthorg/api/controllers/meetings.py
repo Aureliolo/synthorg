@@ -120,7 +120,7 @@ class TriggerMeetingRequest(BaseModel):
         context: Optional context passed to participant resolver and agenda.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     event_name: NotBlankStr = Field(
         description="Event trigger name",

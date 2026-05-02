@@ -46,7 +46,7 @@ class SetOverrideRequest(BaseModel):
         expires_in_days: Optional expiration in days (None = indefinite).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     score: float = Field(ge=0.0, le=10.0, description="Override score")
     reason: NotBlankStr = Field(

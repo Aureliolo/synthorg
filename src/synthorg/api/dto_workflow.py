@@ -78,7 +78,7 @@ class WorkflowIODeclarationRequest(BaseModel):
         description: Human-readable description.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(max_length=128, description="Declaration name")
     type: WorkflowValueType = Field(description="Declared data type")
@@ -119,7 +119,7 @@ class CreateWorkflowDefinitionRequest(BaseModel):
         edges: Edges connecting nodes (serialized as dicts).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(max_length=256, description="Workflow name")
     description: str = Field(
@@ -185,7 +185,7 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
         expected_revision: Optimistic concurrency guard.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr | None = Field(default=None, max_length=256)
     description: str | None = Field(default=None, max_length=4096)
@@ -236,7 +236,7 @@ class ActivateWorkflowRequest(BaseModel):
         context: Runtime context for condition expression evaluation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project: NotBlankStr = Field(
         description="Project ID for created tasks",
@@ -287,7 +287,7 @@ class CreateFromBlueprintRequest(BaseModel):
         description: Optional description override.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     blueprint_name: NotBlankStr = Field(
         max_length=128,
@@ -315,7 +315,7 @@ class RollbackWorkflowRequest(BaseModel):
             concurrency on the live workflow_definitions row.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     target_version: int = Field(
         ge=1,

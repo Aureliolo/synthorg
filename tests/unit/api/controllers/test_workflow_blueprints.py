@@ -160,7 +160,7 @@ class TestCreateFromBlueprint:
 
         patch_resp = test_client.patch(
             f"/api/v1/workflows/{wf_id}",
-            json={"name": "Renamed Pipeline", "expected_version": 1},
+            json={"name": "Renamed Pipeline", "expected_revision": 1},
             headers=make_auth_headers("ceo"),
         )
         assert patch_resp.status_code == 200

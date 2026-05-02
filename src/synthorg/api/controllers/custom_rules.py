@@ -76,7 +76,7 @@ class CreateCustomRuleRequest(BaseModel):
         target_altitudes: Which strategies to trigger.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(
         description="Human-readable rule name (unique per organization).",
@@ -120,7 +120,7 @@ class UpdateCustomRuleRequest(BaseModel):
         target_altitudes: New target altitudes.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr | None = None
     description: NotBlankStr | None = None
@@ -141,7 +141,7 @@ class PreviewRuleRequest(BaseModel):
         sample_value: Metric value to test against.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     metric_path: NotBlankStr
     comparator: Comparator
