@@ -224,6 +224,17 @@ task lifecycle state machine.
 `ContinuousMode` provides event-driven always-on simulation with scheduled
 requirement generation and review triggers.
 
+### Idempotency
+
+`POST /api/v1/simulations/` registers the run via
+`SimulationStore.register_if_absent`, an atomic check-and-insert under the
+store's lock. A redelivered request (JetStream redelivery, HTTP 5xx-driven
+retry, etc.) carrying the same `simulation_id` returns HTTP 409 Conflict
+instead of spawning a second runner that races the first on
+`update_status` and corrupts metrics. Clients that supply their own
+`simulation_id` get retry safety for free; clients that omit it receive a
+fresh UUID per call and never collide.
+
 ---
 
 ## Configuration

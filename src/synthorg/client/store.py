@@ -174,6 +174,55 @@ class SimulationStore:
         async with self._lock:
             self._runs[record.simulation_id] = record
 
+    async def register_if_absent(self, record: SimulationRecord) -> bool:
+        """Atomically insert *record* if no entry exists for its id.
+
+        Returns ``True`` when *record* was inserted (the caller is the
+        "winner" and should spawn the runner), ``False`` when a record
+        for ``record.simulation_id`` already exists (the caller should
+        return HTTP 409 and let the existing runner finish).
+
+        The check-and-insert happens under ``self._lock`` so two
+        concurrent callers cannot both observe absence and proceed.
+        """
+        async with self._lock:
+            if record.simulation_id in self._runs:
+                return False
+            self._runs[record.simulation_id] = record
+            return True
+
+    async def unregister(
+        self,
+        simulation_id: str,
+        *,
+        expected: SimulationRecord | None = None,
+    ) -> bool:
+        """Compare-and-delete the registration if it matches *expected*.
+
+        Returns ``True`` when the entry was removed, ``False`` when no
+        entry existed OR a different record now occupies the slot. Used
+        by ``start_simulation`` to roll back a successful
+        ``register_if_absent`` if the post-claim setup (event publish,
+        runner spawn) raises -- without rollback the ``simulation_id``
+        would stay claimed forever and block every retry.
+
+        Passing ``expected`` makes the rollback safe under concurrent
+        retries: if the original claim has already been replaced by a
+        new run between the failure and the rollback (a fast retry
+        succeeded while the loser was still tearing down), the new run
+        is preserved instead of being silently deleted. ``expected=None``
+        keeps the old unconditional-delete semantics for callers that
+        don't have a snapshot to compare against.
+        """
+        async with self._lock:
+            current = self._runs.get(simulation_id)
+            if current is None:
+                return False
+            if expected is not None and current is not expected:
+                return False
+            del self._runs[simulation_id]
+            return True
+
     async def get(self, simulation_id: str) -> SimulationRecord:
         """Return the record by id or raise ``KeyError``."""
         async with self._lock:

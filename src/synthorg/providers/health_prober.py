@@ -8,15 +8,14 @@ reset the probe interval for that provider.
 """
 
 import asyncio
-import contextlib
-import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
 import httpx
 
-from synthorg.observability import get_logger
+from synthorg.core.clock import Clock, SystemClock
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_FAILED,
     PROVIDER_HEALTH_PROBE_SKIPPED,
@@ -30,6 +29,7 @@ from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
     is_url_allowed,
 )
+from synthorg.providers.errors import ProviderLifecycleConflictError
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
 
 if TYPE_CHECKING:
@@ -144,11 +144,15 @@ class ProviderHealthProber:
     """
 
     __slots__ = (
+        "_clock",
         "_config_resolver",
         "_discovery_policy_loader",
         "_health_tracker",
         "_interval",
+        "_lifecycle_lock",
+        "_stop_drain_timeout_seconds",
         "_stop_event",
+        "_stop_failed",
         "_task",
     )
 
@@ -161,6 +165,7 @@ class ProviderHealthProber:
             Callable[[], Awaitable[ProviderDiscoveryPolicy]] | None
         ) = None,
         interval_seconds: int = _DEFAULT_INTERVAL_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         if interval_seconds < 1:
             msg = f"interval_seconds must be >= 1, got {interval_seconds}"
@@ -169,29 +174,115 @@ class ProviderHealthProber:
         self._config_resolver = config_resolver
         self._discovery_policy_loader = discovery_policy_loader
         self._interval = interval_seconds
+        # ``Clock`` seam per ``CLAUDE.md`` -- tests inject ``FakeClock``
+        # so the lifecycle drain timeout and probe-cycle interval can
+        # be driven on virtual time instead of wall time.
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        # Per ``docs/reference/lifecycle-sync.md`` the lifecycle lock,
+        # stop event, drain timeout, and unrestartable flag are
+        # constructed eagerly so a racing ``stop()`` cannot observe a
+        # half-published lock attribute.
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        self._stop_failed: bool = False
+        self._stop_drain_timeout_seconds: float = 30.0
 
     async def start(self) -> None:
-        """Start the background probe loop."""
-        if self._task is not None:
-            return
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run_loop())
-        logger.info(
-            PROVIDER_HEALTH_PROBER_STARTED,
-            interval_seconds=self._interval,
-        )
+        """Start the background probe loop.
+
+        Idempotent + concurrent-safe: concurrent ``start()`` calls
+        serialise on ``self._lifecycle_lock`` so at most one task is
+        spawned even when multiple callers race on the ``_task is
+        None`` check. After a timed-out stop the prober is marked
+        unrestartable; constructing a fresh instance is required.
+        """
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "ProviderHealthProber is unrestartable after a "
+                    "timed-out stop; construct a fresh prober instead"
+                )
+                logger.warning(
+                    PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise ProviderLifecycleConflictError(msg)
+            if self._task is not None and not self._task.done():
+                return
+            self._stop_event.clear()
+            self._task = asyncio.create_task(
+                self._run_loop(),
+                name="provider-health-prober",
+            )
+            logger.info(
+                PROVIDER_HEALTH_PROBER_STARTED,
+                interval_seconds=self._interval,
+            )
 
     async def stop(self) -> None:
-        """Stop the background probe loop gracefully."""
-        self._stop_event.set()
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+        """Stop the background probe loop gracefully.
+
+        Holds ``self._lifecycle_lock`` so a concurrent ``start()``
+        cannot recreate the task mid-stop. The drain is shielded from
+        the outer ``wait_for`` so a hung downstream cannot indefinitely
+        hold the lifecycle lock; on timeout the prober is marked
+        unrestartable.
+        """
+        async with self._lifecycle_lock:
+            self._stop_event.set()
+            task = self._task
+            if task is None:
+                return
+            task.cancel()
+
+            async def _drain() -> None:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                self._stop_failed = True
+                logger.error(  # noqa: TRY400
+                    PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+                    error=("stop exceeded hard deadline; prober marked unrestartable"),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
             self._task = None
-        logger.info(PROVIDER_HEALTH_PROBER_STOPPED)
+            # Recreate the loop-bound stop event WHILE holding the
+            # lifecycle lock. Doing it outside the lock leaves a
+            # window where a racing ``start()`` could acquire the
+            # lock, spawn a probe task that captures
+            # ``self._stop_event`` (still the OLD event), and then
+            # this stop()'s ``self._stop_event = asyncio.Event()``
+            # outside the lock would swap in a NEW event. A later
+            # stop() would signal the new event, but the running
+            # task is still waiting on the old one, so shutdown
+            # stalls until the interval timeout. Holding the lock
+            # across the swap eliminates that race.
+            # ``self._lifecycle_lock`` itself MUST stay the same
+            # instance for the service lifetime; only the event is
+            # swapped.
+            self._stop_event = asyncio.Event()
+            logger.info(PROVIDER_HEALTH_PROBER_STOPPED)
 
     async def _run_loop(self) -> None:
         """Main loop: probe all, then sleep until next cycle or stop."""
@@ -342,8 +433,8 @@ class ProviderHealthProber:
                 latency_ms=round(elapsed_ms, 1),
             )
 
-    @staticmethod
     async def _execute_probe(
+        self,
         url: str,
         headers: dict[str, str],
     ) -> tuple[float, bool, str | None]:
@@ -356,7 +447,7 @@ class ProviderHealthProber:
         Returns:
             Tuple of (elapsed_ms, success, error_message).
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
         success = False
         error_msg: str | None = None
 
@@ -380,5 +471,5 @@ class ProviderHealthProber:
         except Exception as exc:
             error_msg = _truncate(f"{type(exc).__name__}: {exc}")
 
-        elapsed_ms = (time.monotonic() - start) * 1000
+        elapsed_ms = (self._clock.monotonic() - start) * 1000
         return elapsed_ms, success, error_msg

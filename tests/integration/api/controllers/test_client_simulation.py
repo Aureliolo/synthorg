@@ -315,6 +315,36 @@ class TestSimulationController:
             resp = client.get("/api/v1/simulations/missing")
             assert resp.status_code == 404
 
+    async def test_start_simulation_duplicate_id_returns_409(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """A second start with the same simulation_id is rejected."""
+        with _build_client(fake_persistence, fake_message_bus) as client:
+            client.headers.update(make_auth_headers("ceo"))
+            client.post(
+                "/api/v1/clients/",
+                json={
+                    "client_id": "sim",
+                    "name": "Sim",
+                    "persona": "Persona",
+                },
+            )
+            payload = {
+                "config": {
+                    "simulation_id": "fixed-sim-001",
+                    "project_id": "proj-1",
+                    "rounds": 1,
+                    "clients_per_round": 1,
+                    "requirements_per_client": 1,
+                },
+            }
+            first = client.post("/api/v1/simulations/", json=payload)
+            assert first.status_code == 201
+            second = client.post("/api/v1/simulations/", json=payload)
+            assert second.status_code == 409
+
 
 class TestReviewController:
     async def test_missing_task_returns_404(

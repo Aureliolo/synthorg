@@ -6,6 +6,7 @@ bootstrapping a full Litestar app, we call the raw function via
 ``handler.fn(self, ...)``.
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +17,11 @@ from litestar.testing import TestClient
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.services.idempotency_service import (
+    IdempotencyResult,
+    IdempotencyService,
+)
+from synthorg.api.state import AppState
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
@@ -29,6 +35,7 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
+from synthorg.backup.service import BackupService
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from tests.unit.api.conftest import make_auth_headers
 
@@ -64,23 +71,46 @@ def _make_restore_response(
     )
 
 
-def _make_state_and_service() -> tuple[MagicMock, AsyncMock]:
+def _make_state_and_service() -> tuple[SimpleNamespace, AsyncMock]:
     """Create a mock Litestar State with a mock BackupService in app_state.
 
     Returns:
         Tuple of (mock_state, mock_backup_service).
     """
-    service = AsyncMock()
-    app_state = MagicMock()
+    service = AsyncMock(spec=BackupService)
+    app_state = MagicMock(spec=AppState)
     app_state.backup_service = service
+    # The controller now wraps every backup in idempotency_service.
+    # Mock the service so run_idempotent invokes the callback inline
+    # and returns a fresh outcome with the manifest dict. ``spec=`` on
+    # the wrapper enforces the interface; ``run_idempotent`` is set to
+    # an inline async helper that exercises the awaitable contract.
+    idempotency_service = MagicMock(spec=IdempotencyService)
+
+    async def _run_idempotent(
+        *,
+        scope: object,
+        key: object,
+        callback: Any,
+    ) -> IdempotencyResult:
+        del scope, key
+        result = await callback()
+        return IdempotencyResult(result=result, fresh=True, timed_out=False)
+
+    idempotency_service.run_idempotent = _run_idempotent
+    app_state.idempotency_service = idempotency_service
     # Pagination requires a real cursor secret; MagicMock's default
     # attribute resolution would hand back a Mock to ``paginate_cursor``
     # which ultimately fails the HMAC pipeline.
     app_state.cursor_secret = CursorSecret.from_key("test-key-32-bytes-padding0000000")
 
-    state = MagicMock()
-    state.app_state = app_state
-    return state, service
+    # ``state.app_state`` must return the bound ``AppState`` exactly
+    # as assigned. ``SimpleNamespace`` is a plain attribute container
+    # with no auto-mocking, so the read is a direct attribute lookup.
+    # ``MagicMock(spec=State)`` would route the read through
+    # Litestar's ``State.__getattr__`` and could return a fresh
+    # auto-mock instead of the bound object.
+    return SimpleNamespace(app_state=app_state), service
 
 
 def _controller() -> BackupController:
@@ -95,24 +125,30 @@ class TestCreateBackup:
     async def test_create_backup_calls_service_with_manual_trigger(self) -> None:
         state, service = _make_state_and_service()
         manifest = _make_manifest()
-        service.create_backup = AsyncMock(return_value=manifest)
+        service.create_backup.return_value = manifest
 
         ctrl = _controller()
-        result = await ctrl.create_backup.fn(ctrl, state=state)
+        result = await ctrl.create_backup.fn(
+            ctrl,
+            state=state,
+            idempotency_key="test-key-001",
+        )
 
         service.create_backup.assert_awaited_once_with(BackupTrigger.MANUAL)
         assert isinstance(result, ApiResponse)
-        assert result.data is manifest
+        assert result.data == manifest
 
     async def test_create_backup_returns_409_on_in_progress(self) -> None:
         state, service = _make_state_and_service()
-        service.create_backup = AsyncMock(
-            side_effect=BackupInProgressError("busy"),
-        )
+        service.create_backup.side_effect = BackupInProgressError("busy")
 
         ctrl = _controller()
         with pytest.raises(ConflictError) as exc_info:
-            await ctrl.create_backup.fn(ctrl, state=state)
+            await ctrl.create_backup.fn(
+                ctrl,
+                state=state,
+                idempotency_key="test-key-002",
+            )
 
         assert exc_info.value.status_code == 409
 
@@ -123,7 +159,7 @@ class TestListBackups:
 
     async def test_list_backups_calls_service(self) -> None:
         state, service = _make_state_and_service()
-        service.list_backups = AsyncMock(return_value=())
+        service.list_backups.return_value = ()
 
         ctrl = _controller()
         result = await ctrl.list_backups.fn(ctrl, state=state)
@@ -142,7 +178,7 @@ class TestGetBackup:
     async def test_get_backup_calls_service_with_id(self) -> None:
         state, service = _make_state_and_service()
         manifest = _make_manifest()
-        service.get_backup = AsyncMock(return_value=manifest)
+        service.get_backup.return_value = manifest
 
         ctrl = _controller()
         result = await ctrl.get_backup.fn(
@@ -153,13 +189,11 @@ class TestGetBackup:
 
         service.get_backup.assert_awaited_once_with("abc123def456")
         assert isinstance(result, ApiResponse)
-        assert result.data is manifest
+        assert result.data == manifest
 
     async def test_get_backup_raises_404_on_not_found(self) -> None:
         state, service = _make_state_and_service()
-        service.get_backup = AsyncMock(
-            side_effect=BackupNotFoundError("gone"),
-        )
+        service.get_backup.side_effect = BackupNotFoundError("gone")
 
         ctrl = _controller()
         with pytest.raises(NotFoundError):
@@ -176,7 +210,7 @@ class TestDeleteBackup:
 
     async def test_delete_backup_calls_service_with_id(self) -> None:
         state, service = _make_state_and_service()
-        service.delete_backup = AsyncMock(return_value=None)
+        service.delete_backup.return_value = None
 
         ctrl = _controller()
         result = await ctrl.delete_backup.fn(
@@ -190,9 +224,7 @@ class TestDeleteBackup:
 
     async def test_delete_backup_raises_404_on_not_found(self) -> None:
         state, service = _make_state_and_service()
-        service.delete_backup = AsyncMock(
-            side_effect=BackupNotFoundError("gone"),
-        )
+        service.delete_backup.side_effect = BackupNotFoundError("gone")
 
         ctrl = _controller()
         with pytest.raises(NotFoundError):
@@ -210,7 +242,7 @@ class TestRestoreBackup:
     async def test_restore_calls_service_with_confirm_true(self) -> None:
         state, service = _make_state_and_service()
         response = _make_restore_response()
-        service.restore_from_backup = AsyncMock(return_value=response)
+        service.restore_from_backup.return_value = response
 
         request = RestoreRequest(
             backup_id="abc123def456",
@@ -228,12 +260,12 @@ class TestRestoreBackup:
             components=None,
         )
         assert isinstance(result, ApiResponse)
-        assert result.data is response
+        assert result.data == response
 
     async def test_restore_passes_components_to_service(self) -> None:
         state, service = _make_state_and_service()
         response = _make_restore_response()
-        service.restore_from_backup = AsyncMock(return_value=response)
+        service.restore_from_backup.return_value = response
 
         components = (BackupComponent.PERSISTENCE, BackupComponent.CONFIG)
         request = RestoreRequest(
@@ -264,9 +296,7 @@ class TestRestoreBackup:
 
     async def test_restore_raises_404_on_not_found(self) -> None:
         state, service = _make_state_and_service()
-        service.restore_from_backup = AsyncMock(
-            side_effect=BackupNotFoundError("gone"),
-        )
+        service.restore_from_backup.side_effect = BackupNotFoundError("gone")
 
         request = RestoreRequest(
             backup_id="000000000099",
@@ -278,9 +308,7 @@ class TestRestoreBackup:
 
     async def test_restore_raises_409_on_in_progress(self) -> None:
         state, service = _make_state_and_service()
-        service.restore_from_backup = AsyncMock(
-            side_effect=BackupInProgressError("busy"),
-        )
+        service.restore_from_backup.side_effect = BackupInProgressError("busy")
 
         request = RestoreRequest(
             backup_id="abc123def456",
@@ -294,9 +322,7 @@ class TestRestoreBackup:
 
     async def test_restore_raises_422_on_manifest_error(self) -> None:
         state, service = _make_state_and_service()
-        service.restore_from_backup = AsyncMock(
-            side_effect=ManifestError("corrupt manifest"),
-        )
+        service.restore_from_backup.side_effect = ManifestError("corrupt manifest")
 
         request = RestoreRequest(
             backup_id="abc123def456",
@@ -310,9 +336,7 @@ class TestRestoreBackup:
 
     async def test_restore_raises_500_on_restore_error(self) -> None:
         state, service = _make_state_and_service()
-        service.restore_from_backup = AsyncMock(
-            side_effect=RestoreError("disk failure"),
-        )
+        service.restore_from_backup.side_effect = RestoreError("disk failure")
 
         request = RestoreRequest(
             backup_id="abc123def456",
@@ -340,8 +364,12 @@ class TestRestoreConfirmGate:
         with pytest.raises(ValidationError):
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
-        # Service must never be called when confirm is false
-        service.restore_from_backup.assert_not_awaited()
+        # Service must never be called when confirm is false.
+        # ``assert_not_called()`` is stricter than ``assert_not_awaited()``:
+        # the former trips even on an unawaited coroutine, catching a
+        # regression where the controller forgets the ``await`` but
+        # still creates the call.
+        service.restore_from_backup.assert_not_called()
 
 
 @pytest.mark.unit
@@ -364,14 +392,15 @@ class TestBackupGuards:
         session-scoped apps where the factory patch cannot affect
         the already-created app.
         """
-        mock_svc = MagicMock()
+        from synthorg.backup.scheduler import BackupScheduler
+
+        mock_svc = MagicMock(spec=BackupService)
         mock_svc.on_startup = False
         mock_svc.on_shutdown = False
-        mock_svc.start = AsyncMock()
-        mock_svc.stop = AsyncMock()
-        mock_svc.list_backups = AsyncMock(return_value=[])
-        mock_svc.scheduler = MagicMock()
-        mock_svc.scheduler.stop = AsyncMock()
+        mock_svc.list_backups.return_value = []
+        scheduler = MagicMock(spec=BackupScheduler)
+        scheduler.stop = AsyncMock(spec=BackupScheduler.stop)
+        mock_svc.scheduler = scheduler
         monkeypatch.setattr(
             "synthorg.api.app.build_backup_service",
             lambda *_a, **_kw: mock_svc,

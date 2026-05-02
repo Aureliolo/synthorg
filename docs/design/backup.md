@@ -26,7 +26,7 @@ The backup system protects persistent data (persistence DB, agent memory, and co
 | Scheduled | Configurable interval (default: 6h) | Background, non-blocking |
 | Pre-shutdown | `Company.shutdown()` / SIGTERM | Synchronous, skips compression |
 | Post-startup | After config load, before accepting tasks | Snapshot as recovery point |
-| Manual | `POST /api/v1/admin/backups` | On-demand, returns manifest |
+| Manual | `POST /api/v1/admin/backups` | On-demand, returns manifest. **Requires the `Idempotency-Key` header** (RFC-style retry-safe key, max 255 chars); identical keys within 24h return the cached manifest instead of starting a second backup so a 5xx-driven client retry cannot launch concurrent backups and violate the at-most-one-running invariant. Missing or empty header yields HTTP 400. |
 | Pre-migration | Before restore operations | Safety net, automatic |
 
 ## Restore Flow

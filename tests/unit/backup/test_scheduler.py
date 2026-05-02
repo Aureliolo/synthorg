@@ -47,7 +47,7 @@ class TestSchedulerStart:
             "synthorg.backup.scheduler.asyncio.create_task",
             side_effect=_close_coro_side_effect(mock_task),
         ) as mock_ct:
-            scheduler.start()
+            await scheduler.start()
 
         assert scheduler.is_running
         mock_ct.assert_called_once()  # type: ignore[unreachable]
@@ -64,8 +64,8 @@ class TestSchedulerStart:
             "synthorg.backup.scheduler.asyncio.create_task",
             side_effect=_close_coro_side_effect(mock_task),
         ) as mock_ct:
-            scheduler.start()
-            scheduler.start()  # second call should be no-op
+            await scheduler.start()
+            await scheduler.start()  # second call should be no-op
 
         assert mock_ct.call_count == 1
 
@@ -123,7 +123,7 @@ class TestSchedulerIsRunning:
             "synthorg.backup.scheduler.asyncio.create_task",
             side_effect=_close_coro_side_effect(mock_task),
         ):
-            scheduler.start()
+            await scheduler.start()
 
         assert scheduler.is_running
 

@@ -25,3 +25,12 @@ For services whose `stop()` drains across `await` boundaries, wrap the drain in 
 - `IntegrationsHealthProber`
 - `EscalationNotifySubscriber`
 - `EscalationSweeper`
+- `ProviderHealthProber` (`providers/health_prober.py`)
+- `OrgInflectionMonitor` (`meta/chief_of_staff/monitor.py`)
+- `BackupScheduler` (`backup/scheduler.py`)
+- `PruningService` (`hr/pruning/service.py`)
+- `NgrokAdapter` (`integrations/tunnel/ngrok_adapter.py`): lifecycle lock only; no spawned background task, so the drain timeout / unrestartable flag do not apply.
+
+### In-place runner variant
+
+`ContinuousMode` (`client/continuous.py`) is **not** a background-task service: `start()` runs the simulation loop on the calling coroutine and only returns when `stop()` signals the stop event. The lifecycle lock therefore guards only the `_running` flag transition (acquire briefly at the top of `start()` to check-and-set, release before the loop body, re-acquire in the `finally` to clear the flag). Holding the lock across the full body would deadlock a second concurrent caller: it would queue on the lock until the first finished and then enter an empty state. Document this distinction when adding new in-place runners.

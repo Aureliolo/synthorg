@@ -4,6 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 
+from synthorg.backup.scheduler import BackupScheduler
+from synthorg.backup.service import BackupService
+from synthorg.settings.models import SettingValue
+from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.backup_subscriber import (
     BackupSettingsSubscriber,
@@ -27,19 +31,20 @@ def _make_subscriber(
     Returns:
         Tuple of (subscriber, mock_backup_service).
     """
-    scheduler = MagicMock()
+    scheduler = MagicMock(spec=BackupScheduler)
     type(scheduler).is_running = PropertyMock(return_value=scheduler_running)
-    scheduler.start = MagicMock()
-    scheduler.stop = AsyncMock()
-    scheduler.reschedule = MagicMock()
+    scheduler.start = AsyncMock(spec=BackupScheduler.start)
+    scheduler.stop = AsyncMock(spec=BackupScheduler.stop)
+    scheduler.reschedule = MagicMock(spec=BackupScheduler.reschedule)
 
-    service = MagicMock()
+    service = MagicMock(spec=BackupService)
     type(service).scheduler = PropertyMock(return_value=scheduler)
 
-    settings_service = MagicMock()
+    settings_service = MagicMock(spec=SettingsService)
 
     async def _mock_get(namespace: str, key: str) -> MagicMock:
-        result = MagicMock()
+        del namespace
+        result = MagicMock(spec=SettingValue)
         if key == "enabled":
             result.value = str(enabled)
         elif key == "schedule_hours":
@@ -48,7 +53,7 @@ def _make_subscriber(
             result.value = ""
         return result
 
-    settings_service.get = AsyncMock(side_effect=_mock_get)
+    settings_service.get = AsyncMock(spec=SettingsService.get, side_effect=_mock_get)
 
     sub = BackupSettingsSubscriber(
         backup_service=service,
@@ -95,8 +100,15 @@ class TestBackupSubscriberEnabled:
 
         await sub.on_settings_changed("backup", "enabled")
 
-        service.scheduler.start.assert_called_once()
-        service.scheduler.stop.assert_not_awaited()
+        # ``assert_awaited_once`` (vs ``assert_called_once``) catches a
+        # regression where the start coroutine is created but never
+        # awaited -- the call would still be recorded but the
+        # scheduler would never actually launch.
+        service.scheduler.start.assert_awaited_once()
+        # ``assert_not_called`` catches an unawaited coroutine
+        # (call recorded but never awaited) which ``assert_not_awaited``
+        # would silently pass through.
+        service.scheduler.stop.assert_not_called()
 
     async def test_enabled_stops_scheduler_when_running(self) -> None:
         sub, service = _make_subscriber(
@@ -118,7 +130,7 @@ class TestBackupSubscriberEnabled:
         await sub.on_settings_changed("backup", "enabled")
         await sub.on_settings_changed("backup", "enabled")
         # Two start() calls -- no crash, idempotent
-        assert service.scheduler.start.call_count == 2
+        assert service.scheduler.start.await_count == 2
 
 
 @pytest.mark.unit
@@ -142,7 +154,7 @@ class TestBackupSubscriberAdvisory:
         await sub.on_settings_changed("backup", key)
 
         service.scheduler.start.assert_not_called()
-        service.scheduler.stop.assert_not_awaited()
+        service.scheduler.stop.assert_not_called()
 
     async def test_schedule_hours_reschedules_without_toggle(self) -> None:
         """schedule_hours calls reschedule but does not stop/start scheduler."""
@@ -151,7 +163,7 @@ class TestBackupSubscriberAdvisory:
         await sub.on_settings_changed("backup", "schedule_hours")
 
         service.scheduler.start.assert_not_called()
-        service.scheduler.stop.assert_not_awaited()
+        service.scheduler.stop.assert_not_called()
         service.scheduler.reschedule.assert_called_once()
 
     @pytest.mark.parametrize(

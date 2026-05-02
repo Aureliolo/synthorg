@@ -94,7 +94,7 @@ class BackupService(BackupServiceArchiveMixin):
     async def start(self) -> None:
         """Start the backup scheduler if backups are enabled."""
         if self._config.enabled:
-            self._scheduler.start()
+            await self._scheduler.start()
 
     async def stop(self) -> None:
         """Stop the backup scheduler."""

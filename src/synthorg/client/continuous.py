@@ -1,4 +1,24 @@
-"""Continuous (always-on) simulation mode."""
+"""Continuous (always-on) simulation mode.
+
+``ContinuousMode`` is an **in-place runner**: ``start()`` executes the
+simulation loop on the calling coroutine and only returns once
+``stop()`` has been signalled.  This shape differs from the canonical
+service lifecycle pattern (``docs/reference/lifecycle-sync.md``)
+where ``start()`` spawns a background task and returns immediately.
+The canonical pattern's drain timeout / unrestartable flag therefore
+does not apply here -- there is no orphan task to drain post-stop.
+
+What carries over from the canonical pattern is the
+``self._lifecycle_lock``: it serialises the ``_running`` flag check
+and is held only briefly at the top of ``start()`` (acquire, check,
+set, release) and again in the ``finally`` to clear the flag. The
+lock does NOT span the loop body -- holding it across the run loop
+would deadlock a concurrent ``start()`` caller (it would queue on
+the lock until the first finished, then enter an empty state).
+``stop()`` is synchronous and does not acquire the lock; it merely
+sets ``self._stop_event`` so the running ``start()`` coroutine
+observes the signal on its next iteration.
+"""
 
 import asyncio
 from collections import deque
@@ -43,7 +63,12 @@ class ContinuousMode:
         self._config = config
         self._runner = runner
         self._stop_event = asyncio.Event()
-        self._lock = asyncio.Lock()
+        # Per ``docs/reference/lifecycle-sync.md`` the lifecycle lock
+        # is named distinctly from any hot-path lock so a hot-path
+        # contention cannot block lifecycle transitions. ContinuousMode
+        # has no hot-path lock today, but the rename keeps the
+        # codebase uniform across services.
+        self._lifecycle_lock = asyncio.Lock()
         self._runs_completed = 0
         self._running = False
 
@@ -70,7 +95,16 @@ class ContinuousMode:
         if not self._config.enabled:
             logger.debug(CONTINUOUS_MODE_DISABLED)
             return []
-        async with self._lock:
+        # Acquire the lifecycle lock briefly to gate the ``_running``
+        # transition.  Unlike a service that spawns a background
+        # task, ``start()`` runs the loop on the calling coroutine,
+        # so the lock does not need to span the loop body -- it only
+        # needs to make the "is the runner already busy?" check
+        # atomic against concurrent callers.  Holding the lock for
+        # the full loop would deadlock a second caller: it would
+        # queue on the lock until the first finished, then enter and
+        # find ``_running=False``, never observing the conflict.
+        async with self._lifecycle_lock:
             if self._running:
                 msg = "ContinuousMode is already running"
                 raise RuntimeError(msg)
@@ -97,10 +131,17 @@ class ContinuousMode:
                 except TimeoutError:
                     continue
         finally:
-            async with self._lock:
+            async with self._lifecycle_lock:
                 self._running = False
         return list(results)
 
     def stop(self) -> None:
-        """Signal continuous mode to stop after the current run."""
+        """Signal continuous mode to stop after the current run.
+
+        Synchronous on purpose: only sets the stop event so a caller
+        outside the loop can signal teardown without contending with
+        the running ``start()`` coroutine. The lifecycle lock is not
+        acquired here because the lock guards only the ``_running``
+        flag transition, not the long-lived loop body.
+        """
         self._stop_event.set()

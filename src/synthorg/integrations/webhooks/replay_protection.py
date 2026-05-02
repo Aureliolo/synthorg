@@ -2,10 +2,18 @@
 
 Prevents replay attacks by tracking nonces and validating
 timestamps within a configurable window.
+
+The mutating ``check`` method holds a ``threading.Lock`` so concurrent
+threadpool-dispatched webhook handlers cannot both pass the nonce
+duplicate test and insert the same nonce.  Without the lock, two
+identical webhook deliveries arriving simultaneously could each see
+the nonce as fresh and both proceed, losing the replay-protection
+guarantee.
 """
 
 import hashlib
 import math
+import threading
 from collections import OrderedDict
 
 from synthorg.core.clock import Clock, SystemClock
@@ -81,6 +89,7 @@ class ReplayProtector:
         self._max_entries = max_entries
         self._seen: OrderedDict[str, float] = OrderedDict()
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._lock = threading.Lock()
 
     def check_freshness(self, timestamp: float | None) -> bool:
         """Validate timestamp staleness only (no nonce dedup).
@@ -98,6 +107,17 @@ class ReplayProtector:
             ``False`` if the timestamp is non-finite or outside the
             configured window.
         """
+        return self._check_freshness_at(timestamp, self._clock.now().timestamp())
+
+    def _check_freshness_at(self, timestamp: float | None, now: float) -> bool:
+        """Validate timestamp staleness against a caller-supplied *now*.
+
+        Allows :meth:`check` to sample the clock exactly once and pass
+        the same snapshot to both the freshness check and the nonce
+        eviction so a clock advance between two reads cannot open a
+        boundary replay window where the freshness check uses one
+        ``now`` and the nonce eviction uses another.
+        """
         if timestamp is None:
             return True
         if not math.isfinite(timestamp):
@@ -106,9 +126,6 @@ class ReplayProtector:
                 reason="non-finite timestamp",
             )
             return False
-        # Capture once so the comparison and the logged ``skew`` field
-        # cannot disagree if the clock advances between calls.
-        now = self._clock.now().timestamp()
         skew = abs(now - timestamp)
         if skew > self._window:
             logger.warning(
@@ -127,6 +144,11 @@ class ReplayProtector:
     ) -> bool:
         """Check whether a request is a replay.
 
+        Delegates timestamp freshness to :meth:`check_freshness` and
+        nonce dedup to :meth:`_check_nonce` so each concern stays
+        isolated and the function body fits comfortably under the
+        50-line limit.
+
         Args:
             nonce: Request nonce (optional).
             timestamp: Request timestamp as Unix epoch seconds.
@@ -135,8 +157,6 @@ class ReplayProtector:
             ``True`` if the request is safe (not a replay).
             ``False`` if the request should be rejected.
         """
-        now = self._clock.now().timestamp()
-
         # Fail closed: when neither a nonce nor a timestamp is supplied
         # the protector has nothing to check against, so accepting the
         # request would silently downgrade replay protection to a
@@ -148,68 +168,81 @@ class ReplayProtector:
                 reason="no freshness signal (nonce and timestamp both missing)",
             )
             return False
+        # Sample the clock once per ``check()`` call and reuse the
+        # snapshot for both freshness and nonce-eviction decisions so
+        # a clock advance mid-call cannot open a boundary replay
+        # window where the freshness check observes one ``now`` and
+        # the nonce eviction observes another.
+        now = self._clock.now().timestamp()
+        if not self._check_freshness_at(timestamp, now):
+            return False
+        return self._check_nonce(nonce=nonce, now=now)
 
-        # ``float("nan")`` would bypass the window check because
-        # ``abs(now - nan) > window`` evaluates to ``False``. Reject
-        # any non-finite timestamp up-front so a malformed header
-        # cannot silently pass freshness validation.
-        if timestamp is not None and not math.isfinite(timestamp):
+    def _check_nonce(self, *, nonce: str | None, now: float) -> bool:
+        """Validate the nonce dedup window.
+
+        Caller is responsible for freshness checks; this method only
+        handles the nonce side of replay protection. ``now`` is taken
+        from the same clock read the caller used so eviction and
+        dedup observe the same instant.
+        """
+        if nonce is None:
+            with self._lock:
+                self._evict_locked(now)
+            return True
+
+        # Reject oversized nonces before touching the cache. An
+        # attacker who could send arbitrarily long nonces would
+        # otherwise be able to make each hash computation
+        # increasingly expensive even though the cache entry itself
+        # is fixed-size.
+        if len(nonce) > MAX_NONCE_CHARS:
             logger.warning(
                 WEBHOOK_REPLAY_DETECTED,
-                reason="non-finite timestamp",
+                reason="nonce exceeds max size",
+                nonce_length=len(nonce),
+                max_nonce_chars=MAX_NONCE_CHARS,
             )
             return False
 
-        if timestamp is not None and abs(now - timestamp) > self._window:
+        # Store a fixed-size SHA-256 digest instead of the raw
+        # attacker-controlled string. Bounds per-entry memory
+        # independent of nonce length and removes any concern about
+        # echoing the nonce back in log output below.
+        key = _fingerprint_nonce(nonce)
+        with self._lock:
+            self._evict_locked(now)
+            duplicate = key in self._seen
+            if not duplicate:
+                self._seen[key] = now
+                # Bound the store: evict oldest insertion(s) if over limit.
+                while len(self._seen) > self._max_entries:
+                    self._seen.popitem(last=False)
+        if duplicate:
             logger.warning(
                 WEBHOOK_REPLAY_DETECTED,
-                reason="timestamp outside window",
-                skew=abs(now - timestamp),
+                reason="duplicate nonce",
+                nonce_fingerprint=key[:16],
             )
             return False
-
-        self._evict(now)
-
-        if nonce is not None:
-            # Reject oversized nonces before touching the cache.
-            # An attacker who could send arbitrarily long nonces
-            # would otherwise be able to make each hash computation
-            # increasingly expensive even though the cache entry
-            # itself is fixed-size.
-            if len(nonce) > MAX_NONCE_CHARS:
-                logger.warning(
-                    WEBHOOK_REPLAY_DETECTED,
-                    reason="nonce exceeds max size",
-                    nonce_length=len(nonce),
-                    max_nonce_chars=MAX_NONCE_CHARS,
-                )
-                return False
-            # Store a fixed-size SHA-256 digest instead of the raw
-            # attacker-controlled string. Bounds per-entry memory
-            # independent of nonce length and removes any concern
-            # about echoing the nonce back in log output below.
-            key = _fingerprint_nonce(nonce)
-            if key in self._seen:
-                logger.warning(
-                    WEBHOOK_REPLAY_DETECTED,
-                    reason="duplicate nonce",
-                    nonce_fingerprint=key[:16],
-                )
-                return False
-            self._seen[key] = now
-            # Bound the store: evict oldest insertion(s) if over limit.
-            while len(self._seen) > self._max_entries:
-                self._seen.popitem(last=False)
-
         return True
 
-    def _evict(self, now: float) -> None:
-        """Remove nonces older than the window."""
+    def _evict_locked(self, now: float) -> None:
+        """Remove nonces older than the window.
+
+        Caller must hold ``self._lock``. Walks every entry instead of
+        early-exiting on the first non-expired one: the caller in
+        ``check()`` samples ``now`` BEFORE acquiring the lock, which
+        means under contention the insertion order in ``self._seen``
+        no longer matches timestamp order (a thread that read an
+        older ``now`` can win the lock after a thread with a newer
+        ``now`` already inserted, leaving an older timestamp behind a
+        newer one in the ordered map). Walking all entries keeps the
+        duplicate-reject window pinned to ``self._window`` even when
+        that ordering invariant is broken. The walk is O(n) but
+        bounded by ``self._max_entries``.
+        """
         cutoff = now - self._window
-        # OrderedDict preserves insertion order; stop at the first
-        # non-expired entry since later insertions are always newer.
-        while self._seen:
-            nonce, ts = next(iter(self._seen.items()))
-            if ts >= cutoff:
-                break
+        expired = [nonce for nonce, ts in self._seen.items() if ts < cutoff]
+        for nonce in expired:
             del self._seen[nonce]
