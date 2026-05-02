@@ -174,6 +174,23 @@ class SimulationStore:
         async with self._lock:
             self._runs[record.simulation_id] = record
 
+    async def register_if_absent(self, record: SimulationRecord) -> bool:
+        """Atomically insert *record* if no entry exists for its id.
+
+        Returns ``True`` when *record* was inserted (the caller is the
+        "winner" and should spawn the runner), ``False`` when a record
+        for ``record.simulation_id`` already exists (the caller should
+        return HTTP 409 and let the existing runner finish).
+
+        The check-and-insert happens under ``self._lock`` so two
+        concurrent callers cannot both observe absence and proceed.
+        """
+        async with self._lock:
+            if record.simulation_id in self._runs:
+                return False
+            self._runs[record.simulation_id] = record
+            return True
+
     async def get(self, simulation_id: str) -> SimulationRecord:
         """Return the record by id or raise ``KeyError``."""
         async with self._lock:

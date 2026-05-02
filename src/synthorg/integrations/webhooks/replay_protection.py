@@ -203,10 +203,8 @@ class ReplayProtector:
         key = _fingerprint_nonce(nonce)
         with self._lock:
             self._evict_locked(now)
-            if key in self._seen:
-                duplicate = True
-            else:
-                duplicate = False
+            duplicate = key in self._seen
+            if not duplicate:
                 self._seen[key] = now
                 # Bound the store: evict oldest insertion(s) if over limit.
                 while len(self._seen) > self._max_entries:

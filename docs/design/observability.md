@@ -197,6 +197,13 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 
 All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths (never `logger.exception(..., error=str(exc))`) to avoid leaking secrets through traceback frame-locals (SEC-1).
 
+**Event stream events (`observability/events/event_stream.py`):**
+
+| Constant | Level | When fired |
+|----------|-------|------------|
+| `EVENT_STREAM_HUB_PUBLISH_FAILED` | WARNING | A subscriber queue rejected the event (full); the publisher continues (best-effort fan-out). |
+| `EVENT_STREAM_HUB_PUBLISH_DEDUPED` | WARNING | An event was rejected as a duplicate within the per-session sliding-window TTL (default 60s). The hub keys dedup on `event.id`; identical ids within the window are dropped so an upstream retry (e.g. webhook handler that catches a transient publish failure and retries) cannot deliver the same event twice. The window is bounded per session (default 1024 entries, evicted on insert) so a noisy session cannot exhaust memory. |
+
 **API entry-point boundary events (`observability/events/api.py`):**
 
 | Constant | Level | When fired |

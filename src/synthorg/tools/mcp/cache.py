@@ -30,6 +30,11 @@ class MCPResultCache:
     Thread-safe via an internal ``threading.Lock`` so concurrent
     threadpool-dispatched tool invocations cannot interleave the
     read-decision-write blocks in :meth:`get` and :meth:`put`.
+    Both methods ``copy.deepcopy`` the cached value on the way in and
+    out so a caller mutating the returned ``ToolExecutionResult`` --
+    e.g. appending to a list field, replacing a dict entry -- cannot
+    poison the next cache hit. The deepcopy is intentional, not an
+    inefficiency to optimise away.
     Keys are derived from tool name and arguments.
 
     Args:

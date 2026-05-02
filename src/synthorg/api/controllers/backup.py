@@ -98,6 +98,11 @@ class BackupController(Controller):
                 ),
                 required=True,
                 min_length=1,
+                # Bound the key length so a malicious client cannot
+                # exhaust the durable idempotency store with arbitrarily
+                # large keys; 255 chars is plenty for UUIDs / SHAs and
+                # matches common header-value column widths.
+                max_length=255,
             ),
         ],
     ) -> ApiResponse[BackupManifest]:

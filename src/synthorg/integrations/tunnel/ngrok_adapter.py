@@ -92,12 +92,13 @@ class NgrokAdapter:
             except Exception as exc:
                 # ngrok auth token env var may be echoed in exception
                 # messages; scrub + drop traceback.
+                safe_desc = safe_error_description(exc)
                 logger.warning(
                     TUNNEL_ERROR,
                     error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                    error=safe_desc,
                 )
-                msg = f"Failed to start ngrok tunnel: {type(exc).__name__}"
+                msg = f"Failed to start ngrok tunnel: {safe_desc}"
                 raise TunnelError(msg) from exc
 
             logger.info(

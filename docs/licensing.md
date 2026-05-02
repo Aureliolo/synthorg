@@ -118,7 +118,7 @@ SynthOrg's default install (SQLite-only) carries only permissive licenses (MIT, 
 
 These are linked dynamically (separate `pip`-installable packages) and the LGPL anti-circumvention clause is satisfied by the standard `pip` replacement workflow. Operators who redistribute combined binaries that include the `postgres` extra must publish a NOTICE listing the LGPL components and preserve replacement-version flexibility. Operators using SQLite (the default) carry no LGPL obligations.
 
-See [`docs/research/lgpl-postgres-driver-decision.md`](research/lgpl-postgres-driver-decision.md) for the full rationale.
+The retention of LGPL drivers in the optional extra was evaluated explicitly: the [LGPL Postgres Driver Decision](research/lgpl-postgres-driver-decision.md) compares the trade-offs (asyncpg swap, vendor / fork, accept-with-ADR) and documents why dynamic linkage in an opt-in extra is acceptable under BUSL-1.1's narrowed Additional Use Grant.
 
 ---
 

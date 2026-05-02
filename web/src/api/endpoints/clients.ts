@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 
@@ -262,11 +264,24 @@ export async function getSimulation(
 export async function startSimulation(
   config: SimulationConfig,
 ): Promise<SimulationStatus> {
-  const response = await apiClient.post<ApiResponse<SimulationStatus>>(
-    '/simulations/',
-    { config },
-  )
-  return unwrap(response)
+  try {
+    const response = await apiClient.post<ApiResponse<SimulationStatus>>(
+      '/simulations/',
+      { config },
+    )
+    return unwrap(response)
+  } catch (err) {
+    // The backend returns HTTP 409 when a simulation with
+    // ``config.simulation_id`` is already registered (a redelivery
+    // or 5xx-driven retry of the same request). Fall back to
+    // fetching the existing run so the caller's retry path is
+    // idempotent: retries observe the in-flight runner instead of
+    // raising and forcing the user to refresh.
+    if (axios.isAxiosError(err) && err.response?.status === 409) {
+      return getSimulation(config.simulation_id)
+    }
+    throw err
+  }
 }
 
 export async function cancelSimulation(

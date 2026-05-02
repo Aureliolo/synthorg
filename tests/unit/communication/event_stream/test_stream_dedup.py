@@ -1,10 +1,9 @@
 """Dedup tests for ``EventStreamHub.publish``.
 
-Per audit #133: a retried publish (e.g. a webhook handler that
-catches a transient publish failure) must not deliver the same event
-twice to subscribers. The hub keeps a per-session sliding-window of
-seen ``event.id`` values; identical ids within the TTL are skipped
-and logged.
+A retried publish (e.g. a webhook handler that catches a transient
+publish failure) must not deliver the same event twice to subscribers.
+The hub keeps a per-session sliding-window of seen ``event.id``
+values; identical ids within the TTL are skipped and logged.
 """
 
 import asyncio
@@ -114,3 +113,27 @@ class TestEventStreamHubDedup:
             await hub.publish(_event(event_id=f"evt-{i}"))
         seen = hub._seen_event_ids["session-1"]
         assert len(seen) <= 8
+
+    async def test_unsubscribe_clears_dedup_window_for_session(self) -> None:
+        """Last unsubscribe drops the per-session dedup window."""
+        clock = FakeClock()
+        hub = EventStreamHub(dedup_ttl_seconds=60.0, clock=clock)
+        queue = await hub.subscribe("session-1")
+
+        await hub.publish(_event(event_id="evt-001"))
+        assert "session-1" in hub._seen_event_ids
+
+        await hub.unsubscribe("session-1", queue)
+        assert "session-1" not in hub._seen_event_ids
+
+    async def test_unsubscribe_with_remaining_subscribers_keeps_dedup(self) -> None:
+        """Dedup window stays while any subscriber remains for the session."""
+        clock = FakeClock()
+        hub = EventStreamHub(dedup_ttl_seconds=60.0, clock=clock)
+        q1 = await hub.subscribe("session-1")
+        await hub.subscribe("session-1")
+
+        await hub.publish(_event(event_id="evt-001"))
+        await hub.unsubscribe("session-1", q1)
+        # Other subscriber still present, dedup map should persist.
+        assert "session-1" in hub._seen_event_ids

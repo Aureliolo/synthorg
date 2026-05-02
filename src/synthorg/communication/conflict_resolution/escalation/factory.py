@@ -1,8 +1,8 @@
 """Factories for the escalation queue backend and decision processor.
 
-Both factories dispatch via small registry maps (per audit #69) so
-adding a new backend or decision strategy is a single registry entry
-rather than a new branch in an if/elif chain. The shape mirrors
+Both factories dispatch via small registry maps so adding a new backend
+or decision strategy is a single registry entry rather than a new
+branch in an if/elif chain. The shape mirrors
 ``synthorg.persistence.registry.PersistenceBackendRegistry`` and the
 ``match/case`` dispatch in ``synthorg.communication.bus``.
 """
@@ -53,7 +53,15 @@ def _require_persistence(
     config_backend: str,
     persistence: PersistenceBackend | None,
 ) -> PersistenceBackend:
-    """Reject a missing or mismatched persistence backend, logging before raise."""
+    """Reject a missing or mismatched persistence backend, logging before raise.
+
+    The escalation queue store's backend (``memory`` / ``sqlite`` /
+    ``postgres``) MUST line up with the operator's persistence choice.
+    A mismatch -- typically because someone hand-injected a backend
+    instance that does not match the configuration -- is surfaced at
+    construction time rather than allowed to silently fall back to an
+    in-memory state or to interact with the wrong driver.
+    """
     if persistence is None:
         msg = f"{config_backend} backend requires a connected persistence backend"
         logger.warning(

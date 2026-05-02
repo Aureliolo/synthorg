@@ -274,29 +274,27 @@ class SimulationController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        # Idempotency guard (audit #133): a JetStream redelivery or
-        # HTTP 5xx retry of /simulations/start with the same
-        # ``simulation_id`` would otherwise spawn a second runner that
-        # races the first on ``simulation_store.update_status``,
-        # corrupting metrics with last-write-wins.  Reject the second
-        # request with HTTP 409 Conflict so the caller can fall back
-        # to ``GET /simulations/{id}`` to observe the in-flight run.
-        with contextlib.suppress(KeyError):
-            existing = await sim_state.simulation_store.get(data.config.simulation_id)
-            msg = (
-                f"Simulation {data.config.simulation_id!r} already exists "
-                f"(status={existing.status!r}); cannot start a second runner "
-                "for the same id"
-            )
-            raise ConflictError(msg)
-
         record = SimulationRecord(
             simulation_id=data.config.simulation_id,
             config=data.config,
             status="running",
             started_at=datetime.now(UTC),
         )
-        await sim_state.simulation_store.save(record)
+        # A JetStream redelivery or HTTP 5xx retry of /simulations/start
+        # with the same ``simulation_id`` would otherwise spawn a second
+        # runner that races the first on
+        # ``simulation_store.update_status``, corrupting metrics with
+        # last-write-wins. ``register_if_absent`` performs the check
+        # and insert atomically under the store's lock, so two
+        # concurrent callers cannot both observe absence and proceed.
+        # The losing caller gets HTTP 409 and can fall back to
+        # ``GET /simulations/{id}`` to observe the in-flight run.
+        if not await sim_state.simulation_store.register_if_absent(record):
+            msg = (
+                f"Simulation {data.config.simulation_id!r} already exists; "
+                "cannot start a second runner for the same id"
+            )
+            raise ConflictError(msg)
         _publish_event(request, WsEventType.SIMULATION_STARTED, record)
 
         async def runner_task() -> None:

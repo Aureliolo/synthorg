@@ -1,15 +1,13 @@
 """Idempotency-Key is mandatory for POST /admin/backups.
 
-Per audit #133 (idempotency / retry safety): without a key, a
-network-flake-driven 5xx retry could launch concurrent backups and
-violate the at-most-one-running invariant. The header is now
-required by Litestar's parameter validation; missing or empty values
-yield HTTP 400.
+Without a key, a network-flake-driven 5xx retry could launch
+concurrent backups and violate the at-most-one-running invariant.
+The header is required by Litestar's parameter validation; missing
+or empty values yield HTTP 400.
 
-The shape of these tests intentionally avoids spinning up the full
-Litestar app: we inspect the route handler's parameter signature and
-verify the controller correctly invokes the idempotency service when
-the key is supplied.
+These tests avoid spinning up the full Litestar app: we inspect the
+route handler's parameter signature and verify the controller
+correctly invokes the idempotency service when the key is supplied.
 """
 
 import inspect

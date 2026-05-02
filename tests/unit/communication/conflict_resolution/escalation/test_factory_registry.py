@@ -1,10 +1,10 @@
 """Tests for the registry-based escalation factory dispatch.
 
-Per audit #69: the factory used to dispatch on a hardcoded if/elif
-chain. It now consults a frozen registry map keyed by the config
-discriminator. These tests verify each registered branch builds the
-expected store and that an unregistered key raises ValueError with a
-helpful message listing the available options.
+The factory consults a frozen registry map keyed by the config
+discriminator rather than a hardcoded if/elif chain. These tests
+verify each registered branch builds the expected store and that an
+unregistered key raises ValueError with a helpful message listing the
+available options.
 """
 
 from typing import cast

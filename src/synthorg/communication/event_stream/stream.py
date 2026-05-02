@@ -69,9 +69,9 @@ class EventStreamHub:
         # Per-session insertion-ordered map of ``event.id`` ->
         # ``monotonic_seen_at``. Bounded per session and TTL-evicted on
         # publish so a long-lived session cannot grow the dedup window
-        # without bound. Audit #133: retried publishes (e.g. webhook
-        # handler that catches a transient publish failure and retries)
-        # would otherwise emit the same event twice to all subscribers.
+        # without bound. Without this map, retried publishes (e.g. a
+        # webhook handler that catches a transient publish failure and
+        # retries) would emit the same event twice to all subscribers.
         self._seen_event_ids: dict[str, OrderedDict[str, float]] = {}
         self._lock = asyncio.Lock()
 
@@ -113,6 +113,15 @@ class EventStreamHub:
                 queues.remove(queue)
             if not queues:
                 del self._subscribers[session_id]
+                # Drop the per-session dedup window once the last
+                # subscriber leaves so a long-lived hub with churn
+                # cannot leak per-session state for sessions that
+                # have no subscribers. The TTL eviction in
+                # ``publish()`` only fires on publishes; without this
+                # cleanup, the dedup map for a finished session would
+                # only shed entries on the rare case of a stray
+                # publish to that session.
+                self._seen_event_ids.pop(session_id, None)
 
     async def publish(self, event: StreamEvent) -> None:
         """Fan out an event to all subscribers for its session.
