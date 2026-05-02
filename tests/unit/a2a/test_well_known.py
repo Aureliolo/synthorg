@@ -3,16 +3,9 @@
 import pytest
 
 from synthorg.a2a.well_known import (
-    _card_cache,
     _get_cached_card,
     _put_cached_card,
 )
-
-
-@pytest.fixture(autouse=True)
-def _clear_cache() -> None:
-    """Clear the module-level cache before each test."""
-    _card_cache.clear()
 
 
 class TestCacheHelpers:

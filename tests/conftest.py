@@ -420,6 +420,50 @@ def clear_logging_state() -> None:
     root.setLevel(logging.WARNING)
 
 
+# ── Module-global cache resets (xdist isolation) ──────────────────
+# A handful of subsystems hold a process-global cache by design (the
+# Agent Card cache, the Prometheus label-validator snapshot). Without
+# a global autouse reset, a test in worker N that imports the
+# subsystem leaves entries behind for the next test in the same
+# worker -- the original "module-level state" failure mode behind
+# issue #1713. Each fixture is O(1) (a dict ``.clear()`` or a single
+# rebind) so the suite-wide cost is negligible.
+
+
+@pytest.fixture(autouse=True)
+def _reset_a2a_card_cache() -> None:
+    """Clear ``synthorg.a2a.well_known._card_cache`` before every test.
+
+    The cache is intentionally module-global at runtime (Agent Cards
+    are expensive to rebuild and the controller serves them under TTL
+    from a single dict). For tests, every test must start with an
+    empty cache so a stale entry from a prior test cannot satisfy a
+    later host-key probe.
+    """
+    from synthorg.a2a.well_known import _card_cache
+
+    _card_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_prometheus_label_snapshot() -> None:
+    """Reset ``prometheus_labels._snapshot`` before every test.
+
+    The snapshot is seeded by ``PrometheusCollector.refresh()`` and
+    consulted by every metric ``record_*`` call to validate label
+    cardinality. Without this reset, a refresh in observability tests
+    leaves the snapshot non-empty for unrelated engine / api tests
+    that import the metrics path, surfacing as spurious
+    ``validate_*`` passes that should have failed closed during
+    bootstrap.
+    """
+    from synthorg.observability.prometheus_labels import (
+        _reset_label_snapshot_for_tests,
+    )
+
+    _reset_label_snapshot_for_tests()
+
+
 _TEMPLATE_DB: Path | None = None
 """Session-wide migrated template DB.  Created once, copied per test."""
 
