@@ -17,6 +17,7 @@ from synthorg.api.pagination import (
     CursorParam,
     paginate_cursor,
 )
+from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
@@ -186,7 +187,7 @@ class MCPCatalogController(Controller):
     async def get_entry(
         self,
         state: State,
-        entry_id: str,
+        entry_id: PathId,
     ) -> ApiResponse[CatalogEntry]:
         """Get a single catalog entry by ID."""
         service = state["app_state"].mcp_catalog_service
@@ -292,7 +293,7 @@ class MCPCatalogController(Controller):
     async def uninstall_entry(
         self,
         state: State,
-        entry_id: str,
+        entry_id: PathId,
     ) -> ApiResponse[None]:
         """Remove a recorded installation.
 

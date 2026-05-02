@@ -34,6 +34,18 @@ PathKey = Annotated[
 ]
 """Path parameter type for settings keys (1-128 chars)."""
 
+PathField = Annotated[
+    str,
+    Parameter(max_length=128, min_length=1, description="Credential field name"),
+]
+"""Path parameter type for credential / secret field names (1-128 chars)."""
+
+PathEventType = Annotated[
+    str,
+    Parameter(max_length=64, min_length=1, description="Webhook event type"),
+]
+"""Path parameter type for webhook event-type identifiers (1-64 chars)."""
+
 # Max lengths for query parameter validation (shared with inline checks
 # where Litestar does not enforce Parameter constraints on optional params).
 QUERY_MAX_LENGTH: int = 128

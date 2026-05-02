@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.path_params import PathName  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import (
@@ -202,7 +203,7 @@ class OAuthController(Controller):
     async def token_status(
         self,
         state: State,
-        connection_name: str,
+        connection_name: PathName,
     ) -> ApiResponse[dict[str, Any]]:
         """Check the OAuth token status for a connection."""
         catalog = state["app_state"].connection_catalog

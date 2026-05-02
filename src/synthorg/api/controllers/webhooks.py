@@ -14,6 +14,10 @@ from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
+    PathEventType,
+    PathName,
+)
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -434,8 +438,8 @@ class WebhooksController(Controller):
         self,
         state: State,
         request: Request[Any, Any, Any],
-        connection_name: str,
-        event_type: str,
+        connection_name: PathName,
+        event_type: PathEventType,
     ) -> ApiResponse[dict[str, object]]:
         """Receive and verify a webhook event.
 
@@ -545,7 +549,7 @@ class WebhooksController(Controller):
     async def list_activity(
         self,
         state: State,
-        connection_name: str,
+        connection_name: PathName,
         limit: int = Parameter(
             default=100,
             ge=1,

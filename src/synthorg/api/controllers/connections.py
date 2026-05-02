@@ -9,12 +9,15 @@ from typing import Annotated
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
+    PathField,
+    PathName,
+)
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import (
@@ -179,7 +182,7 @@ class ConnectionsController(Controller):
     async def get_connection(
         self,
         state: State,
-        name: str = Parameter(description="Connection name"),
+        name: PathName,
     ) -> ApiResponse[Connection]:
         """Get a single connection by name."""
         catalog = state["app_state"].connection_catalog
@@ -280,7 +283,7 @@ class ConnectionsController(Controller):
     async def update_connection(
         self,
         state: State,
-        name: str,
+        name: PathName,
         data: UpdateConnectionRequest,
     ) -> ApiResponse[Connection]:
         """Update mutable fields of a connection.
@@ -356,7 +359,7 @@ class ConnectionsController(Controller):
     async def delete_connection(
         self,
         state: State,
-        name: str,
+        name: PathName,
     ) -> ApiResponse[None]:
         """Delete a connection and its secrets."""
         catalog = state["app_state"].connection_catalog
@@ -385,7 +388,7 @@ class ConnectionsController(Controller):
     async def check_health(
         self,
         state: State,
-        name: str,
+        name: PathName,
     ) -> ApiResponse[HealthReport]:
         """Run an on-demand health check for a connection."""
         from synthorg.integrations.health.service import (  # noqa: PLC0415
@@ -423,8 +426,8 @@ class ConnectionsController(Controller):
     async def reveal_secret(
         self,
         state: State,
-        name: str,
-        field: str,
+        name: PathName,
+        field: PathField,
     ) -> ApiResponse[dict[str, str]]:
         """Return the plaintext value of one credential field.
 
