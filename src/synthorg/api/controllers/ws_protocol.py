@@ -11,7 +11,10 @@ emitting a log line. This lets ``ws.py`` import individual hooks
 import json
 from typing import Any
 
+from pydantic import ValidationError
+
 from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.api.boundary import parse_typed
 from synthorg.api.channels import (
     ALL_CHANNELS,
     BUDGET_CHANNELS,
@@ -20,6 +23,12 @@ from synthorg.api.channels import (
     user_channel,
 )
 from synthorg.api.guards import HumanRole
+from synthorg.api.ws_control_models import (
+    WS_CONTROL_MESSAGE_ADAPTER,
+    WsPingMessage,
+    WsSubscribeMessage,
+    WsUnsubscribeMessage,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_WS_INVALID_MESSAGE,
@@ -171,113 +180,72 @@ def _parse_ws_message(data: str) -> dict[str, Any] | str:
     return msg
 
 
-def _validate_ws_fields(
-    msg: dict[str, Any],
-) -> tuple[str, list[str], dict[str, Any] | None] | str:
-    """Extract and validate action, channels, and filters from a parsed message.
-
-    Returns ``(action, channels, client_filters)`` on success, or a
-    JSON error string on validation failure.
-    """
-    action = str(msg.get("action", ""))
-    channels = msg.get("channels", [])
-    # None = key absent (leave existing filters), {} = explicitly clear
-    raw_filters = msg.get("filters")
-    client_filters: dict[str, Any] | None = None
-    if raw_filters is not None:
-        if not isinstance(raw_filters, dict):
-            logger.warning(
-                API_WS_INVALID_MESSAGE,
-                reason="filters_not_object",
-                filters_type=type(raw_filters).__name__,
-            )
-            return json.dumps({"error": "filters must be an object"})
-        # ``filters`` is typed as ``dict[str, str]`` in the server's
-        # in-memory subscription map; reject non-string keys/values at
-        # the protocol boundary so the wire contract matches the
-        # stored shape. Without this a malformed frame like
-        # ``{"task_id": null}`` or ``{"task_id": 42}`` would be stored
-        # verbatim and could never match any real event.
-        if not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in raw_filters.items()
-        ):
-            logger.warning(
-                API_WS_INVALID_MESSAGE,
-                reason="filters_not_str_to_str",
-            )
-            return json.dumps(
-                {"error": "filters must be an object of string->string"},
-            )
-        client_filters = raw_filters
-
-    if not isinstance(channels, list) or not all(isinstance(c, str) for c in channels):
-        logger.warning(
-            API_WS_INVALID_MESSAGE,
-            reason="channels_not_list_of_strings",
-            channels_type=type(channels).__name__,
-        )
-        return json.dumps({"error": "channels must be a list of strings"})
-
-    return (action, channels, client_filters)
-
-
 def handle_message(
     data: str,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
     conn_user: AuthenticatedUser,
 ) -> str:
-    """Parse, validate, and dispatch a single client message."""
+    """Parse, validate, and dispatch a single client message.
+
+    The raw JSON is parsed, then routed through
+    :func:`synthorg.api.boundary.parse_typed` against
+    :data:`WS_CONTROL_MESSAGE_ADAPTER` so the typed variant
+    (:class:`WsSubscribeMessage`, :class:`WsUnsubscribeMessage`,
+    :class:`WsPingMessage`, :class:`WsAuthMessage`) drives dispatch.
+    Malformed frames emit ``api.boundary.validation_failed`` and the
+    legacy ``api.ws.invalid_message`` event in tandem so operators
+    keep the ws-specific search trail.
+    """
     parsed = _parse_ws_message(data)
     if isinstance(parsed, str):
         return parsed
 
-    # Ping is dispatched before generic field validation because it has
-    # no ``channels`` field; running it through ``_validate_ws_fields``
-    # would force callers to send a meaningless empty array.
-    if isinstance(parsed, dict) and parsed.get("action") == "ping":
+    try:
+        message = parse_typed("ws.control", parsed, WS_CONTROL_MESSAGE_ADAPTER)
+    except ValidationError:
+        logger.warning(API_WS_INVALID_MESSAGE, reason="failed_typed_validation")
+        return json.dumps({"error": "Invalid control message"})
+
+    if isinstance(message, WsPingMessage):
         logger.debug(API_WS_PING)
         return json.dumps({"action": "pong"})
 
-    fields = _validate_ws_fields(parsed)
-    if isinstance(fields, str):
-        return fields
-
-    action, channels, client_filters = fields
-
-    if action == "subscribe":
-        return _handle_subscribe(
-            channels,
-            client_filters,
+    if isinstance(message, WsSubscribeMessage):
+        return _handle_subscribe_typed(
+            message,
             subscribed,
             filters,
             conn_user,
         )
 
-    if action == "unsubscribe":
-        return _handle_unsubscribe(channels, subscribed, filters)
+    if isinstance(message, WsUnsubscribeMessage):
+        return _handle_unsubscribe(list(message.channels), subscribed, filters)
 
-    logger.warning(API_WS_UNKNOWN_ACTION, action=str(action)[:64])
+    # WsAuthMessage arriving on an already-authenticated socket: the
+    # post-auth control plane does not accept additional auth frames,
+    # so reject without leaking that the auth handshake exists at all.
+    logger.warning(API_WS_UNKNOWN_ACTION, action=message.action[:64])
     return json.dumps({"error": "Unknown action"})
 
 
-def _handle_subscribe(
-    channels: list[str],
-    client_filters: dict[str, Any] | None,
+def _handle_subscribe_typed(
+    message: WsSubscribeMessage,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
     conn_user: AuthenticatedUser,
 ) -> str:
-    """Process a subscribe action.
+    """Process a typed subscribe message.
 
     Filter semantics:
         ``None``  -- filters key absent, leave existing filters unchanged.
         ``{}``    -- explicitly clear filters for the subscribed channels.
         ``{...}`` -- set new filters for the subscribed channels.
     """
+    client_filters = message.filters
     if client_filters is not None and (
         len(client_filters) > _MAX_FILTER_KEYS
-        or any(len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values())
+        or any(len(v) > _MAX_FILTER_VALUE_LEN for v in client_filters.values())
     ):
         logger.warning(
             API_WS_INVALID_MESSAGE,
@@ -291,7 +259,7 @@ def _handle_subscribe(
     # Accept known channels the user is authorized to receive.
     own_user_ch = user_channel(conn_user.user_id)
     valid: list[str] = []
-    for c in channels:
+    for c in message.channels:
         if c == own_user_ch or (
             c in _ALL_CHANNELS_SET and channel_allowed(c, conn_user)
         ):

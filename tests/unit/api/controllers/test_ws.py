@@ -67,6 +67,11 @@ class TestWsHandleMessage:
         assert data["error"] == "Invalid JSON"
 
     def test_unknown_action(self) -> None:
+        # The typed control-plane discriminator rejects unknown action
+        # values at parse time, so the response is the boundary helper's
+        # generic "invalid" envelope rather than the legacy
+        # "Unknown action" string. The behaviour change is intentional:
+        # malformed first-message content never reaches dispatch.
         subscribed: set[str] = set()
         filters: dict[str, dict[str, str]] = {}
         result = _handle_message(
@@ -76,7 +81,7 @@ class TestWsHandleMessage:
             _TEST_USER,
         )
         data = json.loads(result)
-        assert data["error"] == "Unknown action"
+        assert data["error"] == "Invalid control message"
 
     def test_subscribe_ignores_invalid_channels(self) -> None:
         subscribed: set[str] = set()
