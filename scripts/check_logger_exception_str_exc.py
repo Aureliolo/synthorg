@@ -163,20 +163,38 @@ def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:
     truncation, ``BoolOp`` / ``IfExp`` for fallback fusion, ``BinOp`` /
     ``JoinedStr`` for concatenation), so a leak hidden behind ``[:200]``
     or ``or type(exc).__name__`` still trips the gate.
+
+    Dict-unpack arguments (``**{"error": str(exc)}``) are also covered:
+    Python represents these as ``ast.keyword(arg=None, value=Dict(...))``
+    rather than ``arg="error"``, which would otherwise sneak past a
+    naive ``kw.arg == "error"`` check -- the very escape hatch this
+    gate exists to close.
     """
     for kw in keywords:
-        if kw.arg != "error":
+        values_to_scan: tuple[ast.expr, ...]
+        if kw.arg == "error":
+            values_to_scan = (kw.value,)
+        elif kw.arg is None and isinstance(kw.value, ast.Dict):
+            # ``**{"error": ...}`` or any literal-dict unpack: pull
+            # every value whose key is the string constant ``"error"``.
+            values_to_scan = tuple(
+                value
+                for key, value in zip(kw.value.keys, kw.value.values, strict=True)
+                if isinstance(key, ast.Constant) and key.value == "error"
+            )
+        else:
             continue
-        for node in ast.walk(kw.value):
-            if not isinstance(node, ast.Call):
-                continue
-            if not isinstance(node.func, ast.Name) or node.func.id != "str":
-                continue
-            if len(node.args) != 1:
-                continue
-            arg = node.args[0]
-            if isinstance(arg, (ast.Name, ast.Attribute, ast.Subscript)):
-                return True
+        for value in values_to_scan:
+            for node in ast.walk(value):
+                if not isinstance(node, ast.Call):
+                    continue
+                if not isinstance(node.func, ast.Name) or node.func.id != "str":
+                    continue
+                if len(node.args) != 1:
+                    continue
+                arg = node.args[0]
+                if isinstance(arg, (ast.Name, ast.Attribute, ast.Subscript)):
+                    return True
     return False
 
 

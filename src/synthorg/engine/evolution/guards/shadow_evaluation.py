@@ -316,8 +316,9 @@ class ShadowEvaluationGuard:
                     proposal_id=proposal_id,
                     pass_label=label,
                     task_id=task.id,
+                    error_type=type(exc).__name__,
                     error=safe_error_description(exc),
-                    error_type="infrastructure",
+                    failure_category="infrastructure",
                     exc_info=True,
                 )
                 raise
@@ -328,8 +329,9 @@ class ShadowEvaluationGuard:
                     proposal_id=proposal_id,
                     pass_label=label,
                     task_id=task.id,
+                    error_type="TimeoutError",
                     error=timeout_msg,
-                    error_type="timeout",
+                    failure_category="timeout",
                 )
                 return ShadowTaskOutcome(
                     success=False,
@@ -337,19 +339,20 @@ class ShadowEvaluationGuard:
                     error=timeout_msg,
                 )
             except Exception as exc:
-                error_msg = str(exc)[:200] or "unknown runner error"
+                error_desc = safe_error_description(exc)
                 logger.warning(
                     EVOLUTION_SHADOW_TASK_FAILED,
                     proposal_id=proposal_id,
                     pass_label=label,
                     task_id=task.id,
-                    error=error_msg,
-                    error_type="exception",
+                    error_type=type(exc).__name__,
+                    error=error_desc,
+                    failure_category="runner_exception",
                 )
                 return ShadowTaskOutcome(
                     success=False,
                     quality_score=None,
-                    error=error_msg,
+                    error=error_desc,
                 )
 
         async with asyncio.TaskGroup() as tg:

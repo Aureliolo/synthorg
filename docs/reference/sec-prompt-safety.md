@@ -4,7 +4,7 @@ On-demand reference for the SEC-1 cluster. Short rules in `CLAUDE.md`:
 
 - Wrap untrusted strings at LLM call sites via `wrap_untrusted()` from `synthorg.engine.prompt_safety`.
 - Never call `lxml.html.fromstring` directly; use `HTMLParseGuard`.
-- Never `logger.exception(EVENT, error=str(exc))` on credential-bearing paths; use `logger.warning(..., error=safe_error_description(exc))`.
+- Never call any `logger` severity (`exception` / `warning` / `error` / `info` / `debug`) with `error=str(exc)` (or any wrapper that smuggles `str(exc)` through, including `[:200]`, `or fallback`, f-strings, and `**{"error": ...}` dict-unpack); use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` instead. The rule is global, not credential-bearing-paths-only: `logger.exception` adds traceback frame-locals, and `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / OAuth provider errors embeds URL or POSTed body content into the log record at every severity level.
 
 ## Untrusted-content fences at LLM call sites
 

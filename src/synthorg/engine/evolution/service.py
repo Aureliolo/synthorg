@@ -125,7 +125,8 @@ class EvolutionService:
             logger.warning(
                 EVOLUTION_CONTEXT_BUILD_FAILED,
                 agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 exc_info=True,
             )
             return ()
@@ -314,9 +315,14 @@ class EvolutionService:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            # Adapter should log via EVOLUTION_ADAPTATION_FAILED.
-            # Defensive fallback in case adapter omits it.
-            logger.debug(
+            # Adapter should log via EVOLUTION_ADAPTATION_FAILED;
+            # this defensive fallback runs only when the adapter
+            # omits the failure event. Log at WARNING (not DEBUG)
+            # because a `False` return is an error outcome, and
+            # operators must see the underlying cause -- otherwise
+            # the failure is invisible at the operator's default
+            # log level.
+            logger.warning(
                 EVOLUTION_ADAPTATION_FAILED,
                 agent_id=str(agent_id),
                 error_type=type(exc).__name__,
@@ -389,7 +395,8 @@ class EvolutionService:
             logger.warning(
                 EVOLUTION_CONTEXT_SNAPSHOT_FAILED,
                 agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 exc_info=True,
             )
             return None
@@ -424,7 +431,8 @@ class EvolutionService:
             logger.warning(
                 EVOLUTION_CONTEXT_MEMORY_FAILED,
                 agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 exc_info=True,
             )
             return ()

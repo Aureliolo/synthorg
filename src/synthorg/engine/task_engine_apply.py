@@ -290,10 +290,20 @@ async def apply_update(
     try:
         versions.check(mutation.task_id, mutation.expected_version)
     except TaskVersionConflictError as exc:
+        error_desc = safe_error_description(exc)
+        logger.warning(
+            TASK_ENGINE_MUTATION_FAILED,
+            mutation_type="update",
+            request_id=mutation.request_id,
+            task_id=mutation.task_id,
+            expected_version=mutation.expected_version,
+            error_type=type(exc).__name__,
+            error=error_desc,
+        )
         return TaskMutationResult(
             request_id=mutation.request_id,
             success=False,
-            error=safe_error_description(exc),
+            error=error_desc,
             error_code="version_conflict",
         )
 
@@ -376,10 +386,20 @@ async def apply_transition(
     try:
         versions.check(mutation.task_id, mutation.expected_version)
     except TaskVersionConflictError as exc:
+        error_desc = safe_error_description(exc)
+        logger.warning(
+            TASK_ENGINE_MUTATION_FAILED,
+            mutation_type="transition",
+            request_id=mutation.request_id,
+            task_id=mutation.task_id,
+            expected_version=mutation.expected_version,
+            error_type=type(exc).__name__,
+            error=error_desc,
+        )
         return TaskMutationResult(
             request_id=mutation.request_id,
             success=False,
-            error=safe_error_description(exc),
+            error=error_desc,
             error_code="version_conflict",
         )
 

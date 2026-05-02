@@ -189,9 +189,12 @@ async def ship_container_logs(  # noqa: PLR0913
 ) -> None:
     """Ship container logs through the structlog pipeline.
 
-    Failure-tolerant: shipping errors are logged at debug level and
+    Failure-tolerant: shipping errors are logged at WARNING level and
     never propagated (except ``MemoryError`` and ``RecursionError``
-    which always propagate).
+    which always propagate). WARNING is intentional -- a shipping
+    failure means agent / task logs are absent from the operator's
+    pipeline, which is silent data loss unless the symptom ("no logs
+    for this run") is paired with an audible cause.
 
     When ``config.ship_raw_logs`` is ``False`` (default), only
     metadata is shipped -- no raw stdout/stderr/sidecar payloads.

@@ -230,8 +230,9 @@ class DefaultHierarchicalRetriever:
         scrubbed description. Downstream aggregation in :meth:`retrieve`
         merges per-worker candidate tuples and tolerates an empty list
         on any individual worker; the design intent is partial-result
-        retrieval (a Qdrant outage drops the semantic worker but leaves
-        episodic / procedural matches alive) rather than all-or-nothing
+        retrieval (a vector-store outage drops the semantic worker
+        but leaves episodic / procedural matches alive) rather than
+        all-or-nothing
         propagation. The WARNING log is the operator-visible signal;
         the returned ``error`` field is for callers that *do* want to
         branch on a per-worker failure.

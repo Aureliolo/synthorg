@@ -196,6 +196,41 @@ class TestExtendedGate:
         )
         assert hits, "f-string-wrapped str(exc) is still a leak; must be flagged"
 
+    def test_str_exc_dict_unpack_flagged(self) -> None:
+        """``**{"error": str(exc)}`` dict-unpack must trip the gate.
+
+        Python represents this as ``ast.keyword(arg=None, value=Dict(...))``,
+        so a naive ``kw.arg == "error"`` check sees no match -- the
+        canonical bypass for an unconditional gate.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", **{"error": str(exc)})
+            """,
+        )
+        assert hits, "dict-unpack `error` value with str(exc) must be flagged"
+
+    def test_str_exc_dict_unpack_wrapped_flagged(self) -> None:
+        """Dict-unpack values are walked, so wrapped forms still trip."""
+        hits = _scan_source(
+            """
+            logger.error("E", **{"error": str(exc)[:200] or "fallback"})
+            """,
+        )
+        assert hits, "dict-unpack with wrapped str(exc) must be flagged"
+
+    def test_dict_unpack_without_error_key_not_flagged(self) -> None:
+        """Dict-unpack with no ``error`` key is left alone."""
+        hits = _scan_source(
+            """
+            logger.warning("E", **{"context": str(exc)})
+            """,
+        )
+        assert not hits, (
+            "dict-unpack on a non-error key is out of scope -- the gate is "
+            "specifically about the `error=` field"
+        )
+
 
 @pytest.mark.unit
 class TestRepoIsClean:

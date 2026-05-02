@@ -32,7 +32,12 @@ logger = get_logger(__name__)
 
 # Map content types to memory categories for storage.  Module-private
 # because callers should pass the resolved ``MemoryCategory`` if they
-# want to override; the mapping is the single canonical source.
+# want to override; the mapping is the single canonical source. The
+# lookup at the call site below uses direct ``[ct]`` access so a new
+# ``ContentType`` value added in the future fails fast with
+# ``KeyError`` rather than being silently routed to ``PROCEDURAL``;
+# storing semantic items under the procedural category would surface
+# only at retrieval time, which is far too late.
 _CONTENT_TYPE_TO_CATEGORY: dict[ContentType, MemoryCategory] = {
     ContentType.PROCEDURAL: MemoryCategory.PROCEDURAL,
     ContentType.SEMANTIC: MemoryCategory.SEMANTIC,
@@ -91,7 +96,7 @@ async def _store_items_for_type(  # noqa: PLR0913
     if not items:
         return 0
 
-    category = _CONTENT_TYPE_TO_CATEGORY.get(ct, MemoryCategory.PROCEDURAL)
+    category = _CONTENT_TYPE_TO_CATEGORY[ct]
 
     async with asyncio.TaskGroup() as tg:
         store_tasks = [
