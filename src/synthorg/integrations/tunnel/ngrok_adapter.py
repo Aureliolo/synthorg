@@ -12,6 +12,7 @@ the tunnel feature simply do not call the start endpoint.
 
 import asyncio
 import os
+from typing import Any
 
 from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
@@ -124,6 +125,13 @@ class NgrokAdapter:
                 else conf.PyngrokConfig()
             )
 
+            # Initialise ``tunnel`` to ``None`` BEFORE the try block
+            # so the cleanup branch below can reference it
+            # unconditionally without ``locals()`` introspection or
+            # ``UnboundLocalError`` if ``ngrok.connect`` itself raises.
+            # Typed ``Any`` because ``pyngrok`` ships untyped stubs and
+            # the returned object exposes ``public_url``.
+            tunnel: Any = None
             try:
                 tunnel = await asyncio.to_thread(
                     ngrok.connect,
@@ -154,12 +162,11 @@ class NgrokAdapter:
                 # so we don't orphan an open tunnel on the ngrok
                 # side. Failures here are logged but not raised --
                 # the caller already gets ``TunnelError``.
-                local_tunnel = locals().get("tunnel")
-                if local_tunnel is not None:
+                if tunnel is not None:
                     try:
                         await asyncio.to_thread(
                             ngrok.disconnect,
-                            getattr(local_tunnel, "public_url", None),
+                            getattr(tunnel, "public_url", None),
                         )
                     except Exception as cleanup_exc:
                         logger.warning(
