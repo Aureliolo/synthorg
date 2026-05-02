@@ -36,7 +36,7 @@ from synthorg.backup.models import (
     RestoreResponse,
 )
 from synthorg.backup.service import BackupService
-from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.domain_errors import ConflictError, ValidationError
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -314,7 +314,14 @@ class TestRestoreBackup:
 
         assert exc_info.value.status_code == 422
 
-    async def test_restore_raises_404_on_not_found(self) -> None:
+    async def test_restore_propagates_not_found(self) -> None:
+        """``BackupNotFoundError`` propagates to the centralized handler.
+
+        ``handle_backup_error`` maps the domain exception to 404 with
+        the ``RECORD_NOT_FOUND`` envelope; the controller-level
+        translation to a generic ``NotFoundError`` would have dropped
+        the discriminating error code.
+        """
         state, service = _make_state_and_service()
         service.restore_from_backup.side_effect = BackupNotFoundError("gone")
 
@@ -323,7 +330,7 @@ class TestRestoreBackup:
             confirm=True,
         )
         ctrl = _controller()
-        with pytest.raises(NotFoundError):
+        with pytest.raises(BackupNotFoundError):
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
 
     async def test_restore_raises_409_on_in_progress(self) -> None:

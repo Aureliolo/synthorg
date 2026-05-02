@@ -41,7 +41,6 @@ from synthorg.backup.models import (
 )
 from synthorg.core.domain_errors import (
     ConflictError,
-    NotFoundError,
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -333,13 +332,20 @@ class BackupController(Controller):
                 data.backup_id,
                 components=data.components,
             )
-        except BackupNotFoundError as exc:
+        except BackupNotFoundError:
             logger.warning(
                 BACKUP_NOT_FOUND,
                 backup_id=data.backup_id,
             )
-            msg = "Backup not found"
-            raise NotFoundError(msg) from exc
+            # Let ``BackupNotFoundError`` propagate so
+            # ``handle_backup_error`` maps it to 404 with the
+            # domain-specific ``RECORD_NOT_FOUND`` envelope; the prior
+            # translation to generic ``NotFoundError`` dropped the
+            # discriminating error code. ``ManifestError`` and
+            # ``BackupInProgressError`` below stay translated by
+            # design (they carry potentially internal detail in their
+            # messages and the controller authors a sanitized 4xx).
+            raise
         except ManifestError as exc:
             logger.warning(
                 BACKUP_RESTORE_FAILED,
