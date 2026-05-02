@@ -112,6 +112,67 @@ async def _mark_failed(
         )
 
 
+def _attach_runner_callbacks(
+    task: asyncio.Task[None],
+    *,
+    sim_state: Any,
+    simulation_id: str,
+) -> None:
+    """Wire the failure logger + background-task discard to a runner.
+
+    The exception logger is registered FIRST so a task that finishes
+    between ``create_task`` and the ``add`` below still has its
+    failure surfaced -- asyncio invokes done-callbacks in the order
+    they were registered. Adding the task to the set before attaching
+    the logger would let a fast-completing failure fire ``discard``
+    first and silently drop the error.
+    """
+    task.add_done_callback(
+        log_task_exceptions(
+            logger,
+            SIMULATION_RUN_FAILED,
+            simulation_id=simulation_id,
+        ),
+    )
+    task.add_done_callback(sim_state.background_tasks.discard)
+    sim_state.background_tasks.add(task)
+
+
+async def _rollback_register_if_absent(
+    spawned_task: asyncio.Task[None] | None,
+    *,
+    sim_state: Any,
+    simulation_id: str,
+) -> None:
+    """Tear down a partially-constructed simulation start.
+
+    If the runner task was spawned before the post-claim setup raised,
+    cancel and drain it before unregistering -- otherwise the orphan
+    runner would race the unregister and either re-claim the
+    ``simulation_id`` via ``update_status`` or silently corrupt the
+    store. ``shield`` is unnecessary here because the caller is the
+    request handler, not a coroutine guarding against external
+    cancellation.
+    """
+    if spawned_task is not None:
+        spawned_task.cancel()
+        try:
+            await spawned_task
+        except asyncio.CancelledError:
+            pass
+        except MemoryError, RecursionError:
+            raise
+        except Exception as drain_exc:
+            logger.warning(
+                SIMULATION_RUN_FAILED,
+                simulation_id=simulation_id,
+                stage="rollback_drain",
+                error_type=type(drain_exc).__name__,
+                error=safe_error_description(drain_exc),
+            )
+    await sim_state.simulation_store.unregister(simulation_id)
+
+
 async def _run_in_background(
     *,
     app_state: AppState,
@@ -350,32 +411,26 @@ class SimulationController(Controller):
         # Without rollback the ``simulation_id`` would stay claimed
         # forever and block every retry, defeating the very 409-on-
         # duplicate guard the claim provides.
+        spawned_task: asyncio.Task[None] | None = None
         try:
             _publish_event(request, WsEventType.SIMULATION_STARTED, record)
-            task = asyncio.create_task(
+            spawned_task = asyncio.create_task(
                 runner_task(),
                 name=f"simulation-runner[{record.simulation_id}]",
             )
-            # Register the exception logger FIRST so a task that
-            # finishes between ``create_task`` and
-            # ``background_tasks.add`` still has its failure
-            # surfaced -- asyncio invokes done-callbacks in the order
-            # they were registered. Adding the task to the set before
-            # attaching the logger would let a fast-completing failure
-            # fire ``discard`` first and silently drop the error.
-            task.add_done_callback(
-                log_task_exceptions(
-                    logger,
-                    SIMULATION_RUN_FAILED,
-                    simulation_id=record.simulation_id,
-                ),
+            _attach_runner_callbacks(
+                spawned_task,
+                sim_state=sim_state,
+                simulation_id=record.simulation_id,
             )
-            task.add_done_callback(sim_state.background_tasks.discard)
-            sim_state.background_tasks.add(task)
         except MemoryError, RecursionError:
             raise
         except BaseException:
-            await sim_state.simulation_store.unregister(record.simulation_id)
+            await _rollback_register_if_absent(
+                spawned_task,
+                sim_state=sim_state,
+                simulation_id=record.simulation_id,
+            )
             raise
         return ApiResponse(data=_to_response(record))
 

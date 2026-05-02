@@ -37,7 +37,13 @@ class TestReplayProtectorThreadSafety:
         barrier = threading.Barrier(64)
 
         def attempt() -> bool:
-            barrier.wait()
+            # ``timeout`` keeps the barrier from holding the test
+            # process indefinitely if a worker never arrives (e.g.
+            # interpreter crash, GIL deadlock). A broken barrier
+            # bubbles up via ``BrokenBarrierError`` and the future's
+            # ``result()`` re-raises it -- a fast, diagnosable
+            # failure in place of a CI hang.
+            barrier.wait(timeout=5)
             return protector.check(nonce="duplicate-nonce", timestamp=ts)
 
         with ThreadPoolExecutor(max_workers=64) as pool:
@@ -56,7 +62,7 @@ class TestReplayProtectorThreadSafety:
         barrier = threading.Barrier(64)
 
         def attempt(i: int) -> bool:
-            barrier.wait()
+            barrier.wait(timeout=5)
             return protector.check(nonce=f"nonce-{i}", timestamp=ts)
 
         with ThreadPoolExecutor(max_workers=64) as pool:
@@ -76,7 +82,7 @@ class TestReplayProtectorThreadSafety:
         barrier = threading.Barrier(128)
 
         def attempt(i: int) -> None:
-            barrier.wait()
+            barrier.wait(timeout=5)
             protector.check(nonce=f"nonce-{i}", timestamp=ts)
 
         with ThreadPoolExecutor(max_workers=128) as pool:

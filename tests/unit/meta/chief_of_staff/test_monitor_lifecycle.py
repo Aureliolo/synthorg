@@ -35,15 +35,53 @@ class TestOrgInflectionMonitorLifecycleLock:
     """Canonical pattern compliance."""
 
     async def test_concurrent_starts_spawn_one_task(self) -> None:
-        monitor = _make_monitor()
+        # The first spawned monitor task must still be alive when
+        # the peer ``start()`` calls run -- otherwise a fast-finishing
+        # builder lets the first task complete before the others
+        # land, the lifecycle lock releases, and the test cannot
+        # distinguish "lock works" from "lock leaked but task already
+        # finished". Block ``builder.build`` on a controllable Event
+        # so the spawned task is guaranteed to be running through
+        # the gather.
+        block = asyncio.Event()
+
+        async def blocking_build(*_args: object, **_kwargs: object) -> None:
+            await block.wait()
+
+        builder = AsyncMock(spec=SnapshotBuilder)
+        builder.build.side_effect = blocking_build
+        monitor = OrgInflectionMonitor(
+            detector=OrgInflectionDetector(),
+            snapshot_builder=builder,
+            sinks=(),
+            check_interval_minutes=60,
+        )
+
+        original_create_task = asyncio.create_task
+        spawned: list[asyncio.Task[object]] = []
+
+        def _counting_create_task(
+            coro: object,
+            **kwargs: object,
+        ) -> asyncio.Task[object]:
+            task: asyncio.Task[object] = original_create_task(coro, **kwargs)  # type: ignore[arg-type]
+            spawned.append(task)
+            return task
+
         try:
-            await asyncio.gather(
-                monitor.start(),
-                monitor.start(),
-                monitor.start(),
-            )
+            with patch(
+                "synthorg.meta.chief_of_staff.monitor.asyncio.create_task",
+                _counting_create_task,
+            ):
+                await asyncio.gather(
+                    monitor.start(),
+                    monitor.start(),
+                    monitor.start(),
+                )
             assert monitor._task is not None
+            assert len(spawned) == 1
         finally:
+            block.set()
             await monitor.stop()
 
     async def test_restart_after_clean_stop(self) -> None:

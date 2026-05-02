@@ -234,9 +234,11 @@ def bucket_cost_records(
         Sorted tuple of data points, one per bucket.
 
     Raises:
-        MixedCurrencyAggregationError: If *records* span multiple
-            currencies. Summing across currencies would produce a
-            meaningless monetary total.
+        MixedCurrencyAggregationError: If the records remaining after
+            filtering to ``[start, end)`` span multiple currencies.
+            Summing across currencies would produce a meaningless
+            monetary total. Records outside the window are not part
+            of the aggregation and are not validated.
     """
     bucket_starts = generate_bucket_starts(start, end, bucket_size)
     # Filter to the requested ``[start, end)`` window before

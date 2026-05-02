@@ -1,10 +1,14 @@
 """Lifecycle tests for ``ContinuousMode``.
 
 ContinuousMode is an in-place runner (``start()`` executes the loop
-synchronously on the caller until ``stop()`` is signalled). The
-``_lifecycle_lock`` serialises concurrent ``start()`` calls so the
-"already running" RuntimeError is raised reliably, and the lock
-spans the full body so a racing caller cannot enter mid-loop.
+on the calling coroutine until ``stop()`` is signalled). The
+``_lifecycle_lock`` serialises only the ``_running`` flag check at
+the top of ``start()`` (acquire / check / set / release) and again
+in the ``finally`` to clear the flag; it is NOT held across the run
+loop body, so a second ``start()`` raises ``RuntimeError`` rather
+than queuing behind the first. ``stop()`` is synchronous and does
+not acquire the lock; it sets ``self._stop_event`` so the running
+``start()`` coroutine observes the signal on its next iteration.
 """
 
 import asyncio

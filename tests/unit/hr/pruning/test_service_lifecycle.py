@@ -44,13 +44,36 @@ class TestPruningServiceLifecycleLock:
 
     async def test_concurrent_starts_spawn_one_task(self) -> None:
         service = _make_service()
+        # Patch ``asyncio.create_task`` (as resolved through the
+        # service module so the patch reaches the call site) to count
+        # spawn invocations: ``service.is_running`` alone would also
+        # be true if the lock leaked and three loop tasks raced. The
+        # canonical lifecycle contract is "exactly one spawn under
+        # concurrent ``start()`` callers", which we now assert
+        # directly.
+        original_create_task = asyncio.create_task
+        spawned: list[asyncio.Task[object]] = []
+
+        def _counting_create_task(
+            coro: object,
+            **kwargs: object,
+        ) -> asyncio.Task[object]:
+            task: asyncio.Task[object] = original_create_task(coro, **kwargs)  # type: ignore[arg-type]
+            spawned.append(task)
+            return task
+
         try:
-            await asyncio.gather(
-                service.start(),
-                service.start(),
-                service.start(),
-            )
+            with patch(
+                "synthorg.hr.pruning.service.asyncio.create_task",
+                _counting_create_task,
+            ):
+                await asyncio.gather(
+                    service.start(),
+                    service.start(),
+                    service.start(),
+                )
             assert service.is_running
+            assert len(spawned) == 1
         finally:
             await service.stop()
 
