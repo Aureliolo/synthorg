@@ -53,13 +53,24 @@ class TestRollback:
     ) -> None:
         """Save ordering invariant: live definition committed first.
 
-        The snapshot path requires constructing a typed VersionSnapshot
-        from the rolled-back definition, which is exercised end-to-end
-        by the integration tests.  Here we pin the orchestration order
-        only -- ``definition_repo.save`` MUST be awaited and the
-        ``version_repo.get_latest_version`` lookup must follow it.
+        Records the await order of the two repo methods directly so
+        the assertion catches a future refactor that flips
+        ``definition_repo.save`` after the snapshot lookup -- a plain
+        ``assert_awaited_once_with`` on each mock independently would
+        accept that ordering reversal silently.
         """
+        call_order: list[str] = []
+
+        async def _record_save(_: object) -> None:
+            call_order.append("save")
+
+        async def _record_snapshot_lookup(*_args: object, **_kwargs: object) -> Any:
+            call_order.append("snapshot")
+            msg = "snapshot path skipped"
+            raise PersistenceError(msg)
+
         definition_repo = AsyncMock(spec=WorkflowDefinitionRepository)
+        definition_repo.save.side_effect = _record_save
         version_repo = AsyncMock(spec=VersionRepository)
         # ``get_latest_version`` raises so the snapshot branch
         # short-circuits without trying to construct the typed
@@ -69,7 +80,7 @@ class TestRollback:
         # we want to lean on here.
         version_repo.get_latest_version = AsyncMock(
             spec=VersionRepository.get_latest_version,
-            side_effect=PersistenceError("snapshot path skipped"),
+            side_effect=_record_snapshot_lookup,
         )
         service = WorkflowRollbackService(
             definition_repo=definition_repo,
@@ -81,6 +92,7 @@ class TestRollback:
         await service.rollback(rolled, target_version=2, saved_by=NotBlankStr("user-1"))
         definition_repo.save.assert_awaited_once_with(rolled)
         version_repo.get_latest_version.assert_awaited()
+        assert call_order == ["save", "snapshot"]
 
     async def test_swallows_snapshot_persistence_error(self) -> None:
         """A snapshot failure must not prevent the rollback success."""

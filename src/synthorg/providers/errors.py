@@ -5,6 +5,7 @@ can decide whether to attempt again without inspecting concrete
 exception types.
 """
 
+import copy
 import math
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, Literal
@@ -82,8 +83,11 @@ class ProviderError(DomainError):
                 immutable mapping; defaults to empty if not provided.
         """
         self.message = message
+        # Deep-copy so nested lists/dicts in ``context`` cannot be
+        # mutated by the caller after the exception is raised /
+        # logged: ``MappingProxyType`` only freezes the outer mapping.
         self.context: MappingProxyType[str, Any] = MappingProxyType(
-            dict(context) if context else {},
+            copy.deepcopy(dict(context)) if context else {},
         )
         super().__init__(message)
 
@@ -162,9 +166,9 @@ class InvalidRequestError(ProviderError):
     as invalid), but the RFC 9457 ``error_category`` is
     ``PROVIDER_ERROR`` to match the 7xxx ``error_code`` prefix --
     the underlying signal originates from the upstream provider, not
-    from local boundary validation.  Audit-34 caught the previous
-    VALIDATION mismatch when ``DomainError.__init_subclass__`` was
-    activated on this hierarchy.
+    from local boundary validation.  ``DomainError.__init_subclass__``
+    enforces the prefix-vs-category alignment at class-definition
+    time.
     """
 
     is_retryable = False

@@ -287,7 +287,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="oauth_state_service",
-                    error=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     exc_info=True,
                 )
 
@@ -324,7 +325,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="training_plan_service",
-                    error=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     exc_info=True,
                 )
 

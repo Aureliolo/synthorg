@@ -142,6 +142,14 @@ class TrainingPlanService:
                 persistence_error=safe_error_description(save_exc),
                 exc_info=True,
             )
+            return
+        logger.info(
+            HR_TRAINING_PLAN_FAILED,
+            plan_id=str(failed_plan.id),
+            agent_id=str(failed_plan.new_agent_id),
+            from_status=plan.status.value,
+            to_status=TrainingPlanStatus.FAILED.value,
+        )
 
     async def record_executed(
         self,
@@ -162,12 +170,17 @@ class TrainingPlanService:
             }
         )
         await self._plan_repo.save(executed_plan)
-        await self._result_repo.save(result)
+        # Emit the durable status-transition event between the two
+        # writes so an EXECUTED plan whose result row fails to land is
+        # still recorded in the audit trail at the correct hop.
         logger.info(
             HR_TRAINING_PLAN_EXECUTED,
             plan_id=str(executed_plan.id),
             agent_id=str(executed_plan.new_agent_id),
+            from_status=plan.status.value,
+            to_status=TrainingPlanStatus.EXECUTED.value,
         )
+        await self._result_repo.save(result)
 
 
 __all__ = ["TrainingPlanService"]

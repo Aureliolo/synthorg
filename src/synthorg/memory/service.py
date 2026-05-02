@@ -21,9 +21,10 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from synthorg.core.domain_errors import DomainError
+from synthorg.core.domain_errors import DomainError, NotFoundError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
@@ -80,18 +81,20 @@ logger = get_logger(__name__)
 _PriorSettingState = Literal["was_set", "was_unset", "read_failed"]
 
 
-class CheckpointNotFoundError(DomainError):
+class CheckpointNotFoundError(NotFoundError):
     """Raised when a deploy/rollback/delete targets a missing checkpoint.
 
-    Inherits :class:`DomainError` so the ``__init_subclass__``
-    validator sees the inherited ``ErrorCode.INTERNAL_ERROR`` (8000,
-    prefix 8) matches the ``INTERNAL`` category.  Subclasses that
-    need a more specific 404 code should override the ``error_code``
-    / ``error_category`` / ``status_code`` ClassVars.
+    Inherits :class:`NotFoundError` so ``EXCEPTION_HANDLERS`` routes
+    this through the 404 envelope rather than the generic INTERNAL
+    fallback the bare ``DomainError`` base would imply.
     """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the checkpoint is absent
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Checkpoint not found"
 
 
 class CheckpointRollbackUnavailableError(DomainError):

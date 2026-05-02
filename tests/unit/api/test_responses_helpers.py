@@ -15,8 +15,12 @@ pattern that recurred across many controllers.  These tests pin:
   helper just forwards).
 """
 
-import pytest
+from unittest.mock import MagicMock
 
+import pytest
+import structlog
+
+from synthorg.api import responses as responses_module
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.error_taxonomy import ErrorCode
@@ -115,8 +119,19 @@ class TestSadPath:
 
 
 class TestExtraLogKwargs:
-    def test_extra_kwargs_pass_through(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level("WARNING"), pytest.raises(NotFoundError):
+    def test_extra_kwargs_merge_into_warning(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Caller-supplied kwargs reach the logger with stable keys intact.
+
+        Patches the helper's module-level logger so the assertion can
+        inspect the actual ``warning`` call kwargs. caplog can't see
+        structlog event-dict kwargs on stdlib LogRecords, hence the
+        direct mock-and-introspect pattern.
+        """
+        captured = MagicMock(spec=structlog.stdlib.BoundLogger)
+        monkeypatch.setattr(responses_module, "logger", captured)
+        with pytest.raises(NotFoundError):
             require_resource_or_404(
                 None,
                 resource_type="task",
@@ -124,15 +139,34 @@ class TestExtraLogKwargs:
                 log_event="api.resource.not_found",
                 extra_log_kwargs={"reason": "wrong_owner"},
             )
-        # Stable keys must not be clobberable from extra_log_kwargs.
-        with caplog.at_level("WARNING"), pytest.raises(NotFoundError):
+        captured.warning.assert_called_once()
+        args, kwargs = captured.warning.call_args
+        assert args == ("api.resource.not_found",)
+        assert kwargs["reason"] == "wrong_owner"
+        # Stable keys are present and untouched.
+        assert kwargs["id"] == "task-1"
+        assert kwargs["resource"] == "task"
+        assert kwargs["operation"] == "read"
+
+    def test_extra_kwargs_cannot_clobber_stable_keys(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stable keys (``id`` / ``resource`` / ``operation``) win on collision."""
+        captured = MagicMock(spec=structlog.stdlib.BoundLogger)
+        monkeypatch.setattr(responses_module, "logger", captured)
+        with pytest.raises(NotFoundError):
             require_resource_or_404(
                 None,
                 resource_type="task",
                 identifier="task-1",
                 log_event="api.resource.not_found",
-                extra_log_kwargs={"id": "WRONG", "resource": "WRONG"},
+                extra_log_kwargs={
+                    "id": "WRONG",
+                    "resource": "WRONG",
+                    "operation": "WRONG",
+                },
             )
-        # No assertion on caplog records: structlog routing is exercised
-        # end-to-end by integration tests; we just verify the helper
-        # accepts the kwargs without error and the not-found still fires.
+        _, kwargs = captured.warning.call_args
+        assert kwargs["id"] == "task-1"
+        assert kwargs["resource"] == "task"
+        assert kwargs["operation"] == "read"

@@ -213,6 +213,10 @@ SECURITY_CONNECTION_SECRET_REVEAL_FAILED: Final[str] = (
 # resulting tokens to the right caller, so the persistence event is
 # audit-grade.
 SECURITY_OAUTH_STATE_PERSISTED: Final[str] = "security.oauth.state_persisted"
+# Persistence failure on the OAuth-initiate path.  Logged at WARNING
+# before the underlying repository exception re-raises so the audit
+# trail records the attempt even when the state row never lands.
+SECURITY_OAUTH_STATE_PERSIST_FAILED: Final[str] = "security.oauth.state_persist_failed"
 
 # ── Custom signal rules (signed) ───────────────────────────────
 # Custom rules define automation triggers (control plane) and are

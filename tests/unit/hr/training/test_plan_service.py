@@ -149,14 +149,30 @@ class TestRecordFailure:
 
 class TestRecordExecuted:
     async def test_persists_plan_then_result(self) -> None:
+        """Plan save MUST precede result save (FK-style ordering invariant).
+
+        Records the await sequence on a shared list so the assertion
+        catches a future refactor that flips the order -- the prior
+        ``assert_awaited_once`` form on each mock independently would
+        accept ``result_repo.save`` first silently.
+        """
         service, plan_repo, result_repo = _build_service()
+        call_order: list[str] = []
+
+        async def _record_plan_save(_: object) -> None:
+            call_order.append("plan_saved")
+
+        async def _record_result_save(_: object) -> None:
+            call_order.append("result_saved")
+
+        plan_repo.save.side_effect = _record_plan_save
+        result_repo.save.side_effect = _record_result_save
         plan = _plan()
         result = _result()
         await service.record_executed(plan, result)
-        # Plan save must precede result save: a result cannot reference
-        # an EXECUTED plan that has not yet been persisted.
         plan_repo.save.assert_awaited_once()
         executed = plan_repo.save.await_args.args[0]
         assert executed.status == TrainingPlanStatus.EXECUTED
         assert executed.executed_at == result.completed_at
         result_repo.save.assert_awaited_once_with(result)
+        assert call_order == ["plan_saved", "result_saved"]

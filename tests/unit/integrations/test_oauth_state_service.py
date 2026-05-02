@@ -40,16 +40,21 @@ class TestPersistInitiation:
     async def test_binds_connection_name_and_persists(self) -> None:
         repo = AsyncMock(spec=OAuthStateRepository)
         service = OAuthStateService(repo=repo)
+        # Hold the actual input instance the service receives so the
+        # immutability assertion below verifies *that* object stayed
+        # untouched -- a freshly-constructed sibling would still have
+        # ``"placeholder"`` regardless of whether the service mutated
+        # the original.
+        original = _state(connection_name="placeholder")
         bound = await service.persist_initiation(
-            _state(connection_name="placeholder"),
+            original,
             connection_name=NotBlankStr("github-prod"),
         )
         assert bound.connection_name == "github-prod"
         repo.save.assert_awaited_once()
         saved = repo.save.await_args.args[0]
         assert saved.connection_name == "github-prod"
-        # Frozen Pydantic: original instance is untouched.
-        original = _state(connection_name="placeholder")
+        # Frozen Pydantic: the actual passed-in instance is untouched.
         assert original.connection_name == "placeholder"
 
     async def test_overrides_existing_connection_name(self) -> None:

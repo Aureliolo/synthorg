@@ -22,8 +22,11 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.integrations.connections.models import (
     OAuthState,  # noqa: TC001 -- runtime annotation
 )
-from synthorg.observability import get_logger
-from synthorg.observability.events.security import SECURITY_OAUTH_STATE_PERSISTED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.security import (
+    SECURITY_OAUTH_STATE_PERSIST_FAILED,
+    SECURITY_OAUTH_STATE_PERSISTED,
+)
 
 if TYPE_CHECKING:
     from synthorg.persistence.connection_protocol import OAuthStateRepository
@@ -62,7 +65,20 @@ class OAuthStateService:
         re-fetching.
         """
         bound = state.model_copy(update={"connection_name": connection_name})
-        await self._repo.save(bound)
+        try:
+            await self._repo.save(bound)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SECURITY_OAUTH_STATE_PERSIST_FAILED,
+                connection_name=str(connection_name),
+                state_token_prefix=str(bound.state_token)[:8],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                exc_info=True,
+            )
+            raise
         logger.info(
             SECURITY_OAUTH_STATE_PERSISTED,
             connection_name=str(connection_name),

@@ -13,6 +13,7 @@ from litestar.datastructures import State  # noqa: TC002
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionStatus
@@ -119,7 +120,7 @@ class IntegrationHealthController(Controller):
     async def single_health(
         self,
         state: State,
-        connection_name: str,
+        connection_name: PathName,
     ) -> ApiResponse[HealthReport]:
         """Return the health report for one connection.
 

@@ -166,6 +166,25 @@ class TestCreateFromBlueprint:
         assert patch_resp.status_code == 200
         assert patch_resp.json()["data"]["name"] == "Renamed Pipeline"
 
+        # The retired ``expected_version`` payload key MUST be rejected
+        # under the stricter request-DTO validation -- a stale client
+        # still sending it would silently no-op against the optimistic-
+        # concurrency guard otherwise.  ``extra="forbid"`` on the
+        # update DTO produces a 4xx VALIDATION envelope; the offending
+        # key text is consumed by Litestar's request-validation layer
+        # before the controller runs, so we assert the rejection itself
+        # via the RFC 9457 envelope rather than substring-matching the
+        # generic "Validation failed" message.
+        stale_resp = test_client.patch(
+            f"/api/v1/workflows/{wf_id}",
+            json={"name": "Renamed Pipeline", "expected_version": 1},
+            headers=make_auth_headers("ceo"),
+        )
+        assert stale_resp.status_code in (400, 422)
+        body = stale_resp.json()
+        assert body["success"] is False
+        assert body["error_detail"]["error_category"] == "validation"
+
     @pytest.mark.unit
     @pytest.mark.parametrize("blueprint_name", sorted(BUILTIN_BLUEPRINTS))
     def test_all_builtins_instantiate(
