@@ -12,10 +12,11 @@ should propagate.
 
 from typing import ClassVar
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
-class IntegrationError(Exception):
+class IntegrationError(DomainError):
     """Base exception for all integration operations.
 
     Class Attributes:

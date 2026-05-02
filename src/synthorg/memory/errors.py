@@ -9,9 +9,19 @@ namespace the domain-specific meaning is unambiguous; callers outside
 the package should import explicitly.
 """
 
+from synthorg.core.domain_errors import DomainError
 
-class MemoryError(Exception):  # noqa: A001
-    """Base exception for all memory operations."""
+
+class MemoryError(DomainError):  # noqa: A001
+    """Base exception for all memory operations.
+
+    Inherits :class:`DomainError` so the prefix-vs-category validator
+    runs on every subclass (audit ``34-error-handling-consistency``).
+    Subclasses keep the inherited ``ErrorCode.INTERNAL_ERROR`` default
+    (8000, ``INTERNAL`` category) -- callers that need a more specific
+    code per memory failure mode should override the ClassVars on the
+    subclass.
+    """
 
 
 class MemoryConnectionError(MemoryError):

@@ -8,10 +8,11 @@ import copy
 from types import MappingProxyType
 from typing import Any, ClassVar
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
-class CommunicationError(Exception):
+class CommunicationError(DomainError):
     """Base exception for all communication-layer errors.
 
     Attributes:

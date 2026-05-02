@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
@@ -79,28 +80,36 @@ logger = get_logger(__name__)
 _PriorSettingState = Literal["was_set", "was_unset", "read_failed"]
 
 
-class CheckpointNotFoundError(Exception):
-    """Raised when a deploy/rollback/delete targets a missing checkpoint."""
+class CheckpointNotFoundError(DomainError):
+    """Raised when a deploy/rollback/delete targets a missing checkpoint.
+
+    Inherits :class:`DomainError` (audit ``34-error-handling-consistency``)
+    so the ``__init_subclass__`` validator sees the inherited
+    ``ErrorCode.INTERNAL_ERROR`` (8000, prefix 8) matches the
+    ``INTERNAL`` category.  Subclasses that need a more specific 404
+    code should override the ``error_code`` / ``error_category`` /
+    ``status_code`` ClassVars.
+    """
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the checkpoint is absent
 
 
-class CheckpointRollbackUnavailableError(Exception):
+class CheckpointRollbackUnavailableError(DomainError):
     """Raised when a rollback is requested but no backup config exists."""
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: no backup exists
 
 
-class CheckpointRollbackCorruptError(Exception):
+class CheckpointRollbackCorruptError(DomainError):
     """Raised when the stored backup config fails JSON parsing."""
 
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the stored payload is malformed
 
 
-class FineTuneRunNotFoundError(Exception):
+class FineTuneRunNotFoundError(DomainError):
     """Raised when a referenced fine-tune run id does not exist."""
 
     __slots__ = ()
@@ -112,7 +121,7 @@ class FineTuneRunNotFoundError(Exception):
     domain_code: str = "not_found"
 
 
-class FineTuneRunNotResumableError(Exception):
+class FineTuneRunNotResumableError(DomainError):
     """Raised when a fine-tune run exists but is not in a resumable stage."""
 
     __slots__ = ()

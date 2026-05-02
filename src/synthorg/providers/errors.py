@@ -9,6 +9,7 @@ import math
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, Literal
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 ProviderErrorLabel = Literal[
@@ -39,7 +40,7 @@ def _is_sensitive_key(key: str) -> bool:
     return key.lower() in _REDACTED_KEYS
 
 
-class ProviderError(Exception):
+class ProviderError(DomainError):
     """Base exception for all provider-layer errors.
 
     Attributes:
@@ -155,22 +156,36 @@ class ModelNotFoundError(ProviderError):
 
 
 class InvalidRequestError(ProviderError):
-    """Malformed request (bad parameters, too many tokens, etc.)."""
+    """Malformed request (bad parameters, too many tokens, etc.).
+
+    The HTTP status stays at 422 (the provider rejected the request
+    as invalid), but the RFC 9457 ``error_category`` is
+    ``PROVIDER_ERROR`` to match the 7xxx ``error_code`` prefix --
+    the underlying signal originates from the upstream provider, not
+    from local boundary validation.  Audit-34 caught the previous
+    VALIDATION mismatch when ``DomainError.__init_subclass__`` was
+    activated on this hierarchy.
+    """
 
     is_retryable = False
     status_code: ClassVar[int] = 422
     error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_INVALID_REQUEST
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
     default_message: ClassVar[str] = "Invalid provider request"
 
 
 class ContentFilterError(ProviderError):
-    """Request or response blocked by the provider's content filter."""
+    """Request or response blocked by the provider's content filter.
+
+    Same prefix-vs-category alignment fix as :class:`InvalidRequestError`:
+    the 7xxx ``error_code`` keeps its semantic ``PROVIDER_ERROR``
+    category; HTTP status stays 422.
+    """
 
     is_retryable = False
     status_code: ClassVar[int] = 422
     error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_CONTENT_FILTERED
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
     default_message: ClassVar[str] = "Content filtered by provider"
 
 

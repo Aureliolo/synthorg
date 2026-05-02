@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -9,8 +10,14 @@ if TYPE_CHECKING:
     from synthorg.engine.coordination.models import CoordinationPhaseResult
 
 
-class EngineError(Exception):
+class EngineError(DomainError):
     """Base exception for all engine-layer errors.
+
+    Inherits from :class:`DomainError` so the prefix-vs-category
+    validator runs on every subclass (audit
+    ``34-error-handling-consistency``); a typo in a subclass
+    ``error_code`` whose first digit no longer matches the declared
+    ``error_category`` is rejected at class-definition time.
 
     Class Attributes:
         status_code: Default HTTP status for API exposure (500).

@@ -9,10 +9,11 @@ import copy
 from types import MappingProxyType
 from typing import Any, ClassVar
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
-class ToolError(Exception):
+class ToolError(DomainError):
     """Base exception for all tool-layer errors.
 
     Attributes:
