@@ -39,11 +39,12 @@ Flags:
 Use the run-history layout (see "Phase 0 setup: run-history layout" below for the full description):
 
 ```bash
-RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)" && mkdir -p "$RUN_DIR/findings" && rm -f _audit/latest && ln -sfn "runs/$(basename $RUN_DIR)" _audit/latest && echo "RUN_DIR=$RUN_DIR"
+RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)" && mkdir -p "$RUN_DIR/findings" && if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi && ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest && echo "RUN_DIR=$RUN_DIR"
 ```
 
 Notes for the setup command:
-- `rm -f _audit/latest` clears any prior symlink before re-linking. If `_audit/latest` exists as a real directory (Junction on Windows from a prior run), `rm -f` will refuse and you must run `rmdir _audit/latest` (Windows) or `rm -rf _audit/latest` (POSIX) instead. Detect by `test -d _audit/latest && ! test -L _audit/latest` before deciding.
+- The `if test -d _audit/latest && ! test -L _audit/latest` branch detects the case where `_audit/latest` is a real directory (Junction on Windows from a prior run, or an accidental `mkdir _audit/latest`); plain `rm -f` would refuse and break the relink chain. The conditional handles both cases inline.
+- `$RUN_DIR` is quoted inside `basename "$RUN_DIR"` even though the timestamp format never contains spaces -- defensive habit, costs nothing.
 - **DO NOT use `2>/dev/null`, `&>/dev/null`, or any `>` / `>>` redirect in this Bash call**. The project's PreToolUse Bash hook (`scripts/check_bash_no_write.sh`) blocks all redirects unconditionally. Chain with `&&` instead and let stderr surface.
 - **DO NOT use `cd`** -- the working directory is already the project root. Use absolute or workspace-relative paths.
 
@@ -3123,7 +3124,7 @@ After all launched audit agents complete, launch validation agents to verify fin
 
 ### Batching strategy (concrete)
 
-Run `Bash for f in _audit/latest/findings/*.md; do count=$(grep -cE "^### (critical|high|medium|low|info)" "$f"); echo "$count $(basename $f)"; done | sort -rn` to produce a sorted list of (count, filename). Then build batches:
+Run `Bash for f in _audit/latest/findings/*.md; do count=$(grep -cE "^### (critical|high|medium|low|info)" "$f"); echo "$count $(basename "$f")"; done | sort -rn` to produce a sorted list of (count, filename). Then build batches:
 
 - **Heavy files (>25 findings)**: dedicate 1 batch per ~25-finding chunk. Example: a 107-finding file splits into batches of 35 + 36 + 36.
 - **Mid files (10-25 findings)**: 1-2 files per batch.
@@ -3500,13 +3501,15 @@ The 2026-05-03 run leaked at least 14 helper scripts to disk despite the agent-p
 Run this Bash sweep:
 
 ```bash
-rm -f find_missing_logging.py find_missing_logging_filtered.py parse_audit.py validate_config_examples.py audit_diff.py audit_parity.py check_docs.py check_rate_limits.py circular_dep_analyzer.py check_protocols.py debug_scanner.py detailed_check.py final_audit.py find_unwired.py test_regex.py validate_configs.py verify_final.py verify_protocols.py 2>/dev/null || true
+rm -f find_missing_logging.py find_missing_logging_filtered.py parse_audit.py validate_config_examples.py audit_diff.py audit_parity.py check_docs.py check_rate_limits.py circular_dep_analyzer.py check_protocols.py debug_scanner.py detailed_check.py final_audit.py find_unwired.py test_regex.py validate_configs.py verify_final.py verify_protocols.py || true
 ```
 
-Then list and remove anything else suspicious:
+(`rm -f` is silent on missing paths, so no stderr redirect is needed; `|| true` keeps the chain from aborting on edge-case errors. Per Rule #11, the project's PreToolUse hook blocks `2>/dev/null` and other redirects unconditionally.)
+
+Then list and remove anything else suspicious. The find DOES include `scripts/` because the 2026-05-03 run leaked `scripts/audit_pydantic_models{,_v2,_v3}.py` and `scripts/audit_phase35_synthesis.py`; those need to surface for user prompt:
 
 ```bash
-find . -maxdepth 2 -name "*.py" -newer _audit/runs/$(ls -1 _audit/runs/ | tail -2 | head -1)/findings -not -path "./src/*" -not -path "./tests/*" -not -path "./web/*" -not -path "./cli/*" -not -path "./scripts/*"
+find . -maxdepth 2 -name "*.py" -newer _audit/runs/$(ls -1 _audit/runs/ | tail -2 | head -1)/findings -not -path "./src/*" -not -path "./tests/*" -not -path "./web/*" -not -path "./cli/*"
 ```
 
 Show the user the list before deleting anything that's not on the known leak list. Files in `c:\tmp\`, `/tmp\`, or any path outside the project root: leave them; the OS will reap them. Files inside `scripts/`: prompt the user before removal -- those may be intentional helpers, not leakage.
