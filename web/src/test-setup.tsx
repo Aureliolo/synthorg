@@ -33,6 +33,7 @@ import { useToastStore } from '@/stores/toast'
 // constraint is only on HOW the hook is reached.
 import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
+import { installStorageShim } from '@/storage-shim'
 
 // jsdom's `document.cookie` is backed by `tough-cookie`'s Promise-based
 // `CookieJar`, which schedules a `createPromiseCallback` for every
@@ -44,6 +45,15 @@ import { cookieJar, installCookieShim } from '@/cookie-shim'
 // the DOM (avoiding jsdom's tough-cookie cost).
 const CSRF_SEED_VALUE = 'test-csrf-token'
 installCookieShim()
+
+// jsdom's `window.localStorage` / `sessionStorage` schedule a
+// `setTimeout(0)` per write to dispatch a `storage` event. With Zustand
+// persist on setup-wizard / theme / notifications stores, every test
+// that mutates persisted state contributed Timeout leaks. The shim in
+// `@/storage-shim` replaces both with Map-backed in-memory Storage
+// objects; no app or test code subscribes to the `storage` event, so
+// the dispatch is dead weight in the test runner.
+installStorageShim()
 
 // Global MSW server: every default endpoint handler is registered up front
 // so tests that do not configure their own overrides get a predictable

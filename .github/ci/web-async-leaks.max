@@ -7,17 +7,12 @@
 # teardown landscape improves (issue #1468 will move MSW off a
 # XHR interceptor, which should cut ~20-30 leaks).
 #
-# 2026-05-02 (#1710): raised 90 -> 100 to accommodate +14 new tests
-# in the audit-cleanup-E PR (renderHook x5 in use-empty-state-props,
-# render(<ProvidersStep/>) integration test, plus 8 new store-level
-# cases in setup-wizard.test.ts and ws-sanitize.test.ts). Local count
-# is 75; CI baseline is +20-21 above local due to parallel execution
-# concurrency. The new tests are infrastructure for the typed-WS-
-# sanitizer + setup-wizard recovery features that ship in this PR;
-# trimming them would eliminate the core regression-protection of
-# the new code paths. Lower back toward 80 once #1468 (MSW off XHR
-# interceptor) lands.
+# Local count is 75; CI baseline is +20-21 above local due to parallel
+# execution concurrency. Tighten this whenever a shim or teardown lands
+# that demonstrably lowers the steady-state count -- the ratchet stops
+# regressions, but the value of the ratchet is inversely proportional
+# to its slack.
 #
 # The CI step reads this file via:
 #   grep -v '^#' .github/ci/web-async-leaks.max | head -1
-100
+96
