@@ -88,15 +88,40 @@ runs:
         set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
         SHORT_SHA="${GITHUB_SHA::7}"
-        # Capture only stdout so the digest variable can never be
-        # corrupted by stderr (Docker emits experimental-feature /
-        # deprecation warnings on stderr; merging via `2>&1` would
-        # break the regex check below). On failure stderr still
-        # reaches the GHA log via the inherited file descriptor.
-        if ! DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}')"; then
+
+        # Inspect stdout carries the digest, so we cannot merge stderr
+        # (Docker emits deprecation warnings on stderr that would
+        # corrupt the regex check below). Capture stderr to a tmpfile
+        # and inspect it ONLY on failure to decide retry vs fail-fast.
+        # Transient GHCR 5xx -> retry with backoff; a true 404 (image
+        # not published by main-run) fails immediately. Same transient
+        # signatures as docker_push_with_retry.sh, intentionally
+        # mirrored so the two paths agree on what counts as transient.
+        TRANSIENT_RE='page is taking too long|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|tls: |connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake'
+        ERR_FILE="$(mktemp)"
+        trap 'rm -f "$ERR_FILE"' EXIT
+        ATTEMPTS=4
+        BACKOFF=15
+        DIGEST=""
+        for ((i = 1; i <= ATTEMPTS; i++)); do
+          if DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}' 2>"$ERR_FILE")"; then
+            cat "$ERR_FILE" >&2
+            break
+          fi
+          rc=$?
+          ERR="$(cat "$ERR_FILE")"
+          if [ "$i" -lt "$ATTEMPTS" ] && printf '%s' "$ERR" | grep -qiE "$TRANSIENT_RE"; then
+            printf '%s\n' "$ERR" >&2
+            echo "::warning::imagetools inspect ${REPO}:sha-${SHORT_SHA} hit transient registry error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
+            sleep "$BACKOFF"
+            BACKOFF=$((BACKOFF * 2))
+            continue
+          fi
+          printf '%s\n' "$ERR" >&2
           echo "::error::Could not resolve ${REPO}:sha-${SHORT_SHA} -- the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image. Re-run the main-push first; this tag-push retag job will then succeed on re-run."
           exit 1
-        fi
+        done
+
         if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
           echo "::error::imagetools inspect returned an unexpected digest: ${DIGEST}"
           exit 1
@@ -121,6 +146,7 @@ runs:
       run: |
         set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
+        RETRY="${GITHUB_WORKSPACE}/.github/scripts/docker_push_with_retry.sh"
         PUSHED_TAGS=()
         CREATE_ARGS=()
         while IFS= read -r full_tag; do
@@ -137,7 +163,10 @@ runs:
           exit 1
         fi
 
-        docker buildx imagetools create "${CREATE_ARGS[@]}" "${REPO}@${SIGNED_DIGEST}"
+        # Retry transient GHCR 5xx during the manifest-list write. Source
+        # is digest-pinned so re-runs produce byte-identical results.
+        bash "$RETRY" "docker buildx imagetools create ${REPO} (${#PUSHED_TAGS[@]} tags)" \
+          docker buildx imagetools create "${CREATE_ARGS[@]}" "${REPO}@${SIGNED_DIGEST}"
         for t in "${PUSHED_TAGS[@]}"; do
           echo "✓ ${REPO}:${t} -> ${SIGNED_DIGEST}"
         done
