@@ -504,6 +504,11 @@ class AppState(AppStateServicesMixin):
         # ordering invariant the controller relies on.
         self._request_lock_refs: dict[str, int] = {}
         self.startup_time = startup_time
+        # Test seam: controllers and services that read time go
+        # through ``app_state.clock`` so unit tests can inject a
+        # ``FakeClock`` without monkey-patching ``time.monotonic``
+        # at the module level.  ``SystemClock`` is the production
+        # default; see CLAUDE.md ``## Code Conventions`` (Clock seam).
         self.clock: Clock = clock or SystemClock()
 
     def _init_derived_services(

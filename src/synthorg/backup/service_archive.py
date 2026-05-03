@@ -12,6 +12,8 @@ import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
@@ -407,7 +409,7 @@ class BackupServiceArchiveMixin:
             tar.extractall(target_dir, filter="data")
 
     @staticmethod
-    def _read_manifest_from_archive(
+    def _read_manifest_from_archive(  # noqa: PLR0911
         archive_path: Path,
     ) -> BackupManifest | None:
         """Read manifest.json from a tar.gz archive."""
@@ -436,10 +438,39 @@ class BackupServiceArchiveMixin:
                 return BackupManifest.model_validate(data)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except tarfile.TarError as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(archive_path),
-                exc_info=True,
+                category="archive_corrupt",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(archive_path),
+                category="json_parse_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        except ValidationError as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(archive_path),
+                category="schema_validation_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        except OSError as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(archive_path),
+                category="io_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None

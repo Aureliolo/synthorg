@@ -132,11 +132,16 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         return frozenset(registry.list_tools())
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.warning(
+    except AttributeError, TypeError, ValueError:
+        # Narrow the swallow to the specific shapes a malformed or
+        # partially-initialised registry can produce. ERROR rather
+        # than WARNING so operators can alert on stale snapshots --
+        # if this fires, the previous allowlist is preserved silently
+        # and tool_name labels keep using stale values until the
+        # registry recovers.
+        logger.exception(
             METRICS_SCRAPE_FAILED,
             component="tool_registry",
-            exc_info=True,
         )
         return None
 

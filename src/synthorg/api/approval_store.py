@@ -267,6 +267,14 @@ class ApprovalStore:
         to_persist and transitions the cache; the persistence write
         fans out as a single ``save_many`` so K simultaneous expiries
         yield one DB round-trip rather than K.
+
+        Side effects after the batch save:
+
+        * Emits one ``APPROVAL_STATUS_TRANSITIONED`` + one
+          ``API_APPROVAL_EXPIRED`` audit event per newly-expired item.
+        * Fires the optional ``on_expire`` callback for each item via
+          :meth:`_fire_expire_callback` (best-effort; failures are
+          logged at ERROR but do not unwind the expiration).
         """
         assert self._repo is not None  # noqa: S101 -- caller invariant
         repo_items = await self._repo.list_items(
@@ -594,7 +602,12 @@ class ApprovalStore:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(
+            # ERROR rather than WARNING: the approval is already
+            # EXPIRED in cache + repo, so the callback can't
+            # propagate, but a failed downstream side effect (webhook,
+            # audit dispatch, workflow resume) is operationally
+            # meaningful and operators must be able to alert on it.
+            logger.error(  # noqa: TRY400
                 API_APPROVAL_EXPIRE_CALLBACK_FAILED,
                 approval_id=expired.id,
                 error_type=type(exc).__name__,

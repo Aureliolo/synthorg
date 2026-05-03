@@ -187,30 +187,46 @@ class DelegationCircuitBreaker:
         Returns:
             Outcome with passed=False if circuit is open.
         """
-        state = self.get_state(delegator_id, delegatee_id)
-        if state is CircuitBreakerState.OPEN:
+        # Hold the lock across both the state evaluation and the
+        # cooldown read. Splitting them lets a concurrent
+        # ``record_delegation`` reset or mutate the pair between
+        # ``get_state`` and the post-hoc ``_get_pair`` lookup, which
+        # would surface as a stale cooldown value or a missing pair
+        # in the OPEN branch.
+        with self._state_lock:
             pair = self._get_pair(delegator_id, delegatee_id)
-            cooldown = (
-                self._compute_cooldown(pair.trip_count)
-                if pair is not None
-                else float(self._config.cooldown_seconds)
-            )
-            logger.info(
-                DELEGATION_LOOP_CIRCUIT_OPEN,
-                delegator=delegator_id,
-                delegatee=delegatee_id,
-                cooldown_seconds=cooldown,
-            )
-            return GuardCheckOutcome(
-                passed=False,
-                mechanism=_MECHANISM,
-                message=(
-                    f"Circuit breaker open for pair "
-                    f"({delegator_id!r}, {delegatee_id!r}); "
-                    f"cooldown {cooldown}s"
-                ),
-            )
-        return GuardCheckOutcome(passed=True, mechanism=_MECHANISM)
+            if pair is None or pair.opened_at is None:
+                return GuardCheckOutcome(passed=True, mechanism=_MECHANISM)
+            elapsed = self._clock() - pair.opened_at
+            cooldown = self._compute_cooldown(pair.trip_count)
+            if elapsed >= cooldown:
+                key = pair_key(delegator_id, delegatee_id)
+                pair.bounce_count = 0
+                pair.opened_at = None
+                self._dirty.add(key)
+                logger.info(
+                    DELEGATION_LOOP_CIRCUIT_RESET,
+                    delegator=delegator_id,
+                    delegatee=delegatee_id,
+                    cooldown_seconds=cooldown,
+                    trip_count=pair.trip_count,
+                )
+                return GuardCheckOutcome(passed=True, mechanism=_MECHANISM)
+        logger.info(
+            DELEGATION_LOOP_CIRCUIT_OPEN,
+            delegator=delegator_id,
+            delegatee=delegatee_id,
+            cooldown_seconds=cooldown,
+        )
+        return GuardCheckOutcome(
+            passed=False,
+            mechanism=_MECHANISM,
+            message=(
+                f"Circuit breaker open for pair "
+                f"({delegator_id!r}, {delegatee_id!r}); "
+                f"cooldown {cooldown}s"
+            ),
+        )
 
     def record_delegation(
         self,

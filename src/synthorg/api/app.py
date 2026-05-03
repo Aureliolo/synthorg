@@ -127,10 +127,14 @@ logger = get_logger(__name__)
 
 
 # Default approval-timeout interval mirrors the registry default for
-# ``security.timeout_check_interval_seconds``. Held here as a constant
-# so the bootstrap and the registry definition cannot drift; future
-# reads from ConfigResolver still override at runtime via the
+# ``security.timeout_check_interval_seconds`` defined in
+# ``src/synthorg/settings/definitions/security.py``. Held here as a
+# constant so the bootstrap and the registry definition cannot drift;
+# future reads from ConfigResolver still override at runtime via the
 # scheduler's ``reschedule()`` (called from a settings subscriber).
+# Update both sites together if the default ever changes; otherwise a
+# bootstrap value will silently disagree with operator-editable
+# overrides resolved through ``ConfigResolver``.
 _DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS = 60.0
 
 

@@ -11,9 +11,13 @@ Resolution is a security-sensitive event: the WHO + WHEN of an
 operator allowing or denying a previously-blocked URL is captured at
 this layer via :data:`SECURITY_SSRF_VIOLATION_ALLOWED` /
 :data:`SECURITY_SSRF_VIOLATION_DENIED` so the entries land on the
-signed audit chain alongside other security mutations.  Read-side
-fetch / list events stay on the API namespace because they carry no
-audit-chain implication.
+signed audit chain alongside other security mutations.  Failed
+resolution attempts emit
+:data:`SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED` rather than the
+success verb so SIEM readers can distinguish a failed resolution
+from an actual allow / deny decision.  Read-side fetch / list events
+stay on the API namespace because they carry no audit-chain
+implication.
 """
 
 from typing import TYPE_CHECKING
@@ -28,6 +32,7 @@ from synthorg.observability.events.security import (
     SECURITY_SSRF_VIOLATION_ALLOWED,
     SECURITY_SSRF_VIOLATION_DENIED,
     SECURITY_SSRF_VIOLATION_RECORDED,
+    SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED,
 )
 from synthorg.security.ssrf_violation import (
     SsrfViolation,
@@ -226,11 +231,12 @@ class SsrfViolationService:
             raise
         except ValueError as exc:
             # Invalid status transition (e.g. PENDING) is a caller bug
-            # but still a security-relevant audit signal -- log it at
-            # WARNING with full context before propagating per
-            # CLAUDE.md `## Logging`.
+            # and a security-relevant audit signal: log under the
+            # dedicated failure event (NOT the success allowed/denied
+            # verb) so SIEM filters can distinguish a failed resolution
+            # from an actual decision.
             logger.warning(
-                success_event,
+                SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED,
                 violation_id=violation_id,
                 status=status.value,
                 error_type=type(exc).__name__,
@@ -239,7 +245,7 @@ class SsrfViolationService:
             raise
         except Exception as exc:
             logger.warning(
-                success_event,
+                SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED,
                 violation_id=violation_id,
                 status=status.value,
                 error_type=type(exc).__name__,

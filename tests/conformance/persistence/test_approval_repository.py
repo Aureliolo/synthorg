@@ -290,6 +290,12 @@ class TestApprovalRepository:
         repo = _approval_repo(backend)
         # Empty input must not open a transaction or raise.
         await repo.save_many(())
+        # Confirm no rows were written: a fresh repo on the same
+        # connection sees an empty list. Without this post-condition
+        # the test would pass even if save_many silently opened and
+        # committed an empty transaction.
+        fresh = _approval_repo(backend)
+        assert await fresh.list_items() == ()
 
     async def test_save_many_upserts_existing_rows(
         self,
@@ -306,5 +312,25 @@ class TestApprovalRepository:
         await repo.save_many((updated,))
 
         fetched = await repo.get(original.id)
+        assert fetched is not None
+        assert fetched.status is ApprovalStatus.EXPIRED
+
+    async def test_save_many_duplicate_ids_within_batch_settle_to_last(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # The protocol contract is upsert per id. When the same id
+        # appears twice in a batch the repository must converge on the
+        # last value rather than open a half-applied state where a
+        # concurrent reader could observe the intermediate version.
+        repo = _approval_repo(backend)
+        first = _make_item(
+            approval_id="approval-batch-dup",
+            status=ApprovalStatus.PENDING,
+        )
+        second = first.model_copy(update={"status": ApprovalStatus.EXPIRED})
+        await repo.save_many((first, second))
+
+        fetched = await repo.get(first.id)
         assert fetched is not None
         assert fetched.status is ApprovalStatus.EXPIRED

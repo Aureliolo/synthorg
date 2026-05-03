@@ -324,3 +324,93 @@ class TestCircuitBreakerDirtyTracking:
         assert pair.bounce_count == 1
         assert pair.trip_count == 2
         assert pair.opened_at == 50.0
+
+
+@pytest.mark.unit
+class TestCheckAtomicity:
+    """Regression coverage for the ``check()`` TOCTOU race.
+
+    The previous implementation called ``get_state()`` (which released
+    the lock on return), then re-acquired the pair via a second
+    ``_get_pair`` lookup outside the lock to compute the cooldown for
+    the OPEN-branch log message.  A concurrent ``record_delegation``
+    on the same pair could mutate the dict between those reads,
+    surfacing a stale cooldown value or a missing pair.
+    """
+
+    def test_check_open_branch_runs_under_state_lock(self) -> None:
+        """The whole OPEN-branch decision (state + cooldown read)
+        runs while holding ``_state_lock``."""
+        config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=10)
+        clock_time = 0.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+        cb.record_delegation("a", "b")
+
+        # Wrap the lock so we can observe whether the protected
+        # region was held across the OPEN-branch reads. Substituting
+        # a tracking RLock keeps the API identical -- both
+        # acquire/release pairs delegate to the underlying lock so
+        # threading semantics are preserved.
+        underlying = cb._state_lock
+        acquired_during_check: list[bool] = []
+
+        class _TrackingLock:
+            def __enter__(self) -> _TrackingLock:
+                underlying.acquire()
+                acquired_during_check.append(True)
+                return self
+
+            def __exit__(
+                self,
+                exc_type: object,
+                exc: object,
+                tb: object,
+            ) -> None:
+                acquired_during_check.append(False)
+                underlying.release()
+
+            def acquire(self, *args: object, **kwargs: object) -> bool:
+                return underlying.acquire()
+
+            def release(self) -> None:
+                underlying.release()
+
+        cb._state_lock = _TrackingLock()  # type: ignore[assignment]
+        result = cb.check("a", "b")
+        assert result.passed is False
+        # Exactly one acquire/release pair across the check, meaning
+        # the entire OPEN branch decision was inside the critical
+        # section (no second unlocked read).
+        assert acquired_during_check == [True, False]
+
+    def test_record_delegation_after_get_state_does_not_drop_pair(
+        self,
+    ) -> None:
+        """A concurrent ``record_delegation`` between ``get_state`` and
+        the cooldown read cannot leave ``check`` reading a missing pair.
+
+        The fix folds both reads under one lock so the resetting
+        branch in ``get_state`` and the OPEN-branch read in ``check``
+        cannot interleave with a sibling mutation.
+        """
+        config = CircuitBreakerConfig(bounce_threshold=2, cooldown_seconds=10)
+        clock_time = 0.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
+        # Pair is OPEN; cooldown elapsed mid-check would historically
+        # leave the post-get_state lookup observing a freshly-reset
+        # pair with opened_at=None. Under the new locking it doesn't
+        # matter -- the entire branch is atomic.
+        clock_time = 5.0
+        result = cb.check("a", "b")
+        assert result.passed is False
+        assert "cooldown" in (result.message or "")

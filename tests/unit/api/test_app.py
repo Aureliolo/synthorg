@@ -467,6 +467,9 @@ class TestAppLifecycle:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
         from synthorg.api.state import AppState
+        from synthorg.communication.meeting.scheduler import (
+            MeetingScheduler,
+        )
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -474,7 +477,7 @@ class TestAppLifecycle:
 
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
-        mock_sched = MagicMock()
+        mock_sched = MagicMock(spec=MeetingScheduler)
         mock_sched.start = AsyncMock()
         mock_sched.stop = AsyncMock()
 
@@ -510,6 +513,9 @@ class TestAppLifecycle:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
         from synthorg.api.state import AppState
+        from synthorg.security.timeout.scheduler import (
+            ApprovalTimeoutScheduler,
+        )
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -517,7 +523,7 @@ class TestAppLifecycle:
 
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
-        mock_sched = MagicMock()
+        mock_sched = MagicMock(spec=ApprovalTimeoutScheduler)
         mock_sched.start = AsyncMock()
         mock_sched.stop = AsyncMock()
 

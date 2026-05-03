@@ -27,6 +27,7 @@ from synthorg.observability.events.security import (
     SECURITY_SSRF_VIOLATION_ALLOWED,
     SECURITY_SSRF_VIOLATION_DENIED,
     SECURITY_SSRF_VIOLATION_RECORDED,
+    SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED,
 )
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
@@ -346,10 +347,12 @@ async def test_update_status_no_audit_when_row_missing() -> None:
 async def test_update_status_rejects_pending_target() -> None:
     """Transitioning back to PENDING is invalid; one WARNING audit fires.
 
-    The success-shape INFO event must NOT fire (no actual transition
-    happened) but a WARNING with ``error_type`` is required by
-    CLAUDE.md `## Logging` so incident triage can correlate the
-    invalid call.
+    The success-shape allow / deny event must NOT fire (no actual
+    transition happened); a dedicated
+    ``SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED`` WARNING with
+    ``error_type`` fires instead so SIEM dashboards keyed on the
+    success verbs cannot misclassify a failed resolution as an
+    actual decision.
     """
     repo = _FakeSsrfViolationRepo()
     service = SsrfViolationService(repo=repo)
@@ -368,15 +371,22 @@ async def test_update_status_rejects_pending_target() -> None:
             resolved_at=resolved_at,
         )
 
-    # PENDING is not ALLOWED, so the service routes the warning event
-    # to SECURITY_SSRF_VIOLATION_DENIED (the non-allowed branch).
-    audits = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_DENIED]
-    info_audits = [log for log in audits if log.get("log_level") == "info"]
-    warning_audits = [log for log in audits if log.get("log_level") == "warning"]
-    assert info_audits == [], (
-        f"the success-shape INFO event must NOT fire on invalid transition "
-        f"-- got {info_audits}"
+    success_audits = [
+        log
+        for log in logs
+        if log["event"]
+        in {SECURITY_SSRF_VIOLATION_ALLOWED, SECURITY_SSRF_VIOLATION_DENIED}
+    ]
+    assert success_audits == [], (
+        f"success-shape events must NOT fire on invalid transition "
+        f"-- got {success_audits}"
     )
+    failure_audits = [
+        log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED
+    ]
+    warning_audits = [
+        log for log in failure_audits if log.get("log_level") == "warning"
+    ]
     assert len(warning_audits) == 1
     assert warning_audits[0]["error_type"] == "ValueError"
     assert warning_audits[0]["violation_id"] == violation.id

@@ -19,6 +19,11 @@ from synthorg.observability.enums import (
     SyslogFacility,
     SyslogProtocol,
 )
+from synthorg.observability.prometheus_labels import (
+    _LabelSnapshot,
+    _reset_label_snapshot_for_tests,
+    update_label_snapshot,
+)
 from tests.conftest import clear_logging_state
 
 # -- Factories --------------------------------------------------------------
@@ -80,6 +85,29 @@ def _reset_logging() -> Iterator[None]:
     clear_logging_state()
     yield
     clear_logging_state()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _seed_prometheus_label_snapshot() -> Iterator[None]:
+    """Seed the Prometheus label snapshot for all observability tests.
+
+    ``record_tool_invocation`` validates the ``tool_name`` label
+    against the snapshot maintained by ``PrometheusCollector.refresh()``.
+    Unit tests that never invoke ``refresh()`` would otherwise see an
+    empty snapshot and reject every recording call.  Session-scoping
+    keeps the snapshot populated even when individual files install
+    their own (now redundant) seed-and-reset fixtures, so cross-file
+    test ordering under xdist ``loadfile`` can no longer leave an
+    empty snapshot in place between files on the same worker.
+    """
+    update_label_snapshot(
+        _LabelSnapshot(
+            tool_names=frozenset({"web_search", "calculator", "t"}),
+            tool_names_seeded=True,
+        ),
+    )
+    yield
+    _reset_label_snapshot_for_tests()
 
 
 @pytest.fixture

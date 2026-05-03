@@ -123,18 +123,60 @@ class ApprovalTimeoutScheduler:
                 interval_seconds=self._interval,
             )
 
-    async def stop(self) -> None:
-        """Cancel the background scheduler and wait for it to finish."""
+    async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
+        """Cancel the background scheduler and wait for it to finish.
+
+        Holds ``_lifecycle_lock`` across the full body so a racing
+        ``start()`` cannot interleave between cancel and the
+        ``self._task = None`` assignment.
+
+        Args:
+            timeout: Seconds to wait for cancellation + drain. ``None``
+                means "wait indefinitely". Must be positive when set.
+
+        Raises:
+            ValueError: If ``timeout`` is non-positive.
+            TimeoutError: If cancellation + drain do not complete within
+                ``timeout``. The scheduler is marked unrestartable so
+                a subsequent :meth:`start` raises ``RuntimeError``;
+                operators must construct a fresh instance because the
+                prior task may still be in flight finishing its cleanup
+                and a new task spawned alongside it would break the
+                single-writer invariant.
+        """
+        if timeout is not None and timeout <= 0:
+            msg = f"stop() timeout must be > 0, got {timeout!r}"
+            raise ValueError(msg)
         async with self._lifecycle_lock:
             if self._task is None:
                 await self._background_tasks.drain()
                 return
+            try:
+                if timeout is None:
+                    await self._cancel_and_drain()
+                else:
+                    await asyncio.wait_for(
+                        self._cancel_and_drain(),
+                        timeout=timeout,
+                    )
+            except TimeoutError:
+                self._stop_failed = True
+                logger.error(  # noqa: TRY400
+                    TIMEOUT_SCHEDULER_ERROR,
+                    error="stop drain timed out",
+                    timeout_seconds=timeout,
+                )
+                raise
+            self._task = None
+            logger.info(TIMEOUT_SCHEDULER_STOPPED)
+
+    async def _cancel_and_drain(self) -> None:
+        """Cancel the scheduler task and drain background callbacks."""
+        if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            self._task = None
-            await self._background_tasks.drain()
-            logger.info(TIMEOUT_SCHEDULER_STOPPED)
+        await self._background_tasks.drain()
 
     def reschedule(self, interval_seconds: float) -> None:
         """Update the interval and interrupt the current sleep.
