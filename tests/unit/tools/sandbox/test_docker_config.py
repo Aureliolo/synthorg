@@ -107,7 +107,7 @@ class TestDockerSandboxConfigImageResolution:
         # restore the snapshot it captures into ``__dict__`` at
         # teardown, permanently shadowing ``__getattr__`` for the
         # lifetime of the proxy and breaking ``capture_logs()`` for
-        # later tests on the same xdist worker (issue #1713).
+        # later tests on the same xdist worker.
         proxy = module.logger
         proxy.debug = _capture  # type: ignore[method-assign,assignment]
         try:

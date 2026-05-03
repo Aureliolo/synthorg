@@ -472,3 +472,34 @@ class TestPendingRecordIsolation:
         assert "budget.pending_record.drain_unexpected" in events, (
             f"expected drain_unexpected event; got {events}"
         )
+
+    async def test_drain_propagates_cancellation_without_warning(self) -> None:
+        # ``CancelledError`` is the *expected* outcome of a graceful
+        # shutdown or a cancelled surrounding task group, not a
+        # regression. The drain re-raises so the caller's task group
+        # observes the cancel signal, but does NOT WARN-log because
+        # that would treat normal shutdown as an error.
+        import structlog
+
+        tracker = CostTracker()
+
+        async def _cancellable() -> None:
+            # Block forever; the test will cancel via ``task.cancel()``.
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(_cancellable())
+        tracker.track_pending_record(task)
+        # Yield once so the task is actually scheduled before we cancel.
+        await asyncio.sleep(0)
+        task.cancel()
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await tracker.drain_pending_records()
+        events = [log["event"] for log in logs]
+        # The CancelledError path must NOT emit ``drain_unexpected``;
+        # cancellation is normal, not a regression.
+        assert "budget.pending_record.drain_unexpected" not in events, (
+            f"cancelled drain must not WARN-log; got {events}"
+        )

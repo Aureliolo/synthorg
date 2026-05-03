@@ -249,9 +249,14 @@ class TestRecommendBatchSize:
             assert args[0] == MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED
             assert kwargs.get("error_type") == "RuntimeError"
             assert "CUDA driver unavailable" in kwargs.get("error", "")
-            # ``exc_info`` is intentionally NOT set: the full traceback
-            # bypasses ``safe_error_description`` and can leak
-            # environment paths / backend metadata; SEC-1.
+            # ``exc_info`` is intentionally NOT set: passing the
+            # exception chain to structlog appends the full traceback,
+            # which bypasses the ``safe_error_description`` scrub and
+            # can leak attacker-uncontrollable but operator-sensitive
+            # detail (filesystem paths, fine-tune backend metadata,
+            # CUDA driver versions). The assertion locks that exclusion
+            # in place so a future refactor can't quietly add the
+            # traceback.
             assert "exc_info" not in kwargs
         finally:
             from contextlib import suppress

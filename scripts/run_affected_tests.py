@@ -11,8 +11,10 @@ other module, so changes to them trigger a full test run. Same for any
 ``conftest.py`` and top-level source files (``__init__.py``, ``constants.py``).
 
 When the affected-tests run goes green, an isolation regression gate runs
-``pytest --count 2 -x`` over the same selection (issue #1713). Catches a
-new module-level-state offender the moment it lands, before push. Set
+``pytest --count 2 -x`` over the same selection: a test that passes the
+primary run but fails the second invocation almost always means a fixture
+leaked process-global state into the next run, the exact failure mode that
+splits a green local run from a red xdist push. Set
 ``SYNTHORG_SKIP_ISOLATION_GATE=1`` to bypass for emergency pushes (the
 primary run still gates on first-run failures regardless).
 
@@ -447,11 +449,11 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
 def _run_isolation_gate(paths: list[str]) -> int:
     """Run ``pytest --count 2 -x`` over the given paths.
 
-    Catches module-level-state isolation regressions (issue #1713) by
-    re-running each test exactly once and stopping on the first
-    failure. A test that passes the primary run but fails the second
-    run almost always means a fixture leaked process-global state that
-    polluted the second invocation.
+    Catches module-level-state isolation regressions by re-running each
+    test exactly once and stopping on the first failure. A test that
+    passes the primary run but fails the second run almost always means
+    a fixture leaked process-global state that polluted the second
+    invocation.
 
     Skipped when ``SYNTHORG_SKIP_ISOLATION_GATE=1`` (operator escape
     hatch for emergency pushes; the primary run still enforces
@@ -490,7 +492,9 @@ def _run_isolation_gate(paths: list[str]) -> int:
             f"\n{border}\n"
             "ISOLATION REGRESSION: a test passed once but failed on repeat.\n"
             "Module-level state likely leaked across the two invocations.\n"
-            "See issue #1713 for the canonical offenders + fix patterns.\n"
+            "Common offenders: module-level dicts/sets that fixtures reset\n"
+            "in only one directory; ``monkeypatch.setattr`` on structlog\n"
+            "lazy-proxy log methods; cached caches that survive teardown.\n"
             f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1\n"
             f"{border}",
             file=sys.stderr,
@@ -498,7 +502,7 @@ def _run_isolation_gate(paths: list[str]) -> int:
     return returncode
 
 
-def main() -> int:
+def main() -> int:  # noqa: PLR0911
     """Entry point."""
     try:
         base = _merge_base()
@@ -510,6 +514,15 @@ def main() -> int:
         changed = _changed_files(base)
     except _GitError as exc:
         print(f"ERROR: {exc} -- running full unit suite", file=sys.stderr)
+        return _run_pytest(["tests/unit/"], run_all=True)
+
+    # ``pyproject.toml`` carries the pytest config (addopts, xdist
+    # distribution, plugin list, markers). A push that touches it but
+    # no Python file would otherwise skip every test, so the
+    # configuration change ships unverified -- the exact failure mode
+    # that lets a regressed test runner sit on main.
+    if "pyproject.toml" in changed:
+        print("pyproject.toml changed -- running full unit suite.")
         return _run_pytest(["tests/unit/"], run_all=True)
 
     # Filter to Python files only.

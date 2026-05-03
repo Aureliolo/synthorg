@@ -472,3 +472,56 @@ class TestAppStateRequestLocks:
         # The newest insert must survive; one of the older idles was
         # evicted (FIFO order in the OrderedDict).
         assert "trigger-evict" in state._request_locks
+
+    async def test_eviction_preserves_held_lock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Even when the oldest entry is the one being held, the sweep
+        # must skip it: dropping a Lock currently inside ``async with``
+        # would let the next call mint a fresh Lock for the same id and
+        # leave concurrent callers serialising on different objects.
+        from synthorg.api import state_services as _ss
+
+        monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 3)
+
+        state = _make_state()
+        oldest = state.get_or_create_request_lock("oldest")
+        async with oldest:
+            # Fill to cap with idle entries.
+            state.get_or_create_request_lock("middle")
+            state.get_or_create_request_lock("newest")
+            # Trigger eviction: ``oldest`` is held, so it must survive
+            # and one of the idle entries is dropped instead.
+            state.get_or_create_request_lock("trigger")
+            assert "oldest" in state._request_locks
+            assert state._request_locks["oldest"] is oldest
+            assert "trigger" in state._request_locks
+
+    async def test_eviction_preserves_referenced_lock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The race the refcount fixes: between
+        # ``acquire_request_lock`` reserving the Lock and the body
+        # entering ``async with``, the Lock is unlocked but in flight.
+        # An eviction sweep that ignores the refcount would drop it
+        # under the caller's feet and the next call would mint a
+        # different Lock, splitting the per-id serialisation guarantee.
+        from synthorg.api import state_services as _ss
+
+        monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 3)
+
+        state = _make_state()
+        # Simulate the in-flight window: refcount > 0, lock unlocked.
+        reserved = state._reserve_request_lock("in-flight")
+        try:
+            # Fill registry to the cap with idle entries.
+            state.get_or_create_request_lock("idle-1")
+            state.get_or_create_request_lock("idle-2")
+            # Trigger eviction sweep with one more insert.
+            state.get_or_create_request_lock("trigger")
+            # ``in-flight`` is unlocked but its refcount is non-zero,
+            # so the sweep must keep it.
+            assert "in-flight" in state._request_locks
+            assert state._request_locks["in-flight"] is reserved
+        finally:
+            state._release_request_lock_ref("in-flight")

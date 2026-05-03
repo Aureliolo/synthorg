@@ -180,7 +180,7 @@ class RequestController(Controller):
         # race at ``save`` time.  The lock scope is intentionally
         # narrow -- only the get/check/save critical section -- so a
         # stuck request does not block unrelated requests.
-        async with app_state.get_or_create_request_lock(request_id):
+        async with app_state.acquire_request_lock(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:
@@ -262,7 +262,7 @@ class RequestController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        async with app_state.get_or_create_request_lock(request_id):
+        async with app_state.acquire_request_lock(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:
@@ -308,7 +308,7 @@ class RequestController(Controller):
         """Cancel a request, recording the rejection reason."""
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        async with app_state.get_or_create_request_lock(request_id):
+        async with app_state.acquire_request_lock(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:

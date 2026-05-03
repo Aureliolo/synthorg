@@ -609,6 +609,11 @@ class CostTracker(CostTrackerSummaryMixin):
         :class:`MemoryError` and :class:`RecursionError` propagate so a
         ``drain`` invoked from a test path doesn't silently swallow
         interpreter-fatal signals via ``return_exceptions=True``.
+        :class:`asyncio.CancelledError` is re-raised so cancellation
+        propagates instead of producing a misleading WARN log: a
+        cancelled background task is the *expected* outcome of a
+        graceful shutdown or a test cancelling the surrounding
+        ``TaskGroup``, not a regression.
         """
         if not self._pending_record_tasks:
             return
@@ -617,9 +622,15 @@ class CostTracker(CostTrackerSummaryMixin):
         # the live set while it shrinks would risk skipping tasks.
         pending = tuple(self._pending_record_tasks)
         results = await asyncio.gather(*pending, return_exceptions=True)
+        cancelled_count = 0
         for outcome in results:
             if isinstance(outcome, (MemoryError, RecursionError)):
                 raise outcome
+            if isinstance(outcome, asyncio.CancelledError):
+                # Cancellation is expected during graceful shutdown;
+                # count for the propagation below but don't WARN.
+                cancelled_count += 1
+                continue
             if isinstance(outcome, BaseException):
                 # ``_record_cost_in_background`` already logs + swallows
                 # recoverable failures, so reaching this branch means
@@ -632,6 +643,13 @@ class CostTracker(CostTrackerSummaryMixin):
                     error_type=type(outcome).__name__,
                     error=safe_error_description(outcome),
                 )
+        if cancelled_count:
+            # Re-raise a CancelledError so the caller's surrounding
+            # TaskGroup / context observes the cancellation instead of
+            # silently masking it. Specific instance is not preserved
+            # because the gather snapshot may hold many; one suffices
+            # to propagate the signal.
+            raise asyncio.CancelledError
 
     # ── Private helpers ──────────────────────────────────────────────
 

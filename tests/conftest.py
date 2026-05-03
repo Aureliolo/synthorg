@@ -447,9 +447,11 @@ def clear_logging_state() -> None:
 # Agent Card cache, the Prometheus label-validator snapshot). Without
 # a global autouse reset, a test in worker N that imports the
 # subsystem leaves entries behind for the next test in the same
-# worker -- the original "module-level state" failure mode behind
-# issue #1713. Each fixture is O(1) (a dict ``.clear()`` or a single
-# rebind) so the suite-wide cost is negligible.
+# worker -- the canonical "module-level state survives across tests
+# in one xdist worker" failure mode that turns a green local run
+# into a flake under ``-n 8``. Each fixture is O(1) (a dict
+# ``.clear()`` or a single rebind) so the suite-wide cost is
+# negligible.
 
 
 @pytest.fixture(autouse=True)
@@ -461,11 +463,10 @@ def _reset_structlog_state() -> Iterator[None]:
     ``structlog.configure(...)`` or holds ``structlog.testing.capture
     _logs()`` open across an unexpected exit leaves residual state for
     the next test in the same xdist worker. Without this autouse the
-    canonical symptom is the one observed in #1713: a
-    settings-resolution test under ``-n 8`` finds only DEBUG events in
-    the capture buffer because a prior test left structlog wired to a
-    filter that swallows INFO emissions, even though the production
-    code emitted them.
+    canonical symptom is a settings-resolution test under ``-n 8``
+    finding only DEBUG events in the capture buffer because a prior
+    test left structlog wired to a filter that swallows INFO
+    emissions, even though the production code emitted them.
 
     Scoped to ``structlog`` defaults + stdlib root *level* only --
     the stdlib-root-handler close that ``clear_logging_state()``

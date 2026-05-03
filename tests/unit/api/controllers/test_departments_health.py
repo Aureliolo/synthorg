@@ -106,15 +106,14 @@ def _build_dept_client(
     start. Sharing the session-scoped ``fake_persistence`` fixture
     leaks settings written by other tests (via ``_shared_app``
     consumers) into the config-resolver lookup, which surfaces as
-    spurious 404s on departments the test config explicitly declares
-    (#1713).
+    spurious 404s on departments the test config explicitly declares.
     """
     from synthorg.api.app import create_app
     from synthorg.api.auth.service import AuthService
     from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
     fake_persistence = FakePersistenceBackend()
-    fake_persistence._connected = True
+    fake_persistence.mark_connected()
     auth_service: AuthService = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
     settings_service = SettingsService(

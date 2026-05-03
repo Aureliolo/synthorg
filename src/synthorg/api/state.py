@@ -232,6 +232,7 @@ class AppState(AppStateServicesMixin):
         "_refresh_store",
         "_report_service",
         "_reports_service",
+        "_request_lock_refs",
         "_request_locks",
         "_request_locks_guard",
         "_requests_facade_service",
@@ -489,6 +490,16 @@ class AppState(AppStateServicesMixin):
         # registry forever.
         self._request_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
         self._request_locks_guard: threading.Lock = threading.Lock()
+        # In-flight reference count: bumped by ``acquire_request_lock``
+        # before returning the Lock, dropped after the ``async with``
+        # exits. Eviction skips any entry with refs > 0, so the window
+        # between receiving the Lock and entering ``async with`` cannot
+        # leave a caller stranded on a freshly-evicted entry while the
+        # next call mints a different Lock for the same id. Without
+        # this gate, two callers could end up serialising on different
+        # Lock objects for the same request, breaking the per-id
+        # ordering invariant the controller relies on.
+        self._request_lock_refs: dict[str, int] = {}
         self.startup_time = startup_time
 
     def _init_derived_services(

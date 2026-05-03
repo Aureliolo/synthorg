@@ -955,8 +955,9 @@ def _logger_info_spy(module: Any) -> Iterator[list[str]]:
     ``structlog.testing.capture_logs()`` mutates
     ``_CONFIG.default_processors`` but the cached bound method holds
     a stale processor list, so events go to stdout instead of the
-    capture buffer. Issue #1713's "5 of 6 settings tests fail under
-    -n 8" symptom traces to exactly this leak. The explicit
+    capture buffer -- the failure mode where settings-resolution
+    tests pass in isolation but fail under ``-n 8`` because the
+    capture buffer comes back empty. The explicit
     ``delattr`` in the ``finally`` branch leaves the proxy instance
     dict empty so ``__getattr__`` resumes serving fresh bound loggers
     for the next test.
