@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.7.8](https://github.com/Aureliolo/synthorg/compare/v0.7.7...v0.7.8) (2026-05-03)
+
+
+### Features
+
+* **api:** typed-boundary helper + codebase-audit skill prompt tuning ([#1712](https://github.com/Aureliolo/synthorg/issues/1712)) ([40ee65b](https://github.com/Aureliolo/synthorg/commit/40ee65b68a3cc767757edfd50b61c01cf16db869))
+* **boundary:** RFC [#1711](https://github.com/Aureliolo/synthorg/issues/1711) Phases 2 + 3 — typed boundaries via parse_typed ([#1720](https://github.com/Aureliolo/synthorg/issues/1720)) ([7b9f409](https://github.com/Aureliolo/synthorg/commit/7b9f409ec0167b5300bb7dfff782ecc9a774652f))
+
+
+### Bug Fixes
+
+* **api:** audit cleanup B -- API hygiene & validation ([#1719](https://github.com/Aureliolo/synthorg/issues/1719)) ([3d790d9](https://github.com/Aureliolo/synthorg/commit/3d790d9b10307508ecfe1020c187eaf98c6f6ad8))
+* audit cleanup C - persistence, concurrency & data integrity ([#1708](https://github.com/Aureliolo/synthorg/issues/1708)) ([#1717](https://github.com/Aureliolo/synthorg/issues/1717)) ([bcce097](https://github.com/Aureliolo/synthorg/commit/bcce097a3b6ab00dc62d3e10a4f50a13a7cf2082))
+* **test:** exterminate xdist-flaky tests with module-level state ([#1713](https://github.com/Aureliolo/synthorg/issues/1713)) ([#1721](https://github.com/Aureliolo/synthorg/issues/1721)) ([8d258dd](https://github.com/Aureliolo/synthorg/commit/8d258dd5907ad64ff5dddcdbe96f2e0a33a20560))
+* **web:** audit cleanup E -- frontend & UX polish ([#1710](https://github.com/Aureliolo/synthorg/issues/1710)) ([#1718](https://github.com/Aureliolo/synthorg/issues/1718)) ([3a3591a](https://github.com/Aureliolo/synthorg/commit/3a3591a56e79f2810b06b3414c6b3d8762882e81))
+
+
+### Refactoring
+
+* **cli:** single source of truth for DHI image tags + Renovate manager ([#1723](https://github.com/Aureliolo/synthorg/issues/1723)) ([57980a2](https://github.com/Aureliolo/synthorg/commit/57980a2158673d953906d363c1d395a786cffeae))
+
+
+### Documentation
+
+* audit cleanup D -- public-facing & docs sync ([#1709](https://github.com/Aureliolo/synthorg/issues/1709)) ([#1715](https://github.com/Aureliolo/synthorg/issues/1715)) ([ade03b7](https://github.com/Aureliolo/synthorg/commit/ade03b756879eee7c65cfd09dcb7595548aa0c7e))
+
+
+### Tests
+
+* **engine:** make TestDrainTimeout deterministic + preserve subclass type in [@ontology](https://github.com/ontology)_entity ([#1729](https://github.com/Aureliolo/synthorg/issues/1729)) ([b00fb05](https://github.com/Aureliolo/synthorg/commit/b00fb0502b036dd02dada7d7eed0a2c6168400c9))
+
+
+### CI/CD
+
+* Update CI tool dependencies ([#1703](https://github.com/Aureliolo/synthorg/issues/1703)) ([355a9ff](https://github.com/Aureliolo/synthorg/commit/355a9ff4a6b75524e3f1c409e977841f38d4b783))
+
+
+### Maintenance
+
+* add cross-PR file-overlap analysis to review-dep-pr skill ([#1722](https://github.com/Aureliolo/synthorg/issues/1722)) ([3861d8a](https://github.com/Aureliolo/synthorg/commit/3861d8aef0b374d07463d1e36244df553306ce2b))
+* **ci:** unify apko-version under workflow env so Renovate manages it everywhere ([#1724](https://github.com/Aureliolo/synthorg/issues/1724)) ([9c0a7fd](https://github.com/Aureliolo/synthorg/commit/9c0a7fddb0456120f6a5a21f587a0a19f1606110))
+* consolidate DHI image-pin custom regex managers ([#1726](https://github.com/Aureliolo/synthorg/issues/1726)) ([b8b0cba](https://github.com/Aureliolo/synthorg/commit/b8b0cbad4ba742663355bd7d7cbf0dc909b405a9))
+* **deps:** update dependency chainguard-dev/melange to v0.50.4 ([#1701](https://github.com/Aureliolo/synthorg/issues/1701)) ([8cbf83a](https://github.com/Aureliolo/synthorg/commit/8cbf83a3b15616359616ccb7001d964617f9b1b3))
+* Lock file maintenance ([#1705](https://github.com/Aureliolo/synthorg/issues/1705)) ([414cfea](https://github.com/Aureliolo/synthorg/commit/414cfea7ab470381a5fed55fae8dc9a534549ca9))
+* Lock file maintenance ([#1727](https://github.com/Aureliolo/synthorg/issues/1727)) ([5cb1212](https://github.com/Aureliolo/synthorg/commit/5cb1212284b64570024e3d41b25a0fa3becc4c7d))
+* Update CLI dependencies ([#1702](https://github.com/Aureliolo/synthorg/issues/1702)) ([9fb57b9](https://github.com/Aureliolo/synthorg/commit/9fb57b90199ef17549a9f41f0c78ccd4ec1b7963))
+* Update Container dependencies ([#1698](https://github.com/Aureliolo/synthorg/issues/1698)) ([6d24fd6](https://github.com/Aureliolo/synthorg/commit/6d24fd67610c5e0086028b3d166a522913c1b133))
+* Update dependency @eslint-react/eslint-plugin to v5 ([#1704](https://github.com/Aureliolo/synthorg/issues/1704)) ([1cb1294](https://github.com/Aureliolo/synthorg/commit/1cb12943aac643994e03f979f8628b95fe97f011))
+* Update Python dependencies ([#1699](https://github.com/Aureliolo/synthorg/issues/1699)) ([8e7af3a](https://github.com/Aureliolo/synthorg/commit/8e7af3aacfc1ae8daeec34d4e38c158bc40f1765))
+* Update Python dependencies to v4.15.0 ([#1725](https://github.com/Aureliolo/synthorg/issues/1725)) ([69164c8](https://github.com/Aureliolo/synthorg/commit/69164c87c74b8ec378167f545038cfed6dd10a5a))
+* Update Web dependencies ([#1700](https://github.com/Aureliolo/synthorg/issues/1700)) ([715300d](https://github.com/Aureliolo/synthorg/commit/715300d68098df40ad4b8555a4fa4f5c0788f14a))
+
 ## [0.7.7](https://github.com/Aureliolo/synthorg/compare/v0.7.6...v0.7.7) (2026-05-01)
 
 
