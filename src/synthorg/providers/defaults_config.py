@@ -21,7 +21,7 @@ class ProviderModelDefaults(BaseModel):
             driver so this default never lifts a hard model limit.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     fallback_max_output_tokens: int = Field(
         default=4096,

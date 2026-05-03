@@ -40,7 +40,7 @@ class RetentionConfig(BaseModel):
             (``None`` = keep forever).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     rules: tuple[RetentionRule, ...] = Field(
         default=(),
@@ -96,7 +96,7 @@ class DualModeConfig(BaseModel):
             snippet (start/mid/end).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -156,7 +156,7 @@ class ArchivalConfig(BaseModel):
         dual_mode: Dual-mode archival configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -189,7 +189,7 @@ class ExperienceCompressorConfig(BaseModel):
             this threshold (0.0 = keep all, closer to 1.0 = stricter).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -242,7 +242,7 @@ class WikiExportConfig(BaseModel):
         max_entries_per_view: Maximum entries per view (``None`` = all).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -312,7 +312,7 @@ class ConsolidationConfig(BaseModel):
         wiki_export: Wiki filesystem export settings.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,
@@ -381,7 +381,7 @@ class LLMConsolidationConfig(BaseModel):
             concatenation-fallback summaries.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     group_threshold: int = Field(
         default=3,

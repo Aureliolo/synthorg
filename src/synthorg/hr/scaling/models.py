@@ -40,7 +40,7 @@ class ScalingSignal(BaseModel):
         timestamp: When the signal was collected.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Signal identifier")
     value: float = Field(description="Current signal value")
@@ -119,7 +119,7 @@ class ScalingDecision(BaseModel):
         created_at: When the decision was created.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -207,7 +207,7 @@ class ScalingActionRecord(BaseModel):
         executed_at: When execution occurred.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),

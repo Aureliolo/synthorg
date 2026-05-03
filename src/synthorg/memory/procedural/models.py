@@ -69,7 +69,7 @@ class FailureAnalysisPayload(BaseModel):
             if identifiable.  ``None`` when not determinable.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Failed task identifier")
     task_title: NotBlankStr = Field(description="Task title")
@@ -132,7 +132,7 @@ class ProceduralMemoryProposal(BaseModel):
         tags: Semantic tags for filtering (max 20 tags).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     discovery: NotBlankStr = Field(
         max_length=600,
@@ -227,7 +227,7 @@ class ProceduralMemoryConfig(BaseModel):
             versioning.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,

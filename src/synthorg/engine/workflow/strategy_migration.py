@@ -49,7 +49,7 @@ class StrategyMigrationInfo(BaseModel):
             being superseded.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     sprint_id: NotBlankStr = Field(
         description="The sprint being activated",

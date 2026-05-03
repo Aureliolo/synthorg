@@ -55,7 +55,7 @@ class AdaptationProposal(BaseModel):
         proposed_at: When the proposal was generated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(default_factory=uuid4)
     agent_id: NotBlankStr
@@ -80,7 +80,7 @@ class AdaptationDecision(BaseModel):
         decided_at: When the decision was made.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     proposal_id: UUID
     approved: bool
@@ -105,7 +105,7 @@ class EvolutionEvent(BaseModel):
         event_at: When the event was recorded.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(default_factory=uuid4)
     agent_id: NotBlankStr

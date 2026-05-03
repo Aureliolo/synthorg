@@ -45,7 +45,7 @@ class EvolutionContext(BaseModel):
         triggered_at: When the evolution was triggered.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     identity: AgentIdentity

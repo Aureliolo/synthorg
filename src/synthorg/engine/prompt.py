@@ -108,7 +108,7 @@ class SystemPrompt(BaseModel):
             trimmed to fit the profile's token budget.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     content: str = Field(description="Full rendered prompt text")
     template_version: str = Field(

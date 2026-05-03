@@ -59,7 +59,7 @@ class EscalationQueueConfig(BaseModel):
         notify_channel: Postgres LISTEN/NOTIFY channel name.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backend: Literal["memory", "sqlite", "postgres"] = "memory"
     decision_strategy: Literal["winner", "hybrid"] = "winner"

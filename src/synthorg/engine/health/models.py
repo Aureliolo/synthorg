@@ -56,7 +56,7 @@ class EscalationTicket(BaseModel):
         metadata: Arbitrary structured context.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: str(uuid4()),

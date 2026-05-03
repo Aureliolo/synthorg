@@ -34,7 +34,7 @@ class AsyncTaskRecord(BaseModel):
         updated_at: When the status was last updated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Task identifier")
     agent_name: NotBlankStr = Field(description="Executing agent name")
@@ -71,7 +71,7 @@ class TaskSpec(BaseModel):
         metadata: Additional key-value metadata.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     title: NotBlankStr = Field(description="Task title")
     description: NotBlankStr = Field(description="Task description")
@@ -99,7 +99,7 @@ class AsyncTaskStateChannel(BaseModel):
         records: Ordered tuple of tracked task records.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     records: tuple[AsyncTaskRecord, ...] = Field(
         default=(),

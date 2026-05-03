@@ -21,7 +21,7 @@ class WorkerRoutingDecision(BaseModel):
         reason: Explanation for the routing choice.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     selected_workers: tuple[NotBlankStr, ...] = Field(
         description="Worker names to invoke",
@@ -45,7 +45,7 @@ class RetrievalRetryCorrection(BaseModel):
         reason: Why the retry is needed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     corrected_query: RetrievalQuery | None = Field(
         default=None,

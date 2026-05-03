@@ -70,7 +70,7 @@ class QualityOverrideResponse(BaseModel):
         expires_at: When the override expires.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(
         description="Agent whose quality score is overridden",

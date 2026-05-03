@@ -36,7 +36,7 @@ class CitationManager(BaseModel):
         url_to_number: Mapping from normalized URL to citation number.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     citations: tuple[Citation, ...] = Field(
         default=(),

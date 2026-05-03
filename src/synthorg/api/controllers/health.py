@@ -60,7 +60,7 @@ class LivenessStatus(BaseModel):
         uptime_seconds: Seconds since startup.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     status: Literal["ok"] = Field(
         default="ok",
@@ -83,7 +83,7 @@ class ReadinessStatus(BaseModel):
         uptime_seconds: Seconds since startup.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     status: ReadinessOutcome = Field(description="Overall readiness outcome")
     persistence: bool | None = Field(

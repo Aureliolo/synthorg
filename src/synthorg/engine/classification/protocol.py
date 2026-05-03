@@ -45,7 +45,7 @@ class DetectionContext(BaseModel):
             (TASK_TREE scope only).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     execution_result: ExecutionResult = Field(
         description="Completed execution to analyse",

@@ -75,7 +75,7 @@ class Interrupt(BaseModel):
         context_snippet: Context for the question (INFO_REQUEST).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique interrupt identifier")
     type: InterruptType = Field(description="Interrupt classification")
@@ -146,7 +146,7 @@ class InterruptResolution(BaseModel):
         resolved_by: Who provided the resolution.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     interrupt_id: NotBlankStr = Field(
         description="Interrupt being resolved",

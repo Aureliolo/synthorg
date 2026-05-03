@@ -38,7 +38,7 @@ class ProbeResult(BaseModel):
         candidates_tried: Number of candidate URLs attempted.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     url: NotBlankStr | None = None
     model_count: int = Field(default=0, ge=0)

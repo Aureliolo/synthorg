@@ -65,7 +65,7 @@ class SessionEvent(BaseModel):
         data: Structured event payload (deep-copied at construction).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     event_name: NotBlankStr = Field(description="Dotted event constant")
     timestamp: AwareDatetime = Field(description="Event timestamp")
@@ -95,7 +95,7 @@ class ReplayResult(BaseModel):
         events_total: Total events found for this execution.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     context: AgentContext = Field(
         description="Reconstructed agent context",

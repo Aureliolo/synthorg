@@ -38,7 +38,7 @@ class OrgFactAuthor(BaseModel):
         is_human: Whether the author is a human operator.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr | None = Field(
         default=None,
@@ -123,7 +123,7 @@ class OrgFact(BaseModel):
         created_at: Creation timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique fact identifier")
     content: NotBlankStr = Field(description="Fact content text")
@@ -145,7 +145,7 @@ class OrgFactWriteRequest(BaseModel):
         tags: Metadata tags for cross-cutting concerns.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     content: NotBlankStr = Field(description="Fact content text")
     category: OrgFactCategory = Field(description="Category classification")
@@ -164,7 +164,7 @@ class OrgMemoryQuery(BaseModel):
         limit: Maximum number of results.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     context: NotBlankStr | None = Field(
         default=None,
@@ -207,7 +207,7 @@ class OperationLogEntry(BaseModel):
         version: Per-fact version counter (starts at 1).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     operation_id: NotBlankStr = Field(
         description="Globally unique operation identifier",
@@ -287,7 +287,7 @@ class OperationLogSnapshot(BaseModel):
         version: Version matching most recent operation log entry.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     fact_id: NotBlankStr = Field(description="Logical fact identifier")
     content: NotBlankStr = Field(description="Current fact body")

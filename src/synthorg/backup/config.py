@@ -25,7 +25,7 @@ class RetentionConfig(BaseModel):
         max_age_days: Maximum age in days before pruning.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_count: int = Field(default=10, ge=1, le=1000)
     max_age_days: int = Field(default=30, ge=1, le=365)
@@ -45,7 +45,7 @@ class BackupConfig(BaseModel):
         include: Components to include in backups.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     path: NotBlankStr = Field(

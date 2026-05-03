@@ -23,7 +23,7 @@ class AgentWorkload(BaseModel):
         total_cost: Total cost incurred by this agent in the configured currency.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     active_task_count: int = Field(
@@ -47,7 +47,7 @@ class AssignmentCandidate(BaseModel):
         reason: Human-readable explanation of the score.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_identity: AgentIdentity = Field(description="Candidate agent")
     score: float = Field(
@@ -84,7 +84,7 @@ class AssignmentRequest(BaseModel):
             ``TaskAssignmentConfig.max_concurrent_tasks_per_agent``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task: Task = Field(description="The task to assign")
     available_agents: tuple[AgentIdentity, ...] = Field(
@@ -158,7 +158,7 @@ class AssignmentResult(BaseModel):
         reason: Human-readable explanation of the assignment decision.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Task identifier")
     strategy_used: NotBlankStr = Field(

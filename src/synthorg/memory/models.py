@@ -27,7 +27,7 @@ class MemoryMetadata(BaseModel):
         tags: Categorization tags for filtering.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     source: NotBlankStr | None = Field(
         default=None,
@@ -69,7 +69,7 @@ class MemoryStoreRequest(BaseModel):
         expires_at: Optional expiration timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     category: MemoryCategory = Field(description="Memory type category")
     namespace: NotBlankStr = Field(
@@ -103,7 +103,7 @@ class MemoryEntry(BaseModel):
         relevance_score: Relevance score set by backend on retrieval.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique memory identifier")
     agent_id: NotBlankStr = Field(description="Owning agent identifier")
@@ -180,7 +180,7 @@ class MemoryQuery(BaseModel):
         until: Only memories created before this timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     text: NotBlankStr | None = Field(
         default=None,

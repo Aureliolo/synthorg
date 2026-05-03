@@ -168,7 +168,7 @@ class ResumeInterruptRequest(BaseModel):
 class InterruptResponse(BaseModel):
     """Interrupt item returned by the polling API."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     type: InterruptType
@@ -332,7 +332,7 @@ class _RevalidationVerdict(BaseModel):
             unavailable). ``None`` when the loop should keep running.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     consecutive_failures: int
     revoked_event: dict[str, str] | None = None

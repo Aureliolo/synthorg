@@ -50,7 +50,7 @@ class ProviderDiscoveryPolicy(BaseModel):
             of IP -- use only in development.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     host_port_allowlist: tuple[NotBlankStr, ...] = Field(
         default=(),

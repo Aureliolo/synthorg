@@ -100,7 +100,7 @@ class CeremonyPolicyConfig(BaseModel):
             auto-transition (0.0, 1.0] -- zero excluded.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: CeremonyStrategyType | None = Field(
         default=None,
@@ -140,7 +140,7 @@ class ResolvedCeremonyPolicy(BaseModel):
         transition_threshold: Resolved transition threshold.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: CeremonyStrategyType = Field(
         description="Resolved scheduling strategy type",

@@ -41,7 +41,7 @@ class IdealTrajectoryBaseline(BaseModel):
         notes: Optional human-readable notes.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_type: NotBlankStr = Field(
         description="Category of task (e.g. 'research', 'code')",
@@ -108,7 +108,7 @@ class EfficiencyRatios(BaseModel):
         baseline_version: Reference to the baseline used.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     step_ratio: float = Field(
         ge=0.0,

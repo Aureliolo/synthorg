@@ -17,7 +17,7 @@ class DebateConfig(BaseModel):
             manager), ``"ceo"`` (hierarchy root), or a named agent.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     judge: NotBlankStr = Field(
         default="shared_manager",
@@ -34,7 +34,7 @@ class HybridConfig(BaseModel):
             when the review result is ambiguous.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     review_agent: NotBlankStr = Field(
         default="conflict_reviewer",
@@ -56,7 +56,7 @@ class ConflictResolutionConfig(BaseModel):
         escalation: Configuration for the human escalation queue.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: ConflictResolutionStrategy = Field(
         default=ConflictResolutionStrategy.AUTHORITY,

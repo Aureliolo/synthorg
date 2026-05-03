@@ -25,7 +25,7 @@ class CaptureConfig(BaseModel):
             means top 25% of successful executions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["failure", "success", "hybrid"] = Field(
         default="hybrid",

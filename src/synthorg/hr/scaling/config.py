@@ -26,7 +26,7 @@ class WorkloadScalingConfig(BaseModel):
         prune_threshold: Utilization fraction below which to prune.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(default=True, description="Strategy enabled")
     priority: int = Field(default=3, ge=0, description="Priority rank")
@@ -72,7 +72,7 @@ class BudgetCapConfig(BaseModel):
         headroom_fraction: Burn rate below which hires are allowed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(default=True, description="Strategy enabled")
     priority: int = Field(default=0, ge=0, description="Priority rank")
@@ -117,7 +117,7 @@ class SkillGapConfig(BaseModel):
         min_missing_skills: Minimum missing skills to trigger.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -140,7 +140,7 @@ class PerformancePruningConfig(BaseModel):
         defer_during_evolution: Defer pruning during active evolution.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(default=True, description="Strategy enabled")
     priority: int = Field(default=1, ge=0, description="Priority rank")
@@ -157,7 +157,7 @@ class TriggerConfig(BaseModel):
         batched_interval_seconds: Interval for the batched trigger.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     batched_interval_seconds: int = Field(
         default=900,
@@ -176,7 +176,7 @@ class GuardConfig(BaseModel):
         approval_expiry_days: Days until approval items expire.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cooldown_seconds: int = Field(
         default=3600,
@@ -214,7 +214,7 @@ class ScalingConfig(BaseModel):
         priority_order: Strategy priority (name list, first = highest).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(default=True, description="Scaling service enabled")
     default_hire_level: NotBlankStr = Field(

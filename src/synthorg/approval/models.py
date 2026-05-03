@@ -25,7 +25,7 @@ class EscalationInfo(BaseModel):
         reason: Human-readable explanation of why escalation is needed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     approval_id: NotBlankStr
     tool_call_id: NotBlankStr
@@ -45,7 +45,7 @@ class ResumePayload(BaseModel):
         decision_reason: Optional reason for the decision.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     approval_id: NotBlankStr
     approved: bool

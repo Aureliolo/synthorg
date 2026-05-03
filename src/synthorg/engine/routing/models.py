@@ -30,7 +30,7 @@ class RoutingCandidate(BaseModel):
         reason: Human-readable explanation of the score.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_identity: AgentIdentity = Field(description="Candidate agent")
     score: float = Field(
@@ -55,7 +55,7 @@ class RoutingDecision(BaseModel):
         topology: Coordination topology for this subtask.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     subtask_id: NotBlankStr = Field(description="Subtask being routed")
     selected_candidate: RoutingCandidate = Field(
@@ -97,7 +97,7 @@ class RoutingResult(BaseModel):
         unroutable: IDs of subtasks with no matching agent.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     parent_task_id: NotBlankStr = Field(description="Parent task ID")
     decisions: tuple[RoutingDecision, ...] = Field(
@@ -168,7 +168,7 @@ class AutoTopologyConfig(BaseModel):
             parallel tasks use decentralized topology.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     sequential_override: CoordinationTopology = Field(
         default=CoordinationTopology.SAS,

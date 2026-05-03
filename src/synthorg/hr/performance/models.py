@@ -47,7 +47,7 @@ class TaskMetricRecord(BaseModel):
         complexity: Estimated task complexity.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -112,7 +112,7 @@ class CollaborationMetricRecord(BaseModel):
             calibration (None if not available).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -170,7 +170,7 @@ class QualityScoreResult(BaseModel):
         confidence: Confidence in the score (0.0-1.0).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     score: float = Field(ge=0.0, le=10.0, description="Overall quality score")
     strategy_name: NotBlankStr = Field(description="Scoring strategy used")
@@ -195,7 +195,7 @@ class CollaborationScoreResult(BaseModel):
         confidence: Confidence in the score (0.0-1.0).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     score: float = Field(ge=0.0, le=10.0, description="Overall collaboration score")
     strategy_name: NotBlankStr = Field(description="Scoring strategy used")
@@ -290,7 +290,7 @@ class _BaseOverride(BaseModel):
         expires_at: When the override expires (None = indefinite).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -350,7 +350,7 @@ class TrendResult(BaseModel):
         data_point_count: Number of data points used.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     metric_name: NotBlankStr = Field(description="Metric being trended")
     window_size: NotBlankStr = Field(description="Time window label")
@@ -381,7 +381,7 @@ class WindowMetrics(BaseModel):
         collaboration_score: Collaboration score, None if not computed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     window_size: NotBlankStr = Field(description="Time window label")
     data_point_count: int = Field(ge=0, description="Records in the window")
@@ -498,7 +498,7 @@ class CollaborationCalibration(BaseModel):
             sample, or ``None`` when no samples exist.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     strategy_name: NotBlankStr = Field(description="Active strategy name")
@@ -536,7 +536,7 @@ class AgentPerformanceSnapshot(BaseModel):
         overall_collaboration_score: Aggregate collaboration score.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent being evaluated")
     computed_at: AwareDatetime = Field(description="When this snapshot was computed")

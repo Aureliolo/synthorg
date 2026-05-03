@@ -35,7 +35,7 @@ class StepQualitySignal(BaseModel):
         turn_range: Inclusive (start, end) turn numbers for this step.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     quality: StepQuality = Field(description="Ternary step classification")
     confidence: float = Field(

@@ -44,7 +44,7 @@ class ErrorFinding(BaseModel):
             is the index into the turns tuple.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     category: ErrorCategory = Field(description="Error taxonomy category")
     severity: ErrorSeverity = Field(description="Severity level")

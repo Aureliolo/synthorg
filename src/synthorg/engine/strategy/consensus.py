@@ -36,7 +36,7 @@ class ConsensusVelocityResult(BaseModel):
         disagreement_count: Number of substantially different position pairs.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     detected: bool = Field(description="Whether premature consensus was detected")
     action: ConsensusAction | None = Field(

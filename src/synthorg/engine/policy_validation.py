@@ -78,7 +78,7 @@ class PolicyQualityIssue(BaseModel):
             reserved for future stricter checks.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     policy: str = Field(description="The policy text that triggered the issue")
     issue: str = Field(

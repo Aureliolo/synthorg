@@ -17,7 +17,7 @@ class CompositeBackendConfig(BaseModel):
         default: Backend name for unmapped namespaces.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     routes: dict[NotBlankStr, NotBlankStr] = Field(
         default_factory=dict,

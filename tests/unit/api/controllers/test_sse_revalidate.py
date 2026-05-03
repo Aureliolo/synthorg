@@ -58,6 +58,12 @@ class _FakeAppState:
         # has_config_resolver=False so the helper returns the
         # registered fallback constant (which the test monkeypatches).
         self.has_config_resolver = False
+        # The SSE stream consults app_state.clock for keepalive +
+        # revalidation deadlines; the real AppState exposes a clock
+        # attribute so the test fake mirrors it.
+        from synthorg.core.clock import SystemClock
+
+        self.clock = SystemClock()
 
 
 async def test_revocation_reason_returns_user_deleted_when_user_missing() -> None:

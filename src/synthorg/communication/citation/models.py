@@ -25,7 +25,7 @@ class Citation(BaseModel):
         accessed_via: How the source was accessed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     number: int = Field(ge=1, description="Stable citation number")
     url: AnyHttpUrl = Field(description="Canonical normalized URL")

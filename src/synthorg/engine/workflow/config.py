@@ -41,7 +41,7 @@ class WorkflowConfig(BaseModel):
             workflow_type is ``AGILE_KANBAN``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     workflow_type: WorkflowType = Field(
         default=WorkflowType.AGILE_KANBAN,

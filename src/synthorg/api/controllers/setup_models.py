@@ -57,7 +57,7 @@ class SetupStatusResponse(BaseModel):
         min_password_length: Backend-configured minimum password length.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     needs_admin: bool
     needs_setup: bool
@@ -79,7 +79,7 @@ class TemplateVariableResponse(BaseModel):
         required: Whether the user must supply a value.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     description: str = ""
@@ -185,7 +185,7 @@ class SetupAgentSummary(BaseModel):
         personality_preset: Personality preset name, if any.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     role: NotBlankStr
@@ -294,7 +294,7 @@ class SetupAgentResponse(BaseModel):
         model_id: Model identifier.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     role: NotBlankStr
@@ -417,7 +417,7 @@ class SetupNameLocalesResponse(BaseModel):
         locales: Stored locale codes (``["__all__"]`` if worldwide).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     locales: list[NotBlankStr]
 
@@ -430,7 +430,7 @@ class AvailableLocalesResponse(BaseModel):
         display_names: Mapping of locale code to human-readable name.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     regions: dict[str, list[str]]
     display_names: dict[str, str]
@@ -443,6 +443,6 @@ class SetupCompleteResponse(BaseModel):
         setup_complete: Always True on success.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     setup_complete: Literal[True]

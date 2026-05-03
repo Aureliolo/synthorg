@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 class PendingRequirement(BaseModel):
     """A requirement request awaiting human response."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     ticket_id: NotBlankStr = Field(description="Queue ticket id")
     client_id: NotBlankStr = Field(description="Requesting client id")
@@ -43,7 +43,7 @@ class PendingRequirement(BaseModel):
 class PendingReview(BaseModel):
     """A review request awaiting human response."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     ticket_id: NotBlankStr = Field(description="Queue ticket id")
     client_id: NotBlankStr = Field(description="Requesting client id")

@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 class ScalingStrategyResponse(BaseModel):
     """Strategy summary for API responses."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Strategy identifier")
     enabled: bool = Field(description="Whether this strategy is active")
@@ -47,7 +47,7 @@ class ScalingStrategyResponse(BaseModel):
 class ScalingSignalResponse(BaseModel):
     """Signal value for API responses."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Signal name")
     value: float = Field(description="Current value")
@@ -62,7 +62,7 @@ class ScalingSignalResponse(BaseModel):
 class ScalingDecisionResponse(BaseModel):
     """Decision summary for API responses."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Decision identifier")
     action_type: NotBlankStr = Field(description="Action type")

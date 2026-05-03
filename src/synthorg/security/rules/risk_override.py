@@ -48,7 +48,7 @@ class RiskTierOverride(BaseModel):
         revoked_by: Who revoked it (None if active).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     action_type: NotBlankStr

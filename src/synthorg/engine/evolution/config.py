@@ -34,7 +34,7 @@ class TriggerConfig(BaseModel):
         per_task_min_tasks: Min tasks between per-task triggers.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     types: tuple[Literal["batched", "inflection", "per_task"], ...] = (
         "batched",
@@ -60,7 +60,7 @@ class ProposerConfig(BaseModel):
         max_tokens: Token budget for proposer response.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["separate_analyzer", "self_report", "composite"] = "composite"
     model: NotBlankStr = Field(
@@ -80,7 +80,7 @@ class AdapterConfig(BaseModel):
         prompt_template: Enable prompt injection of learned memories.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     identity: bool = False
     strategy_selection: bool = True
@@ -114,7 +114,7 @@ class ShadowEvaluationConfig(BaseModel):
             real-guard verdicts in dashboards.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_provider: Literal["configured", "recent_history"] = Field(
         default="configured",
@@ -183,7 +183,7 @@ class GuardConfig(BaseModel):
             the guard; set a ``ShadowEvaluationConfig`` to enable.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     review_gate: bool = True
     rollback: bool = True
@@ -206,7 +206,7 @@ class MemoryEvolutionConfig(BaseModel):
         propagation: Cross-agent propagation strategy config.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     capture: CaptureConfig = Field(default_factory=CaptureConfig)
     pruning: PruningConfig = Field(default_factory=PruningConfig)
@@ -236,7 +236,7 @@ class EvolutionConfig(BaseModel):
         identity_store: Identity version store configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     triggers: TriggerConfig = Field(default_factory=TriggerConfig)

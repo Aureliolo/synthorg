@@ -178,7 +178,7 @@ class SafetyClassifierResult(BaseModel):
         classification_duration_ms: Time taken for classification.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     classification: SafetyClassification
     stripped_description: str

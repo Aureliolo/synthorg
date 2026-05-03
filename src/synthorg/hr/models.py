@@ -42,7 +42,7 @@ class CandidateCard(BaseModel):
         template_source: Template used for generation, if any.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -88,7 +88,7 @@ class HiringRequest(BaseModel):
         approval_id: ID of the associated approval item.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -165,7 +165,7 @@ class FiringRequest(BaseModel):
         completed_at: When the firing was completed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -204,7 +204,7 @@ class OnboardingStepRecord(BaseModel):
         notes: Optional notes from the step.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     step: OnboardingStep = Field(description="The onboarding step")
     completed: bool = Field(default=False, description="Whether step is complete")
@@ -290,7 +290,7 @@ class OffboardingRecord(BaseModel):
         completed_at: When offboarding finished.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent who was offboarded")
     agent_name: NotBlankStr = Field(description="Agent display name")
@@ -341,7 +341,7 @@ class AgentLifecycleEvent(BaseModel):
         metadata: Additional structured metadata.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),

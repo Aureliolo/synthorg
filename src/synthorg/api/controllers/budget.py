@@ -42,7 +42,7 @@ class AgentSpending(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     total_cost: float = Field(
@@ -69,7 +69,7 @@ class DailySummary(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     date: NotBlankStr = Field(description="ISO date (YYYY-MM-DD)")
     total_cost: float = Field(

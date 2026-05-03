@@ -57,7 +57,7 @@ class NodeChange(BaseModel):
         new_value: New state (None for removed nodes).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     node_id: NotBlankStr
     change_type: Literal[
@@ -92,7 +92,7 @@ class EdgeChange(BaseModel):
         new_value: New state (None for removed edges).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     edge_id: NotBlankStr
     change_type: Literal[
@@ -125,7 +125,7 @@ class MetadataChange(BaseModel):
         new_value: New value.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     field: NotBlankStr
     old_value: str
@@ -145,7 +145,7 @@ class WorkflowDiff(BaseModel):
         summary: Human-readable summary string.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     definition_id: NotBlankStr
     from_version: int = Field(ge=1)

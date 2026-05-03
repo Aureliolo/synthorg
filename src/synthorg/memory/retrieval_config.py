@@ -64,7 +64,7 @@ class MemoryRetrievalConfig(BaseModel):
             in the Search-and-Ask loop (1-5).  Defaults to 2.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: InjectionStrategy = Field(
         default=InjectionStrategy.CONTEXT,

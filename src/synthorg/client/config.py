@@ -24,7 +24,7 @@ class RequirementGeneratorConfig(BaseModel):
         llm_model: Model identifier (for llm/hybrid strategies).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: NotBlankStr = Field(
         default="template",
@@ -58,7 +58,7 @@ class FeedbackConfig(BaseModel):
         strictness_multiplier: Multiplier applied to client strictness.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: NotBlankStr = Field(
         default="binary",
@@ -89,7 +89,7 @@ class ClientPoolConfig(BaseModel):
             picks from the pool. Dispatched by ``build_client_pool_strategy``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     pool_size: int = Field(
         default=10,
@@ -144,7 +144,7 @@ class SimulationRunnerConfig(BaseModel):
         review_timeout_sec: Timeout for client review.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_concurrent_tasks: int = Field(
         default=10,
@@ -172,7 +172,7 @@ class ContinuousModeConfig(BaseModel):
         max_concurrent_requests: Maximum parallel requests.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -199,7 +199,7 @@ class ReportConfig(BaseModel):
             ``json_export``, or ``metrics_only``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: NotBlankStr = Field(
         default="summary",
@@ -221,7 +221,7 @@ class ClientSimulationConfig(BaseModel):
         continuous: Continuous mode configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     pool: ClientPoolConfig = Field(
         default_factory=ClientPoolConfig,

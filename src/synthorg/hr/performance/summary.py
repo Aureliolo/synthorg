@@ -45,7 +45,7 @@ class AgentPerformanceSummary(BaseModel):
         trends: Trend results from snapshot.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_name: NotBlankStr = Field(description="Agent display name")
     tasks_completed_total: int = Field(

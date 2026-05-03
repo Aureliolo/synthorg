@@ -56,7 +56,7 @@ class ResolvedPolicyField(BaseModel):
         source: Which level provided this value.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     value: str | dict[str, Any] | bool | float = Field(
         description="Resolved field value",
@@ -77,7 +77,7 @@ class ResolvedCeremonyPolicyResponse(BaseModel):
         transition_threshold: Resolved transition threshold with origin.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: ResolvedPolicyField = Field(
         description="Ceremony scheduling strategy",
@@ -104,7 +104,7 @@ class ActiveCeremonyStrategyResponse(BaseModel):
         sprint_id: ID of the active sprint, or None.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: CeremonyStrategyType | None = Field(
         default=None,

@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 class CreateRequestPayload(BaseModel):
     """Request payload for submitting a new client request."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     client_id: NotBlankStr = Field(description="Requesting client id")
     requirement: TaskRequirement = Field(description="Task requirement")
@@ -37,7 +37,7 @@ class CreateRequestPayload(BaseModel):
 class RejectionPayload(BaseModel):
     """Payload carrying a rejection reason."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     reason: NotBlankStr = Field(description="Reason for rejection")
 
@@ -45,7 +45,7 @@ class RejectionPayload(BaseModel):
 class ScopingPayload(BaseModel):
     """Payload carrying scoping notes and an optional refined requirement."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     notes: NotBlankStr = Field(description="Scoping notes from the reviewer")
     refined_title: NotBlankStr | None = Field(default=None)

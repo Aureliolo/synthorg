@@ -26,7 +26,7 @@ class TrustThreshold(BaseModel):
         requires_human_approval: Whether human approval is required.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     score: float = Field(ge=0.0, le=1.0, description="Minimum score")
     requires_human_approval: bool = Field(
@@ -47,7 +47,7 @@ class WeightedTrustWeights(BaseModel):
         human_feedback: Weight for human feedback factor.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_difficulty: float = Field(
         default=0.3,
@@ -105,7 +105,7 @@ class CategoryTrustCriteria(BaseModel):
         requires_human_approval: Whether human approval is required.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     tasks_completed: int = Field(
         default=10,
@@ -136,7 +136,7 @@ class MilestoneCriteria(BaseModel):
         requires_human_approval: Whether human approval is required.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     tasks_completed: int = Field(
         default=5,
@@ -194,7 +194,7 @@ class ReVerificationConfig(BaseModel):
         decay_on_error_rate: Demote if error rate exceeds this threshold.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -232,7 +232,7 @@ class TrustConfig(BaseModel):
         re_verification: Re-verification configuration (used by milestone strategy).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: TrustStrategyType = Field(
         default=TrustStrategyType.DISABLED,

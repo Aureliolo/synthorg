@@ -36,7 +36,7 @@ class EvolverReport(BaseModel):
             too few agents exhibited the pattern.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cycle_id: NotBlankStr = Field(description="Unique cycle identifier")
     window_start: AwareDatetime = Field(

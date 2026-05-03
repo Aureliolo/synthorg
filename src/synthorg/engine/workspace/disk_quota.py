@@ -36,7 +36,7 @@ class DiskQuotaStatus(BaseModel):
         status: One of ``ok``, ``warning``, or ``exceeded``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     path: Path = Field(description="Worktree directory path")
     usage_gb: float = Field(ge=0.0, description="Current usage in GB")

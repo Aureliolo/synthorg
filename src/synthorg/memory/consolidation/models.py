@@ -43,7 +43,7 @@ class ArchivalModeAssignment(BaseModel):
         mode: Archival mode applied to this entry.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     original_id: NotBlankStr = Field(
         description="ID of the removed memory entry",
@@ -65,7 +65,7 @@ class ArchivalIndexEntry(BaseModel):
         mode: Archival mode used for this entry.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     original_id: NotBlankStr = Field(
         description="ID of the original memory entry",
@@ -104,7 +104,7 @@ class ConsolidationResult(BaseModel):
             (built by service after archival completes).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     removed_ids: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -214,7 +214,7 @@ class ArchivalEntry(BaseModel):
         archival_mode: How this entry was archived.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     original_id: NotBlankStr = Field(description="ID from the hot store")
     agent_id: NotBlankStr = Field(description="Owning agent identifier")
@@ -250,7 +250,7 @@ class RetentionRule(BaseModel):
         retention_days: Number of days to retain memories.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     category: MemoryCategory = Field(
         description="Memory category this rule applies to",
@@ -297,7 +297,7 @@ class DetailedExperience(BaseModel):
         source_task_id: Optional originating task identifier.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique identifier")
     agent_id: NotBlankStr = Field(description="Owning agent identifier")
@@ -363,7 +363,7 @@ class CompressedExperience(BaseModel):
         created_at: When the compression was performed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique identifier")
     agent_id: NotBlankStr = Field(description="Owning agent identifier")

@@ -148,7 +148,7 @@ _MIN_DOCS_RECOMMENDED: Final[int] = 50
 class ActiveEmbedderResponse(BaseModel):
     """Active embedder configuration read from settings."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider: NotBlankStr | None = Field(
         default=None,

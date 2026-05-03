@@ -44,7 +44,7 @@ class SemanticDriftConfig(BaseModel):
         embedding_model: Optional model name for embeddings.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,

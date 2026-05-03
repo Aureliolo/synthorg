@@ -38,7 +38,7 @@ class RiskScorerWeights(BaseModel):
         external_visibility: Weight for the external visibility dimension.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     reversibility: float = Field(default=0.3, ge=0.0, le=1.0)
     blast_radius: float = Field(default=0.3, ge=0.0, le=1.0)

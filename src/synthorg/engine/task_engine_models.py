@@ -62,7 +62,7 @@ class CreateTaskData(BaseModel):
             displayed using configured currency formatting.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     title: NotBlankStr = Field(
         max_length=_MAX_TITLE_LENGTH,
@@ -108,7 +108,7 @@ class CreateTaskMutation(BaseModel):
         task_data: Task creation payload.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mutation_type: Literal["create"] = "create"
     request_id: NotBlankStr = Field(description="Unique request identifier")
@@ -145,7 +145,7 @@ class UpdateTaskMutation(BaseModel):
         expected_version: Optional optimistic concurrency version.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mutation_type: Literal["update"] = "update"
     request_id: NotBlankStr = Field(description="Unique request identifier")
@@ -201,7 +201,7 @@ class TransitionTaskMutation(BaseModel):
         expected_version: Optional optimistic concurrency version.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mutation_type: Literal["transition"] = "transition"
     request_id: NotBlankStr = Field(description="Unique request identifier")
@@ -251,7 +251,7 @@ class DeleteTaskMutation(BaseModel):
         task_id: Target task identifier.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mutation_type: Literal["delete"] = "delete"
     request_id: NotBlankStr = Field(description="Unique request identifier")
@@ -270,7 +270,7 @@ class CancelTaskMutation(BaseModel):
         reason: Reason for cancellation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mutation_type: Literal["cancel"] = "cancel"
     request_id: NotBlankStr = Field(description="Unique request identifier")
@@ -307,7 +307,7 @@ class TaskMutationResult(BaseModel):
             dispatch (``None`` on success).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     request_id: NotBlankStr = Field(description="Echoed request identifier")
     success: bool = Field(description="Whether the mutation succeeded")
@@ -377,7 +377,7 @@ class TaskStateChanged(BaseModel):
         timestamp: When the mutation was applied.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mutation_type: MutationType = Field(
         description="Mutation type that triggered event",

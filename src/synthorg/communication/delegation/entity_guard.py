@@ -39,7 +39,7 @@ class EntityGuardOutcome(BaseModel):
         entity_versions: Version manifest captured during check.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     passed: bool = Field(description="Whether the delegation is allowed")
     mechanism: NotBlankStr = Field(

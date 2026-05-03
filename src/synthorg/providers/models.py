@@ -88,7 +88,7 @@ class ToolDefinition(BaseModel):
         parameters_schema: JSON Schema dict describing the tool parameters.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Tool name")
     description: str = Field(default="", description="Tool description")
@@ -139,7 +139,7 @@ class ToolCall(BaseModel):
         arguments: Parsed arguments dict.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Tool call identifier")
     name: NotBlankStr = Field(description="Tool name")
@@ -163,7 +163,7 @@ class ToolResult(BaseModel):
             don't conflate the two.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     tool_call_id: NotBlankStr = Field(description="Matching tool call ID")
     content: str = Field(description="Tool output content")
@@ -201,7 +201,7 @@ class ChatMessage(BaseModel):
         tool_result: Result of a tool execution (tool role only).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     role: MessageRole = Field(description="Message role")
     content: str | None = Field(default=None, description="Text content")
@@ -280,7 +280,7 @@ class CompletionConfig(BaseModel):
         timeout: Request timeout in seconds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     temperature: float | None = Field(
         default=None,
@@ -324,7 +324,7 @@ class CompletionResponse(BaseModel):
             (``_synthorg_*`` keys for latency, retry count, retry reason).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     content: str | None = Field(default=None, description="Generated text")
     tool_calls: tuple[ToolCall, ...] = Field(
@@ -382,7 +382,7 @@ class StreamChunk(BaseModel):
         error_message: Error description (for ``error`` event).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     event_type: StreamEventType = Field(description="Stream event type")
     content: str | None = Field(default=None, description="Text delta")

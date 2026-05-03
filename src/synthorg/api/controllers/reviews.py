@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 class StageDecisionPayload(BaseModel):
     """Human override for a single review stage."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     verdict: ReviewVerdict = Field(description="Overriding verdict")
     reason: NotBlankStr | None = Field(
@@ -49,7 +49,7 @@ class StageDecisionPayload(BaseModel):
 class StageDecisionResult(BaseModel):
     """Response describing an applied stage decision."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr
     stage_name: NotBlankStr

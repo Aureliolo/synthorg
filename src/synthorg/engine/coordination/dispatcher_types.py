@@ -36,7 +36,7 @@ class DispatchResult(BaseModel):
         phases: Phase results generated during dispatch.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     waves: tuple[CoordinationWave, ...] = Field(
         default=(),

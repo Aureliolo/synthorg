@@ -233,7 +233,7 @@ class SelfEditingMemoryConfig(BaseModel):
             ``"self_edited"`` tag to archival and recall writes.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     core_memory_token_budget: int = Field(
         default=1024,

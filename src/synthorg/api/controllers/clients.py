@@ -73,7 +73,7 @@ class UpdateClientRequest(BaseModel):
 class SatisfactionPoint(BaseModel):
     """A single satisfaction-history data point for a client."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     feedback_id: NotBlankStr = Field(description="Feedback identifier")
     task_id: NotBlankStr = Field(description="Reviewed task id")
@@ -89,7 +89,7 @@ class SatisfactionPoint(BaseModel):
 class SatisfactionHistory(BaseModel):
     """Aggregated satisfaction response for a client."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     client_id: NotBlankStr = Field(description="Client identifier")
     total_reviews: int = Field(

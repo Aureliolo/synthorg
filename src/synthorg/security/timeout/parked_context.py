@@ -30,7 +30,7 @@ class ParkedContext(BaseModel):
         metadata: Additional metadata (e.g. tool name, action type).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: str(uuid4()),

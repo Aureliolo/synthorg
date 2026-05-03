@@ -22,7 +22,7 @@ class PromotionCriteriaConfig(BaseModel):
         required_criteria: Criteria names that must always be met.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     min_criteria_met: int = Field(
         default=2,
@@ -47,7 +47,7 @@ class PromotionApprovalConfig(BaseModel):
             authority-reducing demotions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     human_approval_from_level: SeniorityLevel = Field(
         default=SeniorityLevel.SENIOR,
@@ -71,7 +71,7 @@ class ModelMappingConfig(BaseModel):
         seniority_model_map: Explicit level-to-model overrides.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     model_follows_seniority: bool = Field(
         default=True,
@@ -114,7 +114,7 @@ class PromotionConfig(BaseModel):
         model_mapping: Model mapping configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,

@@ -94,7 +94,7 @@ class ActiveEmbedderSnapshot(BaseModel):
             service is wired (values fall back to ``None``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider: NotBlankStr | None = Field(
         default=None,
@@ -138,7 +138,7 @@ class FineTunePlan(BaseModel):
             vs docker, gpu, memory, timeout).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     source_dir: NotBlankStr = Field(
         description="Directory containing org documents for training",

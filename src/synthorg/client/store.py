@@ -149,7 +149,7 @@ class SimulationRecord(BaseModel):
     and rebinds it in the store -- never mutates in place.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     simulation_id: NotBlankStr = Field(description="Run identifier")
     config: SimulationConfig = Field(description="Run configuration")

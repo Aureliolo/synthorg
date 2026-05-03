@@ -75,7 +75,7 @@ class DistillationRequest(BaseModel):
         created_at: Capture timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent that completed the task")
     task_id: NotBlankStr = Field(description="Completed task identifier")

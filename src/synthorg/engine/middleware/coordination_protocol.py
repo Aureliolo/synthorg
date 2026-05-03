@@ -50,7 +50,7 @@ class CoordinationMiddlewareContext(BaseModel):
         metadata: Middleware-to-middleware data pass-through.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     coordination_context: CoordinationContext = Field(
         description="Original coordination input",

@@ -78,7 +78,7 @@ class UncertaintyResult(BaseModel):
         check_duration_ms: Total time for the check.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     confidence_score: float = Field(ge=0.0, le=1.0)
     provider_count: int = Field(ge=0)

@@ -51,7 +51,7 @@ class RubricCriterion(BaseModel):
         grade_type: Grading scale for this criterion.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Criterion identifier")
     description: NotBlankStr = Field(description="What is evaluated")
@@ -69,7 +69,7 @@ class CalibrationExample(BaseModel):
         expected_grades: Optional per-criterion expected grades.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     artifact_summary: NotBlankStr = Field(
         description="Condensed artifact representation",
@@ -121,7 +121,7 @@ class VerificationRubric(BaseModel):
             the verdict is overridden to REFER.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Rubric identifier")
     criteria: tuple[RubricCriterion, ...] = Field(
@@ -193,7 +193,7 @@ class AtomicProbe(BaseModel):
             this probe was derived from.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Probe identifier")
     probe_text: NotBlankStr = Field(description="Binary yes/no question")

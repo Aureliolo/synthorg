@@ -41,7 +41,7 @@ class TextPart(BaseModel):
         text: The text content (must not be blank).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["text"] = Field(
         default="text",
@@ -139,7 +139,7 @@ class FilePart(BaseModel):
         mime_type: Optional MIME type of the file.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["file"] = Field(
         default="file",
@@ -160,7 +160,7 @@ class UriPart(BaseModel):
         uri: The URI or URL.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["uri"] = Field(
         default="uri",
@@ -197,7 +197,7 @@ class MessageMetadata(BaseModel):
         extra: Immutable key-value pairs for arbitrary metadata (extension).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr | None = Field(
         default=None,

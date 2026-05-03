@@ -46,7 +46,7 @@ class VelocityMetrics(BaseModel):
             ``{"pts_per_day": 3.2, "completion_ratio": 0.93}``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     primary_value: float = Field(
         ge=0.0,

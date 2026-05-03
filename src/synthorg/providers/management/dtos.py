@@ -51,7 +51,7 @@ class ProviderModelResponse(BaseModel):
         supports_streaming: Whether the model supports streaming responses.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Model identifier")
     alias: NotBlankStr | None = Field(
@@ -369,7 +369,7 @@ class TestConnectionResponse(BaseModel):
         model_tested: Model ID that was tested.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     success: bool
     latency_ms: float | None = None
@@ -412,7 +412,7 @@ class ProviderResponse(BaseModel):
         supports_model_config: Whether per-model config is supported.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     driver: NotBlankStr
     litellm_provider: NotBlankStr | None = None
@@ -490,7 +490,7 @@ class DiscoverModelsResponse(BaseModel):
         provider_name: Name of the provider that was queried.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     discovered_models: tuple[ProviderModelConfig, ...]
     provider_name: NotBlankStr
@@ -505,7 +505,7 @@ class ProbePresetResponse(BaseModel):
         candidates_tried: Number of candidate URLs attempted.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     url: NotBlankStr | None = None
     model_count: int = Field(default=0, ge=0)
