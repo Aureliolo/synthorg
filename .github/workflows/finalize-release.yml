@@ -405,8 +405,23 @@ jobs:
                 # the whole step under `set -euo pipefail`. grep -nFx
                 # exits 1 when the marker is absent; that is a normal
                 # outcome here (PR has no Highlights), not a failure.
+                #
+                # END_LINE is filtered to "first match strictly after
+                # START_LINE" (`awk '$1 > s'`). Without that filter, a
+                # stray END marker line that landed in the body before
+                # the real Highlights block (e.g. a stale fragment
+                # left by a previous failed finalize run, or a quoted
+                # marker in a CHANGELOG entry that survived the
+                # release-please diff) would be picked first, the
+                # order guard would refuse to extract, and Highlights
+                # would silently never propagate.
                 START_LINE=$(grep -nFx '<!-- HIGHLIGHTS_START -->' <<< "$PR_BODY" | head -n1 | cut -d: -f1 || true)
-                END_LINE=$(grep -nFx '<!-- HIGHLIGHTS_END -->' <<< "$PR_BODY" | head -n1 | cut -d: -f1 || true)
+                if [ -n "$START_LINE" ]; then
+                  END_LINE=$(grep -nFx '<!-- HIGHLIGHTS_END -->' <<< "$PR_BODY" \
+                    | awk -F: -v start="$START_LINE" '$1 > start { print $1; exit }' || true)
+                else
+                  END_LINE=""
+                fi
                 if [ -n "$START_LINE" ] && [ -n "$END_LINE" ] && [ "$START_LINE" -lt "$END_LINE" ]; then
                   EXTRACTED=$(sed -n "${START_LINE},${END_LINE}p" <<< "$PR_BODY")
                 fi
@@ -464,7 +479,18 @@ jobs:
               local end_marker="$2"
               local start_line end_line
               start_line=$(grep -nFx "$start_marker" <<< "$CLEANED" | head -n1 | cut -d: -f1 || true)
-              end_line=$(grep -nFx "$end_marker" <<< "$CLEANED" | head -n1 | cut -d: -f1 || true)
+              # end_line is filtered to "first match strictly after
+              # start_line"; a stray end marker that landed before the
+              # real block (e.g. from a half-applied prior finalize
+              # run) would otherwise be picked, the order guard would
+              # refuse, and the strip would silently leave the block
+              # in place.
+              if [ -n "$start_line" ]; then
+                end_line=$(grep -nFx "$end_marker" <<< "$CLEANED" \
+                  | awk -F: -v start="$start_line" '$1 > start { print $1; exit }' || true)
+              else
+                end_line=""
+              fi
               if [ -n "$start_line" ] && [ -n "$end_line" ] && [ "$start_line" -lt "$end_line" ]; then
                 CLEANED=$(sed "${start_line},${end_line}d" <<< "$CLEANED")
               fi
