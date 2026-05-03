@@ -122,6 +122,109 @@ def test_pattern_a_flags_cross_namespace_consumption(tmp_path: Path) -> None:
     assert "engine.timeout_enforcement_enabled" in flagged
 
 
+def test_pattern_a_skips_non_resolver_receivers(tmp_path: Path) -> None:
+    """``.get_*()`` on an unrelated receiver isn't treated as a config read.
+
+    Without receiver validation the lint would flag any
+    ``client.get_bool("api", "x")`` or ``cache.get("ns", "key")`` in
+    a ghost class file as a ConfigResolver consumption. That's a
+    push-blocking false positive on arbitrary helper APIs.
+    """
+    repo = _make_fake_repo(
+        tmp_path,
+        api_files={
+            "app.py": textwrap.dedent("""
+                from synthorg.api.foo import FooService
+
+                def build():
+                    foo: FooService | None = None
+                    return foo
+            """).lstrip(),
+            "lifecycle.py": textwrap.dedent("""
+                async def startup(foo):
+                    if foo is not None:
+                        foo.start()
+            """).lstrip(),
+            "foo.py": textwrap.dedent("""
+                class FooService:
+                    async def start(self):
+                        # Unrelated helper -- not a ConfigResolver.
+                        await self.cache.get_bool(
+                            "engine", "timeout_enforcement_enabled"
+                        )
+                        await some_client.get(
+                            "engine", "timeout_enforcement_enabled"
+                        )
+            """).lstrip(),
+        },
+        settings_files={
+            "engine.py": _settings_module(
+                _setting_registration("ENGINE", "timeout_enforcement_enabled"),
+            ),
+        },
+    )
+    violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
+    flagged = {v.yaml_path for v in violations}
+    assert "engine.timeout_enforcement_enabled" not in flagged, (
+        f"non-resolver receivers should not trigger Pattern A; got {flagged}"
+    )
+
+
+def test_factory_alias_import_is_resolved(tmp_path: Path) -> None:
+    """``from X import Y as Z`` resolves to the underlying factory function.
+
+    Without alias-aware import resolution, a factory imported as
+    ``from synthorg.backup.factory import build_backup_service as
+    build_service`` would silently skip ghost detection because the
+    AST search would look for ``def build_service(...)`` instead of
+    ``def build_backup_service(...)``.
+    """
+    repo = _make_fake_repo(
+        tmp_path,
+        api_files={
+            "app.py": textwrap.dedent("""
+                from synthorg.backup.factory import (
+                    build_backup_service as build_service,
+                )
+
+                def build_app(config):
+                    backup_service = build_service(config)
+                    return backup_service
+            """).lstrip(),
+            "lifecycle.py": textwrap.dedent("""
+                async def startup(backup_service):
+                    if backup_service is not None:
+                        await backup_service.start()
+            """).lstrip(),
+        },
+        extra_files={
+            "backup/__init__.py": "",
+            "backup/factory.py": textwrap.dedent("""
+                from synthorg.backup.service import BackupService
+
+                def build_backup_service(config) -> BackupService | None:
+                    if not config.backup.enabled:
+                        return None
+                    return BackupService(config.backup)
+            """).lstrip(),
+            "backup/service.py": "class BackupService: pass\n",
+        },
+        settings_files={
+            "backup.py": _settings_module(
+                _setting_registration("BACKUP", "enabled"),
+            ),
+        },
+    )
+    ghosts = _MODULE.find_factory_gated_ghosts(  # type: ignore[attr-defined]
+        repo / "src" / "synthorg",
+    )
+    by_class = {g.class_name: g for g in ghosts}
+    assert "BackupService" in by_class, (
+        f"aliased factory import should still resolve; got ghosts={ghosts}"
+    )
+    assert by_class["BackupService"].gating_namespace == "backup"
+
+
 def test_pattern_a_resolves_setting_namespace_enum(tmp_path: Path) -> None:
     """Pattern A resolves ``SettingNamespace.X.value`` to the namespace string."""
     repo = _make_fake_repo(

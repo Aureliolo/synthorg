@@ -357,13 +357,21 @@ def find_hardcoded_none_ghosts(src_root: Path) -> list[GhostService]:
 # ── Factory-gated ghosts ────────────────────────────────────────
 
 
-def _build_import_map(tree: ast.Module) -> dict[str, str]:
-    """Return ``{local_name: dotted_module}`` for ``from X import Y`` lines."""
-    aliases: dict[str, str] = {}
+def _build_import_map(tree: ast.Module) -> dict[str, tuple[str, str]]:
+    """Return ``{local_name: (dotted_module, exported_name)}`` for ``from X import Y``.
+
+    Captures both halves of the import so aliased forms
+    (``from X import Y as Z``) resolve correctly: the local lookup
+    key is the alias (``Z``), but the function definition in ``X``'s
+    source is named after the exported symbol (``Y``). Without
+    tracking both, :func:`_find_factory_function` would search the
+    target module for ``def Z(...)`` and silently miss the factory.
+    """
+    aliases: dict[str, tuple[str, str]] = {}
     for node in tree.body if isinstance(tree, ast.Module) else ():
         if isinstance(node, ast.ImportFrom) and node.module:
             for alias in node.names:
-                aliases[alias.asname or alias.name] = node.module
+                aliases[alias.asname or alias.name] = (node.module, alias.name)
     return aliases
 
 
@@ -386,20 +394,26 @@ def _resolve_module_to_path(module: str, src_root: Path) -> Path | None:
 def _find_factory_function(
     factory_name: str,
     src_root: Path,
-    import_map: dict[str, str],
+    import_map: dict[str, tuple[str, str]],
 ) -> tuple[_FactoryNode, Path] | None:
     """Locate the factory's ``FunctionDef`` / ``AsyncFunctionDef`` AST node.
 
     Resolves via the importing file's ``from X import factory_name``
     and parses ``X``'s source. Returns ``None`` if the factory is
-    builtin / external or its source can't be parsed. Both
-    sync and async factories are returned -- the body inspection
+    builtin / external or its source can't be parsed. Both sync and
+    async factories are returned -- the body inspection
     (``_factory_gating_namespace`` / ``_factory_return_class``) is
     identical for both.
+
+    ``factory_name`` is the name as referenced in the call site (the
+    alias when ``from X import Y as Z`` is used). The import map
+    records both that local name and the original exported symbol;
+    the AST search uses the exported name so aliased imports resolve.
     """
-    module = import_map.get(factory_name)
-    if module is None:
+    resolved = import_map.get(factory_name)
+    if resolved is None:
         return None
+    module, exported_name = resolved
     path = _resolve_module_to_path(module, src_root)
     if path is None:
         return None
@@ -414,7 +428,7 @@ def _find_factory_function(
     for node in ast.walk(tree):
         if (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == factory_name
+            and node.name == exported_name
         ):
             return node, path
     return None

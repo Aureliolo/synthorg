@@ -78,6 +78,17 @@ _RESOLVER_MIN_ARGS: Final[int] = 2
 ``ConfigResolver.get_*(namespace, key)`` call."""
 
 
+_RESOLVER_RECEIVER_NAMES: Final[frozenset[str]] = frozenset(
+    {"config_resolver", "configresolver", "resolver", "_config_resolver", "_resolver"}
+)
+"""Receiver-name vocabulary for ``ConfigResolver`` references in ghost
+class files. Pattern A only fires when the call's receiver matches
+one of these (e.g. ``self.config_resolver.get_int(...)``,
+``app_state.config_resolver.get_*``, or ``ConfigResolver.get_*``);
+unrelated helpers like ``client.get_bool("a", "b")`` are skipped.
+Class-name match is case-insensitive."""
+
+
 def _resolve_resolver_arg(node: ast.expr) -> str | None:
     """Resolve a ConfigResolver.get_*() arg to its string value.
 
@@ -104,19 +115,45 @@ def _resolve_resolver_arg(node: ast.expr) -> str | None:
     return None
 
 
+def _is_resolver_receiver(value: ast.expr) -> bool:
+    """True iff *value* looks like a ``ConfigResolver`` reference.
+
+    Recognised shapes:
+
+    - ``ConfigResolver.get_*(...)`` -- ``Name(id="ConfigResolver")``.
+    - ``self.config_resolver.get_*(...)`` -- ``Attribute(attr="config_resolver")``
+      (or any of the names in :data:`_RESOLVER_RECEIVER_NAMES`).
+    - ``app_state.config_resolver.get_*(...)`` -- nested attribute,
+      same terminal-attr check.
+    - Bare ``Name(id="config_resolver")`` -- module-level or
+      function-parameter binding by convention.
+
+    The check is intentionally permissive on the receiver chain
+    (any depth) but strict on the terminal identifier so that
+    unrelated helpers (``client.get_bool(...)``, ``store.get(...)``)
+    don't get treated as ConfigResolver reads.
+    """
+    if isinstance(value, ast.Name):
+        return value.id.lower() in _RESOLVER_RECEIVER_NAMES
+    if isinstance(value, ast.Attribute):
+        return value.attr.lower() in _RESOLVER_RECEIVER_NAMES
+    return False
+
+
 def _find_resolver_consumers_in_file(path: Path) -> list[tuple[str, str]]:
     """Return every ``ConfigResolver.get_*("<ns>", "<key>")`` (ns, key) pair.
 
     Walks the file's AST for any ``Call(Attribute(attr=∈ get_methods))``
-    whose first two positional args resolve to string values via
-    :func:`_resolve_resolver_arg`. Calls with dynamic args, missing
-    args, or non-method shapes are skipped.
+    whose receiver is recognised as a ConfigResolver shape (see
+    :func:`_is_resolver_receiver`) and whose first two positional
+    args resolve to string values via :func:`_resolve_resolver_arg`.
+    Calls with dynamic args, missing args, non-method shapes, or
+    receivers that don't look like a ConfigResolver are skipped.
 
-    The receiver is NOT validated -- the lint trusts that any
-    ``.get_int("backup", "enabled")`` site in a ghost's class file is
-    a config read, not a coincidence. False-positive risk is low
-    because the method-name set is narrow and the arg-resolution
-    rejects anything non-static.
+    Receiver validation is required because the gate blocks pushes:
+    a permissive method-name match would treat unrelated helpers
+    (``client.get_bool("api", "x")``) as config reads and turn
+    arbitrary strings into ghost-wired-setting flags.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -133,6 +170,8 @@ def _find_resolver_consumers_in_file(path: Path) -> list[tuple[str, str]]:
         if not isinstance(node.func, ast.Attribute):
             continue
         if node.func.attr not in _RESOLVER_GET_METHODS:
+            continue
+        if not _is_resolver_receiver(node.func.value):
             continue
         if len(node.args) < _RESOLVER_MIN_ARGS:
             continue

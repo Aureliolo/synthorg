@@ -190,30 +190,31 @@ def test_load_baseline_missing_file_returns_empty_set(tmp_path: Path) -> None:
     assert result == set()
 
 
-def test_load_baseline_malformed_entry_raises_valueerror(tmp_path: Path) -> None:
-    """Wrong-field-count baseline entry fails loud."""
+@pytest.mark.parametrize(
+    ("entry", "case"),
+    [
+        ("backup.enabled:BackupService\n", "wrong-field-count"),
+        ("backup.enabled::BackupService\n", "empty-middle-field"),
+        ("backup.enabled:ghost-wired:BackupService:extra\n", "extra-field"),
+    ],
+)
+def test_load_baseline_malformed_entries_raise_valueerror(
+    tmp_path: Path, entry: str, case: str
+) -> None:
+    """Malformed baseline entries fail loud (any wrong shape).
+
+    The lint rejects entries that don't match
+    ``<yaml_path>:<kind>:<owning_class>``: too few fields, empty
+    fields, or too many fields. Silent fallthrough on any of these
+    would let real violations slip past the baseline filter.
+    """
     baseline = tmp_path / "baseline.txt"
-    baseline.write_text("backup.enabled:BackupService\n", encoding="utf-8")
+    baseline.write_text(entry, encoding="utf-8")
     with pytest.raises(ValueError, match="malformed baseline entry"):
         _MODULE._load_baseline(baseline)  # type: ignore[attr-defined]
-
-
-def test_load_baseline_empty_field_raises_valueerror(tmp_path: Path) -> None:
-    """Empty middle/end field is treated as malformed."""
-    baseline = tmp_path / "baseline.txt"
-    baseline.write_text("backup.enabled::BackupService\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="malformed baseline entry"):
-        _MODULE._load_baseline(baseline)  # type: ignore[attr-defined]
-
-
-def test_load_baseline_extra_fields_raises_valueerror(tmp_path: Path) -> None:
-    """Four-field baseline entry is rejected as malformed."""
-    baseline = tmp_path / "baseline.txt"
-    baseline.write_text(
-        "backup.enabled:ghost-wired:BackupService:extra\n", encoding="utf-8"
-    )
-    with pytest.raises(ValueError, match="malformed baseline entry"):
-        _MODULE._load_baseline(baseline)  # type: ignore[attr-defined]
+    # ``case`` is read by pytest's parametrize ID generator so test
+    # names surface the specific shape under test in failure output.
+    _ = case
 
 
 # ── CLI tests ──────────────────────────────────────────────────
