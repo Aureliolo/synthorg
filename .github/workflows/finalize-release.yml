@@ -349,18 +349,61 @@ jobs:
             fi
           fi
 
-          # Strip and re-append only when we have a replacement. If VERIFICATION
-          # is empty (no data extracted), leave the body untouched to avoid
-          # destroying an existing Verification section with no replacement.
-          if [ -n "$VERIFICATION" ]; then
+          # ── Promote AI Highlights from the release-please PR body ──
+          # release.yml writes a `<!-- HIGHLIGHTS_START -->...<!-- HIGHLIGHTS_END -->`
+          # block onto the rolling release-please PR body via gh pr edit.
+          # When the PR is merged, release-please builds the release notes
+          # from CHANGELOG.md only, leaving the Highlights block stranded on
+          # the PR. Locate the merged PR via the head_sha -> pulls
+          # association and copy the marker block (verbatim, markers
+          # included) to the top of the release body so:
+          #   - users see the AI summary on github.com/<repo>/releases
+          #   - `synthorg update` parses it via cli/internal/selfupdate
+          #     ExtractHighlights for the styled changelog walk.
+          #
+          # Stable releases only (release-please does not run on dev tags).
+          # Best-effort: missing PR, missing block, or empty PR body all
+          # leave the release body untouched.
+          HIGHLIGHTS=""
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            PR_NUMBER=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" \
+              --jq '.[] | select(.head.ref | startswith("release-please--branches--main")) | .number' \
+              | head -n1 || true)
+            if [ -n "$PR_NUMBER" ]; then
+              PR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' || true)
+              if [ -n "$PR_BODY" ]; then
+                EXTRACTED=$(sed -n '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/p' <<< "$PR_BODY")
+                # Only treat as a valid block when both markers are
+                # present; sed -n on a body with the start marker but no
+                # end marker would print everything from start to EOF.
+                if [ -n "$EXTRACTED" ] && grep -q 'HIGHLIGHTS_END' <<< "$EXTRACTED"; then
+                  HIGHLIGHTS="$EXTRACTED"$'\n\n'
+                  echo "Highlights block found in release-please PR #${PR_NUMBER}; prepending to release body."
+                else
+                  echo "::notice::release-please PR #${PR_NUMBER} has no Highlights block; release body unchanged."
+                fi
+              else
+                echo "::warning::Could not fetch body of release-please PR #${PR_NUMBER}; release body unchanged."
+              fi
+            else
+              echo "::notice::No release-please PR associated with ${HEAD_SHA}; skipping Highlights propagation."
+            fi
+          fi
+
+          # Strip and re-append only when we have a replacement. If both
+          # HIGHLIGHTS and VERIFICATION are empty (nothing to add), leave
+          # the body untouched to avoid destroying an existing Highlights
+          # / Verification section with no replacement.
+          if [ -n "$VERIFICATION" ] || [ -n "$HIGHLIGHTS" ]; then
             CLEANED=$(printf '%s' "$BODY" \
+              | sed '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/d' \
               | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
               | sed '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/d' \
               | sed '/<!-- CLI_SLSA_BUNDLE_DATA/,/CLI_SLSA_BUNDLE_DATA -->/d' \
               | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
               | sed '/<!-- CONTAINER_SBOM_DATA/,/CONTAINER_SBOM_DATA -->/d' \
               | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
-            FINAL="${CLEANED}${VERIFICATION}"
+            FINAL="${HIGHLIGHTS}${CLEANED}${VERIFICATION}"
           else
             FINAL="$BODY"
           fi
@@ -369,13 +412,13 @@ jobs:
           trap 'rm -f "$tmpfile"' EXIT
           printf '%s' "$FINAL" > "$tmpfile"
           if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"; then
-            echo "Release body assembled with combined Verification section."
+            echo "Release body assembled (Highlights: $([ -n "$HIGHLIGHTS" ] && echo yes || echo no); Verification: $([ -n "$VERIFICATION" ] && echo yes || echo no))."
           else
-            if [ -n "$VERIFICATION" ]; then
-              echo "::error::Failed to update release body -- verification data would be lost. Not publishing."
+            if [ -n "$VERIFICATION" ] || [ -n "$HIGHLIGHTS" ]; then
+              echo "::error::Failed to update release body -- highlights/verification data would be lost. Not publishing."
               exit 1
             else
-              echo "::warning::Failed to update release body (no verification data to lose -- proceeding)"
+              echo "::warning::Failed to update release body (nothing to lose -- proceeding)"
             fi
           fi
 
