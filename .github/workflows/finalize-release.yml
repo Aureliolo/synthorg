@@ -385,10 +385,13 @@ jobs:
               PR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>/dev/null || true)
               if [ -n "$PR_BODY" ]; then
                 EXTRACTED=$(sed -n '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/p' <<< "$PR_BODY")
-                # Only treat as a valid block when both markers are
-                # present; sed -n on a body with the start marker but no
-                # end marker would print everything from start to EOF.
-                if [ -n "$EXTRACTED" ] && grep -q 'HIGHLIGHTS_END' <<< "$EXTRACTED"; then
+                # Only treat as a valid block when the exact closing
+                # marker is present; sed -n on a body with the start
+                # marker but no end marker would print everything from
+                # start to EOF. Use grep -F with the full HTML comment so
+                # prose like "HIGHLIGHTS_END mentioned in the changelog"
+                # cannot pass the guard.
+                if [ -n "$EXTRACTED" ] && grep -qF '<!-- HIGHLIGHTS_END -->' <<< "$EXTRACTED"; then
                   # Trim trailing newlines so the prepend produces exactly
                   # one blank line between the Highlights block and the
                   # changelog. The herestring `<<<` adds one trailing
@@ -415,24 +418,36 @@ jobs:
           # / Verification section with no replacement.
           if [ -n "$VERIFICATION" ] || [ -n "$HIGHLIGHTS" ]; then
             CLEANED="$BODY"
-            # The HIGHLIGHTS-marker strip is gated on both markers being
-            # present together. `sed '/START/,/END/d'` is greedy: with no
-            # END in the body, it deletes from START through EOF. A
-            # contributor whose conventional-commit subject contained
-            # the literal `<!-- HIGHLIGHTS_START -->` would otherwise
-            # tank the entire CHANGELOG-derived body on the next finalize
-            # run.
-            if grep -q '<!-- HIGHLIGHTS_START -->' <<< "$CLEANED" \
-                && grep -q '<!-- HIGHLIGHTS_END -->' <<< "$CLEANED"; then
-              CLEANED=$(printf '%s' "$CLEANED" \
-                | sed '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/d')
-            fi
+            # Each marker-pair strip is gated on BOTH markers being
+            # present in the body. `sed '/START/,/END/d'` is greedy:
+            # with no END, it deletes from START through EOF. A
+            # contributor's commit subject (now propagated verbatim
+            # into dev release bodies) carrying the literal opening
+            # marker would otherwise tank the CHANGELOG-derived body
+            # on the next finalize run. Use grep -F so the marker
+            # strings are matched as fixed literals; sed BRE/ERE
+            # special chars in markers (none today, but defensive)
+            # would otherwise be misinterpreted.
+            strip_balanced_pair() {
+              local start_marker="$1"
+              local end_marker="$2"
+              if grep -qF "$start_marker" <<< "$CLEANED" \
+                  && grep -qF "$end_marker" <<< "$CLEANED"; then
+                CLEANED=$(printf '%s' "$CLEANED" \
+                  | sed "/${start_marker}/,/${end_marker}/d")
+              fi
+            }
+            strip_balanced_pair '<!-- HIGHLIGHTS_START -->' '<!-- HIGHLIGHTS_END -->'
+            strip_balanced_pair '<!-- CLI_VERIFICATION_DATA' 'CLI_VERIFICATION_DATA -->'
+            strip_balanced_pair '<!-- CLI_COSIGN_DATA' 'CLI_COSIGN_DATA -->'
+            strip_balanced_pair '<!-- CLI_SLSA_BUNDLE_DATA' 'CLI_SLSA_BUNDLE_DATA -->'
+            strip_balanced_pair '<!-- CONTAINER_VERIFICATION_DATA' 'CONTAINER_VERIFICATION_DATA -->'
+            strip_balanced_pair '<!-- CONTAINER_SBOM_DATA' 'CONTAINER_SBOM_DATA -->'
+            # FINALIZE_VERIFICATION is intentionally greedy-to-EOF:
+            # everything after the marker IS the verification section
+            # (no closing marker by design). The greedy strip rebuilds
+            # the section fresh from the per-image marker data above.
             CLEANED=$(printf '%s' "$CLEANED" \
-              | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
-              | sed '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/d' \
-              | sed '/<!-- CLI_SLSA_BUNDLE_DATA/,/CLI_SLSA_BUNDLE_DATA -->/d' \
-              | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
-              | sed '/<!-- CONTAINER_SBOM_DATA/,/CONTAINER_SBOM_DATA -->/d' \
               | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
             FINAL="${HIGHLIGHTS}${CLEANED}${VERIFICATION}"
           else
