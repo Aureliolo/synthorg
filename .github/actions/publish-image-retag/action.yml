@@ -88,15 +88,76 @@ runs:
         set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
         SHORT_SHA="${GITHUB_SHA::7}"
-        # Capture only stdout so the digest variable can never be
-        # corrupted by stderr (Docker emits experimental-feature /
-        # deprecation warnings on stderr; merging via `2>&1` would
-        # break the regex check below). On failure stderr still
-        # reaches the GHA log via the inherited file descriptor.
-        if ! DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}')"; then
-          echo "::error::Could not resolve ${REPO}:sha-${SHORT_SHA} -- the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image. Re-run the main-push first; this tag-push retag job will then succeed on re-run."
-          exit 1
-        fi
+        RETRY="${GITHUB_WORKSPACE}/.github/scripts/docker_push_with_retry.sh"
+
+        # Inspect stdout carries the digest, so we cannot merge stderr
+        # (Docker emits deprecation warnings on stderr that would
+        # corrupt the regex check below). Capture stderr to a tmpfile
+        # and inspect it ONLY on failure to decide retry vs fail-fast.
+        # Transient GHCR 5xx -> retry with backoff; a true 404 (image
+        # not published by main-run) fails immediately.
+        #
+        # Source the canonical TRANSIENT_RE from docker_push_with_retry.sh
+        # and strip the patterns the inspect path cannot benefit from:
+        #   - `manifest unknown`: legitimate 404 we MUST fail-fast on
+        #     (the "main-push did not publish this image" signal below).
+        #   - `blob upload invalid`: write-side error that
+        #     `imagetools inspect` cannot produce.
+        # `unknown blob` / `blob unknown` stay in: unlikely from a read,
+        # but the rare cross-arch race the helper covers can also surface
+        # here, and re-reading is idempotent.
+        TRANSIENT_RE="$(bash "$RETRY" --print-transient-re \
+          | sed -E 's/\|manifest unknown//; s/\|blob upload invalid//')"
+        ERR_FILE="$(mktemp /tmp/docker-inspect-err.XXXXXX)"
+        trap 'rm -f "$ERR_FILE"' EXIT
+        ATTEMPTS=4
+        BACKOFF=15
+        DIGEST=""
+        for ((i = 1; i <= ATTEMPTS; i++)); do
+          rc=0
+          # Use `cmd || rc=$?` so set -e does not abort and so rc reflects the
+          # wrapped command's actual exit code. The `if cmd; then ... fi; rc=$?`
+          # idiom would always capture 0 here -- a failed `if cmd` clears $?
+          # to 0 once the if-statement completes (same trap the helper has to
+          # avoid in docker_push_with_retry.sh).
+          DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}' 2>"$ERR_FILE")" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            cat "$ERR_FILE" >&2
+            break
+          fi
+          ERR="$(cat "$ERR_FILE")"
+          IS_TRANSIENT=false
+          if printf '%s' "$ERR" | grep -qiE "$TRANSIENT_RE"; then
+            IS_TRANSIENT=true
+          fi
+
+          # Mid-loop transient: sleep and retry.
+          if [ "$IS_TRANSIENT" = "true" ] && [ "$i" -lt "$ATTEMPTS" ]; then
+            printf '%s\n' "$ERR" >&2
+            echo "::warning::imagetools inspect ${REPO}:sha-${SHORT_SHA} hit transient registry error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
+            sleep "$BACKOFF"
+            BACKOFF=$((BACKOFF * 2))
+            continue
+          fi
+
+          # Otherwise we're done. Surface stderr first; then the annotation
+          # differentiates transient-retries-exhausted from a genuine
+          # non-transient failure so the operator knows which recovery path
+          # to take.
+          printf '%s\n' "$ERR" >&2
+          if [ "$IS_TRANSIENT" = "true" ]; then
+            # i == ATTEMPTS and ERR matched TRANSIENT_RE -- the error pattern
+            # was transient but persisted through the full backoff window
+            # (15s + 30s + 60s = ~1m45s). GHCR is likely in a longer outage;
+            # waiting and re-running the job is the correct response.
+            echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) -- transient retries exhausted after ${ATTEMPTS} attempts. The error pattern matched TRANSIENT_RE but persisted through the full backoff window; GHCR may be in a longer outage. Check https://www.githubstatus.com/ and re-run this retag job once recovered."
+          else
+            # Genuine non-transient: no amount of retries would have helped.
+            echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) with non-transient error. Most common cause: the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image (look for 'manifest unknown' / 404 in the stderr above; re-run main-push, then re-run this retag job). For other causes (auth, registry config, TLS verification, ...) inspect the stderr above."
+          fi
+          exit "$rc"
+        done
+
         if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
           echo "::error::imagetools inspect returned an unexpected digest: ${DIGEST}"
           exit 1
@@ -121,6 +182,7 @@ runs:
       run: |
         set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
+        RETRY="${GITHUB_WORKSPACE}/.github/scripts/docker_push_with_retry.sh"
         PUSHED_TAGS=()
         CREATE_ARGS=()
         while IFS= read -r full_tag; do
@@ -137,7 +199,10 @@ runs:
           exit 1
         fi
 
-        docker buildx imagetools create "${CREATE_ARGS[@]}" "${REPO}@${SIGNED_DIGEST}"
+        # Retry transient GHCR 5xx during the manifest-list write. Source
+        # is digest-pinned so re-runs produce byte-identical results.
+        bash "$RETRY" "docker buildx imagetools create ${REPO} (${#PUSHED_TAGS[@]} tags)" \
+          docker buildx imagetools create "${CREATE_ARGS[@]}" "${REPO}@${SIGNED_DIGEST}"
         for t in "${PUSHED_TAGS[@]}"; do
           echo "✓ ${REPO}:${t} -> ${SIGNED_DIGEST}"
         done

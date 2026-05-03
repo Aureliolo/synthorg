@@ -76,6 +76,7 @@ runs:
         set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base"
         IFS=',' read -ra ARCHS <<< "${ARCHITECTURES}"
+        RETRY="${GITHUB_WORKSPACE}/.github/scripts/docker_push_with_retry.sh"
 
         # Push each per-arch image, capturing its manifest digest
         # directly from `docker push` stdout (`<tag>: digest:
@@ -86,12 +87,15 @@ runs:
         # the tag via `docker buildx imagetools inspect`) closes the
         # TOCTOU window where a parallel run could overwrite the tag
         # between push and inspect.
-        # Wrap each `docker push` so `set -e` doesn't abort the step
-        # before we can dump the captured stderr to the build log on
-        # failure. See publish-image-loaded for the same pattern.
+        #
+        # Wrap each push in docker_push_with_retry.sh so transient GHCR
+        # 5xx responses ("page is taking too long", "unknown blob", TLS
+        # reset, etc.) are retried with exponential backoff. The push is
+        # idempotent: re-pushing the same content yields the same digest,
+        # so a retry never alters the published image.
         MANIFEST_ARGS=()
         for arch in "${ARCHS[@]}"; do
-          if ! PUSH_OUTPUT="$(docker push "${REPO}:${TAG}-${arch}" 2>&1)"; then
+          if ! PUSH_OUTPUT="$(bash "$RETRY" "docker push ${REPO}:${TAG}-${arch}" docker push "${REPO}:${TAG}-${arch}")"; then
             printf '%s\n' "${PUSH_OUTPUT}"
             echo "::error::docker push failed for ${REPO}:${TAG}-${arch}"
             exit 1
@@ -108,7 +112,7 @@ runs:
         # prior run leaves the manifest list present, and a plain `create` would
         # fail with "manifest already exists" before the idempotent push below.
         docker manifest create --amend "${REPO}:${TAG}" "${MANIFEST_ARGS[@]}"
-        docker manifest push "${REPO}:${TAG}"
+        bash "$RETRY" "docker manifest push ${REPO}:${TAG}" docker manifest push "${REPO}:${TAG}"
         # Read the canonical manifest list digest back from the
         # registry. Stable across re-runs because the create above pins
         # source members by digest.
