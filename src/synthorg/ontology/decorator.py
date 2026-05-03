@@ -22,6 +22,8 @@ from synthorg.ontology.errors import OntologyDuplicateError
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pydantic import BaseModel
 
     from synthorg.ontology.models import (
@@ -127,17 +129,26 @@ def _annotation_to_str(annotation: Any) -> str:
     return str(annotation)
 
 
+# Parameterise over the decorated class so callers see the concrete
+# subclass type rather than ``type[BaseModel]``. Without inline type
+# parameters, every ``@ontology_entity``-decorated class loses its
+# identity in static type-checkers (Pyright surfaces this; mypy is
+# more lenient with decorators that return ``Any``) and attribute
+# access on instances returned by typed APIs (e.g. the result of
+# ``await eng.create_task(...)`` which is annotated to return
+# ``Task``) resolves against the bare ``BaseModel``, producing
+# false-positive "no attribute" diagnostics.
 @overload
-def ontology_entity(cls: type[BaseModel], /) -> type[BaseModel]: ...
+def ontology_entity[T: BaseModel](cls: type[T], /) -> type[T]: ...
 
 
 @overload
-def ontology_entity(
+def ontology_entity[T: BaseModel](
     *,
     entity_name: str | None = None,
     tier: EntityTier | None = None,
     source: EntitySource | None = None,
-) -> Any: ...
+) -> Callable[[type[T]], type[T]]: ...
 
 
 def ontology_entity(

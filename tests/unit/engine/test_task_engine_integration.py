@@ -317,8 +317,23 @@ class TestDrainTimeout:
         await entered_save.wait()
         eng._queue.put_nowait(envelope)
 
-        # Stop with a very short timeout -- loop is blocked, so timeout fires
-        await eng.stop(timeout=0.05)
+        # The processing loop is genuinely stuck on ``block.wait()``, so
+        # ``_drain_processing`` will reliably hit its inner ``wait_for``
+        # timeout, cancel the processing task, and fail queued futures
+        # before returning. ``stop()`` then returns cleanly.
+        #
+        # Budget choice: ``stop(timeout=T)`` adds an outer hard-deadline
+        # at ``2 * T`` (see ``TaskEngine.stop``). If cleanup overruns
+        # that hard deadline, ``TimeoutError`` propagates to the caller
+        # and the engine is marked unrestartable. The original 50 ms
+        # budget left only ~50 ms for cancellation + future-cleanup,
+        # which intermittently raced under xdist load on CI runners
+        # and surfaced as ``TimeoutError`` escaping ``stop()``. 500 ms
+        # gives a 500 ms cleanup margin -- comfortably above the few
+        # milliseconds the cleanup actually needs even under heavy
+        # contention -- without lengthening the test meaningfully (the
+        # inner drain still fires after 500 ms, not 1 s).
+        await eng.stop(timeout=0.5)
 
         # The queued envelope (not yet processed) must be failed
         assert envelope.future.done()
