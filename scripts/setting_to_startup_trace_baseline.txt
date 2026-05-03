@@ -1,0 +1,20 @@
+# Frozen baseline of pre-existing settings → startup-wiring violations.
+# Each line is `<yaml_path>:<kind>:<owning_class>` sorted in
+# deterministic order.
+#
+# scripts/check_setting_to_startup_trace.py reads this file to
+# suppress violations at these exact entries. New violations NOT in
+# this list will fail the pre-push hook.
+#
+# Regenerate (rare; requires explicit user approval) with:
+#   uv run python scripts/check_setting_to_startup_trace.py --update-baseline
+#
+# Issue #1735 / #1737 Part 1.
+backup.compression:ghost-wired:BackupService
+backup.enabled:ghost-wired:BackupService
+backup.on_shutdown:ghost-wired:BackupService
+backup.on_startup:ghost-wired:BackupService
+backup.path:ghost-wired:BackupService
+backup.retention_days:ghost-wired:BackupService
+backup.schedule_hours:ghost-wired:BackupService
+security.timeout_check_interval_seconds:ghost-wired:ApprovalTimeoutScheduler

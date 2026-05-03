@@ -140,3 +140,79 @@ entry:
 3. Add a precedence-chain test under
    `tests/unit/settings/test_precedence_chain.py`.
 4. Document the new entry in this page's source matrix.
+
+## Bootstrap-wiring trace (ghost-wired settings gate)
+
+A registered setting whose consuming machinery exists but is never
+instantiated at boot is **ghost-wired** -- the value resolves cleanly
+through the chain, but no code path that reads it ever runs in default
+config. The 2026-05-03 audit's worst false-positive class came from
+this pattern: the import-graph trace found the consumer code but
+missed that its owning service was never started.
+
+`scripts/check_setting_to_startup_trace.py` is the standing gate.
+Pre-push + CI; mirrors `check_persistence_boundary.py` shape.
+
+### What it catches
+
+Two ghost-service patterns in lifecycle/app wiring:
+
+- **Hardcoded-None ghost.** A service variable
+  `x: T | None = None` paired with a conditional
+  `if x is not None: x.start()`. The guard always evaluates False;
+  any setting whose key appears in `T`'s class file (and whose
+  namespace appears in that file's path) is ghost-wired. Example:
+  `ApprovalTimeoutScheduler` hardcoded in `api/app.py`, gating
+  `security.timeout_check_interval_seconds`.
+- **Factory-gated ghost.** A factory `build_x(config) -> T | None`
+  whose `None` branch fires when a registered default-disabled flag
+  is False. Every setting in the gating namespace flags as
+  ghost-wired. Example: `BackupService` gated on
+  `backup.enabled=False` (the registered default), making all 7
+  `backup.*` settings dead in default config.
+
+`read_only_post_init=True` settings are skipped by design (registry
+entry exists for `/settings` UI introspection; mutation is rejected
+at runtime, no live consumer required).
+
+### Suppression marker
+
+Per-setting opt-out -- append a trailing comment on the
+`_r.register(...)` closing line:
+
+```python
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.X,
+        key="discoverability_only_setting",
+        ...,
+    )
+)  # lint-allow: bootstrap-wiring -- explanation here
+```
+
+The justification after `--` is required and must be non-empty.
+Mirrors the `# lint-allow: persistence-boundary` contract.
+
+### Baseline file
+
+`scripts/setting_to_startup_trace_baseline.txt` freezes the
+pre-existing violations so the lint can ship without forcing the
+wiring fix in the same PR. Format: one entry per line,
+`<yaml_path>:<kind>:<owning_class>`, sorted lexicographically.
+
+Lint behaviour:
+
+- Pass when current violations are a subset of baseline.
+- Fail (exit 1) listing only the new violations when current ⊄ baseline.
+- Warn (stderr) but pass when baseline contains stale entries (a
+  fix landed and the violation no longer exists). Regenerate the
+  baseline via `--update-baseline` once the wiring is fixed.
+
+```bash
+uv run python scripts/check_setting_to_startup_trace.py
+uv run python scripts/check_setting_to_startup_trace.py --update-baseline
+```
+
+`--update-baseline` requires explicit user approval to commit the
+diff. Don't run it casually -- the baseline is the lint's frozen
+authority.
