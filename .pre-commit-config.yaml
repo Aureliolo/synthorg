@@ -12,7 +12,7 @@ ci:
   #     too slow / toolchain-heavy for the cloud runner.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
-  #     orphan-fixtures:
+  #     orphan-fixtures / boundary-typed:
   #     scoped gates that need ``uv`` + repo source -- redundant given
   #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
   #   - check-push-rebased / check-single-migration-per-pr /

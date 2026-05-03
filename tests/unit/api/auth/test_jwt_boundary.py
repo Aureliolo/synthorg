@@ -101,6 +101,22 @@ class TestJwtClaimsModel:
         assert claims.iat == int(now.timestamp())
         assert claims.exp == int(later.timestamp())
 
+    def test_iat_int_passthrough_unchanged(self) -> None:
+        # PyJWT decode emits NumericDate values as int, so the
+        # validator's identity branch must not mangle them.
+        iat_value = 1714694400
+        exp_value = iat_value + 3600
+        claims = JwtClaims(
+            iss=USER_ISSUER,
+            aud=USER_AUDIENCE,
+            sub="user-1",
+            jti="jti-1",
+            iat=iat_value,
+            exp=exp_value,
+        )
+        assert claims.iat == iat_value
+        assert claims.exp == exp_value
+
     def test_iat_must_be_strictly_less_than_exp(self) -> None:
         now = datetime.now(UTC)
         with pytest.raises(ValidationError):

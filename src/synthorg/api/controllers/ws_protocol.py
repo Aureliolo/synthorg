@@ -29,7 +29,7 @@ from synthorg.api.ws_control_models import (
     WsSubscribeMessage,
     WsUnsubscribeMessage,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_INVALID_MESSAGE,
     API_WS_PING,
@@ -203,8 +203,21 @@ def handle_message(
 
     try:
         message = parse_typed("ws.control", parsed, WS_CONTROL_MESSAGE_ADAPTER)
-    except ValidationError:
-        logger.warning(API_WS_INVALID_MESSAGE, reason="failed_typed_validation")
+    except ValidationError as exc:
+        # parse_typed already emitted api.boundary.validation_failed
+        # with the full error locations. Mirror the MCP invoker
+        # pattern by surfacing the redacted description on the
+        # ws-specific search trail so operators triaging
+        # malformed-by-client vs malformed-by-attacker vs
+        # client-version-skew get the per-frame detail without
+        # diving into the boundary helper's log.
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            reason="failed_typed_validation",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            error_count=len(exc.errors()),
+        )
         return json.dumps({"error": "Invalid control message"})
 
     if isinstance(message, WsPingMessage):

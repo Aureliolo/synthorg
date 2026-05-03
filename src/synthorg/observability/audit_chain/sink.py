@@ -9,14 +9,17 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
 from synthorg.api.boundary import parse_typed
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
 from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_CALLBACK_ERROR,
     AUDIT_CHAIN_EMIT_ERROR,
     AUDIT_CHAIN_EMIT_TIMEOUT,
+    AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
     AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN,
 )
 
@@ -321,9 +324,13 @@ class AuditChainSink(logging.Handler):
             # helper so a future widening of the iteration above (or
             # an upstream LogRecord that smuggles in an unrecognised
             # attribute) cannot silently slip an unknown key into the
-            # signed event. parse_typed only inspects the dict; it
-            # does not replace it. The same dict feeds json.dumps so
-            # the byte-layout (and the chain hash) remains identical.
+            # signed event. parse_typed only INSPECTS the dict; the
+            # return value is intentionally discarded so the payload
+            # dict itself (not a model dump) feeds json.dumps below.
+            # NEVER rewrite this as ``payload = parse_typed(...)`` --
+            # doing so would replace the dict with a Pydantic model
+            # and break the byte-stable JSON serialisation that the
+            # hash chain depends on (test_golden_json_byte_stable).
             parse_typed("audit_chain", payload, AuditChainEventPayload)
 
             data = json.dumps(
@@ -370,6 +377,28 @@ class AuditChainSink(logging.Handler):
 
         except MemoryError, RecursionError:
             raise
+        except ValidationError as exc:
+            # Boundary validation rejected the assembled payload --
+            # do NOT fall through to the generic ``except Exception``
+            # below. The generic handler logs ``exc_info=True`` whose
+            # traceback may carry signer / TSA frame-locals on a
+            # different code path; here we already know the failure
+            # is a Pydantic validation error against
+            # ``AuditChainEventPayload`` so a structured log without a
+            # traceback is both safer and clearer for operators
+            # triaging audit-chain integrity drops. ``parse_typed``
+            # already emitted ``api.boundary.validation_failed`` with
+            # the field locations; this event is the audit-chain side
+            # of the same incident, distinguishing schema-reject from
+            # signing-timeout from JSON-encode failure.
+            logger.error(  # noqa: TRY400 -- logger.exception leaks frame-locals; see SEC-1
+                AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
+                audited_event=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                error_count=len(exc.errors()),
+            )
+            self._invoke_append_callback("error", 0, 0.0)
         except concurrent.futures.TimeoutError:
             # Distinguishing timeout from other emit failures lets the
             # operator triage TSA / signer hangs separately from

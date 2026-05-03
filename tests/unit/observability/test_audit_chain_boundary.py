@@ -156,3 +156,103 @@ class TestAuditChainBytestability:
         before = dict(_GOLDEN_PAYLOAD)
         parse_typed("audit_chain", _GOLDEN_PAYLOAD, AuditChainEventPayload)
         assert before == _GOLDEN_PAYLOAD
+
+
+@pytest.mark.unit
+class TestAuditChainSinkValidationFailure:
+    """Sink.emit() must NOT swallow a ValidationError into the generic
+    ``except Exception`` handler.
+
+    The generic handler logs ``exc_info=True`` whose traceback may carry
+    signer / TSA frame-locals; routing through the explicit
+    ValidationError branch keeps the audit-chain integrity drop visible
+    on its own event (``audit_chain.emit_validation_failed``) and
+    avoids credential exposure.
+    """
+
+    def test_validation_failure_routes_to_explicit_branch(self) -> None:
+        from logging import (
+            LogRecord,
+        )
+
+        from synthorg.observability.audit_chain.config import AuditChainConfig
+        from synthorg.observability.audit_chain.sink import AuditChainSink
+
+        # Stand up a sink with stub signer / timestamp providers.
+        # We never reach the signing path because validation fails
+        # first, so the stubs only need to satisfy the constructor.
+        class _StubSigner:
+            async def sign(self, data: bytes) -> object:
+                msg = "should not be reached"
+                raise AssertionError(msg)
+
+        class _StubTimestampProvider:
+            async def get_timestamp(self, data: bytes) -> object:
+                msg = "should not be reached"
+                raise AssertionError(msg)
+
+        sink = AuditChainSink(
+            signer=_StubSigner(),  # type: ignore[arg-type]
+            timestamp_provider=_StubTimestampProvider(),  # type: ignore[arg-type]
+            config=AuditChainConfig(),
+        )
+
+        # A LogRecord whose extras include a smuggled key the typed
+        # payload model does not declare. parse_typed must reject the
+        # assembled dict.
+        record = LogRecord(
+            name="synthorg.test",
+            level=20,
+            pathname=__file__,
+            lineno=0,
+            msg="security.auth.login",
+            args=None,
+            exc_info=None,
+        )
+        # Inject a forbidden extra field by hand (mirrors what an
+        # upstream LogRecord could carry if the iteration in emit()
+        # ever widens to a non-modeled key).
+        record.extra_unknown_field = "boom"
+
+        callback_calls: list[tuple[str, int, float]] = []
+
+        def _callback(status: str, depth: int, ts: float) -> None:
+            callback_calls.append((status, depth, ts))
+
+        sink.set_append_callback(_callback)
+
+        # Patch parse_typed so the assembled payload (which the sink
+        # builds from the fixed iteration) is rejected: pretend the
+        # smuggled key reached the dict by injecting it through the
+        # sink's emit path.
+        # In production the iteration is closed; we monkeypatch
+        # AuditChainEventPayload to forbid one of the fields the
+        # iteration emits.
+        with structlog.testing.capture_logs() as logs:
+            # Force a ValidationError by feeding a non-str levelname
+            # that violates the model's str type expectation. Pydantic
+            # will reject the assembled payload at parse_typed time,
+            # which is exactly the path under test.
+            object.__setattr__(record, "levelname", 42)
+            sink.emit(record)
+
+        validation_logs = [
+            log
+            for log in logs
+            if log.get("event") == "audit_chain.emit_validation_failed"
+        ]
+        emit_error_logs = [
+            log for log in logs if log.get("event") == "audit_chain.emit_error"
+        ]
+        # Must hit the explicit branch, NOT fall through to the
+        # generic emit_error handler.
+        assert len(validation_logs) == 1, (
+            f"expected one audit_chain.emit_validation_failed, got "
+            f"{len(validation_logs)} (and "
+            f"{len(emit_error_logs)} emit_error logs)"
+        )
+        assert validation_logs[0]["log_level"] == "error"
+        assert validation_logs[0]["audited_event"] == "security.auth.login"
+        # Callback fires with status="error" so chain-depth metrics
+        # accurately track dropped events.
+        assert callback_calls == [("error", 0, 0.0)]

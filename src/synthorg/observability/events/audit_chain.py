@@ -12,6 +12,16 @@ from typing import Final
 
 AUDIT_CHAIN_EMIT_ERROR: Final[str] = "audit_chain.emit_error"
 AUDIT_CHAIN_EMIT_TIMEOUT: Final[str] = "audit_chain.emit_timeout"
+AUDIT_CHAIN_EMIT_VALIDATION_FAILED: Final[str] = "audit_chain.emit_validation_failed"
+"""Boundary validation rejected the assembled payload before signing.
+
+Distinct from :data:`AUDIT_CHAIN_EMIT_ERROR` so operators can tell a
+schema-rejected event apart from a signing/serialization failure.
+``parse_typed`` already emits :data:`API_BOUNDARY_VALIDATION_FAILED`
+with the structured boundary detail; this event is the audit-chain
+side of the same incident, recording that the chain dropped the
+event without appending it.
+"""
 AUDIT_CHAIN_CALLBACK_ERROR: Final[str] = "audit_chain.callback_error"
 
 # Unrecognized stdlib LogRecord shape that did not match any of the

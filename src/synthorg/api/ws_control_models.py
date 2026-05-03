@@ -57,7 +57,7 @@ class WsSubscribeMessage(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     action: Literal["subscribe"] = "subscribe"
-    channels: tuple[str, ...] = Field(default=())
+    channels: tuple[NotBlankStr, ...] = Field(default=())
     filters: dict[str, str] | None = None
 
 
@@ -72,7 +72,7 @@ class WsUnsubscribeMessage(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     action: Literal["unsubscribe"] = "unsubscribe"
-    channels: tuple[str, ...] = Field(default=())
+    channels: tuple[NotBlankStr, ...] = Field(default=())
 
 
 class WsPingMessage(BaseModel):

@@ -111,6 +111,25 @@ class TestParseTyped:
         assert len(record["error_locations"]) == 5
         assert record["truncated"] is True
 
+    def test_log_no_truncation_at_exactly_five_errors(self) -> None:
+        # Boundary case: exactly _MAX_LOGGED_LOCATIONS (5) errors must
+        # NOT trip the truncated flag. Build a payload that fails on
+        # five fields of _SixRequiredFields by supplying just one.
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ValidationError),
+        ):
+            parse_typed("test", {"a": 1}, _SixRequiredFields)
+
+        boundary_logs = [
+            log for log in logs if log.get("event") == "api.boundary.validation_failed"
+        ]
+        assert len(boundary_logs) == 1
+        record = boundary_logs[0]
+        assert record["error_count"] == 5
+        assert len(record["error_locations"]) == 5
+        assert record["truncated"] is False
+
     def test_boundary_label_propagates_to_log(self) -> None:
         with (
             structlog.testing.capture_logs() as logs,
