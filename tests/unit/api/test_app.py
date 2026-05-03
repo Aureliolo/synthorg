@@ -518,7 +518,7 @@ class TestAppLifecycle:
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
         mock_sched = MagicMock()
-        mock_sched.start = MagicMock()  # start() is sync
+        mock_sched.start = AsyncMock()
         mock_sched.stop = AsyncMock()
 
         app_state = AppState(
@@ -538,7 +538,7 @@ class TestAppLifecycle:
             mock_sched,
             app_state,
         )
-        mock_sched.start.assert_called_once()
+        mock_sched.start.assert_awaited_once()
 
         await _safe_shutdown(None, None, None, mock_sched, None, None, None, None)
         mock_sched.stop.assert_awaited_once()
