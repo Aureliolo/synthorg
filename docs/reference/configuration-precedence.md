@@ -140,3 +140,108 @@ entry:
 3. Add a precedence-chain test under
    `tests/unit/settings/test_precedence_chain.py`.
 4. Document the new entry in this page's source matrix.
+
+## Bootstrap-wiring trace (ghost-wired settings gate)
+
+A registered setting whose consuming machinery exists but is never
+instantiated at boot is **ghost-wired** -- the value resolves cleanly
+through the chain, but no code path that reads it ever runs in default
+config. Import-graph traces find the consumer code but miss that its
+owning service is never started, so a static "find references" walk
+can't distinguish a live consumer from a ghost-wired one.
+
+`scripts/check_setting_to_startup_trace.py` is the standing gate.
+Pre-push + CI; mirrors `check_persistence_boundary.py` shape.
+
+### What it catches
+
+The lint detects two ghost-service patterns in lifecycle/app wiring,
+then matches settings to those ghosts via three matchers (first hit
+wins). Settings unrelated to a known ghost service pass silently;
+the lint never flags a setting in isolation.
+
+**Ghost-service patterns:**
+
+- **Hardcoded-None ghost.** A service variable
+  `x: T | None = None` paired with a conditional
+  `if x is not None: x.start()`. The guard always evaluates False.
+  Example: `ApprovalTimeoutScheduler` hardcoded in `api/app.py`.
+- **Factory-gated ghost.** A factory `build_x(config) -> T | None`
+  whose `None` branch fires when a registered default-disabled flag
+  is False. Example: `BackupService` gated on
+  `backup.enabled=False` (the registered default), making all 7
+  `backup.*` settings dead in default config.
+
+**Setting → ghost matchers** (run in order; first hit wins):
+
+1. **Gating-namespace match** (factory ghosts only). Every setting
+   whose `namespace` equals the factory's gating namespace is
+   ghost-wired -- e.g. all `backup.*` settings flag when
+   `BackupService` is factory-gated by `backup.enabled=False`.
+2. **Class-file containment match** (hardcoded-None ghosts only).
+   A setting is ghost-wired iff its `key` appears as a substring
+   in the ghost class's source file AND its `namespace` appears
+   in that file's path. Catches the `ApprovalTimeoutScheduler`
+   case where `security.timeout_check_interval_seconds` is mentioned
+   in the scheduler's docstring.
+3. **Direct ConfigResolver consumer match** (Pattern A; both ghost
+   kinds). The lint scans the ghost class's source file for
+   `ConfigResolver.get_*("<ns>", "<key>")` calls (resolving both
+   string literals AND `SettingNamespace.X.value` references); if
+   any (ns, key) matches a registered setting, that setting flags
+   as ghost-wired. Catches **cross-namespace consumption** -- a
+   ghost class in `api/foo.py` that reads `engine.X` would not
+   match either gating-namespace or class-file containment, but
+   the direct ConfigResolver call surfaces it.
+
+When debugging a Pattern A flag, search the ghost class's source
+for `ConfigResolver.get_*("<flagged_ns>", "<flagged_key>")` calls
+and verify whether the consumer should migrate to a real
+unconditionally-started service or whether the gating service
+should be wired at boot.
+
+`read_only_post_init=True` settings are skipped by design (registry
+entry exists for `/settings` UI introspection; mutation is rejected
+at runtime, no live consumer required).
+
+### Suppression marker
+
+Per-setting opt-out -- append a trailing comment on the
+`_r.register(...)` closing line:
+
+```python
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.X,
+        key="discoverability_only_setting",
+        ...,
+    )
+)  # lint-allow: bootstrap-wiring -- explanation here
+```
+
+The justification after `--` is required and must be non-empty.
+Mirrors the `# lint-allow: persistence-boundary` contract.
+
+### Baseline file
+
+`scripts/setting_to_startup_trace_baseline.txt` freezes the
+pre-existing violations so the lint can ship without forcing the
+wiring fix in the same PR. Format: one entry per line,
+`<yaml_path>:<kind>:<owning_class>`, sorted lexicographically.
+
+Lint behaviour:
+
+- Pass when current violations are a subset of baseline.
+- Fail (exit 1) listing only the new violations when current ⊄ baseline.
+- Warn (stderr) but pass when baseline contains stale entries (a
+  fix landed and the violation no longer exists). Regenerate the
+  baseline via `--update-baseline` once the wiring is fixed.
+
+```bash
+uv run python scripts/check_setting_to_startup_trace.py
+uv run python scripts/check_setting_to_startup_trace.py --update-baseline
+```
+
+`--update-baseline` requires explicit user approval to commit the
+diff. Don't run it casually -- the baseline is the lint's frozen
+authority.

@@ -117,6 +117,8 @@ Two sanctioned exceptions: **init-time only** (DB credentials, bootstrap secrets
 
 Direct `os.environ.get(...)` reads in application code outside startup are forbidden. New settings register in `src/synthorg/settings/definitions/<namespace>.py` and are consumed via `ConfigResolver.get_*`.
 
+**Ghost-wired settings**: `scripts/check_setting_to_startup_trace.py` (pre-push + CI) flags settings whose consuming service is never instantiated at boot (hardcoded-None or factory-gated by a default-disabled flag). Per-setting opt-out via `# lint-allow: bootstrap-wiring -- <reason>` on the `_r.register(...)` closing line; `read_only_post_init=True` settings are skipped automatically.
+
 See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md) for the full source matrix, exception registry, and migration recipe.
 
 ## Shell Usage
@@ -229,7 +231,7 @@ When tests fail due to timeout, slowness, or xdist resource contention:
   - `enforce-parallel-tests`: enforces `-n 8` with pytest
   - `no-cd-prefix`: blocks `cd` prefix in Bash commands
   - `no-local-coverage`: blocks `--cov` flags locally (CI handles coverage)
-- **Pre-push hooks**: mypy type-check (affected modules only) + pytest unit tests (affected modules only) + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) + eslint-web (web dashboard) + `orphan-fixtures` (opt-in via `SYNTHORG_CHECK_ORPHAN_FIXTURES=1`; silent no-op otherwise) (fast gate before push, skipped in pre-commit.ci because dedicated CI jobs already run these). Foundational module changes (core, config, observability) or conftest changes trigger full runs.
+- **Pre-push hooks**: mypy type-check (affected modules only) + pytest unit tests (affected modules only) + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) + eslint-web (web dashboard) + `orphan-fixtures` (opt-in via `SYNTHORG_CHECK_ORPHAN_FIXTURES=1`; silent no-op otherwise) + `setting-to-startup-trace` (bootstrap-wiring ghost-settings lint, conditional on settings/definitions or lifecycle file edits) (fast gate before push, skipped in pre-commit.ci because dedicated CI jobs already run these). Foundational module changes (core, config, observability) or conftest changes trigger full runs.
 - **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`); Renovate owns hook version bumps via `pre-commit` manager
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools); MCP `list_issues` has unreliable field data
 - **Merge strategy**: squash merge. PR body becomes the squash commit message on main. Trailers (e.g. `Release-As`, `Closes #N`) must be in the PR body to land in the final commit.

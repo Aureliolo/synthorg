@@ -116,6 +116,11 @@ jobs:
           uv run python scripts/check_persistence_boundary.py
           --repo-root "${{ github.workspace }}"
 
+      - name: Settings → startup wiring trace (ghost-wired settings gate)
+        run: >-
+          uv run python scripts/check_setting_to_startup_trace.py
+          --repo-root "${{ github.workspace }}"
+
       - name: Cost-recording chokepoint gate
         run: uv run python scripts/check_provider_complete_chokepoint.py
 
