@@ -56,10 +56,13 @@ jobs:
     needs: agent-evals
     # Only the schedule path gets the issue sink. PR runs surface via
     # PR checks on the eval job itself; manual workflow_dispatch is
-    # visible to the triggerer. ``failure()`` matches a failed
-    # ``agent-evals`` job and intentionally does NOT match a cancelled
-    # one (concurrency-cancellation should not page anyone).
-    if: failure() && github.event_name == 'schedule'
+    # visible to the triggerer. The ``result == 'failure'`` check is
+    # narrower than ``failure()``: it pins the trigger to ``agent-evals``
+    # specifically (so adding more entries to ``needs:`` later cannot
+    # accidentally widen the page surface) and intentionally does NOT
+    # match ``cancelled`` / ``timed_out`` (concurrency cancellation
+    # should not page anyone).
+    if: needs.agent-evals.result == 'failure' && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
