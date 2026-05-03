@@ -155,21 +155,50 @@ Pre-push + CI; mirrors `check_persistence_boundary.py` shape.
 
 ### What it catches
 
-Two ghost-service patterns in lifecycle/app wiring:
+The lint detects two ghost-service patterns in lifecycle/app wiring,
+then matches settings to those ghosts via three matchers (first hit
+wins). Settings unrelated to a known ghost service pass silently;
+the lint never flags a setting in isolation.
+
+**Ghost-service patterns:**
 
 - **Hardcoded-None ghost.** A service variable
   `x: T | None = None` paired with a conditional
-  `if x is not None: x.start()`. The guard always evaluates False;
-  any setting whose key appears in `T`'s class file (and whose
-  namespace appears in that file's path) is ghost-wired. Example:
-  `ApprovalTimeoutScheduler` hardcoded in `api/app.py`, gating
-  `security.timeout_check_interval_seconds`.
+  `if x is not None: x.start()`. The guard always evaluates False.
+  Example: `ApprovalTimeoutScheduler` hardcoded in `api/app.py`.
 - **Factory-gated ghost.** A factory `build_x(config) -> T | None`
   whose `None` branch fires when a registered default-disabled flag
-  is False. Every setting in the gating namespace flags as
-  ghost-wired. Example: `BackupService` gated on
+  is False. Example: `BackupService` gated on
   `backup.enabled=False` (the registered default), making all 7
   `backup.*` settings dead in default config.
+
+**Setting → ghost matchers** (run in order; first hit wins):
+
+1. **Gating-namespace match** (factory ghosts only). Every setting
+   whose `namespace` equals the factory's gating namespace is
+   ghost-wired -- e.g. all `backup.*` settings flag when
+   `BackupService` is factory-gated by `backup.enabled=False`.
+2. **Class-file containment match** (hardcoded-None ghosts only).
+   A setting is ghost-wired iff its `key` appears as a substring
+   in the ghost class's source file AND its `namespace` appears
+   in that file's path. Catches the `ApprovalTimeoutScheduler`
+   case where `security.timeout_check_interval_seconds` is mentioned
+   in the scheduler's docstring.
+3. **Direct ConfigResolver consumer match** (Pattern A; both ghost
+   kinds). The lint scans the ghost class's source file for
+   `ConfigResolver.get_*("<ns>", "<key>")` calls (resolving both
+   string literals AND `SettingNamespace.X.value` references); if
+   any (ns, key) matches a registered setting, that setting flags
+   as ghost-wired. Catches **cross-namespace consumption** -- a
+   ghost class in `api/foo.py` that reads `engine.X` would not
+   match either gating-namespace or class-file containment, but
+   the direct ConfigResolver call surfaces it.
+
+When debugging a Pattern A flag, search the ghost class's source
+for `ConfigResolver.get_*("<flagged_ns>", "<flagged_key>")` calls
+and verify whether the consumer should migrate to a real
+unconditionally-started service or whether the gating service
+should be wired at boot.
 
 `read_only_post_init=True` settings are skipped by design (registry
 entry exists for `/settings` UI introspection; mutation is rejected
