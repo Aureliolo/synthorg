@@ -7,12 +7,12 @@
 # regression. Lower it whenever the MSW matching layer or the store
 # teardown landscape improves.
 #
-# Local count is ~75; CI baseline is +20-21 above local due to
-# parallel execution concurrency. Tighten this whenever a shim or
-# teardown lands that demonstrably lowers the steady-state count --
-# the ratchet stops regressions, but the value of the ratchet is
-# inversely proportional to its slack.
+# Local count is ~75; CI baseline is ~90 after the storage-shim
+# landed. Tighten this whenever a shim or teardown lands that
+# demonstrably lowers the steady-state count -- the ratchet stops
+# regressions, but the value of the ratchet is inversely
+# proportional to its slack.
 #
 # The CI step reads this file via:
 #   grep -v '^#' .github/ci/web-async-leaks.max | head -1
-96
+90

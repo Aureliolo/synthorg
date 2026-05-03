@@ -24,9 +24,19 @@ jobs:
     # Only the schedule path gets the issue sink. PR runs surface
     # via PR checks on the eval workflow itself; manual
     # workflow_dispatch is visible to the triggerer.
+    #
+    # The head_repository + head_branch checks are defense-in-depth
+    # against zizmor's `dangerous-triggers` audit: even though
+    # ``workflow_run`` already runs in the default-branch context,
+    # an upstream workflow that ever gains a ``pull_request`` /
+    # ``pull_request_target`` trigger could carry fork-PR head_sha
+    # into this job. Pinning to the upstream repo + main branch
+    # ensures we never act on attacker-controlled refs.
     if: >-
       github.event.workflow_run.event == 'schedule'
       && github.event.workflow_run.conclusion == 'failure'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+      && github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

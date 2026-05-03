@@ -82,10 +82,14 @@ export function installStorageShim(): void {
     index: number,
   ): string | null {
     const map = bucket(this)
-    if (index < 0 || index >= map.size) return null
+    // Match the Web Storage spec: ``key(index)`` coerces ``index``
+    // to ``unsigned long``, so non-integer numbers truncate toward
+    // zero and NaN / negative / out-of-range values return null.
+    const i = Math.trunc(Number(index))
+    if (!Number.isFinite(i) || i < 0 || i >= map.size) return null
     let cursor = 0
     for (const k of map.keys()) {
-      if (cursor === index) return k
+      if (cursor === i) return k
       cursor += 1
     }
     return null

@@ -78,7 +78,7 @@ Raise the ceiling only with documented justification (a new test surface or hook
 `test-setup.tsx` installs two shims that bypass jsdom asynchronous primitives whose Promise / Timeout allocation otherwise inflates the leak count:
 
 - **Cookie shim** (`@/cookie-shim`): replaces `Document.prototype.cookie` with a synchronous in-memory jar so jsdom's tough-cookie Promise-based accessor is bypassed. The jar is exported so tests can wipe per-test state without touching the DOM. The global `afterEach` clears the jar and re-seeds `csrf_token=test-csrf-token`. Tests that need different cookie behavior override `Document.prototype.cookie` at the test level (see `__tests__/utils/csrf.test.ts`) and restore the shim in their own `afterEach`.
-- **Storage shim** (`@/storage-shim`): patches `Storage.prototype` methods to bypass jsdom's `_dispatchStorageEvent` `setTimeout(0)` path. `localStorage instanceof Storage` stays true and `vi.spyOn(Storage.prototype, 'setItem' | 'getItem' | ...)` continues to intercept. State is held in an instance-keyed `WeakMap`; per-test isolation is the caller's responsibility (see `cancelSetupWizardPersist`, `cancelPendingPersist`).
+- **Storage shim** (`@/storage-shim`): patches `Storage.prototype` methods to bypass jsdom's `_dispatchStorageEvent` `setTimeout(0)` path. `localStorage instanceof Storage` stays true and `vi.spyOn(Storage.prototype, 'setItem' | 'getItem' | ...)` continues to intercept. State is held in an instance-keyed `WeakMap`; per-test isolation is the caller's responsibility (see `cancelSetupWizardPersist`, `cancelOrgChartPrefsPersist`, `cancelPendingPersist`).
 
 ## WS Payload Sanitization
 
