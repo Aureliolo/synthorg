@@ -19,6 +19,10 @@ concurrency:
   group: apko-lock-update
   cancel-in-progress: false
 
+env:
+  # renovate: datasource=github-releases depName=chainguard-dev/apko
+  APKO_VERSION: "v1.2.9"
+
 jobs:
   update-lockfiles:
     name: apko lock
@@ -69,8 +73,7 @@ jobs:
       - name: Set up apko
         uses: ./.github/actions/setup-apko
         with:
-          # renovate: datasource=github-releases depName=chainguard-dev/apko
-          version: v1.2.9
+          version: ${{ env.APKO_VERSION }}
 
       - name: Update lockfiles
         run: |

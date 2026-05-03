@@ -14,9 +14,8 @@ inputs:
     description: "Path to apko.yaml relative to repo root"
     required: true
   apko-version:
-    description: "apko version to install"
+    description: "apko version to install (caller MUST pass; no default to keep the version pin under Renovate's eye in the calling workflow)"
     required: true
-    default: "v1.2.3"
   trivy-version:
     description: "Trivy version"
     required: true
