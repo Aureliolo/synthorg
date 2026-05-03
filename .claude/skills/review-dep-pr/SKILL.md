@@ -367,27 +367,39 @@ For each PR based on user's choice:
 
 ### Approve with rationale (MANDATORY before any merge)
 
-**Every merge path in this skill funnels through this step first**, including all five strategy paths in Phase 8 (`Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset`) and all three per-PR action sections below (`Merge as-is`, `Improve and merge`, `Fix CI and merge`). Before invoking `gh pr merge` for any PR, post a PR approval that records *why* this update is being accepted and a one-paragraph changelog digest. This leaves a durable artifact on the PR (visible to future reviewers, audit trails, and bisects) explaining what was scanned and what was deemed relevant; without it, "merged by Renovate label, no comment" becomes the only signal in the timeline.
+**Every merge path in this skill funnels through this step first**, including all five strategy paths in Phase 8 (`Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset`) and all three per-PR action sections below (`Merge as-is`, `Improve and merge`, `Fix CI and merge`). Before invoking `gh pr merge` for any PR, post a PR approval whose body is a **three-part structured rationale** (a one-sentence Decision, a Changelog digest paragraph with 2 to 4 explicit bullets, and a Follow-ups line). This leaves a durable artifact on the PR (visible to future reviewers, audit trails, and bisects) explaining what was scanned and what was deemed relevant; without it, "merged by Renovate label, no comment" becomes the only signal in the timeline.
 
-Run:
+The `<rationale>` body is multi-line by design. `gh pr review --body` accepts newlines (the bash `"..."` quoting preserves them), but for any rationale beyond a single sentence, prefer one of the multi-line forms below over inlining a long quoted string: heredoc piped to `--body-file -`, or write to a temp file first and pass `--body-file <path>`. Inline `"..."` quoting is fine only for the rare patch-bump-with-nothing-relevant case where the entire rationale fits on one line.
 
-```bash
-gh pr review <number> --approve --body "<rationale>"
-```
+The body MUST contain three sections in this order, each prefixed with its literal label so reviewers across PRs produce a consistent format:
 
-The `<rationale>` MUST cover, in this order:
-
-1. **Decision**: one sentence describing the bump type (patch / minor / major / lockfile / digest) and why it's being merged (`CI green`, `no breaking changes affecting us`, `migration applied in this PR`, etc.).
-2. **Changelog digest**: 2 to 4 bullets summarising the scan from Phase 2:
+1. **`Decision:`** one sentence describing the bump type (patch / minor / major / lockfile / digest) and why it's being merged (`CI green`, `no breaking changes affecting us`, `migration applied in this PR`, etc.).
+2. **`Changelog digest:`** a short paragraph followed by 2 to 4 markdown bullets (use `-` on a fresh line, indented two spaces if nested under a sub-label) summarising the Phase 2 scan:
    - which versions were covered (from -> to)
    - **Relevant items** that affect us (new features adopted / deprecations actioned / bug fixes we were hitting / security fixes that matter)
    - **Reviewed but not relevant** items (breaking changes in features we don't use, irrelevant platform changes, removed APIs we never imported)
-3. **Follow-ups**: `none` if clean; otherwise the deferred items the user explicitly accepted in Phase 7 (e.g. "adopt new `--cache-dependency-path` input in a follow-up PR").
+3. **`Follow-ups:`** one line; `none` if clean, otherwise the deferred items the user explicitly accepted in Phase 7 (e.g. "adopt new `--cache-dependency-path` input in a follow-up PR").
 
-If the rationale would exceed shell-quoting friendliness, write it to a temp file and pass via `--body-file`:
+Recommended invocation patterns (pick whichever matches the rationale length):
 
 ```bash
+# Multi-line rationale via heredoc piped through stdin (preferred for typical 3-section bodies)
+gh pr review <number> --approve --body-file - <<'EOF'
+Decision: Patch bump 0.11.7 -> 0.11.8; CI green; no breaking changes touching our usage.
+
+Changelog digest:
+- Covered 0.11.7 -> 0.11.8 (single release).
+- Relevant: bug fix for `uv lock` on `pyproject.toml` files containing only dependency-groups (we hit this on the docs-toolchain refactor).
+- Reviewed but not relevant: new `--python-downloads-json-url` flag (we don't customise download sources); `UV_NO_PROJECT` env var (no use case yet).
+
+Follow-ups: none.
+EOF
+
+# Long rationale via temp file (when heredoc gets unwieldy or you want to review the body before posting)
 gh pr review <number> --approve --body-file /tmp/dep-approval-<number>.txt
+
+# One-liner only when the rationale truly fits on one line
+gh pr review <number> --approve --body "Decision: lockfile-only refresh; CI green; no source diffs. Changelog digest: not applicable for lockFileMaintenance. Follow-ups: none."
 ```
 
 **Do NOT skip this step**, even when `--auto` is used and the merge happens asynchronously: the approval must land first so the PR carries the rationale before it auto-merges. Do NOT collapse the rationale into the squash commit message; the approval review is the canonical venue (squash messages get rewritten by maintainers, get truncated, and don't surface in the PR conversation thread).
