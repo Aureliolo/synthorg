@@ -9,10 +9,12 @@ import { useSyncExternalStore } from 'react'
  * resizes -- direct render-time reads were stale until React re-rendered
  * for some other reason.
  *
- * The snapshot returns ``{ width: 0, height: 0 }`` during SSR / before
- * subscription, which is a safe pre-paint default for the clamp callers
- * (they're recomputed on the very next render once the resize listener
- * fires the initial value via React's subscription bookkeeping).
+ * In a browser context (CSR / Vite) ``readSnapshot()`` is called
+ * synchronously during the first render and returns the real
+ * ``window.inner*`` dimensions immediately; no resize event is needed
+ * to prime the values. ``SSR_SNAPSHOT`` (``{ width: 0, height: 0 }``)
+ * is the server snapshot argument to ``useSyncExternalStore`` and is
+ * only used during SSR or when ``window`` is undefined.
  */
 export interface ViewportSize {
   width: number

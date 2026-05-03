@@ -153,8 +153,12 @@ function InputVariant(props: InputProps) {
 
   const inputClasses = buildInputClasses({
     hasError,
-    hasLeadingIcon: !!leadingIcon,
-    hasTrailingElement: !!trailingElement,
+    // Match the ``leadingIcon != null && leadingIcon !== false`` render
+    // guards on the icon ``<span>``s below so the padding flag and the
+    // actual JSX presence agree on every legal ReactNode value (incl.
+    // ``0`` / ``''`` / ``false``).
+    hasLeadingIcon: leadingIcon != null && leadingIcon !== false,
+    hasTrailingElement: trailingElement != null && trailingElement !== false,
     className,
   })
 

@@ -108,6 +108,16 @@ export function VersionHistorySection<T>(
   // a refresh, or unmount.
   const requestEpochRef = useRef(0)
 
+  // Advance the epoch on unmount so any in-flight ``client.list()``
+  // promise that settles after the component is gone discards its
+  // result instead of calling ``setItems`` / ``setError`` /
+  // ``setLoading`` against an unmounted tree.
+  useEffect(() => {
+    return () => {
+      requestEpochRef.current += 1
+    }
+  }, [])
+
   // ``loadHistory`` doubles as the initial fetch and the refresh
   // path.  Routing both through the same callback (instead of a
   // ``reloadNonce`` state value used only as an effect dep)
