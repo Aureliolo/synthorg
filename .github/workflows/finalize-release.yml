@@ -469,7 +469,28 @@ jobs:
                 CLEANED=$(sed "${start_line},${end_line}d" <<< "$CLEANED")
               fi
             }
-            strip_balanced_pair '<!-- HIGHLIGHTS_START -->' '<!-- HIGHLIGHTS_END -->'
+            # Each strip is gated on the variable that's about to be
+            # rebuilt: HIGHLIGHTS strip only fires when we have a fresh
+            # block to prepend, FINALIZE_VERIFICATION strip only fires
+            # when we have a fresh Verification section to append.
+            # Otherwise a one-sided reconstruction (e.g. only the
+            # release-please PR returned a Highlights block, but
+            # upstream verification extraction yielded nothing) would
+            # silently delete the section we are NOT reconstructing on
+            # the next finalize re-run, leaving the body shorter than
+            # it should be.
+            #
+            # The CLI_*/CONTAINER_* marker pairs always strip: they are
+            # invisible HTML comments holding the source data that the
+            # upstream loops parse into VERIFICATION. Removing the
+            # source markers from the visible body is benign even if
+            # VERIFICATION ends up empty (the user-rendered markdown is
+            # identical with or without them), and they MUST go before
+            # FINAL is reassembled or finalize re-runs would
+            # accumulate duplicated source markers.
+            if [ -n "$HIGHLIGHTS" ]; then
+              strip_balanced_pair '<!-- HIGHLIGHTS_START -->' '<!-- HIGHLIGHTS_END -->'
+            fi
             strip_balanced_pair '<!-- CLI_VERIFICATION_DATA' 'CLI_VERIFICATION_DATA -->'
             strip_balanced_pair '<!-- CLI_COSIGN_DATA' 'CLI_COSIGN_DATA -->'
             strip_balanced_pair '<!-- CLI_SLSA_BUNDLE_DATA' 'CLI_SLSA_BUNDLE_DATA -->'
@@ -478,9 +499,14 @@ jobs:
             # FINALIZE_VERIFICATION is intentionally greedy-to-EOF:
             # everything after the marker IS the verification section
             # (no closing marker by design). The greedy strip rebuilds
-            # the section fresh from the per-image marker data above.
-            CLEANED=$(printf '%s' "$CLEANED" \
-              | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
+            # the section fresh from the per-image marker data above
+            # ONLY when VERIFICATION is non-empty; otherwise an
+            # existing Verification section in the draft body would be
+            # erased without replacement.
+            if [ -n "$VERIFICATION" ]; then
+              CLEANED=$(printf '%s' "$CLEANED" \
+                | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
+            fi
             FINAL="${HIGHLIGHTS}${CLEANED}${VERIFICATION}"
           else
             FINAL="$BODY"
