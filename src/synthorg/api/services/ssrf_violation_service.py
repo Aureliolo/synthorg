@@ -9,7 +9,11 @@ themselves).
 
 Resolution is a security-sensitive event: the WHO + WHEN of an
 operator allowing or denying a previously-blocked URL is captured at
-this layer via :data:`API_SSRF_VIOLATION_STATUS_UPDATED`.
+this layer via :data:`SECURITY_SSRF_VIOLATION_ALLOWED` /
+:data:`SECURITY_SSRF_VIOLATION_DENIED` so the entries land on the
+signed audit chain alongside other security mutations.  Read-side
+fetch / list events stay on the API namespace because they carry no
+audit-chain implication.
 """
 
 from typing import TYPE_CHECKING
@@ -19,12 +23,15 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SSRF_VIOLATION_FETCH_FAILED,
     API_SSRF_VIOLATION_LISTED,
-    API_SSRF_VIOLATION_RECORDED,
-    API_SSRF_VIOLATION_STATUS_UPDATED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_SSRF_VIOLATION_ALLOWED,
+    SECURITY_SSRF_VIOLATION_DENIED,
+    SECURITY_SSRF_VIOLATION_RECORDED,
 )
 from synthorg.security.ssrf_violation import (
-    SsrfViolation,  # noqa: TC001
-    SsrfViolationStatus,  # noqa: TC001
+    SsrfViolation,
+    SsrfViolationStatus,
 )
 
 if TYPE_CHECKING:
@@ -75,14 +82,14 @@ class SsrfViolationService:
             raise
         except Exception as exc:
             logger.warning(
-                API_SSRF_VIOLATION_RECORDED,
+                SECURITY_SSRF_VIOLATION_RECORDED,
                 violation_id=violation.id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
         logger.info(
-            API_SSRF_VIOLATION_RECORDED,
+            SECURITY_SSRF_VIOLATION_RECORDED,
             violation_id=violation.id,
             hostname=violation.hostname,
             port=violation.port,
@@ -175,10 +182,12 @@ class SsrfViolationService:
     ) -> bool:
         """Transition a pending violation to ALLOWED or DENIED.
 
-        Audit-critical: emits :data:`API_SSRF_VIOLATION_STATUS_UPDATED`
-        with the resolver identity and resolution timestamp on success.
-        Skipped when the row was missing or already resolved -- in
-        those cases the repository returns ``False`` and no audit fires.
+        Audit-critical: emits one of the security audit-chain events
+        (:data:`SECURITY_SSRF_VIOLATION_ALLOWED` or
+        :data:`SECURITY_SSRF_VIOLATION_DENIED`) with the resolver
+        identity and resolution timestamp on success.  Skipped when
+        the row was missing or already resolved -- in those cases the
+        repository returns ``False`` and no audit fires.
 
         Args:
             violation_id: Identifier of the violation to update.
@@ -198,6 +207,14 @@ class SsrfViolationService:
             QueryError: Repository write failure (logged at WARNING
                 before propagating).
         """
+        # Branch the resolution event on the new status so the audit
+        # chain carries a distinct verb (allowed vs denied) rather than
+        # forcing readers to introspect the payload.
+        success_event = (
+            SECURITY_SSRF_VIOLATION_ALLOWED
+            if status is SsrfViolationStatus.ALLOWED
+            else SECURITY_SSRF_VIOLATION_DENIED
+        )
         try:
             updated = await self._repo.update_status(
                 violation_id,
@@ -213,7 +230,7 @@ class SsrfViolationService:
             # WARNING with full context before propagating per
             # CLAUDE.md `## Logging`.
             logger.warning(
-                API_SSRF_VIOLATION_STATUS_UPDATED,
+                success_event,
                 violation_id=violation_id,
                 status=status.value,
                 error_type=type(exc).__name__,
@@ -222,7 +239,7 @@ class SsrfViolationService:
             raise
         except Exception as exc:
             logger.warning(
-                API_SSRF_VIOLATION_STATUS_UPDATED,
+                success_event,
                 violation_id=violation_id,
                 status=status.value,
                 error_type=type(exc).__name__,
@@ -231,7 +248,7 @@ class SsrfViolationService:
             raise
         if updated:
             logger.info(
-                API_SSRF_VIOLATION_STATUS_UPDATED,
+                success_event,
                 violation_id=violation_id,
                 status=status.value,
                 resolved_by=resolved_by,

@@ -22,8 +22,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.api import (
     API_SSRF_VIOLATION_FETCH_FAILED,
     API_SSRF_VIOLATION_LISTED,
-    API_SSRF_VIOLATION_RECORDED,
-    API_SSRF_VIOLATION_STATUS_UPDATED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_SSRF_VIOLATION_ALLOWED,
+    SECURITY_SSRF_VIOLATION_DENIED,
+    SECURITY_SSRF_VIOLATION_RECORDED,
 )
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
@@ -105,7 +108,7 @@ def _make_violation(
 
 
 async def test_record_persists_and_emits_audit() -> None:
-    """``record`` saves the violation and fires ``API_SSRF_VIOLATION_RECORDED``.
+    """``record`` saves the violation and fires ``SECURITY_SSRF_VIOLATION_RECORDED``.
 
     Asserts the structured kwargs (``violation_id``, ``hostname``,
     ``port``, ``provider_name``, ``status``) so a future refactor that
@@ -121,7 +124,7 @@ async def test_record_persists_and_emits_audit() -> None:
     fetched = await repo.get(violation.id)
     assert fetched == violation
 
-    events = [log for log in logs if log["event"] == API_SSRF_VIOLATION_RECORDED]
+    events = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_RECORDED]
     assert len(events) == 1, f"expected one event in {logs}"
     event = events[0]
     assert event["violation_id"] == violation.id
@@ -150,7 +153,7 @@ async def test_record_propagates_duplicate_error() -> None:
     ):
         await service.record(violation)
 
-    audits = [log for log in logs if log["event"] == API_SSRF_VIOLATION_RECORDED]
+    audits = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_RECORDED]
     info_audits = [log for log in audits if log.get("log_level") == "info"]
     warning_audits = [log for log in audits if log.get("log_level") == "warning"]
     assert info_audits == [], (
@@ -309,7 +312,7 @@ async def test_update_status_emits_audit_on_success() -> None:
     assert fetched.resolved_by == "op-1"
     assert fetched.resolved_at == resolved_at
 
-    events = [log for log in logs if log["event"] == API_SSRF_VIOLATION_STATUS_UPDATED]
+    events = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_ALLOWED]
     assert len(events) == 1
     event = events[0]
     assert event["violation_id"] == violation.id
@@ -336,7 +339,7 @@ async def test_update_status_no_audit_when_row_missing() -> None:
         )
 
     assert result is False
-    audits = [log for log in logs if log["event"] == API_SSRF_VIOLATION_STATUS_UPDATED]
+    audits = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_DENIED]
     assert audits == []
 
 
@@ -365,7 +368,9 @@ async def test_update_status_rejects_pending_target() -> None:
             resolved_at=resolved_at,
         )
 
-    audits = [log for log in logs if log["event"] == API_SSRF_VIOLATION_STATUS_UPDATED]
+    # PENDING is not ALLOWED, so the service routes the warning event
+    # to SECURITY_SSRF_VIOLATION_DENIED (the non-allowed branch).
+    audits = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_DENIED]
     info_audits = [log for log in audits if log.get("log_level") == "info"]
     warning_audits = [log for log in audits if log.get("log_level") == "warning"]
     assert info_audits == [], (
@@ -402,5 +407,5 @@ async def test_update_status_no_audit_when_already_resolved() -> None:
         )
 
     assert result is False
-    audits = [log for log in logs if log["event"] == API_SSRF_VIOLATION_STATUS_UPDATED]
+    audits = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_DENIED]
     assert audits == []
