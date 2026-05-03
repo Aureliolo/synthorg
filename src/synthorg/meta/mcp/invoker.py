@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.api.boundary import parse_typed
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -167,8 +168,15 @@ class MCPToolInvoker:
                     ),
                     is_error=True,
                 )
+            # Route through the canonical boundary helper so a
+            # malformed args payload emits api.boundary.validation_failed
+            # alongside the existing mcp.server.invoke.failed event;
+            # the helper does not swallow ValidationError so the
+            # invoker's existing translation into the
+            # ArgumentValidationError envelope still drives the wire
+            # response.
             try:
-                validated = tool_def.args_model.model_validate(arguments)
+                validated = parse_typed("mcp.tool", arguments, tool_def.args_model)
             except PydanticValidationError as exc:
                 errors = exc.errors(include_input=False, include_url=False)
                 detail = (

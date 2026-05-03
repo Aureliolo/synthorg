@@ -9,8 +9,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
+from synthorg.api.boundary import parse_typed
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
+from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
 from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_CALLBACK_ERROR,
     AUDIT_CHAIN_EMIT_ERROR,
@@ -314,6 +316,16 @@ class AuditChainSink(logging.Handler):
                 val = getattr(record, key, None)
                 if val is not None:
                     payload[key] = val
+
+            # Validate the assembled payload through the boundary
+            # helper so a future widening of the iteration above (or
+            # an upstream LogRecord that smuggles in an unrecognised
+            # attribute) cannot silently slip an unknown key into the
+            # signed event. parse_typed only inspects the dict; it
+            # does not replace it. The same dict feeds json.dumps so
+            # the byte-layout (and the chain hash) remains identical.
+            parse_typed("audit_chain", payload, AuditChainEventPayload)
+
             data = json.dumps(
                 payload,
                 sort_keys=True,
