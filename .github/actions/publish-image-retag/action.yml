@@ -114,11 +114,17 @@ runs:
         BACKOFF=15
         DIGEST=""
         for ((i = 1; i <= ATTEMPTS; i++)); do
-          if DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}' 2>"$ERR_FILE")"; then
+          rc=0
+          # Use `cmd || rc=$?` so set -e does not abort and so rc reflects the
+          # wrapped command's actual exit code. The `if cmd; then ... fi; rc=$?`
+          # idiom would always capture 0 here -- a failed `if cmd` clears $?
+          # to 0 once the if-statement completes (same trap the helper has to
+          # avoid in docker_push_with_retry.sh).
+          DIGEST="$(docker buildx imagetools inspect "${REPO}:sha-${SHORT_SHA}" --format '{{.Manifest.Digest}}' 2>"$ERR_FILE")" || rc=$?
+          if [ "$rc" -eq 0 ]; then
             cat "$ERR_FILE" >&2
             break
           fi
-          rc=$?
           ERR="$(cat "$ERR_FILE")"
           if [ "$i" -lt "$ATTEMPTS" ] && printf '%s' "$ERR" | grep -qiE "$TRANSIENT_RE"; then
             printf '%s\n' "$ERR" >&2
@@ -127,9 +133,13 @@ runs:
             BACKOFF=$((BACKOFF * 2))
             continue
           fi
+          # Non-transient or attempts exhausted. Surface the captured stderr
+          # and rc; the message names the most-common cause as a hint but
+          # does not assume it -- auth failures, registry config errors, and
+          # TLS verification failures land here too.
           printf '%s\n' "$ERR" >&2
-          echo "::error::Could not resolve ${REPO}:sha-${SHORT_SHA} -- the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image. Re-run the main-push first; this tag-push retag job will then succeed on re-run."
-          exit 1
+          echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) with non-transient error. Most common cause: the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image (look for 'manifest unknown' / 404 in the stderr above; re-run main-push, then re-run this retag job). For other causes (auth, registry config, TLS verification, ...) inspect the stderr above."
+          exit "$rc"
         done
 
         if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
