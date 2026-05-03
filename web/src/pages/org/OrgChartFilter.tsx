@@ -1,21 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Node } from '@xyflow/react'
-import type { AgentNodeData, DepartmentGroupData, OwnerNodeData } from './build-org-tree'
+import type { AgentNodeData } from './build-org-tree'
+import { getNodeLabel } from './node-utils'
 import { OrgChartSearchOverlay } from './OrgChartSearchOverlay'
-
-function getNodeLabel(node: Node): string {
-  switch (node.type) {
-    case 'agent':
-    case 'ceo':
-      return (node.data as AgentNodeData).name
-    case 'department':
-      return (node.data as DepartmentGroupData).displayName
-    case 'owner':
-      return (node.data as OwnerNodeData).displayName
-    default:
-      return node.id
-  }
-}
 
 export interface OrgChartFilterResult {
   searchOpen: boolean
