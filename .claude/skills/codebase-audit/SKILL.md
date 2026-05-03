@@ -3500,7 +3500,7 @@ If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
 ### Phase 7: Cleanup (NEW, MANDATORY)
 
-Runs after triage / report-only output is finalized. Sweep agent-leaked scratch files from the working tree.
+Runs after triage / report-only output is finalised. Sweep agent-leaked scratch files from the working tree.
 
 The 2026-05-03 run leaked at least 14 helper scripts to disk despite the agent-prompt rule against it (e.g. `find_missing_logging.py`, `find_missing_logging_filtered.py`, `parse_audit.py`, `validate_config_examples.py`, `scripts/audit_pydantic_models.py`, `scripts/audit_pydantic_models_v2.py`, `scripts/audit_pydantic_models_v3.py`, `scripts/audit_phase35_synthesis.py`, plus `c:\tmp\*.py` files). These triggered Pyright diagnostics in the main thread on every file write, polluted git status, and required user cleanup. The skill is responsible for cleaning up after its own agents.
 
@@ -3512,11 +3512,15 @@ rm -f find_missing_logging.py find_missing_logging_filtered.py parse_audit.py va
 
 (`rm -f` is silent on missing paths, so no stderr redirect is needed; `|| true` keeps the chain from aborting on edge-case errors. Per Rule #11, the project's PreToolUse hook blocks `2>/dev/null` and other redirects unconditionally.)
 
-Then list and remove anything else suspicious. The find DOES include `scripts/` because the 2026-05-03 run leaked `scripts/audit_pydantic_models{,_v2,_v3}.py` and `scripts/audit_phase35_synthesis.py`; those need to surface for user prompt:
+Then list anything else suspicious. The find DOES include `scripts/` because the 2026-05-03 run leaked `scripts/audit_pydantic_models{,_v2,_v3}.py` and `scripts/audit_phase35_synthesis.py`; those need to surface for user prompt. Use the second-newest run (the one before this run) as the `-newer` reference:
 
 ```bash
-find . -maxdepth 2 -name "*.py" -newer _audit/runs/$(ls -1 _audit/runs/ | tail -2 | head -1)/findings -not -path "./src/*" -not -path "./tests/*" -not -path "./web/*" -not -path "./cli/*"
+prev_run=$(ls -1t _audit/runs/ | sed -n '2p') && [ -n "$prev_run" ] && find . -maxdepth 2 -name "*.py" -newer "_audit/runs/$prev_run/findings" -not -path "./src/*" -not -path "./tests/*" -not -path "./web/*" -not -path "./cli/*"
 ```
+
+Notes:
+- `ls -1t` lists runs newest-first by mtime; `sed -n '2p'` picks the second line (i.e. the run BEFORE the one we just created in Phase 0). On the very first run there is no previous run, so `prev_run` is empty and the `[ -n "$prev_run" ] &&` guard short-circuits the `find` -- which is correct, since the cleanup target is "files newer than the previous run", not "files newer than this run". On the first run the `git status` check at the bottom of this section is the only safety net, which is fine.
+- The path is quoted (`"_audit/runs/$prev_run/findings"`) to defend against pathological `_audit/runs/` contents.
 
 Show the user the list before deleting anything that's not on the known leak list. Files in `c:\tmp\`, `/tmp\`, or any path outside the project root: leave them; the OS will reap them. Files inside `scripts/`: prompt the user before removal -- those may be intentional helpers, not leakage.
 
