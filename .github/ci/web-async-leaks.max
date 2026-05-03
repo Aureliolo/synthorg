@@ -1,17 +1,17 @@
 # Vitest --detect-async-leaks ceiling for the web dashboard suite.
-# See docs/design/web-http-adapter.md and issue #1466.
+# See docs/design/web-http-adapter.md for the investigation + the
+# matrix of approaches that don't help.
 #
 # Raise this only after verifying the source of additional leaks is
-# mechanical (new test surface, new hook fixture) rather than a
-# regression.  Lower it whenever the MSW matching layer or store
-# teardown landscape improves (issue #1468 will move MSW off a
-# XHR interceptor, which should cut ~20-30 leaks).
+# mechanical (a new test surface, a new hook fixture) rather than a
+# regression. Lower it whenever the MSW matching layer or the store
+# teardown landscape improves.
 #
-# Local count is 75; CI baseline is +20-21 above local due to parallel
-# execution concurrency. Tighten this whenever a shim or teardown lands
-# that demonstrably lowers the steady-state count -- the ratchet stops
-# regressions, but the value of the ratchet is inversely proportional
-# to its slack.
+# Local count is ~75; CI baseline is +20-21 above local due to
+# parallel execution concurrency. Tighten this whenever a shim or
+# teardown lands that demonstrably lowers the steady-state count --
+# the ratchet stops regressions, but the value of the ratchet is
+# inversely proportional to its slack.
 #
 # The CI step reads this file via:
 #   grep -v '^#' .github/ci/web-async-leaks.max | head -1

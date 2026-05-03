@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import { ORG_CHART_PREFS_PERSIST_NAME } from './org-chart-prefs-teardown'
+
 /**
  * Particle-flow mode for the Org Chart's hierarchy edges.
  *
@@ -73,7 +75,7 @@ export const useOrgChartPrefs = create<OrgChartPrefsState>()(
       setShowMinimap: (show) => set({ showMinimap: show }),
     }),
     {
-      name: 'synthorg:orgchart:prefs',
+      name: ORG_CHART_PREFS_PERSIST_NAME,
       // Internal Zustand-persist schema marker.  NOT a product
       // version -- this is just the localStorage cache invalidation
       // key.  Bumping it makes the middleware discard any old

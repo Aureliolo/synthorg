@@ -34,6 +34,7 @@ import { useToastStore } from '@/stores/toast'
 import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
 import { installStorageShim } from '@/storage-shim'
+import { cancelOrgChartPrefsPersist } from '@/stores/org-chart-prefs-teardown'
 
 // jsdom's `document.cookie` is backed by `tough-cookie`'s Promise-based
 // `CookieJar`, which schedules a `createPromiseCallback` for every
@@ -47,12 +48,15 @@ const CSRF_SEED_VALUE = 'test-csrf-token'
 installCookieShim()
 
 // jsdom's `window.localStorage` / `sessionStorage` schedule a
-// `setTimeout(0)` per write to dispatch a `storage` event. With Zustand
-// persist on setup-wizard / theme / notifications stores, every test
-// that mutates persisted state contributed Timeout leaks. The shim in
-// `@/storage-shim` replaces both with Map-backed in-memory Storage
-// objects; no app or test code subscribes to the `storage` event, so
-// the dispatch is dead weight in the test runner.
+// `setTimeout(0)` per write to dispatch a `storage` event. The
+// dashboard touches localStorage from two paths: Zustand `persist`
+// middleware (setup-wizard, org-chart-prefs) and direct
+// `localStorage.setItem` calls (theme, notifications), so any test
+// that mutates one of those stores contributed Timeout leaks. The
+// shim in `@/storage-shim` patches `Storage.prototype` so writes go
+// through a Map-backed in-memory store; no app or test code
+// subscribes to the `storage` event, so the dispatch is dead weight
+// in the test runner.
 installStorageShim()
 
 // Global MSW server: every default endpoint handler is registered up front
@@ -271,6 +275,11 @@ afterEach(() => {
   // so we do not transitively load ``@/api/client`` (see top-of-file
   // comment).  The shim is a no-op when localStorage is unavailable.
   cancelSetupWizardPersist()
+  // Org-chart-prefs store also uses Zustand ``persist``; same
+  // side-effect-free teardown pattern -- drops the persisted key so
+  // toolbar toggles a test sets do not bleed into the next test in
+  // the same Vitest worker.
+  cancelOrgChartPrefsPersist()
   // Theme store subscribes to a `prefers-reduced-motion` MediaQueryList
   // at factory time; detach the listener here so
   // `--detect-async-leaks` does not count it per-test. Paired with

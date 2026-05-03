@@ -9,10 +9,11 @@
  *     same-origin tabs can react to writes. In a single-tab test
  *     environment those timers are pure overhead AND
  *     ``--detect-async-leaks`` flags every undrained one as a Timeout
- *     leak. The bulk are scheduled by Zustand's ``persist``
- *     middleware (setup-wizard, theme, notifications) on every
- *     state mutation, so any test that touches a persisted store
- *     contributes to the count.
+ *     leak. The dashboard reaches localStorage from two paths --
+ *     Zustand's ``persist`` middleware (setup-wizard, org-chart-prefs)
+ *     and direct ``localStorage.setItem`` calls (theme, notifications)
+ *     -- so any test that mutates one of those stores contributes to
+ *     the count.
  *   * No app or test code subscribes to the ``storage`` event
  *     (verified via ``addEventListener('storage')`` grep), so the
  *     dispatch is dead weight in the test runner.

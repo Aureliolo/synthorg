@@ -61,7 +61,7 @@ PYTHONPATH=. uv run zensical serve          # local docs preview (http://127.0.0
 
 ### Web Dashboard
 
-See `web/CLAUDE.md` for commands, design system, and component inventory. The CI-matching full-suite leak check is `npm --prefix web run test -- --coverage --detect-async-leaks` (the `Leaks N leaks` summary must stay at or below the `MAX_ASYNC_LEAKS` ceiling defined in `.github/workflows/ci.yml`; any new store that schedules timers must expose a teardown hook per `web/CLAUDE.md`).
+See `web/CLAUDE.md` for commands, design system, and component inventory. The CI-matching full-suite leak check is `npm --prefix web run test -- --coverage --detect-async-leaks` (the `Leaks N leaks` summary must stay at or below the `MAX_ASYNC_LEAKS` ceiling defined in `.github/ci/web-async-leaks.max`; any new store that schedules timers must expose a teardown hook per `web/CLAUDE.md`).
 
 ### CLI (Go Binary)
 

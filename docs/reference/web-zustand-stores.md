@@ -69,7 +69,7 @@ Local count runs ~75; CI sits +20-21 above local because event-loop timing diffe
 
 ### Structural floor
 
-The structural floor is MSW 2.x's own `CookieStore` (tough-cookie), the MSW XHR interceptor's `queueMicrotask` dispatch, and axios's response-interceptor `promise.then` chain; none reachable from `test-setup.tsx`. Zero leaks requires replacing MSW's matching layer, tracked by #1468.
+The structural floor is MSW 2.x's own `CookieStore` (tough-cookie), the MSW XHR interceptor's `queueMicrotask` dispatch, and axios's response-interceptor `promise.then` chain; none reachable from `test-setup.tsx`. Zero leaks requires replacing MSW's matching layer.
 
 Raise the ceiling only with documented justification (a new test surface or hook fixture rather than a regression); lower it whenever a shim or teardown lands that demonstrably moves the steady-state count down. Full investigation + options matrix lives in `docs/design/web-http-adapter.md`.
 
