@@ -86,10 +86,113 @@ def _function_node(
     return matches[0] if matches else None
 
 
-def _calls_parse_typed(node: ast.AST, boundary_label: str) -> bool:
-    """Return True iff the function body calls ``parse_typed`` for this label.
+_PARSE_TYPED_FQN = "synthorg.api.boundary.parse_typed"
+_BOUNDARY_MODULE_FQN = "synthorg.api.boundary"
 
-    Two false-positive sources are excluded:
+
+def _build_import_map(tree: ast.Module) -> dict[str, str]:
+    """Map module-level local names to fully-qualified module paths.
+
+    Walks top-level :class:`ast.Import` and :class:`ast.ImportFrom`
+    nodes. Each binding -- including aliases -- ends up keyed by its
+    in-scope name (``parse_typed`` or ``boundary`` or whatever ``as``
+    aliasing chose) and resolves to the dotted FQN.
+
+    Examples::
+
+        from synthorg.api.boundary import parse_typed
+        # -> {"parse_typed": "synthorg.api.boundary.parse_typed"}
+
+        from synthorg.api import boundary as bnd
+        # -> {"bnd": "synthorg.api.boundary"}
+
+        import synthorg.api.boundary as bm
+        # -> {"bm": "synthorg.api.boundary"}
+
+    The map is the only authority the gate uses to decide whether a
+    call site references the canonical helper, so a local shim like
+    ``parse_typed = lambda *a: True`` cannot satisfy the contract.
+    """
+    imports: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                local = alias.asname or alias.name
+                imports[local] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for alias in node.names:
+                local = alias.asname or alias.name
+                imports[local] = f"{module}.{alias.name}" if module else alias.name
+    return imports
+
+
+def _resolves_to_parse_typed(
+    call: ast.Call, imports: dict[str, str], *, shadowed: bool
+) -> bool:
+    """Return True iff ``call.func`` resolves to the canonical helper.
+
+    Accepts two callee shapes:
+
+    * ``ast.Name("parse_typed")`` whose binding via the module-level
+      import map is the FQN of the canonical helper, AND no local
+      shadowing has overridden it inside the boundary function.
+    * ``ast.Attribute(value=ast.Name("X"), attr="parse_typed")`` where
+      ``X`` resolves via the import map to the canonical
+      ``synthorg.api.boundary`` module (covers
+      ``boundary.parse_typed(...)`` qualified usage).
+
+    Token-only matches are deliberately NOT accepted: a Pythonic
+    rebinding (``parse_typed = some_other_function``) or a stray
+    helper named ``parse_typed`` would otherwise green-light the gate
+    even though the canonical helper is never invoked.
+    """
+    func = call.func
+    if isinstance(func, ast.Name):
+        if shadowed:
+            return False
+        return imports.get(func.id) == _PARSE_TYPED_FQN
+    if isinstance(func, ast.Attribute) and func.attr == "parse_typed":
+        root = func.value
+        if isinstance(root, ast.Name):
+            return imports.get(root.id) == _BOUNDARY_MODULE_FQN
+    return False
+
+
+def _function_shadows_parse_typed(node: ast.AST) -> bool:
+    """Return True iff the boundary function rebinds ``parse_typed``.
+
+    A local ``def parse_typed(...)``, ``async def parse_typed(...)``,
+    or ``parse_typed = ...`` (including ``AnnAssign``) at the
+    function's top scope would shadow the imported helper. The check
+    only inspects the function's own body, not nested scopes (those
+    cannot leak back into the parent scope's name resolution).
+    """
+    for stmt in getattr(node, "body", []):
+        if (
+            isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and stmt.name == "parse_typed"
+        ):
+            return True
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                if isinstance(target, ast.Name) and target.id == "parse_typed":
+                    return True
+        if (
+            isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+            and stmt.target.id == "parse_typed"
+        ):
+            return True
+    return False
+
+
+def _calls_parse_typed(
+    node: ast.AST, boundary_label: str, imports: dict[str, str]
+) -> bool:
+    """Return True iff the function body calls the canonical ``parse_typed``.
+
+    Three false-positive sources are excluded:
 
     * A bare presence check would let a stray ``parse_typed("jwt", ...)``
       inside the WS handler green-light the ``ws.control`` registration,
@@ -101,7 +204,12 @@ def _calls_parse_typed(node: ast.AST, boundary_label: str) -> bool:
       handler's contract even when the handler's own code path forgets
       to validate. Restrict traversal to the boundary function's own
       scope and stop descending when a child node introduces a new one.
+    * A local shim named ``parse_typed`` (rebound at the function top
+      scope) would satisfy a token-only match even though the
+      canonical helper is never invoked. Resolve the callee through
+      :func:`_build_import_map` and reject any local shadowing.
     """
+    shadowed = _function_shadows_parse_typed(node)
     to_visit: list[ast.AST] = list(getattr(node, "body", []))
     while to_visit:
         child = to_visit.pop()
@@ -110,15 +218,17 @@ def _calls_parse_typed(node: ast.AST, boundary_label: str) -> bool:
             (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda),
         ):
             continue
-        if isinstance(child, ast.Call):
-            func = child.func
-            if isinstance(func, ast.Name) and func.id == "parse_typed" and child.args:
-                first_arg = child.args[0]
-                if (
-                    isinstance(first_arg, ast.Constant)
-                    and first_arg.value == boundary_label
-                ):
-                    return True
+        if (
+            isinstance(child, ast.Call)
+            and child.args
+            and _resolves_to_parse_typed(child, imports, shadowed=shadowed)
+        ):
+            first_arg = child.args[0]
+            if (
+                isinstance(first_arg, ast.Constant)
+                and first_arg.value == boundary_label
+            ):
+                return True
         to_visit.extend(ast.iter_child_nodes(child))
     return False
 
@@ -157,7 +267,8 @@ def _check_boundary(
             f"{function_name!r} not found (boundary {boundary_label!r})"
         ]
 
-    if _calls_parse_typed(func, boundary_label):
+    imports = _build_import_map(tree)
+    if _calls_parse_typed(func, boundary_label, imports):
         return []
 
     source_lines = source.splitlines()

@@ -277,10 +277,15 @@ repos:
         name: typed-boundary contract gate (RFC #1711 Phase 3)
         entry: uv run python scripts/check_boundary_typed.py
         language: system
-        # Trigger on any change to a registered boundary file, the
-        # checker itself, or this config so a refactor that drops
-        # parse_typed at the entry point cannot bypass the gate.
-        files: ^(src/synthorg/api/auth/service\.py|src/synthorg/api/controllers/(settings|ws_protocol)\.py|src/synthorg/observability/audit_chain/sink\.py|src/synthorg/a2a/rpc_params\.py|src/synthorg/meta/mcp/invoker\.py|scripts/check_boundary_typed\.py|\.pre-commit-config\.yaml)$
+        # The script's ``_REGISTERED_BOUNDARIES`` tuple is the single
+        # source of truth for which (file, function) pairs the gate
+        # enforces. Keep this trigger broad rather than duplicating
+        # the boundary list here, so a future boundary added only to
+        # the script does not silently stop running pre-push because
+        # this regex was forgotten. The check is sub-second when
+        # there are no violations, so the broader trigger costs
+        # nothing per push.
+        files: ^(src/synthorg/.*\.py|scripts/check_boundary_typed\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

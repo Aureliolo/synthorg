@@ -30,6 +30,9 @@ def _load_script_module() -> types.ModuleType:
     return mod
 
 
+_IMPORT_PARSE_TYPED = "from synthorg.api.boundary import parse_typed\n"
+
+
 def _plant_fixture(content: str) -> Path:
     """Write a synthetic Python file under the repo for the gate to scan.
 
@@ -69,7 +72,8 @@ class TestBoundaryTypedGate:
 
     def test_function_with_parse_typed_passes(self) -> None:
         sample = _plant_fixture(
-            "def emit(payload):\n    return parse_typed('test', payload, object)\n",
+            _IMPORT_PARSE_TYPED
+            + "def emit(payload):\n    return parse_typed('test', payload, object)\n",
         )
         try:
             mod = _load_script_module()
@@ -119,7 +123,8 @@ class TestBoundaryTypedGate:
         # than the registered tuple expects -- a stray helper call must
         # not green-light the wrong registration.
         sample = _plant_fixture(
-            "def emit(payload):\n    return parse_typed('jwt', payload, object)\n",
+            _IMPORT_PARSE_TYPED
+            + "def emit(payload):\n    return parse_typed('jwt', payload, object)\n",
         )
         try:
             mod = _load_script_module()
@@ -139,10 +144,11 @@ class TestBoundaryTypedGate:
         # the function-node search is restricted to module-level + direct
         # class methods so a nested helper is invisible to the gate.
         sample = _plant_fixture(
-            "def outer():\n"
-            "    def emit(payload):\n"
-            "        return parse_typed('test', payload, object)\n"
-            "    return emit\n",
+            _IMPORT_PARSE_TYPED
+            + "def outer():\n"
+            + "    def emit(payload):\n"
+            + "        return parse_typed('test', payload, object)\n"
+            + "    return emit\n",
         )
         try:
             mod = _load_script_module()
@@ -164,10 +170,11 @@ class TestBoundaryTypedGate:
         # nested helper / class / lambda. The traversal stops descending
         # when it crosses into a new scope.
         sample = _plant_fixture(
-            "def emit(payload):\n"
-            "    def helper():\n"
-            "        return parse_typed('test', payload, object)\n"
-            "    return payload\n",
+            _IMPORT_PARSE_TYPED
+            + "def emit(payload):\n"
+            + "    def helper():\n"
+            + "        return parse_typed('test', payload, object)\n"
+            + "    return payload\n",
         )
         try:
             mod = _load_script_module()
@@ -186,11 +193,12 @@ class TestBoundaryTypedGate:
         # unambiguously a workflow bug; the gate must surface the
         # ambiguity rather than silently picking one.
         sample = _plant_fixture(
-            "def emit(payload):\n"
-            "    return parse_typed('test', payload, object)\n"
-            "\n"
-            "def emit(payload):\n"
-            "    return payload\n",
+            _IMPORT_PARSE_TYPED
+            + "def emit(payload):\n"
+            + "    return parse_typed('test', payload, object)\n"
+            + "\n"
+            + "def emit(payload):\n"
+            + "    return payload\n",
         )
         try:
             mod = _load_script_module()
@@ -200,6 +208,110 @@ class TestBoundaryTypedGate:
                     "emit",
                     "test",
                 )
+        finally:
+            sample.unlink(missing_ok=True)
+
+    def test_unimported_parse_typed_name_rejected(self) -> None:
+        # ``parse_typed(...)`` without the canonical import is a stray
+        # token, not a route through ``synthorg.api.boundary``. The
+        # gate must reject it even when the boundary label matches.
+        sample = _plant_fixture(
+            "def emit(payload):\n    return parse_typed('test', payload, object)\n",
+        )
+        try:
+            mod = _load_script_module()
+            violations = mod._check_boundary(
+                str(sample.relative_to(_REPO_ROOT)),
+                "emit",
+                "test",
+            )
+            assert len(violations) == 1
+            assert "no longer calls parse_typed" in violations[0]
+        finally:
+            sample.unlink(missing_ok=True)
+
+    def test_qualified_boundary_parse_typed_accepted(self) -> None:
+        # ``boundary.parse_typed(...)`` is a legitimate qualified call
+        # path through the canonical module; the resolver follows the
+        # ``from synthorg.api import boundary`` import to the FQN and
+        # accepts it.
+        sample = _plant_fixture(
+            "from synthorg.api import boundary\n"
+            "def emit(payload):\n"
+            "    return boundary.parse_typed('test', payload, object)\n",
+        )
+        try:
+            mod = _load_script_module()
+            violations = mod._check_boundary(
+                str(sample.relative_to(_REPO_ROOT)),
+                "emit",
+                "test",
+            )
+            assert violations == []
+        finally:
+            sample.unlink(missing_ok=True)
+
+    def test_aliased_import_resolves_to_canonical_helper(self) -> None:
+        # ``from synthorg.api.boundary import parse_typed as pt`` keeps
+        # the binding pointed at the canonical FQN under a local
+        # alias; the gate must follow the alias and accept the call.
+        sample = _plant_fixture(
+            "from synthorg.api.boundary import parse_typed as pt\n"
+            "def emit(payload):\n    return pt('test', payload, object)\n",
+        )
+        try:
+            mod = _load_script_module()
+            violations = mod._check_boundary(
+                str(sample.relative_to(_REPO_ROOT)),
+                "emit",
+                "test",
+            )
+            assert violations == []
+        finally:
+            sample.unlink(missing_ok=True)
+
+    def test_local_def_parse_typed_shadow_rejected(self) -> None:
+        # A local ``def parse_typed(...)`` inside the boundary
+        # function shadows the imported helper. Token-only matching
+        # would still call this a pass; the resolver rejects it.
+        sample = _plant_fixture(
+            _IMPORT_PARSE_TYPED
+            + "def emit(payload):\n"
+            + "    def parse_typed(*args, **kwargs):\n"
+            + "        return None\n"
+            + "    return parse_typed('test', payload, object)\n",
+        )
+        try:
+            mod = _load_script_module()
+            violations = mod._check_boundary(
+                str(sample.relative_to(_REPO_ROOT)),
+                "emit",
+                "test",
+            )
+            assert len(violations) == 1
+            assert "no longer calls parse_typed" in violations[0]
+        finally:
+            sample.unlink(missing_ok=True)
+
+    def test_local_assignment_parse_typed_shadow_rejected(self) -> None:
+        # ``parse_typed = some_other_callable`` inside the boundary
+        # function rebinds the imported helper to a local. Same
+        # rejection path as the def-style shadow.
+        sample = _plant_fixture(
+            _IMPORT_PARSE_TYPED
+            + "def emit(payload):\n"
+            + "    parse_typed = lambda *a, **k: None\n"
+            + "    return parse_typed('test', payload, object)\n",
+        )
+        try:
+            mod = _load_script_module()
+            violations = mod._check_boundary(
+                str(sample.relative_to(_REPO_ROOT)),
+                "emit",
+                "test",
+            )
+            assert len(violations) == 1
+            assert "no longer calls parse_typed" in violations[0]
         finally:
             sample.unlink(missing_ok=True)
 

@@ -37,8 +37,11 @@ Behaviour:
   redacted error description (`safe_error_description`), the first
   five field locations, and a `truncated` flag, then re-raises the
   underlying `ValidationError`. Each boundary translates the re-raised
-  exception into its native error envelope (HTTP 422, MCP envelope
-  `err()`, WebSocket close code 1008, A2A JSON-RPC `-32602`,
+  exception into its native error envelope or event (HTTP 422 for
+  settings-import; MCP envelope `err()` with
+  `domain_code=invalid_argument`; WebSocket
+  `{"error": "Invalid control message"}` envelope on the open socket
+  (no close-code escalation); A2A JSON-RPC `-32602 Invalid params`;
   audit-chain `audit_chain.emit_validation_failed`).
 
 ## Registered boundaries
