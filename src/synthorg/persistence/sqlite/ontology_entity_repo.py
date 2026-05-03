@@ -213,7 +213,7 @@ class SQLiteOntologyEntityRepository:
         self,
         *,
         tier: EntityTier | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """List entities, optionally filtered by tier and paginated.
@@ -250,7 +250,7 @@ class SQLiteOntologyEntityRepository:
         self,
         query: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """Search entities by name or definition text."""

@@ -64,7 +64,7 @@ class OntologyEntityRepository(Protocol):
         self,
         *,
         tier: EntityTier | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """List all entity definitions, optionally filtered by tier."""
@@ -74,7 +74,7 @@ class OntologyEntityRepository(Protocol):
         self,
         query: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """Substring search against entity name and definition text."""

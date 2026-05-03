@@ -211,7 +211,7 @@ id, title, description, type, priority, project, created_by,
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         """List tasks with optional filters and pagination.
@@ -376,7 +376,7 @@ INSERT INTO cost_records (
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters and pagination."""
@@ -616,7 +616,7 @@ INSERT INTO messages (
         self,
         channel: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
     ) -> tuple[Message, ...]:
         """Retrieve message history for a channel, newest first."""
         if limit is not None and limit < 1:

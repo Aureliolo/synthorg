@@ -510,7 +510,7 @@ class PostgresApiKeyRepository:
         self,
         user_id: NotBlankStr,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
         """List all API keys belonging to a user, ordered by creation date."""

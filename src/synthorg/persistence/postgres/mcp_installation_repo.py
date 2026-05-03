@@ -126,7 +126,7 @@ class PostgresMcpInstallationRepository:
     async def list_all(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
         """List all recorded installations in a deterministic order.

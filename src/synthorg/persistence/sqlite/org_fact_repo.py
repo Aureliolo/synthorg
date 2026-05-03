@@ -488,7 +488,7 @@ class SQLiteOrgFactRepository:
         self,
         category: OrgFactCategory,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """List all active facts in a category, optionally paginated."""

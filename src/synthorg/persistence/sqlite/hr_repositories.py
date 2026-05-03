@@ -110,7 +110,7 @@ INSERT INTO lifecycle_events (
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
         since: AwareDatetime | None = None,
-        limit: int | None = None,
+        limit: int = 100,
     ) -> tuple[AgentLifecycleEvent, ...]:
         """List lifecycle events with optional filters."""
         clauses: list[str] = []

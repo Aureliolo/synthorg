@@ -124,7 +124,7 @@ class PostgresSessionRepository:
         self,
         user_id: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
@@ -156,7 +156,7 @@ class PostgresSessionRepository:
     async def list_all(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""

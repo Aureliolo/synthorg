@@ -50,7 +50,7 @@ class SessionRepository(Protocol):
         self,
         user_id: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active sessions for a user, optionally paginated."""
@@ -59,7 +59,7 @@ class SessionRepository(Protocol):
     async def list_all(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active sessions, optionally paginated."""

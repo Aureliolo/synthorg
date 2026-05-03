@@ -42,7 +42,7 @@ class TaskRepository(Protocol):
         status: TaskStatus | None = None,
         assigned_to: NotBlankStr | None = None,
         project: NotBlankStr | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         """List tasks with optional filters and pagination.

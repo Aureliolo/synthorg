@@ -209,7 +209,7 @@ class PostgresConnectionRepository:
     async def list_all(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
@@ -253,7 +253,7 @@ class PostgresConnectionRepository:
         self,
         connection_type: ConnectionType,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections of *connection_type*, sorted by name."""

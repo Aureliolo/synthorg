@@ -49,7 +49,7 @@ class InMemoryConnectionRepository:
     async def list_all(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all (deep-copied)."""
@@ -65,7 +65,7 @@ class InMemoryConnectionRepository:
         self,
         connection_type: ConnectionType,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List by type (deep-copied)."""

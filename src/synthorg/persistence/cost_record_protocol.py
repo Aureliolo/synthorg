@@ -26,7 +26,7 @@ class CostRecordRepository(Protocol):
         *,
         agent_id: NotBlankStr | None = None,
         task_id: NotBlankStr | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters and pagination.
