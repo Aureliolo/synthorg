@@ -1,23 +1,18 @@
 # Vitest --detect-async-leaks ceiling for the web dashboard suite.
-# See docs/design/web-http-adapter.md and issue #1466.
+# See docs/design/web-http-adapter.md for the investigation + the
+# matrix of approaches that don't help.
 #
 # Raise this only after verifying the source of additional leaks is
-# mechanical (new test surface, new hook fixture) rather than a
-# regression.  Lower it whenever the MSW matching layer or store
-# teardown landscape improves (issue #1468 will move MSW off a
-# XHR interceptor, which should cut ~20-30 leaks).
+# mechanical (a new test surface, a new hook fixture) rather than a
+# regression. Lower it whenever the MSW matching layer or the store
+# teardown landscape improves.
 #
-# 2026-05-02 (#1710): raised 90 -> 100 to accommodate +14 new tests
-# in the audit-cleanup-E PR (renderHook x5 in use-empty-state-props,
-# render(<ProvidersStep/>) integration test, plus 8 new store-level
-# cases in setup-wizard.test.ts and ws-sanitize.test.ts). Local count
-# is 75; CI baseline is +20-21 above local due to parallel execution
-# concurrency. The new tests are infrastructure for the typed-WS-
-# sanitizer + setup-wizard recovery features that ship in this PR;
-# trimming them would eliminate the core regression-protection of
-# the new code paths. Lower back toward 80 once #1468 (MSW off XHR
-# interceptor) lands.
+# Local count is ~75; CI runs land in the 90-91 band after the
+# storage-shim landed (down from ~96 before). The ceiling carries a
+# 3-leak buffer above the observed CI peak so the gate doesn't false-
+# fail on natural run-to-run variance, while still tightening the
+# ratchet against regressions.
 #
 # The CI step reads this file via:
 #   grep -v '^#' .github/ci/web-async-leaks.max | head -1
-100
+94

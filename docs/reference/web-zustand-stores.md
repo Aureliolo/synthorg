@@ -63,29 +63,22 @@ The theme store also calls `teardown()` from its `import.meta.hot?.dispose(...)`
 
 ## Async-Leak Ceiling (MANDATORY)
 
-CI's `Dashboard Test` job runs `vitest run --coverage --detect-async-leaks` under `NO_COLOR=1` and fails if the `Leaks N leaks` summary line reports more than `MAX_ASYNC_LEAKS` (currently 90) OR if the anchored summary line is missing entirely.
+CI's `Dashboard Test` job runs `vitest run --coverage --detect-async-leaks` under `NO_COLOR=1` and fails if the `Leaks N leaks` summary line reports more than `MAX_ASYNC_LEAKS` (single source of truth: `.github/ci/web-async-leaks.max`) OR if the anchored summary line is missing entirely.
 
-The local post-shim+M4 floor is 49; CI measures around 76 on ubuntu-latest because event-loop timing differs by platform, so the CI ceiling carries a small run-to-run variance buffer.
-
-### Per-PR raises (audit trail)
-
-| Date | Ceiling change | PR | Rationale |
-|---|---:|---|---|
-| 2026-04-21 | 66 -> 72 | `#1500` (WEB-1) | New WS payload sanitizers (`sanitizeApproval` / `sanitizeMeeting` / `sanitizeTask`) + strict shape guards exercised MSW-mocked paths ~6 to 8 more times on ubuntu-latest without adding timers or fire-and-forget async. |
-| 2026-04-22 | 72 -> 80 | `#1506` (WEB-2) | Nine new `fast-check` property suites increased MSW-intercepted path executions and pushed CI baseline to 76 (see `.github/workflows/ci.yml` for full per-PR justifications). |
-| 2026-04-30 | 80 -> 90 | `#1689` (docs/context-budget-trim) | Docs-only PR landed at 81 leaks; recent main runs measured 77, 78, 79, 80 (variance band of 3) with the previous ceiling at the variance edge. Raised to restore a 10-leak headroom above the current main median. Per-test attribution via `--reporter=verbose` confirmed every attributed leak is a structural `MSW` interceptor leak (not a test-code bug); the structural floor is the only available reduction path until `#1468` lands. |
+Local count runs ~75; CI runs land in a ~90-91 band (~+15 above local) because event-loop timing differs under parallel execution, so the CI ceiling carries a small run-to-run variance buffer.
 
 ### Structural floor
 
-The structural floor is MSW 2.x's own `CookieStore` (tough-cookie), the MSW XHR interceptor's `queueMicrotask` dispatch, and axios's response-interceptor `promise.then` chain; none reachable from `test-setup.tsx`.
+The structural floor is MSW 2.x's own `CookieStore` (tough-cookie), the MSW XHR interceptor's `queueMicrotask` dispatch, and axios's response-interceptor `promise.then` chain; none reachable from `test-setup.tsx`. Zero leaks requires replacing MSW's matching layer.
 
-The 2026-04-20 research round measured and rejected two further approaches: sync `queueMicrotask` went to 114; a custom axios adapter dispatching via MSW's `handler.run` went to 76 by re-attributing Promises to MSW's parse pipeline. Zero leaks requires replacing MSW's matching layer, tracked by #1468.
+Raise the ceiling only with documented justification (a new test surface or hook fixture rather than a regression); lower it whenever a shim or teardown lands that demonstrably moves the steady-state count down. Full investigation + options matrix lives in `docs/design/web-http-adapter.md`.
 
-Raise the ceiling only with the same kind of documented per-PR justification; lower it whenever the structural floor shifts. Full investigation + options matrix lives in `docs/design/web-http-adapter.md`.
+### Test-environment shims
 
-### Cookie shim contract
+`test-setup.tsx` installs two shims that bypass jsdom asynchronous primitives whose Promise / Timeout allocation otherwise inflates the leak count:
 
-`test-setup.tsx` installs a synchronous `document.cookie` shim on `Document.prototype` to bypass jsdom's tough-cookie Promise-based accessor: preserve that shim. If a unit test needs a different cookie behavior, override it via `Document.prototype.cookie` at the test level (see `__tests__/utils/csrf.test.ts`) and ensure the test's `afterEach` restores the shim by default. The shim itself is reset by the global `afterEach` in `test-setup.tsx`, which clears the jar and re-seeds `csrf_token=test-csrf-token`, so tests that mutate `document.cookie` directly do not leak state across the suite.
+- **Cookie shim** (`@/cookie-shim`): replaces `Document.prototype.cookie` with a synchronous in-memory jar so jsdom's tough-cookie Promise-based accessor is bypassed. The jar is exported so tests can wipe per-test state without touching the DOM. The global `afterEach` clears the jar and re-seeds `csrf_token=test-csrf-token`. Tests that need different cookie behavior override `Document.prototype.cookie` at the test level (see `__tests__/utils/csrf.test.ts`) and restore the shim in their own `afterEach`.
+- **Storage shim** (`@/storage-shim`): patches `Storage.prototype` methods to bypass jsdom's `_dispatchStorageEvent` `setTimeout(0)` path. `localStorage instanceof Storage` stays true and `vi.spyOn(Storage.prototype, 'setItem' | 'getItem' | ...)` continues to intercept. State is held in an instance-keyed `WeakMap`; per-test isolation is the caller's responsibility (see `cancelSetupWizardPersist`, `cancelOrgChartPrefsPersist`, `cancelPendingPersist`).
 
 ## WS Payload Sanitization
 

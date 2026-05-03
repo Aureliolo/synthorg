@@ -54,13 +54,15 @@ jobs:
   report-failure:
     name: Open / update tracking issue on schedule failure
     needs: agent-evals
-    # Only the schedule path gets the issue sink. PR runs already surface
-    # as PR checks; manual workflow_dispatch is visible to the triggerer.
-    if: >-
-      always()
-      && github.event_name == 'schedule'
-      && needs.agent-evals.result != 'success'
-      && needs.agent-evals.result != 'skipped'
+    # Only the schedule path gets the issue sink. PR runs surface via
+    # PR checks on the eval job itself; manual workflow_dispatch is
+    # visible to the triggerer. The ``result == 'failure'`` check is
+    # narrower than ``failure()``: it pins the trigger to ``agent-evals``
+    # specifically (so adding more entries to ``needs:`` later cannot
+    # accidentally widen the page surface) and intentionally does NOT
+    # match ``cancelled`` / ``timed_out`` (concurrency cancellation
+    # should not page anyone).
+    if: needs.agent-evals.result == 'failure' && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -74,14 +76,13 @@ jobs:
       - name: Compose body
         id: body
         env:
-          RESULT: ${{ needs.agent-evals.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           {
             echo 'body<<TRACKING_ISSUE_BODY_EOF'
             cat <<EOF
-          Scheduled agent-evals run failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
+          Scheduled agent-evals run failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
 
           Run: ${RUN_URL}
 
