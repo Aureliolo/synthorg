@@ -119,6 +119,9 @@ jobs:
       - name: Cost-recording chokepoint gate
         run: uv run python scripts/check_provider_complete_chokepoint.py
 
+      - name: Typed-boundary contract gate (RFC #1711)
+        run: uv run python scripts/check_boundary_typed.py
+
   # ── Docs: Doc-claim drift gate ──
   # Runs on python OR doc_claims so a docs-only PR that bumps a guarded
   # claim (eg "100+ event constant modules") still triggers the gate.
