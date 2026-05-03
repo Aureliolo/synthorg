@@ -456,7 +456,7 @@ class TestCheckAtomicity:
         cb._state_lock = _TrackingLock()  # type: ignore[assignment]
         clock_time = 5.0
         result = cb.check("a", "b")
-        cb._state_lock = underlying  # type: ignore[assignment]
+        cb._state_lock = underlying
         injection_done.wait(timeout=1.0)
         assert recorded_during_check, (
             "check() never acquired _state_lock through the tracked "
