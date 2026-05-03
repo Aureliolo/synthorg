@@ -81,6 +81,15 @@ class Worker:
         self._worker_id = worker_id
         self._running = False
         self._stop_event = asyncio.Event()
+        # Dedicated lifecycle lock per docs/reference/lifecycle-sync.md.
+        # Held across the full body of run() and stop() so a racing
+        # start cannot see _running=False mid-drain and spawn a new
+        # claim loop that the outgoing stop never waits on.  Worker is
+        # an "in-place runner" (start runs the loop on the calling
+        # coroutine), so the lock guards only the _running transition;
+        # holding it across the whole loop body would deadlock a
+        # second concurrent caller.
+        self._lifecycle_lock = asyncio.Lock()
 
     @property
     def is_running(self) -> bool:
@@ -94,23 +103,26 @@ class Worker:
         nacks the JetStream message based on the executor's returned
         status.
         """
-        if self._running:
-            msg = f"Worker {self._worker_id} is already running"
-            raise RuntimeError(msg)
-        self._running = True
-        self._stop_event.clear()
-        logger.info(WORKERS_WORKER_STARTED, worker_id=self._worker_id)
+        async with self._lifecycle_lock:
+            if self._running:
+                msg = f"Worker {self._worker_id} is already running"
+                raise RuntimeError(msg)
+            self._running = True
+            self._stop_event.clear()
+            logger.info(WORKERS_WORKER_STARTED, worker_id=self._worker_id)
 
         try:
             while not self._stop_event.is_set():
                 await self._run_once()
         finally:
-            self._running = False
-            logger.info(WORKERS_WORKER_STOPPED, worker_id=self._worker_id)
+            async with self._lifecycle_lock:
+                self._running = False
+                logger.info(WORKERS_WORKER_STOPPED, worker_id=self._worker_id)
 
     async def stop(self) -> None:
         """Signal the claim loop to exit after the current claim."""
-        self._stop_event.set()
+        async with self._lifecycle_lock:
+            self._stop_event.set()
 
     async def _run_once(self) -> None:
         """Fetch and process a single claim.

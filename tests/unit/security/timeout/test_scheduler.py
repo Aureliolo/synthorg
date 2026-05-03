@@ -104,7 +104,7 @@ class TestApprovalTimeoutScheduler:
             interval_seconds=60.0,
         )
 
-        scheduler.start()
+        await scheduler.start()
         assert scheduler.is_running
 
         # Cleanup
@@ -120,9 +120,9 @@ class TestApprovalTimeoutScheduler:
             interval_seconds=60.0,
         )
 
-        scheduler.start()
+        await scheduler.start()
         task1 = scheduler._task
-        scheduler.start()
+        await scheduler.start()
         task2 = scheduler._task
         assert task1 is task2
 
@@ -139,7 +139,7 @@ class TestApprovalTimeoutScheduler:
             interval_seconds=60.0,
         )
 
-        scheduler.start()
+        await scheduler.start()
         assert scheduler.is_running
         await scheduler.stop()
         assert not scheduler.is_running

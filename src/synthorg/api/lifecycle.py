@@ -578,7 +578,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 app_state.set_approval_timeout_scheduler(
                     approval_timeout_scheduler,
                 )
-                approval_timeout_scheduler.start()
+                await approval_timeout_scheduler.start()
                 started_approval_timeout_scheduler = True
             except Exception:
                 logger.exception(

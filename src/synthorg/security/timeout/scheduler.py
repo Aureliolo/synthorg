@@ -79,41 +79,62 @@ class ApprovalTimeoutScheduler:
         self._background_tasks = BackgroundTaskRegistry(
             owner="security.timeout.scheduler",
         )
+        # Lifecycle lock per docs/reference/lifecycle-sync.md.  Held
+        # across the full body of start() and stop() so two concurrent
+        # start() calls cannot both pass the is_running guard and
+        # spawn duplicate scheduler tasks; symmetrically, a racing
+        # stop()/start() cannot interleave between cancel and the
+        # task=None assignment.
+        self._lifecycle_lock = asyncio.Lock()
+        self._stop_failed = False
 
     @property
     def is_running(self) -> bool:
         """Whether the scheduler loop is currently active."""
         return self._task is not None and not self._task.done()
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Start the background scheduler loop.
 
         Creates an ``asyncio.Task`` running ``_run_loop``.
         No-op if already running.
+
+        Raises:
+            RuntimeError: If a prior :meth:`stop` timed out and the
+                scheduler is now unrestartable; construct a fresh
+                instance instead.
         """
-        if self.is_running:
-            return
-        self._wake_event.clear()
-        self._task = asyncio.create_task(
-            self._run_loop(),
-            name="approval-timeout-scheduler",
-        )
-        logger.info(
-            TIMEOUT_SCHEDULER_STARTED,
-            interval_seconds=self._interval,
-        )
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "ApprovalTimeoutScheduler is unrestartable after a "
+                    "timed-out stop; construct a fresh instance."
+                )
+                raise RuntimeError(msg)
+            if self.is_running:
+                return
+            self._wake_event.clear()
+            self._task = asyncio.create_task(
+                self._run_loop(),
+                name="approval-timeout-scheduler",
+            )
+            logger.info(
+                TIMEOUT_SCHEDULER_STARTED,
+                interval_seconds=self._interval,
+            )
 
     async def stop(self) -> None:
         """Cancel the background scheduler and wait for it to finish."""
-        if self._task is None:
+        async with self._lifecycle_lock:
+            if self._task is None:
+                await self._background_tasks.drain()
+                return
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
             await self._background_tasks.drain()
-            return
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
-        self._task = None
-        await self._background_tasks.drain()
-        logger.info(TIMEOUT_SCHEDULER_STOPPED)
+            logger.info(TIMEOUT_SCHEDULER_STOPPED)
 
     def reschedule(self, interval_seconds: float) -> None:
         """Update the interval and interrupt the current sleep.
