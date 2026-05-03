@@ -1,5 +1,6 @@
 """Circuit breaker for delegation bounces between agent pairs."""
 
+import threading
 import time
 from collections.abc import Callable  # noqa: TC003
 from enum import StrEnum
@@ -67,7 +68,14 @@ class DelegationCircuitBreaker:
             restarts.
     """
 
-    __slots__ = ("_clock", "_config", "_dirty", "_pairs", "_state_repo")
+    __slots__ = (
+        "_clock",
+        "_config",
+        "_dirty",
+        "_pairs",
+        "_state_lock",
+        "_state_repo",
+    )
 
     def __init__(
         self,
@@ -81,6 +89,12 @@ class DelegationCircuitBreaker:
         self._state_repo = state_repo
         self._pairs: dict[tuple[str, str], _PairState] = {}
         self._dirty: set[tuple[str, str]] = set()
+        # Sync RLock guards _pairs + _dirty mutations.  The breaker is
+        # called from sync code paths inside async tasks; a
+        # threading.RLock works in both contexts (pure Python Lock
+        # would re-enter and deadlock if get_state calls the same
+        # locked region indirectly via the repo).
+        self._state_lock = threading.RLock()
 
     def _get_pair(
         self,
@@ -136,26 +150,27 @@ class DelegationCircuitBreaker:
         Returns:
             Current state of the circuit breaker.
         """
-        pair = self._get_pair(delegator_id, delegatee_id)
-        if pair is None:
-            return CircuitBreakerState.CLOSED
-        if pair.opened_at is not None:
-            elapsed = self._clock() - pair.opened_at
-            cooldown = self._compute_cooldown(pair.trip_count)
-            if elapsed < cooldown:
-                return CircuitBreakerState.OPEN
-            # Cooldown expired: reset bounce count, preserve trip history
-            key = pair_key(delegator_id, delegatee_id)
-            pair.bounce_count = 0
-            pair.opened_at = None
-            self._dirty.add(key)
-            logger.info(
-                DELEGATION_LOOP_CIRCUIT_RESET,
-                delegator=delegator_id,
-                delegatee=delegatee_id,
-                cooldown_seconds=cooldown,
-                trip_count=pair.trip_count,
-            )
+        with self._state_lock:
+            pair = self._get_pair(delegator_id, delegatee_id)
+            if pair is None:
+                return CircuitBreakerState.CLOSED
+            if pair.opened_at is not None:
+                elapsed = self._clock() - pair.opened_at
+                cooldown = self._compute_cooldown(pair.trip_count)
+                if elapsed < cooldown:
+                    return CircuitBreakerState.OPEN
+                # Cooldown expired: reset bounce count, preserve trip history
+                key = pair_key(delegator_id, delegatee_id)
+                pair.bounce_count = 0
+                pair.opened_at = None
+                self._dirty.add(key)
+                logger.info(
+                    DELEGATION_LOOP_CIRCUIT_RESET,
+                    delegator=delegator_id,
+                    delegatee=delegatee_id,
+                    cooldown_seconds=cooldown,
+                    trip_count=pair.trip_count,
+                )
         return CircuitBreakerState.CLOSED
 
     def check(
@@ -218,23 +233,24 @@ class DelegationCircuitBreaker:
         state = self.get_state(delegator_id, delegatee_id)
         if state is CircuitBreakerState.OPEN:
             return
-        pair = self._get_or_create_pair(delegator_id, delegatee_id)
-        pair.bounce_count += 1
-        if pair.bounce_count >= self._config.bounce_threshold:
-            pair.trip_count += 1
-            pair.opened_at = self._clock()
-            cooldown = self._compute_cooldown(pair.trip_count)
-            key = pair_key(delegator_id, delegatee_id)
-            self._dirty.add(key)
-            logger.warning(
-                DELEGATION_LOOP_CIRCUIT_BACKOFF,
-                delegator=delegator_id,
-                delegatee=delegatee_id,
-                bounce_count=pair.bounce_count,
-                threshold=self._config.bounce_threshold,
-                trip_count=pair.trip_count,
-                cooldown_seconds=cooldown,
-            )
+        with self._state_lock:
+            pair = self._get_or_create_pair(delegator_id, delegatee_id)
+            pair.bounce_count += 1
+            if pair.bounce_count >= self._config.bounce_threshold:
+                pair.trip_count += 1
+                pair.opened_at = self._clock()
+                cooldown = self._compute_cooldown(pair.trip_count)
+                key = pair_key(delegator_id, delegatee_id)
+                self._dirty.add(key)
+                logger.warning(
+                    DELEGATION_LOOP_CIRCUIT_BACKOFF,
+                    delegator=delegator_id,
+                    delegatee=delegatee_id,
+                    bounce_count=pair.bounce_count,
+                    threshold=self._config.bounce_threshold,
+                    trip_count=pair.trip_count,
+                    cooldown_seconds=cooldown,
+                )
 
     # Persistence helpers (async, called outside hot path)
 

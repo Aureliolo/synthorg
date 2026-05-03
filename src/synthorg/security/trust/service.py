@@ -4,6 +4,7 @@ Central service for managing progressive trust state, evaluation,
 and trust level changes for agents.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -63,6 +64,14 @@ class TrustService:
         self._approval_store = approval_store
         self._trust_states: dict[str, TrustState] = {}
         self._change_history: dict[str, list[TrustChangeRecord]] = {}
+        # Hot-path lock guarding _trust_states + _change_history.
+        # Two concurrent apply_trust_change / evaluate_agent calls for
+        # the same agent could otherwise interleave between read of
+        # _trust_states[key] and the assignment back, losing one
+        # update; the setdefault().append() pattern at the end of
+        # apply_trust_change is similarly non-atomic. Lock the full
+        # read-modify-write region in both methods.
+        self._state_lock = asyncio.Lock()
 
     def initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
         """Create initial trust state for a new agent.
@@ -105,7 +114,8 @@ class TrustService:
                 evaluation fails.
         """
         key = str(agent_id)
-        state = self._trust_states.get(key)
+        async with self._state_lock:
+            state = self._trust_states.get(key)
         if state is None:
             msg = f"Agent {agent_id!r} not initialized for trust tracking"
             logger.warning(
@@ -132,10 +142,13 @@ class TrustService:
 
         # Update last_evaluated_at
         now = datetime.now(UTC)
-        updated_state = state.model_copy(
-            update={"last_evaluated_at": now},
-        )
-        self._trust_states[key] = updated_state
+        async with self._state_lock:
+            # Re-read in case another coroutine raced us; merge the
+            # last_evaluated_at update onto whatever the latest state is.
+            current = self._trust_states.get(key, state)
+            self._trust_states[key] = current.model_copy(
+                update={"last_evaluated_at": now},
+            )
 
         logger.debug(
             TRUST_EVALUATE_COMPLETE,
@@ -215,9 +228,15 @@ class TrustService:
         }
         if is_promotion:
             state_update["last_promoted_at"] = now
-        updated = state.model_copy(update=state_update)
-        self._trust_states[key] = updated
-        self._change_history.setdefault(key, []).append(record)
+        # Lock both writes so a concurrent apply_trust_change /
+        # evaluate_agent for the same agent cannot interleave between
+        # the dict assign and the change_history append (both must
+        # land or neither, otherwise log readers see a phantom
+        # transition that no state row backs).
+        async with self._state_lock:
+            updated = state.model_copy(update=state_update)
+            self._trust_states[key] = updated
+            self._change_history.setdefault(key, []).append(record)
 
         logger.info(
             TRUST_LEVEL_CHANGED,
