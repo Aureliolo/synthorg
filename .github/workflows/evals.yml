@@ -51,7 +51,49 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-# Scheduled-failure tracking lives in evals-tracking-issue.yml so the
-# job runs via `workflow_run` against the default branch and never
-# enqueues as a PR check (a skipped/cancelled job still shows as a
-# red X on PRs).
+  report-failure:
+    name: Open / update tracking issue on schedule failure
+    needs: agent-evals
+    # Only the schedule path gets the issue sink. PR runs surface via
+    # PR checks on the eval job itself; manual workflow_dispatch is
+    # visible to the triggerer. ``failure()`` matches a failed
+    # ``agent-evals`` job and intentionally does NOT match a cancelled
+    # one (concurrency-cancellation should not page anyone).
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          Scheduled agent-evals run failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          Run: ${RUN_URL}
+
+          Likely cause: prompt regression, provider drift, or eval
+          harness change. Inspect the eval-results artifact attached to
+          the run for the per-test breakdown.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'Agent eval regression'
+          labels: 'automation:ci-health,type:ci,prio:medium'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}

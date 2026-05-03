@@ -65,7 +65,7 @@ The theme store also calls `teardown()` from its `import.meta.hot?.dispose(...)`
 
 CI's `Dashboard Test` job runs `vitest run --coverage --detect-async-leaks` under `NO_COLOR=1` and fails if the `Leaks N leaks` summary line reports more than `MAX_ASYNC_LEAKS` (single source of truth: `.github/ci/web-async-leaks.max`) OR if the anchored summary line is missing entirely.
 
-Local count runs ~75; CI sits +20-21 above local because event-loop timing differs under parallel execution, so the CI ceiling carries a small run-to-run variance buffer.
+Local count runs ~75; CI runs land in a ~90-91 band (~+15 above local) because event-loop timing differs under parallel execution, so the CI ceiling carries a small run-to-run variance buffer.
 
 ### Structural floor
 
