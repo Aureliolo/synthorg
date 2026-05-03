@@ -1,8 +1,8 @@
 """Database health check."""
 
-import time
 from datetime import UTC, datetime
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionStatus,
@@ -25,14 +25,17 @@ class DatabaseHealthCheck:
     that required metadata fields are present.
     """
 
+    def __init__(self, *, clock: Clock | None = None) -> None:
+        self._clock = clock or SystemClock()
+
     async def check(self, connection: Connection) -> HealthReport:
         """Verify database connection metadata is valid."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         raw_dialect = connection.metadata.get("dialect")
         raw_database = connection.metadata.get("database")
         dialect = raw_dialect.strip() if isinstance(raw_dialect, str) else ""
         database = raw_database.strip() if isinstance(raw_database, str) else ""
-        elapsed = (time.monotonic() - start) * 1000
+        elapsed = (self._clock.monotonic() - start) * 1000
 
         if not dialect or not database:
             logger.warning(

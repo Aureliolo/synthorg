@@ -57,6 +57,7 @@ from synthorg.communication.meeting.orchestrator import (
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig  # noqa: TC001
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
@@ -276,6 +277,7 @@ class AppState(AppStateServicesMixin):
         "_ws_revalidation_max_failures",
         "_ws_revalidation_window_seconds",
         "approval_store",
+        "clock",
         "config",
         "startup_time",
     )
@@ -320,6 +322,7 @@ class AppState(AppStateServicesMixin):
         mcp_installations_repo: McpInstallationRepository | None = None,
         training_service: TrainingService | None = None,
         startup_time: float = 0.0,
+        clock: Clock | None = None,
     ) -> None:
         self.config = config
         self.approval_store = approval_store
@@ -501,6 +504,7 @@ class AppState(AppStateServicesMixin):
         # ordering invariant the controller relies on.
         self._request_lock_refs: dict[str, int] = {}
         self.startup_time = startup_time
+        self.clock: Clock = clock or SystemClock()
 
     def _init_derived_services(
         self,

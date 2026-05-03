@@ -9,7 +9,6 @@
 """
 
 import asyncio
-import time
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
@@ -145,7 +144,7 @@ def _unavailable_response(
     we still want to emit a well-formed envelope so operator tooling
     can parse it, rather than letting a 500 surface.
     """
-    uptime = round(time.monotonic() - app_state.startup_time, 2)
+    uptime = round(app_state.clock.monotonic() - app_state.startup_time, 2)
     return Response(
         content=ApiResponse(
             data=ReadinessStatus(
@@ -179,7 +178,7 @@ class LivenessController(Controller):
     ) -> ApiResponse[LivenessStatus]:
         """Return a constant ``ok`` response while the process is alive."""
         app_state: AppState = state.app_state
-        uptime = round(time.monotonic() - app_state.startup_time, 2)
+        uptime = round(app_state.clock.monotonic() - app_state.startup_time, 2)
         return ApiResponse(
             data=LivenessStatus(
                 status="ok",
@@ -272,7 +271,7 @@ class ReadinessController(Controller):
         )
         status_code = 200 if outcome is ReadinessOutcome.OK else 503
 
-        uptime = round(time.monotonic() - app_state.startup_time, 2)
+        uptime = round(app_state.clock.monotonic() - app_state.startup_time, 2)
 
         logger.debug(
             API_HEALTH_CHECK,

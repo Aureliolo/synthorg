@@ -32,6 +32,7 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import StreamEvent  # noqa: TC001
+from synthorg.core.clock import SystemClock
 from synthorg.core.domain_errors import (
     NotFoundError,
     UnauthorizedError,
@@ -416,7 +417,11 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
         )
         revalidation_armed = app_state is not None and user is not None
         keepalive_seconds = await _resolve_sse_keepalive_seconds(app_state)
-        loop_now = asyncio.get_event_loop().time()
+        # Use ``app_state.clock.monotonic()`` so tests inject FakeClock
+        # rather than monkey-patching ``asyncio.get_event_loop().time``.
+        # The bare loop timer is still acceptable for async waits below.
+        clock = app_state.clock if app_state is not None else SystemClock()
+        loop_now = clock.monotonic()
         next_keepalive_ts = loop_now + keepalive_seconds
         # When auth context is absent (anonymous / unit-test stream), arming
         # the revalidation deadline at ``loop_now`` would make ``timeout``
@@ -426,7 +431,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
             loop_now + SSE_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
         )
         while True:
-            now = asyncio.get_event_loop().time()
+            now = clock.monotonic()
             if next_revalidate_ts is None:
                 timeout = max(0.0, next_keepalive_ts - now)
             else:
@@ -444,7 +449,7 @@ async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
                 # be due simultaneously after a long-blocking event was
                 # delivered; emit keepalive first, revalidate second.
                 pass
-            now = asyncio.get_event_loop().time()
+            now = clock.monotonic()
             if now >= next_keepalive_ts:
                 yield {"event": "keepalive", "data": "{}"}
                 next_keepalive_ts = now + keepalive_seconds

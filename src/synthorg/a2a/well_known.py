@@ -11,7 +11,6 @@ only mounted when ``a2a.enabled = True``.
 
 import asyncio
 import hashlib
-import time
 from typing import Any
 
 from litestar import Controller, Request, get
@@ -19,6 +18,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.response import Response
 
 from synthorg.a2a.agent_card import AgentCardBuilder  # noqa: TC001
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
@@ -32,6 +32,9 @@ logger = get_logger(__name__)
 # Module-level cache: (card_data, expires_at, fingerprint).
 _card_cache: dict[str, tuple[dict[str, Any], float, str]] = {}
 _cache_lock = asyncio.Lock()
+# Module-level clock singleton; tests inject a FakeClock by passing
+# it explicitly to the cache helpers below.
+_default_clock: Clock = SystemClock()
 
 
 async def _get_cached_card(
@@ -39,6 +42,7 @@ async def _get_cached_card(
     ttl: int,
     *,
     fingerprint: str = "",
+    clock: Clock | None = None,
 ) -> dict[str, Any] | None:
     """Return cached card data if still valid.
 
@@ -47,18 +51,22 @@ async def _get_cached_card(
         ttl: Cache TTL in seconds (0 disables caching).
         fingerprint: Identity fingerprint -- when provided, the
             cached entry is invalidated if the fingerprint changed.
+        clock: Time source override (defaults to module-level
+            ``_default_clock``); tests inject a FakeClock to drive
+            cache expiry deterministically.
 
     Returns:
         Cached card dict or None if expired/missing/stale.
     """
     if ttl <= 0:
         return None
+    active_clock = clock or _default_clock
     async with _cache_lock:
         entry = _card_cache.get(cache_key)
         if entry is None:
             return None
         card_data, expires_at, stored_fp = entry
-        if time.monotonic() > expires_at:
+        if active_clock.monotonic() > expires_at:
             del _card_cache[cache_key]
             return None
         if fingerprint and stored_fp != fingerprint:
@@ -73,6 +81,7 @@ async def _put_cached_card(
     ttl: int,
     *,
     fingerprint: str = "",
+    clock: Clock | None = None,
 ) -> None:
     """Store card data in cache with TTL and fingerprint.
 
@@ -81,13 +90,17 @@ async def _put_cached_card(
         card_data: Serialized card dict.
         ttl: TTL in seconds (0 skips caching).
         fingerprint: Identity fingerprint for staleness detection.
+        clock: Time source override (defaults to module-level
+            ``_default_clock``); tests inject a FakeClock to control
+            the stored expiry deadline.
     """
     if ttl <= 0:
         return
+    active_clock = clock or _default_clock
     async with _cache_lock:
         _card_cache[cache_key] = (
             card_data,
-            time.monotonic() + ttl,
+            active_clock.monotonic() + ttl,
             fingerprint,
         )
 

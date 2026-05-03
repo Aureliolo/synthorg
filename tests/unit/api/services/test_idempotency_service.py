@@ -176,31 +176,51 @@ async def test_run_idempotent_marks_failed_when_callback_raises() -> None:
     assert len(repo.completes) == 0
 
 
+class _DeterministicClock:
+    """Stub Clock injected via the service constructor's ``clock`` kwarg.
+
+    Tracks a virtual-time float that advances when the service awaits
+    asyncio.sleep (which we also stub out so polling deadlines progress
+    without real wall-clock waits).
+    """
+
+    def __init__(self) -> None:
+        self.now_seconds = 0.0
+
+    def now(self) -> Any:
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        return _dt.fromtimestamp(self.now_seconds, tz=UTC)
+
+    def monotonic(self) -> float:
+        return self.now_seconds
+
+    async def sleep(self, seconds: float) -> None:
+        if seconds > 0:
+            self.now_seconds += seconds
+
+
 def _install_deterministic_clock(
     monkeypatch: pytest.MonkeyPatch,
     svc_mod: Any,
-) -> list[float]:
-    """Replace ``time.monotonic`` and ``asyncio.sleep`` in *svc_mod*.
+) -> _DeterministicClock:
+    """Stub asyncio.sleep so the service's polling loop progresses
+    against the injected ``_DeterministicClock`` without real waits.
 
-    Returns a single-element ``[clock]`` list (used as a mutable cell
-    so the spy and the test can read/write the same float). Each
-    ``await asyncio.sleep(d)`` call advances the clock by *d* without
-    actually sleeping, so the polling loop sees deterministic elapsed
-    time even on slow CI workers.
+    Returns the clock instance; the test passes it via the service
+    constructor's ``clock`` kwarg, then reads/writes ``now_seconds``
+    to verify timing-dependent behaviour.
     """
-    clock = [0.0]
-
-    def _monotonic() -> float:
-        return clock[0]
+    clock = _DeterministicClock()
 
     async def _fake_sleep(delay: float) -> None:
         # Negative or zero stays a real no-op; positive advances the
         # virtual clock so deadline arithmetic in the service-under-
         # test progresses without a real wall-clock sleep.
         if delay > 0:
-            clock[0] += delay
+            clock.now_seconds += delay
 
-    monkeypatch.setattr(svc_mod.time, "monotonic", _monotonic)
     monkeypatch.setattr(svc_mod.asyncio, "sleep", _fake_sleep)
     return clock
 
@@ -216,7 +236,7 @@ async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_TIMEOUT_SECONDS", 0.05)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS", 0.005)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS", 0.01)
-    _install_deterministic_clock(monkeypatch, svc_mod)
+    clock = _install_deterministic_clock(monkeypatch, svc_mod)
 
     class _StuckRepo(_FakeRepo):
         async def get(
@@ -235,7 +255,7 @@ async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
             )
 
     repo = _StuckRepo(initial_outcome=IdempotencyOutcome.IN_FLIGHT)
-    svc = svc_mod.IdempotencyService(repo)
+    svc = svc_mod.IdempotencyService(repo, clock=clock)
 
     async def cb() -> dict[str, Any]:
         msg = "callback must not run when claim is in-flight"
@@ -260,7 +280,7 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_TIMEOUT_SECONDS", 0.5)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS", 0.005)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS", 0.01)
-    _install_deterministic_clock(monkeypatch, svc_mod)
+    clock = _install_deterministic_clock(monkeypatch, svc_mod)
 
     poll_count = 0
 
@@ -293,7 +313,7 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
             )
 
     repo = _ResolvingRepo(initial_outcome=IdempotencyOutcome.IN_FLIGHT)
-    svc = svc_mod.IdempotencyService(repo)
+    svc = svc_mod.IdempotencyService(repo, clock=clock)
 
     async def cb() -> dict[str, Any]:
         msg = "callback must not run when claim is in-flight"

@@ -6,7 +6,6 @@ handling timeouts, building delivery envelopes, and acking messages.
 
 import asyncio
 import contextlib
-import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -119,7 +118,7 @@ async def _maybe_log_overflow(  # noqa: C901, PLR0912, PLR0915  -- linear flow, 
     """
     cap = state.config.retention.max_subscriber_queue_size
     key = (channel_name, subscriber_id)
-    now = time.monotonic()
+    now = state.clock.monotonic()
     last = state.last_overflow_log.get(key, 0.0)
     if now - last < _OVERFLOW_LOG_INTERVAL_SECONDS:
         return
@@ -417,9 +416,9 @@ async def receive_with_timeout(
     timeout: float,  # noqa: ASYNC109
 ) -> DeliveryEnvelope | None:
     """Wait up to ``timeout`` seconds across one or more fetch polls."""
-    deadline = time.monotonic() + timeout
+    deadline = state.clock.monotonic() + timeout
     while True:
-        remaining = deadline - time.monotonic()
+        remaining = deadline - state.clock.monotonic()
         if remaining <= 0.0:
             return None
         if state.shutdown_event.is_set():
@@ -439,7 +438,7 @@ async def receive_with_timeout(
             # receive budget so ``receive(timeout=0.1)`` cannot be
             # extended by the full 2s probe ceiling. If the budget
             # is already exhausted the helper skips the probe.
-            budget = deadline - time.monotonic()
+            budget = deadline - state.clock.monotonic()
             await _maybe_log_overflow(
                 state,
                 sub,
