@@ -9,6 +9,7 @@ import importlib.util
 import sys
 import types
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,9 @@ def _load_script_module() -> types.ModuleType:
 _IMPORT_PARSE_TYPED = "from synthorg.api.boundary import parse_typed\n"
 
 
+_FIXTURE_DIR = _REPO_ROOT / "src" / "synthorg" / "_lint_boundary_fixtures"
+
+
 def _plant_fixture(content: str) -> Path:
     """Write a synthetic Python file under the repo for the gate to scan.
 
@@ -40,11 +44,25 @@ def _plant_fixture(content: str) -> Path:
     under ``src/synthorg/`` is required; per-test uniqueness avoids
     xdist worker collisions.
     """
-    fixture_dir = _REPO_ROOT / "src" / "synthorg" / "_lint_boundary_fixtures"
-    fixture_dir.mkdir(parents=True, exist_ok=True)
-    sample = fixture_dir / f"{uuid.uuid4().hex}.py"
+    _FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
+    sample = _FIXTURE_DIR / f"{uuid.uuid4().hex}.py"
     sample.write_text(content, encoding="utf-8")
     return sample
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_fixture_dir() -> Iterator[None]:
+    """Remove the empty ``_lint_boundary_fixtures`` directory after the suite.
+
+    Each per-test ``finally: sample.unlink()`` removes the test's own
+    file; this fixture sweeps the now-empty directory so the synthetic
+    package never lingers under ``src/synthorg/``. Skipped if a test
+    crashed mid-run and left a file behind -- the directory stays so
+    the operator notices, rather than the cleanup hiding a leak.
+    """
+    yield
+    if _FIXTURE_DIR.exists() and not any(_FIXTURE_DIR.iterdir()):
+        _FIXTURE_DIR.rmdir()
 
 
 @pytest.mark.unit

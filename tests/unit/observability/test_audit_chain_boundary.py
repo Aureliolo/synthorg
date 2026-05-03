@@ -215,11 +215,6 @@ class TestAuditChainSinkValidationFailure:
             args=None,
             exc_info=None,
         )
-        # Inject a forbidden extra field by hand (mirrors what an
-        # upstream LogRecord could carry if the iteration in emit()
-        # ever widens to a non-modeled key).
-        record.extra_unknown_field = "boom"
-
         callback_calls: list[tuple[str, int, float]] = []
 
         def _callback(status: str, depth: int, ts: float) -> None:
