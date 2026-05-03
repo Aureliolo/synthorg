@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 import httpx
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_FAILED,
@@ -84,7 +85,7 @@ def _build_ping_url(
     if not 1 <= ollama_port <= 65535:  # noqa: PLR2004 -- TCP port range
         msg = f"ollama_port must be in 1-65535, got {ollama_port!r}"
         raise ValueError(msg)
-    stripped = base_url.rstrip("/")
+    stripped = strip_trailing_slash(base_url)
     is_ollama = litellm_provider == "ollama" or urlparse(stripped).port == ollama_port
     if is_ollama:
         return stripped  # Root URL returns a liveness string

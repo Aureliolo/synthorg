@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from structlog.stdlib import ProcessorFormatter
 
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import safe_error_description
 from synthorg.observability.enums import OtlpProtocol
 from synthorg.observability.events.metrics import (
@@ -298,7 +299,7 @@ class OtlpHandler(logging.Handler):
         body = json.dumps(payload).encode()
 
         # Use /v1/logs path for OTLP HTTP JSON
-        url = self._endpoint.rstrip("/") + "/v1/logs"
+        url = strip_trailing_slash(self._endpoint) + "/v1/logs"
         request = urllib.request.Request(url, data=body, method="POST")  # noqa: S310
         request.add_header("Content-Type", "application/json")
         for name, value in self._extra_headers.items():

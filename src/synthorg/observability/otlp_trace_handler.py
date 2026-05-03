@@ -23,6 +23,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import (
     METRICS_OTLP_EXPORT_FAILED,
@@ -195,4 +196,4 @@ def _resolve_traces_endpoint(base_endpoint: str) -> str:
     """Append ``/v1/traces`` to *base_endpoint* if not already present."""
     if base_endpoint.endswith(_TRACES_ENDPOINT_SUFFIX):
         return base_endpoint
-    return base_endpoint.rstrip("/") + _TRACES_ENDPOINT_SUFFIX
+    return strip_trailing_slash(base_endpoint) + _TRACES_ENDPOINT_SUFFIX

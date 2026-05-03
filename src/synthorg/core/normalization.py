@@ -73,3 +73,58 @@ def find_by_name_ci[T](
         if isinstance(value, str) and normalize_identifier(value) == target_normalised:
             return item
     return None
+
+
+def strip_trailing_slash(url: str) -> str:
+    """Return ``url`` without trailing slashes; idempotent.
+
+    Strips every trailing forward slash, mirroring the inline
+    ``url.rstrip("/")`` pattern used at A2A agent-card, OAuth, OTLP,
+    and provider-probing call sites. Empty input returns empty string.
+
+    Args:
+        url: URL or base URL string to strip.
+
+    Returns:
+        ``url`` with all trailing ``/`` characters removed.
+    """
+    return url.rstrip("/")
+
+
+def normalize_optional_string(raw: str | None) -> str | None:
+    """Strip whitespace; collapse empty-after-strip to ``None``.
+
+    Replaces the inline ``(raw.strip() or None) if raw else None``
+    pattern used in setup agents, workflow validation, and memory
+    metadata fields where a blank user input should not be treated
+    as a real value.
+
+    Args:
+        raw: Optional string from external input.
+
+    Returns:
+        ``None`` if ``raw`` is None or strips to empty, otherwise the
+        stripped value.
+    """
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    return stripped or None
+
+
+def normalize_path(path: str | None) -> str:
+    """Return a normalised URL path: strip trailing slashes, default to ``"/"``.
+
+    Replaces the inline ``(path or "").rstrip("/") or "/"`` pattern
+    used by CSRF validation, docs routing, and ETag-key matching
+    where a missing or root-equivalent path must canonicalise to
+    ``"/"`` for stable comparison.
+
+    Args:
+        path: Optional URL path (e.g. ``"/foo/"``, ``""``, ``None``).
+
+    Returns:
+        Path with trailing slashes stripped, or ``"/"`` if the result
+        would otherwise be empty.
+    """
+    return (path or "").rstrip("/") or "/"

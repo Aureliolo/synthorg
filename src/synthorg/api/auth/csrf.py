@@ -18,6 +18,7 @@ from typing import Any
 from litestar.types import ASGIApp, Receive, Scope, Send  # noqa: TC002
 
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
+from synthorg.core.normalization import normalize_path
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_CSRF_SKIPPED,
@@ -81,7 +82,7 @@ class CsrfMiddleware:
             await self.app(scope, receive, send)
             return
 
-        path = (scope.get("path", "") or "").rstrip("/") or "/"
+        path = normalize_path(scope.get("path", ""))
         if path in self._exempt_paths:
             await self.app(scope, receive, send)
             return

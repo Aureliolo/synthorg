@@ -19,6 +19,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.response import Response
 
 from synthorg.a2a.agent_card import AgentCardBuilder  # noqa: TC001
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
     A2A_AGENT_CARD_CACHE_HIT,
@@ -115,7 +116,7 @@ class WellKnownAgentCardController(Controller):
         a2a_config = app_state.config.a2a
         ttl = a2a_config.agent_card_cache_ttl_seconds
 
-        host_base = str(request.base_url).rstrip("/")
+        host_base = strip_trailing_slash(str(request.base_url))
         company_cache_key = f"__company__:{host_base}"
         # Fingerprint not checked on read for company card (requires
         # listing all agents); TTL-based expiry is the primary guard.
@@ -143,7 +144,7 @@ class WellKnownAgentCardController(Controller):
 
         try:
             identities = await registry.list_active()
-            base_url = str(request.base_url).rstrip("/")
+            base_url = strip_trailing_slash(str(request.base_url))
             card = builder.build_company_card(
                 identities=identities,
                 base_url=f"{base_url}/api/v1/a2a",
@@ -210,7 +211,7 @@ class WellKnownAgentCardController(Controller):
         a2a_config = app_state.config.a2a
         ttl = a2a_config.agent_card_cache_ttl_seconds
 
-        host_base = str(request.base_url).rstrip("/")
+        host_base = strip_trailing_slash(str(request.base_url))
         agent_cache_key = f"{agent_id}:{host_base}"
         cached = await _get_cached_card(agent_cache_key, ttl)
         if cached is not None:

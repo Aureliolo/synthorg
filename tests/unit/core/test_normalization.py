@@ -6,7 +6,13 @@ import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
-from synthorg.core.normalization import find_by_name_ci, normalize_identifier
+from synthorg.core.normalization import (
+    find_by_name_ci,
+    normalize_identifier,
+    normalize_optional_string,
+    normalize_path,
+    strip_trailing_slash,
+)
 
 
 @pytest.mark.unit
@@ -107,3 +113,67 @@ class TestFindByNameCi:
     def test_match_strips_and_casefolds_target(self) -> None:
         items = (self.Item("Alice"),)
         assert find_by_name_ci(items, "  ALICE  ") is items[0]
+
+
+@pytest.mark.unit
+class TestStripTrailingSlash:
+    """``strip_trailing_slash`` strips trailing forward slashes."""
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("https://example.com/", "https://example.com"),
+            ("https://example.com//", "https://example.com"),
+            ("https://example.com", "https://example.com"),
+            ("/", ""),
+            ("//", ""),
+            ("", ""),
+        ],
+    )
+    def test_cases(self, value: str, expected: str) -> None:
+        assert strip_trailing_slash(value) == expected
+
+    def test_idempotent(self) -> None:
+        once = strip_trailing_slash("https://api.example.com/")
+        assert strip_trailing_slash(once) == once
+
+
+@pytest.mark.unit
+class TestNormalizeOptionalString:
+    """``normalize_optional_string`` strips and collapses blank to None."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            (None, None),
+            ("", None),
+            ("   ", None),
+            ("\t\n", None),
+            ("alice", "alice"),
+            ("  alice  ", "alice"),
+            ("Alice Bob", "Alice Bob"),
+        ],
+    )
+    def test_cases(self, raw: str | None, expected: str | None) -> None:
+        assert normalize_optional_string(raw) == expected
+
+
+@pytest.mark.unit
+class TestNormalizePath:
+    """``normalize_path`` strips trailing slashes; defaults to ``/``."""
+
+    @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            (None, "/"),
+            ("", "/"),
+            ("/", "/"),
+            ("//", "/"),
+            ("/foo", "/foo"),
+            ("/foo/", "/foo"),
+            ("/foo//", "/foo"),
+            ("/foo/bar/", "/foo/bar"),
+        ],
+    )
+    def test_cases(self, path: str | None, expected: str) -> None:
+        assert normalize_path(path) == expected

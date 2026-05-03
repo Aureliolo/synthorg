@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -125,7 +126,7 @@ class OllamaModelManager:
         if not base_url or not base_url.strip():
             msg = "base_url must be a non-empty URL"
             raise ValueError(msg)
-        self._base_url = base_url.rstrip("/")
+        self._base_url = strip_trailing_slash(base_url)
         self._client = client
 
     @staticmethod
