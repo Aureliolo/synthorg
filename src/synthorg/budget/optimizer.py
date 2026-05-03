@@ -15,6 +15,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.budget._aggregation import group_by_agent
 from synthorg.budget._optimizer_helpers import (
     _build_downgrade_recommendation,
     _build_efficiency_from_records,
@@ -22,7 +23,6 @@ from synthorg.budget._optimizer_helpers import (
     _compute_window_costs,
     _detect_spike_anomaly,
     _find_most_used_model,
-    _group_records_by_agent,
 )
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.currency import format_cost
@@ -173,7 +173,7 @@ class CostOptimizer:
         window_starts = tuple(start + window_duration * i for i in range(window_count))
 
         # Pre-group records by agent for O(N+M) complexity.
-        by_agent = _group_records_by_agent(records)
+        by_agent = group_by_agent(records)
         agent_ids = sorted(by_agent)
         anomalies: list[SpendingAnomaly] = []
 
@@ -338,7 +338,7 @@ class CostOptimizer:
             global_avg_cost_per_1k=efficiency.global_avg_cost_per_1k,
         )
 
-        by_agent = _group_records_by_agent(records)
+        by_agent = group_by_agent(records)
         recommendations = self._build_recommendations(
             efficiency=efficiency,
             by_agent=by_agent,
@@ -404,7 +404,7 @@ class CostOptimizer:
             end=end,
         )
 
-        by_agent = _group_records_by_agent(records)
+        by_agent = group_by_agent(records)
         all_models = self._model_resolver.all_models_sorted_by_cost()
         suggestions = self._find_routing_suggestions(by_agent, all_models)
 
