@@ -52,28 +52,41 @@ class TestSqliteJsonValidConstraints:
         with pytest.raises(aiosqlite.IntegrityError):
             await _attempt_insert()
 
-    async def test_preset_overrides_default_models_rejects_non_json(
+    @pytest.mark.parametrize(
+        "column_name",
+        ["default_models", "supported_auth_types", "candidate_urls"],
+    )
+    async def test_preset_overrides_nullable_json_columns_reject_non_json(
         self,
         backend: PersistenceBackend,
+        column_name: str,
     ) -> None:
-        """``preset_overrides.default_models`` accepts NULL but rejects non-JSON."""
+        """Each nullable JSON override column rejects malformed JSON.
+
+        The migration installs a separate ``CHECK (col IS NULL OR
+        json_valid(col))`` clause per column. Parametrising across
+        all three guards against a typo or missed column in the
+        schema/migration that would otherwise pass green if only one
+        column was exercised.
+        """
         if backend.backend_name != "sqlite":
             pytest.skip("SQLite-only constraint")
         conn = cast("aiosqlite.Connection", backend.get_db())
 
         async def _attempt_insert() -> None:
+            # ``column_name`` is a closed parametrise enum, never user
+            # input, so the f-string is safe; suppress S608 to keep
+            # parametrise readable rather than building per-column
+            # branches.
             await conn.execute(
-                "INSERT INTO preset_overrides "
-                "(preset_name, base_url, default_models, "
-                "supported_auth_types, candidate_urls, "
+                "INSERT INTO preset_overrides "  # noqa: S608
+                f"(preset_name, base_url, {column_name}, "
                 "updated_at, updated_by) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?)",
                 (
-                    "example-preset",
+                    f"example-preset-{column_name}",
                     "https://example.invalid",
                     "not-json",
-                    None,
-                    None,
                     "2026-05-03T12:00:00+00:00",
                     "operator-1",
                 ),

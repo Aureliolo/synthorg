@@ -173,7 +173,7 @@ class RetentionManager:
         try:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             return BackupManifest.model_validate(data)
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
@@ -228,7 +228,7 @@ class RetentionManager:
                 error=safe_error_description(exc),
             )
             return None
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(entry),

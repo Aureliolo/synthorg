@@ -11,7 +11,7 @@ Covers the canonical lifecycle pattern from
 
 import asyncio
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -26,8 +26,12 @@ def _make_store() -> MagicMock:
     from synthorg.approval.protocol import ApprovalStoreProtocol
 
     store = MagicMock(spec=ApprovalStoreProtocol)
-    store.list_items = AsyncMock(return_value=())
+    store.list_items = AsyncMock(
+        spec=ApprovalStoreProtocol.list_items,
+        return_value=(),
+    )
     store.save_if_pending = AsyncMock(
+        spec=ApprovalStoreProtocol.save_if_pending,
         side_effect=lambda item: ApprovalItem(
             id=item.id,
             action_type=item.action_type,
@@ -45,7 +49,10 @@ def _make_checker() -> MagicMock:
     from synthorg.security.timeout.timeout_checker import TimeoutChecker
 
     checker = MagicMock(spec=TimeoutChecker)
-    checker.check_and_resolve = AsyncMock(side_effect=lambda item: (item, None))
+    checker.check_and_resolve = AsyncMock(
+        spec=TimeoutChecker.check_and_resolve,
+        side_effect=lambda item: (item, None),
+    )
     return checker
 
 
@@ -64,9 +71,19 @@ class TestSchedulerLifecycleLock:
             interval_seconds=60.0,
         )
         try:
-            await asyncio.gather(scheduler.start(), scheduler.start())
+            # Patch the underlying task spawn so the test asserts on
+            # call count, not just on the post-condition snapshot.
+            # ``is_running`` and a non-None ``_task`` could both be
+            # true even if a brief duplicate task got created and
+            # immediately collapsed; counting spawns is the only way
+            # to prove the lifecycle lock actually serialised.
+            with patch(
+                "asyncio.create_task",
+                wraps=asyncio.create_task,
+            ) as create_task:
+                await asyncio.gather(scheduler.start(), scheduler.start())
+            assert create_task.call_count == 1
             assert scheduler.is_running
-            # Both calls converged on the same task instance.
             first_task = scheduler._task
             assert first_task is not None
         finally:

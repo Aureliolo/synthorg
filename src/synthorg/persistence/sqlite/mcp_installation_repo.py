@@ -107,7 +107,12 @@ class SQLiteMcpInstallationRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all recorded installations, oldest-first."""
+        """Return up to ``limit`` recorded installations, oldest-first.
+
+        ``limit`` defaults to 100 (matches the protocol-wide pagination
+        floor); callers needing more must loop with ``offset`` rather
+        than passing a larger ``limit``.
+        """
         sql = (
             "SELECT catalog_entry_id, connection_name, installed_at "
             "FROM mcp_installations "

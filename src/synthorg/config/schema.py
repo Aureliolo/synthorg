@@ -183,6 +183,15 @@ class AgentConfig(BaseModel):
         default=SeniorityLevel.MID,
         description="Seniority level",
     )
+    personality_preset: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Named personality preset.  ``setup_agents`` writes the "
+            "resolved preset name back when bootstrapping from a "
+            "template, so the company-agents setting must round-trip "
+            "the field rather than reject it under ``extra=forbid``."
+        ),
+    )
     personality: dict[str, Any] = Field(
         default_factory=dict,
         description="Raw personality config",

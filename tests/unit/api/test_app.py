@@ -478,8 +478,8 @@ class TestAppLifecycle:
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
         mock_sched = MagicMock(spec=MeetingScheduler)
-        mock_sched.start = AsyncMock()
-        mock_sched.stop = AsyncMock()
+        mock_sched.start = AsyncMock(spec=MeetingScheduler.start)
+        mock_sched.stop = AsyncMock(spec=MeetingScheduler.stop)
 
         app_state = AppState(
             config=root_config,
@@ -524,8 +524,8 @@ class TestAppLifecycle:
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
         mock_sched = MagicMock(spec=ApprovalTimeoutScheduler)
-        mock_sched.start = AsyncMock()
-        mock_sched.stop = AsyncMock()
+        mock_sched.start = AsyncMock(spec=ApprovalTimeoutScheduler.start)
+        mock_sched.stop = AsyncMock(spec=ApprovalTimeoutScheduler.stop)
 
         app_state = AppState(
             config=root_config,

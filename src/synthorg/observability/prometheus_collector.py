@@ -132,13 +132,14 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         return frozenset(registry.list_tools())
     except MemoryError, RecursionError:
         raise
-    except AttributeError, TypeError, ValueError:
-        # Narrow the swallow to the specific shapes a malformed or
-        # partially-initialised registry can produce. ERROR rather
-        # than WARNING so operators can alert on stale snapshots --
-        # if this fires, the previous allowlist is preserved silently
-        # and tool_name labels keep using stale values until the
-        # registry recovers.
+    except Exception:
+        # ``_fetch_tool_names`` runs inside a ``TaskGroup`` alongside
+        # the workflow / department fetchers; an uncaught exception
+        # here would cancel its siblings via the structured-concurrency
+        # contract and lose their snapshot updates too. Catch broadly,
+        # log via ``logger.exception`` so the traceback survives, and
+        # fall back to ``None`` so the merge step preserves the prior
+        # tool-name allowlist.
         logger.exception(
             METRICS_SCRAPE_FAILED,
             component="tool_registry",

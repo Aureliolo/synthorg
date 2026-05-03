@@ -303,17 +303,25 @@ class TestApprovalRepository:
     ) -> None:
         # save_many must obey the same upsert semantics as save() so a
         # batched expiry loop can transition PENDING to EXPIRED on
-        # already-persisted items in one call.
+        # already-persisted items in one call. Use a multi-item batch
+        # (a peer fresh insert + the upsert under test) so the repo
+        # actually exercises its executemany / batched-upsert path
+        # rather than delegating to the single-item ``save()``
+        # fast-path that both backends short-circuit on len(items)==1.
         repo = _approval_repo(backend)
         original = _make_item(approval_id="approval-batch-upsert")
         await repo.save(original)
 
         updated = original.model_copy(update={"status": ApprovalStatus.EXPIRED})
-        await repo.save_many((updated,))
+        peer = _make_item(approval_id="approval-batch-upsert-peer")
+        await repo.save_many((updated, peer))
 
         fetched = await repo.get(original.id)
         assert fetched is not None
         assert fetched.status is ApprovalStatus.EXPIRED
+        peer_fetched = await repo.get(peer.id)
+        assert peer_fetched is not None
+        assert peer_fetched.status is ApprovalStatus.PENDING
 
     async def test_save_many_duplicate_ids_within_batch_settle_to_last(
         self,

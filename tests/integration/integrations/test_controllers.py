@@ -933,16 +933,43 @@ class TestOAuthController:
                     scope["user"] = _TestUser()
                 await next_app(scope, receive, send)
 
+        from synthorg.api.rate_limits import InMemorySlidingWindowStore
+        from synthorg.api.rate_limits._subject import (
+            STATE_KEY_CONFIG,
+            STATE_KEY_STORE,
+        )
+        from synthorg.api.rate_limits.config import PerOpRateLimitConfig
         from synthorg.api.state import AppState
 
         app_state_stub = MagicMock(spec=AppState)
+        # ``MagicMock(spec=AppState)`` would otherwise satisfy the
+        # ``has_per_op_rate_limit_config`` getattr probe and pass back
+        # another MagicMock as the live config; unpacking
+        # ``mock.overrides.get(...)`` into ``(limit_max, limit_window)``
+        # then explodes with "expected 2, got 0". Force the rate-limit
+        # guard down its Litestar-state-dict fallback path so it picks
+        # up the real config installed below.
+        app_state_stub.has_per_op_rate_limit_config = False
+        # The route applies a per-op rate-limit guard which runs ahead
+        # of body validation. Without a wired store + config the guard
+        # raises ``ServiceUnavailableError`` (503) and masks the
+        # body-bind 400 this test exists to assert. Install a real
+        # in-memory store and the registry-default config so the
+        # guard returns success and the request flows into Litestar's
+        # validation layer.
         api_router = Router(
             path="/api/v1",
             route_handlers=[OAuthController],
         )
         app = Litestar(
             route_handlers=[api_router],
-            state=LitestarState({"app_state": app_state_stub}),
+            state=LitestarState(
+                {
+                    "app_state": app_state_stub,
+                    STATE_KEY_STORE: InMemorySlidingWindowStore(),
+                    STATE_KEY_CONFIG: PerOpRateLimitConfig(),
+                },
+            ),
             middleware=[_InjectUserMiddleware()],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )

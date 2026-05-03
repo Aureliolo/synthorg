@@ -61,9 +61,10 @@ var configShowCmd = &cobra.Command{
 	Long: `Display the resolved configuration as a single block.
 
 Renders every key from the config file alongside its current
-value; values default to the built-in defaults when the file is
-absent. For per-key resolution and source attribution use
-'synthorg config list' instead.`,
+value. If the config file is missing the command reports
+"Not initialized" rather than rendering built-in defaults; use
+'synthorg config list' for per-key resolution and source
+attribution that still surfaces the default-value column.`,
 	Example: `  synthorg config show          # human-readable summary
   synthorg --json config show   # JSON for scripts`,
 	Args: cobra.NoArgs,
@@ -178,7 +179,7 @@ var configListCmd = &cobra.Command{
 	Short: "Show all config keys with resolved value and source",
 	Long: `List every settable config key with its resolved value and source.
 
-Source is one of "default", "config-file", or "env" (env vars
+Source is one of "default", "config", or "env" (env vars
 override the config file but cannot be set via 'config set').
 Useful for debugging precedence when a value disagrees with what
 'config show' implies.`,

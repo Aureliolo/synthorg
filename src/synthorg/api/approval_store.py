@@ -35,10 +35,10 @@ first's in-flight marker.
 
 import asyncio
 from collections.abc import Callable  # noqa: TC003
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import (
     ApprovalRiskLevel,
@@ -86,10 +86,17 @@ class ApprovalStore:
         *,
         on_expire: Callable[[ApprovalItem], None] | None = None,
         repo: ApprovalRepository | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._items: dict[str, ApprovalItem] = {}
         self._on_expire = on_expire
         self._repo = repo
+        # Clock seam: lazy-expiration checks on both the scalar
+        # ``_check_expiration_locked`` and the batch ``_compute_expiration``
+        # paths read time through ``self._clock`` so tests can drive
+        # expiry deterministically with ``FakeClock`` instead of
+        # patching ``datetime.now`` globally.
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._lock = asyncio.Lock()
         # Approval ids whose ``save()`` is currently mid-flight.  A
         # second concurrent ``save(same_id)`` observes the marker and
@@ -264,9 +271,16 @@ class ApprovalStore:
         """Repo-backed list path with batched expiry persistence.
 
         Pure-compute pass first collects the EXPIRED transitions into
-        to_persist and transitions the cache; the persistence write
-        fans out as a single ``save_many`` so K simultaneous expiries
-        yield one DB round-trip rather than K.
+        ``to_persist`` and stages cache updates in a side dict; the
+        persistence write fans out as a single ``save_many`` so K
+        simultaneous expiries yield one DB round-trip rather than K.
+        Cache promotions only land *after* ``save_many`` succeeds so a
+        failed batch cannot leave an EXPIRED row in the cache that
+        contradicts the still-PENDING repo state, and the in-memory
+        ``status`` filter is applied here rather than pushed into the
+        repo query so a caller asking for ``ApprovalStatus.EXPIRED``
+        still observes lazily-promoted items that the repo persists as
+        PENDING.
 
         Side effects after the batch save:
 
@@ -277,8 +291,11 @@ class ApprovalStore:
           logged at ERROR but do not unwind the expiration).
         """
         assert self._repo is not None  # noqa: S101 -- caller invariant
+        # Pull every candidate row regardless of the caller's status
+        # filter; the lazy expiration pass below may promote PENDING
+        # items into the requested status (typically EXPIRED) and a
+        # repo-level pre-filter on ``status`` would hide them.
         repo_items = await self._repo.list_items(
-            status=status,
             risk_level=risk_level,
             action_type=action_type,
         )
@@ -286,18 +303,24 @@ class ApprovalStore:
             self._items[item.id] = item
         result: list[ApprovalItem] = []
         to_persist: list[ApprovalItem] = []
+        cache_updates: dict[str, ApprovalItem] = {}
         for item in repo_items:
             checked = self._compute_expiration(item)
             if checked is not item:
                 to_persist.append(checked)
-                self._items[item.id] = checked
+                cache_updates[item.id] = checked
             if status is not None and checked.status != status:
                 continue
             if risk_level is not None and checked.risk_level != risk_level:
                 continue
             result.append(checked)
         if to_persist:
+            # Durable write first; only mutate the cache once the
+            # batch commits. Any callback or audit-event emission
+            # follows the cache update so observers cannot see a
+            # cached EXPIRED state that the repo never accepted.
             await self._repo.save_many(to_persist)
+            self._items.update(cache_updates)
             for expired in to_persist:
                 logger.info(
                     APPROVAL_STATUS_TRANSITIONED,
@@ -522,7 +545,7 @@ class ApprovalStore:
         if (
             item.status == ApprovalStatus.PENDING
             and item.expires_at is not None
-            and datetime.now(UTC) >= item.expires_at
+            and self._clock.now() >= item.expires_at
         ):
             expired = item.model_copy(
                 update={"status": ApprovalStatus.EXPIRED},
@@ -581,7 +604,7 @@ class ApprovalStore:
         if (
             item.status == ApprovalStatus.PENDING
             and item.expires_at is not None
-            and datetime.now(UTC) >= item.expires_at
+            and self._clock.now() >= item.expires_at
         ):
             return item.model_copy(update={"status": ApprovalStatus.EXPIRED})
         return item

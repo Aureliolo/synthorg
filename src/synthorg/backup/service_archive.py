@@ -447,7 +447,7 @@ class BackupServiceArchiveMixin:
                 error=safe_error_description(exc),
             )
             return None
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(archive_path),

@@ -132,6 +132,17 @@ FROM lifecycle_events"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC"
+        # Validate ``limit`` at the boundary: SQLite's ``LIMIT -1``
+        # idiom would silently lift the cap, and Postgres rejects
+        # negative LIMIT outright. Match the Postgres sibling's
+        # validation so a bad caller fails loud on both backends.
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            msg = f"limit must be a positive integer, got {limit!r}"
+            logger.warning(
+                PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
+                error=msg,
+            )
+            raise QueryError(msg)
         sql += " LIMIT ?"
         params.append(limit)
 

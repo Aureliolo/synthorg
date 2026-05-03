@@ -358,11 +358,11 @@ def _rank_by_priority(
     return min(models, key=lambda m: abs(m.cost_per_1k_input - mid))
 
 
-# Three score components, each contributing up to ``_TIER_BASE`` /
-# ``_HEADROOM_MAX`` / ``_PRIORITY_MAX``. Sum is capped at 1.0 by
-# ``_compute_score``. ``_HEADROOM_RATIO_CAP`` clamps the headroom curve
-# so a model with 10x the requested context does not displace a tighter
-# fit on the priority axis.
+# Three score components, each contributing up to ``_TIER_BASE_SCORE`` /
+# ``_HEADROOM_MAX_BONUS`` / ``_PRIORITY_MAX_BONUS``. Sum is capped at
+# 1.0 by ``_compute_score``. ``_HEADROOM_RATIO_CAP`` clamps the
+# headroom curve so a model with 10x the requested context does not
+# displace a tighter fit on the priority axis.
 _TIER_BASE_SCORE = 0.5
 _HEADROOM_MAX_BONUS = 0.25
 _PRIORITY_MAX_BONUS = 0.25
