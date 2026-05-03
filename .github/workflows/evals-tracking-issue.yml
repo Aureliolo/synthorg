@@ -1,0 +1,67 @@
+name: Agent Evaluations Failure Tracker
+
+# Runs after the `Agent Evaluations` workflow completes. Triggers
+# via `workflow_run` (not `pull_request` / `schedule` directly) so
+# this job never enqueues as a PR check -- a skipped or cancelled
+# job on a PR still surfaces as a red X, which is what we are
+# avoiding by lifting the failure-tracker out of evals.yml.
+#
+# `workflow_run` runs against the default branch, so the local
+# composite action `.github/actions/post-tracking-issue` resolves
+# from main regardless of which branch produced the original run.
+
+on:
+  workflow_run:
+    workflows: ["Agent Evaluations"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  report-failure:
+    name: Open / update tracking issue on schedule failure
+    # Only the schedule path gets the issue sink. PR runs surface
+    # via PR checks on the eval workflow itself; manual
+    # workflow_dispatch is visible to the triggerer.
+    if: >-
+      github.event.workflow_run.event == 'schedule'
+      && github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RESULT: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          Scheduled agent-evals run failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
+
+          Run: ${RUN_URL}
+
+          Likely cause: prompt regression, provider drift, or eval
+          harness change. Inspect the eval-results artifact attached to
+          the run for the per-test breakdown.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'Agent eval regression'
+          labels: 'automation:ci-health,type:ci,prio:medium'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
