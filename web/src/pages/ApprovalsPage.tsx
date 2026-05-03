@@ -23,6 +23,7 @@ import { formatNumber } from '@/utils/format'
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
 import { ApprovalRiskGroupSection } from './approvals/ApprovalRiskGroupSection'
 import { ApprovalDetailDrawer } from './approvals/ApprovalDetailDrawer'
+import { REJECTION_REASON_REQUIRED } from './approvals/errors'
 import { BatchActionBar } from './approvals/BatchActionBar'
 import { ApprovalsSkeleton } from './approvals/ApprovalsSkeleton'
 import type { ApprovalRiskLevel } from '@/api/types/enums'
@@ -181,8 +182,7 @@ export default function ApprovalsPage() {
       useToastStore.getState().add({
         variant: 'error',
         title: 'Rejection reason required',
-        description:
-          'Rejection requires a reason for the approval record. Provide a brief explanation.',
+        description: REJECTION_REASON_REQUIRED,
       })
       return
     }
