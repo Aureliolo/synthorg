@@ -143,12 +143,8 @@ class PostgresMcpInstallationRepository:
         )
         params: tuple[object, ...] = ()
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " OFFSET %s"
-            params = (effective_offset,)
+        sql += " LIMIT %s OFFSET %s"
+        params = (int(limit), effective_offset)
         try:
             async with (
                 self._pool.connection() as conn,

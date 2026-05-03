@@ -132,9 +132,8 @@ FROM lifecycle_events"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC"
-        if limit is not None:
-            sql += " LIMIT ?"
-            params.append(limit)
+        sql += " LIMIT ?"
+        params.append(limit)
 
         try:
             cursor = await self._db.execute(sql, params)

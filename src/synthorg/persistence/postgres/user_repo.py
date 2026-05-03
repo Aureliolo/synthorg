@@ -517,12 +517,8 @@ class PostgresApiKeyRepository:
         sql = "SELECT * FROM api_keys WHERE user_id = %s ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " OFFSET %s"
-            params = (*params, effective_offset)
+        sql += " LIMIT %s OFFSET %s"
+        params = (*params, int(limit), effective_offset)
         try:
             async with (
                 self._pool.connection() as conn,

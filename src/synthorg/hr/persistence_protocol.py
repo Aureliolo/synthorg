@@ -39,7 +39,7 @@ class LifecycleEventRepository(Protocol):
         agent_id: NotBlankStr | None = None,
         event_type: LifecycleEventType | None = None,
         since: AwareDatetime | None = None,
-        limit: int | None = None,
+        limit: int = 100,
     ) -> tuple[AgentLifecycleEvent, ...]:
         """List lifecycle events with optional filters.
 
@@ -47,7 +47,7 @@ class LifecycleEventRepository(Protocol):
             agent_id: Filter by agent identifier.
             event_type: Filter by event type.
             since: Filter events after this timestamp.
-            limit: Maximum number of events to return. ``None`` for all.
+            limit: Maximum number of events to return.
 
         Returns:
             Matching lifecycle events.

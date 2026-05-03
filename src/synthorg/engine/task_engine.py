@@ -757,13 +757,19 @@ class TaskEngine(TaskEngineLoopsMixin):
         limit: int | None,
         offset: int,
     ) -> tuple[Task, ...]:
-        """Forward the filtered list to the repo with sanitised logging."""
+        """Forward the filtered list to the repo with sanitised logging.
+
+        ``limit=None`` means "fetch everything"; the repository protocol
+        requires an ``int``, so translate it into the safety cap and
+        rely on the in-memory truncation downstream.
+        """
+        repo_limit = self._MAX_LIST_RESULTS if limit is None else limit
         try:
             return await self._persistence.tasks.list_tasks(
                 status=status,
                 assigned_to=assigned_to,
                 project=project,
-                limit=limit,
+                limit=repo_limit,
                 offset=offset,
             )
         except MemoryError, RecursionError:

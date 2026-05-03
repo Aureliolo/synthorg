@@ -696,12 +696,8 @@ ON CONFLICT(id) DO UPDATE SET
         sql = "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " LIMIT -1 OFFSET ?"
-            params = (*params, effective_offset)
+        sql += " LIMIT ? OFFSET ?"
+        params = (*params, int(limit), effective_offset)
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
