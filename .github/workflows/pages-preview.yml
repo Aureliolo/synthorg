@@ -16,6 +16,14 @@ on:
       - "cli/scripts/install.sh"
       - "cli/scripts/install.ps1"
       - ".github/actions/**"
+      # ``lighthouse.yml``'s ``site`` filter watches the LHCI toolchain
+      # (``web/package.json`` / ``web/package-lock.json``) so a
+      # toolchain-only bump revalidates the marketing-site Lighthouse
+      # score. Mirror those paths here so the same bump also redeploys
+      # the preview the audit runs against; otherwise ``lighthouse-site``
+      # times out polling for a banner SHA that was never deployed.
+      - "web/package.json"
+      - "web/package-lock.json"
       - ".github/workflows/pages-preview.yml"
   workflow_dispatch:
     inputs:
