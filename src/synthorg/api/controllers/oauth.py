@@ -73,7 +73,10 @@ class OAuthController(Controller):
 
     @post(
         "/initiate",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("oauth.initiate", key="user"),
+        ],
         summary="Start an OAuth flow",
     )
     async def initiate_flow(

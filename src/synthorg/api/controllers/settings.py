@@ -640,7 +640,13 @@ class SettingsController(Controller):
             ),
         )
 
-    @post("/security/import", guards=[require_ceo_or_manager])
+    @post(
+        "/security/import",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("settings.import", key="user"),
+        ],
+    )
     async def import_security_config(
         self,
         state: State,

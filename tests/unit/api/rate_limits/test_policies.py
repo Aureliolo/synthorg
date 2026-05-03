@@ -155,6 +155,8 @@ _EXPENSIVE_ENDPOINT_POLICY_DEFAULTS: dict[str, tuple[int, int]] = {
     "messages.delete": (100, 3600),
     "meta.ingest_events": (60, 60),
     "meta.trigger_cycle": (1, 60),
+    "oauth.initiate": (10, 60),
+    "settings.import": (5, 3600),
     "simulations.cancel": (30, 60),
     "tasks.coordinate": (10, 60),
 }
