@@ -243,36 +243,89 @@ class ApprovalStore:
         """
         async with self._lock:
             if self._repo is not None:
-                repo_items = await self._repo.list_items(
+                return await self._list_from_repo_locked(
                     status=status,
                     risk_level=risk_level,
                     action_type=action_type,
                 )
-                for item in repo_items:
-                    self._items[item.id] = item
-                # Re-filter after expiration: _check_expiration may
-                # transition PENDING -> EXPIRED, invalidating the
-                # original status filter from the repo query.
-                result: list[ApprovalItem] = []
-                for item in repo_items:
-                    checked = await self._check_expiration_locked(item)
-                    if status is not None and checked.status != status:
-                        continue
-                    if risk_level is not None and checked.risk_level != risk_level:
-                        continue
-                    result.append(checked)
-                return tuple(result)
-            checked_items: list[ApprovalItem] = []
-            for stored in list(self._items.values()):
-                checked = await self._check_expiration_locked(stored)
-                if status is not None and checked.status != status:
-                    continue
-                if risk_level is not None and checked.risk_level != risk_level:
-                    continue
-                if action_type is not None and checked.action_type != action_type:
-                    continue
-                checked_items.append(checked)
-            return tuple(checked_items)
+            return await self._list_from_cache_locked(
+                status=status,
+                risk_level=risk_level,
+                action_type=action_type,
+            )
+
+    async def _list_from_repo_locked(
+        self,
+        *,
+        status: ApprovalStatus | None,
+        risk_level: ApprovalRiskLevel | None,
+        action_type: NotBlankStr | None,
+    ) -> tuple[ApprovalItem, ...]:
+        """Repo-backed list path with batched expiry persistence.
+
+        Pure-compute pass first collects the EXPIRED transitions into
+        to_persist and transitions the cache; the persistence write
+        fans out as a single ``save_many`` so K simultaneous expiries
+        yield one DB round-trip rather than K.
+        """
+        assert self._repo is not None  # noqa: S101 -- caller invariant
+        repo_items = await self._repo.list_items(
+            status=status,
+            risk_level=risk_level,
+            action_type=action_type,
+        )
+        for item in repo_items:
+            self._items[item.id] = item
+        result: list[ApprovalItem] = []
+        to_persist: list[ApprovalItem] = []
+        for item in repo_items:
+            checked = self._compute_expiration(item)
+            if checked is not item:
+                to_persist.append(checked)
+                self._items[item.id] = checked
+            if status is not None and checked.status != status:
+                continue
+            if risk_level is not None and checked.risk_level != risk_level:
+                continue
+            result.append(checked)
+        if to_persist:
+            await self._repo.save_many(to_persist)
+            for expired in to_persist:
+                logger.info(
+                    APPROVAL_STATUS_TRANSITIONED,
+                    approval_id=expired.id,
+                    from_status=ApprovalStatus.PENDING.value,
+                    to_status=ApprovalStatus.EXPIRED.value,
+                )
+                logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
+                self._fire_expire_callback(expired)
+        return tuple(result)
+
+    async def _list_from_cache_locked(
+        self,
+        *,
+        status: ApprovalStatus | None,
+        risk_level: ApprovalRiskLevel | None,
+        action_type: NotBlankStr | None,
+    ) -> tuple[ApprovalItem, ...]:
+        """Cache-only list path (no repository wired).
+
+        Falls through ``_check_expiration_locked`` per item because
+        without a repository there is no batch endpoint to amortise;
+        a per-item save is also a no-op (the in-memory cache is
+        already updated by ``_check_expiration_locked``).
+        """
+        checked_items: list[ApprovalItem] = []
+        for stored in list(self._items.values()):
+            checked = await self._check_expiration_locked(stored)
+            if status is not None and checked.status != status:
+                continue
+            if risk_level is not None and checked.risk_level != risk_level:
+                continue
+            if action_type is not None and checked.action_type != action_type:
+                continue
+            checked_items.append(checked)
+        return tuple(checked_items)
 
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:
         """Update an existing approval item (first-writer-wins).
@@ -506,3 +559,44 @@ class ApprovalStore:
                     )
             return expired
         return item
+
+    def _compute_expiration(self, item: ApprovalItem) -> ApprovalItem:
+        """Pure: return the (possibly-EXPIRED) item without I/O.
+
+        Companion to ``_check_expiration_locked`` for the batch path
+        in :meth:`list_items`. Returns the input unchanged when no
+        transition applies, or a fresh EXPIRED copy otherwise.
+        Persistence + audit logging + callback fire AFTER the batch
+        save in the caller, not here -- this method must be safe to
+        call inside a tight loop with no side effects.
+        """
+        if (
+            item.status == ApprovalStatus.PENDING
+            and item.expires_at is not None
+            and datetime.now(UTC) >= item.expires_at
+        ):
+            return item.model_copy(update={"status": ApprovalStatus.EXPIRED})
+        return item
+
+    def _fire_expire_callback(self, expired: ApprovalItem) -> None:
+        """Best-effort fire of ``_on_expire`` for a batched expiration.
+
+        Mirrors the callback handling in
+        :meth:`_check_expiration_locked`: a callback failure must not
+        unwind the expiration (the row is already EXPIRED in cache +
+        repo); emit ``API_APPROVAL_EXPIRE_CALLBACK_FAILED`` so
+        operators can filter callback failures from real expirations.
+        """
+        if self._on_expire is None:
+            return
+        try:
+            self._on_expire(expired)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_APPROVAL_EXPIRE_CALLBACK_FAILED,
+                approval_id=expired.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )

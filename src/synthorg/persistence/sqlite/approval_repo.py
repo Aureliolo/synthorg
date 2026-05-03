@@ -3,10 +3,14 @@
 import asyncio
 import json
 import sqlite3
+from typing import TYPE_CHECKING
 
 import aiosqlite
 from aiosqlite import Row
 from pydantic import ValidationError
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -195,6 +199,69 @@ class SQLiteApprovalRepository:
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
                     approval_id=item.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+
+    async def save_many(self, items: Sequence[ApprovalItem]) -> None:
+        """Upsert multiple approval items in a single transaction.
+
+        Empty input is a no-op.  Single-item input falls back to the
+        scalar ``save()`` path so the per-item error context still
+        names the offending id on constraint violation.
+        """
+        if not items:
+            return
+        if len(items) == 1:
+            await self.save(items[0])
+            return
+        param_rows = []
+        for item in items:
+            evidence_json = (
+                item.evidence_package.model_dump_json()
+                if item.evidence_package is not None
+                else None
+            )
+            param_rows.append(
+                (
+                    item.id,
+                    item.action_type,
+                    item.title,
+                    item.description,
+                    item.requested_by,
+                    item.risk_level.value,
+                    item.status.value,
+                    format_iso_utc(item.created_at),
+                    format_iso_utc(item.expires_at) if item.expires_at else None,
+                    format_iso_utc(item.decided_at) if item.decided_at else None,
+                    item.decided_by,
+                    item.decision_reason,
+                    item.task_id,
+                    evidence_json,
+                    json.dumps(item.metadata),
+                ),
+            )
+        async with self._write_lock:
+            try:
+                await self._db.executemany(_APPROVALS_UPSERT_SQL, param_rows)
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await self._db.rollback()
+                msg = f"Constraint violation saving approval batch (size={len(items)})"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    batch_size=len(items),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._db.rollback()
+                msg = f"Failed to save approval batch (size={len(items)})"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    batch_size=len(items),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

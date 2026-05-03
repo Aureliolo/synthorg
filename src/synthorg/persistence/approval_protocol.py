@@ -11,7 +11,7 @@ Mirrors the pattern of ``persistence/fine_tune_protocol.py`` and
 ``persistence/escalation_protocol.py``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.core.enums import (
@@ -19,6 +19,9 @@ from synthorg.core.enums import (
     ApprovalStatus,  # noqa: TC001
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @runtime_checkable
@@ -33,6 +36,19 @@ class ApprovalRepository(Protocol):
 
     async def save(self, item: ApprovalItem) -> None:
         """Upsert an approval item.
+
+        Raises:
+            ConstraintViolationError: On constraint violations.
+            QueryError: On other database errors.
+        """
+        ...
+
+    async def save_many(self, items: Sequence[ApprovalItem]) -> None:
+        """Upsert multiple approval items in a single transaction.
+
+        All-or-nothing: if any row raises a constraint violation the
+        whole batch rolls back. Empty input is a no-op (returns
+        without opening a transaction).
 
         Raises:
             ConstraintViolationError: On constraint violations.

@@ -32,6 +32,8 @@ from synthorg.observability.events.api import (
 from synthorg.persistence._shared import coerce_row_timestamp
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
@@ -218,6 +220,71 @@ class PostgresApprovalRepository:
             logger.warning(
                 API_APPROVAL_REPO_FAILED,
                 approval_id=item.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def save_many(self, items: Sequence[ApprovalItem]) -> None:
+        """Upsert multiple approval items in a single transaction.
+
+        Empty input is a no-op.  Single-item input falls back to
+        :meth:`save` so the per-item error context still names the
+        offending id on constraint violation.
+        """
+        if not items:
+            return
+        if len(items) == 1:
+            await self.save(items[0])
+            return
+        param_rows = []
+        for item in items:
+            evidence_json = (
+                Jsonb(item.evidence_package.model_dump(mode="json"))
+                if item.evidence_package is not None
+                else None
+            )
+            param_rows.append(
+                (
+                    item.id,
+                    item.action_type,
+                    item.title,
+                    item.description,
+                    item.requested_by,
+                    item.risk_level.value,
+                    item.status.value,
+                    item.created_at,
+                    item.expires_at,
+                    item.decided_at,
+                    item.decided_by,
+                    item.decision_reason,
+                    item.task_id,
+                    evidence_json,
+                    Jsonb(item.metadata),
+                ),
+            )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.executemany(_APPROVALS_UPSERT_SQL, param_rows)
+                await conn.commit()
+        except psycopg.errors.IntegrityError as exc:
+            constraint = (
+                getattr(getattr(exc, "diag", None), "constraint_name", None)
+                or "<unknown>"
+            )
+            msg = f"Constraint violation saving approval batch (size={len(items)})"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                batch_size=len(items),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ConstraintViolationError(msg, constraint=constraint) from exc
+        except psycopg.Error as exc:
+            msg = f"Failed to save approval batch (size={len(items)})"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                batch_size=len(items),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
