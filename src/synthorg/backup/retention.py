@@ -188,10 +188,12 @@ class RetentionManager:
                     member = tar.getmember("manifest.json")
                 except KeyError:
                     return None
-                f = tar.extractfile(member)
-                if f is None:
+                extracted = tar.extractfile(member)
+                if extracted is None:
                     return None
-                data = json.loads(f.read())
+                with extracted as f:
+                    raw = f.read()
+                data = json.loads(raw)
                 return BackupManifest.model_validate(data)
         except MemoryError, RecursionError:
             raise

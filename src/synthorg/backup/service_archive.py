@@ -417,10 +417,11 @@ class BackupServiceArchiveMixin:
                     member = tar.getmember("manifest.json")
                 except KeyError:
                     return None
-                f = tar.extractfile(member)
-                if f is None:
+                extracted = tar.extractfile(member)
+                if extracted is None:
                     return None
-                raw = f.read(_MANIFEST_MAX_SIZE + 1)
+                with extracted as f:
+                    raw = f.read(_MANIFEST_MAX_SIZE + 1)
                 if len(raw) > _MANIFEST_MAX_SIZE:
                     logger.warning(
                         BACKUP_MANIFEST_INVALID,
