@@ -142,9 +142,14 @@ class PostgresMcpInstallationRepository:
             "ORDER BY installed_at ASC, catalog_entry_id ASC"
         )
         params: tuple[object, ...] = ()
+        # Clamp at the boundary: Postgres rejects negative ``LIMIT``
+        # outright (SQLSTATE 2201W), and an oversized value would
+        # defeat the page-size contract.  Mirror the sqlite sibling's
+        # clamp.
+        effective_limit = max(1, min(int(limit), 100))
         effective_offset = max(0, int(offset))
         sql += " LIMIT %s OFFSET %s"
-        params = (int(limit), effective_offset)
+        params = (effective_limit, effective_offset)
         try:
             async with (
                 self._pool.connection() as conn,

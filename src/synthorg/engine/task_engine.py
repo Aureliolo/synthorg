@@ -861,25 +861,43 @@ class TaskEngine(TaskEngineLoopsMixin):
         )
 
         # When the caller paginates at the repo layer, ``tasks`` is
-        # already bounded; the safety cap only fires on unpaginated
-        # "fetch all" calls.  Capture the true pre-cap size so the
-        # returned ``total`` still reflects real cardinality even when
-        # the tuple is truncated.
-        true_total = len(tasks)
-        if limit is None and true_total > self._MAX_LIST_RESULTS:
-            logger.warning(
-                TASK_ENGINE_LIST_CAPPED,
-                actual_total=true_total,
-                cap=self._MAX_LIST_RESULTS,
+        # already bounded by the repo's safety cap. For the legacy
+        # ``limit=None`` (fetch-all) path, ``_fetch_tasks`` pre-clamps
+        # to ``_MAX_LIST_RESULTS`` at the repo layer so ``len(tasks)``
+        # is the post-cap count, not the true total -- issuing an
+        # extra ``count_tasks`` call here gives us the authoritative
+        # pre-cap cardinality so ``TASK_ENGINE_LIST_CAPPED`` fires
+        # AND the returned ``total`` reflects real cardinality even
+        # when the tuple is truncated.  We also still apply the
+        # in-memory truncation against the returned list so a
+        # mis-mocked or non-clamping repo cannot bypass the safety
+        # cap downstream; ``true_total`` then takes the maximum of
+        # the count and the observed list length so a pathological
+        # repo (e.g. test fixture returning more rows than count
+        # reports) still surfaces the real pre-cap size.
+        if limit is None:
+            count_total = await self._count_tasks_filtered(
+                status=status,
+                assigned_to=assigned_to,
+                project=project,
             )
-            tasks = tasks[: self._MAX_LIST_RESULTS]
+            true_total = max(count_total, len(tasks))
+            if true_total > self._MAX_LIST_RESULTS:
+                logger.warning(
+                    TASK_ENGINE_LIST_CAPPED,
+                    actual_total=true_total,
+                    cap=self._MAX_LIST_RESULTS,
+                )
+                tasks = tasks[: self._MAX_LIST_RESULTS]
+        else:
+            true_total = len(tasks)
 
         if not include_total:
             return tasks, None
 
         if limit is None:
-            # Full-fetch path: the pre-truncation count is authoritative
-            # so callers keep accurate totals even after the safety cap.
+            # Full-fetch path: ``true_total`` is the authoritative
+            # pre-truncation count from ``count_tasks``.
             return tasks, true_total
 
         total = await self._count_tasks_filtered(

@@ -678,14 +678,15 @@ ON CONFLICT(id) DO UPDATE SET
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
-        """List all API keys belonging to a user, ordered by creation date.
+        """List up to ``limit`` API keys for a user, ordered by creation date.
+
+        Defaults to a 100-key page; callers needing more must paginate
+        with ``offset``.
 
         Args:
             user_id: Owner user identifier.
-            limit: Maximum keys to return; ``None`` (default) preserves
-                fetch-all semantics.
-            offset: Keys to skip before applying *limit*; ignored when
-                *limit* is ``None``.
+            limit: Maximum keys to return (must be >= 1).
+            offset: Keys to skip before applying *limit* (must be >= 0).
 
         Returns:
             Tuple of ``ApiKey`` records, oldest first.

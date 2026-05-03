@@ -295,10 +295,26 @@ class ApprovalStore:
         # filter; the lazy expiration pass below may promote PENDING
         # items into the requested status (typically EXPIRED) and a
         # repo-level pre-filter on ``status`` would hide them.
-        repo_items = await self._repo.list_items(
-            risk_level=risk_level,
-            action_type=action_type,
-        )
+        # ``ApprovalRepository.list_items`` defaults to ``limit=100``
+        # since the audit-bucket pagination sweep, so we explicitly
+        # page until exhausted otherwise older PENDING rows that
+        # should lazily flip to EXPIRED here would never be visited
+        # once there are >100 newer non-expired rows in the table.
+        page_size = 100
+        repo_pages: list[ApprovalItem] = []
+        offset = 0
+        while True:
+            page = await self._repo.list_items(
+                risk_level=risk_level,
+                action_type=action_type,
+                limit=page_size,
+                offset=offset,
+            )
+            repo_pages.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
+        repo_items: tuple[ApprovalItem, ...] = tuple(repo_pages)
         for item in repo_items:
             self._items[item.id] = item
         result: list[ApprovalItem] = []

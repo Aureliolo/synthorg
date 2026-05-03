@@ -1,5 +1,8 @@
 """Tests for delegation circuit breaker."""
 
+import threading
+import time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -406,11 +409,59 @@ class TestCheckAtomicity:
         cb = DelegationCircuitBreaker(config, clock=clock)
         cb.record_delegation("a", "b")
         cb.record_delegation("a", "b")
-        # Pair is OPEN; cooldown elapsed mid-check would historically
-        # leave the post-get_state lookup observing a freshly-reset
-        # pair with opened_at=None. Under the new locking it doesn't
-        # matter -- the entire branch is atomic.
+        # Pair is OPEN.  Wrap ``_state_lock`` with a tracking proxy
+        # that fires a sibling thread's mutation while ``check``
+        # holds the lock.  Under the fix, ``check`` reads
+        # ``opened_at`` and ``trip_count`` while holding
+        # ``_state_lock``; the sibling thread blocks on the lock
+        # until ``check`` exits, so its mutation cannot influence
+        # the OPEN-branch verdict.  Without the fix, the sibling
+        # would race the post-``get_state`` re-read and the test
+        # would observe ``passed=True``.
+        from threading import Thread
+
+        underlying = cb._state_lock
+        injection_done = threading.Event()
+
+        def _mutate_in_sibling() -> None:
+            with underlying:
+                pair = cb._pairs.get(("a", "b"))
+                if pair is not None:
+                    pair.opened_at = None
+                injection_done.set()
+
+        recorded_during_check: list[bool] = []
+
+        class _TrackingLock:
+            def __enter__(self) -> Any:
+                result = underlying.__enter__()
+                if not recorded_during_check:
+                    recorded_during_check.append(True)
+                    t = Thread(target=_mutate_in_sibling, daemon=True)
+                    t.start()
+                    # Yield to the sibling so it observes the lock
+                    # held; it blocks on us until __exit__ fires.
+                    time.sleep(0.05)
+                return result
+
+            def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+                underlying.__exit__(exc_type, exc, tb)
+
+            def acquire(self, *args: Any, **kwargs: Any) -> Any:
+                return underlying.acquire(*args, **kwargs)
+
+            def release(self) -> None:
+                underlying.release()
+
+        cb._state_lock = _TrackingLock()  # type: ignore[assignment]
         clock_time = 5.0
         result = cb.check("a", "b")
+        cb._state_lock = underlying  # type: ignore[assignment]
+        injection_done.wait(timeout=1.0)
+        assert recorded_during_check, (
+            "check() never acquired _state_lock through the tracked "
+            "wrapper; the OPEN-branch decision is NOT covered by "
+            "the regression."
+        )
         assert result.passed is False
         assert "cooldown" in (result.message or "")

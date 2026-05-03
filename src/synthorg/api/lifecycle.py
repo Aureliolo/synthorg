@@ -589,9 +589,9 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 # time) and propagate so startup fails closed.
                 logger.error(  # noqa: TRY400
                     API_APP_STARTUP,
-                    error="Approval timeout scheduler is unrestartable",
                     error_type=type(exc).__name__,
-                    error_detail=safe_error_description(exc),
+                    error=safe_error_description(exc),
+                    note="Approval timeout scheduler is unrestartable",
                 )
                 raise
             except Exception:

@@ -246,11 +246,32 @@ class DelegationCircuitBreaker:
             delegator_id: First agent ID.
             delegatee_id: Second agent ID.
         """
-        state = self.get_state(delegator_id, delegatee_id)
-        if state is CircuitBreakerState.OPEN:
-            return
+        # Single critical section: the OPEN-state check, the bounce
+        # increment, and the threshold transition all run under the
+        # same lock so two concurrent callers cannot both observe
+        # CLOSED, both bump ``trip_count`` / ``opened_at``, and skip
+        # backoff levels.
         with self._state_lock:
             pair = self._get_or_create_pair(delegator_id, delegatee_id)
+            if pair.opened_at is not None:
+                elapsed = self._clock() - pair.opened_at
+                cooldown = self._compute_cooldown(pair.trip_count)
+                if elapsed < cooldown:
+                    return
+                # Cooldown expired between calls -- reset bounce state
+                # under the same lock so the bump below counts toward
+                # a fresh post-cooldown window.
+                key = pair_key(delegator_id, delegatee_id)
+                pair.bounce_count = 0
+                pair.opened_at = None
+                self._dirty.add(key)
+                logger.info(
+                    DELEGATION_LOOP_CIRCUIT_RESET,
+                    delegator=delegator_id,
+                    delegatee=delegatee_id,
+                    cooldown_seconds=cooldown,
+                    trip_count=pair.trip_count,
+                )
             pair.bounce_count += 1
             if pair.bounce_count >= self._config.bounce_threshold:
                 pair.trip_count += 1
@@ -293,13 +314,18 @@ class DelegationCircuitBreaker:
                 note="load_state failed; circuit breaker starting with empty state",
             )
             raise
-        for rec in records:
-            key = (rec.pair_key_a, rec.pair_key_b)
-            ps = _PairState()
-            ps.bounce_count = rec.bounce_count
-            ps.trip_count = rec.trip_count
-            ps.opened_at = rec.opened_at
-            self._pairs[key] = ps
+        # Hot-path may already be running by the time persistence
+        # finishes; take the lock for the bulk install so a concurrent
+        # ``record_delegation`` cannot observe a half-restored
+        # ``_pairs`` dict mid-iteration.
+        with self._state_lock:
+            for rec in records:
+                key = (rec.pair_key_a, rec.pair_key_b)
+                ps = _PairState()
+                ps.bounce_count = rec.bounce_count
+                ps.trip_count = rec.trip_count
+                ps.opened_at = rec.opened_at
+                self._pairs[key] = ps
 
     async def persist_dirty(self) -> None:
         """Flush dirty pair state to the repository.
@@ -308,31 +334,63 @@ class DelegationCircuitBreaker:
         No-op if no repository is configured.
         """
         if self._state_repo is None:
-            self._dirty.clear()
+            with self._state_lock:
+                self._dirty.clear()
             return
 
-        dirty = tuple(self._dirty)
-        for key in dirty:
-            pair = self._pairs.get(key)
-            if pair is None:
-                self._dirty.discard(key)
-                continue
+        # Snapshot dirty keys + their pair state under the lock so a
+        # concurrent ``record_delegation`` cannot mutate a pair after
+        # the snapshot but before the save records what was observed.
+        # The save itself runs unlocked (I/O), and the dirty discard
+        # only fires when the snapshot value still matches the
+        # currently-cached state (no newer in-memory update has
+        # arrived in the meantime).
+        with self._state_lock:
+            dirty = tuple(self._dirty)
+            snapshot: dict[
+                tuple[str, str],
+                tuple[int, int, float | None],
+            ] = {}
+            for key in dirty:
+                pair = self._pairs.get(key)
+                if pair is None:
+                    self._dirty.discard(key)
+                    continue
+                snapshot[key] = (
+                    pair.bounce_count,
+                    pair.trip_count,
+                    pair.opened_at,
+                )
+
+        for key, (bounce, trip, opened) in snapshot.items():
             try:
                 record = CircuitBreakerStateRecord(
                     pair_key_a=key[0],
                     pair_key_b=key[1],
-                    bounce_count=pair.bounce_count,
-                    trip_count=pair.trip_count,
-                    opened_at=pair.opened_at,
+                    bounce_count=bounce,
+                    trip_count=trip,
+                    opened_at=opened,
                 )
                 await self._state_repo.save(record)
-                self._dirty.discard(key)
             except MemoryError, RecursionError:
                 raise
             except Exception:
-                # Key stays in _dirty for retry on next persist cycle
+                # Key stays in _dirty for retry on next persist cycle.
                 logger.exception(
                     DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
                     delegator=key[0],
                     delegatee=key[1],
                 )
+                continue
+            with self._state_lock:
+                # Only clear the dirty marker if the cached pair has
+                # not been updated since we snapshotted it. A newer
+                # update would otherwise lose its dirty state and the
+                # next persist cycle would skip it.
+                live = self._pairs.get(key)
+                if live is not None and (
+                    live.bounce_count == bounce
+                    and live.trip_count == trip
+                    and live.opened_at == opened
+                ):
+                    self._dirty.discard(key)

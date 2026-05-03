@@ -5,8 +5,10 @@ health judge and consumed by the triage filter.
 """
 
 import copy
+from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from enum import StrEnum
+from types import MappingProxyType
 from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -95,13 +97,24 @@ class EscalationTicket(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Ticket creation timestamp (UTC)",
     )
-    metadata: dict[str, object] = Field(
-        default_factory=dict,
-        description="Arbitrary structured context",
+    metadata: Mapping[str, object] = Field(
+        default_factory=lambda: MappingProxyType({}),
+        description="Arbitrary structured context (read-only at runtime)",
     )
 
     def __init__(self, **data: object) -> None:
-        """Deep-copy metadata dict at construction boundary."""
-        if "metadata" in data and isinstance(data["metadata"], dict):
-            data["metadata"] = copy.deepcopy(data["metadata"])
+        """Deep-copy metadata dict and wrap as a read-only mapping.
+
+        ``ConfigDict(frozen=True)`` only blocks attribute rebinding;
+        without the ``MappingProxyType`` wrap a caller could still
+        mutate ``ticket.metadata['key'] = value`` after construction
+        and break the documented immutability contract per
+        CLAUDE.md ``## Code Conventions`` (immutability covenant).
+        """
+        if "metadata" in data:
+            raw = data["metadata"]
+            if isinstance(raw, MappingProxyType):
+                data["metadata"] = raw
+            elif isinstance(raw, dict):
+                data["metadata"] = MappingProxyType(copy.deepcopy(raw))
         super().__init__(**data)

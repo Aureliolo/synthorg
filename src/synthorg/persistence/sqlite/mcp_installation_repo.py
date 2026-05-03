@@ -119,9 +119,14 @@ class SQLiteMcpInstallationRepository:
             "ORDER BY installed_at ASC, catalog_entry_id ASC"
         )
         params: tuple[object, ...] = ()
+        # Clamp at the boundary: SQLite treats negative ``LIMIT``
+        # as unbounded, so a misbehaving caller passing -1 would
+        # bypass the page contract entirely.  Mirror the postgres
+        # sibling's clamp.
+        effective_limit = max(1, min(int(limit), 100))
         effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
-        params = (int(limit), effective_offset)
+        params = (effective_limit, effective_offset)
         async with self._db.execute(sql, params) as cursor:
             rows = await cursor.fetchall()
         return tuple(
