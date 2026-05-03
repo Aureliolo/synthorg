@@ -7,6 +7,7 @@ honours the ``# lint-allow: boundary-typed`` per-line marker.
 
 import importlib.util
 import sys
+import types
 import uuid
 from pathlib import Path
 
@@ -16,7 +17,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_boundary_typed.py"
 
 
-def _load_script_module():
+def _load_script_module() -> types.ModuleType:
     spec = importlib.util.spec_from_file_location(
         "_check_boundary_typed",
         _SCRIPT_PATH,

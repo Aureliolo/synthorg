@@ -9,6 +9,7 @@ standard 401 path.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 import jwt
 import pytest
@@ -30,7 +31,7 @@ from synthorg.api.auth.system_user import (
 from synthorg.api.guards import HumanRole
 
 _SECRET = "test-secret-that-is-at-least-32-chars-long!"
-_ALG = "HS256"
+_ALG: Literal["HS256"] = "HS256"
 
 
 def _make_service() -> AuthService:

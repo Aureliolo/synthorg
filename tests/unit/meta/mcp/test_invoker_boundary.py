@@ -29,7 +29,12 @@ class _SampleArgs(BaseModel):
     count: int = Field(ge=0, description="Non-negative count")
 
 
-async def _ok_handler(*, app_state, arguments, actor=None) -> str:
+async def _ok_handler(
+    *,
+    app_state: object,
+    arguments: dict[str, object],
+    actor: object = None,
+) -> str:
     return json.dumps({"status": "ok", "data": arguments})
 
 
