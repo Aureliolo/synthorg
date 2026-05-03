@@ -384,14 +384,33 @@ jobs:
             if [ -n "$PR_NUMBER" ]; then
               PR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>/dev/null || true)
               if [ -n "$PR_BODY" ]; then
-                EXTRACTED=$(sed -n '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/p' <<< "$PR_BODY")
-                # Only treat as a valid block when the exact closing
-                # marker is present; sed -n on a body with the start
-                # marker but no end marker would print everything from
-                # start to EOF. Use grep -F with the full HTML comment so
-                # prose like "HIGHLIGHTS_END mentioned in the changelog"
-                # cannot pass the guard.
-                if [ -n "$EXTRACTED" ] && grep -qF '<!-- HIGHLIGHTS_END -->' <<< "$EXTRACTED"; then
+                # Find marker line numbers via exact whole-line match
+                # (`grep -nFx`): -n adds line numbers, -F treats the
+                # marker as a fixed string (no regex), -x requires the
+                # entire line to match. This rules out three failure
+                # modes the previous substring approach permitted:
+                #   1. a docs/code prose block that quotes the marker
+                #      inline (e.g. ``See \`<!-- HIGHLIGHTS_START -->\`...``)
+                #      cannot trigger extraction;
+                #   2. a body where the closing marker appears BEFORE
+                #      the opening one (e.g. CHANGELOG entries that
+                #      quote both in reverse) cannot satisfy the guard;
+                #   3. sed range never operates on an unterminated
+                #      pair, since we delete by explicit line numbers
+                #      after confirming start_line < end_line.
+                EXTRACTED=""
+                # `|| true` on each grep guards against bash builds
+                # (or shells with `inherit_errexit` set) where a
+                # command-substitution that exits non-zero would abort
+                # the whole step under `set -euo pipefail`. grep -nFx
+                # exits 1 when the marker is absent; that is a normal
+                # outcome here (PR has no Highlights), not a failure.
+                START_LINE=$(grep -nFx '<!-- HIGHLIGHTS_START -->' <<< "$PR_BODY" | head -n1 | cut -d: -f1 || true)
+                END_LINE=$(grep -nFx '<!-- HIGHLIGHTS_END -->' <<< "$PR_BODY" | head -n1 | cut -d: -f1 || true)
+                if [ -n "$START_LINE" ] && [ -n "$END_LINE" ] && [ "$START_LINE" -lt "$END_LINE" ]; then
+                  EXTRACTED=$(sed -n "${START_LINE},${END_LINE}p" <<< "$PR_BODY")
+                fi
+                if [ -n "$EXTRACTED" ]; then
                   # Trim trailing newlines so the prepend produces exactly
                   # one blank line between the Highlights block and the
                   # changelog. The herestring `<<<` adds one trailing
@@ -418,23 +437,36 @@ jobs:
           # / Verification section with no replacement.
           if [ -n "$VERIFICATION" ] || [ -n "$HIGHLIGHTS" ]; then
             CLEANED="$BODY"
-            # Each marker-pair strip is gated on BOTH markers being
-            # present in the body. `sed '/START/,/END/d'` is greedy:
-            # with no END, it deletes from START through EOF. A
-            # contributor's commit subject (now propagated verbatim
-            # into dev release bodies) carrying the literal opening
-            # marker would otherwise tank the CHANGELOG-derived body
-            # on the next finalize run. Use grep -F so the marker
-            # strings are matched as fixed literals; sed BRE/ERE
-            # special chars in markers (none today, but defensive)
-            # would otherwise be misinterpreted.
+            # Each marker-pair strip uses `grep -nFx` (exact whole-line
+            # match) to find line numbers for both markers, then
+            # deletes by explicit line range only when start_line is
+            # strictly less than end_line. This rules out the three
+            # failure modes a substring + greedy-sed approach would
+            # leak through:
+            #   1. a doc / code prose block that quotes the marker
+            #      inline cannot fire deletion;
+            #   2. an out-of-order pair (END before START on different
+            #      lines) cannot satisfy the guard;
+            #   3. an unterminated start (no END line at all) cannot
+            #      consume from START to EOF, since we never invoke
+            #      sed range without both line numbers.
+            # `printf '%s' "$CLEANED"` inside command substitution
+            # strips the trailing newline, but the herestring `<<<`
+            # restores one on the next read; downstream concat into
+            # FINAL just appends so a missing trailing newline on the
+            # final body is harmless.
+            # `|| true` on each grep guards against `set -euo pipefail`
+            # treating "marker absent" (grep exit 1) as a step failure;
+            # absent markers are the common case (most strips do
+            # nothing) and must not abort the publish.
             strip_balanced_pair() {
               local start_marker="$1"
               local end_marker="$2"
-              if grep -qF "$start_marker" <<< "$CLEANED" \
-                  && grep -qF "$end_marker" <<< "$CLEANED"; then
-                CLEANED=$(printf '%s' "$CLEANED" \
-                  | sed "/${start_marker}/,/${end_marker}/d")
+              local start_line end_line
+              start_line=$(grep -nFx "$start_marker" <<< "$CLEANED" | head -n1 | cut -d: -f1 || true)
+              end_line=$(grep -nFx "$end_marker" <<< "$CLEANED" | head -n1 | cut -d: -f1 || true)
+              if [ -n "$start_line" ] && [ -n "$end_line" ] && [ "$start_line" -lt "$end_line" ]; then
+                CLEANED=$(sed "${start_line},${end_line}d" <<< "$CLEANED")
               fi
             }
             strip_balanced_pair '<!-- HIGHLIGHTS_START -->' '<!-- HIGHLIGHTS_END -->'
