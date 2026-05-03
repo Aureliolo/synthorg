@@ -13,6 +13,8 @@
 # Usage:
 #   docker_push_with_retry.sh "label for log" docker push <ref>
 #   docker_push_with_retry.sh "label for log" docker manifest push <ref>
+#   docker_push_with_retry.sh --print-transient-re   # canonical regex, for callers
+#                                                    # that need to share the list
 #
 # Behaviour:
 #   - Captures combined stdout+stderr of the wrapped command.
@@ -23,6 +25,25 @@
 #     output to stdout (so callers that capture it can dump it) and exits
 #     with the wrapped command's exit code.
 set -euo pipefail
+
+# Patterns that indicate the registry (or the network path to it) is the
+# problem, not the image. Case-insensitive. Anchored loosely so format
+# changes upstream do not silently disable the retry.
+#
+# `tls handshake` and `net/http: TLS handshake` are kept (transient handshake
+# failures); a bare `tls: ` is intentionally NOT included because it would
+# also match non-transient configuration errors like
+# `tls: failed to verify certificate` or `tls: bad certificate`.
+TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake'
+
+# Discovery flag: callers that need to share the same regex (for example the
+# inline retag-inspect retry loop, which must drop a couple of patterns the
+# inspect path cannot benefit from) source it from here so a new pattern added
+# here automatically propagates.
+if [ "${1:-}" = "--print-transient-re" ]; then
+  printf '%s\n' "$TRANSIENT_RE"
+  exit 0
+fi
 
 LABEL="${1:?missing label}"
 shift
@@ -36,11 +57,6 @@ fi
 # unicorn windows; short enough to fail loudly on a real outage.
 ATTEMPTS=4
 BACKOFF=15
-
-# Patterns that indicate the registry (or the network path to it) is the
-# problem, not the image. Case-insensitive. Anchored loosely so format
-# changes upstream do not silently disable the retry.
-TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|tls: |connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake'
 
 for ((i = 1; i <= ATTEMPTS; i++)); do
   out=""

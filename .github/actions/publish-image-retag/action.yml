@@ -88,6 +88,7 @@ runs:
         set -euo pipefail
         REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
         SHORT_SHA="${GITHUB_SHA::7}"
+        RETRY="${GITHUB_WORKSPACE}/.github/scripts/docker_push_with_retry.sh"
 
         # Inspect stdout carries the digest, so we cannot merge stderr
         # (Docker emits deprecation warnings on stderr that would
@@ -96,19 +97,18 @@ runs:
         # Transient GHCR 5xx -> retry with backoff; a true 404 (image
         # not published by main-run) fails immediately.
         #
-        # Regex intentionally diverges from docker_push_with_retry.sh:
-        #   - `manifest unknown` is EXCLUDED. It is the legitimate 404
-        #     signal we must surface as the "main-push did not publish
-        #     this image" branch below; retrying it would silently mask
-        #     the real failure.
-        #   - `blob upload invalid` is EXCLUDED -- write-side error that
+        # Source the canonical TRANSIENT_RE from docker_push_with_retry.sh
+        # and strip the patterns the inspect path cannot benefit from:
+        #   - `manifest unknown`: legitimate 404 we MUST fail-fast on
+        #     (the "main-push did not publish this image" signal below).
+        #   - `blob upload invalid`: write-side error that
         #     `imagetools inspect` cannot produce.
-        #   - `unknown blob` / `blob unknown` are INCLUDED. They are
-        #     unlikely from a read, but the rare cross-arch race the
-        #     helper covers can also surface here, and re-reading is
-        #     idempotent.
-        TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|tls: |connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake'
-        ERR_FILE="$(mktemp)"
+        # `unknown blob` / `blob unknown` stay in: unlikely from a read,
+        # but the rare cross-arch race the helper covers can also surface
+        # here, and re-reading is idempotent.
+        TRANSIENT_RE="$(bash "$RETRY" --print-transient-re \
+          | sed -E 's/\|manifest unknown//; s/\|blob upload invalid//')"
+        ERR_FILE="$(mktemp /tmp/docker-inspect-err.XXXXXX)"
         trap 'rm -f "$ERR_FILE"' EXIT
         ATTEMPTS=4
         BACKOFF=15
