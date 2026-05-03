@@ -174,10 +174,28 @@ def _check_boundary(
 
 
 def main() -> int:
-    """Walk every registered boundary and report regressions."""
+    """Walk every registered boundary and report regressions.
+
+    Translates the documented exit-code matrix:
+
+    * 0 -- every registered boundary calls ``parse_typed``.
+    * 1 -- one or more registered boundaries no longer route through
+           the helper.
+    * 2 -- internal error: source-file syntax error (raised as
+           :class:`SystemExit` from ``_check_boundary``) OR an
+           ambiguous registered-function definition (raised as
+           :class:`ValueError` from ``_function_node``). Both are
+           workflow bugs the operator should triage; emit a single
+           stderr line and exit cleanly instead of crashing with a
+           traceback.
+    """
     violations: list[str] = []
-    for rel_path, function_name, boundary_label in _REGISTERED_BOUNDARIES:
-        violations.extend(_check_boundary(rel_path, function_name, boundary_label))
+    try:
+        for rel_path, function_name, boundary_label in _REGISTERED_BOUNDARIES:
+            violations.extend(_check_boundary(rel_path, function_name, boundary_label))
+    except ValueError as exc:
+        print(f"check_boundary_typed: {exc}", file=sys.stderr)
+        return 2
     if not violations:
         return 0
     print(

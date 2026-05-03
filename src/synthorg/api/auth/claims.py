@@ -87,8 +87,24 @@ class JwtClaims(BaseModel):
         decoded claim is always ``int``. The encode side passes
         ``datetime`` instances; coerce them to epoch seconds so the
         same model serves both directions.
+
+        Naive (timezone-less) datetimes are rejected: ``.timestamp()``
+        interprets a naive value through the host's local timezone, so
+        the same ``JwtClaims(iat=datetime(...))`` call on a UTC host
+        and a PST host would produce epoch values eight hours apart.
+        Across an auth boundary that drifts token lifetimes silently,
+        which is exactly the class of cross-environment bug a typed
+        contract is supposed to prevent.
         """
         if isinstance(value, datetime):
+            if value.tzinfo is None or value.utcoffset() is None:
+                msg = (
+                    "NumericDate datetimes must be timezone-aware; "
+                    "naive values produce host-TZ-dependent epoch "
+                    "seconds and break token lifetime semantics across "
+                    "environments"
+                )
+                raise ValueError(msg)
             return int(value.timestamp())
         return value
 

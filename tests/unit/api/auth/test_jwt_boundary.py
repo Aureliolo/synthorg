@@ -87,6 +87,37 @@ class TestJwtClaimsModel:
         assert claims.must_change_password is None
         assert claims.pwd_sig is None
 
+    def test_naive_datetime_iat_rejected(self) -> None:
+        # Naive datetime through .timestamp() is interpreted in the
+        # host's local timezone, so the same JwtClaims construction
+        # yields different epoch values on different hosts. The
+        # validator must reject naive values at the auth boundary so
+        # token lifetimes stay deterministic across environments.
+        naive = datetime(2026, 1, 1, 12, 0, 0)  # noqa: DTZ001 -- naive value is the test input
+        aware_later = datetime(2026, 1, 1, 13, 0, 0, tzinfo=UTC)
+        with pytest.raises(ValidationError):
+            JwtClaims(
+                iss=USER_ISSUER,
+                aud=USER_AUDIENCE,
+                sub="user-1",
+                jti="jti-1",
+                iat=naive,  # type: ignore[arg-type]
+                exp=aware_later,  # type: ignore[arg-type]
+            )
+
+    def test_naive_datetime_exp_rejected(self) -> None:
+        aware_now = datetime.now(UTC)
+        naive_later = datetime(2099, 1, 1, 12, 0, 0)  # noqa: DTZ001 -- naive value is the test input
+        with pytest.raises(ValidationError):
+            JwtClaims(
+                iss=USER_ISSUER,
+                aud=USER_AUDIENCE,
+                sub="user-1",
+                jti="jti-1",
+                iat=aware_now,  # type: ignore[arg-type]
+                exp=naive_later,  # type: ignore[arg-type]
+            )
+
     def test_iat_coerces_from_datetime(self) -> None:
         now = datetime.now(UTC)
         later = now + timedelta(hours=1)

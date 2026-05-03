@@ -202,3 +202,24 @@ class TestBoundaryTypedGate:
                 )
         finally:
             sample.unlink(missing_ok=True)
+
+    def test_main_translates_value_error_to_exit_2(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # main() must catch the ValueError from _function_node's
+        # ambiguity guard and exit 2 with a stderr line, not crash
+        # the script with a traceback. The documented matrix is
+        # 0 = clean, 1 = violations, 2 = internal error / bad input.
+        mod = _load_script_module()
+
+        def _raise(*_args: object, **_kwargs: object) -> list[str]:
+            msg = "ambiguous registered boundary function 'emit'"
+            raise ValueError(msg)
+
+        monkeypatch.setattr(mod, "_check_boundary", _raise)
+        rc = mod.main()
+        assert rc == 2
+        captured = capsys.readouterr()
+        assert "ambiguous registered boundary" in captured.err
