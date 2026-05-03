@@ -29,6 +29,9 @@ export function ApprovalRiskGroupSection({
   onApprove,
   onReject,
 }: ApprovalRiskGroupSectionProps) {
+  // Stable lookup against a const Record<ApprovalRiskLevel, LucideIcon>;
+  // identity is preserved across renders for the same risk level so the
+  // <SectionCard icon={...} /> downstream gets a stable component reference.
   const Icon = getRiskLevelIcon(riskLevel)
   const pendingInGroup = items.filter((a) => a.status === 'pending')
   const pendingIds = pendingInGroup.map((a) => a.id)

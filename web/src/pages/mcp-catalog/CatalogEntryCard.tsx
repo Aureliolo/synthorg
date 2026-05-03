@@ -1,7 +1,7 @@
 import type { McpCatalogEntry } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { getCatalogEntryIcon } from './catalog-icons'
+import { CatalogEntryIcon } from './catalog-icons'
 
 export interface CatalogEntryCardProps {
   entry: McpCatalogEntry
@@ -18,7 +18,6 @@ export function CatalogEntryCard({
   onInstall,
   className,
 }: CatalogEntryCardProps) {
-  const Icon = getCatalogEntryIcon(entry.id)
   return (
     <div
       role="button"
@@ -47,7 +46,7 @@ export function CatalogEntryCard({
             className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface text-text-secondary"
             aria-hidden
           >
-            <Icon className="size-5" />
+            <CatalogEntryIcon entryId={entry.id} className="size-5" />
           </span>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">
