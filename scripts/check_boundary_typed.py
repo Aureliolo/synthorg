@@ -55,25 +55,56 @@ def _function_node(
     tree: ast.Module,
     function_name: str,
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    """Return the named top-level or method-level function in the tree."""
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == function_name
-        ):
-            return node
-    return None
+    """Return the unique named top-level or direct class method.
+
+    ``ast.walk`` would happily return a nested helper or a second
+    method that shadows the registered name, which is exactly the
+    failure mode this gate is supposed to catch. Restrict the search
+    to module-level definitions and direct class-body methods, and
+    raise on ambiguity so the boundary symbol is resolved
+    unambiguously.
+    """
+    matches: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name == function_name:
+                matches.append(node)
+            continue
+        if isinstance(node, ast.ClassDef):
+            matches.extend(
+                child
+                for child in node.body
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and child.name == function_name
+            )
+    if len(matches) > 1:
+        msg = (
+            f"ambiguous registered boundary function {function_name!r}: "
+            f"{len(matches)} top-level / direct-class definitions found"
+        )
+        raise ValueError(msg)
+    return matches[0] if matches else None
 
 
-def _calls_parse_typed(node: ast.AST) -> bool:
-    """Walk the function body and return True iff parse_typed is called."""
+def _calls_parse_typed(node: ast.AST, boundary_label: str) -> bool:
+    """Return True iff the function body calls ``parse_typed`` for this label.
+
+    A bare presence check would let a stray ``parse_typed("jwt", ...)``
+    inside the WS handler green-light the ``ws.control`` registration.
+    Match the bare-name call AND verify the first positional argument is
+    the exact boundary label literal, so each registration only accepts
+    its own boundary.
+    """
     for child in ast.walk(node):
         if not isinstance(child, ast.Call):
             continue
         func = child.func
-        if isinstance(func, ast.Name) and func.id == "parse_typed":
-            return True
-        if isinstance(func, ast.Attribute) and func.attr == "parse_typed":
+        if not (isinstance(func, ast.Name) and func.id == "parse_typed"):
+            continue
+        if not child.args:
+            continue
+        first_arg = child.args[0]
+        if isinstance(first_arg, ast.Constant) and first_arg.value == boundary_label:
             return True
     return False
 
@@ -112,7 +143,7 @@ def _check_boundary(
             f"{function_name!r} not found (boundary {boundary_label!r})"
         ]
 
-    if _calls_parse_typed(func):
+    if _calls_parse_typed(func, boundary_label):
         return []
 
     source_lines = source.splitlines()

@@ -113,3 +113,69 @@ class TestBoundaryTypedGate:
             assert "not found" in violations[0]
         finally:
             sample.unlink(missing_ok=True)
+
+    def test_wrong_boundary_label_rejected(self) -> None:
+        # parse_typed call exists but with a different boundary label
+        # than the registered tuple expects -- a stray helper call must
+        # not green-light the wrong registration.
+        sample = _plant_fixture(
+            "def emit(payload):\n    return parse_typed('jwt', payload, object)\n",
+        )
+        try:
+            mod = _load_script_module()
+            violations = mod._check_boundary(
+                str(sample.relative_to(_REPO_ROOT)),
+                "emit",
+                "audit_chain",
+            )
+            assert len(violations) == 1
+            assert "no longer calls parse_typed" in violations[0]
+        finally:
+            sample.unlink(missing_ok=True)
+
+    def test_nested_helper_with_same_name_does_not_satisfy_gate(self) -> None:
+        # A nested helper named ``emit`` inside an unrelated outer
+        # function must not satisfy the registered ``emit`` boundary;
+        # the function-node search is restricted to module-level + direct
+        # class methods so a nested helper is invisible to the gate.
+        sample = _plant_fixture(
+            "def outer():\n"
+            "    def emit(payload):\n"
+            "        return parse_typed('test', payload, object)\n"
+            "    return emit\n",
+        )
+        try:
+            mod = _load_script_module()
+            violations = mod._check_boundary(
+                str(sample.relative_to(_REPO_ROOT)),
+                "emit",
+                "test",
+            )
+            # Nested ``emit`` is not a registered boundary, so the
+            # gate reports the function as missing.
+            assert len(violations) == 1
+            assert "not found" in violations[0]
+        finally:
+            sample.unlink(missing_ok=True)
+
+    def test_ambiguous_function_definition_raises(self) -> None:
+        # Two top-level definitions of the same name are
+        # unambiguously a workflow bug; the gate must surface the
+        # ambiguity rather than silently picking one.
+        sample = _plant_fixture(
+            "def emit(payload):\n"
+            "    return parse_typed('test', payload, object)\n"
+            "\n"
+            "def emit(payload):\n"
+            "    return payload\n",
+        )
+        try:
+            mod = _load_script_module()
+            with pytest.raises(ValueError, match="ambiguous registered boundary"):
+                mod._check_boundary(
+                    str(sample.relative_to(_REPO_ROOT)),
+                    "emit",
+                    "test",
+                )
+        finally:
+            sample.unlink(missing_ok=True)

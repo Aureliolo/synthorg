@@ -39,7 +39,7 @@ Behaviour:
   underlying `ValidationError`. Each boundary translates the re-raised
   exception into its native error envelope (HTTP 422, MCP envelope
   `err()`, WebSocket close code 1008, A2A JSON-RPC `-32602`,
-  audit-chain `audit_chain.emit_error`).
+  audit-chain `audit_chain.emit_validation_failed`).
 
 ## Registered boundaries
 

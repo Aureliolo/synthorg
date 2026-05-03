@@ -102,7 +102,7 @@ class JwtClaims(BaseModel):
         invariant here.
         """
         if self.iat >= self.exp:
-            msg = "iat must be strictly less than exp"
+            msg = f"iat ({self.iat}) must be strictly less than exp ({self.exp})"
             raise ValueError(msg)
         return self
 

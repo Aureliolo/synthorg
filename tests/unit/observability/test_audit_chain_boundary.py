@@ -221,18 +221,17 @@ class TestAuditChainSinkValidationFailure:
 
         sink.set_append_callback(_callback)
 
-        # Patch parse_typed so the assembled payload (which the sink
-        # builds from the fixed iteration) is rejected: pretend the
-        # smuggled key reached the dict by injecting it through the
-        # sink's emit path.
-        # In production the iteration is closed; we monkeypatch
-        # AuditChainEventPayload to forbid one of the fields the
-        # iteration emits.
+        # Inject a ValidationError by mutating the LogRecord so the
+        # payload sink.emit() assembles is malformed at parse_typed
+        # time: ``record.levelname = 42`` violates the model's
+        # str-typed ``level`` field, which AuditChainEventPayload
+        # rejects when parse_typed validates the assembled dict. This
+        # exercises the explicit ``except ValidationError`` branch
+        # added in this PR; the production iteration over LogRecord
+        # extras is closed and cannot smuggle an unknown key, so a
+        # field-type mutation is the cleanest way to reach the
+        # validation path under test.
         with structlog.testing.capture_logs() as logs:
-            # Force a ValidationError by feeding a non-str levelname
-            # that violates the model's str type expectation. Pydantic
-            # will reject the assembled payload at parse_typed time,
-            # which is exactly the path under test.
             object.__setattr__(record, "levelname", 42)
             sink.emit(record)
 

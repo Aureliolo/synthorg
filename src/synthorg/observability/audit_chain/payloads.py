@@ -15,6 +15,8 @@ called for validation only and never replaces the dict that goes into
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+
 
 class AuditChainEventPayload(BaseModel):
     """Typed shape of every payload signed and chained by the sink.
@@ -45,17 +47,17 @@ class AuditChainEventPayload(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    event: str
-    level: str
+    event: NotBlankStr
+    level: NotBlankStr
     timestamp: float
-    module: str
-    tool_name: str | None = None
-    expected_hash: str | None = None
-    actual_hash: str | None = None
-    correlation_id: str | None = None
-    principal: str | None = None
-    resource: str | None = None
-    action_type: str | None = None
+    module: NotBlankStr
+    tool_name: NotBlankStr | None = None
+    expected_hash: NotBlankStr | None = None
+    actual_hash: NotBlankStr | None = None
+    correlation_id: NotBlankStr | None = None
+    principal: NotBlankStr | None = None
+    resource: NotBlankStr | None = None
+    action_type: NotBlankStr | None = None
     error: str | None = None
 
 
