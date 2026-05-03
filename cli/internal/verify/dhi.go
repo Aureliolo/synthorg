@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -47,9 +48,13 @@ var dhiRegistry = "dhi.io"
 // postgresImageTag / natsImageTag are the third-party image tags. Used
 // both for pre-flight auth checks and for consumers (compose template)
 // that need to reference the exact image without duplicating the string.
+//
+// Default values come from config.Default*ImageTag (the single source of
+// truth that Renovate keeps current); Configure() overrides them with the
+// operator-resolved State value at startup.
 var (
-	postgresImageTag = "18-debian13"
-	natsImageTag     = "2.12-debian13"
+	postgresImageTag = config.DefaultPostgresImageTag
+	natsImageTag     = config.DefaultNATSImageTag
 )
 
 // dhiEmbeddedPublicKeyPEM is Docker's DHI cosign public key (ECDSA P-256).

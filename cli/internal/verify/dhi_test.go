@@ -3,6 +3,8 @@ package verify
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
 func TestParseDHIRef(t *testing.T) {
@@ -18,17 +20,17 @@ func TestParseDHIRef(t *testing.T) {
 	}{
 		{
 			name:     "valid postgres",
-			input:    "dhi.io/postgres:18-debian13",
+			input:    "dhi.io/postgres:" + config.DefaultPostgresImageTag,
 			wantReg:  "dhi.io",
 			wantRepo: "postgres",
-			wantTag:  "18-debian13",
+			wantTag:  config.DefaultPostgresImageTag,
 		},
 		{
 			name:     "valid nats",
-			input:    "dhi.io/nats:2.12-debian13",
+			input:    "dhi.io/nats:" + config.DefaultNATSImageTag,
 			wantReg:  "dhi.io",
 			wantRepo: "nats",
-			wantTag:  "2.12-debian13",
+			wantTag:  config.DefaultNATSImageTag,
 		},
 		{
 			name:    "missing registry",
@@ -115,8 +117,11 @@ func TestParseDHIPublicKeyRejectsInvalidPEM(t *testing.T) {
 func TestDHIPinnedIndexDigest(t *testing.T) {
 	t.Parallel()
 
-	// Known pinned images should return digests.
-	d, ok := DHIPinnedIndexDigest("dhi.io/postgres:18-debian13")
+	// Known pinned images should return digests. Keys are derived from the
+	// canonical image-tag constants so a Renovate bump that updates one
+	// place but misses the other fails this test instead of silently
+	// dropping verification at runtime.
+	d, ok := DHIPinnedIndexDigest("dhi.io/postgres:" + config.DefaultPostgresImageTag)
 	if !ok {
 		t.Error("postgres should have a pinned digest")
 	}
@@ -124,7 +129,7 @@ func TestDHIPinnedIndexDigest(t *testing.T) {
 		t.Error("postgres digest should not be empty")
 	}
 
-	d, ok = DHIPinnedIndexDigest("dhi.io/nats:2.12-debian13")
+	d, ok = DHIPinnedIndexDigest("dhi.io/nats:" + config.DefaultNATSImageTag)
 	if !ok {
 		t.Error("nats should have a pinned digest")
 	}

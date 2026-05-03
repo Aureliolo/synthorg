@@ -130,11 +130,13 @@ type State struct {
 // Compiled-in default values for the tunables. Exposed so Tunables can detect
 // customisation (CustomRegistry = any registry/tag field differs from default).
 const (
-	DefaultRegistryHost     = "ghcr.io"
-	DefaultImageRepoPrefix  = "aureliolo/synthorg-"
-	DefaultDHIRegistry      = "dhi.io"
+	DefaultRegistryHost    = "ghcr.io"
+	DefaultImageRepoPrefix = "aureliolo/synthorg-"
+	DefaultDHIRegistry     = "dhi.io"
+	// renovate: datasource=docker depName=dhi.io/postgres
 	DefaultPostgresImageTag = "18-debian13"
-	DefaultNATSImageTag     = "2.12-debian13"
+	// renovate: datasource=docker depName=dhi.io/nats
+	DefaultNATSImageTag = "2.12-debian13"
 
 	DefaultNATSURLValue          = "nats://nats:4222"
 	DefaultNATSStreamPrefixValue = "SYNTHORG"

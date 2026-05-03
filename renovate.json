@@ -208,6 +208,16 @@
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "DHI image tag default constants in CLI config (single source of truth referenced by verify/dhi.go vars, start.go third-party list, and dhi_test.go)",
+      "managerFilePatterns": ["/cli/internal/config/state\\.go$/"],
+      "matchStrings": [
+        "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+Default[A-Za-z]+ImageTag\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     }
   ]
 }
