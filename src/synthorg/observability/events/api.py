@@ -231,6 +231,11 @@ API_CURSOR_INVALID: Final[str] = "api.cursor.invalid"
 # Bridge-config validation
 API_BRIDGE_CONFIG_REJECTED: Final[str] = "api.bridge_config.rejected"
 
+# Per-request lifecycle lock registry
+REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD: Final[str] = (
+    "api.request_lock.release_skipped_while_held"
+)
+
 # Shutdown
 API_APP_SHUTDOWN_TIMEOUT: Final[str] = "api.app.shutdown.timeout"
 API_SHUTDOWN_SIGNAL_RECEIVED: Final[str] = "api.shutdown.signal.received"

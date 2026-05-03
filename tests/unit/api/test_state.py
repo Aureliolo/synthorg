@@ -351,3 +351,177 @@ class TestAppStateTrainingService:
         state.set_training_service(mock_svc)
         with pytest.raises(RuntimeError, match="already configured"):
             state.set_training_service(mock_svc)
+
+
+@pytest.mark.unit
+class TestAppStateRequestLocks:
+    """Per-request-id ``asyncio.Lock`` registry lives on :class:`AppState`,
+    not on a module global, so xdist workers and ``--count N`` repeat
+    runs never inherit a Lock object bound to a closed event loop from
+    a prior test. Each AppState owns its own dict; tests construct
+    fresh AppStates, so isolation is automatic.
+    """
+
+    def test_lock_is_cached_per_request_id(self) -> None:
+        state = _make_state()
+        first = state.get_or_create_request_lock("req-1")
+        second = state.get_or_create_request_lock("req-1")
+        # Same id returns the same Lock instance; without identity the
+        # ``async with`` ordering across two awaiters would not
+        # serialise.
+        assert first is second
+
+    def test_locks_are_per_app_state(self) -> None:
+        # Two AppStates must hold independent dicts so a leaked Lock
+        # from one cannot poison the other (the precise xdist failure
+        # mode this fix addresses).
+        state_a = _make_state()
+        state_b = _make_state()
+        lock_a = state_a.get_or_create_request_lock("req-1")
+        lock_b = state_b.get_or_create_request_lock("req-1")
+        assert lock_a is not lock_b
+        assert "req-1" in state_a._request_locks
+        assert "req-1" in state_b._request_locks
+        # Cross-state dicts are independent.
+        assert state_a._request_locks is not state_b._request_locks
+
+    def test_release_evicts_idle_lock(self) -> None:
+        state = _make_state()
+        lock = state.get_or_create_request_lock("req-1")
+        assert "req-1" in state._request_locks
+        # Lock is idle (never acquired), so release evicts.
+        assert not lock.locked()
+        state.release_request_lock_if_idle("req-1")
+        assert "req-1" not in state._request_locks
+
+    async def test_release_keeps_locked_entry(self) -> None:
+        # Releasing while a waiter holds the lock would strand them on
+        # an entry the next caller can no longer find. The helper must
+        # only evict idle locks.
+        state = _make_state()
+        lock = state.get_or_create_request_lock("req-1")
+        async with lock:
+            state.release_request_lock_if_idle("req-1")
+            assert "req-1" in state._request_locks
+
+    def test_release_is_noop_for_unknown_id(self) -> None:
+        state = _make_state()
+        # No registry entry yet -- helper must not raise.
+        state.release_request_lock_if_idle("never-seen")
+        assert "never-seen" not in state._request_locks
+
+    async def test_repeat_create_release_drains_clean(self) -> None:
+        # Mirrors what ``--count 2`` exercises: two consecutive
+        # create-release cycles on the same AppState should leave the
+        # registry empty without cross-contamination.
+        state = _make_state()
+        for cycle in ("first", "second"):
+            request_id = f"req-{cycle}"
+            lock = state.get_or_create_request_lock(request_id)
+            async with lock:
+                pass
+            state.release_request_lock_if_idle(request_id)
+            assert request_id not in state._request_locks
+        assert state._request_locks == {}
+
+    def test_concurrent_create_returns_same_lock(self) -> None:
+        # Two threads racing to create the same id must observe the
+        # double-checked-locking guard: only one ``asyncio.Lock`` ever
+        # lands in the registry, and both callers receive the same
+        # identity. Without the inner re-check inside
+        # ``_request_locks_guard`` two distinct Lock objects could be
+        # returned, splitting the per-id serialisation guarantee that
+        # the controller relies on.
+        from concurrent.futures import ThreadPoolExecutor
+
+        state = _make_state()
+
+        def _create() -> object:
+            return state.get_or_create_request_lock("req-race")
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(lambda _: _create(), range(16)))
+        first = results[0]
+        assert all(r is first for r in results), (
+            "DCL guard broken: concurrent create returned distinct Locks"
+        )
+        assert len(state._request_locks) == 1
+
+    def test_eviction_caps_registry_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Defence-in-depth cap: a non-terminal request that scopes but
+        # never advances would otherwise grow the dict forever (the
+        # ``release_request_lock_if_idle`` path only fires on terminal
+        # states). When the cap is hit, the oldest **idle** entries
+        # are evicted; still-held entries are kept so an in-flight
+        # approve/reject is never stranded on an evicted Lock. Tests
+        # patch the cap to a small number so the assertion is
+        # constant-time independent of the production ceiling.
+        from synthorg.api import state_services as _ss
+
+        monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 4)
+
+        state = _make_state()
+        for i in range(4):
+            state.get_or_create_request_lock(f"prefill-{i}")
+        assert len(state._request_locks) == 4
+        # All prefilled locks are idle, so the eviction sweep should
+        # bring the registry down to the cap when the next insert
+        # arrives.
+        state.get_or_create_request_lock("trigger-evict")
+        assert len(state._request_locks) == 4
+        # The newest insert must survive; one of the older idles was
+        # evicted (FIFO order in the OrderedDict).
+        assert "trigger-evict" in state._request_locks
+
+    async def test_eviction_preserves_held_lock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Even when the oldest entry is the one being held, the sweep
+        # must skip it: dropping a Lock currently inside ``async with``
+        # would let the next call mint a fresh Lock for the same id and
+        # leave concurrent callers serialising on different objects.
+        from synthorg.api import state_services as _ss
+
+        monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 3)
+
+        state = _make_state()
+        oldest = state.get_or_create_request_lock("oldest")
+        async with oldest:
+            # Fill to cap with idle entries.
+            state.get_or_create_request_lock("middle")
+            state.get_or_create_request_lock("newest")
+            # Trigger eviction: ``oldest`` is held, so it must survive
+            # and one of the idle entries is dropped instead.
+            state.get_or_create_request_lock("trigger")
+            assert "oldest" in state._request_locks
+            assert state._request_locks["oldest"] is oldest
+            assert "trigger" in state._request_locks
+
+    async def test_eviction_preserves_referenced_lock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The race the refcount fixes: between
+        # ``acquire_request_lock`` reserving the Lock and the body
+        # entering ``async with``, the Lock is unlocked but in flight.
+        # An eviction sweep that ignores the refcount would drop it
+        # under the caller's feet and the next call would mint a
+        # different Lock, splitting the per-id serialisation guarantee.
+        from synthorg.api import state_services as _ss
+
+        monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 3)
+
+        state = _make_state()
+        # Simulate the in-flight window: refcount > 0, lock unlocked.
+        reserved = state._reserve_request_lock("in-flight")
+        try:
+            # Fill registry to the cap with idle entries.
+            state.get_or_create_request_lock("idle-1")
+            state.get_or_create_request_lock("idle-2")
+            # Trigger eviction sweep with one more insert.
+            state.get_or_create_request_lock("trigger")
+            # ``in-flight`` is unlocked but its refcount is non-zero,
+            # so the sweep must keep it.
+            assert "in-flight" in state._request_locks
+            assert state._request_locks["in-flight"] is reserved
+        finally:
+            state._release_request_lock_ref("in-flight")

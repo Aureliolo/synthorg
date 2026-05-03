@@ -5,7 +5,14 @@ backup, integrations, escalation, A2A, and MCP services.  Extracted from
 ``state.py`` to keep that module's size under the project limit.
 """
 
+import asyncio
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import threading
+    from collections import OrderedDict
+    from collections.abc import AsyncIterator
 
 from synthorg.api.auth.presence import UserPresence  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
@@ -48,6 +55,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_BRIDGE_CONFIG_REJECTED,
+    REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD,
 )
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
@@ -96,6 +104,14 @@ if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
+
+# Defence-in-depth cap on the per-AppState request-lock registry.
+# ``scope_request`` retains the lock across handler exit (the next
+# approve/reject for the same id needs it), so an authenticated
+# client that scopes unique ids and never advances them would
+# otherwise grow the dict forever. 10k is well above any realistic
+# in-flight working set for a single org.
+_MAX_REQUEST_LOCKS: int = 10_000
 
 
 def _reject_non_int(value: object, *, field: str) -> None:
@@ -195,6 +211,9 @@ class AppStateServicesMixin(_FacadesMixin):
     _ws_frame_timeout_seconds: int
     _ws_revalidation_window_seconds: int
     _ws_revalidation_max_failures: int
+    _request_locks: OrderedDict[str, asyncio.Lock]
+    _request_locks_guard: threading.Lock
+    _request_lock_refs: dict[str, int]
 
     @property
     def settings_service(self) -> SettingsService:
@@ -436,6 +455,149 @@ class AppStateServicesMixin(_FacadesMixin):
     def ticket_store(self) -> WsTicketStore:
         """Return the WebSocket ticket store (always available)."""
         return self._ticket_store
+
+    def get_or_create_request_lock(self, request_id: str) -> asyncio.Lock:
+        """Return the per-request lifecycle lock, creating it if absent.
+
+        Low-level primitive that exposes the cached Lock for tests and
+        diagnostics. Production callers MUST go through
+        :meth:`acquire_request_lock` instead, which pairs this with a
+        refcount bump so a concurrent eviction sweep cannot drop the
+        entry between receiving the Lock and entering ``async with``.
+
+        The dict is guarded by a plain ``threading.Lock`` because
+        ``asyncio.Lock`` instances can only be constructed inside a
+        running event loop, so the registry needs a thread-safe
+        "check, then create" that does not require an active loop to
+        serialise itself.
+
+        On insert, the registry is capped at ``_MAX_REQUEST_LOCKS``: if
+        adding the new entry would exceed the cap, the oldest **idle**
+        entries are evicted (still-held or in-flight locks are kept so
+        an in-flight approve/reject never strands a waiter on an
+        evicted Lock). The cap defends against an authenticated client
+        that scopes unique ids and never advances them to a terminal
+        state, which would otherwise grow the dict without bound.
+        """
+        lock = self._request_locks.get(request_id)
+        if lock is not None:
+            return lock
+        with self._request_locks_guard:
+            lock = self._request_locks.get(request_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._request_locks[request_id] = lock
+                if len(self._request_locks) > _MAX_REQUEST_LOCKS:
+                    self._evict_idle_request_locks_locked(_MAX_REQUEST_LOCKS)
+            return lock
+
+    @asynccontextmanager
+    async def acquire_request_lock(self, request_id: str) -> AsyncIterator[None]:
+        """Acquire the per-request lifecycle lock with refcount tracking.
+
+        Canonical entry point for serialising
+        ``scope``/``approve``/``reject`` transitions on a request id.
+        Bumps an in-flight refcount before returning the Lock so a
+        concurrent eviction sweep (triggered when the registry hits
+        ``_MAX_REQUEST_LOCKS``) cannot drop the entry between this
+        method receiving the Lock and the body's implicit
+        ``await lock.acquire()``. Without that gate, the next caller
+        for the same id would mint a fresh Lock and two callers would
+        end up holding *different* Lock objects for the same request,
+        breaking the per-id ordering invariant.
+
+        Mirrors the pattern in
+        :mod:`synthorg.api.rate_limits.in_memory` (``_lock_refs``).
+        """
+        lock = self._reserve_request_lock(request_id)
+        try:
+            async with lock:
+                yield
+        finally:
+            self._release_request_lock_ref(request_id)
+
+    def _reserve_request_lock(self, request_id: str) -> asyncio.Lock:
+        """Get-or-create the Lock and increment the in-flight refcount.
+
+        Pairs with :meth:`_release_request_lock_ref`. Both operations
+        execute under ``self._request_locks_guard`` so a concurrent
+        eviction sweep observes the refcount bump and skips the entry.
+        """
+        with self._request_locks_guard:
+            lock = self._request_locks.get(request_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._request_locks[request_id] = lock
+                if len(self._request_locks) > _MAX_REQUEST_LOCKS:
+                    self._evict_idle_request_locks_locked(_MAX_REQUEST_LOCKS)
+            self._request_lock_refs[request_id] = (
+                self._request_lock_refs.get(request_id, 0) + 1
+            )
+            return lock
+
+    def _release_request_lock_ref(self, request_id: str) -> None:
+        """Drop one in-flight reference to the per-request Lock.
+
+        The refs entry is removed (rather than left at 0) once the
+        count drops to zero so a quiescent id contributes nothing to
+        memory.
+        """
+        with self._request_locks_guard:
+            count = self._request_lock_refs.get(request_id, 0) - 1
+            if count <= 0:
+                self._request_lock_refs.pop(request_id, None)
+            else:
+                self._request_lock_refs[request_id] = count
+
+    def _evict_idle_request_locks_locked(self, target_size: int) -> None:
+        """Evict oldest idle entries down to ``target_size``.
+
+        Caller must already hold ``self._request_locks_guard``. Iterates
+        the OrderedDict in insertion order; entries whose Lock is held
+        OR whose in-flight refcount is non-zero are kept, so a
+        long-running scope still in flight (or one whose caller has
+        just received the Lock but not yet entered ``async with``) is
+        never stranded on an evicted Lock object.
+        """
+        # Snapshot keys before mutating the OrderedDict during iteration.
+        for request_id in list(self._request_locks.keys()):
+            if len(self._request_locks) <= target_size:
+                return
+            lock = self._request_locks[request_id]
+            if not lock.locked() and self._request_lock_refs.get(request_id, 0) == 0:
+                self._request_locks.pop(request_id, None)
+
+    def release_request_lock_if_idle(self, request_id: str) -> None:
+        """Drop the lock for ``request_id`` after a terminal transition.
+
+        Called after the final ``save`` of a terminal state (approve,
+        reject) so the registry does not accumulate one entry per
+        lifetime request id. Only evicts when the lock is idle and
+        no in-flight refcount remains -- a still-held or in-flight
+        entry would strand a waiter who already holds a reference to
+        the same :class:`asyncio.Lock` object. The caller must already
+        have left the ``async with acquire_request_lock`` block (or
+        directly released the Lock returned by
+        :meth:`get_or_create_request_lock`) before invoking this
+        helper, otherwise the ``locked()`` probe or refcount check
+        reports the caller's own hold and the eviction is a no-op.
+        """
+        with self._request_locks_guard:
+            lock = self._request_locks.get(request_id)
+            if lock is None:
+                return
+            if lock.locked() or self._request_lock_refs.get(request_id, 0) > 0:
+                # Caller violated the documented contract -- they're
+                # still holding the lock when asking us to evict it.
+                # Surface as DEBUG so the next reader of the logs can
+                # find the caller bug; not WARN because the no-op is
+                # safe (the registry just keeps the entry).
+                logger.debug(
+                    REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD,
+                    request_id=request_id,
+                )
+                return
+            self._request_locks.pop(request_id, None)
 
     @property
     def ws_auth_timeout_seconds(self) -> float:

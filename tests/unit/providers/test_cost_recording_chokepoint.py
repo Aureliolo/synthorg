@@ -24,7 +24,6 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import (
     cost_recording_scope,
     current_cost_context,
-    drain_pending_cost_records,
     resolve_currency,
 )
 from synthorg.providers.enums import FinishReason, MessageRole
@@ -119,7 +118,7 @@ class TestCostRecordingChokepoint:
         ):
             response = await provider.complete([_msg()], "test-model")
 
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert len(records) == 1
         record = records[0]
@@ -141,7 +140,7 @@ class TestCostRecordingChokepoint:
         provider = _StubProvider()
         tracker = CostTracker()
         await provider.complete([_msg()], "test-model")
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert records == ()
 
@@ -158,7 +157,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             await provider.complete([_msg()], "test-model")
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert records == ()
 
@@ -176,7 +175,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             await provider.complete([_msg()], "test-model")
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert len(records) == 1
         assert records[0].cost == 0.0
@@ -200,7 +199,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             response = await provider.complete([_msg()], "test-model")
-        await drain_pending_cost_records()
+        await tracker.drain_pending_records()
         # Provider call still returned the response despite recording failure
         assert response.content == "hello"
 
@@ -276,7 +275,7 @@ class TestCostRecordingChokepoint:
             tg.create_task(task_a())
             tg.create_task(task_b())
 
-        await drain_pending_cost_records()
+        await tracker_a.drain_pending_records()
         # task_b ran outside any scope -> nothing recorded on tracker_b
         records_a = await tracker_a.get_records()
         records_b = await tracker_b.get_records()
@@ -349,3 +348,158 @@ class TestContextValidation:
                 currency=CurrencyCode(DEFAULT_CURRENCY),
             ):
                 pass
+
+
+@pytest.mark.unit
+class TestPendingRecordIsolation:
+    """The strong-ref pending-tasks set lives on the tracker, not on a
+    module global, so xdist workers and ``--count N`` repeat runs never
+    inherit a Task object bound to a closed event loop from a prior
+    test. Each :class:`CostTracker` instance owns its own set; tests
+    construct fresh trackers, so isolation is automatic.
+    """
+
+    async def test_drain_leaves_pending_set_empty(self) -> None:
+        provider = _StubProvider()
+        tracker = CostTracker()
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("agent-1"),
+            task_id=NotBlankStr("task-1"),
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            await provider.complete([_msg()], "test-model")
+        await tracker.drain_pending_records()
+        # The done_callback wired by ``track_pending_record`` removes the
+        # task from the set as soon as it completes, and ``drain`` waits
+        # for every in-flight task to settle. Without the fix (when the
+        # set was a module global), this assertion would still pass for
+        # one test but a leftover task from a *different* test in the
+        # same xdist worker could survive across tests.
+        assert tracker._pending_record_tasks == set()
+
+    async def test_pending_set_is_per_tracker(self) -> None:
+        # The two trackers each have their own set; emitting on one
+        # must not surface tasks on the other.
+        provider = _StubProvider()
+        tracker_a = CostTracker()
+        tracker_b = CostTracker()
+        async with cost_recording_scope(
+            cost_tracker=tracker_a,
+            agent_id=NotBlankStr("agent-a"),
+            task_id=NotBlankStr("task-a"),
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            await provider.complete([_msg()], "test-model-a")
+        # Before draining, tracker_a's set may carry the in-flight task;
+        # tracker_b must remain empty regardless of timing.
+        assert tracker_b._pending_record_tasks == set()
+        await tracker_a.drain_pending_records()
+        await tracker_b.drain_pending_records()
+        assert tracker_a._pending_record_tasks == set()
+        assert tracker_b._pending_record_tasks == set()
+
+    async def test_repeated_emission_on_same_tracker_drains_clean(self) -> None:
+        # Mirrors what ``--count 2`` exercises: two consecutive scopes
+        # on the same tracker should both drain to empty without
+        # cross-contamination.
+        provider = _StubProvider()
+        tracker = CostTracker()
+        for cycle in ("first", "second"):
+            async with cost_recording_scope(
+                cost_tracker=tracker,
+                agent_id=NotBlankStr(f"agent-{cycle}"),
+                task_id=NotBlankStr(f"task-{cycle}"),
+                call_category=LLMCallCategory.SYSTEM,
+                currency=CurrencyCode(DEFAULT_CURRENCY),
+            ):
+                await provider.complete([_msg()], "test-model")
+            await tracker.drain_pending_records()
+            assert tracker._pending_record_tasks == set()
+        records = await tracker.get_records()
+        assert len(records) == 2
+
+    async def test_drain_propagates_memory_error(self) -> None:
+        # ``drain_pending_records`` uses ``return_exceptions=True`` to
+        # snapshot every task outcome. The contract is that
+        # ``MemoryError`` (interpreter-fatal) escapes the drain so the
+        # caller fails loudly instead of silently masking it.
+        tracker = CostTracker()
+        memory_msg = "simulated OOM"
+
+        async def _raises_memory_error() -> None:
+            raise MemoryError(memory_msg)
+
+        task = asyncio.create_task(_raises_memory_error())
+        tracker.track_pending_record(task)
+        with pytest.raises(MemoryError, match=memory_msg):
+            await tracker.drain_pending_records()
+
+    async def test_drain_propagates_recursion_error(self) -> None:
+        # Same contract as ``MemoryError``: ``RecursionError`` is
+        # interpreter-fatal and must propagate through the drain.
+        tracker = CostTracker()
+        recursion_msg = "simulated stack overflow"
+
+        async def _raises_recursion_error() -> None:
+            raise RecursionError(recursion_msg)
+
+        task = asyncio.create_task(_raises_recursion_error())
+        tracker.track_pending_record(task)
+        with pytest.raises(RecursionError, match=recursion_msg):
+            await tracker.drain_pending_records()
+
+    async def test_drain_logs_unexpected_exceptions(self) -> None:
+        # ``_record_cost_in_background`` is the only documented logging
+        # path for recoverable failures. Anything that reaches the
+        # drain via a non-fatal exception bypassed that path -- log
+        # defensively so the regression is visible in test output.
+        import structlog
+
+        tracker = CostTracker()
+        runtime_msg = "downstream regression"
+
+        async def _raises_runtime() -> None:
+            raise RuntimeError(runtime_msg)
+
+        task = asyncio.create_task(_raises_runtime())
+        tracker.track_pending_record(task)
+        with structlog.testing.capture_logs() as logs:
+            await tracker.drain_pending_records()
+        events = [log["event"] for log in logs]
+        assert "budget.pending_record.drain_unexpected" in events, (
+            f"expected drain_unexpected event; got {events}"
+        )
+
+    async def test_drain_propagates_cancellation_without_warning(self) -> None:
+        # ``CancelledError`` is the *expected* outcome of a graceful
+        # shutdown or a cancelled surrounding task group, not a
+        # regression. The drain re-raises so the caller's task group
+        # observes the cancel signal, but does NOT WARN-log because
+        # that would treat normal shutdown as an error.
+        import structlog
+
+        tracker = CostTracker()
+
+        async def _cancellable() -> None:
+            # Block forever; the test will cancel via ``task.cancel()``.
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(_cancellable())
+        tracker.track_pending_record(task)
+        # Yield once so the task is actually scheduled before we cancel.
+        await asyncio.sleep(0)
+        task.cancel()
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await tracker.drain_pending_records()
+        events = [log["event"] for log in logs]
+        # The CancelledError path must NOT emit ``drain_unexpected``;
+        # cancellation is normal, not a regression.
+        assert "budget.pending_record.drain_unexpected" not in events, (
+            f"cancelled drain must not WARN-log; got {events}"
+        )

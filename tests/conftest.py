@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -99,10 +99,21 @@ class _WriteOnlyDatabase(ExampleDatabase):
 # write-only: failures are logged for analysis but never replayed
 # automatically (that would block all test runs until fixed).
 # Review captured failures with: ls ~/.synthorg/hypothesis-examples/
+#
+# The shared dir is namespaced by worktree basename (``Path.cwd``)
+# because pre-push hooks across multiple concurrent worktrees on the
+# same machine would otherwise contend for the same directory; on
+# Windows, two pytest sessions writing to the same hypothesis-examples
+# tree can hit ``WinError 32`` sharing-violation races. Per-worktree
+# subdirectories isolate the failure log per pre-push run while keeping
+# every worktree's history outside its own working tree (so a
+# ``git worktree remove`` does not destroy the captured examples).
 _local_db = DirectoryBasedExampleDatabase(".hypothesis/examples/")
 
 try:
-    _shared_dir = Path.home() / ".synthorg" / "hypothesis-examples"
+    _shared_dir = (
+        Path.home() / ".synthorg" / "hypothesis-examples" / Path.cwd().resolve().name
+    )
     _shared_dir.mkdir(parents=True, exist_ok=True)
     _shared_db: ExampleDatabase = _WriteOnlyDatabase(
         DirectoryBasedExampleDatabase(str(_shared_dir)),
@@ -120,7 +131,19 @@ settings.register_profile(
     # so the same 10 examples run every time.  Not random, not skipped.
     max_examples=10,
     derandomize=True,
-    suppress_health_check=[HealthCheck.too_slow],
+    # ``differing_executors`` warns when the same property test runs
+    # from multiple executor instances; pytest-repeat (used by the
+    # isolation regression gate, see scripts/run_affected_tests.py)
+    # legitimately invokes the same method twice from two separate
+    # pytest collection items, so the warning is a false positive in
+    # this codebase. Suppression is safe because our property tests do
+    # not depend on Hypothesis-database persistence between iterations
+    # (derandomize=True pins the seed, and the database is write-only
+    # for the shared failure log per ``_WriteOnlyDatabase``).
+    suppress_health_check=[
+        HealthCheck.too_slow,
+        HealthCheck.differing_executors,
+    ],
 )
 settings.register_profile(
     "dev",
@@ -257,18 +280,17 @@ def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
 
     Delegates to :func:`tests.baselines.loader.load_baseline_snapshot`
     so the validation contract is identical to the pre-push runner
-    (``scripts/run_affected_tests.py``).  The legacy 3-tuple shape is
-    rebuilt here from the shared snapshot for the existing
-    :func:`pytest_sessionfinish` consumer.
+    (``scripts/run_affected_tests.py``). The 3-tuple shape this
+    function returns is what :func:`pytest_sessionfinish` consumes; it
+    is rebuilt from the snapshot's ``per_test_ms * baseline_test_count``
+    so the snapshot file can carry per-test cost (immune to test-count
+    growth) without rippling a shape change through the hook.
     """
     from tests.baselines.loader import load_baseline_snapshot
 
     snapshot = load_baseline_snapshot(_BASELINE_PATH)
     if snapshot is None:
         return None
-    # The legacy hook signature returns ``unit_suite_seconds``; rebuild
-    # it from the per-test cost so callers downstream do not need to
-    # change shape.
     baseline_secs = snapshot.per_test_ms * snapshot.baseline_test_count / 1000.0
     return baseline_secs, snapshot.baseline_test_count, snapshot.threshold_ratio
 
@@ -418,6 +440,95 @@ def clear_logging_state() -> None:
         root.removeHandler(handler)
         handler.close()
     root.setLevel(logging.WARNING)
+
+
+# ── Module-global cache resets (xdist isolation) ──────────────────
+# A handful of subsystems hold a process-global cache by design (the
+# Agent Card cache, the Prometheus label-validator snapshot). Without
+# a global autouse reset, a test in worker N that imports the
+# subsystem leaves entries behind for the next test in the same
+# worker -- the canonical "module-level state survives across tests
+# in one xdist worker" failure mode that turns a green local run
+# into a flake under ``-n 8``. Each fixture is O(1) (a dict
+# ``.clear()`` or a single rebind) so the suite-wide cost is
+# negligible.
+
+
+@pytest.fixture(autouse=True)
+def _reset_structlog_state() -> Iterator[None]:
+    """Reset structlog defaults between every test.
+
+    structlog's defaults (processors, wrapper class, context-vars
+    binding) are process-level, so a test that calls
+    ``structlog.configure(...)`` or holds ``structlog.testing.capture
+    _logs()`` open across an unexpected exit leaves residual state for
+    the next test in the same xdist worker. Without this autouse the
+    canonical symptom is a settings-resolution test under ``-n 8``
+    finding only DEBUG events in the capture buffer because a prior
+    test left structlog wired to a filter that swallows INFO
+    emissions, even though the production code emitted them.
+
+    Scoped to ``structlog`` defaults + stdlib root *level* only --
+    the stdlib-root-handler close that ``clear_logging_state()``
+    performs is intentionally NOT applied globally because tests that
+    import ``synthorg.observability`` at module load time hold
+    long-lived handler references the global reset would close out
+    from under them. Observability tests retain their dedicated
+    ``_reset_logging`` autouse for that broader reset.
+
+    Also resets ``logging.root.level`` to NOTSET because production
+    boot code (``setup_logging``) may have left it at WARNING during a
+    prior test, which silently filters out INFO events that production
+    code emits via ``structlog.stdlib.BoundLogger`` -- the canonical
+    symptom for ``test_source_resolution_log.py`` and
+    ``test_service.py::test_emits_audit_event`` failing under -n 8.
+    """
+    structlog.reset_defaults()
+    structlog.contextvars.clear_contextvars()
+    logging.getLogger().setLevel(logging.NOTSET)
+    yield
+    structlog.reset_defaults()
+    structlog.contextvars.clear_contextvars()
+    logging.getLogger().setLevel(logging.NOTSET)
+
+
+@pytest.fixture(autouse=True)
+def _reset_a2a_card_cache() -> Iterator[None]:
+    """Clear ``synthorg.a2a.well_known._card_cache`` before and after every test.
+
+    The cache is intentionally module-global at runtime (Agent Cards
+    are expensive to rebuild and the controller serves them under TTL
+    from a single dict). For tests, every test must start with an
+    empty cache so a stale entry from a prior test cannot satisfy a
+    later host-key probe; the post-test clear protects the next
+    worker hop in xdist work-stealing.
+    """
+    from synthorg.a2a.well_known import _card_cache
+
+    _card_cache.clear()
+    yield
+    _card_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_prometheus_label_snapshot() -> Iterator[None]:
+    """Reset ``prometheus_labels._snapshot`` before every test.
+
+    The snapshot is seeded by ``PrometheusCollector.refresh()`` and
+    consulted by every metric ``record_*`` call to validate label
+    cardinality. Without this reset, a refresh in observability tests
+    leaves the snapshot non-empty for unrelated engine / api tests
+    that import the metrics path, surfacing as spurious
+    ``validate_*`` passes that should have failed closed during
+    bootstrap.
+    """
+    from synthorg.observability.prometheus_labels import (
+        _reset_label_snapshot_for_tests,
+    )
+
+    _reset_label_snapshot_for_tests()
+    yield
+    _reset_label_snapshot_for_tests()
 
 
 _TEMPLATE_DB: Path | None = None

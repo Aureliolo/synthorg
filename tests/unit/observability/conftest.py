@@ -82,29 +82,6 @@ def _reset_logging() -> Iterator[None]:
     clear_logging_state()
 
 
-@pytest.fixture(autouse=True)
-def _reset_label_snapshot() -> Iterator[None]:
-    """Reset the snapshot-backed label validator state between tests.
-
-    The PrometheusCollector's ``refresh()`` seeds a process-global
-    ``_LabelSnapshot`` so sync ``record_*`` paths can validate
-    ``agent_id`` / ``workflow_definition_id`` / ``department``
-    against the live registries. Without this fixture the seeded
-    state from one test (e.g. ``test_prometheus_collector::*`` that
-    drives ``refresh``) leaks into the next. The reset puts every
-    test back to the empty initial snapshot, which is fail-closed:
-    every ``validate_*`` raises ``ValueError`` and the rejected
-    sample is dropped by the ``metrics_hub._safe_record`` decorator.
-    """
-    from synthorg.observability.prometheus_labels import (
-        _reset_label_snapshot_for_tests,
-    )
-
-    _reset_label_snapshot_for_tests()
-    yield
-    _reset_label_snapshot_for_tests()
-
-
 @pytest.fixture
 def handler_cleanup() -> Iterator[list[logging.Handler]]:
     """Collect handlers and close them after the test."""

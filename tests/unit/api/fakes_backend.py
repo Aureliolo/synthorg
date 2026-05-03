@@ -566,6 +566,16 @@ class FakePersistenceBackend:
     async def connect(self) -> None:
         self._connected = True
 
+    def mark_connected(self) -> None:
+        """Set the connected flag without awaiting.
+
+        Sync convenience for test scaffolding that needs the backend to
+        report ``is_connected`` from a sync helper (e.g. building a
+        Litestar ``TestClient`` outside an event loop). Async tests
+        should still ``await connect()``.
+        """
+        self._connected = True
+
     async def disconnect(self) -> None:
         self._connected = False
 

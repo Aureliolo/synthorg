@@ -101,12 +101,26 @@ class TestDockerSandboxConfigImageResolution:
         def _capture(event: str, **kwargs: object) -> None:
             recorded.append(("debug", event, dict(kwargs)))
 
-        monkeypatch.setattr(module.logger, "debug", _capture)
-        DockerSandboxConfig()
-        assert any(
-            level == "debug" and event == "config.env_var.fallback"
-            for level, event, _ in recorded
-        ), f"expected fallback debug log, got: {recorded}"
+        # Direct setattr + try/finally delattr -- ``module.logger`` is
+        # a ``BoundLoggerLazyProxy`` whose ``debug`` attribute is
+        # served via ``__getattr__``. ``monkeypatch.setattr`` would
+        # restore the snapshot it captures into ``__dict__`` at
+        # teardown, permanently shadowing ``__getattr__`` for the
+        # lifetime of the proxy and breaking ``capture_logs()`` for
+        # later tests on the same xdist worker.
+        proxy = module.logger
+        proxy.debug = _capture  # type: ignore[method-assign,assignment]
+        try:
+            DockerSandboxConfig()
+            assert any(
+                level == "debug" and event == "config.env_var.fallback"
+                for level, event, _ in recorded
+            ), f"expected fallback debug log, got: {recorded}"
+        finally:
+            from contextlib import suppress
+
+            with suppress(AttributeError):
+                del proxy.debug
 
 
 class TestDockerSandboxConfigCustomValues:

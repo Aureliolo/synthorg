@@ -103,14 +103,12 @@ class CostRecordingContext(BaseModel):
 _COST_RECORD_TIMEOUT_SECONDS: Final[float] = 5.0
 
 
-# Strong references to in-flight background record tasks so the
-# event loop's task GC cannot drop them before they run.  Tests can
-# call :func:`drain_pending_cost_records` to wait for the set to
-# settle when they need to observe ``CostTracker`` state immediately
-# after a ``provider.complete()`` call.
-_pending_record_tasks: set[asyncio.Task[None]] = set()
-
-
+# Strong references to in-flight background record tasks live on the
+# active :class:`CostTracker` (one per :class:`AppState`, fresh per
+# test) so xdist workers cannot leak tasks bound to a closed event
+# loop into the next test's loop. Tests await
+# ``cost_tracker.drain_pending_records()`` to observe tracker state
+# immediately after a ``provider.complete()`` call.
 _cost_context: ContextVar[CostRecordingContext | None] = ContextVar(
     "synthorg_cost_recording_context",
     default=None,
@@ -381,11 +379,12 @@ async def emit_cost_record_from_context(
         _record_cost_in_background(ctx, record, provider=provider, model=model),
         name=f"cost_record:{ctx.agent_id}:{ctx.task_id}",
     )
-    # Track task so the event loop's GC can't drop the reference and
-    # cancel the recording mid-flight.  ``discard`` removes the task
-    # once it completes (the lambda fires from ``add_done_callback``).
-    _pending_record_tasks.add(task)
-    task.add_done_callback(_pending_record_tasks.discard)
+    # Track task on the active tracker so the event loop's GC can't
+    # drop the reference and cancel the recording mid-flight. The
+    # tracker's ``add_done_callback`` plumbing self-evicts the task
+    # once it completes; ownership on the per-instance tracker means
+    # xdist test isolation is automatic.
+    ctx.cost_tracker.track_pending_record(task)
 
 
 async def _record_cost_in_background(
@@ -453,41 +452,10 @@ async def _record_cost_in_background(
     )
 
 
-async def drain_pending_cost_records() -> None:
-    """Wait for all in-flight background record tasks to settle.
-
-    Test-only utility: the chokepoint schedules ``cost_tracker.record``
-    as a background task so the user-visible ``provider.complete()``
-    response is never blocked on tracker I/O.  Tests that need to
-    observe ``CostTracker`` state immediately after a ``complete()``
-    call can ``await drain_pending_cost_records()`` to deterministically
-    wait for the recording side effect.
-
-    No-op when there are no pending tasks.  Recoverable failures inside
-    the background tasks are already logged + swallowed in
-    ``_record_cost_in_background``; ``MemoryError`` and ``RecursionError``
-    propagate out of those tasks (the asyncio default handler logs them
-    loudly), and we re-raise them here too so a ``drain`` invoked from
-    a test path doesn't silently swallow interpreter-fatal signals via
-    ``return_exceptions=True``.
-    """
-    if not _pending_record_tasks:
-        return
-    # Snapshot before awaiting: ``_pending_record_tasks`` is mutated
-    # by the ``add_done_callback`` registered above, and iterating
-    # the live set while it shrinks would risk skipping tasks.
-    pending = tuple(_pending_record_tasks)
-    results = await asyncio.gather(*pending, return_exceptions=True)
-    for outcome in results:
-        if isinstance(outcome, (MemoryError, RecursionError)):
-            raise outcome
-
-
 __all__ = [
     "CostRecordingContext",
     "cost_recording_scope",
     "current_cost_context",
-    "drain_pending_cost_records",
     "emit_cost_record_from_context",
     "resolve_currency",
 ]

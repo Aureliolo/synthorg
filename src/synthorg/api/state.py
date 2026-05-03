@@ -6,6 +6,8 @@ Holds typed references to core services, injected into
 """
 
 import asyncio
+import threading
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from synthorg.api.auth.presence import UserPresence
@@ -230,6 +232,9 @@ class AppState(AppStateServicesMixin):
         "_refresh_store",
         "_report_service",
         "_reports_service",
+        "_request_lock_refs",
+        "_request_locks",
+        "_request_locks_guard",
         "_requests_facade_service",
         "_review_facade_service",
         "_review_gate_service",
@@ -465,6 +470,36 @@ class AppState(AppStateServicesMixin):
         self._refresh_store: RefreshStore | None = None
         self._ticket_store = WsTicketStore()
         self._user_presence = UserPresence()
+        # Per-request-id ``asyncio.Lock`` registry for serialising client-
+        # request lifecycle transitions (scope/approve/reject). Owned by
+        # AppState (one per app, fresh per test) so xdist workers cannot
+        # leak Lock objects bound to a closed event loop into the next
+        # test's loop. The guard is a plain ``threading.Lock`` because
+        # ``asyncio.Lock`` instances can only be constructed inside a
+        # running event loop, so the registry needs a thread-safe
+        # "check, then create" that does not require an active loop to
+        # serialise itself.
+        # OrderedDict (insertion-ordered) so the eviction sweep in
+        # ``get_or_create_request_lock`` can pop the oldest idle entries
+        # in O(1). Bound is a defence-in-depth cap against unbounded
+        # growth: ``scope_request`` retains the lock across handlers
+        # (an approve/reject is expected next on the same id) so
+        # abandoned-mid-flight requests never get evicted by the
+        # terminal release path. Without a cap, an authenticated
+        # client that scopes unique ids and never advances grows the
+        # registry forever.
+        self._request_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
+        self._request_locks_guard: threading.Lock = threading.Lock()
+        # In-flight reference count: bumped by ``acquire_request_lock``
+        # before returning the Lock, dropped after the ``async with``
+        # exits. Eviction skips any entry with refs > 0, so the window
+        # between receiving the Lock and entering ``async with`` cannot
+        # leave a caller stranded on a freshly-evicted entry while the
+        # next call mints a different Lock for the same id. Without
+        # this gate, two callers could end up serialising on different
+        # Lock objects for the same request, breaking the per-id
+        # ordering invariant the controller relies on.
+        self._request_lock_refs: dict[str, int] = {}
         self.startup_time = startup_time
 
     def _init_derived_services(

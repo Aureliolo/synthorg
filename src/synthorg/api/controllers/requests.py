@@ -1,7 +1,5 @@
 """Client request lifecycle endpoints at /requests."""
 
-import asyncio
-import threading
 from typing import Any
 
 from litestar import Controller, Request, get, post
@@ -25,52 +23,6 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
-
-# Per-request-id ``asyncio.Lock`` registry for serialising lifecycle
-# transitions.  Without it ``scope``/``approve``/``reject`` have a
-# TOCTOU race between ``get`` and ``save``: two concurrent approvals
-# for the same request can both pass the status check and duplicate
-# ``intake_engine.process`` work.  The registry is process-local;
-# cross-worker fairness requires a distributed lock and is out of
-# scope here; matches the in-memory scope of the sibling per-op
-# inflight store.  Lock creation is guarded by a plain
-# ``threading.Lock`` because ``asyncio.Lock`` can only be constructed
-# once an event loop exists, so the registry dict needs a
-# thread-safe "check, then create" that does not require an active
-# event loop to serialise itself.
-_REQUEST_LOCKS: dict[str, asyncio.Lock] = {}
-_REQUEST_LOCKS_GUARD: threading.Lock = threading.Lock()
-
-
-def _lock_for_request(request_id: str) -> asyncio.Lock:
-    """Return the ``asyncio.Lock`` for ``request_id``, creating if absent."""
-    lock = _REQUEST_LOCKS.get(request_id)
-    if lock is not None:
-        return lock
-    with _REQUEST_LOCKS_GUARD:
-        lock = _REQUEST_LOCKS.get(request_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            _REQUEST_LOCKS[request_id] = lock
-        return lock
-
-
-def _release_request_lock(request_id: str) -> None:
-    """Drop the lock for ``request_id`` after a terminal transition.
-
-    Called after the final ``save`` of a terminal state (approve,
-    reject) so ``_REQUEST_LOCKS`` does not accumulate one entry per
-    lifetime request id.  Only evicts when the lock is idle -- a
-    still-locked entry would strand any waiter who already holds a
-    reference to the same :class:`asyncio.Lock` object.  The caller
-    must already have released the ``async with _lock_for_request``
-    block before invoking this helper, otherwise the ``locked()``
-    probe reports the caller's own hold and the eviction is a no-op.
-    """
-    with _REQUEST_LOCKS_GUARD:
-        lock = _REQUEST_LOCKS.get(request_id)
-        if lock is not None and not lock.locked():
-            _REQUEST_LOCKS.pop(request_id, None)
 
 
 class CreateRequestPayload(BaseModel):
@@ -228,7 +180,7 @@ class RequestController(Controller):
         # race at ``save`` time.  The lock scope is intentionally
         # narrow -- only the get/check/save critical section -- so a
         # stuck request does not block unrelated requests.
-        async with _lock_for_request(request_id):
+        async with app_state.acquire_request_lock(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:
@@ -310,7 +262,7 @@ class RequestController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        async with _lock_for_request(request_id):
+        async with app_state.acquire_request_lock(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:
@@ -335,8 +287,8 @@ class RequestController(Controller):
             await sim_state.request_store.save(final)
             _publish(request, WsEventType.REQUEST_APPROVED, final)
         # Approve walks to ``TASK_CREATED`` (terminal) -- drop the lock
-        # so ``_REQUEST_LOCKS`` does not accumulate.
-        _release_request_lock(request_id)
+        # so the registry does not accumulate.
+        app_state.release_request_lock_if_idle(request_id)
         return ApiResponse(data=final)
 
     @post(
@@ -356,7 +308,7 @@ class RequestController(Controller):
         """Cancel a request, recording the rejection reason."""
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        async with _lock_for_request(request_id):
+        async with app_state.acquire_request_lock(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:
@@ -380,5 +332,5 @@ class RequestController(Controller):
             await sim_state.request_store.save(cancelled)
             _publish(request, WsEventType.REQUEST_REJECTED, cancelled)
         # Reject walks to ``CANCELLED`` (terminal) -- drop the lock.
-        _release_request_lock(request_id)
+        app_state.release_request_lock_if_idle(request_id)
         return ApiResponse(data=cancelled)
