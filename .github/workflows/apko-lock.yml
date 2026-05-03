@@ -70,7 +70,7 @@ jobs:
         uses: ./.github/actions/setup-apko
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/apko
-          version: v1.2.7
+          version: v1.2.9
 
       - name: Update lockfiles
         run: |
