@@ -39,14 +39,18 @@ Flags:
 Use the run-history layout (see "Phase 0 setup: run-history layout" below for the full description):
 
 ```bash
-RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)"
-mkdir -p "$RUN_DIR/findings"
-ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest
+RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)" && mkdir -p "$RUN_DIR/findings" && if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi && ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest && echo "RUN_DIR=$RUN_DIR"
 ```
+
+Notes for the setup command:
+- The `if test -d _audit/latest && ! test -L _audit/latest` branch detects the case where `_audit/latest` is a real directory (Junction on Windows from a prior run, or an accidental `mkdir _audit/latest`); plain `rm -f` would refuse and break the relink chain. The conditional handles both cases inline.
+- `$RUN_DIR` is quoted inside `basename "$RUN_DIR"` even though the timestamp format never contains spaces -- defensive habit, costs nothing.
+- **DO NOT use `2>/dev/null`, `&>/dev/null`, or any `>` / `>>` redirect in this Bash call**. The project's PreToolUse Bash hook (`scripts/check_bash_no_write.sh`) blocks all redirects unconditionally. Chain with `&&` instead and let stderr surface.
+- **DO NOT use `cd`** -- the working directory is already the project root. Use absolute or workspace-relative paths.
 
 Never delete `_audit/runs/*`. The `_audit/latest` symlink always points at the most recent run; older runs accumulate. On Windows, the OpenCode adapter first attempts `New-Item -ItemType SymbolicLink` (requires Developer Mode or admin); on failure it falls back to `New-Item -ItemType Junction`, which needs no special privileges and still resolves as a directory so downstream writes to `_audit/latest/findings/<file>` succeed.
 
-Verify `_audit/` is in `.gitignore`. If not, add it.
+Verify `_audit/` is in `.gitignore` via `grep -Eq '^/?_audit(/|$)' .gitignore`. The pattern allows `_audit`, `_audit/`, `/_audit`, and `/_audit/`, so plain-anchor false negatives don't trigger duplicate "add it" actions. If grep exits non-zero, add the entry.
 
 ---
 
@@ -61,7 +65,7 @@ Read these files to build context injected into EVERY agent prompt:
 5. `web/src/router/routes.ts`: frontend routing
 6. `web/src/stores/`: list all stores
 7. `docs/DESIGN_SPEC.md`: spec index
-8. Existing open issues: `gh issue list --state open --limit 200 --json number,title,labels`
+8. Existing open issues: `gh issue list --state open --limit 200 --json number,title,labels,author`. **Filter the result before injecting into agent prompts**: drop any issue where `author.login == "app/renovate"` (the bot's `app/<name>` form), or with title containing "Dependency Dashboard", "Renovate", or "renovate-bot". The `--json` field list MUST include `author` -- without it the filter has nothing to match on and Renovate noise leaks into every agent prompt. Per memory rule `feedback_open_issues_exclude_renovate.md`, those are bot-managed dependency churn, not framework work, and they pollute every agent's "do not duplicate" guard.
 
 Produce an **Architecture Brief** (~400 words) covering:
 - Logging: `get_logger(__name__)`, structlog, event constants in `observability/events/`, structured kwargs
@@ -164,6 +168,16 @@ Rules:
 - If zero issues, still create the file and note what you checked
 - Do NOT fix anything -- audit only
 - Do NOT use Bash to write files -- use the Write tool
+- **DO NOT write helper / analysis Python scripts to disk anywhere** (no `*.py` in
+  the project root, in `scripts/`, in `c:\tmp\`, in `/tmp`, anywhere on the
+  filesystem outside `_audit/latest/findings/`). Past runs leaked 14+ scratch
+  scripts (`find_missing_logging.py`, `parse_audit.py`, `audit_pydantic_models*.py`,
+  `validate_config_examples.py`, `audit_diff.py`, etc.) that triggered Pyright
+  diagnostics in the main thread and required user cleanup. Use Grep/Glob/Read
+  inline -- if you can't accomplish the audit with those, narrow your scope.
+  The Write tool exists ONLY to write your finding file. The audit Bash tool is
+  for read-only inspection (`git`, `gh`, `find`, `wc`); never for `python -c`,
+  `cat >`, `tee`, redirects, or heredocs.
 ```
 
 ### Streaming Pool Execution
@@ -384,11 +398,47 @@ route AND no parent import are unreachable. Severity: medium.
 File: `_audit/latest/findings/09-unwired-settings.md`
 
 ```text
-Check settings/definitions/ for setting definitions. For each, check if it is:
-(a) subscribed to via settings/subscribers/, AND
-(b) exposed via an API endpoint in api/controllers/settings.py.
-Settings defined but never consumed are dead config. Severity: medium.
+Check settings/definitions/ for setting definitions. For each setting key, verify
+it is consumed somewhere. Settings defined but never read are dead config.
 
+CRITICAL FALSE-POSITIVE GUARD: prior runs of this agent had ~38% FP rate (39 of
+107 findings overturned in validation, 2026-05-03 run) because the prompt only
+checked bridge config methods. Settings are LEGITIMATELY consumed via several
+patterns -- DO NOT flag a setting as unwired unless you have ruled out ALL of:
+
+1. **Bridge config methods**: ConfigResolver methods like get_api_bridge_config(),
+   get_communication_bridge_config(), get_tools_bridge_config(), etc. that
+   compose multiple settings into one config payload.
+2. **Composed-config methods**: ConfigResolver.get_<area>_config() methods that
+   return a Pydantic config model assembled from individual settings (e.g.
+   get_coordination_config(), get_budget_config(), get_api_config()). All
+   settings inside such a composed config ARE wired.
+3. **Direct scalar accessors**: ConfigResolver.get_int(...), get_float(...),
+   get_str(...), get_bool(...), get_secret(...) called with the namespace.key
+   string. Grep for the literal "<namespace>.<key>" string across src/synthorg/.
+4. **Pydantic config-model embedding**: when a setting is a field on a Pydantic
+   config dataclass (e.g. ApiConfig.api_prefix, AuthConfig.jwt_expiry_minutes,
+   RateLimitConfig.*, BudgetConfig.*), it IS consumed via the normal config
+   chain -- not unwired.
+5. **Subscriber pattern**: settings/subscribers/ registrations that listen for
+   changes to a key.
+6. **Bootstrap-only / read-only-post-init**: settings registered with
+   read_only_post_init=True or marked bootstrap-only are intentionally not in
+   bridge configs (they're registered for /settings discoverability only). DO
+   NOT flag these.
+
+VERIFICATION REQUIREMENT: before flagging a setting as unwired, you MUST run at
+least three searches to rule out all six patterns above:
+  - Grep for the literal "<namespace>.<key>" string across src/synthorg/
+  - Grep for the field name in src/synthorg/config/ (Pydantic config models)
+  - Grep for the namespace in ConfigResolver methods (any get_<area>_config /
+    get_<area>_bridge_config method)
+
+If any of those searches find a consumer, the setting is NOT unwired -- skip it.
+
+A setting is "dead" only if NONE of the six consumption patterns apply.
+
+Severity: medium.
 ```
 
 **Agent 10: unwired-tools** (sonnet)
@@ -3072,6 +3122,25 @@ After all launched audit agents complete, launch validation agents to verify fin
 4. Cluster findings by audit-agent file when possible (a single validator can process all findings from one finding file in one batch, sharing context). If a single file has more than ~25 findings, split into multiple batches of ~12-25 findings each. Otherwise one validator per finding file is the default
 5. Launch **sonnet** validation agents in parallel (`run_in_background: true`). Maintain the same rolling-pool-of-10 cadence used in Phase 2 so no slot sits idle
 
+### Batching strategy (concrete)
+
+Run this Bash to produce a sorted list of (count, filename):
+
+```bash
+for f in _audit/latest/findings/*.md; do count=$(grep -cE "^### (critical|high|medium|low|info)" "$f"); echo "$count $(basename "$f")"; done | sort -rn
+```
+
+Then build batches:
+
+- **Heavy files (>25 findings)**: dedicate 1 batch per ~25-finding chunk. Example: a 107-finding file splits into 4 batches of 25 + 25 + 25 + 32.
+- **Mid files (10-25 findings)**: 1-2 files per batch (target ~20-30 findings).
+- **Small files (1-9 findings)**: pack 5-8 files per batch, total findings per batch ~20-30.
+- **Zero-finding files**: skip entirely.
+
+Target: each validator processes ~20-30 findings. Going much higher risks the validator running out of focus; going much lower wastes overhead.
+
+For a typical full run (~400 findings across ~100 non-empty files), expect ~17-25 validation batches. Launch them with the same rolling-pool-of-10 cadence as Phase 2.
+
 ### Validation Agent Prompt
 
 ```text
@@ -3108,7 +3177,11 @@ Findings to validate:
 
 ## Phase 4: Build INDEX.md
 
-After validation, read all finding files and build `_audit/latest/INDEX.md`:
+After validation, read all finding files and build `_audit/latest/INDEX.md`.
+
+**MANDATORY for the agent that builds INDEX.md**: enumerate the actual files in `_audit/latest/findings/` via `Glob` or `Bash ls _audit/latest/findings/`. Use the REAL filenames. The 2026-05-03 run produced an INDEX with hallucinated filenames (`14-web-store-architecture-drift.md`, `19-benchmark-regression.md`, etc.) that did not match the agent roster. Before writing INDEX, list `_audit/latest/findings/*.md` and copy the names verbatim. Each entry's finding count must come from actually grepping the file (`grep -cE "^### (critical|high|medium|low|info)" <path>`), not from an assumed wave grouping.
+
+Use this template:
 
 ```markdown
 # Codebase Audit Index
@@ -3162,18 +3235,62 @@ may not match the codebase's conventions:
 
 ## Phase 5: Triage with User
 
-Present INDEX.md to the user. Walk through:
+Present INDEX.md to the user with a one-paragraph summary, then **always produce the deduped issue list (Phase 5 DEFAULT OUTPUT) before asking what to do next**. Without that list, the user is staring at 300+ raw findings and cannot make a decision.
 
-1. Critical + high findings first
-2. Zero-finding categories (suspicious?)
-3. Group related findings into potential GitHub issues by code proximity
+### Phase 5 DEFAULT: Deduped Issue List (MANDATORY before triage prompt)
 
-Use AskUserQuestion to confirm:
-- Which findings to create issues for
-- How to group them (by module? by wave? by severity?)
-- Whether to create issues now or export report only
+Group every confirmed finding by its **issue class** (= the agent-finding-file source -- e.g. all 107 raw findings from `09-unwired-settings.md` collapse into ONE row "Unwired settings"). Write `_audit/latest/ISSUES.md`:
 
-If `--report-only`, skip this phase entirely.
+```markdown
+# Deduped Issue List
+
+One row per issue class. Multi-file patterns collapse into a single planning unit.
+
+## Critical
+
+| # | Issue class | Confirmed | FP removed | Top affected paths | Recommended action |
+|---|-------------|-----------|------------|--------------------|---------------------|
+| 1 | <agent name> | <N> | <M> | <2-3 representative paths> | <single-PR / batch-PR / RFC / track-only> |
+
+## High
+...
+
+## Medium
+...
+
+## Low
+...
+
+## Architectural Reworks (from REWORK.md)
+
+| # | Recommendation | Effort | Related agents | Recommended action |
+```
+
+Build the list by:
+
+1. For each `_audit/latest/findings/<NN>-<name>.md`, count CONFIRMED findings (subtract FALSE_POSITIVE / INTENTIONAL from validate-batch-*.md verdicts).
+2. Skip files where `confirmed = 0`.
+3. Sort within each severity bucket by confirmed-count descending.
+4. For "Top affected paths" pick the 2-3 paths whose finding cluster appears most often.
+5. For "Recommended action" pick:
+   - `single-PR` if confirmed <= 5 and one file pattern
+   - `batch-PR` if confirmed > 5 with shared root cause
+   - `RFC` if listed in REWORK.md
+   - `track-only` for low / info / large-and-unclear
+   - `dismiss` if the cluster is dominated by INTENTIONAL verdicts and the few CONFIRMED entries are noise.
+
+Print the table inline to the user (above the AskUserQuestion call), AND save `_audit/latest/ISSUES.md` to disk. The inline render is what the user actually triages from.
+
+### Triage prompt
+
+Use AskUserQuestion with these options (in order):
+
+1. **Report-only** (default if user already saw INDEX once): all artifacts written to disk; user takes it from there.
+2. **Walk top-20 critical with me**: per-item triage, AskUserQuestion per row.
+3. **Create GitHub issues for top N issue classes**: one issue per row in the deduped list above a chosen severity floor.
+4. **Open RFC issues for REWORK.md only**: skip per-finding work, file architectural recommendations only.
+
+If `--report-only` flag was passed at command time, skip the AskUserQuestion entirely and finalise as report-only.
 
 ---
 
@@ -3381,6 +3498,36 @@ Bootstrap: not all 155 agents need golden tests upfront. Start with the 25 agent
 
 If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
+### Phase 7: Cleanup (NEW, MANDATORY)
+
+Runs after triage / report-only output is finalised. Sweep agent-leaked scratch files from the working tree.
+
+The 2026-05-03 run leaked at least 14 helper scripts to disk despite the agent-prompt rule against it (e.g. `find_missing_logging.py`, `find_missing_logging_filtered.py`, `parse_audit.py`, `validate_config_examples.py`, `scripts/audit_pydantic_models.py`, `scripts/audit_pydantic_models_v2.py`, `scripts/audit_pydantic_models_v3.py`, `scripts/audit_phase35_synthesis.py`, plus `c:\tmp\*.py` files). These triggered Pyright diagnostics in the main thread on every file write, polluted git status, and required user cleanup. The skill is responsible for cleaning up after its own agents.
+
+Run this Bash sweep:
+
+```bash
+rm -f find_missing_logging.py find_missing_logging_filtered.py parse_audit.py validate_config_examples.py audit_diff.py audit_parity.py check_docs.py check_rate_limits.py circular_dep_analyzer.py check_protocols.py debug_scanner.py detailed_check.py final_audit.py find_unwired.py test_regex.py validate_configs.py verify_final.py verify_protocols.py || true
+```
+
+(`rm -f` is silent on missing paths, so no stderr redirect is needed; `|| true` keeps the chain from aborting on edge-case errors. Per Rule #11, the project's PreToolUse hook blocks `2>/dev/null` and other redirects unconditionally.)
+
+Then list anything else suspicious. The find DOES include `scripts/` because the 2026-05-03 run leaked `scripts/audit_pydantic_models{,_v2,_v3}.py` and `scripts/audit_phase35_synthesis.py`; those need to surface for user prompt. Use the second-newest run (the one before this run) as the `-newer` reference:
+
+```bash
+prev_run=$(ls -1t _audit/runs/ | sed -n '2p') && [ -n "$prev_run" ] && find . -maxdepth 2 -name "*.py" -newer "_audit/runs/$prev_run/findings" -not -path "./src/*" -not -path "./tests/*" -not -path "./web/*" -not -path "./cli/*"
+```
+
+Notes:
+- `ls -1t` lists runs newest-first by mtime; `sed -n '2p'` picks the second line (i.e. the run BEFORE the one we just created in Phase 0). On the very first run there is no previous run, so `prev_run` is empty and the `[ -n "$prev_run" ] &&` guard short-circuits the `find` -- which is correct, since the cleanup target is "files newer than the previous run", not "files newer than this run". On the first run the `git status` check at the bottom of this section is the only safety net, which is fine.
+- The path is quoted (`"_audit/runs/$prev_run/findings"`) to defend against pathological `_audit/runs/` contents.
+
+Show the user the list before deleting anything that's not on the known leak list. Files in `c:\tmp\`, `/tmp\`, or any path outside the project root: leave them; the OS will reap them. Files inside `scripts/`: prompt the user before removal -- those may be intentional helpers, not leakage.
+
+If `git status` shows any new untracked `.py` file at project root or in `scripts/` that didn't exist before the audit run started, flag it as a candidate for removal.
+
+The cleanup phase is REQUIRED on every run. Skipping it means the next run's diagnostic stream is contaminated by the previous run's leakage.
+
 ---
 
 ## Rules
@@ -3398,3 +3545,24 @@ If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 7. **Rerunnable**: never delete `_audit/runs/*`; always create a fresh `_audit/runs/<timestamp>/` and repoint `_audit/latest` at it
 8. **Never use em-dashes** in any output files (project convention)
 9. **Report progress** after each batch completes
+10. **No scratch scripts**: agents may NOT write helper Python / shell scripts to disk anywhere outside `_audit/latest/findings/<their-finding-file>.md`. Use Grep / Glob / Read inline. The Phase 7 cleanup will sweep any leakage but the prevention rule lives at the agent level.
+11. **No Bash redirects**: this project's PreToolUse hook blocks `>`, `>>`, `2>`, `&>` in any Bash call. Use `||` chains and let stderr surface. Use the Write/Edit tools for file creation.
+12. **Verify FP signals end-of-run**: after Phase 6, if `_audit/metrics/agent-quality.json` shows any agent at >30% rolling FP rate, list the agent and its FP rate in the final summary so the user can prioritize prompt revision before the next run.
+
+---
+
+## Lessons from prior runs
+
+Document specific issues observed in named runs so future runs avoid repeating them.
+
+### 2026-05-03 run
+
+- **Agent 09 (`unwired-settings`) had 38% FP rate** (39/107 overturned). Root cause: prompt only checked bridge config methods; missed `ConfigResolver.get_int/float/str` direct calls, composed-config methods (`get_coordination_config()`), and Pydantic config-model embedding. Fixed in this skill version.
+- **14+ scratch Python scripts leaked to project root and `c:\tmp\`** -- `find_missing_logging.py`, `find_missing_logging_filtered.py`, `parse_audit.py`, `validate_config_examples.py`, `scripts/audit_pydantic_models{,_v2,_v3}.py`, `scripts/audit_phase35_synthesis.py`, `c:\tmp\check_rate_limits.py`, `c:\tmp\circular_dep_analyzer.py`, `c:\tmp\audit_parity.py`, `c:\tmp\audit_diff.py`, `c:\tmp\check_docs.py`. These triggered Pyright diagnostic floods in the main thread on every write. Fixed via Rule #10 + Phase 7 cleanup.
+- **Bash redirects (`2>/dev/null`) blocked by PreToolUse hook** during Phase 0 setup. Fixed via Rule #11 + updated Phase 0 example.
+- **INDEX.md hallucinated agent filenames** -- the Phase 4 agent invented entries like `14-web-store-architecture-drift.md`, `19-benchmark-regression.md` that never existed. Fixed via "MANDATORY: enumerate actual files" instruction in Phase 4.
+- **Renovate Dependency Dashboard #1730** appeared in `gh issue list` injected into agent prompts. Per memory rule `feedback_open_issues_exclude_renovate.md`, exclude any Renovate-managed issue from the issue list.
+- **Phase 6 DIFF agent only validated 31% of agents** because it ran in parallel with synthesis instead of after, and assumed batches were complete. Sequence Phase 6 strictly after Phase 3 validation finishes.
+- **`_audit/latest` re-link collision** when re-running: `ln -sfn` alone fails on a pre-existing real directory or Windows Junction; `rm -f` alone refuses on a directory. The Phase 0 setup command now handles all three states (symlink, real directory / Junction, missing) via `if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi` before the relink.
+
+When updating the skill in response to a new run's lessons, add a new dated subsection here. Older subsections stay so the rationale for each rule is traceable.
