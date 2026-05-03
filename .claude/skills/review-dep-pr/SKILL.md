@@ -189,9 +189,87 @@ fi
 
 If the build fails, capture the errors; they're likely from breaking changes that need fixing. The trap ensures the original branch is always restored, even on failure.
 
-## Phase 5: Present Findings
+## Phase 5: Cross-PR File Overlap Analysis
 
-For each PR, present a structured report:
+**Skip this phase if only one PR is being reviewed.**
+
+Parallel merges only work safely when PRs' changed-file sets are disjoint. Compute the file map per PR and flag conflicts before triage so the user can pick a merge strategy upfront instead of discovering conflicts mid-merge.
+
+For each PR in the batch, fetch the full changed-file list using the **paginated GraphQL form** (the default approach):
+
+```bash
+gh api graphql --paginate \
+  -F owner=OWNER -F repo=REPO -F pr=NUMBER \
+  -f query='query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+    repository(owner:$owner,name:$repo){
+      pullRequest(number:$pr){
+        files(first:100,after:$endCursor){
+          pageInfo{hasNextPage,endCursor}
+          nodes{path,additions,deletions}
+        }
+      }
+    }
+  }' \
+  --jq '.data.repository.pullRequest.files.nodes[].path'
+```
+
+Why the paginated form is the default: `gh pr view <N> --json files` is capped at 100 files by the underlying GraphQL `first: 100` query and does not paginate ([cli/cli#5368](https://github.com/cli/cli/issues/5368), [#9916](https://github.com/cli/cli/issues/9916), [#6930](https://github.com/cli/cli/issues/6930)). On a large PR the shorthand silently truncates and the overlap map ends up incomplete, which produces wrong wave recommendations. Always reach for the paginated GraphQL above first.
+
+**Shorthand (special-case, only after an explicit precheck).** The `gh pr view <N> --json files --jq '.files[].path'` shorthand is acceptable only when you have first confirmed the PR has fewer than 100 changed files. Run the precheck inline:
+
+```bash
+if [ "$(gh pr view <N> --json changedFiles --jq .changedFiles)" -lt 100 ]; then
+  gh pr view <N> --json files --jq '.files[].path'
+else
+  # fall back to the paginated GraphQL form above
+fi
+```
+
+Skipping the precheck is forbidden: the truncation failure is silent and the resulting overlap map looks fine even when it's missing the files most likely to conflict.
+
+Build two views:
+- **Per-PR**: file count + the file list (collapse long lists if > 20 files)
+- **Per-file conflict map**: which PRs touch each path that's touched by ≥ 2 PRs
+
+**Lockfiles deserve special handling.** `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`, `atlas.sum`, `composer.lock`, `Gemfile.lock`, etc. are almost always touched by every dependency update in their ecosystem. Two PRs touching the same lockfile are GUARANTEED to conflict on the second merge -- even when no source files overlap. Classify lockfile-only overlaps separately from source/config overlaps; they're a "rebase needed" conflict, not a hard blocker.
+
+**Classify each pair of overlapping PRs:**
+
+| Overlap kind | Meaning | Conflict severity | Strategy hint |
+|--------------|---------|-------------------|---------------|
+| **None** | Disjoint file sets | Safe | Parallel merge, any order |
+| **Lockfile-only** | Only `*.lock` / `*.sum` / lockfile equivalents overlap | Trivial | First merges cleanly; the rest need a rebase. The bot will rebase on its next cycle (Renovate: apply the configured rebase label, default `rebase`, or tick the rebase/retry checkbox in the PR body; Dependabot: post `@dependabot rebase`). |
+| **Config-file overlap** | Same `pyproject.toml`, `package.json`, workflow YAML, `Dockerfile`, etc. | Moderate | Sequential merge with rebase between; usually mechanical (different table rows / different action versions) |
+| **Source overlap** | Same `.py` / `.ts` / `.go` / `.tsx` / etc. file | High | Investigate diffs before merging either; may need manual integration |
+
+**Group the PRs into merge waves (iterative greedy maximal-disjoint algorithm):**
+
+Compute waves greedily by repeatedly extracting a **maximal subset** of the remaining PRs that are mutually disjoint on source-file and config-file overlap (lockfile-only overlap inside a wave is allowed; the post-merge rebase is mechanical). "Maximal" here means *cannot-be-extended-without-introducing-conflicts*, **not** *largest-possible*. The largest-possible (maximum independent set) is NP-hard in general; the greedy algorithm below runs in polynomial time and is fine for the small batch sizes (typically 5-15 PRs) this skill handles. If a future caller needs an exact optimum, they can swap in an approximation algorithm without changing the rest of the pipeline.
+
+1. **Wave 1** = a maximal subset of all PRs in the batch, built greedily: start with the empty set, then for each PR (e.g. iterating in order of fewest conflicting peers first) add it to the wave if it's pairwise non-overlapping on source/config with every PR already in the wave; otherwise skip it for this wave.
+2. Remove the Wave 1 PRs from the candidate pool.
+3. **Wave 2** = a maximal subset of the remaining PRs, built the same way.
+4. Repeat until every PR has been assigned to a wave.
+
+Within any single wave, PRs are parallel-safe to merge. Between waves, rebase the next wave's PRs after the previous wave lands and re-verify CI before merging the next wave. If at any iteration no parallel-safe subset of size ≥ 2 exists (i.e. every remaining PR conflicts with every other on source/config), the remainder becomes a sequential chain ordered by smallest-conflict-footprint first; the "Combine into one PR" strategy in Phase 7 is usually preferable in that case.
+
+**Output**: a compact overlap matrix in the report header (Phase 6), plus the wave assignment and recommended merge ordering carried into Phase 7's strategy question.
+
+**Trigger rule for Phase 7's strategy question.** Phase 7 is only prompted when ≥ 2 PRs in the batch share **source or config files**. Lockfile-only overlaps do **not** trigger the strategy question (they are not waves-ambiguous: the bot rebases the loser of each lockfile race on its next cycle). If all overlaps in the batch are lockfile-only, state explicitly in the report ("No source/config overlap; all PRs parallel-safe; lockfile races resolve via bot rebase") and skip the merge-strategy question in Phase 7. The Phase 6 "Overlapping files" count must use the same scope: count only source/config overlaps when deciding whether to invoke Phase 7.
+
+## Phase 6: Present Findings
+
+When multiple PRs are in the batch, lead the report with the **Cross-PR Overlap Matrix** from Phase 5:
+
+```text
+## Batch Overlap Summary
+**PRs reviewed**: #X, #Y, #Z
+**Overlapping files (for strategy decision; excludes lockfile-only)**: <count>, classified as <config / source>
+**Lockfile-only overlaps**: <count> (informational; do not trigger Phase 7)
+**Recommended waves**: Wave 1 = #X, #Z (parallel-safe); Wave 2 = #Y (rebase after Wave 1)
+```
+
+Then for each PR, present a structured report:
 
 ### Header
 
@@ -199,6 +277,7 @@ For each PR, present a structured report:
 ## PR #<number>: <title>
 **Package(s)**: <name or comma-separated names> | **Ecosystem**: <type> | **Bump**: <from> → <to> (<major/minor/patch/non-semver>)
 **CI Status**: <pass/fail summary>
+**Files touched**: <count> (<lockfile-only | includes config | includes source>) -- conflicts with: #<other PRs that share source or config files, or "none"> (lockfile-only overlaps with other PRs are listed separately as informational, e.g. `lockfile-only: #X, #Y`; they do not count as "conflicts")
 **Usage**: <brief -- e.g., "3 workflows, inputs: python-version, cache" or "mkdocs.yml theme + 2 plugins">
 ```
 
@@ -220,13 +299,29 @@ List concrete actions to take, grouped by timing:
 - **After merge**: follow-up items (non-blocking but valuable)
 - **No action needed**: if the update is clean, say so explicitly
 
-## Phase 6: User Decision
+## Phase 7: User Decision
 
 After presenting all PR reports, use AskUserQuestion to ask how to proceed. Tailor options based on what was found.
 
-**If there are actionable items (config improvements, new features to adopt, workarounds to remove):**
+**Multi-PR overlap question (only when ≥ 2 PRs share source or config files, per Phase 5):**
 
-Ask per-PR (or batched if multiple simple PRs):
+Before per-PR triage, ask one batch-level question to lock in a merge strategy. Skip this question when the only overlaps in the batch are lockfile-only; those resolve automatically when the bot rebases the loser of each lockfile race on its next cycle.
+
+```text
+"<N> PRs in this batch overlap on <M> source/config file(s) (<config|source>). How should we sequence the merges?"
+```
+
+Options:
+- **"Wave-based parallel"**: Merge Wave 1 PRs in parallel; rebase + merge Wave 2; repeat. Maximises throughput; lockfile-only conflicts auto-resolve when the bot rebases (Renovate on its next cycle, Dependabot on `@dependabot rebase`). Use when overlaps are lockfile/config only.
+- **"Strict sequential"**: Merge one PR at a time, rebase the rest between merges. Slowest but lowest risk. Use when source files overlap or any PR's diff would non-trivially conflict.
+- **"Combine into one PR"**: Close the bot PRs and create one combined PR with all changes manually integrated. Use when 3+ PRs all conflict on the same source file -- avoids N rounds of rebase churn.
+- **"Defer the conflicting subset"**: Merge the disjoint PRs now; close the conflicting ones via Phase 8's "Close / Skip" flow with a recognisable deferment reason (the user provides the exact phrase when prompted; common choices: "supersede later", "deferred to next cycle", "blocked on #N"). The dependency bot (Renovate or Dependabot) will recreate the closed PRs on its next cycle once the main batch has landed. Use when the conflicting subset isn't time-sensitive. The exact comment text is whatever the user supplies; this skill does not require a specific phrase, but the chosen reason should make the intent legible to a future reader.
+
+Carry the chosen strategy into Phase 8: it dictates merge order and whether Phase 8 invokes `--auto` (parallel-safe) vs blocking on each merge (sequential).
+
+**Per-PR triage (always run):**
+
+If there are actionable items (config improvements, new features to adopt, workarounds to remove), ask per-PR (or batched if multiple simple PRs):
 
 ```text
 "What should we do with PR #<N> (<package> <from>→<to>)?"
@@ -256,7 +351,17 @@ Options:
 - **"Let me review individually"**: Break out per-PR decisions
 - **"Skip for now"**: Come back later
 
-## Phase 7: Execute Decisions
+## Phase 8: Execute Decisions
+
+Apply the merge-strategy choice from Phase 7 (when Phase 7 was asked).
+
+**Lockfile-only batch (Phase 7 skipped).** When Phase 6 detected only lockfile-only overlaps (per the Phase 5 trigger rule, Phase 7 was skipped), there is no user-supplied strategy to apply. Use the implicit lockfile-race default: treat all PRs in the batch as parallel-safe; merge each eligible PR immediately (or queue with `--auto` if a final required check is still pending); after each merge lands on `main`, the lockfile-conflicting PRs that didn't win that race need a rebase. Trigger that rebase per the bot conventions documented under "Wave-based parallel" below (Renovate: `<rebaseLabel>` label; Dependabot: `@dependabot rebase`); wait for CI to refresh on the rebased head, then merge the next winner. Repeat until the batch is drained. No strategy question is asked; the operator can interrupt at any point if they want a different sequencing.
+
+**Strategy-driven path (Phase 7 ran).** Apply whichever option the user picked:
+- **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot. **Renovate** PRs: prefer the configured rebase label, `gh pr edit <number> --add-label <rebaseLabel>` (use the value of Renovate's `rebaseLabel` option from the repo's Renovate config; default: `rebase`), because the label trigger does not depend on the exact wording of Renovate's PR-body template. As a fragile alternative you can also tick the rebase/retry checkbox via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`, but body string-manipulation breaks silently if Renovate changes its template format. **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
+- **Strict sequential**: merge one PR, wait for it to land on `main`, trigger rebase + CI on the next PR, then merge it. No overlap with other merges in flight.
+- **Combine into one PR**: invoke "Improve and merge" against a single new branch that integrates all the diffs; close the bot PRs with a pointer to the combined PR.
+- **Defer the conflicting subset**: invoke "Close / Skip" on the deferred PRs first, then process the remaining disjoint PRs normally.
 
 For each PR based on user's choice:
 
@@ -331,3 +436,4 @@ After all merges complete, if any PRs were merged, automatically run `/post-merg
 - **Preserve existing config**: when making improvements, don't refactor unrelated config. Only touch what's relevant to the update.
 - **If you can't fetch release notes** (private repo, deleted releases, etc.), say so explicitly and recommend the user check manually before merging.
 - **After merging**: automatically run `/post-merge-cleanup` to sync local branches; do not just remind the user.
+- **Multi-PR runs check file overlap before triage**: with ≥ 2 PRs in the batch, always compute the per-file conflict map (Phase 5) and surface it in the report. Don't propose parallel merges for PRs that overlap on source/config files; lockfile-only overlaps are acceptable but expect rebase between merges.
