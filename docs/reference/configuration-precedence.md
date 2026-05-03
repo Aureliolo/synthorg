@@ -146,9 +146,9 @@ entry:
 A registered setting whose consuming machinery exists but is never
 instantiated at boot is **ghost-wired** -- the value resolves cleanly
 through the chain, but no code path that reads it ever runs in default
-config. The 2026-05-03 audit's worst false-positive class came from
-this pattern: the import-graph trace found the consumer code but
-missed that its owning service was never started.
+config. Import-graph traces find the consumer code but miss that its
+owning service is never started, so a static "find references" walk
+can't distinguish a live consumer from a ghost-wired one.
 
 `scripts/check_setting_to_startup_trace.py` is the standing gate.
 Pre-push + CI; mirrors `check_persistence_boundary.py` shape.

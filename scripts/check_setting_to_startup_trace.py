@@ -63,13 +63,11 @@ import sys
 import tokenize
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: bootstrap-wiring"
 
 _BASELINE_FIELDS: Final[int] = 3
-"""Expected number of colon-separated fields in a baseline entry:
-``<yaml_path>:<kind>:<owning_class>``."""
 
 _LIFECYCLE_FILES: Final[tuple[str, ...]] = (
     "src/synthorg/api/app.py",
@@ -90,8 +88,6 @@ _BASELINE_HEADER = """\
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_setting_to_startup_trace.py --update-baseline
-#
-# Issue #1735 / #1737 Part 1.
 """
 
 
@@ -112,32 +108,76 @@ class SettingRecord:
     has_suppression: bool
 
 
+_GhostKind = Literal["hardcoded-none", "factory-gated"]
+"""Discriminator for :class:`GhostService`. ``hardcoded-none`` covers
+``x: T | None = None`` paired with a conditional ``if x is not None:
+x.start()``. ``factory-gated`` covers ``x = factory(...)`` where the
+factory returns ``None`` on a default-disabled gating flag."""
+
+_ViolationKind = Literal["ghost-wired"]
+"""Currently the lint only emits one violation kind. Reserved as a
+``Literal`` (rather than a bare string) so future kinds (e.g.
+``unconsumed-setting``) can extend the union without silent drift in
+baseline-file parsing."""
+
+
 @dataclass(frozen=True)
 class GhostService:
     """A class whose .start() never runs at boot.
 
-    ``gating_namespace`` is set when the ghost is detected via the
-    factory-gated pattern (the factory's None-return is gated on a
-    default-disabled flag in that namespace). ``None`` for the
-    hardcoded-None pattern.
+    Invariant: ``gating_namespace`` is non-None iff
+    ``kind == "factory-gated"``. The ``__post_init__`` enforces this
+    so callers that construct a ``GhostService`` with a mismatched
+    pair fail fast instead of silently producing nonsense violations.
     """
 
     class_name: str
-    kind: str  # "hardcoded-none" | "factory-gated"
+    kind: _GhostKind
     gating_namespace: str | None
     source_file: str  # path to lifecycle/app file where the ghost was detected
+
+    def __post_init__(self) -> None:
+        """Reject invalid (kind, gating_namespace) pairs."""
+        has_gating = self.gating_namespace is not None
+        is_factory = self.kind == "factory-gated"
+        if has_gating != is_factory:
+            msg = (
+                f"GhostService(kind={self.kind!r}) requires "
+                f"gating_namespace="
+                f"{'<non-None>' if is_factory else 'None'}, "
+                f"got {self.gating_namespace!r}"
+            )
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)
 class Violation:
-    """A single ghost-wired setting flagged by the lint."""
+    """A single ghost-wired setting flagged by the lint.
+
+    Invariant: ``yaml_path`` and ``owning_class`` must not contain
+    ``:`` because :meth:`baseline_key` joins fields with that
+    delimiter. Setting names are dotted-lowercase (no colons by
+    convention) and class names are bare identifiers; both
+    invariants hold for every existing site, but the
+    ``__post_init__`` makes the assumption explicit so a future
+    rename that breaks the format fails fast.
+    """
 
     yaml_path: str
-    kind: str  # "ghost-wired"
+    kind: _ViolationKind
     owning_class: str
     source_file: str
     source_line: int
     reason: str
+
+    def __post_init__(self) -> None:
+        """Reject field values that would corrupt the baseline format."""
+        if ":" in self.yaml_path:
+            msg = f"yaml_path may not contain ':'; got {self.yaml_path!r}"
+            raise ValueError(msg)
+        if ":" in self.owning_class:
+            msg = f"owning_class may not contain ':'; got {self.owning_class!r}"
+            raise ValueError(msg)
 
     def baseline_key(self) -> str:
         """Compact key used in the baseline file format."""
@@ -150,8 +190,10 @@ class Violation:
 def _line_has_trailing_marker(line: str) -> bool:
     """Return True iff *line* carries the marker as a trailing ``#`` comment.
 
-    The marker must be followed by ``--`` and non-empty justification
-    text -- ``# lint-allow: bootstrap-wiring -- <reason>``.
+    The marker name (``lint-allow: bootstrap-wiring``) must be
+    followed by `` -- `` (a separator with surrounding whitespace) and
+    non-empty justification text -- the canonical form is
+    ``# lint-allow: bootstrap-wiring -- <reason>``.
     """
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(line).readline))
@@ -257,7 +299,7 @@ def _build_setting_record(
     if namespace is None or key is None:
         return None
     default = _extract_string(kwargs.get("default"))
-    read_only = _extract_bool(kwargs.get("read_only_post_init")) or False
+    read_only = _extract_bool(kwargs.get("read_only_post_init")) is True
     yaml_path = _extract_string(kwargs.get("yaml_path")) or f"{namespace}.{key}"
     has_suppression = _detect_register_suppression(
         defn_call,
@@ -301,18 +343,35 @@ def _detect_register_suppression(
 
 
 def load_setting_definitions(definitions_dir: Path) -> list[SettingRecord]:
-    """Walk ``definitions_dir`` and return every registered setting."""
+    """Walk ``definitions_dir`` and return every registered setting.
+
+    Raises:
+        ValueError: If any definitions file is unreadable or has
+            invalid Python syntax. Silently dropping a definitions
+            file would let ghost-wired settings slip through the
+            lint -- a typo in ``settings/definitions/X.py`` could
+            make the entire file's settings invisible. The
+            ``__init__.py`` re-export module is skipped by name.
+    """
     records: list[SettingRecord] = []
+    parse_errors: list[str] = []
     for path in sorted(definitions_dir.glob("*.py")):
         if path.name == "__init__.py":
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except OSError as exc:
+            parse_errors.append(f"{path.as_posix()}: read error: {exc}")
+            continue
+        except UnicodeDecodeError as exc:
+            parse_errors.append(f"{path.as_posix()}: encoding error: {exc}")
             continue
         try:
             tree = ast.parse(text, filename=str(path))
-        except SyntaxError:
+        except SyntaxError as exc:
+            parse_errors.append(
+                f"{path.as_posix()}:{exc.lineno or 0}: syntax error: {exc.msg}"
+            )
             continue
         file_lines = text.splitlines()
         rel = path.as_posix()
@@ -324,6 +383,12 @@ def load_setting_definitions(definitions_dir: Path) -> list[SettingRecord]:
             )
             if record is not None:
                 records.append(record)
+    if parse_errors:
+        msg = (
+            "Settings definitions could not be parsed "
+            "(fix before proceeding):\n" + "\n".join(f"  {err}" for err in parse_errors)
+        )
+        raise ValueError(msg)
     return records
 
 
@@ -334,9 +399,11 @@ def _extract_class_from_optional(annotation: ast.expr) -> str | None:
     """Return the bare class name from ``T | None`` / ``Optional[T]``.
 
     Returns ``None`` when the annotation is not a recognised Optional
-    shape, or when ``T`` is not a bare ``Name`` (e.g. parametrised
-    generics like ``Mapping[str, T] | None`` are skipped -- the
-    ghost-wiring patterns in scope all use bare service-class names).
+    shape, or when ``T`` is not a bare ``Name``. Parametrised generics
+    like ``Mapping[str, T] | None`` naturally fall through this check
+    because ``_bare_name`` only succeeds for plain ``ast.Name`` nodes;
+    this is intentional -- every known service-class wiring pattern
+    uses a bare class identifier.
     """
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         # T | None
@@ -469,6 +536,8 @@ def find_hardcoded_none_ghosts(src_root: Path) -> list[GhostService]:
     ghosts: dict[str, GhostService] = {}
     for path, tree in trees_by_path.items():
         for var_name, class_name, _line in _collect_hardcoded_none_candidates(tree):
+            # Dedup: a class flagged via one site is the same ghost
+            # regardless of how many lifecycle files reference it.
             if class_name in ghosts:
                 continue
             if not _is_started_at_some_site(var_name, trees_by_path):
@@ -488,8 +557,17 @@ def _load_lifecycle_trees(src_root: Path) -> dict[str, ast.Module]:
     ``src_root`` points at ``<repo>/src/synthorg/`` so relative
     lifecycle paths are resolved from there. Files that don't exist
     are silently skipped (test fake-repos may not have all of them).
+
+    Raises:
+        ValueError: If any lifecycle/app file exists but cannot be
+            read or parsed. These files are non-negotiable inputs to
+            the lint -- if app.py has a merge-conflict marker or
+            syntax error, ghost-service detection silently fails and
+            ghost-wired settings could ship to production. Failing
+            loud here forces a human fix before the lint can run.
     """
     trees: dict[str, ast.Module] = {}
+    parse_errors: list[str] = []
     for rel in _LIFECYCLE_FILES:
         # rel is project-relative (``src/synthorg/api/app.py``); strip
         # the prefix so it resolves under ``src_root``.
@@ -499,12 +577,25 @@ def _load_lifecycle_trees(src_root: Path) -> dict[str, ast.Module]:
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except OSError as exc:
+            parse_errors.append(f"{path.as_posix()}: read error: {exc}")
+            continue
+        except UnicodeDecodeError as exc:
+            parse_errors.append(f"{path.as_posix()}: encoding error: {exc}")
             continue
         try:
             trees[path.as_posix()] = ast.parse(text, filename=str(path))
-        except SyntaxError:
+        except SyntaxError as exc:
+            parse_errors.append(
+                f"{path.as_posix()}:{exc.lineno or 0}: syntax error: {exc.msg}"
+            )
             continue
+    if parse_errors:
+        msg = (
+            "Lifecycle files could not be parsed "
+            "(fix before proceeding):\n" + "\n".join(f"  {err}" for err in parse_errors)
+        )
+        raise ValueError(msg)
     return trees
 
 
@@ -660,20 +751,22 @@ def _gating_namespace_from_test(
 
 
 def _branch_returns_none(body: list[ast.stmt]) -> bool:
-    """True iff the branch terminates control flow via ``return None``.
+    """True iff the branch's top-level statements include ``return None``.
 
-    Walks top-level statements looking for any ``Return(None)`` (or
-    ``Return()``). Side-effecting statements before the return are
-    allowed -- the canonical pattern is::
+    Walks the body's top-level statements looking for any
+    ``Return(None)`` or bare ``Return()``. Side-effecting statements
+    before the return are allowed -- the canonical pattern is::
 
         if not config.backup.enabled:
             logger.info(...)
             return None
 
-    where the early-return guard logs the disabled-by-config decision
-    before bailing out. The lint must catch this without flagging
-    arbitrary nested returns -- we only inspect the immediate
-    branch body, not nested ``if`` / ``try`` clauses.
+    where the early-return guard logs the disabled-by-config
+    decision before bailing out. We do NOT recurse into nested
+    ``if`` / ``try`` clauses inside the branch; only the immediate
+    body's top-level statements are inspected. A return wrapped in
+    a nested condition wouldn't unconditionally terminate the
+    branch, so flagging on it would over-report.
     """
     for stmt in body:
         if not isinstance(stmt, ast.Return):
@@ -824,6 +917,126 @@ def _resolve_class_file(
 # ── Setting → ghost matching + violation construction ─────────
 
 
+# ── Pattern A: ConfigResolver consumer discovery in ghost classes ──
+
+
+_RESOLVER_GET_METHODS: Final[frozenset[str]] = frozenset(
+    {"get", "get_int", "get_float", "get_bool", "get_str", "get_enum", "get_json"}
+)
+
+_RESOLVER_MIN_ARGS: Final[int] = 2
+"""Minimum positional arg count for a recognised
+``ConfigResolver.get_*(namespace, key)`` call."""
+"""ConfigResolver scalar-accessor method names. Composed-config readers
+(``get_api_config`` etc.) are intentionally excluded -- they fan out
+to many settings and Pattern A is meant to catch direct point reads,
+not config-object assembly."""
+
+
+def _resolve_resolver_arg(node: ast.expr) -> str | None:
+    """Resolve a ConfigResolver.get_*() arg to its string value.
+
+    Recognises:
+
+    - ``Constant("...")`` -- literal string.
+    - ``SettingNamespace.<X>.value`` -- enum member's value (lower-case
+      name per the ``StrEnum`` invariant).
+
+    Anything else (variable, function call, format-string) is treated
+    as dynamic and returns None; Pattern A only fires when both args
+    are statically resolvable.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if (
+        isinstance(node, ast.Attribute)
+        and node.attr == "value"
+        and isinstance(node.value, ast.Attribute)
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "SettingNamespace"
+    ):
+        return node.value.attr.lower()
+    return None
+
+
+def _find_resolver_consumers_in_file(path: Path) -> list[tuple[str, str]]:
+    """Return every ``ConfigResolver.get_*("<ns>", "<key>")`` (ns, key) pair.
+
+    Walks the file's AST for any ``Call(Attribute(attr=∈ get_methods))``
+    whose first two positional args resolve to string values via
+    :func:`_resolve_resolver_arg`. Calls with dynamic args, missing
+    args, or non-method shapes are skipped.
+
+    The receiver is NOT validated -- the lint trusts that any
+    ``.get_int("backup", "enabled")`` site in a ghost's class file is
+    a config read, not a coincidence. False-positive risk is low
+    because the method-name set is narrow and the arg-resolution
+    rejects anything non-static.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError, UnicodeDecodeError:
+        return []
+    try:
+        tree = ast.parse(text, filename=str(path))
+    except SyntaxError:
+        return []
+    pairs: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in _RESOLVER_GET_METHODS:
+            continue
+        if len(node.args) < _RESOLVER_MIN_ARGS:
+            continue
+        ns = _resolve_resolver_arg(node.args[0])
+        key = _resolve_resolver_arg(node.args[1])
+        if ns is not None and key is not None:
+            pairs.append((ns, key))
+    return pairs
+
+
+def _build_violation_for_pattern_a(
+    setting: SettingRecord,
+    ghost: GhostService,
+    class_index: dict[str, list[Path]],
+    resolver_consumers_cache: dict[Path, list[tuple[str, str]]],
+) -> Violation | None:
+    """Pattern A: ghost class file contains ``ConfigResolver.get_*(ns, key)``.
+
+    Catches cross-namespace consumption (a ghost class in
+    ``api/foo.py`` that reads ``engine.X`` via ConfigResolver) which
+    the gating-namespace and class-file-containment matchers would
+    miss because neither requires the setting's namespace to live in
+    the ghost class.
+    """
+    class_file = _resolve_class_file(ghost.class_name, class_index)
+    if class_file is None:
+        return None
+    consumers = resolver_consumers_cache.get(class_file)
+    if consumers is None:
+        consumers = _find_resolver_consumers_in_file(class_file)
+        resolver_consumers_cache[class_file] = consumers
+    if (setting.namespace, setting.key) not in consumers:
+        return None
+    return Violation(
+        yaml_path=setting.yaml_path,
+        kind="ghost-wired",
+        owning_class=ghost.class_name,
+        source_file=setting.source_file,
+        source_line=setting.source_line,
+        reason=(
+            f"consumer {ghost.class_name} reads this setting via "
+            f"ConfigResolver.get_*({setting.namespace!r}, "
+            f"{setting.key!r}) (in {class_file.as_posix()}), but the "
+            "service is never started at boot. Either wire the "
+            "service or remove the setting."
+        ),
+    )
+
+
 def _build_violation_for_factory_gated(
     setting: SettingRecord,
     ghost: GhostService,
@@ -920,14 +1133,32 @@ def _build_violation_for_hardcoded_none(
     )
 
 
-def _detect_violation(
+def _detect_violation(  # noqa: PLR0913 -- caches passed in to avoid quadratic re-reads
     setting: SettingRecord,
     ghosts: list[GhostService],
     settings_by_yaml: dict[str, SettingRecord],
     class_index: dict[str, list[Path]],
     class_file_text_cache: dict[Path, str],
+    resolver_consumers_cache: dict[Path, list[tuple[str, str]]],
 ) -> Violation | None:
-    """Run both matchers; return the first violation (or None)."""
+    """Run all three matchers; return the first violation (or None).
+
+    Match order:
+
+    1. Factory-gated namespace match (every setting in the gating
+       namespace is ghost-wired when the gating flag's default
+       disables the service).
+    2. Hardcoded-None class-file containment (setting key appears
+       in the ghost class's source AND namespace appears in its
+       file path).
+    3. Pattern A direct ConfigResolver consumption (ghost class
+       reads ``ConfigResolver.get_*(<ns>, <key>)`` matching the
+       setting). Catches cross-namespace consumption that 1 + 2
+       miss.
+
+    First matcher to produce a violation wins; remaining matchers
+    are skipped.
+    """
     if setting.read_only_post_init:
         return None
     if setting.has_suppression:
@@ -946,6 +1177,19 @@ def _detect_violation(
             )
             if v is not None:
                 return v
+    # Pattern A: cross-namespace direct ConfigResolver consumption.
+    # Run after the namespace + class-file matchers so the more
+    # specific matchers win first; this preserves the existing
+    # baseline keys (each setting maps to one violation, not three).
+    for ghost in ghosts:
+        v = _build_violation_for_pattern_a(
+            setting,
+            ghost,
+            class_index,
+            resolver_consumers_cache,
+        )
+        if v is not None:
+            return v
     return None
 
 
@@ -957,8 +1201,11 @@ def scan_repo(
     """Scan the repo and return every ghost-wired violation, ignoring baseline.
 
     The ``baseline_path`` parameter is accepted for API symmetry with
-    :func:`run_with_baseline` but is not consulted here -- callers
-    that want baseline subtraction use :func:`run_with_baseline`.
+    :func:`run_with_baseline` so callers that already hold a
+    ``baseline_path`` can pass it through without dispatching on
+    which function to call. This function does not consult it;
+    callers wanting baseline subtraction should use
+    :func:`run_with_baseline` directly.
     """
     src_root = project_root / "src" / "synthorg"
     if not src_root.is_dir():
@@ -968,6 +1215,7 @@ def scan_repo(
     settings_by_yaml = {s.yaml_path: s for s in settings}
     class_index = _build_class_index(src_root)
     class_file_text_cache: dict[Path, str] = {}
+    resolver_consumers_cache: dict[Path, list[tuple[str, str]]] = {}
     ghosts = [
         *find_hardcoded_none_ghosts(src_root),
         *find_factory_gated_ghosts(src_root, settings_by_yaml=settings_by_yaml),
@@ -980,6 +1228,7 @@ def scan_repo(
             settings_by_yaml,
             class_index,
             class_file_text_cache,
+            resolver_consumers_cache,
         )
         if v is not None:
             violations.append(v)
@@ -996,13 +1245,23 @@ def _load_baseline(path: Path) -> set[str]:
     Blank lines and ``#`` comment lines are ignored. Other lines must
     match the expected three-field shape; malformed entries raise to
     fail loud (silently dropping entries lets violations slip past).
+
+    Raises:
+        ValueError: When the baseline file exists but cannot be read
+            (OSError / encoding error) or contains a malformed entry.
     """
     if not path.is_file():
         return set()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        msg = f"Cannot read baseline file {path.as_posix()}: {exc}"
+        raise ValueError(msg) from exc
+    except UnicodeDecodeError as exc:
+        msg = f"Baseline file {path.as_posix()} has encoding error: {exc}"
+        raise ValueError(msg) from exc
     entries: set[str] = set()
-    for lineno, line in enumerate(
-        path.read_text(encoding="utf-8").splitlines(), start=1
-    ):
+    for lineno, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -1064,7 +1323,7 @@ def _resolve_project_root(repo_root: Path | None) -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 -- distinct exit codes for CLI failure modes
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1108,8 +1367,19 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.update_baseline:
-        violations = scan_repo(project_root, baseline_path=None)
-        _write_baseline(violations, baseline_path)
+        try:
+            violations = scan_repo(project_root, baseline_path=None)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        try:
+            _write_baseline(violations, baseline_path)
+        except OSError as exc:
+            print(
+                f"Cannot write baseline {baseline_path.as_posix()}: {exc}",
+                file=sys.stderr,
+            )
+            return 2
         print(
             f"Wrote {len(violations)} entries to {baseline_path.as_posix()}.",
             file=sys.stderr,

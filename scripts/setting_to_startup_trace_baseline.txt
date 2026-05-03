@@ -8,8 +8,6 @@
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_setting_to_startup_trace.py --update-baseline
-#
-# Issue #1735 / #1737 Part 1.
 backup.compression:ghost-wired:BackupService
 backup.enabled:ghost-wired:BackupService
 backup.on_shutdown:ghost-wired:BackupService

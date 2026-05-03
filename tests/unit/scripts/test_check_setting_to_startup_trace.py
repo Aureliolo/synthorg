@@ -32,7 +32,7 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_setting_to_startup_trace.py"
 
 
@@ -76,8 +76,10 @@ def _make_fake_repo(
     # The lint expects ``settings/enums.py`` to define SettingNamespace
     # so AST resolution of ``SettingNamespace.X.value`` works. The
     # fake repo replicates only the enum members the test uses.
-    (src_root / "settings" / "__init__.py").write_text("")
-    (src_root / "settings" / "definitions" / "__init__.py").write_text("")
+    (src_root / "settings" / "__init__.py").write_text("", encoding="utf-8")
+    (src_root / "settings" / "definitions" / "__init__.py").write_text(
+        "", encoding="utf-8"
+    )
     (src_root / "settings" / "enums.py").write_text(
         textwrap.dedent("""
         from enum import StrEnum
@@ -87,20 +89,25 @@ def _make_fake_repo(
             SECURITY = "security"
             ENGINE = "engine"
             API = "api"
-        """).lstrip()
+        """).lstrip(),
+        encoding="utf-8",
     )
-    (src_root / "settings" / "models.py").write_text("class SettingDefinition: pass\n")
+    (src_root / "settings" / "models.py").write_text(
+        "class SettingDefinition: pass\n", encoding="utf-8"
+    )
     (src_root / "settings" / "registry.py").write_text(
-        "def get_registry(): return None\n"
+        "def get_registry(): return None\n", encoding="utf-8"
     )
     for rel, body in (settings_files or {}).items():
-        (settings_dir / rel).write_text(textwrap.dedent(body).lstrip())
+        (settings_dir / rel).write_text(
+            textwrap.dedent(body).lstrip(), encoding="utf-8"
+        )
     for rel, body in (api_files or {}).items():
-        (api_dir / rel).write_text(textwrap.dedent(body).lstrip())
+        (api_dir / rel).write_text(textwrap.dedent(body).lstrip(), encoding="utf-8")
     for rel, body in (extra_files or {}).items():
         target = src_root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(textwrap.dedent(body).lstrip())
+        target.write_text(textwrap.dedent(body).lstrip(), encoding="utf-8")
     return tmp_path
 
 
@@ -871,3 +878,346 @@ def test_real_repo_violations_match_expected() -> None:
     # both update intentionally.
     extras = flagged - expected_positives
     assert not extras, f"unexpected extra flags: {extras}"
+
+
+# ── Error-path tests ───────────────────────────────────────────
+
+
+def test_load_setting_definitions_raises_on_syntax_error(tmp_path: Path) -> None:
+    """A syntax error in any definitions file fails loud with file:line."""
+    repo = _make_fake_repo(
+        tmp_path,
+        settings_files={"broken.py": "this is = not python\n"},
+    )
+    with pytest.raises(ValueError, match="syntax error"):
+        _MODULE.load_setting_definitions(  # type: ignore[attr-defined]
+            repo / "src" / "synthorg" / "settings" / "definitions"
+        )
+
+
+def test_load_lifecycle_trees_raises_on_syntax_error(tmp_path: Path) -> None:
+    """A syntax error in any lifecycle file fails loud with file:line."""
+    repo = _make_fake_repo(
+        tmp_path,
+        api_files={
+            "app.py": "this is not python (\n",
+            "lifecycle.py": "async def startup(): pass\n",
+        },
+    )
+    with pytest.raises(ValueError, match="syntax error"):
+        _MODULE._load_lifecycle_trees(repo / "src" / "synthorg")  # type: ignore[attr-defined]
+
+
+def test_load_baseline_missing_file_returns_empty_set(tmp_path: Path) -> None:
+    """Missing baseline file is treated as empty allowlist (new lint)."""
+    nonexistent = tmp_path / "does-not-exist.txt"
+    result = _MODULE._load_baseline(nonexistent)  # type: ignore[attr-defined]
+    assert result == set()
+
+
+def test_load_baseline_malformed_entry_raises_valueerror(tmp_path: Path) -> None:
+    """Wrong-field-count baseline entry fails loud."""
+    baseline = tmp_path / "baseline.txt"
+    # Two fields instead of three.
+    baseline.write_text("backup.enabled:BackupService\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="malformed baseline entry"):
+        _MODULE._load_baseline(baseline)  # type: ignore[attr-defined]
+
+
+def test_load_baseline_empty_field_raises_valueerror(tmp_path: Path) -> None:
+    """Empty middle/end field is treated as malformed."""
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text("backup.enabled::BackupService\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="malformed baseline entry"):
+        _MODULE._load_baseline(baseline)  # type: ignore[attr-defined]
+
+
+def test_load_baseline_extra_fields_raises_valueerror(tmp_path: Path) -> None:
+    """Four-field baseline entry is rejected as malformed."""
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(
+        "backup.enabled:ghost-wired:BackupService:extra\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="malformed baseline entry"):
+        _MODULE._load_baseline(baseline)  # type: ignore[attr-defined]
+
+
+# ── CLI argument tests ────────────────────────────────────────
+
+
+def test_main_repo_root_not_accessible_exits_2(tmp_path: Path) -> None:
+    """Main exits 2 when --repo-root points to a nonexistent directory."""
+    nonexistent = tmp_path / "nonexistent"
+    result = _MODULE.main(["--repo-root", str(nonexistent)])  # type: ignore[attr-defined]
+    assert result == 2
+
+
+def test_main_update_baseline_writes_file(tmp_path: Path) -> None:
+    """``--update-baseline`` rewrites the baseline with current violations."""
+    repo = _make_fake_repo(
+        tmp_path,
+        api_files={
+            "app.py": textwrap.dedent("""
+                from synthorg.backup.factory import build_backup_service
+
+                def build_app(config):
+                    backup_service = build_backup_service(config)
+                    return backup_service
+            """).lstrip(),
+            "lifecycle.py": textwrap.dedent("""
+                async def startup(backup_service):
+                    if backup_service is not None:
+                        await backup_service.start()
+            """).lstrip(),
+        },
+        extra_files={
+            "backup/__init__.py": "",
+            "backup/factory.py": textwrap.dedent("""
+                from synthorg.backup.service import BackupService
+
+                def build_backup_service(config) -> BackupService | None:
+                    if not config.backup.enabled:
+                        return None
+                    return BackupService(config.backup)
+            """).lstrip(),
+            "backup/service.py": "class BackupService: pass\n",
+        },
+        settings_files={
+            "backup.py": _settings_module(
+                _setting_registration("BACKUP", "enabled"),
+            ),
+        },
+    )
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text("stale content\n", encoding="utf-8")
+    rc = _MODULE.main(  # type: ignore[attr-defined]
+        ["--repo-root", str(repo), "--baseline", str(baseline), "--update-baseline"]
+    )
+    assert rc == 0
+    body = baseline.read_text(encoding="utf-8")
+    assert "backup.enabled:ghost-wired:BackupService" in body
+    assert "stale content" not in body
+
+
+def test_main_custom_baseline_path_respected(tmp_path: Path) -> None:
+    """``--baseline`` flag uses the custom path for subtraction."""
+    repo = _make_fake_repo(
+        tmp_path,
+        api_files={
+            "app.py": textwrap.dedent("""
+                from synthorg.backup.factory import build_backup_service
+
+                def build_app(config):
+                    backup_service = build_backup_service(config)
+                    return backup_service
+            """).lstrip(),
+            "lifecycle.py": textwrap.dedent("""
+                async def startup(backup_service):
+                    if backup_service is not None:
+                        await backup_service.start()
+            """).lstrip(),
+        },
+        extra_files={
+            "backup/__init__.py": "",
+            "backup/factory.py": textwrap.dedent("""
+                from synthorg.backup.service import BackupService
+
+                def build_backup_service(config) -> BackupService | None:
+                    if not config.backup.enabled:
+                        return None
+                    return BackupService(config.backup)
+            """).lstrip(),
+            "backup/service.py": "class BackupService: pass\n",
+        },
+        settings_files={
+            "backup.py": _settings_module(
+                _setting_registration("BACKUP", "enabled"),
+            ),
+        },
+    )
+    custom = tmp_path / "custom.txt"
+    custom.write_text("backup.enabled:ghost-wired:BackupService\n", encoding="utf-8")
+    rc = _MODULE.main(  # type: ignore[attr-defined]
+        ["--repo-root", str(repo), "--baseline", str(custom)]
+    )
+    assert rc == 0  # violation subsumed by custom baseline
+
+
+# ── Class ambiguity / factory resolution failures ─────────────
+
+
+def test_class_index_records_multiple_definitions(tmp_path: Path) -> None:
+    """Same class name in two files makes the lint refuse to resolve."""
+    repo = _make_fake_repo(
+        tmp_path,
+        extra_files={
+            "alpha/__init__.py": "",
+            "alpha/widget.py": "class Widget: pass\n",
+            "beta/__init__.py": "",
+            "beta/widget.py": "class Widget: pass\n",
+        },
+    )
+    index = _MODULE._build_class_index(repo / "src" / "synthorg")  # type: ignore[attr-defined]
+    assert len(index["Widget"]) == 2
+    # Resolution refuses when ambiguous.
+    assert (
+        _MODULE._resolve_class_file("Widget", index)  # type: ignore[attr-defined]
+        is None
+    )
+
+
+def test_factory_function_not_found_skips_silently(tmp_path: Path) -> None:
+    """A factory imported but not defined in the source module is skipped."""
+    repo = _make_fake_repo(
+        tmp_path,
+        api_files={
+            "app.py": textwrap.dedent("""
+                from synthorg.missing.factory import build_thing
+
+                def build_app(config):
+                    thing = build_thing(config)
+                    return thing
+            """).lstrip(),
+            "lifecycle.py": textwrap.dedent("""
+                async def startup(thing):
+                    if thing is not None:
+                        await thing.start()
+            """).lstrip(),
+        },
+    )
+    # Factory module doesn't exist; ghost detection skips silently.
+    ghosts = _MODULE.find_factory_gated_ghosts(  # type: ignore[attr-defined]
+        repo / "src" / "synthorg",
+        settings_by_yaml={},
+    )
+    assert ghosts == []
+
+
+# ── Pattern A: ConfigResolver consumer discovery ──────────────
+
+
+def test_pattern_a_flags_cross_namespace_consumption(tmp_path: Path) -> None:
+    """Hardcoded-None ghost reading a setting in a different namespace.
+
+    The class-file-containment matcher would NOT fire here because
+    the ghost lives in ``api/`` but reads ``engine.X`` -- the ``engine``
+    segment is not in the class file's path. Pattern A catches it via
+    direct ``ConfigResolver.get_*`` call inspection.
+    """
+    repo = _make_fake_repo(
+        tmp_path,
+        api_files={
+            "app.py": textwrap.dedent("""
+                from synthorg.api.foo import FooService
+
+                def build():
+                    foo: FooService | None = None
+                    return foo
+            """).lstrip(),
+            "lifecycle.py": textwrap.dedent("""
+                async def startup(foo):
+                    if foo is not None:
+                        foo.start()
+            """).lstrip(),
+            "foo.py": textwrap.dedent("""
+                class FooService:
+                    async def start(self):
+                        await self.config_resolver.get_bool(
+                            "engine", "timeout_enforcement_enabled"
+                        )
+            """).lstrip(),
+        },
+        settings_files={
+            "engine.py": _settings_module(
+                _setting_registration("ENGINE", "timeout_enforcement_enabled"),
+            ),
+        },
+    )
+    violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
+    flagged = {v.yaml_path for v in violations}
+    assert "engine.timeout_enforcement_enabled" in flagged
+
+
+def test_pattern_a_resolves_setting_namespace_enum(tmp_path: Path) -> None:
+    """Pattern A resolves ``SettingNamespace.X.value`` to the namespace string."""
+    repo = _make_fake_repo(
+        tmp_path,
+        api_files={
+            "app.py": textwrap.dedent("""
+                from synthorg.api.foo import FooService
+
+                def build():
+                    foo: FooService | None = None
+                    return foo
+            """).lstrip(),
+            "lifecycle.py": textwrap.dedent("""
+                async def startup(foo):
+                    if foo is not None:
+                        foo.start()
+            """).lstrip(),
+            "foo.py": textwrap.dedent("""
+                from synthorg.settings.enums import SettingNamespace
+
+                class FooService:
+                    async def start(self):
+                        await self.config_resolver.get_int(
+                            SettingNamespace.ENGINE.value, "timeout_enforcement_enabled"
+                        )
+            """).lstrip(),
+        },
+        settings_files={
+            "engine.py": _settings_module(
+                _setting_registration("ENGINE", "timeout_enforcement_enabled"),
+            ),
+        },
+    )
+    violations = _MODULE.scan_repo(repo, baseline_path=None)  # type: ignore[attr-defined]
+    flagged = {v.yaml_path for v in violations}
+    assert "engine.timeout_enforcement_enabled" in flagged
+
+
+# ── Type invariant tests ──────────────────────────────────────
+
+
+def test_ghost_service_rejects_kind_gating_namespace_mismatch() -> None:
+    """``__post_init__`` rejects (kind, gating_namespace) mismatches."""
+    with pytest.raises(ValueError, match="gating_namespace"):
+        _MODULE.GhostService(  # type: ignore[attr-defined]
+            class_name="Foo",
+            kind="hardcoded-none",
+            gating_namespace="backup",  # wrong: should be None for hardcoded-none
+            source_file="src/synthorg/api/app.py",
+        )
+    with pytest.raises(ValueError, match="gating_namespace"):
+        _MODULE.GhostService(  # type: ignore[attr-defined]
+            class_name="Bar",
+            kind="factory-gated",
+            gating_namespace=None,  # wrong: factory-gated needs a namespace
+            source_file="src/synthorg/api/app.py",
+        )
+
+
+def test_violation_rejects_colon_in_yaml_path() -> None:
+    """Colon in ``yaml_path`` would corrupt baseline format; reject at construction."""
+    with pytest.raises(ValueError, match="yaml_path"):
+        _MODULE.Violation(  # type: ignore[attr-defined]
+            yaml_path="bad:path",
+            kind="ghost-wired",
+            owning_class="X",
+            source_file="src/synthorg/settings/definitions/x.py",
+            source_line=1,
+            reason="...",
+        )
+
+
+def test_violation_rejects_colon_in_owning_class() -> None:
+    """Colon in ``owning_class`` corrupts baseline format; reject at construction."""
+    with pytest.raises(ValueError, match="owning_class"):
+        _MODULE.Violation(  # type: ignore[attr-defined]
+            yaml_path="x.y",
+            kind="ghost-wired",
+            owning_class="bad:class",
+            source_file="src/synthorg/settings/definitions/x.py",
+            source_line=1,
+            reason="...",
+        )
