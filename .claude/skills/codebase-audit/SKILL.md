@@ -50,7 +50,7 @@ Notes for the setup command:
 
 Never delete `_audit/runs/*`. The `_audit/latest` symlink always points at the most recent run; older runs accumulate. On Windows, the OpenCode adapter first attempts `New-Item -ItemType SymbolicLink` (requires Developer Mode or admin); on failure it falls back to `New-Item -ItemType Junction`, which needs no special privileges and still resolves as a directory so downstream writes to `_audit/latest/findings/<file>` succeed.
 
-Verify `_audit/` is in `.gitignore` via `grep -E "^_audit" .gitignore`. If not, add it.
+Verify `_audit/` is in `.gitignore` via `grep -Eq '^/?_audit(/|$)' .gitignore`. The pattern allows `_audit`, `_audit/`, `/_audit`, and `/_audit/`, so plain-anchor false negatives don't trigger duplicate "add it" actions. If grep exits non-zero, add the entry.
 
 ---
 
