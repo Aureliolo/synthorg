@@ -65,7 +65,7 @@ Read these files to build context injected into EVERY agent prompt:
 5. `web/src/router/routes.ts`: frontend routing
 6. `web/src/stores/`: list all stores
 7. `docs/DESIGN_SPEC.md`: spec index
-8. Existing open issues: `gh issue list --state open --limit 200 --json number,title,labels`. **Filter the result before injecting into agent prompts**: drop any issue authored by `app/renovate` or with title containing "Dependency Dashboard", "Renovate", "renovate-bot". Per memory rule `feedback_open_issues_exclude_renovate.md`, those are bot-managed dependency churn, not framework work, and they pollute every agent's "do not duplicate" guard with noise.
+8. Existing open issues: `gh issue list --state open --limit 200 --json number,title,labels,author`. **Filter the result before injecting into agent prompts**: drop any issue where `author.login == "app/renovate"` (the bot's `app/<name>` form), or with title containing "Dependency Dashboard", "Renovate", or "renovate-bot". The `--json` field list MUST include `author` -- without it the filter has nothing to match on and Renovate noise leaks into every agent prompt. Per memory rule `feedback_open_issues_exclude_renovate.md`, those are bot-managed dependency churn, not framework work, and they pollute every agent's "do not duplicate" guard.
 
 Produce an **Architecture Brief** (~400 words) covering:
 - Logging: `get_logger(__name__)`, structlog, event constants in `observability/events/`, structured kwargs
@@ -3124,10 +3124,16 @@ After all launched audit agents complete, launch validation agents to verify fin
 
 ### Batching strategy (concrete)
 
-Run `Bash for f in _audit/latest/findings/*.md; do count=$(grep -cE "^### (critical|high|medium|low|info)" "$f"); echo "$count $(basename "$f")"; done | sort -rn` to produce a sorted list of (count, filename). Then build batches:
+Run this Bash to produce a sorted list of (count, filename):
 
-- **Heavy files (>25 findings)**: dedicate 1 batch per ~25-finding chunk. Example: a 107-finding file splits into batches of 35 + 36 + 36.
-- **Mid files (10-25 findings)**: 1-2 files per batch.
+```bash
+for f in _audit/latest/findings/*.md; do count=$(grep -cE "^### (critical|high|medium|low|info)" "$f"); echo "$count $(basename "$f")"; done | sort -rn
+```
+
+Then build batches:
+
+- **Heavy files (>25 findings)**: dedicate 1 batch per ~25-finding chunk. Example: a 107-finding file splits into 4 batches of 25 + 25 + 25 + 32.
+- **Mid files (10-25 findings)**: 1-2 files per batch (target ~20-30 findings).
 - **Small files (1-9 findings)**: pack 5-8 files per batch, total findings per batch ~20-30.
 - **Zero-finding files**: skip entirely.
 
@@ -3553,6 +3559,6 @@ Document specific issues observed in named runs so future runs avoid repeating t
 - **INDEX.md hallucinated agent filenames** -- the Phase 4 agent invented entries like `14-web-store-architecture-drift.md`, `19-benchmark-regression.md` that never existed. Fixed via "MANDATORY: enumerate actual files" instruction in Phase 4.
 - **Renovate Dependency Dashboard #1730** appeared in `gh issue list` injected into agent prompts. Per memory rule `feedback_open_issues_exclude_renovate.md`, exclude any Renovate-managed issue from the issue list.
 - **Phase 6 DIFF agent only validated 31% of agents** because it ran in parallel with synthesis instead of after, and assumed batches were complete. Sequence Phase 6 strictly after Phase 3 validation finishes.
-- **`_audit/latest` symlink collision**: when re-running, `ln -sfn` requires `rm -f _audit/latest` first (Junction directories block re-link). Fixed in Phase 0 setup command.
+- **`_audit/latest` re-link collision** when re-running: `ln -sfn` alone fails on a pre-existing real directory or Windows Junction; `rm -f` alone refuses on a directory. The Phase 0 setup command now handles all three states (symlink, real directory / Junction, missing) via `if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi` before the relink.
 
 When updating the skill in response to a new run's lessons, add a new dated subsection here. Older subsections stay so the rationale for each rule is traceable.
