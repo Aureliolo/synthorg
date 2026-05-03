@@ -47,12 +47,12 @@ def test_custom_preset_with_url_resolves() -> None:
         (
             TsaPreset.DIGICERT,
             Path("tests/data/digicert_roots.pem"),
-            "http://timestamp.digicert.com",
+            "https://timestamp.digicert.com",
         ),
         (
             TsaPreset.SECTIGO,
             Path("tests/data/sectigo_roots.pem"),
-            "http://timestamp.sectigo.com",
+            "https://timestamp.sectigo.com",
         ),
     ],
 )
@@ -134,7 +134,7 @@ def test_timeout_accepts_boundary_values(value: float) -> None:
         (TsaPreset.CUSTOM, None, None),
         # Named presets resolve to their documented canonical URL when
         # no override is supplied, and accept overrides transparently.
-        (TsaPreset.DIGICERT, None, "http://timestamp.digicert.com"),
+        (TsaPreset.DIGICERT, None, "https://timestamp.digicert.com"),
         (TsaPreset.FREETSA, "override", "override"),
     ],
 )
@@ -168,7 +168,7 @@ def test_resolve_tsa_url_falls_back_when_preset_urls_none() -> None:
     """``preset_urls=None`` falls back to the documented baseline."""
     assert (
         resolve_tsa_url(TsaPreset.DIGICERT, None, preset_urls=None)
-        == "http://timestamp.digicert.com"
+        == "https://timestamp.digicert.com"
     )
 
 
@@ -212,5 +212,5 @@ def test_resolve_tsa_url_incomplete_preset_urls_falls_back() -> None:
     # DIGICERT is missing; falls back to documented default rather than KeyError.
     assert (
         resolve_tsa_url(TsaPreset.DIGICERT, None, preset_urls=partial)
-        == "http://timestamp.digicert.com"
+        == "https://timestamp.digicert.com"
     )
