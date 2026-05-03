@@ -242,13 +242,13 @@ Build two views:
 | **Config-file overlap** | Same `pyproject.toml`, `package.json`, workflow YAML, `Dockerfile`, etc. | Moderate | Sequential merge with rebase between; usually mechanical (different table rows / different action versions) |
 | **Source overlap** | Same `.py` / `.ts` / `.go` / `.tsx` / etc. file | High | Investigate diffs before merging either; may need manual integration |
 
-**Group the PRs into merge waves (iterative maximal-disjoint algorithm):**
+**Group the PRs into merge waves (iterative greedy maximal-disjoint algorithm):**
 
-Compute waves by repeatedly extracting the **maximal subset of remaining PRs that are mutually disjoint on source-file and config-file overlap** (lockfile-only overlap inside a wave is allowed; the post-merge rebase is mechanical):
+Compute waves greedily by repeatedly extracting a **maximal subset** of the remaining PRs that are mutually disjoint on source-file and config-file overlap (lockfile-only overlap inside a wave is allowed; the post-merge rebase is mechanical). "Maximal" here means *cannot-be-extended-without-introducing-conflicts*, **not** *largest-possible*. The largest-possible (maximum independent set) is NP-hard in general; the greedy algorithm below runs in polynomial time and is fine for the small batch sizes (typically 5-15 PRs) this skill handles. If a future caller needs an exact optimum, they can swap in an approximation algorithm without changing the rest of the pipeline.
 
-1. **Wave 1** = the largest subset of all PRs in the batch where every pair of PRs in the subset is pairwise non-overlapping on source/config files.
+1. **Wave 1** = a maximal subset of all PRs in the batch, built greedily: start with the empty set, then for each PR (e.g. iterating in order of fewest conflicting peers first) add it to the wave if it's pairwise non-overlapping on source/config with every PR already in the wave; otherwise skip it for this wave.
 2. Remove the Wave 1 PRs from the candidate pool.
-3. **Wave 2** = the largest subset of the remaining PRs that is again pairwise non-overlapping on source/config.
+3. **Wave 2** = a maximal subset of the remaining PRs, built the same way.
 4. Repeat until every PR has been assigned to a wave.
 
 Within any single wave, PRs are parallel-safe to merge. Between waves, rebase the next wave's PRs after the previous wave lands and re-verify CI before merging the next wave. If at any iteration no parallel-safe subset of size ≥ 2 exists (i.e. every remaining PR conflicts with every other on source/config), the remainder becomes a sequential chain ordered by smallest-conflict-footprint first; the "Combine into one PR" strategy in Phase 7 is usually preferable in that case.
@@ -277,7 +277,7 @@ Then for each PR, present a structured report:
 ## PR #<number>: <title>
 **Package(s)**: <name or comma-separated names> | **Ecosystem**: <type> | **Bump**: <from> → <to> (<major/minor/patch/non-semver>)
 **CI Status**: <pass/fail summary>
-**Files touched**: <count> (<lockfile-only | includes config | includes source>) -- conflicts with: #<other PRs that touch any of the same files, or "none">
+**Files touched**: <count> (<lockfile-only | includes config | includes source>) -- conflicts with: #<other PRs that share source or config files, or "none"> (lockfile-only overlaps with other PRs are listed separately as informational, e.g. `lockfile-only: #X, #Y`; they do not count as "conflicts")
 **Usage**: <brief -- e.g., "3 workflows, inputs: python-version, cache" or "mkdocs.yml theme + 2 plugins">
 ```
 
