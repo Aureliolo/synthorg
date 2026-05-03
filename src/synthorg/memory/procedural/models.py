@@ -19,6 +19,7 @@ from pydantic import (
 
 from synthorg.core.enums import TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.memory.utils import deduplicate_tags
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -192,7 +193,7 @@ class ProceduralMemoryProposal(BaseModel):
     def _deduplicate_tags(cls, v: object) -> object:
         """Deduplicate tags before max_length validation."""
         if isinstance(v, list | tuple):
-            deduped = tuple(dict.fromkeys(v))
+            deduped = deduplicate_tags(v)
             max_tags = 20
             return deduped if len(deduped) <= max_tags else deduped[:max_tags]
         return v

@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.memory.utils import deduplicate_tags
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import MEMORY_MODEL_INVALID
 
@@ -46,7 +47,7 @@ class MemoryMetadata(BaseModel):
     @model_validator(mode="after")
     def _deduplicate_tags(self) -> Self:
         """Remove duplicate tags while preserving order."""
-        unique = tuple(dict.fromkeys(self.tags))
+        unique = deduplicate_tags(self.tags)
         if len(unique) != len(self.tags):
             object.__setattr__(self, "tags", unique)
         return self
@@ -221,7 +222,7 @@ class MemoryQuery(BaseModel):
     @model_validator(mode="after")
     def _deduplicate_tags(self) -> Self:
         """Remove duplicate tags while preserving order."""
-        unique = tuple(dict.fromkeys(self.tags))
+        unique = deduplicate_tags(self.tags)
         if len(unique) != len(self.tags):
             object.__setattr__(self, "tags", unique)
         return self
