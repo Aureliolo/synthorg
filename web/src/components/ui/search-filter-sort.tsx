@@ -34,10 +34,18 @@ export function SearchFilterSort({
       aria-label="List controls"
       className={cn('flex flex-wrap items-center gap-3', className)}
     >
-      {search && <div className="min-w-48 flex-1 max-w-md">{search}</div>}
-      {filters && <div className="flex flex-wrap items-center gap-2">{filters}</div>}
-      {sort && <div className="flex items-center gap-2">{sort}</div>}
-      {trailing && <div className="ml-auto flex items-center gap-2">{trailing}</div>}
+      {search != null && search !== false && (
+        <div className="min-w-48 flex-1 max-w-md">{search}</div>
+      )}
+      {filters != null && filters !== false && (
+        <div className="flex flex-wrap items-center gap-2">{filters}</div>
+      )}
+      {sort != null && sort !== false && (
+        <div className="flex items-center gap-2">{sort}</div>
+      )}
+      {trailing != null && trailing !== false && (
+        <div className="ml-auto flex items-center gap-2">{trailing}</div>
+      )}
     </div>
   )
 }

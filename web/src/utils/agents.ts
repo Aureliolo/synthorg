@@ -283,3 +283,8 @@ const FALLBACK_ICON: LucideIcon = Activity
 export function getActivityEventIcon(eventType: string): LucideIcon {
   return ACTIVITY_ICON_MAP[eventType as ActivityEventType] ?? FALLBACK_ICON
 }
+
+// The render-time wrapper component (``ActivityEventIcon``) lives in its own
+// file at ``./activity-event-icon`` so the ``react-refresh/only-export-components``
+// rule isn't tripped by mixing a component export with the utility exports
+// in this module. Import it directly from there at call sites.

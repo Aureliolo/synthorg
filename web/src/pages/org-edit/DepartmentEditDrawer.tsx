@@ -55,7 +55,7 @@ export function DepartmentEditDrawer({
 
   const prevDepartmentRef = useRef<typeof department | undefined>(undefined)
   useEffect(() => {
-    /* eslint-disable @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync */
+
     if (department !== prevDepartmentRef.current) {
       prevDepartmentRef.current = department
       if (department) {
@@ -66,7 +66,7 @@ export function DepartmentEditDrawer({
       setDeleteOpen(false)
       setDeleting(false)
     }
-    /* eslint-enable @eslint-react/set-state-in-effect */
+
   }, [department])
 
   const otherDeptsBudget = useMemo(() => {

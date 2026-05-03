@@ -9,7 +9,7 @@
  * rollback notifications), promote the state to a domain store and
  * keep this component as a presentational helper.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
@@ -100,69 +100,76 @@ export function VersionHistorySection<T>(
     to: number
   } | null>(null)
   const [rollbackOpen, setRollbackOpen] = useState(false)
-  // Bump to re-arm the guarded fetch effect.  Keeps the refresh
-  // path inside the same cancellation-aware flow as the initial
-  // load so a stale in-flight request cannot apply data after
-  // ``client`` changes or the host unmounts.
-  const [reloadNonce, setReloadNonce] = useState(0)
   // Monotonic epoch bumped on every initial-load / refresh /
-  // client-change.  ``handleLoadMore`` reads the current epoch
-  // before its await and discards the page if the epoch advanced
-  // while the request was in flight, so a slow load-more cannot
-  // append stale rows onto a freshly-reloaded timeline.
+  // client-change.  Both ``loadHistory`` and ``handleLoadMore``
+  // capture the epoch before awaiting and discard their results
+  // if the epoch has advanced, so concurrent or superseded
+  // requests cannot commit stale data after ``client`` changes,
+  // a refresh, or unmount.
   const requestEpochRef = useRef(0)
 
-  // Initial load.  ``client`` is captured as the dependency; new
-  // clients (rare; only when the parent rebuilds the factory)
-  // trigger a fresh fetch with state reset.  We also clear
-  // selection / diff / rollback state so cross-entity navigation
-  // does not surface a stale rollback action against the previous
-  // resource.
+  // Advance the epoch on unmount so any in-flight ``client.list()``
+  // promise that settles after the component is gone discards its
+  // result instead of calling ``setItems`` / ``setError`` /
+  // ``setLoading`` against an unmounted tree.
   useEffect(() => {
+    return () => {
+      requestEpochRef.current += 1
+    }
+  }, [])
+
+  // ``loadHistory`` doubles as the initial fetch and the refresh
+  // path.  Routing both through the same callback (instead of a
+  // ``reloadNonce`` state value used only as an effect dep)
+  // keeps every fetch inside the same epoch-guarded flow without
+  // tripping ``no-unused-state`` on a render-only-as-dep state
+  // variable.
+  const loadHistory = useCallback(async (): Promise<void> => {
     requestEpochRef.current += 1
     const epoch = requestEpochRef.current
-    let cancelled = false
-    const run = async (): Promise<void> => {
-      setLoading(true)
-      // Reset ``loadingMore`` on every new epoch.  An in-flight
-      // ``handleLoadMore()`` whose epoch advanced will skip its
-      // own ``finally`` (intentional: it must not commit stale
-      // data), but that leaves the spinner stuck unless the new
-      // load clears it explicitly.  Without this, a single stale
-      // load-more would block all future pagination because the
-      // ``loadingMore || loading`` guard at the top of
-      // ``handleLoadMore`` would always early-return.
-      setLoadingMore(false)
-      setError(null)
-      setItems([])
-      setCursor(null)
-      setHasMore(false)
-      setSelectedVersion(null)
-      setDiffOpen(false)
-      setDiffPair(null)
-      setRollbackOpen(false)
-      try {
-        const page = await client.list({ limit: 25 })
-        if (cancelled || epoch !== requestEpochRef.current) return
-        setItems(page.data)
-        setCursor(page.nextCursor)
-        setHasMore(page.hasMore)
-      } catch (err) {
-        log.warn('list versions failed:', getErrorMessage(err))
-        if (!cancelled && epoch === requestEpochRef.current) {
-          setError(getErrorMessage(err))
-        }
-      } finally {
-        if (!cancelled && epoch === requestEpochRef.current) {
-          setLoading(false)
-        }
+    setLoading(true)
+    // Reset ``loadingMore`` on every new epoch.  An in-flight
+    // ``handleLoadMore()`` whose epoch advanced will skip its
+    // own ``finally`` (intentional: it must not commit stale
+    // data), but that leaves the spinner stuck unless the new
+    // load clears it explicitly.  Without this, a single stale
+    // load-more would block all future pagination because the
+    // ``loadingMore || loading`` guard at the top of
+    // ``handleLoadMore`` would always early-return.
+    setLoadingMore(false)
+    setError(null)
+    setItems([])
+    setCursor(null)
+    setHasMore(false)
+    setSelectedVersion(null)
+    setDiffOpen(false)
+    setDiffPair(null)
+    setRollbackOpen(false)
+    try {
+      const page = await client.list({ limit: 25 })
+      if (epoch !== requestEpochRef.current) return
+      setItems(page.data)
+      setCursor(page.nextCursor)
+      setHasMore(page.hasMore)
+    } catch (err) {
+      log.warn('list versions failed:', getErrorMessage(err))
+      if (epoch === requestEpochRef.current) {
+        setError(getErrorMessage(err))
+      }
+    } finally {
+      if (epoch === requestEpochRef.current) {
+        setLoading(false)
       }
     }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [client, reloadNonce])
+  }, [client])
+
+  // Initial load.  ``client`` changes (rare; only when the parent
+  // rebuilds the factory) bubble through ``loadHistory``'s
+  // dependency, triggering a fresh fetch with state reset and a
+  // cross-entity navigation cleanup.
+  useEffect(() => {
+    void loadHistory()
+  }, [loadHistory])
 
   const handleLoadMore = async (): Promise<void> => {
     // Guard against fast repeated triggers re-requesting the same
@@ -212,11 +219,7 @@ export function VersionHistorySection<T>(
   }
 
   const handleRefresh = (): void => {
-    // Bump the reload nonce so the guarded fetch effect re-runs.
-    // Routing refresh through the effect (instead of an inline
-    // unguarded async) ensures stale in-flight requests cannot
-    // commit data after ``client`` changes or unmount.
-    setReloadNonce((n) => n + 1)
+    void loadHistory()
   }
 
   return (

@@ -29,6 +29,16 @@ export function ApprovalRiskGroupSection({
   onApprove,
   onReject,
 }: ApprovalRiskGroupSectionProps) {
+  // ``SectionCard.icon: LucideIcon`` accepts a component REFERENCE (not a
+  // JSX node), so the canonical wrapper-component idiom used elsewhere in
+  // this PR (``<ActivityEventIcon eventType={...} />`` etc.) doesn't fit:
+  // a wrapper would have to take ``riskLevel`` as a prop and couldn't be
+  // passed in as a Lucide-shaped component reference. The ``Icon`` lookup
+  // here resolves a const ``Record<ApprovalRiskLevel, LucideIcon>`` so the
+  // returned reference is stable across renders for the same level, and
+  // the ``react-x/static-components`` rule does not fire because the
+  // result is consumed as a prop value (not as ``<Icon />`` JSX in this
+  // body).
   const Icon = getRiskLevelIcon(riskLevel)
   const pendingInGroup = items.filter((a) => a.status === 'pending')
   const pendingIds = pendingInGroup.map((a) => a.id)

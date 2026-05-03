@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect, useMemo } from 'react'
 import { Pencil, Trash2, UserPlus, ArrowRightLeft, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/toast'
+import { useViewportSize } from '@/hooks/useViewportSize'
 
 interface NodeContextMenuProps {
   nodeId: string
@@ -110,16 +111,19 @@ export function NodeContextMenu({
   const items =
     nodeType === 'department' ? departmentItems : nodeType === 'ceo' ? ceoItems : agentItems
 
-  // Clamp menu position to viewport bounds
+  // Clamp menu position to viewport bounds. ``useViewportSize`` keeps
+  // the clamp reactive to resizes without touching ``window`` directly
+  // in the render body.
   const menuWidth = 180
   const menuItemHeight = 32
   const menuPadding = 8
   const menuHeight = items.length * menuItemHeight + menuPadding
   const margin = 8
+  const viewport = useViewportSize()
   const boundedPosition = useMemo(() => ({
-    x: Math.max(margin, Math.min(position.x, window.innerWidth - menuWidth - margin)),
-    y: Math.max(margin, Math.min(position.y, window.innerHeight - menuHeight - margin)),
-  }), [position.x, position.y, menuHeight])
+    x: Math.max(margin, Math.min(position.x, viewport.width - menuWidth - margin)),
+    y: Math.max(margin, Math.min(position.y, viewport.height - menuHeight - margin)),
+  }), [position.x, position.y, menuHeight, viewport.width, viewport.height])
 
   const menuLabel =
     nodeType === 'department' ? 'Department actions' : nodeType === 'ceo' ? 'CEO actions' : 'Agent actions'

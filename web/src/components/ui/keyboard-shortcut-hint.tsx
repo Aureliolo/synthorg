@@ -62,7 +62,7 @@ export function KeyboardShortcutHint({
           size={size}
         />
       ))}
-      {label && (
+      {label !== undefined && label !== '' && (
         <span className={cn(size === 'sm' ? 'text-[length:var(--so-text-micro)]' : 'text-xs')}>{label}</span>
       )}
     </span>

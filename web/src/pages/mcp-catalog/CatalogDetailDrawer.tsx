@@ -1,7 +1,7 @@
 import type { McpCatalogEntry } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
-import { getCatalogEntryIcon } from './catalog-icons'
+import { CatalogEntryIcon } from './catalog-icons'
 
 export interface CatalogDetailDrawerProps {
   entry: McpCatalogEntry | null
@@ -26,8 +26,6 @@ export function CatalogDetailDrawer({
     )
   }
 
-  const Icon = getCatalogEntryIcon(entry.id)
-
   return (
     <Drawer
       open={entry !== null}
@@ -41,7 +39,7 @@ export function CatalogDetailDrawer({
             className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-surface text-text-secondary"
             aria-hidden
           >
-            <Icon className="size-6" />
+            <CatalogEntryIcon entryId={entry.id} className="size-6" />
           </span>
           <div className="flex flex-col gap-1">
             <span className="text-base font-semibold text-foreground">

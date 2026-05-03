@@ -153,8 +153,12 @@ function InputVariant(props: InputProps) {
 
   const inputClasses = buildInputClasses({
     hasError,
-    hasLeadingIcon: !!leadingIcon,
-    hasTrailingElement: !!trailingElement,
+    // Match the ``leadingIcon != null && leadingIcon !== false`` render
+    // guards on the icon ``<span>``s below so the padding flag and the
+    // actual JSX presence agree on every legal ReactNode value (incl.
+    // ``0`` / ``''`` / ``false``).
+    hasLeadingIcon: leadingIcon != null && leadingIcon !== false,
+    hasTrailingElement: trailingElement != null && trailingElement !== false,
     className,
   })
 
@@ -171,7 +175,7 @@ function InputVariant(props: InputProps) {
         required={Boolean(domProps.required)}
       />
       <div className="relative">
-        {leadingIcon && (
+        {leadingIcon != null && leadingIcon !== false && (
           <span
             aria-hidden="true"
             className="pointer-events-none absolute left-2.5 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground"
@@ -195,7 +199,7 @@ function InputVariant(props: InputProps) {
           className={inputClasses}
           onChange={handleChange}
         />
-        {trailingElement && (
+        {trailingElement != null && trailingElement !== false && (
           <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
             {trailingElement}
           </span>

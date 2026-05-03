@@ -121,6 +121,18 @@ export default function AppLayout() {
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
   const closeSidebarOverlay = useCallback(() => setSidebarOverlayOpen(false), [])
 
+  // Hoist window-accessing handlers out of the useMemo body so the
+  // ``react-x/globals`` rule sees them as event-handler bound (callable
+  // outside render) rather than render-bound. /docs/ is static HTML
+  // served by nginx, so it needs a full-page navigation rather than
+  // ``navigate()``.
+  const navigateToDocs = useCallback(() => {
+    window.location.href = ROUTES.DOCUMENTATION
+  }, [])
+  const openNotificationDrawer = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('open-notification-drawer'))
+  }, [])
+
   // Register global navigation commands for the command palette
   const globalCommands: CommandItem[] = useMemo(
     () => [
@@ -133,12 +145,11 @@ export default function AppLayout() {
       { id: 'nav-messages', label: 'Messages', icon: MessageSquare, action: () => navigate(ROUTES.MESSAGES), group: 'Navigation' },
       { id: 'nav-meetings', label: 'Meetings', icon: Video, action: () => navigate(ROUTES.MEETINGS), group: 'Navigation' },
       { id: 'nav-providers', label: 'Providers', icon: Cpu, action: () => navigate(ROUTES.PROVIDERS), group: 'Navigation' },
-      // Full-page navigation -- /docs/ is static HTML served by nginx, not an SPA route
-      { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: () => { window.location.href = ROUTES.DOCUMENTATION }, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
+      { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: navigateToDocs, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
       { id: 'nav-settings', label: 'Settings', icon: Settings, action: () => navigate(ROUTES.SETTINGS), group: 'Navigation', shortcut: ['ctrl', ','] },
-      { id: 'notifications-open', label: 'Notifications', icon: Bell, action: () => window.dispatchEvent(new CustomEvent('open-notification-drawer')), group: 'Navigation', shortcut: ['shift', 'N'] },
+      { id: 'notifications-open', label: 'Notifications', icon: Bell, action: openNotificationDrawer, group: 'Navigation', shortcut: ['shift', 'N'] },
     ],
-    [navigate],
+    [navigate, navigateToDocs, openNotificationDrawer],
   )
   useRegisterCommands(globalCommands)
 

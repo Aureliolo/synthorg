@@ -101,6 +101,18 @@ See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md
 - Confirmation / toasts -> `<ConfirmDialog>` / `<Toast>` (Zustand-backed queue, NOT Base UI's Toast).
 - Cmd+K / shortcuts -> `<CommandPalette>` / `<KeyboardShortcutHint>` / `<CommandCheatsheet>`.
 - Animation -> `<AnimatedPresence>` / `<StaggerGroup>` / `<LiveRegion>` (debounced ARIA live for WS updates).
+- Icon helpers -> never write `getXIcon(value): LucideIcon` factories that return a component reference and get called inside JSX render bodies (the `react-x/static-components` rule flags them as "components created during render"). Export a `<XIcon value={...} {...lucideProps} />` wrapper component instead, doing the lookup inside the wrapper via `createElement` (avoids a PascalCase JSX binding in the wrapper body too). See `web/src/utils/activity-event-icon.tsx` and `web/src/pages/mcp-catalog/catalog-icons.tsx` for the canonical shape. Wrapper components live in their own file (NOT alongside utility exports) so React Fast Refresh stays compatible per the `react-refresh/only-export-components` rule.
+- Viewport-size reads -> `useViewportSize()` from `@/hooks/useViewportSize` (`useSyncExternalStore` over `window` resize). Never read `window.innerWidth` / `window.innerHeight` directly inside a component render body or `useMemo`; the `react-x/globals` rule will flag it and it would be stale across resizes anyway.
+
+## ESLint (MANDATORY)
+
+`@eslint-react/eslint-plugin` v5+ via the `recommended-type-checked` preset (requires `parserOptions.projectService: true`, configured in `web/eslint.config.js`). Explicit error-level opt-ins beyond the preset:
+
+- `@eslint-react/web-api-no-leaked-fetch`: detect `fetch()` in effects without `AbortController` cleanup.
+- `@eslint-react/no-leaked-conditional-rendering`: catch the `{count && <Foo />}` bug where `0` renders verbatim. For `ReactNode | undefined` props use `{value != null && value !== false && <jsx>}`; for compound truthiness use `Boolean(...)`.
+- `@eslint-react/globals`: restrict `window` / `document` / `localStorage` / etc. inside render. Hoist offenders into a `useCallback` event handler, a `useEffect`, or a `useSyncExternalStore`-backed hook.
+
+Lint runs via `npm --prefix web run lint` with `--max-warnings 0`. To enumerate stale `eslint-disable` directives after a rule reshuffle: `npm --prefix web run lint -- --report-unused-disable-directives-severity=warn`.
 
 ## Base UI Adoption Decisions
 

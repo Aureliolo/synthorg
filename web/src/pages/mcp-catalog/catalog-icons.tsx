@@ -1,3 +1,4 @@
+import { createElement } from 'react'
 import {
   Brain,
   Database,
@@ -6,6 +7,7 @@ import {
   Globe,
   MessageSquare,
   type LucideIcon,
+  type LucideProps,
   Package,
   Search,
 } from 'lucide-react'
@@ -27,6 +29,17 @@ const ENTRY_ICONS: Record<string, LucideIcon> = {
   'memory-mcp': Brain,
 }
 
-export function getCatalogEntryIcon(entryId: string): LucideIcon {
-  return ENTRY_ICONS[entryId] ?? Package
+export interface CatalogEntryIconProps extends LucideProps {
+  entryId: string
+}
+
+/**
+ * Render the Lucide icon for an MCP catalog entry.
+ *
+ * The lookup happens inside this component (not at the call site) so the
+ * ``react-x/static-components`` rule sees a stable component reference at
+ * every JSX usage.
+ */
+export function CatalogEntryIcon({ entryId, ...rest }: CatalogEntryIconProps) {
+  return createElement(ENTRY_ICONS[entryId] ?? Package, rest)
 }
