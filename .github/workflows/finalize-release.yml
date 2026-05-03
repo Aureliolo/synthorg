@@ -49,6 +49,7 @@ jobs:
     permissions:
       actions: read
       contents: write
+      pull-requests: read
       statuses: write
     steps:
       # ── Surface this run's outcome on the head commit's status row ──
@@ -349,33 +350,205 @@ jobs:
             fi
           fi
 
-          # Strip and re-append only when we have a replacement. If VERIFICATION
-          # is empty (no data extracted), leave the body untouched to avoid
-          # destroying an existing Verification section with no replacement.
-          if [ -n "$VERIFICATION" ]; then
-            CLEANED=$(printf '%s' "$BODY" \
-              | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
-              | sed '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/d' \
-              | sed '/<!-- CLI_SLSA_BUNDLE_DATA/,/CLI_SLSA_BUNDLE_DATA -->/d' \
-              | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
-              | sed '/<!-- CONTAINER_SBOM_DATA/,/CONTAINER_SBOM_DATA -->/d' \
-              | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
-            FINAL="${CLEANED}${VERIFICATION}"
+          # ── Promote AI Highlights from the release-please PR body ──
+          # release.yml writes a `<!-- HIGHLIGHTS_START -->...<!-- HIGHLIGHTS_END -->`
+          # block onto the rolling release-please PR body via gh pr edit.
+          # When the PR is merged, release-please builds the release notes
+          # from CHANGELOG.md only, leaving the Highlights block stranded on
+          # the PR. Locate the merged PR via the head_sha -> pulls
+          # association and copy the marker block (verbatim, markers
+          # included) to the top of the release body so:
+          #   - users see the AI summary on github.com/<repo>/releases
+          #   - `synthorg update` parses it via cli/internal/selfupdate
+          #     ExtractHighlights for the styled changelog walk.
+          #
+          # Stable releases only (release-please does not run on dev tags).
+          # Best-effort: missing PR, missing block, or empty PR body all
+          # leave the release body untouched.
+          HIGHLIGHTS=""
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Distinguish "API failed" (warning, propagation skipped) from
+            # "API succeeded but returned no release-please PR" (notice,
+            # propagation legitimately not applicable). Wrapping the whole
+            # pipeline in `|| true` would conflate the two; querying the
+            # API once and filtering the JSON locally keeps the failure
+            # signal observable while preserving best-effort semantics.
+            PR_NUMBER=""
+            if PR_API_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" 2>/dev/null); then
+              PR_NUMBER=$(printf '%s' "$PR_API_OUTPUT" \
+                | jq -r '.[] | select(.head.ref | startswith("release-please--branches--main")) | .number' \
+                | head -n1)
+            else
+              echo "::warning::gh api commits/${HEAD_SHA}/pulls failed; skipping Highlights propagation."
+            fi
+            if [ -n "$PR_NUMBER" ]; then
+              PR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>/dev/null || true)
+              if [ -n "$PR_BODY" ]; then
+                # Find marker line numbers via exact whole-line match
+                # (`grep -nFx`): -n adds line numbers, -F treats the
+                # marker as a fixed string (no regex), -x requires the
+                # entire line to match. This rules out three failure
+                # modes the previous substring approach permitted:
+                #   1. a docs/code prose block that quotes the marker
+                #      inline (e.g. ``See \`<!-- HIGHLIGHTS_START -->\`...``)
+                #      cannot trigger extraction;
+                #   2. a body where the closing marker appears BEFORE
+                #      the opening one (e.g. CHANGELOG entries that
+                #      quote both in reverse) cannot satisfy the guard;
+                #   3. sed range never operates on an unterminated
+                #      pair, since we delete by explicit line numbers
+                #      after confirming start_line < end_line.
+                EXTRACTED=""
+                # `|| true` on each grep guards against bash builds
+                # (or shells with `inherit_errexit` set) where a
+                # command-substitution that exits non-zero would abort
+                # the whole step under `set -euo pipefail`. grep -nFx
+                # exits 1 when the marker is absent; that is a normal
+                # outcome here (PR has no Highlights), not a failure.
+                #
+                # END_LINE is filtered to "first match strictly after
+                # START_LINE" (`awk '$1 > s'`). Without that filter, a
+                # stray END marker line that landed in the body before
+                # the real Highlights block (e.g. a stale fragment
+                # left by a previous failed finalize run, or a quoted
+                # marker in a CHANGELOG entry that survived the
+                # release-please diff) would be picked first, the
+                # order guard would refuse to extract, and Highlights
+                # would silently never propagate.
+                START_LINE=$(grep -nFx '<!-- HIGHLIGHTS_START -->' <<< "$PR_BODY" | head -n1 | cut -d: -f1 || true)
+                if [ -n "$START_LINE" ]; then
+                  END_LINE=$(grep -nFx '<!-- HIGHLIGHTS_END -->' <<< "$PR_BODY" \
+                    | awk -F: -v start="$START_LINE" '$1 > start { print $1; exit }' || true)
+                else
+                  END_LINE=""
+                fi
+                if [ -n "$START_LINE" ] && [ -n "$END_LINE" ] && [ "$START_LINE" -lt "$END_LINE" ]; then
+                  EXTRACTED=$(sed -n "${START_LINE},${END_LINE}p" <<< "$PR_BODY")
+                fi
+                if [ -n "$EXTRACTED" ]; then
+                  # Trim trailing newlines so the prepend produces exactly
+                  # one blank line between the Highlights block and the
+                  # changelog. The herestring `<<<` adds one trailing
+                  # newline that sed's range capture preserves; without
+                  # this trim, ${HIGHLIGHTS}${CLEANED} renders an extra
+                  # blank line at the top of the release body.
+                  while [[ "$EXTRACTED" == *$'\n' ]]; do EXTRACTED="${EXTRACTED%$'\n'}"; done
+                  HIGHLIGHTS="$EXTRACTED"$'\n\n'
+                  echo "Highlights block found in release-please PR #${PR_NUMBER}; prepending to release body."
+                else
+                  echo "::notice::release-please PR #${PR_NUMBER} has no Highlights block; release body unchanged."
+                fi
+              else
+                echo "::warning::Could not fetch body of release-please PR #${PR_NUMBER}; release body unchanged."
+              fi
+            elif [ -n "${PR_API_OUTPUT-}" ]; then
+              echo "::notice::No release-please PR associated with ${HEAD_SHA}; skipping Highlights propagation."
+            fi
+          fi
+
+          # Strip and re-append only when we have a replacement. If both
+          # HIGHLIGHTS and VERIFICATION are empty (nothing to add), leave
+          # the body untouched to avoid destroying an existing Highlights
+          # / Verification section with no replacement.
+          if [ -n "$VERIFICATION" ] || [ -n "$HIGHLIGHTS" ]; then
+            CLEANED="$BODY"
+            # Each marker-pair strip uses `grep -nFx` (exact whole-line
+            # match) to find line numbers for both markers, then
+            # deletes by explicit line range only when start_line is
+            # strictly less than end_line. This rules out the three
+            # failure modes a substring + greedy-sed approach would
+            # leak through:
+            #   1. a doc / code prose block that quotes the marker
+            #      inline cannot fire deletion;
+            #   2. an out-of-order pair (END before START on different
+            #      lines) cannot satisfy the guard;
+            #   3. an unterminated start (no END line at all) cannot
+            #      consume from START to EOF, since we never invoke
+            #      sed range without both line numbers.
+            # `printf '%s' "$CLEANED"` inside command substitution
+            # strips the trailing newline, but the herestring `<<<`
+            # restores one on the next read; downstream concat into
+            # FINAL just appends so a missing trailing newline on the
+            # final body is harmless.
+            # `|| true` on each grep guards against `set -euo pipefail`
+            # treating "marker absent" (grep exit 1) as a step failure;
+            # absent markers are the common case (most strips do
+            # nothing) and must not abort the publish.
+            strip_balanced_pair() {
+              local start_marker="$1"
+              local end_marker="$2"
+              local start_line end_line
+              start_line=$(grep -nFx "$start_marker" <<< "$CLEANED" | head -n1 | cut -d: -f1 || true)
+              # end_line is filtered to "first match strictly after
+              # start_line"; a stray end marker that landed before the
+              # real block (e.g. from a half-applied prior finalize
+              # run) would otherwise be picked, the order guard would
+              # refuse, and the strip would silently leave the block
+              # in place.
+              if [ -n "$start_line" ]; then
+                end_line=$(grep -nFx "$end_marker" <<< "$CLEANED" \
+                  | awk -F: -v start="$start_line" '$1 > start { print $1; exit }' || true)
+              else
+                end_line=""
+              fi
+              if [ -n "$start_line" ] && [ -n "$end_line" ] && [ "$start_line" -lt "$end_line" ]; then
+                CLEANED=$(sed "${start_line},${end_line}d" <<< "$CLEANED")
+              fi
+            }
+            # Each strip is gated on the variable that's about to be
+            # rebuilt: HIGHLIGHTS strip only fires when we have a fresh
+            # block to prepend, FINALIZE_VERIFICATION strip only fires
+            # when we have a fresh Verification section to append.
+            # Otherwise a one-sided reconstruction (e.g. only the
+            # release-please PR returned a Highlights block, but
+            # upstream verification extraction yielded nothing) would
+            # silently delete the section we are NOT reconstructing on
+            # the next finalize re-run, leaving the body shorter than
+            # it should be.
+            #
+            # The CLI_*/CONTAINER_* marker pairs always strip: they are
+            # invisible HTML comments holding the source data that the
+            # upstream loops parse into VERIFICATION. Removing the
+            # source markers from the visible body is benign even if
+            # VERIFICATION ends up empty (the user-rendered markdown is
+            # identical with or without them), and they MUST go before
+            # FINAL is reassembled or finalize re-runs would
+            # accumulate duplicated source markers.
+            if [ -n "$HIGHLIGHTS" ]; then
+              strip_balanced_pair '<!-- HIGHLIGHTS_START -->' '<!-- HIGHLIGHTS_END -->'
+            fi
+            strip_balanced_pair '<!-- CLI_VERIFICATION_DATA' 'CLI_VERIFICATION_DATA -->'
+            strip_balanced_pair '<!-- CLI_COSIGN_DATA' 'CLI_COSIGN_DATA -->'
+            strip_balanced_pair '<!-- CLI_SLSA_BUNDLE_DATA' 'CLI_SLSA_BUNDLE_DATA -->'
+            strip_balanced_pair '<!-- CONTAINER_VERIFICATION_DATA' 'CONTAINER_VERIFICATION_DATA -->'
+            strip_balanced_pair '<!-- CONTAINER_SBOM_DATA' 'CONTAINER_SBOM_DATA -->'
+            # FINALIZE_VERIFICATION is intentionally greedy-to-EOF:
+            # everything after the marker IS the verification section
+            # (no closing marker by design). The greedy strip rebuilds
+            # the section fresh from the per-image marker data above
+            # ONLY when VERIFICATION is non-empty; otherwise an
+            # existing Verification section in the draft body would be
+            # erased without replacement.
+            if [ -n "$VERIFICATION" ]; then
+              CLEANED=$(printf '%s' "$CLEANED" \
+                | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
+            fi
+            FINAL="${HIGHLIGHTS}${CLEANED}${VERIFICATION}"
           else
             FINAL="$BODY"
           fi
 
-          tmpfile="$(mktemp)"
+          tmpfile="$(mktemp /tmp/finalize-release.XXXXXX)"
           trap 'rm -f "$tmpfile"' EXIT
           printf '%s' "$FINAL" > "$tmpfile"
           if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"; then
-            echo "Release body assembled with combined Verification section."
+            echo "Release body assembled (Highlights: $([ -n "$HIGHLIGHTS" ] && echo yes || echo no); Verification: $([ -n "$VERIFICATION" ] && echo yes || echo no))."
           else
-            if [ -n "$VERIFICATION" ]; then
-              echo "::error::Failed to update release body -- verification data would be lost. Not publishing."
+            if [ -n "$VERIFICATION" ] || [ -n "$HIGHLIGHTS" ]; then
+              echo "::error::Failed to update release body -- highlights/verification data would be lost. Not publishing."
               exit 1
             else
-              echo "::warning::Failed to update release body (no verification data to lose -- proceeding)"
+              echo "::warning::Failed to update release body (nothing to lose -- proceeding)"
             fi
           fi
 
