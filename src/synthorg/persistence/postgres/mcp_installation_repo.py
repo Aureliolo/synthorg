@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from psycopg.rows import dict_row
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
@@ -141,15 +142,15 @@ class PostgresMcpInstallationRepository:
             "FROM mcp_installations "
             "ORDER BY installed_at ASC, catalog_entry_id ASC"
         )
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            msg = f"limit must be a positive integer, got {limit!r}"
+            raise QueryError(msg)
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            msg = f"offset must be a non-negative integer, got {offset!r}"
+            raise QueryError(msg)
         params: tuple[object, ...] = ()
-        # Clamp at the boundary: Postgres rejects negative ``LIMIT``
-        # outright (SQLSTATE 2201W), and an oversized value would
-        # defeat the page-size contract.  Mirror the sqlite sibling's
-        # clamp.
-        effective_limit = max(1, min(int(limit), 100))
-        effective_offset = max(0, int(offset))
         sql += " LIMIT %s OFFSET %s"
-        params = (effective_limit, effective_offset)
+        params = (limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,

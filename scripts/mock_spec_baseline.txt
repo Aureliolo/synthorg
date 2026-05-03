@@ -622,6 +622,8 @@ tests/unit/communication/loop_prevention/test_circuit_breaker.py:296:15
 tests/unit/communication/loop_prevention/test_circuit_breaker.py:297:20
 tests/unit/communication/loop_prevention/test_circuit_breaker.py:319:15
 tests/unit/communication/loop_prevention/test_circuit_breaker.py:320:24
+tests/unit/communication/loop_prevention/test_circuit_breaker.py:356:15
+tests/unit/communication/loop_prevention/test_circuit_breaker.py:357:24
 tests/unit/communication/meeting/test_agent_caller.py:102:25
 tests/unit/communication/meeting/test_agent_caller.py:104:15
 tests/unit/communication/meeting/test_agent_caller.py:106:28

@@ -317,15 +317,28 @@ class DelegationCircuitBreaker:
         # Hot-path may already be running by the time persistence
         # finishes; take the lock for the bulk install so a concurrent
         # ``record_delegation`` cannot observe a half-restored
-        # ``_pairs`` dict mid-iteration.
+        # ``_pairs`` dict mid-iteration.  Use ``setdefault`` so newer
+        # in-memory state created by ``record_delegation`` between
+        # process start and ``load_state`` completing is not silently
+        # overwritten by the persisted snapshot.
         with self._state_lock:
             for rec in records:
                 key = (rec.pair_key_a, rec.pair_key_b)
                 ps = _PairState()
                 ps.bounce_count = rec.bounce_count
                 ps.trip_count = rec.trip_count
-                ps.opened_at = rec.opened_at
-                self._pairs[key] = ps
+                # ``opened_at`` is a monotonic value captured by the
+                # original process; another process's monotonic
+                # reference point is undefined so a persisted value
+                # cannot be safely compared against a fresh
+                # ``self._clock()`` call.  Drop ``opened_at`` on
+                # restore so the breaker re-opens cleanly under the
+                # current process's clock the next time
+                # ``record_delegation`` trips it; the trip-count
+                # history is preserved (so backoff escalation
+                # survives), only the in-flight cooldown is reset.
+                ps.opened_at = None
+                self._pairs.setdefault(key, ps)
 
     async def persist_dirty(self) -> None:
         """Flush dirty pair state to the repository.

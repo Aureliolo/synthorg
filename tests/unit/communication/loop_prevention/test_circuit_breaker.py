@@ -326,7 +326,47 @@ class TestCircuitBreakerDirtyTracking:
         assert pair is not None
         assert pair.bounce_count == 1
         assert pair.trip_count == 2
-        assert pair.opened_at == 50.0
+        # ``opened_at`` is dropped on restore: the persisted value
+        # was captured by a different process's monotonic clock and
+        # cannot be safely compared against ``self._clock()`` here.
+        # Trip-count history survives so the next backoff escalation
+        # fires at the correct level; in-flight cooldown is reset.
+        assert pair.opened_at is None
+
+    async def test_load_state_does_not_overwrite_newer_in_memory(
+        self,
+    ) -> None:
+        """``load_state`` preserves entries that ``record_delegation``
+        seeded between process start and the persistence load
+        completing.  Without this, a hot-path trip recorded at
+        startup gets clobbered by the stale persisted snapshot.
+        """
+        from synthorg.persistence.circuit_breaker_repo import (
+            CircuitBreakerStateRecord,
+        )
+
+        config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
+        record = CircuitBreakerStateRecord(
+            pair_key_a="a",
+            pair_key_b="b",
+            bounce_count=1,
+            trip_count=1,
+            opened_at=None,
+        )
+        repo = MagicMock()
+        repo.load_all = AsyncMock(return_value=(record,))
+
+        cb = DelegationCircuitBreaker(config, state_repo=repo)
+        # Pre-populate with a "live" entry that record_delegation
+        # produced before load_state ran.
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
+        live_bounce = cb._pairs[("a", "b")].bounce_count
+
+        await cb.load_state()
+
+        # Live entry survives; persisted snapshot does not overwrite.
+        assert cb._pairs[("a", "b")].bounce_count == live_bounce
 
 
 @pytest.mark.unit

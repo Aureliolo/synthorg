@@ -518,11 +518,16 @@ class PostgresApiKeyRepository:
         Defaults to a 100-key page; callers needing more must paginate
         with ``offset``.
         """
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            msg = f"limit must be a positive integer, got {limit!r}"
+            raise QueryError(msg)
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            msg = f"offset must be a non-negative integer, got {offset!r}"
+            raise QueryError(msg)
         sql = "SELECT * FROM api_keys WHERE user_id = %s ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
-        effective_offset = max(0, int(offset))
         sql += " LIMIT %s OFFSET %s"
-        params = (*params, int(limit), effective_offset)
+        params = (*params, limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,

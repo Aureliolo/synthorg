@@ -694,11 +694,16 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database query or deserialization fails.
         """
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            msg = f"limit must be a positive integer, got {limit!r}"
+            raise QueryError(msg)
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            msg = f"offset must be a non-negative integer, got {offset!r}"
+            raise QueryError(msg)
         sql = "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
-        effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
-        params = (*params, int(limit), effective_offset)
+        params = (*params, limit, offset)
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()

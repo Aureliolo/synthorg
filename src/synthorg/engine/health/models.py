@@ -5,7 +5,7 @@ health judge and consumed by the triage filter.
 """
 
 import copy
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
@@ -113,8 +113,10 @@ class EscalationTicket(BaseModel):
         """
         if "metadata" in data:
             raw = data["metadata"]
-            if isinstance(raw, MappingProxyType):
-                data["metadata"] = raw
-            elif isinstance(raw, dict):
-                data["metadata"] = MappingProxyType(copy.deepcopy(raw))
+            if isinstance(raw, Mapping):
+                # Always deep-copy before wrapping; reusing an
+                # incoming ``MappingProxyType`` directly would alias
+                # its backing dict and let the caller mutate
+                # ``ticket.metadata`` after construction.
+                data["metadata"] = MappingProxyType(copy.deepcopy(dict(raw)))
         super().__init__(**data)

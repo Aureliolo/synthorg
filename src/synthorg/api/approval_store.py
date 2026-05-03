@@ -49,6 +49,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,
+    API_APPROVAL_EXPIRE_BATCH_FAILED,
     API_APPROVAL_EXPIRE_CALLBACK_FAILED,
     API_APPROVAL_EXPIRED,
     API_APPROVAL_STORE_CLEARED,
@@ -261,7 +262,7 @@ class ApprovalStore:
                 action_type=action_type,
             )
 
-    async def _list_from_repo_locked(
+    async def _list_from_repo_locked(  # noqa: C901
         self,
         *,
         status: ApprovalStatus | None,
@@ -295,11 +296,11 @@ class ApprovalStore:
         # filter; the lazy expiration pass below may promote PENDING
         # items into the requested status (typically EXPIRED) and a
         # repo-level pre-filter on ``status`` would hide them.
-        # ``ApprovalRepository.list_items`` defaults to ``limit=100``
-        # since the audit-bucket pagination sweep, so we explicitly
-        # page until exhausted otherwise older PENDING rows that
-        # should lazily flip to EXPIRED here would never be visited
-        # once there are >100 newer non-expired rows in the table.
+        # ``ApprovalRepository.list_items`` is bounded to 100 rows
+        # per call, so we page until exhausted -- otherwise older
+        # PENDING rows that should lazily flip to EXPIRED here would
+        # never be visited once there are >100 newer non-expired
+        # rows in the table.
         page_size = 100
         repo_pages: list[ApprovalItem] = []
         offset = 0
@@ -335,7 +336,24 @@ class ApprovalStore:
             # batch commits. Any callback or audit-event emission
             # follows the cache update so observers cannot see a
             # cached EXPIRED state that the repo never accepted.
-            await self._repo.save_many(to_persist)
+            try:
+                await self._repo.save_many(to_persist)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # Log the affected ids before re-raising so a
+                # production failure on the batched expiry path is
+                # diagnosable -- otherwise the caller sees the
+                # ``QueryError`` and has no record of which lazy
+                # expirations were attempted.
+                logger.warning(
+                    API_APPROVAL_EXPIRE_BATCH_FAILED,
+                    batch_size=len(to_persist),
+                    approval_ids=tuple(item.id for item in to_persist),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
             self._items.update(cache_updates)
             for expired in to_persist:
                 logger.info(

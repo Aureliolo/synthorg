@@ -118,15 +118,15 @@ class SQLiteMcpInstallationRepository:
             "FROM mcp_installations "
             "ORDER BY installed_at ASC, catalog_entry_id ASC"
         )
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            msg = f"limit must be a positive integer, got {limit!r}"
+            raise QueryError(msg)
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            msg = f"offset must be a non-negative integer, got {offset!r}"
+            raise QueryError(msg)
         params: tuple[object, ...] = ()
-        # Clamp at the boundary: SQLite treats negative ``LIMIT``
-        # as unbounded, so a misbehaving caller passing -1 would
-        # bypass the page contract entirely.  Mirror the postgres
-        # sibling's clamp.
-        effective_limit = max(1, min(int(limit), 100))
-        effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
-        params = (effective_limit, effective_offset)
+        params = (limit, offset)
         async with self._db.execute(sql, params) as cursor:
             rows = await cursor.fetchall()
         return tuple(
