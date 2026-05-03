@@ -238,17 +238,24 @@ Build two views:
 | Overlap kind | Meaning | Conflict severity | Strategy hint |
 |--------------|---------|-------------------|---------------|
 | **None** | Disjoint file sets | Safe | Parallel merge, any order |
-| **Lockfile-only** | Only `*.lock` / `*.sum` / lockfile equivalents overlap | Trivial | First merges cleanly; the rest need a rebase. The bot will rebase on its next cycle (Renovate: tick the rebase/retry checkbox in the PR body or apply the `rebase` label; Dependabot: post `@dependabot rebase`). |
+| **Lockfile-only** | Only `*.lock` / `*.sum` / lockfile equivalents overlap | Trivial | First merges cleanly; the rest need a rebase. The bot will rebase on its next cycle (Renovate: apply the configured rebase label, default `rebase`, or tick the rebase/retry checkbox in the PR body; Dependabot: post `@dependabot rebase`). |
 | **Config-file overlap** | Same `pyproject.toml`, `package.json`, workflow YAML, `Dockerfile`, etc. | Moderate | Sequential merge with rebase between; usually mechanical (different table rows / different action versions) |
 | **Source overlap** | Same `.py` / `.ts` / `.go` / `.tsx` / etc. file | High | Investigate diffs before merging either; may need manual integration |
 
-**Group the PRs into merge waves:**
-- **Wave 1**: PRs that have no source-file or config-file overlap with any other PR in the batch. Lockfile-only overlap is allowed (the post-merge rebase is mechanical). Wave 1 PRs are parallel-safe.
-- **Wave 2+**: PRs that source-overlap or config-overlap with anything in an earlier wave. Merged sequentially with a rebase between waves. If every PR in the batch overlaps on source/config (no parallel-safe subset exists), Wave 1 is empty and the entire batch becomes a sequential chain ordered by smallest-conflict-footprint first; the "Combine into one PR" strategy in Phase 7 is usually preferable in that case.
+**Group the PRs into merge waves (iterative maximal-disjoint algorithm):**
 
-**Output**: a compact overlap matrix in the report header (Phase 6), plus a recommended merge ordering carried into Phase 7's strategy question.
+Compute waves by repeatedly extracting the **maximal subset of remaining PRs that are mutually disjoint on source-file and config-file overlap** (lockfile-only overlap inside a wave is allowed; the post-merge rebase is mechanical):
 
-If there are zero overlaps across the entire batch, state this explicitly ("No file overlap; all PRs parallel-safe") and skip the merge-strategy question in Phase 7.
+1. **Wave 1** = the largest subset of all PRs in the batch where every pair of PRs in the subset is pairwise non-overlapping on source/config files.
+2. Remove the Wave 1 PRs from the candidate pool.
+3. **Wave 2** = the largest subset of the remaining PRs that is again pairwise non-overlapping on source/config.
+4. Repeat until every PR has been assigned to a wave.
+
+Within any single wave, PRs are parallel-safe to merge. Between waves, rebase the next wave's PRs after the previous wave lands and re-verify CI before merging the next wave. If at any iteration no parallel-safe subset of size ≥ 2 exists (i.e. every remaining PR conflicts with every other on source/config), the remainder becomes a sequential chain ordered by smallest-conflict-footprint first; the "Combine into one PR" strategy in Phase 7 is usually preferable in that case.
+
+**Output**: a compact overlap matrix in the report header (Phase 6), plus the wave assignment and recommended merge ordering carried into Phase 7's strategy question.
+
+**Trigger rule for Phase 7's strategy question.** Phase 7 is only prompted when ≥ 2 PRs in the batch share **source or config files**. Lockfile-only overlaps do **not** trigger the strategy question (they are not waves-ambiguous: the bot rebases the loser of each lockfile race on its next cycle). If all overlaps in the batch are lockfile-only, state explicitly in the report ("No source/config overlap; all PRs parallel-safe; lockfile races resolve via bot rebase") and skip the merge-strategy question in Phase 7. The Phase 6 "Overlapping files" count must use the same scope: count only source/config overlaps when deciding whether to invoke Phase 7.
 
 ## Phase 6: Present Findings
 
@@ -257,7 +264,8 @@ When multiple PRs are in the batch, lead the report with the **Cross-PR Overlap 
 ```text
 ## Batch Overlap Summary
 **PRs reviewed**: #X, #Y, #Z
-**Overlapping files**: <count>, classified as <none / lockfile-only / config / source>
+**Overlapping files (for strategy decision; excludes lockfile-only)**: <count>, classified as <config / source>
+**Lockfile-only overlaps**: <count> (informational; do not trigger Phase 7)
 **Recommended waves**: Wave 1 = #X, #Z (parallel-safe); Wave 2 = #Y (rebase after Wave 1)
 ```
 
@@ -295,19 +303,19 @@ List concrete actions to take, grouped by timing:
 
 After presenting all PR reports, use AskUserQuestion to ask how to proceed. Tailor options based on what was found.
 
-**Multi-PR overlap question (only when ≥ 2 PRs share files, per Phase 5):**
+**Multi-PR overlap question (only when ≥ 2 PRs share source or config files, per Phase 5):**
 
-Before per-PR triage, ask one batch-level question to lock in a merge strategy:
+Before per-PR triage, ask one batch-level question to lock in a merge strategy. Skip this question when the only overlaps in the batch are lockfile-only; those resolve automatically when the bot rebases the loser of each lockfile race on its next cycle.
 
 ```text
-"<N> PRs in this batch overlap on <M> file(s) (<lockfile-only|config|source>). How should we sequence the merges?"
+"<N> PRs in this batch overlap on <M> source/config file(s) (<config|source>). How should we sequence the merges?"
 ```
 
 Options:
 - **"Wave-based parallel"**: Merge Wave 1 PRs in parallel; rebase + merge Wave 2; repeat. Maximises throughput; lockfile-only conflicts auto-resolve when the bot rebases (Renovate on its next cycle, Dependabot on `@dependabot rebase`). Use when overlaps are lockfile/config only.
 - **"Strict sequential"**: Merge one PR at a time, rebase the rest between merges. Slowest but lowest risk. Use when source files overlap or any PR's diff would non-trivially conflict.
 - **"Combine into one PR"**: Close the bot PRs and create one combined PR with all changes manually integrated. Use when 3+ PRs all conflict on the same source file -- avoids N rounds of rebase churn.
-- **"Defer the conflicting subset"**: Merge the disjoint PRs now; close the conflicting ones with a "supersede later" comment so the dependency bot (Renovate or Dependabot) recreates them on its next cycle once the main batch has landed. Use when the conflicting subset isn't time-sensitive.
+- **"Defer the conflicting subset"**: Merge the disjoint PRs now; close the conflicting ones via Phase 8's "Close / Skip" flow with a recognisable deferment reason (the user provides the exact phrase when prompted; common choices: "supersede later", "deferred to next cycle", "blocked on #N"). The dependency bot (Renovate or Dependabot) will recreate the closed PRs on its next cycle once the main batch has landed. Use when the conflicting subset isn't time-sensitive. The exact comment text is whatever the user supplies; this skill does not require a specific phrase, but the chosen reason should make the intent legible to a future reader.
 
 Carry the chosen strategy into Phase 8: it dictates merge order and whether Phase 8 invokes `--auto` (parallel-safe) vs blocking on each merge (sequential).
 
@@ -346,7 +354,7 @@ Options:
 ## Phase 8: Execute Decisions
 
 Apply the merge-strategy choice from Phase 7 (when multi-PR overlap was detected):
-- **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot. **Renovate** PRs: prefer the `rebase` label (`gh pr edit --add-label rebase`, configurable via Renovate's `rebaseLabel` option), because it does not depend on the exact wording of Renovate's PR-body template. As a fragile alternative you can also tick the rebase/retry checkbox via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`, but body string-manipulation breaks silently if Renovate changes its template format. **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
+- **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot. **Renovate** PRs: prefer the configured rebase label, `gh pr edit <number> --add-label <rebaseLabel>` (use the value of Renovate's `rebaseLabel` option from the repo's Renovate config; default: `rebase`), because the label trigger does not depend on the exact wording of Renovate's PR-body template. As a fragile alternative you can also tick the rebase/retry checkbox via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`, but body string-manipulation breaks silently if Renovate changes its template format. **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
 - **Strict sequential**: merge one PR, wait for it to land on `main`, trigger rebase + CI on the next PR, then merge it. No overlap with other merges in flight.
 - **Combine into one PR**: invoke "Improve and merge" against a single new branch that integrates all the diffs; close the bot PRs with a pointer to the combined PR.
 - **Defer the conflicting subset**: invoke "Close / Skip" on the deferred PRs first, then process the remaining disjoint PRs normally.
