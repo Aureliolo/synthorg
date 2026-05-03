@@ -332,7 +332,7 @@ func TestGenerateWithSandboxAndPostgres(t *testing.T) {
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
 	assertContains(t, yaml, `SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"`)
 	// Postgres service is still generated alongside the sandbox wiring.
-	assertContains(t, yaml, "dhi.io/postgres:18-debian13")
+	assertContains(t, yaml, "dhi.io/postgres:"+config.DefaultPostgresImageTag)
 	assertContains(t, yaml, "SYNTHORG_DATABASE_URL")
 	// SQLite path must not appear when postgres is active.
 	if strings.Contains(yaml, "SYNTHORG_DB_PATH") {

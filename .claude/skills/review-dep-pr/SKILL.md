@@ -365,6 +365,45 @@ Apply the merge-strategy choice from Phase 7 (when Phase 7 was asked).
 
 For each PR based on user's choice:
 
+### Approve with rationale (MANDATORY before any merge)
+
+**Every merge path in this skill funnels through this step first**, including all five strategy paths in Phase 8 (`Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset`) and all three per-PR action sections below (`Merge as-is`, `Improve and merge`, `Fix CI and merge`). Before invoking `gh pr merge` for any PR, post a PR approval whose body is a **three-part structured rationale** (a one-sentence Decision, a Changelog digest paragraph with 2 to 4 explicit bullets, and a Follow-ups line). This leaves a durable artifact on the PR (visible to future reviewers, audit trails, and bisects) explaining what was scanned and what was deemed relevant; without it, "merged by Renovate label, no comment" becomes the only signal in the timeline.
+
+The `<rationale>` body is multi-line by design. `gh pr review --body` accepts newlines (the bash `"..."` quoting preserves them), but for any rationale beyond a single sentence, prefer one of the multi-line forms below over inlining a long quoted string: heredoc piped to `--body-file -`, or write to a temp file first and pass `--body-file <path>`. Inline `"..."` quoting is fine only for the rare patch-bump-with-nothing-relevant case where the entire rationale fits on one line.
+
+The body MUST contain three sections in this order, each prefixed with its literal label so reviewers across PRs produce a consistent format:
+
+1. **`Decision:`** one sentence describing the bump type (patch / minor / major / lockfile / digest) and why it's being merged (`CI green`, `no breaking changes affecting us`, `migration applied in this PR`, etc.).
+2. **`Changelog digest:`** a short paragraph followed by 2 to 4 markdown bullets (use `-` on a fresh line, indented two spaces if nested under a sub-label) summarising the Phase 2 scan:
+   - which versions were covered (from -> to)
+   - **Relevant items** that affect us (new features adopted / deprecations actioned / bug fixes we were hitting / security fixes that matter)
+   - **Reviewed but not relevant** items (breaking changes in features we don't use, irrelevant platform changes, removed APIs we never imported)
+3. **`Follow-ups:`** one line; `none` if clean, otherwise the deferred items the user explicitly accepted in Phase 7 (e.g. "adopt new `--cache-dependency-path` input in a follow-up PR").
+
+Recommended invocation patterns (pick whichever matches the rationale length):
+
+```bash
+# Multi-line rationale via heredoc piped through stdin (preferred for typical 3-section bodies)
+gh pr review <number> --approve --body-file - <<'EOF'
+Decision: Patch bump 0.11.7 -> 0.11.8; CI green; no breaking changes touching our usage.
+
+Changelog digest:
+- Covered 0.11.7 -> 0.11.8 (single release).
+- Relevant: bug fix for `uv lock` on `pyproject.toml` files containing only dependency-groups (we hit this on the docs-toolchain refactor).
+- Reviewed but not relevant: new `--python-downloads-json-url` flag (we don't customise download sources); `UV_NO_PROJECT` env var (no use case yet).
+
+Follow-ups: none.
+EOF
+
+# Long rationale via temp file (when heredoc gets unwieldy or you want to review the body before posting)
+gh pr review <number> --approve --body-file /tmp/dep-approval-<number>.txt
+
+# One-liner only when the rationale truly fits on one line
+gh pr review <number> --approve --body "Decision: lockfile-only refresh; CI green; no source diffs. Changelog digest: not applicable for lockFileMaintenance. Follow-ups: none."
+```
+
+**Do NOT skip this step**, even when `--auto` is used and the merge happens asynchronously: the approval must land first so the PR carries the rationale before it auto-merges. Do NOT collapse the rationale into the squash commit message; the approval review is the canonical venue (squash messages get rewritten by maintainers, get truncated, and don't surface in the PR conversation thread).
+
 ### Merge as-is
 
 1. Re-verify CI is passing right before merge (time may have passed since Phase 5):
@@ -374,7 +413,8 @@ For each PR based on user's choice:
    ```
 
    Inspect the JSON output. All checks should have `state: "SUCCESS"`, `"SKIPPED"`, or `"NEUTRAL"`. Do NOT use jq filters with `!=` (escaping breaks on Windows bash). If any checks are failing, inform the user and switch to the "Fix CI and merge" flow instead.
-2. Merge:
+2. **Approve with rationale** (per the section above): required before merge.
+3. Merge:
 
    ```bash
    gh pr merge <number> --squash --auto
@@ -383,7 +423,7 @@ For each PR based on user's choice:
    Note: `--auto` may succeed silently with no stdout. Track which path was used: `auto` or `immediate`.
 
    If `--auto` fails (auto-merge not enabled on the repo or branch protection requirements not met), fall back to `gh pr merge <number> --squash` for immediate merge. If that also fails (e.g., required reviews not met), inform the user that manual approval is needed.
-3. Verify the merge:
+4. Verify the merge:
 
    ```bash
    gh pr view <number> --json state,autoMergeRequest --jq '{state: .state, autoMerge: .autoMergeRequest}'
@@ -405,7 +445,8 @@ For each PR based on user's choice:
    - Close the original bot PR with a comment pointing to the replacement
    - **Use the replacement PR number for all remaining steps** (CI wait, merge)
 5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait; if it expires, warn the user that CI may be stuck and ask how to proceed). Use the replacement PR number if step 4 created one.
-6. Merge the active PR
+6. **Approve with rationale** (per the section above): required before merge. The rationale must additionally describe the improvements applied in this PR (which recommended changes were committed).
+7. Merge the active PR.
 
 ### Fix CI and merge
 
@@ -414,7 +455,8 @@ For each PR based on user's choice:
 3. Fix the issue
 4. Commit and push (same bot branch fallback applies; if push fails, open a replacement PR and use that PR number for remaining steps)
 5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait; if it expires, warn the user that CI may be stuck and ask how to proceed)
-6. Merge the active PR when green
+6. **Approve with rationale** (per the section above): required before merge. The rationale must additionally describe the CI failure root cause and the fix applied.
+7. Merge the active PR when green.
 
 ### Close / Skip
 
@@ -432,6 +474,7 @@ After all merges complete, if any PRs were merged, automatically run `/post-merg
 - **Be specific about what affects us**: don't just list changelog items, cross-reference each one against our actual config and code usage.
 - **Major version bumps get extra scrutiny**: check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
 - **Don't merge with failing CI**: if CI fails, investigate and fix first.
+- **Always approve before merge, with rationale**: every `gh pr merge` invocation in this skill (whether reached via a Phase 8 strategy path - `Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset` - or via a per-PR action section - `Merge as-is`, `Improve and merge`, `Fix CI and merge`) MUST submit `gh pr review <number> --approve --body "<rationale>"` first. The rationale records the decision (bump type + why merging), a 2 to 4 bullet changelog digest splitting **Relevant** vs **Reviewed but not relevant**, and any deferred follow-ups. Skipping the approval (even when `--auto` will land the PR asynchronously) leaves the PR with no audit trail of *why* it was accepted; squash commit messages don't substitute because they get rewritten by maintainers and don't surface in the PR conversation thread.
 - **Grouped updates (Renovate domain groups or Dependabot groups)**: analyze each package in the group separately, then present as one combined report.
 - **Preserve existing config**: when making improvements, don't refactor unrelated config. Only touch what's relevant to the update.
 - **If you can't fetch release notes** (private repo, deleted releases, etc.), say so explicitly and recommend the user check manually before merging.

@@ -75,7 +75,7 @@ The CLI uses four hint tiers with different visibility rules per `hints` mode. W
 `SYNTHORG_*` env vars without a corresponding flag (settable via env or `config set`) cover four buckets:
 
 - **Backend / channel overrides**: `SYNTHORG_LOG_LEVEL`, `SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`, `SYNTHORG_CHANNEL`, `SYNTHORG_IMAGE_TAG`, `SYNTHORG_TELEMETRY_ENABLED`, `SYNTHORG_AUTO_*` (UPDATE_CLI / PULL / RESTART).
-- **Image / registry overrides**: `SYNTHORG_REGISTRY_HOST`, `SYNTHORG_IMAGE_REPO_PREFIX`, `SYNTHORG_DHI_REGISTRY`, `SYNTHORG_POSTGRES_IMAGE_TAG`, `SYNTHORG_NATS_IMAGE_TAG`, `SYNTHORG_FINE_TUNE_IMAGE` (any of these disables verification for that invocation).
+- **Image / registry overrides**: `SYNTHORG_REGISTRY_HOST`, `SYNTHORG_IMAGE_REPO_PREFIX`, `SYNTHORG_DHI_REGISTRY`, `SYNTHORG_POSTGRES_IMAGE_TAG`, `SYNTHORG_NATS_IMAGE_TAG`, `SYNTHORG_FINE_TUNE_IMAGE` (any of these disables verification for that invocation). `SYNTHORG_POSTGRES_IMAGE_TAG` and `SYNTHORG_NATS_IMAGE_TAG` default to `Default{Postgres,NATS}ImageTag` in `cli/internal/config/state.go`, kept current by a Renovate customManager that watches the `// renovate:` annotations on those constants.
 - **Timeouts and retry tuning**: `SYNTHORG_BACKUP_*_TIMEOUT`, `SYNTHORG_HEALTH_CHECK_TIMEOUT`, `SYNTHORG_SELF_UPDATE_*_TIMEOUT`, `SYNTHORG_TUF_FETCH_TIMEOUT`, `SYNTHORG_ATTESTATION_HTTP_TIMEOUT`, `SYNTHORG_IMAGE_VERIFY_TIMEOUT` (default 120s, hard min 1s), `SYNTHORG_IMAGE_PULL_ATTEMPTS` (1..100, default 3), `SYNTHORG_IMAGE_PULL_RETRY_DELAY` (default 2s, exponential).
 - **Byte caps and ports**: `SYNTHORG_MAX_API_RESPONSE_BYTES` (default 4MiB), `SYNTHORG_MAX_BINARY_BYTES` (256MiB), `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` (128MiB), `SYNTHORG_DEFAULT_NATS_URL`, `SYNTHORG_DEFAULT_NATS_STREAM_PREFIX`, `SYNTHORG_FINE_TUNE_HEALTH_PORT` (env-only, not in `config set`).
 
@@ -124,7 +124,7 @@ See [docs/reference/cli-config-subcommands.md](../docs/reference/cli-config-subc
 
 ## Persistence Backends
 
-`--persistence-backend sqlite` (default, single-node) uses the in-process SQLite store under volume `synthorg-data`. `--persistence-backend postgres` adds a `dhi.io/postgres:18-debian13` DHI service on port `3002` (override via `--postgres-port`) backed by volume `synthorg-pgdata`. Interactive `init` defaults to Postgres + NATS; non-interactive defaults to SQLite + internal bus.
+`--persistence-backend sqlite` (default, single-node) uses the in-process SQLite store under volume `synthorg-data`. `--persistence-backend postgres` adds a `dhi.io/postgres` DHI service (tag pinned via `DefaultPostgresImageTag` in `cli/internal/config/state.go`, kept current by Renovate) on port `3002` (override via `--postgres-port`) backed by volume `synthorg-pgdata`. Interactive `init` defaults to Postgres + NATS; non-interactive defaults to SQLite + internal bus.
 
 Every generated `compose.yml` includes a one-shot `data-init` helper that chowns each named volume to its non-root owner (`65532:65532` for backend / NATS, `70:70` with mode `0700` for Postgres) before stateful services start. The Postgres / NATS services declare `depends_on: data-init: condition: service_completed_successfully`.
 
