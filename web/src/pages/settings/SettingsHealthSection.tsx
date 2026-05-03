@@ -81,7 +81,9 @@ export function NamespaceTabBar({
                 : 'text-text-secondary hover:bg-card-hover hover:text-foreground',
             )}
           >
-            {icon && <span className="shrink-0">{icon}</span>}
+            {icon != null && icon !== false && (
+              <span className="shrink-0">{icon}</span>
+            )}
             {NAMESPACE_DISPLAY_NAMES[ns]}
             <span className="font-normal text-text-muted">{count}</span>
           </button>

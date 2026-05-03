@@ -53,9 +53,11 @@ export function ListHeader({
             <p className="mt-1 text-xs text-muted-foreground">{description}</p>
           )}
         </div>
-        {primaryAction && <div className="shrink-0">{primaryAction}</div>}
+        {primaryAction != null && primaryAction !== false && (
+          <div className="shrink-0">{primaryAction}</div>
+        )}
       </div>
-      {secondaryActions && (
+      {secondaryActions != null && secondaryActions !== false && (
         <div className="flex flex-wrap items-center gap-2">{secondaryActions}</div>
       )}
     </header>

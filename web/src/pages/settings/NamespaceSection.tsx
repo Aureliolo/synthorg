@@ -175,7 +175,9 @@ export function NamespaceSection({
       {isOpen && hideHeader && (
         <div id={contentId} className="p-card">
           {renderGroups()}
-          {footerAction && <div className="pt-1">{footerAction}</div>}
+          {footerAction != null && footerAction !== false && (
+            <div className="pt-1">{footerAction}</div>
+          )}
         </div>
       )}
 
@@ -191,7 +193,9 @@ export function NamespaceSection({
           >
             <div className="p-card">
               {renderGroups()}
-              {footerAction && <div className="pt-1">{footerAction}</div>}
+              {footerAction != null && footerAction !== false && (
+                <div className="pt-1">{footerAction}</div>
+              )}
             </div>
           </motion.div>
         )}

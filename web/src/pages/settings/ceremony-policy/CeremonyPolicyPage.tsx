@@ -418,10 +418,18 @@ export default function CeremonyPolicyPage() {
                   </div>
                 )}
 
-                <div className="flex justify-end pt-2">
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  {isDirty && !saving && (
+                    <span className="text-xs text-text-muted">Unsaved changes</span>
+                  )}
                   <Button
                     onClick={handleSave}
-                    disabled={saving || settingsSnapshot.configParseError || ceremonyOverridesSnapshot.overridesParseError}
+                    disabled={
+                      !isDirty ||
+                      saving ||
+                      settingsSnapshot.configParseError ||
+                      ceremonyOverridesSnapshot.overridesParseError
+                    }
                   >
                     {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
                     Save Policy
