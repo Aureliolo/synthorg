@@ -201,19 +201,10 @@
     },
     {
       "customType": "regex",
-      "description": "DHI pinned index digests in Go verify code",
-      "managerFilePatterns": ["/cli/internal/verify/dhi\\.go$/"],
+      "description": "DHI image pins across CLI Go files: the pinned-digest map in cli/internal/verify/dhi.go and the default-tag constants in cli/internal/config/state.go (single source of truth referenced by verify/dhi.go vars, start.go third-party list, and dhi_test.go). Both file shapes share one manager so Renovate makes a single docker-datasource lookup per (depName, currentValue) pair, avoiding the upgrade-collision warning that surfaced when two managers raced on the same dep.",
+      "managerFilePatterns": ["/cli/internal/verify/dhi\\.go$/", "/cli/internal/config/state\\.go$/"],
       "matchStrings": [
-        "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+\"[^:]+:(?<currentValue>[^\"]+)\":\\s+\"(?<currentDigest>sha256:[a-f0-9]+)\""
-      ],
-      "datasourceTemplate": "docker",
-      "versioningTemplate": "docker"
-    },
-    {
-      "customType": "regex",
-      "description": "DHI image tag default constants in CLI config (single source of truth referenced by verify/dhi.go vars, start.go third-party list, and dhi_test.go)",
-      "managerFilePatterns": ["/cli/internal/config/state\\.go$/"],
-      "matchStrings": [
+        "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+\"[^:]+:(?<currentValue>[^\"]+)\":\\s+\"(?<currentDigest>sha256:[a-f0-9]+)\"",
         "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+Default[A-Za-z]+ImageTag\\s*=\\s*\"(?<currentValue>[^\"]+)\""
       ],
       "datasourceTemplate": "docker",
