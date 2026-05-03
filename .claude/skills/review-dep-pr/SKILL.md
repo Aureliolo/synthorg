@@ -195,7 +195,7 @@ If the build fails, capture the errors; they're likely from breaking changes tha
 
 Parallel merges only work safely when PRs' changed-file sets are disjoint. Compute the file map per PR and flag conflicts before triage so the user can pick a merge strategy upfront instead of discovering conflicts mid-merge.
 
-For each PR in the batch, fetch the full changed-file list. Note: `gh pr view <N> --json files` is capped at 100 files by the underlying GraphQL `first: 100` query and does not paginate ([cli/cli#5368](https://github.com/cli/cli/issues/5368), [#9916](https://github.com/cli/cli/issues/9916), [#6930](https://github.com/cli/cli/issues/6930)). Use the paginated GraphQL form so large PRs don't silently truncate:
+For each PR in the batch, fetch the full changed-file list using the **paginated GraphQL form** (the default approach):
 
 ```bash
 gh api graphql --paginate \
@@ -213,7 +213,19 @@ gh api graphql --paginate \
   --jq '.data.repository.pullRequest.files.nodes[].path'
 ```
 
-The shorthand `gh pr view <N> --json files --jq '.files[].path'` is acceptable only after confirming the PR has fewer than 100 changed files (e.g. via `gh pr view <N> --json changedFiles --jq .changedFiles`); otherwise the overlap map will be incomplete and the wave recommendation wrong.
+Why the paginated form is the default: `gh pr view <N> --json files` is capped at 100 files by the underlying GraphQL `first: 100` query and does not paginate ([cli/cli#5368](https://github.com/cli/cli/issues/5368), [#9916](https://github.com/cli/cli/issues/9916), [#6930](https://github.com/cli/cli/issues/6930)). On a large PR the shorthand silently truncates and the overlap map ends up incomplete, which produces wrong wave recommendations. Always reach for the paginated GraphQL above first.
+
+**Shorthand (special-case, only after an explicit precheck).** The `gh pr view <N> --json files --jq '.files[].path'` shorthand is acceptable only when you have first confirmed the PR has fewer than 100 changed files. Run the precheck inline:
+
+```bash
+if [ "$(gh pr view <N> --json changedFiles --jq .changedFiles)" -lt 100 ]; then
+  gh pr view <N> --json files --jq '.files[].path'
+else
+  # fall back to the paginated GraphQL form above
+fi
+```
+
+Skipping the precheck is forbidden: the truncation failure is silent and the resulting overlap map looks fine even when it's missing the files most likely to conflict.
 
 Build two views:
 - **Per-PR**: file count + the file list (collapse long lists if > 20 files)
@@ -334,7 +346,7 @@ Options:
 ## Phase 8: Execute Decisions
 
 Apply the merge-strategy choice from Phase 7 (when multi-PR overlap was detected):
-- **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot: **Renovate** PRs use the rebase/retry checkbox in the PR body (tick it via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`) or the `rebase` label (`gh pr edit --add-label rebase`, configurable via Renovate's `rebaseLabel` option); **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
+- **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot. **Renovate** PRs: prefer the `rebase` label (`gh pr edit --add-label rebase`, configurable via Renovate's `rebaseLabel` option), because it does not depend on the exact wording of Renovate's PR-body template. As a fragile alternative you can also tick the rebase/retry checkbox via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`, but body string-manipulation breaks silently if Renovate changes its template format. **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
 - **Strict sequential**: merge one PR, wait for it to land on `main`, trigger rebase + CI on the next PR, then merge it. No overlap with other merges in flight.
 - **Combine into one PR**: invoke "Improve and merge" against a single new branch that integrates all the diffs; close the bot PRs with a pointer to the combined PR.
 - **Defer the conflicting subset**: invoke "Close / Skip" on the deferred PRs first, then process the remaining disjoint PRs normally.
