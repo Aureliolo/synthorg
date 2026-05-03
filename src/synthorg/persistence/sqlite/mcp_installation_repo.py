@@ -17,9 +17,11 @@ from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_MCP_INSTALLATION_DELETE_FAILED,
+    PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
     PERSISTENCE_MCP_INSTALLATION_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 logger = get_logger(__name__)
 
@@ -113,21 +115,18 @@ class SQLiteMcpInstallationRepository:
         floor); callers needing more must loop with ``offset`` rather
         than passing a larger ``limit``.
         """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+        )
         sql = (
             "SELECT catalog_entry_id, connection_name, installed_at "
             "FROM mcp_installations "
-            "ORDER BY installed_at ASC, catalog_entry_id ASC"
+            "ORDER BY installed_at ASC, catalog_entry_id ASC "
+            "LIMIT ? OFFSET ?"
         )
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-            msg = f"limit must be a positive integer, got {limit!r}"
-            raise QueryError(msg)
-        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-            msg = f"offset must be a non-negative integer, got {offset!r}"
-            raise QueryError(msg)
-        params: tuple[object, ...] = ()
-        sql += " LIMIT ? OFFSET ?"
-        params = (limit, offset)
-        async with self._db.execute(sql, params) as cursor:
+        async with self._db.execute(sql, (limit, offset)) as cursor:
             rows = await cursor.fetchall()
         return tuple(
             McpInstallation(

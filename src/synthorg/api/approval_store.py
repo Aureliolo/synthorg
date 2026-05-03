@@ -277,11 +277,17 @@ class ApprovalStore:
         simultaneous expiries yield one DB round-trip rather than K.
         Cache promotions only land *after* ``save_many`` succeeds so a
         failed batch cannot leave an EXPIRED row in the cache that
-        contradicts the still-PENDING repo state, and the in-memory
-        ``status`` filter is applied here rather than pushed into the
-        repo query so a caller asking for ``ApprovalStatus.EXPIRED``
-        still observes lazily-promoted items that the repo persists as
-        PENDING.
+        contradicts the still-PENDING repo state.
+
+        Status filtering:
+
+        * When ``status`` is ``EXPIRED`` (or ``None``), the repo query
+          omits the status filter so PENDING rows that should lazily
+          flip to EXPIRED still surface and get persisted.
+        * When ``status`` is any other terminal value (APPROVED,
+          REJECTED, CANCELLED), the repo authoritatively persists that
+          status and lazy expiration cannot promote into it -- the
+          filter is pushed down so the DB only returns matching rows.
 
         Side effects after the batch save:
 
@@ -292,20 +298,23 @@ class ApprovalStore:
           logged at ERROR but do not unwind the expiration).
         """
         assert self._repo is not None  # noqa: S101 -- caller invariant
-        # Pull every candidate row regardless of the caller's status
-        # filter; the lazy expiration pass below may promote PENDING
-        # items into the requested status (typically EXPIRED) and a
-        # repo-level pre-filter on ``status`` would hide them.
+        # Push the status filter down for non-EXPIRED queries so the
+        # DB doesn't have to scan the whole table; only EXPIRED (and
+        # the unfiltered ``None`` case) need the broad read so PENDING
+        # rows that should lazily flip to EXPIRED are visible to the
+        # expiration pass below.
         # ``ApprovalRepository.list_items`` is bounded to 100 rows
         # per call, so we page until exhausted -- otherwise older
         # PENDING rows that should lazily flip to EXPIRED here would
         # never be visited once there are >100 newer non-expired
         # rows in the table.
+        repo_status = None if status in {None, ApprovalStatus.EXPIRED} else status
         page_size = 100
         repo_pages: list[ApprovalItem] = []
         offset = 0
         while True:
             page = await self._repo.list_items(
+                status=repo_status,
                 risk_level=risk_level,
                 action_type=action_type,
                 limit=page_size,

@@ -107,9 +107,10 @@ class EscalationTicket(BaseModel):
 
         ``ConfigDict(frozen=True)`` only blocks attribute rebinding;
         without the ``MappingProxyType`` wrap a caller could still
-        mutate ``ticket.metadata['key'] = value`` after construction
-        and break the documented immutability contract per
-        CLAUDE.md ``## Code Conventions`` (immutability covenant).
+        mutate ``ticket.metadata['key'] = value`` after construction.
+        The deep copy guards against the caller retaining a reference
+        to the original dict and mutating it post-construction; the
+        proxy guards against direct item assignment on the field.
         """
         if "metadata" in data:
             raw = data["metadata"]

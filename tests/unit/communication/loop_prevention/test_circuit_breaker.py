@@ -292,8 +292,12 @@ class TestCircuitBreakerDirtyTracking:
         assert ("a", "b") in cb._dirty
 
     async def test_persist_dirty_clears_set(self) -> None:
+        from synthorg.persistence.circuit_breaker_repo import (
+            CircuitBreakerStateRepository,
+        )
+
         config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=10)
-        repo = MagicMock()
+        repo = MagicMock(spec=CircuitBreakerStateRepository)
         repo.save = AsyncMock()
         cb = DelegationCircuitBreaker(config, state_repo=repo)
         cb.record_delegation("a", "b")
@@ -306,6 +310,7 @@ class TestCircuitBreakerDirtyTracking:
     async def test_load_state_restores_pairs(self) -> None:
         from synthorg.persistence.circuit_breaker_repo import (
             CircuitBreakerStateRecord,
+            CircuitBreakerStateRepository,
         )
 
         config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
@@ -316,7 +321,7 @@ class TestCircuitBreakerDirtyTracking:
             trip_count=2,
             opened_at=50.0,
         )
-        repo = MagicMock()
+        repo = MagicMock(spec=CircuitBreakerStateRepository)
         repo.load_all = AsyncMock(return_value=(record,))
 
         cb = DelegationCircuitBreaker(config, state_repo=repo)
@@ -343,6 +348,7 @@ class TestCircuitBreakerDirtyTracking:
         """
         from synthorg.persistence.circuit_breaker_repo import (
             CircuitBreakerStateRecord,
+            CircuitBreakerStateRepository,
         )
 
         config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
@@ -353,7 +359,7 @@ class TestCircuitBreakerDirtyTracking:
             trip_count=1,
             opened_at=None,
         )
-        repo = MagicMock()
+        repo = MagicMock(spec=CircuitBreakerStateRepository)
         repo.load_all = AsyncMock(return_value=(record,))
 
         cb = DelegationCircuitBreaker(config, state_repo=repo)

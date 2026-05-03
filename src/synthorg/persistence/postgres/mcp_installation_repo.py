@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 
 from psycopg.rows import dict_row
 
-from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
@@ -22,7 +21,11 @@ from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALLED,
     MCP_SERVER_UNINSTALLED,
 )
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+)
 from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -137,26 +140,23 @@ class PostgresMcpInstallationRepository:
         (restores, backfills, clock skew) are always returned in the
         same order across calls.
         """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+        )
         sql = (
             "SELECT catalog_entry_id, connection_name, installed_at "
             "FROM mcp_installations "
-            "ORDER BY installed_at ASC, catalog_entry_id ASC"
+            "ORDER BY installed_at ASC, catalog_entry_id ASC "
+            "LIMIT %s OFFSET %s"
         )
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-            msg = f"limit must be a positive integer, got {limit!r}"
-            raise QueryError(msg)
-        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-            msg = f"offset must be a non-negative integer, got {offset!r}"
-            raise QueryError(msg)
-        params: tuple[object, ...] = ()
-        sql += " LIMIT %s OFFSET %s"
-        params = (limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(sql, params)
+                await cur.execute(sql, (limit, offset))
                 rows = await cur.fetchall()
         except MemoryError, RecursionError:
             raise

@@ -38,6 +38,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -694,12 +695,12 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database query or deserialization fails.
         """
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-            msg = f"limit must be a positive integer, got {limit!r}"
-            raise QueryError(msg)
-        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-            msg = f"offset must be a non-negative integer, got {offset!r}"
-            raise QueryError(msg)
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_API_KEY_LIST_FAILED,
+            user_id=user_id,
+        )
         sql = "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
         sql += " LIMIT ? OFFSET ?"
