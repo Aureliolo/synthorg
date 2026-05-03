@@ -14,11 +14,10 @@ inputs:
     description: "Path to apko.yaml relative to repo root"
     required: true
   apko-version:
-    description: "apko version to install"
+    description: "apko version to install, including the leading `v` (e.g. `v1.2.9`). Used verbatim in the GitHub releases download URL."
     required: true
-    default: "v1.2.3"
   trivy-version:
-    description: "Trivy version"
+    description: "Trivy version, WITHOUT a leading `v` (e.g. `0.70.0`). The release download URL adds the `v` prefix; the tarball filename does not."
     required: true
 
 outputs:
