@@ -359,7 +359,7 @@ markers = [
     "benchmark: CodSpeed CPU-instruction performance benchmarks (run only via `pytest --codspeed`; not part of `-m unit` runs)",
     "serial: Tests that legitimately require serial execution (route to a no-xdist suite); do not apply without prior approval",
 ]
-addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=worksteal", "-n=8", "-p", "no:randomly", "-p", "no:unraisableexception"]
+addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=loadfile", "-n=8", "-p", "no:randomly", "-p", "no:unraisableexception"]
 filterwarnings = [
     "error",
     "ignore:Core Pydantic V1 functionality:UserWarning",

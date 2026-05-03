@@ -31,9 +31,7 @@ class _FakeEvent:
         self.event_type = event_type
 
 
-def test_eviction_logs_exactly_once_under_thread_concurrency(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
     """Verify the eviction warning fires exactly once across 1000
     concurrent ``on_event`` calls -- not just that the boolean flag
     eventually flipped (which would also pass if the log fired N
@@ -51,7 +49,8 @@ def test_eviction_logs_exactly_once_under_thread_concurrency(
     assert counter._eviction_logged is False
 
     info_calls: list[str] = []
-    original_info = ec_mod.logger.info
+    proxy = ec_mod.logger
+    original_info = proxy.info
 
     def _spy(*args: Any, **kwargs: Any) -> Any:
         # Accept any structlog call shape (positional or keyword
@@ -67,33 +66,50 @@ def test_eviction_logs_exactly_once_under_thread_concurrency(
             info_calls.append(" ".join(str(a) for a in args))
         return original_info(*args, **kwargs)
 
-    monkeypatch.setattr(ec_mod.logger, "info", _spy)
+    # Direct setattr + try/finally delattr -- not monkeypatch.setattr
+    # -- because ``proxy`` is a ``BoundLoggerLazyProxy`` whose
+    # ``info`` attribute is normally served by ``__getattr__`` and is
+    # NOT in the instance ``__dict__``. ``monkeypatch.setattr``
+    # captures a snapshot via ``getattr`` (a bound method on the
+    # current ``BoundLogger``) and "restores" it at teardown via
+    # ``setattr``, permanently shadowing ``__getattr__`` for the
+    # lifetime of the proxy. ``capture_logs()`` later swaps
+    # ``_CONFIG.default_processors`` but the cached bound method
+    # already holds its own processor list, so events bypass the
+    # capture buffer entirely.
+    from contextlib import suppress
 
-    # ``start_evt`` blocks every worker until all futures are queued,
-    # then a single ``set()`` releases them simultaneously. Without
-    # the gate, the first submissions can finish before the last is
-    # scheduled, which leaves the test asserting sequential -- not
-    # concurrent -- behaviour and silently accepts a regression.
-    start_evt = threading.Event()
+    proxy.info = _spy  # type: ignore[method-assign]
+    try:
+        # ``start_evt`` blocks every worker until all futures are
+        # queued, then a single ``set()`` releases them simultaneously.
+        # Without the gate, the first submissions can finish before
+        # the last is scheduled, which leaves the test asserting
+        # sequential -- not concurrent -- behaviour and silently
+        # accepts a regression.
+        start_evt = threading.Event()
 
-    def _gated_on_event(event: _FakeEvent) -> None:
-        start_evt.wait()
-        counter.on_event(event)  # type: ignore[arg-type]
+        def _gated_on_event(event: _FakeEvent) -> None:
+            start_evt.wait()
+            counter.on_event(event)  # type: ignore[arg-type]
 
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        futures = [
-            pool.submit(_gated_on_event, _FakeEvent(now, f"flood.{i}"))
-            for i in range(1000)
-        ]
-        # Release the gate only after every future is queued.
-        start_evt.set()
-        for fut in futures:
-            # Bounded ``result()`` so a regression that hangs a worker
-            # fails fast rather than blocking the suite indefinitely.
-            fut.result(timeout=_FUTURE_TIMEOUT_S)
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            futures = [
+                pool.submit(_gated_on_event, _FakeEvent(now, f"flood.{i}"))
+                for i in range(1000)
+            ]
+            # Release the gate only after every future is queued.
+            start_evt.set()
+            for fut in futures:
+                # Bounded ``result()`` so a regression that hangs a worker
+                # fails fast rather than blocking the suite indefinitely.
+                fut.result(timeout=_FUTURE_TIMEOUT_S)
 
-    eviction_logs = [e for e in info_calls if e == "telemetry.counter.evicted"]
-    assert len(eviction_logs) == 1, (
-        f"Expected exactly one eviction log; saw {len(eviction_logs)}"
-    )
-    assert getattr(counter, "_eviction_logged") is True  # noqa: B009
+        eviction_logs = [e for e in info_calls if e == "telemetry.counter.evicted"]
+        assert len(eviction_logs) == 1, (
+            f"Expected exactly one eviction log; saw {len(eviction_logs)}"
+        )
+        assert getattr(counter, "_eviction_logged") is True  # noqa: B009
+    finally:
+        with suppress(AttributeError):
+            del proxy.info

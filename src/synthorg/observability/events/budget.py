@@ -64,3 +64,8 @@ BUDGET_PROJECT_COST_AGGREGATION_FAILED: Final[str] = (
     "budget.project_cost.aggregation_failed"
 )
 BUDGET_PROJECT_BASELINE_SOURCE: Final[str] = "budget.project_baseline.source"
+
+# Cost-recording chokepoint background-task drain
+BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED: Final[str] = (
+    "budget.pending_record.drain_unexpected"
+)

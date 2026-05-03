@@ -229,20 +229,35 @@ class TestRecommendBatchSize:
         monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
 
         warning_mock = MagicMock()
-        monkeypatch.setattr(memory_module.logger, "warning", warning_mock)
+        # Direct setattr + try/finally delattr -- ``memory_module.logger``
+        # is a ``BoundLoggerLazyProxy`` whose ``warning`` attribute is
+        # served via ``__getattr__`` and is NOT in the instance
+        # ``__dict__``. ``monkeypatch.setattr`` would snapshot
+        # ``getattr(proxy, "warning")`` (a bound method on a current
+        # ``BoundLogger``) and restore that snapshot at teardown,
+        # permanently caching it into ``__dict__`` and shadowing
+        # ``__getattr__``; later ``capture_logs()`` calls cannot
+        # then reach the cached method's stale processor list.
+        proxy = memory_module.logger
+        proxy.warning = warning_mock  # type: ignore[method-assign]
+        try:
+            result = _recommend_batch_size()
 
-        result = _recommend_batch_size()
+            assert result is None
+            warning_mock.assert_called_once()
+            args, kwargs = warning_mock.call_args
+            assert args[0] == MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED
+            assert kwargs.get("error_type") == "RuntimeError"
+            assert "CUDA driver unavailable" in kwargs.get("error", "")
+            # ``exc_info`` is intentionally NOT set: the full traceback
+            # bypasses ``safe_error_description`` and can leak
+            # environment paths / backend metadata; SEC-1.
+            assert "exc_info" not in kwargs
+        finally:
+            from contextlib import suppress
 
-        assert result is None
-        warning_mock.assert_called_once()
-        args, kwargs = warning_mock.call_args
-        assert args[0] == MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED
-        assert kwargs.get("error_type") == "RuntimeError"
-        assert "CUDA driver unavailable" in kwargs.get("error", "")
-        # ``exc_info`` is intentionally NOT set: the full traceback
-        # bypasses ``safe_error_description`` and can leak environment
-        # paths / backend metadata; SEC-1.
-        assert "exc_info" not in kwargs
+            with suppress(AttributeError):
+                del proxy.warning
 
 
 @pytest.mark.unit

@@ -362,7 +362,7 @@ class TestAppStateRequestLocks:
     fresh AppStates, so isolation is automatic.
     """
 
-    async def test_lock_is_cached_per_request_id(self) -> None:
+    def test_lock_is_cached_per_request_id(self) -> None:
         state = _make_state()
         first = state.get_or_create_request_lock("req-1")
         second = state.get_or_create_request_lock("req-1")
@@ -371,7 +371,7 @@ class TestAppStateRequestLocks:
         # serialise.
         assert first is second
 
-    async def test_locks_are_per_app_state(self) -> None:
+    def test_locks_are_per_app_state(self) -> None:
         # Two AppStates must hold independent dicts so a leaked Lock
         # from one cannot poison the other (the precise xdist failure
         # mode this fix addresses).
@@ -385,7 +385,7 @@ class TestAppStateRequestLocks:
         # Cross-state dicts are independent.
         assert state_a._request_locks is not state_b._request_locks
 
-    async def test_release_evicts_idle_lock(self) -> None:
+    def test_release_evicts_idle_lock(self) -> None:
         state = _make_state()
         lock = state.get_or_create_request_lock("req-1")
         assert "req-1" in state._request_locks
@@ -423,3 +423,52 @@ class TestAppStateRequestLocks:
             state.release_request_lock_if_idle(request_id)
             assert request_id not in state._request_locks
         assert state._request_locks == {}
+
+    def test_concurrent_create_returns_same_lock(self) -> None:
+        # Two threads racing to create the same id must observe the
+        # double-checked-locking guard: only one ``asyncio.Lock`` ever
+        # lands in the registry, and both callers receive the same
+        # identity. Without the inner re-check inside
+        # ``_request_locks_guard`` two distinct Lock objects could be
+        # returned, splitting the per-id serialisation guarantee that
+        # the controller relies on.
+        from concurrent.futures import ThreadPoolExecutor
+
+        state = _make_state()
+
+        def _create() -> object:
+            return state.get_or_create_request_lock("req-race")
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(lambda _: _create(), range(16)))
+        first = results[0]
+        assert all(r is first for r in results), (
+            "DCL guard broken: concurrent create returned distinct Locks"
+        )
+        assert len(state._request_locks) == 1
+
+    def test_eviction_caps_registry_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Defence-in-depth cap: a non-terminal request that scopes but
+        # never advances would otherwise grow the dict forever (the
+        # ``release_request_lock_if_idle`` path only fires on terminal
+        # states). When the cap is hit, the oldest **idle** entries
+        # are evicted; still-held entries are kept so an in-flight
+        # approve/reject is never stranded on an evicted Lock. Tests
+        # patch the cap to a small number so the assertion is
+        # constant-time independent of the production ceiling.
+        from synthorg.api import state_services as _ss
+
+        monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 4)
+
+        state = _make_state()
+        for i in range(4):
+            state.get_or_create_request_lock(f"prefill-{i}")
+        assert len(state._request_locks) == 4
+        # All prefilled locks are idle, so the eviction sweep should
+        # bring the registry down to the cap when the next insert
+        # arrives.
+        state.get_or_create_request_lock("trigger-evict")
+        assert len(state._request_locks) == 4
+        # The newest insert must survive; one of the older idles was
+        # evicted (FIFO order in the OrderedDict).
+        assert "trigger-evict" in state._request_locks

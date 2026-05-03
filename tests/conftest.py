@@ -280,18 +280,17 @@ def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
 
     Delegates to :func:`tests.baselines.loader.load_baseline_snapshot`
     so the validation contract is identical to the pre-push runner
-    (``scripts/run_affected_tests.py``).  The legacy 3-tuple shape is
-    rebuilt here from the shared snapshot for the existing
-    :func:`pytest_sessionfinish` consumer.
+    (``scripts/run_affected_tests.py``). The 3-tuple shape this
+    function returns is what :func:`pytest_sessionfinish` consumes; it
+    is rebuilt from the snapshot's ``per_test_ms * baseline_test_count``
+    so the snapshot file can carry per-test cost (immune to test-count
+    growth) without rippling a shape change through the hook.
     """
     from tests.baselines.loader import load_baseline_snapshot
 
     snapshot = load_baseline_snapshot(_BASELINE_PATH)
     if snapshot is None:
         return None
-    # The legacy hook signature returns ``unit_suite_seconds``; rebuild
-    # it from the per-test cost so callers downstream do not need to
-    # change shape.
     baseline_secs = snapshot.per_test_ms * snapshot.baseline_test_count / 1000.0
     return baseline_secs, snapshot.baseline_test_count, snapshot.threshold_ratio
 
@@ -493,22 +492,25 @@ def _reset_structlog_state() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _reset_a2a_card_cache() -> None:
-    """Clear ``synthorg.a2a.well_known._card_cache`` before every test.
+def _reset_a2a_card_cache() -> Iterator[None]:
+    """Clear ``synthorg.a2a.well_known._card_cache`` before and after every test.
 
     The cache is intentionally module-global at runtime (Agent Cards
     are expensive to rebuild and the controller serves them under TTL
     from a single dict). For tests, every test must start with an
     empty cache so a stale entry from a prior test cannot satisfy a
-    later host-key probe.
+    later host-key probe; the post-test clear protects the next
+    worker hop in xdist work-stealing.
     """
     from synthorg.a2a.well_known import _card_cache
 
     _card_cache.clear()
+    yield
+    _card_cache.clear()
 
 
 @pytest.fixture(autouse=True)
-def _reset_prometheus_label_snapshot() -> None:
+def _reset_prometheus_label_snapshot() -> Iterator[None]:
     """Reset ``prometheus_labels._snapshot`` before every test.
 
     The snapshot is seeded by ``PrometheusCollector.refresh()`` and
@@ -523,6 +525,8 @@ def _reset_prometheus_label_snapshot() -> None:
         _reset_label_snapshot_for_tests,
     )
 
+    _reset_label_snapshot_for_tests()
+    yield
     _reset_label_snapshot_for_tests()
 
 

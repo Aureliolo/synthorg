@@ -1,5 +1,7 @@
 """Unit tests for SettingsService."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -931,28 +933,48 @@ class TestValidatorPattern:
 # ── Security Audit Emission Tests ────────────────────────────────
 
 
-def _install_logger_info_spy(
-    monkeypatch: pytest.MonkeyPatch,
-    module: Any,
-) -> list[str]:
-    """Spy on *module*'s ``logger.info`` and return the captured events.
+@contextmanager
+def _logger_info_spy(module: Any) -> Iterator[list[str]]:
+    """Spy on *module*'s ``logger.info`` and yield the captured events.
 
     structlog routes events through a custom processor pipeline that
     bypasses pytest's stdlib ``caplog`` capture, so each test in this
-    class would otherwise duplicate the same wrap-and-monkeypatch
-    boilerplate. The helper returns the list the spy appends event
-    names to; the original ``logger.info`` is still invoked so any
-    downstream processors keep firing.
+    class would otherwise duplicate the same wrap-and-spy boilerplate.
+
+    Why a context manager and not ``monkeypatch.setattr``: the target
+    is a ``BoundLoggerLazyProxy`` whose ``info`` attribute is normally
+    served via ``__getattr__`` (creating a fresh bound logger on each
+    call) and is therefore NOT in the instance ``__dict__``.
+    ``monkeypatch.setattr`` snapshots the value returned by
+    ``getattr`` -- a bound method on a then-current ``BoundLogger`` --
+    and ``undo`` "restores" that snapshot via ``setattr``, pinning a
+    stale bound method into ``__dict__``. ``__getattr__`` is then
+    bypassed for the lifetime of the proxy (process-global, since
+    ``logger = get_logger(__name__)`` lives at module scope). Under
+    xdist work-stealing this leaks across tests on the same worker:
+    ``structlog.testing.capture_logs()`` mutates
+    ``_CONFIG.default_processors`` but the cached bound method holds
+    a stale processor list, so events go to stdout instead of the
+    capture buffer. Issue #1713's "5 of 6 settings tests fail under
+    -n 8" symptom traces to exactly this leak. The explicit
+    ``delattr`` in the ``finally`` branch leaves the proxy instance
+    dict empty so ``__getattr__`` resumes serving fresh bound loggers
+    for the next test.
     """
     captured: list[str] = []
-    original_info = module.logger.info
+    proxy = module.logger
+    original_info = proxy.info
 
     def _spy(event: str, **kwargs: Any) -> Any:
         captured.append(event)
         return original_info(event, **kwargs)
 
-    monkeypatch.setattr(module.logger, "info", _spy)
-    return captured
+    proxy.info = _spy
+    try:
+        yield captured
+    finally:
+        with suppress(AttributeError):
+            del proxy.info
 
 
 def _build_audit_registry(*, audited: bool, operation: str) -> SettingsRegistry:
@@ -1082,11 +1104,10 @@ class TestSecuritySettingsAuditEmission:
             ("delete_namespace", "non_audited", 0),
         ],
     )
-    async def test_security_event_emission_matrix(  # noqa: PLR0913
+    async def test_security_event_emission_matrix(
         self,
         mock_repo: AsyncMock,
         config: _FakeConfig,
-        monkeypatch: pytest.MonkeyPatch,
         operation: str,
         namespace_kind: str,
         expected_count: int,
@@ -1111,20 +1132,18 @@ class TestSecuritySettingsAuditEmission:
             registry=registry,
             config=config,
         )
-        captured = _install_logger_info_spy(monkeypatch, service_mod)
-
-        await _invoke_audit_operation(
-            svc=svc,
-            operation=operation,
-            audited=audited,
-        )
-        assert captured.count(SECURITY_SETTINGS_CHANGED) == expected_count
+        with _logger_info_spy(service_mod) as captured:
+            await _invoke_audit_operation(
+                svc=svc,
+                operation=operation,
+                audited=audited,
+            )
+            assert captured.count(SECURITY_SETTINGS_CHANGED) == expected_count
 
     async def test_delete_namespace_no_rows_does_not_emit(
         self,
         mock_repo: AsyncMock,
         config: _FakeConfig,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """An empty ``delete_namespace`` must not fire the audit event."""
         from synthorg.settings import service as service_mod
@@ -1145,7 +1164,7 @@ class TestSecuritySettingsAuditEmission:
             registry=registry,
             config=config,
         )
-        captured = _install_logger_info_spy(monkeypatch, service_mod)
-        result = await svc.delete_namespace("security")
-        assert result == 0
-        assert SECURITY_SETTINGS_CHANGED not in captured
+        with _logger_info_spy(service_mod) as captured:
+            result = await svc.delete_namespace("security")
+            assert result == 0
+            assert SECURITY_SETTINGS_CHANGED not in captured

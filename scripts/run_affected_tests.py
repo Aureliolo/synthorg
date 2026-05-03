@@ -401,15 +401,14 @@ def _stream_pytest(cmd: list[str]) -> tuple[int, str]:
 def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
     """Run pytest with the given paths.
 
-    Uses ``--dist loadscope`` instead of pyproject.toml's default
-    ``worksteal`` to group tests by module, preventing xdist worker
-    crashes from repeated heavy fixture teardown/setup (Litestar
-    TestClient, SQLite connections) when individual tests are
-    scattered across workers during full-suite runs.
+    Inherits ``--dist loadfile`` from pyproject.toml's ``addopts`` so
+    every test in a file stays on the same xdist worker; this prevents
+    the cumulative resource leak that crashed workers under the prior
+    ``worksteal`` default on Python 3.14 + Windows.
 
     ``--max-worker-restart=0`` disables worker restarts to avoid a
-    known xdist scheduler KeyError when the loadscope scheduler
-    tries to reassign work to a restarted worker with a new id.
+    known xdist scheduler KeyError when the scheduler tries to
+    reassign work to a restarted worker with a new id.
     """
     cmd = [
         sys.executable,
@@ -420,8 +419,6 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         "unit",
         "-n",
         "8",
-        "--dist",
-        "loadscope",
         "--max-worker-restart=0",
         "-q",
     ]
@@ -480,8 +477,6 @@ def _run_isolation_gate(paths: list[str]) -> int:
         "unit",
         "-n",
         "8",
-        "--dist",
-        "loadscope",
         "--max-worker-restart=0",
         "--count",
         "2",

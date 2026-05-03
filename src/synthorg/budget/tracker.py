@@ -32,6 +32,7 @@ from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_MIXED_CURRENCY_REJECTED,
+    BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED,
     BUDGET_PROJECT_COST_AGGREGATED,
     BUDGET_PROJECT_COST_AGGREGATION_FAILED,
     BUDGET_PROJECT_COST_QUERIED,
@@ -619,6 +620,18 @@ class CostTracker(CostTrackerSummaryMixin):
         for outcome in results:
             if isinstance(outcome, (MemoryError, RecursionError)):
                 raise outcome
+            if isinstance(outcome, BaseException):
+                # ``_record_cost_in_background`` already logs + swallows
+                # recoverable failures, so reaching this branch means
+                # something downstream raised without going through the
+                # documented logging path. Surface defensively at WARN
+                # so the regression is visible in test output rather
+                # than silently dropped by ``return_exceptions=True``.
+                logger.warning(
+                    BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED,
+                    error_type=type(outcome).__name__,
+                    error=safe_error_description(outcome),
+                )
 
     # ── Private helpers ──────────────────────────────────────────────
 

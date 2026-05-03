@@ -420,3 +420,55 @@ class TestPendingRecordIsolation:
             assert tracker._pending_record_tasks == set()
         records = await tracker.get_records()
         assert len(records) == 2
+
+    async def test_drain_propagates_memory_error(self) -> None:
+        # ``drain_pending_records`` uses ``return_exceptions=True`` to
+        # snapshot every task outcome. The contract is that
+        # ``MemoryError`` (interpreter-fatal) escapes the drain so the
+        # caller fails loudly instead of silently masking it.
+        tracker = CostTracker()
+        memory_msg = "simulated OOM"
+
+        async def _raises_memory_error() -> None:
+            raise MemoryError(memory_msg)
+
+        task = asyncio.create_task(_raises_memory_error())
+        tracker.track_pending_record(task)
+        with pytest.raises(MemoryError, match=memory_msg):
+            await tracker.drain_pending_records()
+
+    async def test_drain_propagates_recursion_error(self) -> None:
+        # Same contract as ``MemoryError``: ``RecursionError`` is
+        # interpreter-fatal and must propagate through the drain.
+        tracker = CostTracker()
+        recursion_msg = "simulated stack overflow"
+
+        async def _raises_recursion_error() -> None:
+            raise RecursionError(recursion_msg)
+
+        task = asyncio.create_task(_raises_recursion_error())
+        tracker.track_pending_record(task)
+        with pytest.raises(RecursionError, match=recursion_msg):
+            await tracker.drain_pending_records()
+
+    async def test_drain_logs_unexpected_exceptions(self) -> None:
+        # ``_record_cost_in_background`` is the only documented logging
+        # path for recoverable failures. Anything that reaches the
+        # drain via a non-fatal exception bypassed that path -- log
+        # defensively so the regression is visible in test output.
+        import structlog
+
+        tracker = CostTracker()
+        runtime_msg = "downstream regression"
+
+        async def _raises_runtime() -> None:
+            raise RuntimeError(runtime_msg)
+
+        task = asyncio.create_task(_raises_runtime())
+        tracker.track_pending_record(task)
+        with structlog.testing.capture_logs() as logs:
+            await tracker.drain_pending_records()
+        events = [log["event"] for log in logs]
+        assert "budget.pending_record.drain_unexpected" in events, (
+            f"expected drain_unexpected event; got {events}"
+        )

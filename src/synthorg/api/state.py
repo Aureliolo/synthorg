@@ -7,6 +7,7 @@ Holds typed references to core services, injected into
 
 import asyncio
 import threading
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from synthorg.api.auth.presence import UserPresence
@@ -477,7 +478,16 @@ class AppState(AppStateServicesMixin):
         # running event loop, so the registry needs a thread-safe
         # "check, then create" that does not require an active loop to
         # serialise itself.
-        self._request_locks: dict[str, asyncio.Lock] = {}
+        # OrderedDict (insertion-ordered) so the eviction sweep in
+        # ``get_or_create_request_lock`` can pop the oldest idle entries
+        # in O(1). Bound is a defence-in-depth cap against unbounded
+        # growth: ``scope_request`` retains the lock across handlers
+        # (an approve/reject is expected next on the same id) so
+        # abandoned-mid-flight requests never get evicted by the
+        # terminal release path. Without a cap, an authenticated
+        # client that scopes unique ids and never advances grows the
+        # registry forever.
+        self._request_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
         self._request_locks_guard: threading.Lock = threading.Lock()
         self.startup_time = startup_time
 

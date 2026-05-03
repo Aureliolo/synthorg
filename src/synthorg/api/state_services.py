@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import threading
+    from collections import OrderedDict
 
 from synthorg.api.auth.presence import UserPresence  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
@@ -52,6 +53,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_BRIDGE_CONFIG_REJECTED,
+    REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD,
 )
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
@@ -100,6 +102,14 @@ if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
+
+# Defence-in-depth cap on the per-AppState request-lock registry.
+# ``scope_request`` retains the lock across handler exit (the next
+# approve/reject for the same id needs it), so an authenticated
+# client that scopes unique ids and never advances them would
+# otherwise grow the dict forever. 10k is well above any realistic
+# in-flight working set for a single org.
+_MAX_REQUEST_LOCKS: int = 10_000
 
 
 def _reject_non_int(value: object, *, field: str) -> None:
@@ -199,7 +209,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _ws_frame_timeout_seconds: int
     _ws_revalidation_window_seconds: int
     _ws_revalidation_max_failures: int
-    _request_locks: dict[str, asyncio.Lock]
+    _request_locks: OrderedDict[str, asyncio.Lock]
     _request_locks_guard: threading.Lock
 
     @property
@@ -458,6 +468,14 @@ class AppStateServicesMixin(_FacadesMixin):
         running event loop, so the registry needs a thread-safe
         "check, then create" that does not require an active loop to
         serialise itself.
+
+        On insert, the registry is capped at ``_MAX_REQUEST_LOCKS``: if
+        adding the new entry would exceed the cap, the oldest **idle**
+        entries are evicted (still-held locks are kept so an in-flight
+        approve/reject never strands a waiter on an evicted Lock). The
+        cap defends against an authenticated client that scopes unique
+        ids and never advances them to a terminal state, which would
+        otherwise grow the dict without bound.
         """
         lock = self._request_locks.get(request_id)
         if lock is not None:
@@ -467,7 +485,25 @@ class AppStateServicesMixin(_FacadesMixin):
             if lock is None:
                 lock = asyncio.Lock()
                 self._request_locks[request_id] = lock
+                if len(self._request_locks) > _MAX_REQUEST_LOCKS:
+                    self._evict_idle_request_locks_locked(_MAX_REQUEST_LOCKS)
             return lock
+
+    def _evict_idle_request_locks_locked(self, target_size: int) -> None:
+        """Evict oldest idle entries down to ``target_size``.
+
+        Caller must already hold ``self._request_locks_guard``. Iterates
+        the OrderedDict in insertion order; only entries whose Lock is
+        not currently held are evicted, so a long-running scope still
+        in flight is never stranded on an evicted Lock object.
+        """
+        # Snapshot keys before mutating the OrderedDict during iteration.
+        for request_id in list(self._request_locks.keys()):
+            if len(self._request_locks) <= target_size:
+                return
+            lock = self._request_locks[request_id]
+            if not lock.locked():
+                self._request_locks.pop(request_id, None)
 
     def release_request_lock_if_idle(self, request_id: str) -> None:
         """Drop the lock for ``request_id`` after a terminal transition.
@@ -484,8 +520,20 @@ class AppStateServicesMixin(_FacadesMixin):
         """
         with self._request_locks_guard:
             lock = self._request_locks.get(request_id)
-            if lock is not None and not lock.locked():
-                self._request_locks.pop(request_id, None)
+            if lock is None:
+                return
+            if lock.locked():
+                # Caller violated the documented contract -- they're
+                # still holding the lock when asking us to evict it.
+                # Surface as DEBUG so the next reader of the logs can
+                # find the caller bug; not WARN because the no-op is
+                # safe (the registry just keeps the entry).
+                logger.debug(
+                    REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD,
+                    request_id=request_id,
+                )
+                return
+            self._request_locks.pop(request_id, None)
 
     @property
     def ws_auth_timeout_seconds(self) -> float:
