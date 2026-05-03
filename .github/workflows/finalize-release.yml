@@ -49,6 +49,7 @@ jobs:
     permissions:
       actions: read
       contents: write
+      pull-requests: read
       statuses: write
     steps:
       # ── Surface this run's outcome on the head commit's status row ──
@@ -366,17 +367,35 @@ jobs:
           # leave the release body untouched.
           HIGHLIGHTS=""
           if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            PR_NUMBER=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" \
-              --jq '.[] | select(.head.ref | startswith("release-please--branches--main")) | .number' \
-              | head -n1 || true)
+            # Distinguish "API failed" (warning, propagation skipped) from
+            # "API succeeded but returned no release-please PR" (notice,
+            # propagation legitimately not applicable). Wrapping the whole
+            # pipeline in `|| true` would conflate the two; querying the
+            # API once and filtering the JSON locally keeps the failure
+            # signal observable while preserving best-effort semantics.
+            PR_NUMBER=""
+            if PR_API_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" 2>/dev/null); then
+              PR_NUMBER=$(printf '%s' "$PR_API_OUTPUT" \
+                | jq -r '.[] | select(.head.ref | startswith("release-please--branches--main")) | .number' \
+                | head -n1)
+            else
+              echo "::warning::gh api commits/${HEAD_SHA}/pulls failed; skipping Highlights propagation."
+            fi
             if [ -n "$PR_NUMBER" ]; then
-              PR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' || true)
+              PR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>/dev/null || true)
               if [ -n "$PR_BODY" ]; then
                 EXTRACTED=$(sed -n '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/p' <<< "$PR_BODY")
                 # Only treat as a valid block when both markers are
                 # present; sed -n on a body with the start marker but no
                 # end marker would print everything from start to EOF.
                 if [ -n "$EXTRACTED" ] && grep -q 'HIGHLIGHTS_END' <<< "$EXTRACTED"; then
+                  # Trim trailing newlines so the prepend produces exactly
+                  # one blank line between the Highlights block and the
+                  # changelog. The herestring `<<<` adds one trailing
+                  # newline that sed's range capture preserves; without
+                  # this trim, ${HIGHLIGHTS}${CLEANED} renders an extra
+                  # blank line at the top of the release body.
+                  while [[ "$EXTRACTED" == *$'\n' ]]; do EXTRACTED="${EXTRACTED%$'\n'}"; done
                   HIGHLIGHTS="$EXTRACTED"$'\n\n'
                   echo "Highlights block found in release-please PR #${PR_NUMBER}; prepending to release body."
                 else
@@ -385,7 +404,7 @@ jobs:
               else
                 echo "::warning::Could not fetch body of release-please PR #${PR_NUMBER}; release body unchanged."
               fi
-            else
+            elif [ -n "${PR_API_OUTPUT-}" ]; then
               echo "::notice::No release-please PR associated with ${HEAD_SHA}; skipping Highlights propagation."
             fi
           fi
@@ -395,8 +414,20 @@ jobs:
           # the body untouched to avoid destroying an existing Highlights
           # / Verification section with no replacement.
           if [ -n "$VERIFICATION" ] || [ -n "$HIGHLIGHTS" ]; then
-            CLEANED=$(printf '%s' "$BODY" \
-              | sed '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/d' \
+            CLEANED="$BODY"
+            # The HIGHLIGHTS-marker strip is gated on both markers being
+            # present together. `sed '/START/,/END/d'` is greedy: with no
+            # END in the body, it deletes from START through EOF. A
+            # contributor whose conventional-commit subject contained
+            # the literal `<!-- HIGHLIGHTS_START -->` would otherwise
+            # tank the entire CHANGELOG-derived body on the next finalize
+            # run.
+            if grep -q '<!-- HIGHLIGHTS_START -->' <<< "$CLEANED" \
+                && grep -q '<!-- HIGHLIGHTS_END -->' <<< "$CLEANED"; then
+              CLEANED=$(printf '%s' "$CLEANED" \
+                | sed '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/d')
+            fi
+            CLEANED=$(printf '%s' "$CLEANED" \
               | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
               | sed '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/d' \
               | sed '/<!-- CLI_SLSA_BUNDLE_DATA/,/CLI_SLSA_BUNDLE_DATA -->/d' \
@@ -408,7 +439,7 @@ jobs:
             FINAL="$BODY"
           fi
 
-          tmpfile="$(mktemp)"
+          tmpfile="$(mktemp /tmp/finalize-release.XXXXXX)"
           trap 'rm -f "$tmpfile"' EXIT
           printf '%s' "$FINAL" > "$tmpfile"
           if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"; then
