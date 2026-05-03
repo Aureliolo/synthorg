@@ -52,7 +52,13 @@ _GOLDEN_JSON_BYTES: bytes = (
     b'"principal": "user-001", "resource": "user:user-001", '
     b'"timestamp": 1714694400.0, "tool_name": "synthorg_auth_login"}'
 )
-_GOLDEN_HASH: str = hashlib.sha256(_GOLDEN_JSON_BYTES).hexdigest()
+# Hard-coded SHA-256 hex digest of _GOLDEN_JSON_BYTES. Pinned as a
+# literal (NOT recomputed) so a coordinated accidental change to both
+# the payload bytes and the hash expectation cannot pass the gate
+# silently. Regenerating this value requires explicit reviewer
+# sign-off because a chain-hash change invalidates every previously
+# signed audit entry.
+_GOLDEN_HASH: str = "f07d69ba3008a66e129e6e9fb11a71aed53c715021ab660bb471c1c140cdfd72"
 
 
 @pytest.mark.unit

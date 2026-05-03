@@ -247,7 +247,7 @@ tests/unit/api/auth/test_controller.py:359:21
 tests/unit/api/auth/test_controller.py:687:21
 tests/unit/api/auth/test_controller.py:727:21
 tests/unit/api/auth/test_middleware.py:227:21
-tests/unit/api/auth/test_middleware.py:902:21
+tests/unit/api/auth/test_middleware.py:912:21
 tests/unit/api/auth/test_postgres_session_store.py:101:11
 tests/unit/api/auth/test_postgres_session_store.py:119:14
 tests/unit/api/auth/test_postgres_session_store.py:120:16

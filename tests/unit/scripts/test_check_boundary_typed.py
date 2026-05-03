@@ -158,6 +158,29 @@ class TestBoundaryTypedGate:
         finally:
             sample.unlink(missing_ok=True)
 
+    def test_nested_helper_parse_typed_does_not_satisfy_outer(self) -> None:
+        # A boundary handler whose own body forgets to call parse_typed
+        # must not be green-lit by a parse_typed call buried inside a
+        # nested helper / class / lambda. The traversal stops descending
+        # when it crosses into a new scope.
+        sample = _plant_fixture(
+            "def emit(payload):\n"
+            "    def helper():\n"
+            "        return parse_typed('test', payload, object)\n"
+            "    return payload\n",
+        )
+        try:
+            mod = _load_script_module()
+            violations = mod._check_boundary(
+                str(sample.relative_to(_REPO_ROOT)),
+                "emit",
+                "test",
+            )
+            assert len(violations) == 1
+            assert "no longer calls parse_typed" in violations[0]
+        finally:
+            sample.unlink(missing_ok=True)
+
     def test_ambiguous_function_definition_raises(self) -> None:
         # Two top-level definitions of the same name are
         # unambiguously a workflow bug; the gate must surface the

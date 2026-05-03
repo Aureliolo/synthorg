@@ -89,23 +89,37 @@ def _function_node(
 def _calls_parse_typed(node: ast.AST, boundary_label: str) -> bool:
     """Return True iff the function body calls ``parse_typed`` for this label.
 
-    A bare presence check would let a stray ``parse_typed("jwt", ...)``
-    inside the WS handler green-light the ``ws.control`` registration.
-    Match the bare-name call AND verify the first positional argument is
-    the exact boundary label literal, so each registration only accepts
-    its own boundary.
+    Two false-positive sources are excluded:
+
+    * A bare presence check would let a stray ``parse_typed("jwt", ...)``
+      inside the WS handler green-light the ``ws.control`` registration,
+      so the first positional arg must equal the registered boundary
+      label literal.
+    * ``ast.walk`` would happily recurse into nested ``FunctionDef`` /
+      ``AsyncFunctionDef`` / ``ClassDef`` / ``Lambda`` bodies, letting a
+      ``parse_typed`` call inside a nested helper satisfy the outer
+      handler's contract even when the handler's own code path forgets
+      to validate. Restrict traversal to the boundary function's own
+      scope and stop descending when a child node introduces a new one.
     """
-    for child in ast.walk(node):
-        if not isinstance(child, ast.Call):
+    to_visit: list[ast.AST] = list(getattr(node, "body", []))
+    while to_visit:
+        child = to_visit.pop()
+        if isinstance(
+            child,
+            (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda),
+        ):
             continue
-        func = child.func
-        if not (isinstance(func, ast.Name) and func.id == "parse_typed"):
-            continue
-        if not child.args:
-            continue
-        first_arg = child.args[0]
-        if isinstance(first_arg, ast.Constant) and first_arg.value == boundary_label:
-            return True
+        if isinstance(child, ast.Call):
+            func = child.func
+            if isinstance(func, ast.Name) and func.id == "parse_typed" and child.args:
+                first_arg = child.args[0]
+                if (
+                    isinstance(first_arg, ast.Constant)
+                    and first_arg.value == boundary_label
+                ):
+                    return True
+        to_visit.extend(ast.iter_child_nodes(child))
     return False
 
 

@@ -236,7 +236,7 @@ class TestAuditChainSink:
         record = logging.LogRecord(
             name="test",
             level=logging.INFO,
-            pathname="",
+            pathname=__file__,
             lineno=0,
             msg="tool.invoke.start",
             args=(),
@@ -257,7 +257,7 @@ class TestAuditChainSink:
         record = logging.LogRecord(
             name="test",
             level=logging.INFO,
-            pathname="",
+            pathname=__file__,
             lineno=0,
             msg="security.verdict.allow",
             args=(),
@@ -279,7 +279,7 @@ class TestAuditChainSink:
             record = logging.LogRecord(
                 name="test",
                 level=logging.INFO,
-                pathname="",
+                pathname=__file__,
                 lineno=0,
                 msg=f"security.event.{i}",
                 args=(),
@@ -368,7 +368,7 @@ class TestExtractEventName:
         return logging.LogRecord(
             name="synthorg.test",
             level=logging.INFO,
-            pathname="",
+            pathname=__file__,
             lineno=0,
             msg=msg,
             args=(),
@@ -423,7 +423,7 @@ def _build_log_record(event: str) -> logging.LogRecord:
     return logging.LogRecord(
         name="synthorg.test",
         level=logging.INFO,
-        pathname="",
+        pathname=__file__,
         lineno=0,
         msg={"event": event, "level": "info"},
         args=(),

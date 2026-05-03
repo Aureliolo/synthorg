@@ -129,6 +129,44 @@ class TestJwtClaimsModel:
                 exp=int(now.timestamp()),  # equal -> rejected
             )
 
+    def test_partial_user_token_shape_rejected(self) -> None:
+        # User-only fields must arrive as a unit; a partial set leaves
+        # downstream code reading None on a path that assumes user-token
+        # semantics, so the model rejects the construction.
+        now = datetime.now(UTC)
+        with pytest.raises(ValidationError):
+            JwtClaims(
+                iss=USER_ISSUER,
+                aud=USER_AUDIENCE,
+                sub="user-1",
+                jti="jti-1",
+                iat=int(now.timestamp()),
+                exp=int((now + timedelta(hours=1)).timestamp()),
+                username="admin",
+                role=HumanRole.CEO,
+                must_change_password=False,
+                # pwd_sig deliberately missing
+            )
+
+    def test_role_system_rejected(self) -> None:
+        # System tokens carry no role claim. JwtClaims construction
+        # must refuse role=HumanRole.SYSTEM so a token forged with the
+        # SYSTEM enum value cannot ride through the user-token path.
+        now = datetime.now(UTC)
+        with pytest.raises(ValidationError):
+            JwtClaims(
+                iss=USER_ISSUER,
+                aud=USER_AUDIENCE,
+                sub="user-1",
+                jti="jti-1",
+                iat=int(now.timestamp()),
+                exp=int((now + timedelta(hours=1)).timestamp()),
+                username="admin",
+                role=HumanRole.SYSTEM,
+                must_change_password=False,
+                pwd_sig="0123456789abcdef",
+            )
+
     def test_extra_claim_rejected(self) -> None:
         now = datetime.now(UTC)
         with pytest.raises(ValidationError):

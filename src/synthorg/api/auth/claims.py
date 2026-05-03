@@ -30,7 +30,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.api.guards import HumanRole  # noqa: TC001 -- Pydantic field type
+from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
 
@@ -76,7 +76,7 @@ class JwtClaims(BaseModel):
     username: NotBlankStr | None = None
     role: HumanRole | None = None
     must_change_password: bool | None = None
-    pwd_sig: str | None = None
+    pwd_sig: NotBlankStr | None = None
 
     @field_validator("iat", "exp", mode="before")
     @classmethod
@@ -103,6 +103,46 @@ class JwtClaims(BaseModel):
         """
         if self.iat >= self.exp:
             msg = f"iat ({self.iat}) must be strictly less than exp ({self.exp})"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_token_class_shape(self) -> Self:
+        """Reject mixed user/system claim sets.
+
+        The four user-only fields (``username``, ``role``,
+        ``must_change_password``, ``pwd_sig``) must arrive as a unit:
+        all four set on a user token, all four ``None`` on a system
+        token. A partial / mixed set means downstream code that
+        assumes user-token semantics could read a ``None`` and either
+        crash or, worse, skip a security check. The middleware's
+        per-role iss/aud and ``pwd_sig`` validation only protects
+        against the well-formed shapes; this validator makes the
+        well-formedness itself a model invariant.
+        """
+        user_fields = (
+            self.username,
+            self.role,
+            self.must_change_password,
+            self.pwd_sig,
+        )
+        any_set = any(field is not None for field in user_fields)
+        all_set = all(field is not None for field in user_fields)
+        if any_set and not all_set:
+            msg = (
+                "JwtClaims user-token fields must be all set or all None; "
+                "got partial set "
+                f"(username={self.username is not None}, "
+                f"role={self.role is not None}, "
+                f"must_change_password={self.must_change_password is not None}, "
+                f"pwd_sig={self.pwd_sig is not None})"
+            )
+            raise ValueError(msg)
+        if self.role is HumanRole.SYSTEM:
+            msg = (
+                "JwtClaims.role cannot be HumanRole.SYSTEM; system tokens "
+                "carry no role claim"
+            )
             raise ValueError(msg)
         return self
 
