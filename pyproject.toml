@@ -55,7 +55,7 @@ telemetry = ["logfire==4.32.1"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
 distributed = ["nats-py==2.14.0"]
-postgres = ["psycopg[binary]==3.3.3", "psycopg_pool==3.3.0"]
+postgres = ["psycopg[binary]==3.3.4", "psycopg_pool==3.3.1"]
 
 [tool.hatch.version]
 path = "src/synthorg/__init__.py"
@@ -80,12 +80,12 @@ test = [
     # bus/nats.py and workers/ without needing the optional extra installed.
     # Runtime users opt in via `pip install synthorg[distributed]`.
     "nats-py==2.14.0",
-    "psycopg[binary]==3.3.3",
-    "psycopg_pool==3.3.0",
+    "psycopg[binary]==3.3.4",
+    "psycopg_pool==3.3.1",
     "testcontainers[postgres]==4.14.2",
 ]
 docs = [
-    "zensical==0.0.37",
+    "zensical==0.0.39",
     "mkdocstrings[python]==1.0.4",
     "griffe-pydantic==1.3.1",
     "mkdocs-d2-plugin==1.7.0",
@@ -103,7 +103,7 @@ fine-tune-cpu = [
     "sentence-transformers==5.4.1",
 ]
 dev = [
-    "commitizen==4.13.10",
+    "commitizen==4.14.0",
     "mypy==1.20.2",
     "pre-commit==4.6.0",
     "pip-audit==2.10.0",
