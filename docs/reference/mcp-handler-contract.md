@@ -12,7 +12,7 @@ SynthOrg exposes 200+ tools across the 15 domain modules under `src/synthorg/met
 
 ## Argument validation (typed-args path, #1611 Phase 4)
 
-Each builder accepts an optional `args_model: type[BaseModel]` kwarg that flows through to `MCPToolDef.args_model`. When set, the invoker validates the raw `arguments` dict against the Pydantic model **before** dispatching to the handler:
+Each builder accepts an optional `args_model: type[BaseModel]` kwarg that flows through to `MCPToolDef.args_model`. When set, the invoker validates the raw `arguments` dict against the Pydantic model **before** dispatching to the handler. The validation call routes through the canonical typed-boundary helper (`synthorg.api.boundary.parse_typed("mcp.tool", arguments, args_model)`) so a malformed payload emits the cross-boundary `api.boundary.validation_failed` warning alongside the existing `mcp.server.invoke.failed` event -- see [typed-boundaries.md](typed-boundaries.md) for the full contract.
 
 - Validation success: the invoker takes the validated model's `model_dump(mode="python")` and passes that dict to the handler. Every key matches the model's declared fields with no extras (because args models use `extra="forbid"`); enum/datetime/etc. values are already coerced.
 - Validation failure: the invoker short-circuits with a `{"status": "error", "error_type": "ArgumentValidationError", "domain_code": "invalid_argument", "message": "...", "tool": ...}` envelope. The handler is never invoked.

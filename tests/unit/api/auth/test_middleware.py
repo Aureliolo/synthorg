@@ -659,10 +659,19 @@ class TestAuthMiddlewareSystemUser:
             )
             assert resp.status_code == 401
 
-    async def test_system_user_jwt_with_pwd_sig_still_authenticates(
+    async def test_system_user_jwt_with_stray_pwd_sig_rejected(
         self,
     ) -> None:
-        """System user JWT with an extra pwd_sig claim still works."""
+        """System user JWT carrying a stray pwd_sig is rejected at decode.
+
+        JwtClaims now enforces a mutual-exclusion invariant: the four
+        user-only fields (username, role, must_change_password,
+        pwd_sig) arrive as a unit or all None. A system token
+        (sub='system', iss='synthorg-cli') that smuggles a stray
+        pwd_sig is malformed and gets a 401, not a 200. Legitimate
+        system tokens minted by the Go CLI never include pwd_sig, so
+        this strictness only blocks malformed tokens.
+        """
         import jwt as pyjwt
 
         svc = _make_auth_service()
@@ -681,7 +690,8 @@ class TestAuthMiddlewareSystemUser:
         )
         await persistence.users.save(system_user)
 
-        # JWT includes a stale pwd_sig -- should be ignored for system users
+        # Stray pwd_sig on a system token violates the mutual-exclusion
+        # invariant: a malformed system token must not authenticate.
         token = pyjwt.encode(
             {
                 "sub": "system",
@@ -702,7 +712,7 @@ class TestAuthMiddlewareSystemUser:
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
-            assert resp.status_code == 200
+            assert resp.status_code == 401
 
     async def test_non_system_user_without_pwd_sig_returns_401(self) -> None:
         """Regular user JWT without pwd_sig is still rejected."""

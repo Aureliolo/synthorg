@@ -87,14 +87,15 @@ class TestJWT:
         assert len(session_id) == 32  # uuid4().hex
 
         claims = svc.decode_token(token)
-        assert claims["sub"] == "user-001"
-        assert claims["username"] == "admin"
-        assert claims["role"] == "ceo"
-        assert claims["jti"] == session_id
+        assert claims.sub == "user-001"
+        assert claims.username == "admin"
+        assert claims.role is not None
+        assert claims.role.value == "ceo"
+        assert claims.jti == session_id
         # User tokens carry the API issuer/audience pair so a leaked
         # CLI token cannot replay as a user token (or vice versa).
-        assert claims["iss"] == USER_ISSUER
-        assert claims["aud"] == USER_AUDIENCE
+        assert claims.iss == USER_ISSUER
+        assert claims.aud == USER_AUDIENCE
 
     def test_expired_token_raises(self) -> None:
         config = AuthConfig(jwt_secret=_SECRET, jwt_expiry_minutes=1)
@@ -178,13 +179,15 @@ class TestJWT:
             "sub": user.id,
             "username": user.username,
             "role": user.role.value,
+            "must_change_password": False,
+            "pwd_sig": "0123456789abcdef",
             "jti": "abc",
             "iat": datetime.now(UTC),
             "exp": datetime.now(UTC) + timedelta(hours=1),
         }
         token = jwt.encode(payload, _SECRET, algorithm="HS256")
         claims = svc.decode_token(token)
-        assert claims["iss"] == "attacker"
+        assert claims.iss == "attacker"
 
     def test_decode_token_does_not_verify_audience_value(self) -> None:
         """``decode_token`` accepts any ``aud`` value (presence only).
@@ -201,13 +204,15 @@ class TestJWT:
             "sub": user.id,
             "username": user.username,
             "role": user.role.value,
+            "must_change_password": False,
+            "pwd_sig": "0123456789abcdef",
             "jti": "abc",
             "iat": datetime.now(UTC),
             "exp": datetime.now(UTC) + timedelta(hours=1),
         }
         token = jwt.encode(payload, _SECRET, algorithm="HS256")
         claims = svc.decode_token(token)
-        assert claims["aud"] == "attacker"
+        assert claims.aud == "attacker"
 
     def test_invalid_signature_raises(self) -> None:
         svc = _make_service()
@@ -226,7 +231,7 @@ class TestJWT:
         user = _make_user(must_change_password=True)
         token, _, _ = svc.create_token(user)
         claims = svc.decode_token(token)
-        assert claims["must_change_password"] is True
+        assert claims.must_change_password is True
 
     def test_decode_token_missing_sub_claim(self) -> None:
         svc = _make_service()

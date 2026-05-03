@@ -64,8 +64,17 @@ class TestInFlightResolution:
             "engine did not enter _process_one"
         )
 
-        # Stop with very short timeout -- triggers _fail_remaining_futures
-        await eng.stop(timeout=0.05)
+        # Stop while slow_save still blocks on block.wait() so the drain
+        # always reaches its inner timeout and _fail_remaining_futures
+        # gets the in-flight envelope. The wall-clock timeout itself is
+        # not the assertion; what we exercise is the timeout-branch in
+        # _drain_processing. Use a generous 2s deadline (matches the
+        # sibling test_dispatch_exception_returns_internal_error
+        # convention) so the hard_deadline = 2 x effective_timeout = 4s
+        # leaves real headroom on slow CI runners under xdist load --
+        # the previous 0.05s cap (0.1s hard_deadline) flaked on Linux
+        # CI when cancel + drain bookkeeping slipped past 100ms.
+        await eng.stop(timeout=2.0)
 
         # In-flight should be cleared
         assert eng._in_flight is None

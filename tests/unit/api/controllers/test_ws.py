@@ -67,10 +67,37 @@ class TestWsHandleMessage:
         assert data["error"] == "Invalid JSON"
 
     def test_unknown_action(self) -> None:
+        # The typed control-plane discriminator rejects unknown action
+        # values at parse time, so the response is the boundary helper's
+        # generic "invalid" envelope rather than the legacy
+        # "Unknown action" string. The behaviour change is intentional:
+        # malformed first-message content never reaches dispatch.
         subscribed: set[str] = set()
         filters: dict[str, dict[str, str]] = {}
         result = _handle_message(
             json.dumps({"action": "unknown"}),
+            subscribed,
+            filters,
+            _TEST_USER,
+        )
+        data = json.loads(result)
+        assert data["error"] == "Invalid control message"
+
+    def test_post_handshake_auth_message_falls_through_to_unknown_action(
+        self,
+    ) -> None:
+        # WsAuthMessage is a valid discriminated-union variant (the
+        # pre-handshake first-frame shape), so it parses cleanly. On
+        # an already-authenticated socket the dispatcher walks past
+        # the subscribe / unsubscribe / ping isinstance checks and
+        # hits the post-auth fallback which returns the legacy
+        # "Unknown action" envelope. Without dedicated coverage the
+        # only branch behind ``API_WS_UNKNOWN_ACTION`` could regress
+        # silently the next time the dispatch code is touched.
+        subscribed: set[str] = set()
+        filters: dict[str, dict[str, str]] = {}
+        result = _handle_message(
+            json.dumps({"action": "auth", "ticket": "post-handshake-stray"}),
             subscribed,
             filters,
             _TEST_USER,

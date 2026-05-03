@@ -247,7 +247,7 @@ tests/unit/api/auth/test_controller.py:359:21
 tests/unit/api/auth/test_controller.py:687:21
 tests/unit/api/auth/test_controller.py:727:21
 tests/unit/api/auth/test_middleware.py:227:21
-tests/unit/api/auth/test_middleware.py:902:21
+tests/unit/api/auth/test_middleware.py:912:21
 tests/unit/api/auth/test_postgres_session_store.py:101:11
 tests/unit/api/auth/test_postgres_session_store.py:119:14
 tests/unit/api/auth/test_postgres_session_store.py:120:16
@@ -394,11 +394,11 @@ tests/unit/api/controllers/test_sse_keepalive_setting.py:28:31
 tests/unit/api/controllers/test_sse_keepalive_setting.py:29:41
 tests/unit/api/controllers/test_sse_revalidate.py:44:21
 tests/unit/api/controllers/test_workflow_helpers.py:24:14
-tests/unit/api/controllers/test_ws.py:580:21
-tests/unit/api/controllers/test_ws.py:586:45
-tests/unit/api/controllers/test_ws.py:605:17
-tests/unit/api/controllers/test_ws.py:697:17
-tests/unit/api/controllers/test_ws.py:726:17
+tests/unit/api/controllers/test_ws.py:607:21
+tests/unit/api/controllers/test_ws.py:613:45
+tests/unit/api/controllers/test_ws.py:632:17
+tests/unit/api/controllers/test_ws.py:724:17
+tests/unit/api/controllers/test_ws.py:753:17
 tests/unit/api/controllers/test_ws_revalidate.py:178:21
 tests/unit/api/fakes_backend.py:775:19
 tests/unit/api/fakes_backend.py:776:30
