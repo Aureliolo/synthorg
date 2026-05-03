@@ -32,6 +32,14 @@ var (
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show container states, health, and versions",
+	Long: `Render a one-shot snapshot of the running SynthOrg stack.
+
+Combines a verdict banner (OK / DEGRADED / CRITICAL), the backend
+/api/v1/readyz response, the per-container table from
+docker compose ps, and live resource usage. Use --watch to refresh
+on an interval, --wide for port columns, --services to filter by
+name, or --check for a silent exit-code-only run intended for
+scripts (0 healthy, 3 unhealthy, 4 unreachable).`,
 	Example: `  synthorg status              # show current status
   synthorg status --watch      # continuously poll
   synthorg status --wide       # show extra columns

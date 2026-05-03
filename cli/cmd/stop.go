@@ -22,6 +22,13 @@ var (
 var stopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Stop the SynthOrg stack",
+	Long: `Stop every container in the SynthOrg compose stack.
+
+Sends SIGTERM and waits for the configured graceful shutdown
+window before falling back to SIGKILL. Pass --timeout to override
+the wait, or --volumes to also remove named volumes once the stack
+is down (destroys persisted data; pair with 'synthorg backup
+create' first).`,
 	Example: `  synthorg stop                # graceful shutdown
   synthorg stop --timeout 60s  # custom shutdown timeout
   synthorg stop --volumes      # stop and remove volumes`,

@@ -18,7 +18,9 @@ var doctorReportCmd = &cobra.Command{
 	Use:   "report",
 	Short: "Generate a diagnostic archive and bug report URL",
 	Long:  "Collects diagnostics, saves a report file, and prints a pre-filled GitHub issue URL.",
-	RunE:  runDoctorReport,
+	Example: `  synthorg doctor report           # write archive + print issue URL
+  synthorg doctor report --json    # machine-readable summary`,
+	RunE: runDoctorReport,
 }
 
 func init() {
