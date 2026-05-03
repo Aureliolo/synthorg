@@ -266,3 +266,45 @@ class TestApprovalRepository:
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         repo = _approval_repo(backend)
         assert isinstance(repo, ApprovalRepository)
+
+    async def test_save_many_round_trips_batch(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # save_many writes every item under one transaction.  All rows
+        # must be visible to a fresh repo read after the call returns.
+        repo = _approval_repo(backend)
+        items = tuple(_make_item(approval_id=f"approval-batch-{i}") for i in range(5))
+        await repo.save_many(items)
+
+        fresh = _approval_repo(backend)
+        for original in items:
+            fetched = await fresh.get(original.id)
+            assert fetched is not None, original.id
+            assert fetched.id == original.id
+
+    async def test_save_many_empty_input_is_noop(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        # Empty input must not open a transaction or raise.
+        await repo.save_many(())
+
+    async def test_save_many_upserts_existing_rows(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # save_many must obey the same upsert semantics as save() so a
+        # batched expiry loop can transition PENDING to EXPIRED on
+        # already-persisted items in one call.
+        repo = _approval_repo(backend)
+        original = _make_item(approval_id="approval-batch-upsert")
+        await repo.save(original)
+
+        updated = original.model_copy(update={"status": ApprovalStatus.EXPIRED})
+        await repo.save_many((updated,))
+
+        fetched = await repo.get(original.id)
+        assert fetched is not None
+        assert fetched.status is ApprovalStatus.EXPIRED
