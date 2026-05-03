@@ -7,14 +7,40 @@ and OTLP export health counters. Cardinality guards raise
 instead of silently polluting the metric family.
 """
 
+from collections.abc import Generator
+
 import pytest
 from prometheus_client import generate_latest
 from prometheus_client.parser import text_string_to_metric_families
 
 from synthorg.observability.prometheus_collector import PrometheusCollector
-from synthorg.observability.prometheus_labels import status_class
+from synthorg.observability.prometheus_labels import (
+    _LabelSnapshot,
+    _reset_label_snapshot_for_tests,
+    status_class,
+    update_label_snapshot,
+)
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _seed_tool_name_snapshot() -> Generator[None]:
+    """Seed the prometheus label snapshot with bounded tool-name values.
+
+    record_tool_invocation now bounds ``tool_name`` against the
+    snapshot maintained by PrometheusCollector.refresh(); these unit
+    tests never invoke refresh() so we seed manually. Reset on
+    teardown so cross-file tests start from a clean snapshot.
+    """
+    update_label_snapshot(
+        _LabelSnapshot(
+            tool_names=frozenset({"web_search", "calculator", "t"}),
+            tool_names_seeded=True,
+        ),
+    )
+    yield
+    _reset_label_snapshot_for_tests()
 
 
 def _parse(

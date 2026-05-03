@@ -47,6 +47,7 @@ __all__ = [
     "update_label_snapshot",
     "validate_agent_id",
     "validate_department",
+    "validate_tool_name",
     "validate_workflow_definition_id",
 ]
 
@@ -292,9 +293,11 @@ class _LabelSnapshot:
     agent_ids: frozenset[str] = frozenset()
     workflow_definition_ids: frozenset[str] = frozenset()
     departments: frozenset[str] = frozenset()
+    tool_names: frozenset[str] = frozenset()
     agent_ids_seeded: bool = False
     workflow_definition_ids_seeded: bool = False
     departments_seeded: bool = False
+    tool_names_seeded: bool = False
 
 
 _INITIAL_SNAPSHOT: Final[_LabelSnapshot] = _LabelSnapshot()
@@ -384,6 +387,20 @@ def validate_department(value: str) -> None:
     """
     snapshot = _snapshot
     require_label_summary("department", value, snapshot.departments)
+
+
+def validate_tool_name(value: str) -> None:
+    """Raise ``ValueError`` if *value* is not a registered tool name.
+
+    Bounds the ``tool_name`` Prometheus label against the running
+    ToolRegistry so plugin-loaded tools are accepted but a runaway
+    caller that fabricates names cannot inflate cardinality. Fails
+    closed during bootstrap (no snapshot seeded yet); push-time
+    callers go through ``metrics_hub._safe_record`` so the rejected
+    sample drops cleanly.
+    """
+    snapshot = _snapshot
+    require_label_summary("tool_name", value, snapshot.tool_names)
 
 
 def is_known_agent_id(value: str) -> bool:

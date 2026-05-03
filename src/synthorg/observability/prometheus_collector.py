@@ -114,6 +114,33 @@ async def _fetch_departments(app_state: AppState) -> frozenset[str] | None:
     return frozenset(str(r.name) for r in records)
 
 
+async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
+    """Pull the registered tool-name set from the tool registry.
+
+    Same return contract as :func:`_fetch_departments`: empty
+    frozenset when the registry is not wired, real set on success,
+    ``None`` on exception so the merge step preserves the previous
+    allowlist. Synchronous reads from a frozen ``MappingProxyType``
+    cannot raise meaningfully today, but the registry exposure path
+    may grow async I/O later (plugin lazy-load, MCP server discovery)
+    so this is wrapped for symmetry with the other registry fetchers.
+    """
+    try:
+        registry = getattr(app_state, "tool_registry", None)
+        if registry is None:
+            return frozenset()
+        return frozenset(registry.list_tools())
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            METRICS_SCRAPE_FAILED,
+            component="tool_registry",
+            exc_info=True,
+        )
+        return None
+
+
 class PrometheusCollector(RecordingMixin):
     """Collects business metrics from SynthOrg services for Prometheus.
 
@@ -330,10 +357,12 @@ class PrometheusCollector(RecordingMixin):
         async with asyncio.TaskGroup() as tg:
             wf_task = tg.create_task(_fetch_workflow_definitions(app_state))
             dept_task = tg.create_task(_fetch_departments(app_state))
+            tool_task = tg.create_task(_fetch_tool_names(app_state))
         await self._merge_and_update_snapshot(
             agent_ids=agent_ids,
             wf_ids=wf_task.result(),
             dept_ids=dept_task.result(),
+            tool_names=tool_task.result(),
         )
 
     @staticmethod
@@ -342,6 +371,7 @@ class PrometheusCollector(RecordingMixin):
         agent_ids: frozenset[str] | None,
         wf_ids: frozenset[str] | None,
         dept_ids: frozenset[str] | None,
+        tool_names: frozenset[str] | None,
     ) -> None:
         """Merge with the previous snapshot and atomically rebind.
 
@@ -368,11 +398,15 @@ class PrometheusCollector(RecordingMixin):
             merged_departments = (
                 dept_ids if dept_ids is not None else previous.departments
             )
+            merged_tool_names = (
+                tool_names if tool_names is not None else previous.tool_names
+            )
             update_label_snapshot(
                 _LabelSnapshot(
                     agent_ids=merged_agent_ids,
                     workflow_definition_ids=merged_workflow_ids,
                     departments=merged_departments,
+                    tool_names=merged_tool_names,
                     agent_ids_seeded=previous.agent_ids_seeded
                     or (agent_ids is not None),
                     workflow_definition_ids_seeded=(
@@ -380,6 +414,8 @@ class PrometheusCollector(RecordingMixin):
                     ),
                     departments_seeded=previous.departments_seeded
                     or (dept_ids is not None),
+                    tool_names_seeded=previous.tool_names_seeded
+                    or (tool_names is not None),
                 ),
             )
 

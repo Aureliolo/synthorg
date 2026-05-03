@@ -48,6 +48,7 @@ from synthorg.observability.prometheus_labels import (
     status_class,
     validate_agent_id,
     validate_department,
+    validate_tool_name,
     validate_workflow_definition_id,
 )
 
@@ -231,6 +232,10 @@ class RecordingMixin:
             ValueError: If *outcome* is not a valid value or
                 ``duration_sec`` is negative.
         """
+        # tool_name is bounded against the running ToolRegistry's
+        # snapshot; fabricated names are rejected at push time so
+        # cardinality cannot grow beyond the registry's size.
+        validate_tool_name(tool_name)
         require_label("tool outcome", outcome, VALID_TOOL_OUTCOMES)
         require_non_negative("record_tool_invocation: duration_sec", duration_sec)
         self._tool_invocations.labels(
