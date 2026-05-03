@@ -353,7 +353,11 @@ Options:
 
 ## Phase 8: Execute Decisions
 
-Apply the merge-strategy choice from Phase 7 (when multi-PR overlap was detected):
+Apply the merge-strategy choice from Phase 7 (when Phase 7 was asked).
+
+**Lockfile-only batch (Phase 7 skipped).** When Phase 6 detected only lockfile-only overlaps (per the Phase 5 trigger rule, Phase 7 was skipped), there is no user-supplied strategy to apply. Use the implicit lockfile-race default: treat all PRs in the batch as parallel-safe; merge each eligible PR immediately (or queue with `--auto` if a final required check is still pending); after each merge lands on `main`, the lockfile-conflicting PRs that didn't win that race need a rebase. Trigger that rebase per the bot conventions documented under "Wave-based parallel" below (Renovate: `<rebaseLabel>` label; Dependabot: `@dependabot rebase`); wait for CI to refresh on the rebased head, then merge the next winner. Repeat until the batch is drained. No strategy question is asked; the operator can interrupt at any point if they want a different sequencing.
+
+**Strategy-driven path (Phase 7 ran).** Apply whichever option the user picked:
 - **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot. **Renovate** PRs: prefer the configured rebase label, `gh pr edit <number> --add-label <rebaseLabel>` (use the value of Renovate's `rebaseLabel` option from the repo's Renovate config; default: `rebase`), because the label trigger does not depend on the exact wording of Renovate's PR-body template. As a fragile alternative you can also tick the rebase/retry checkbox via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`, but body string-manipulation breaks silently if Renovate changes its template format. **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
 - **Strict sequential**: merge one PR, wait for it to land on `main`, trigger rebase + CI on the next PR, then merge it. No overlap with other merges in flight.
 - **Combine into one PR**: invoke "Improve and merge" against a single new branch that integrates all the diffs; close the bot PRs with a pointer to the combined PR.
