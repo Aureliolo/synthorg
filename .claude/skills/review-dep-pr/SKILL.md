@@ -195,30 +195,44 @@ If the build fails, capture the errors; they're likely from breaking changes tha
 
 Parallel merges only work safely when PRs' changed-file sets are disjoint. Compute the file map per PR and flag conflicts before triage so the user can pick a merge strategy upfront instead of discovering conflicts mid-merge.
 
-For each PR in the batch:
+For each PR in the batch, fetch the full changed-file list. Note: `gh pr view <N> --json files` is capped at 100 files by the underlying GraphQL `first: 100` query and does not paginate ([cli/cli#5368](https://github.com/cli/cli/issues/5368), [#9916](https://github.com/cli/cli/issues/9916), [#6930](https://github.com/cli/cli/issues/6930)). Use the paginated GraphQL form so large PRs don't silently truncate:
 
 ```bash
-gh pr view <number> --json files --jq '.files[].path'
+gh api graphql --paginate \
+  -F owner=OWNER -F repo=REPO -F pr=NUMBER \
+  -f query='query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+    repository(owner:$owner,name:$repo){
+      pullRequest(number:$pr){
+        files(first:100,after:$endCursor){
+          pageInfo{hasNextPage,endCursor}
+          nodes{path,additions,deletions}
+        }
+      }
+    }
+  }' \
+  --jq '.data.repository.pullRequest.files.nodes[].path'
 ```
+
+The shorthand `gh pr view <N> --json files --jq '.files[].path'` is acceptable only after confirming the PR has fewer than 100 changed files (e.g. via `gh pr view <N> --json changedFiles --jq .changedFiles`); otherwise the overlap map will be incomplete and the wave recommendation wrong.
 
 Build two views:
 - **Per-PR**: file count + the file list (collapse long lists if > 20 files)
 - **Per-file conflict map**: which PRs touch each path that's touched by ≥ 2 PRs
 
-**Lockfiles deserve special handling.** `package-lock.json`, `pnpm-lock.yaml`, `uv.lock`, `Cargo.lock`, `go.sum`, `atlas.sum`, etc. are almost always touched by every dependency update in their ecosystem. Two PRs touching the same lockfile are GUARANTEED to conflict on the second merge -- even when no source files overlap. Classify lockfile-only overlaps separately from source/config overlaps; they're a "rebase needed" conflict, not a hard blocker.
+**Lockfiles deserve special handling.** `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`, `atlas.sum`, `composer.lock`, `Gemfile.lock`, etc. are almost always touched by every dependency update in their ecosystem. Two PRs touching the same lockfile are GUARANTEED to conflict on the second merge -- even when no source files overlap. Classify lockfile-only overlaps separately from source/config overlaps; they're a "rebase needed" conflict, not a hard blocker.
 
 **Classify each pair of overlapping PRs:**
 
 | Overlap kind | Meaning | Conflict severity | Strategy hint |
 |--------------|---------|-------------------|---------------|
 | **None** | Disjoint file sets | Safe | Parallel merge, any order |
-| **Lockfile-only** | Only `*.lock` / `*.sum` / lockfile equivalents overlap | Trivial | First merges cleanly; the rest need a rebase. Renovate auto-rebases on the next cycle (or tick the rebase checkbox in the PR body). |
+| **Lockfile-only** | Only `*.lock` / `*.sum` / lockfile equivalents overlap | Trivial | First merges cleanly; the rest need a rebase. The bot will rebase on its next cycle (Renovate: tick the rebase/retry checkbox in the PR body or apply the `rebase` label; Dependabot: post `@dependabot rebase`). |
 | **Config-file overlap** | Same `pyproject.toml`, `package.json`, workflow YAML, `Dockerfile`, etc. | Moderate | Sequential merge with rebase between; usually mechanical (different table rows / different action versions) |
 | **Source overlap** | Same `.py` / `.ts` / `.go` / `.tsx` / etc. file | High | Investigate diffs before merging either; may need manual integration |
 
 **Group the PRs into merge waves:**
-- **Wave 1**: PRs whose file set is disjoint from every other PR in the batch -- parallel-safe.
-- **Wave 2+**: PRs that overlap with anything in an earlier wave -- sequential, with rebase between waves. Within a wave, lockfile-only overlap is acceptable (just expect the post-merge rebase).
+- **Wave 1**: PRs that have no source-file or config-file overlap with any other PR in the batch. Lockfile-only overlap is allowed (the post-merge rebase is mechanical). Wave 1 PRs are parallel-safe.
+- **Wave 2+**: PRs that source-overlap or config-overlap with anything in an earlier wave. Merged sequentially with a rebase between waves. If every PR in the batch overlaps on source/config (no parallel-safe subset exists), Wave 1 is empty and the entire batch becomes a sequential chain ordered by smallest-conflict-footprint first; the "Combine into one PR" strategy in Phase 7 is usually preferable in that case.
 
 **Output**: a compact overlap matrix in the report header (Phase 6), plus a recommended merge ordering carried into Phase 7's strategy question.
 
@@ -278,10 +292,10 @@ Before per-PR triage, ask one batch-level question to lock in a merge strategy:
 ```
 
 Options:
-- **"Wave-based parallel"**: Merge Wave 1 PRs in parallel; rebase + merge Wave 2; repeat. Maximises throughput; lockfile-only conflicts auto-resolve via Renovate's rebase. Use when overlaps are lockfile/config only.
+- **"Wave-based parallel"**: Merge Wave 1 PRs in parallel; rebase + merge Wave 2; repeat. Maximises throughput; lockfile-only conflicts auto-resolve when the bot rebases (Renovate on its next cycle, Dependabot on `@dependabot rebase`). Use when overlaps are lockfile/config only.
 - **"Strict sequential"**: Merge one PR at a time, rebase the rest between merges. Slowest but lowest risk. Use when source files overlap or any PR's diff would non-trivially conflict.
 - **"Combine into one PR"**: Close the bot PRs and create one combined PR with all changes manually integrated. Use when 3+ PRs all conflict on the same source file -- avoids N rounds of rebase churn.
-- **"Defer the conflicting subset"**: Merge the disjoint PRs now; close the conflicting ones with a "supersede later" comment so Renovate recreates them after the main batch lands. Use when the conflicting subset isn't time-sensitive.
+- **"Defer the conflicting subset"**: Merge the disjoint PRs now; close the conflicting ones with a "supersede later" comment so the dependency bot (Renovate or Dependabot) recreates them on its next cycle once the main batch has landed. Use when the conflicting subset isn't time-sensitive.
 
 Carry the chosen strategy into Phase 8: it dictates merge order and whether Phase 8 invokes `--auto` (parallel-safe) vs blocking on each merge (sequential).
 
@@ -320,7 +334,7 @@ Options:
 ## Phase 8: Execute Decisions
 
 Apply the merge-strategy choice from Phase 7 (when multi-PR overlap was detected):
-- **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger Renovate rebase (post a `@renovate-bot rebase` comment or tick the rebase checkbox via `gh pr edit`) on the next wave's PRs, wait for CI, then merge.
+- **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot: **Renovate** PRs use the rebase/retry checkbox in the PR body (tick it via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`) or the `rebase` label (`gh pr edit --add-label rebase`, configurable via Renovate's `rebaseLabel` option); **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
 - **Strict sequential**: merge one PR, wait for it to land on `main`, trigger rebase + CI on the next PR, then merge it. No overlap with other merges in flight.
 - **Combine into one PR**: invoke "Improve and merge" against a single new branch that integrates all the diffs; close the bot PRs with a pointer to the combined PR.
 - **Defer the conflicting subset**: invoke "Close / Skip" on the deferred PRs first, then process the remaining disjoint PRs normally.
