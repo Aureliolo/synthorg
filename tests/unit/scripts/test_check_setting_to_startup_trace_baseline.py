@@ -191,15 +191,16 @@ def test_load_baseline_missing_file_returns_empty_set(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("entry", "case"),
+    "entry",
     [
-        ("backup.enabled:BackupService\n", "wrong-field-count"),
-        ("backup.enabled::BackupService\n", "empty-middle-field"),
-        ("backup.enabled:ghost-wired:BackupService:extra\n", "extra-field"),
+        "backup.enabled:BackupService\n",
+        "backup.enabled::BackupService\n",
+        "backup.enabled:ghost-wired:BackupService:extra\n",
     ],
+    ids=["wrong-field-count", "empty-middle-field", "extra-field"],
 )
 def test_load_baseline_malformed_entries_raise_valueerror(
-    tmp_path: Path, entry: str, case: str
+    tmp_path: Path, entry: str
 ) -> None:
     """Malformed baseline entries fail loud (any wrong shape).
 
@@ -212,9 +213,6 @@ def test_load_baseline_malformed_entries_raise_valueerror(
     baseline.write_text(entry, encoding="utf-8")
     with pytest.raises(ValueError, match="malformed baseline entry"):
         _MODULE._load_baseline(baseline)  # type: ignore[attr-defined]
-    # ``case`` is read by pytest's parametrize ID generator so test
-    # names surface the specific shape under test in failure output.
-    _ = case
 
 
 # ── CLI tests ──────────────────────────────────────────────────
