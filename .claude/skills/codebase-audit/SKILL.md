@@ -178,6 +178,98 @@ Rules:
   The Write tool exists ONLY to write your finding file. The audit Bash tool is
   for read-only inspection (`git`, `gh`, `find`, `wc`); never for `python -c`,
   `cat >`, `tee`, redirects, or heredocs.
+
+## Five FP-prevention rules (LOAD-BEARING)
+
+These rules are mandatory for every audit agent. The 2026-05-03 run produced
+12 distinct FP categories that traced back to one of these five gaps. Apply
+all five before emitting a finding.
+
+### R-A: Verify the proposed fix isn't already in place
+
+Before writing a finding, verify the proposed fix is not ALREADY in place:
+- For "missing X" findings: grep for X in the surrounding 50 lines, in the
+  file's `__init__` / setup function, and in the test-setup module if
+  applicable. If X exists, do NOT flag.
+- For "no implementation" findings: grep for concrete subclasses overriding
+  the method. Inspect MRO. If a subclass implements it, do NOT flag.
+- For "settings-not-wired" findings: trace the setting through the consuming
+  object's STARTUP wiring, not just import-graph references. A setting
+  consumed by code that never runs at startup (because the parent service is
+  never instantiated in `lifecycle_helpers.py` / `app.py`) is dead-on-arrival
+  AND structurally hidden -- flag with `severity: high, kind: dead-on-arrival`
+  rather than as a generic dead setting. The 2026-05-03 run had 11/13
+  settings flagged as dead that were actually consumed by living machinery
+  whose owning service was simply never started at boot. The audit's
+  import-graph trace missed this entirely.
+
+### R-B: Read existing helper docstrings for design carve-outs
+
+Before recommending consolidation into an existing helper (e.g.
+`GeneralRetryHandler`, `core.utils`, `core.normalization`), READ the helper's
+module docstring and class docstring. If the docstring contains opt-out
+language (`carve out`, `do not use for X`, `intentionally excluded`,
+`deliberate non-goal`, `out of scope`), DO NOT flag the inline call site as
+needing centralization. Document the carve-out as a known exception, not a
+finding. The 2026-05-03 run had agent 138 flag 5 inline retry loops as
+"should use GeneralRetryHandler" -- but the handler's module docstring
+explicitly carved out 4 of the 5 patterns (semantic self-correction loops,
+contention loops, sync logging-handler thread). Reading the docstring would
+have caught this.
+
+### R-C: Scope estimate alongside cited cases
+
+When the audit covers a project-wide convention (e.g. "all exceptions must
+inherit DomainError", "no hardcoded values", "every model must be frozen"),
+the agent MUST emit a scope estimate alongside the cited cases:
+- Sample 3-5 random files from candidate domains.
+- Estimate total population (e.g. "12 cited; sample suggests ~80-120 across
+  19 error modules").
+- Distinguish "cited cases" from "tip of the iceberg" so the user can decide
+  between surgical fix and convention rollout.
+
+The 2026-05-03 run had agent 34 cite 12 plain-Exception classes; the actual
+project-wide population was ~80-120 across 19 modules. The user's surgical
+vs convention-rollout decision depends on knowing the gap.
+
+### R-D: Semantic equivalence before flagging duplicates
+
+When flagging duplicate / redundant code:
+- Diff the loop body / inner predicate / inner expression -- not just the
+  outer iteration shape. Two functions with identical structure but different
+  inner logic are NOT duplicates.
+- Distinguish *intentional* multi-instance patterns (different domains using
+  the same shape, multiple bootstrap surfaces by design) from *accidental*
+  duplication (same code copy-pasted by accident). Look for in-code comments,
+  design-doc references, stable naming differences (`ConfigA` vs `ConfigB` =
+  intentional vs `_helper` vs `_helper_v2` = accidental).
+
+The 2026-05-03 run had agent 110 flag a pairwise-compare cluster as duplicate
+when one used field-equality and the other used text-similarity -- identical
+iteration shape, divergent inner predicate. Consolidating would have lost
+domain semantics. Agent 146 flagged 8 multi-surface settings as "soup" but 4
+of them were intentional bootstrap patterns (env-only init-time secrets,
+operator-facing legacy env-var overrides).
+
+### R-E: Caller-context distribution for API duplication findings
+
+For findings of the shape "API has multiple variants" (mixed sync/async,
+dual surfaces, multiple methods for one operation):
+- Enumerate ALL callers in `src/synthorg/` AND `tests/`.
+- Classify each caller by context (async route / sync helper / test fixture
+  / CLI command).
+- Emit the distribution in the finding (e.g. "100% of production callers are
+  async; only test fixtures use sync").
+- Severity calibration: only "high" if the duplication causes real ambiguity
+  at production call sites; "low/info" if usage is segregated by call-site
+  type. Mock-drift findings should sample actual mock-method usage in the
+  test file and downgrade severity if the missing methods aren't called by
+  any test.
+
+The 2026-05-03 run had agent flag AuthService's mixed sync/async API as
+high-severity duplication; the actual distribution was 100% production-async
++ test-fixture-sync, which made the choice obvious (drop sync, keep async).
+Without the distribution, the finding looked like a hard choice.
 ```
 
 ### Streaming Pool Execution
