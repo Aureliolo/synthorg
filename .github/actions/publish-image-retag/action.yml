@@ -126,19 +126,35 @@ runs:
             break
           fi
           ERR="$(cat "$ERR_FILE")"
-          if [ "$i" -lt "$ATTEMPTS" ] && printf '%s' "$ERR" | grep -qiE "$TRANSIENT_RE"; then
+          IS_TRANSIENT=false
+          if printf '%s' "$ERR" | grep -qiE "$TRANSIENT_RE"; then
+            IS_TRANSIENT=true
+          fi
+
+          # Mid-loop transient: sleep and retry.
+          if [ "$IS_TRANSIENT" = "true" ] && [ "$i" -lt "$ATTEMPTS" ]; then
             printf '%s\n' "$ERR" >&2
             echo "::warning::imagetools inspect ${REPO}:sha-${SHORT_SHA} hit transient registry error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
             sleep "$BACKOFF"
             BACKOFF=$((BACKOFF * 2))
             continue
           fi
-          # Non-transient or attempts exhausted. Surface the captured stderr
-          # and rc; the message names the most-common cause as a hint but
-          # does not assume it -- auth failures, registry config errors, and
-          # TLS verification failures land here too.
+
+          # Otherwise we're done. Surface stderr first; then the annotation
+          # differentiates transient-retries-exhausted from a genuine
+          # non-transient failure so the operator knows which recovery path
+          # to take.
           printf '%s\n' "$ERR" >&2
-          echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) with non-transient error. Most common cause: the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image (look for 'manifest unknown' / 404 in the stderr above; re-run main-push, then re-run this retag job). For other causes (auth, registry config, TLS verification, ...) inspect the stderr above."
+          if [ "$IS_TRANSIENT" = "true" ]; then
+            # i == ATTEMPTS and ERR matched TRANSIENT_RE -- the error pattern
+            # was transient but persisted through the full backoff window
+            # (15s + 30s + 60s = ~1m45s). GHCR is likely in a longer outage;
+            # waiting and re-running the job is the correct response.
+            echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) -- transient retries exhausted after ${ATTEMPTS} attempts. The error pattern matched TRANSIENT_RE but persisted through the full backoff window; GHCR may be in a longer outage. Check https://www.githubstatus.com/ and re-run this retag job once recovered."
+          else
+            # Genuine non-transient: no amount of retries would have helped.
+            echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) with non-transient error. Most common cause: the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image (look for 'manifest unknown' / 404 in the stderr above; re-run main-push, then re-run this retag job). For other causes (auth, registry config, TLS verification, ...) inspect the stderr above."
+          fi
           exit "$rc"
         done
 
