@@ -31,7 +31,9 @@ from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 logger = get_logger(__name__)
 
 
-class _CASConflict(Exception):  # noqa: N818
+class _CASConflictError(
+    Exception,
+):  # lint-allow: domain-error-hierarchy -- internal CAS-miss sentinel
     """Internal sentinel -- raised inside transactions to signal CAS miss.
 
     Caught immediately by ``set_many`` to convert the exception into a
@@ -337,7 +339,7 @@ class PostgresSettingsRepository:
                                     (namespace, key, value, updated_at_dt),
                                 )
                                 if cur.rowcount == 0:
-                                    raise _CASConflict  # noqa: TRY301
+                                    raise _CASConflictError  # noqa: TRY301
                                 continue
                             expected_dt = self._safe_parse_iso(
                                 expected,
@@ -358,8 +360,8 @@ class PostgresSettingsRepository:
                                 ),
                             )
                             if cur.rowcount == 0:
-                                raise _CASConflict  # noqa: TRY301
-                except _CASConflict:
+                                raise _CASConflictError  # noqa: TRY301
+                except _CASConflictError:
                     return False
         except psycopg.Error as exc:
             msg = "Failed to set_many settings"

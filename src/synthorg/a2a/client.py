@@ -5,7 +5,7 @@ pulling credentials from the connection catalog and validating
 outbound URLs against SSRF rules.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 from uuid import uuid4
 
 import httpx
@@ -15,6 +15,8 @@ from synthorg.a2a.models import (
     JsonRpcRequest,
     JsonRpcResponse,
 )
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_OUTBOUND_FAILED,
@@ -26,8 +28,13 @@ from synthorg.observability.events.a2a import (
 logger = get_logger(__name__)
 
 
-class A2AClientError(Exception):
+class A2AClientError(DomainError):
     """Error raised by the outbound A2A client."""
+
+    default_message: ClassVar[str] = "A2A client request failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_ERROR
+    status_code: ClassVar[int] = 502
 
     def __init__(self, message: str, *, peer_name: str = "") -> None:
         super().__init__(message)

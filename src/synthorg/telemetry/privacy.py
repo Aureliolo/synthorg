@@ -121,7 +121,9 @@ _ALLOWED_PROPERTIES: MappingProxyType[str, frozenset[str]] = MappingProxyType(
 )
 
 
-class PrivacyViolationError(Exception):
+class PrivacyViolationError(
+    Exception,
+):  # lint-allow: domain-error-hierarchy -- internal scrubber sentinel
     """Raised when a telemetry event fails privacy validation."""
 
 

@@ -13,7 +13,7 @@ These tests pin:
   constructed from the supplied ``version_repo``.
 - A ``PersistenceError`` from the snapshot is swallowed (best-effort)
   so the rollback itself stays committed.
-- A ``VersionConflictError`` from ``definition_repo.save`` propagates
+- A ``PersistenceVersionConflictError`` from ``definition_repo.save`` propagates
   to the caller (the controller catches it and returns 409).
 """
 
@@ -23,7 +23,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.api.services.workflow_rollback_service import WorkflowRollbackService
-from synthorg.core.persistence_errors import PersistenceError, VersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceError,
+    PersistenceVersionConflictError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.persistence.version_repo import VersionRepository
@@ -116,7 +119,9 @@ class TestRollback:
     ) -> None:
         """Optimistic-concurrency mismatch surfaces to the controller."""
         definition_repo = AsyncMock(spec=WorkflowDefinitionRepository)
-        definition_repo.save.side_effect = VersionConflictError("revision moved")
+        definition_repo.save.side_effect = PersistenceVersionConflictError(
+            "revision moved"
+        )
         version_repo = AsyncMock(spec=VersionRepository)
         version_repo.get_latest_version = AsyncMock(
             spec=VersionRepository.get_latest_version,
@@ -125,7 +130,7 @@ class TestRollback:
             definition_repo=definition_repo,
             version_repo=version_repo,
         )
-        with pytest.raises(VersionConflictError):
+        with pytest.raises(PersistenceVersionConflictError):
             await service.rollback(
                 _definition_stub(),
                 target_version=2,

@@ -63,7 +63,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _NotFoundError(LookupError):
+class _NotFoundError(
+    LookupError,
+):  # lint-allow: domain-error-hierarchy -- MCP handler-local; no HTTP layer
     """Handler-local not-found signal.
 
     Raised inside the try block so the ``err()`` envelope picks up
@@ -75,7 +77,9 @@ class _NotFoundError(LookupError):
     domain_code = "not_found"
 
 
-class _ConflictError(RuntimeError):
+class _ConflictError(
+    RuntimeError,
+):  # lint-allow: domain-error-hierarchy -- MCP handler-local; no HTTP layer
     """Handler-local conflict signal (approve/reject race)."""
 
     domain_code = "conflict"

@@ -32,7 +32,6 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.enums import WorkflowType
-from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.blueprint_loader import list_blueprints
 from synthorg.engine.workflow.definition import (
@@ -467,7 +466,7 @@ class WorkflowController(Controller):
                 ),
                 status_code=404,
             )
-        except VersionConflictError as exc:
+        except WorkflowDefinitionRevisionMismatchError as exc:
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
                 definition_id=updated.id,

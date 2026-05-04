@@ -51,7 +51,9 @@ _SERVER_ERROR_MIN = 500
 _LOG_BODY_MAX_LEN = 500
 
 
-class _TransientPostError(Exception):
+class _TransientPostError(
+    Exception,
+):  # lint-allow: domain-error-hierarchy -- internal retry sentinel
     """Internal sentinel: retryable HTTP failure (network exception, 3xx, 5xx).
 
     Carries either an HTTP status (3xx / 5xx response) or ``None``

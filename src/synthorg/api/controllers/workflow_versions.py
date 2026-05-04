@@ -21,7 +21,14 @@ from synthorg.api.pagination import (
     encode_repo_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.core.persistence_errors import VersionConflictError
+from synthorg.core.domain_errors import (
+    NotFoundError,
+    ValidationError,
+    VersionConflictError,
+)
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+)
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
 )
@@ -50,8 +57,8 @@ async def _fetch_version_pair(
     workflow_id: str,
     from_version: int,
     to_version: int,
-) -> tuple[SnapshotT, SnapshotT] | Response[ApiResponse[WorkflowDiff]]:
-    """Fetch two version snapshots, returning an error response on failure.
+) -> tuple[SnapshotT, SnapshotT]:
+    """Fetch two version snapshots, raising :class:`NotFoundError` if absent.
 
     Args:
         version_repo: The workflow version repository.
@@ -60,8 +67,10 @@ async def _fetch_version_pair(
         to_version: Target version number.
 
     Returns:
-        A tuple ``(old, new)`` on success, or a ``Response`` error if
-        either version is not found.
+        A tuple ``(old, new)`` with both snapshots.
+
+    Raises:
+        NotFoundError: If either version snapshot is absent.
     """
     old = await version_repo.get_version(workflow_id, from_version)
     if old is None:
@@ -70,12 +79,8 @@ async def _fetch_version_pair(
             definition_id=workflow_id,
             version=from_version,
         )
-        return Response(
-            content=ApiResponse[WorkflowDiff](
-                error=f"Version {from_version} not found",
-            ),
-            status_code=404,
-        )
+        msg = f"Version {from_version} not found"
+        raise NotFoundError(msg)
     new = await version_repo.get_version(workflow_id, to_version)
     if new is None:
         logger.warning(
@@ -83,12 +88,8 @@ async def _fetch_version_pair(
             definition_id=workflow_id,
             version=to_version,
         )
-        return Response(
-            content=ApiResponse[WorkflowDiff](
-                error=f"Version {to_version} not found",
-            ),
-            status_code=404,
-        )
+        msg = f"Version {to_version} not found"
+        raise NotFoundError(msg)
     return old, new
 
 
@@ -97,7 +98,7 @@ async def _fetch_rollback_target(
     version_repo: VersionRepository[WorkflowDefinition],
     workflow_id: str,
     data: RollbackWorkflowRequest,
-) -> tuple[WorkflowDefinition, SnapshotT] | Response[ApiResponse[WorkflowDefinition]]:
+) -> tuple[WorkflowDefinition, SnapshotT]:
     """Look up the definition and target version for a rollback.
 
     Validates that the definition exists, the expected version matches,
@@ -110,8 +111,12 @@ async def _fetch_rollback_target(
         data: The rollback request payload.
 
     Returns:
-        A tuple ``(existing, target)`` on success, or a ``Response``
-        error on any validation failure.
+        A tuple ``(existing, target)`` on success.
+
+    Raises:
+        NotFoundError: If the definition or the target version is absent.
+        VersionConflictError: If ``data.expected_revision`` does not match
+            the current persisted revision.
     """
     existing = await repo.get(workflow_id)
     if existing is None:
@@ -119,12 +124,8 @@ async def _fetch_rollback_target(
             WORKFLOW_DEF_NOT_FOUND,
             definition_id=workflow_id,
         )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error="Workflow definition not found",
-            ),
-            status_code=404,
-        )
+        msg = "Workflow definition not found"
+        raise NotFoundError(msg)
 
     if data.expected_revision != existing.revision:
         logger.warning(
@@ -133,14 +134,8 @@ async def _fetch_rollback_target(
             expected=data.expected_revision,
             actual=existing.revision,
         )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error=(
-                    "Version conflict: the workflow was modified. Reload and retry."
-                ),
-            ),
-            status_code=409,
-        )
+        msg = "Version conflict: the workflow was modified. Reload and retry."
+        raise VersionConflictError(msg)
 
     target = await version_repo.get_version(
         workflow_id,
@@ -152,12 +147,8 @@ async def _fetch_rollback_target(
             definition_id=workflow_id,
             version=data.target_version,
         )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](
-                error=f"Target version {data.target_version} not found",
-            ),
-            status_code=404,
-        )
+        msg = f"Target version {data.target_version} not found"
+        raise NotFoundError(msg)
 
     return existing, target
 
@@ -263,12 +254,8 @@ class WorkflowVersionController(Controller):
                 definition_id=workflow_id,
                 version=version_num,
             )
-            return Response(
-                content=ApiResponse[SnapshotT](
-                    error=f"Version {version_num} not found",
-                ),
-                status_code=404,
-            )
+            msg = f"Version {version_num} not found"
+            raise NotFoundError(msg)
         return Response(
             content=ApiResponse[SnapshotT](data=version),
         )
@@ -302,23 +289,16 @@ class WorkflowVersionController(Controller):
                 definition_id=workflow_id,
                 error="from_version and to_version must differ",
             )
-            return Response(
-                content=ApiResponse[WorkflowDiff](
-                    error="from_version and to_version must differ",
-                ),
-                status_code=400,
-            )
+            msg = "from_version and to_version must differ"
+            raise ValidationError(msg)
 
         version_repo = state.app_state.persistence.workflow_versions
-        result = await _fetch_version_pair(
+        old, new = await _fetch_version_pair(
             version_repo,
             workflow_id,
             from_version,
             to_version,
         )
-        if isinstance(result, Response):
-            return result
-        old, new = result
 
         diff = compute_diff(old, new)
         logger.debug(
@@ -347,15 +327,12 @@ class WorkflowVersionController(Controller):
         repo = state.app_state.persistence.workflow_definitions
         version_repo = state.app_state.persistence.workflow_versions
 
-        result = await _fetch_rollback_target(
+        existing, target = await _fetch_rollback_target(
             repo,
             version_repo,
             workflow_id,
             data,
         )
-        if isinstance(result, Response):
-            return result
-        existing, target = result
         updater = get_auth_user_id(request)
         rolled_back = _build_rolled_back_definition(
             existing,
@@ -363,12 +340,6 @@ class WorkflowVersionController(Controller):
             datetime.now(UTC),
         )
 
-        # Route the durable save + post-rollback snapshot through the
-        # AppState-wired ``WorkflowRollbackService`` so audit logging
-        # cannot regress when a new write path lands in the rollback
-        # contract.  The service raises ``VersionConflictError`` on
-        # optimistic-concurrency mismatch; the 409 translation stays
-        # here so the controller owns the HTTP response shape.
         rollback_service = state.app_state.workflow_rollback_service
         try:
             await rollback_service.rollback(
@@ -376,19 +347,15 @@ class WorkflowVersionController(Controller):
                 target_version=data.target_version,
                 saved_by=updater,
             )
-        except VersionConflictError as exc:
+        except PersistenceVersionConflictError as exc:
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
                 definition_id=workflow_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=("Version conflict during rollback. Reload and retry."),
-                ),
-                status_code=409,
-            )
+            msg = "Version conflict during rollback. Reload and retry."
+            raise VersionConflictError(msg) from exc
 
         return Response(
             content=ApiResponse[WorkflowDefinition](data=rolled_back),

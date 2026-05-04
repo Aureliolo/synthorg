@@ -20,8 +20,9 @@ from synthorg.core.enums import (
 )
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    PersistenceVersionConflictError,
     QueryError,
-    VersionConflictError,
+    RecordNotFoundError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.execution_models import (
@@ -138,7 +139,10 @@ class PostgresWorkflowExecutionRepository:
 
         Raises:
             DuplicateRecordError: If inserting a duplicate ID.
-            VersionConflictError: If optimistic concurrency check fails.
+            PersistenceVersionConflictError: If the row exists but its
+                stored version differs from ``execution.version - 1``.
+            RecordNotFoundError: If updating a row that no longer
+                exists (delete race between read and update).
             QueryError: If the database operation fails.
         """
         if execution.version == 1:
@@ -226,17 +230,33 @@ class PostgresWorkflowExecutionRepository:
                     ),
                 )
                 if cur.rowcount == 0:
+                    await cur.execute(
+                        "SELECT version FROM workflow_executions WHERE id = %s",
+                        (execution.id,),
+                    )
+                    row = await cur.fetchone()
+                    if row is None:
+                        msg = (
+                            f"Workflow execution {execution.id!r} not found"
+                            f" (deleted between read and update)"
+                        )
+                        logger.warning(
+                            PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                            execution_id=execution.id,
+                            error=msg,
+                        )
+                        raise RecordNotFoundError(msg)
                     msg = (
                         f"Version conflict saving workflow execution"
                         f" {execution.id!r}: expected version"
-                        f" {execution.version - 1}, not found"
+                        f" {execution.version - 1}, current is {row[0]}"
                     )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                         execution_id=execution.id,
                         error=msg,
                     )
-                    raise VersionConflictError(msg)
+                    raise PersistenceVersionConflictError(msg)
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save workflow execution {execution.id!r}"
