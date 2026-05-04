@@ -11,7 +11,6 @@ Pre-built constants cover common patterns::
     require_approval_roles   -- CEO, Manager, or Board Member
 """
 
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -20,21 +19,11 @@ if TYPE_CHECKING:
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
 
+from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_GUARD_DENIED
 
 logger = get_logger(__name__)
-
-
-class HumanRole(StrEnum):
-    """Recognised human roles for access control."""
-
-    CEO = "ceo"
-    MANAGER = "manager"
-    BOARD_MEMBER = "board_member"
-    PAIR_PROGRAMMER = "pair_programmer"
-    OBSERVER = "observer"
-    SYSTEM = "system"
 
 
 # --- Role sets --------------------------------------------------------
@@ -196,8 +185,10 @@ require_approval_roles = require_roles(
 
 
 # --- Org-level permission guards (OrgRole) ----------------------------
-# String constants matching OrgRole enum values (avoid circular import
-# with auth.models which imports HumanRole from this module).
+# String constants matching OrgRole enum values. Kept as bare strings
+# so this module does not pull in ``synthorg.core.auth.models`` (which
+# would force every guard-importing controller to instantiate the full
+# user/role model graph at import time).
 _ORG_ROLE_OWNER = "owner"
 _ORG_ROLE_EDITOR = "editor"
 _ORG_ROLE_DEPARTMENT_ADMIN = "department_admin"

@@ -16,5 +16,8 @@ EVENT_STREAM_INVALID_RESUME_PAYLOAD: Final[str] = (
 )
 EVENT_STREAM_HUB_STARTED: Final[str] = "event_stream.hub.started"
 EVENT_STREAM_HUB_STOPPED: Final[str] = "event_stream.hub.stopped"
+EVENT_STREAM_HUB_STOP_TIMEOUT: Final[str] = "event_stream.hub.stop_timeout"
 EVENT_STREAM_HUB_PUBLISH_FAILED: Final[str] = "event_stream.hub.publish_failed"
 EVENT_STREAM_HUB_PUBLISH_DEDUPED: Final[str] = "event_stream.hub.publish_deduped"
+EVENT_STREAM_HUB_JANITOR_PRUNED: Final[str] = "event_stream.hub.janitor_pruned"
+EVENT_STREAM_HUB_JANITOR_FAILED: Final[str] = "event_stream.hub.janitor_failed"

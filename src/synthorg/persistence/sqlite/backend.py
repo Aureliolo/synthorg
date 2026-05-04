@@ -150,7 +150,7 @@ from synthorg.persistence.sqlite.workflow_execution_repo import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.auth.config import AuthConfig
+    from synthorg.core.auth.config import AuthConfig
     from synthorg.ontology.models import EntityDefinition
     from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.config import SQLiteConfig

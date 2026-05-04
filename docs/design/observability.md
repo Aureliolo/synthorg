@@ -203,6 +203,11 @@ All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc)
 |----------|-------|------------|
 | `EVENT_STREAM_HUB_PUBLISH_FAILED` | WARNING | A subscriber queue rejected the event (full); the publisher continues (best-effort fan-out). |
 | `EVENT_STREAM_HUB_PUBLISH_DEDUPED` | WARNING | An event was rejected as a duplicate within the per-session sliding-window TTL (default 60s). The hub keys dedup on `event.id`; identical ids within the window are dropped so an upstream retry (e.g. webhook handler that catches a transient publish failure and retries) cannot deliver the same event twice. The window is bounded per session (default 1024 entries, evicted on insert) so a noisy session cannot exhaust memory. |
+| `EVENT_STREAM_HUB_STARTED` | INFO | `EventStreamHub.start()` spawned the inactivity-TTL janitor task. Carries the resolved `idle_ttl_seconds` and `janitor_interval_seconds`. Idempotent: a second `start()` call while running is a no-op and does not re-emit. |
+| `EVENT_STREAM_HUB_STOPPED` | INFO | `EventStreamHub.stop()` cancelled the janitor and observed clean shutdown within the per-call deadline. |
+| `EVENT_STREAM_HUB_STOP_TIMEOUT` | ERROR | `EventStreamHub.stop()` exceeded its `stop_timeout_seconds` deadline waiting for the janitor to drain. The hub marks itself unrestartable (a subsequent `start()` raises `EventStreamHubUnrestartableError`); operators must construct a fresh instance. |
+| `EVENT_STREAM_HUB_JANITOR_PRUNED` | INFO | The janitor sweep evicted one or more subscribers whose `last_active` exceeded the idle TTL. Carries `pruned_subscribers`, `remaining_sessions`, and the active `idle_ttl_seconds`. Only emitted when at least one subscriber was pruned. |
+| `EVENT_STREAM_HUB_JANITOR_FAILED` | WARNING | A janitor sweep raised an unexpected exception. The loop catches and continues so memory reclaim resumes on the next interval; the failure detail is logged with `error_type` and `error` (redacted via `safe_error_description`). |
 
 **API entry-point boundary events (`observability/events/api.py`):**
 
@@ -389,6 +394,19 @@ Changes take effect without restart; the `ObservabilitySettingsSubscriber` rebui
 logging pipeline via `configure_logging()` (idempotent) when any of the four observability
 settings change (`root_log_level`, `enable_correlation`, `sink_overrides`, or `custom_sinks`).
 Custom sink file paths cannot collide with default sink paths (reserved even if disabled).
+
+The `EventStreamHub` janitor exposes two restart-required settings under
+`SettingNamespace.COMMUNICATION`:
+
+- `event_stream_subscriber_idle_ttl_seconds` (FLOAT, default 86400.0 / 24h): subscribers whose
+  queue has not received an event within this window are pruned by the janitor. Bounds memory
+  growth when an SSE client disconnects without `unsubscribe` (browser-tab kill, network
+  partition).
+- `event_stream_janitor_interval_seconds` (FLOAT, default 300.0 / 5min): wall-clock interval
+  between janitor sweeps.
+
+Both settings are resolved once at lifespan startup; runtime changes require a restart because
+the janitor task closes over the resolved values at spawn time.
 
 ---
 

@@ -9,8 +9,8 @@ clean exit and rolls back on exception.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from synthorg.api.auth.session import Session
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.roles import HumanRole
+from synthorg.core.auth.session import Session
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (

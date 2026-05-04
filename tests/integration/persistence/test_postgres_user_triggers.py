@@ -14,8 +14,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.api.auth.models import OrgRole, User
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import OrgRole, User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 

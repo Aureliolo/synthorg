@@ -12,11 +12,11 @@ import argon2
 import jwt
 
 from synthorg.api.auth.claims import JwtClaims
-from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.boundary import parse_typed
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import User  # noqa: TC001
+from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
@@ -24,7 +24,7 @@ from synthorg.observability.events.security import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.auth.config import AuthConfig
+    from synthorg.core.auth.config import AuthConfig
 
 logger = get_logger(__name__)
 
@@ -75,8 +75,12 @@ class AuthService:
             raise SecretNotConfiguredError(msg)
         return secret
 
-    def hash_password(self, password: str) -> str:
-        """Hash a password with Argon2id.
+    async def hash_password_async(self, password: str) -> str:
+        """Hash a password with Argon2id off the event loop.
+
+        Argon2id is CPU-bound; ``asyncio.to_thread`` defers the work
+        to the default thread pool so a single login request cannot
+        stall every concurrent request waiting on the loop.
 
         Args:
             password: Plaintext password.
@@ -84,10 +88,14 @@ class AuthService:
         Returns:
             Argon2id hash string.
         """
-        return _hasher.hash(password)
+        return await asyncio.to_thread(_hasher.hash, password)
 
-    def verify_password(self, password: str, password_hash: str) -> bool:
-        """Verify a password against an Argon2id hash.
+    async def verify_password_async(
+        self,
+        password: str,
+        password_hash: str,
+    ) -> bool:
+        """Verify a password against an Argon2id hash off the event loop.
 
         Args:
             password: Plaintext password to check.
@@ -103,7 +111,7 @@ class AuthService:
                 is corrupted or malformed (data integrity issue).
         """
         try:
-            return _hasher.verify(password_hash, password)
+            return await asyncio.to_thread(_hasher.verify, password_hash, password)
         except argon2.exceptions.VerifyMismatchError:
             return False
         except argon2.exceptions.VerificationError as exc:
@@ -122,43 +130,6 @@ class AuthService:
                 error=safe_error_description(exc),
             )
             raise
-
-    async def hash_password_async(self, password: str) -> str:
-        """Hash a password with Argon2id in a thread executor.
-
-        Offloads the CPU-intensive hashing to avoid blocking the
-        event loop.
-
-        Args:
-            password: Plaintext password.
-
-        Returns:
-            Argon2id hash string.
-        """
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self.hash_password, password)
-
-    async def verify_password_async(
-        self,
-        password: str,
-        password_hash: str,
-    ) -> bool:
-        """Verify a password against an Argon2id hash in a thread executor.
-
-        Offloads the CPU-intensive verification to avoid blocking the
-        event loop.
-
-        Args:
-            password: Plaintext password to check.
-            password_hash: Stored Argon2id hash.
-
-        Returns:
-            ``True`` if the password matches.
-        """
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            None, self.verify_password, password, password_hash
-        )
 
     def create_token(
         self,

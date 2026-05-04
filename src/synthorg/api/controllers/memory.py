@@ -12,10 +12,11 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.guards import HumanRole, require_roles
+from synthorg.api.guards import require_roles
 from synthorg.api.pagination import encode_repo_seek_meta
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
     ConflictError,
     FeatureNotImplementedError,

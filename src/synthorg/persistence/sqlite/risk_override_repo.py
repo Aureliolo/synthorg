@@ -16,6 +16,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 from synthorg.security.rules.risk_override import RiskTierOverride
 
 if TYPE_CHECKING:
@@ -27,14 +28,6 @@ _COLS = (
     "id, action_type, original_tier, override_tier, reason, "
     "created_by, created_at, expires_at, revoked_at, revoked_by"
 )
-
-
-def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
-    """Return True for UNIQUE/PRIMARY KEY violations."""
-    return exc.sqlite_errorname in {
-        "SQLITE_CONSTRAINT_UNIQUE",
-        "SQLITE_CONSTRAINT_PRIMARYKEY",
-    }
 
 
 class SQLiteRiskOverrideRepository:
@@ -105,7 +98,7 @@ class SQLiteRiskOverrideRepository:
                 await self._db.commit()
         except sqlite3.IntegrityError as exc:
             await self._rollback_quietly()
-            if _is_unique_constraint_error(exc):
+            if is_unique_constraint_error(exc):
                 msg = f"Risk override {override.id!r} already exists"
                 raise DuplicateRecordError(msg) from exc
             msg = "Failed to save risk override"

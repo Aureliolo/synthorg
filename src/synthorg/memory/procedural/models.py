@@ -188,15 +188,13 @@ class ProceduralMemoryProposal(BaseModel):
         description="Last time an agent applied this proposal",
     )
 
-    @field_validator("tags", mode="before")
+    @field_validator("tags", mode="after")
     @classmethod
-    def _deduplicate_tags(cls, v: object) -> object:
-        """Deduplicate tags before max_length validation."""
-        if isinstance(v, list | tuple):
-            deduped = deduplicate_tags(v)
-            max_tags = 20
-            return deduped if len(deduped) <= max_tags else deduped[:max_tags]
-        return v
+    def _deduplicate_tags(
+        cls, value: tuple[NotBlankStr, ...]
+    ) -> tuple[NotBlankStr, ...]:
+        """Deduplicate tags and clamp at the per-record limit."""
+        return deduplicate_tags(value)[:20]
 
     @model_validator(mode="after")
     def _validate_supersession_consistency(self) -> Self:

@@ -7,7 +7,14 @@ queries.  ``MemoryStoreRequest`` is what callers pass to ``store()``;
 
 from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -44,13 +51,13 @@ class MemoryMetadata(BaseModel):
         description="Categorization tags",
     )
 
-    @model_validator(mode="after")
-    def _deduplicate_tags(self) -> Self:
+    @field_validator("tags", mode="after")
+    @classmethod
+    def _deduplicate_tags(
+        cls, value: tuple[NotBlankStr, ...]
+    ) -> tuple[NotBlankStr, ...]:
         """Remove duplicate tags while preserving order."""
-        unique = deduplicate_tags(self.tags)
-        if len(unique) != len(self.tags):
-            object.__setattr__(self, "tags", unique)
-        return self
+        return deduplicate_tags(value)
 
 
 class MemoryStoreRequest(BaseModel):
@@ -219,13 +226,13 @@ class MemoryQuery(BaseModel):
         description="Only memories created before this timestamp",
     )
 
-    @model_validator(mode="after")
-    def _deduplicate_tags(self) -> Self:
+    @field_validator("tags", mode="after")
+    @classmethod
+    def _deduplicate_tags(
+        cls, value: tuple[NotBlankStr, ...]
+    ) -> tuple[NotBlankStr, ...]:
         """Remove duplicate tags while preserving order."""
-        unique = deduplicate_tags(self.tags)
-        if len(unique) != len(self.tags):
-            object.__setattr__(self, "tags", unique)
-        return self
+        return deduplicate_tags(value)
 
     @model_validator(mode="after")
     def _validate_time_range(self) -> Self:

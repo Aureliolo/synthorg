@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.auth.models import OrgRole, User
-from synthorg.api.guards import HumanRole
 from synthorg.api.lifecycle_helpers import _maybe_promote_first_owner
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.core.auth.models import OrgRole, User
+from synthorg.core.auth.roles import HumanRole
 from tests.unit.api.fakes import FakePersistenceBackend
 
 

@@ -27,8 +27,8 @@ from synthorg.observability.events.api import API_NETWORK_EXPOSURE_WARNING
 if TYPE_CHECKING:
     from litestar.types import Middleware
 
-    from synthorg.api.auth.config import AuthConfig
     from synthorg.api.config import ApiConfig
+    from synthorg.core.auth.config import AuthConfig
 
 logger = get_logger(__name__)
 

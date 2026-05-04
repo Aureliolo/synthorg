@@ -6,13 +6,14 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.controllers.ws import (
     _WS_CLOSE_AUTH_FAILED,
     _WS_CLOSE_FORBIDDEN,
 )
 from synthorg.api.controllers.ws_protocol import channel_allowed, handle_message
-from synthorg.api.guards import _READ_ROLES, HumanRole
+from synthorg.api.guards import _READ_ROLES
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.core.auth.roles import HumanRole
 
 # Preserve the pre-split names so the (many) test bodies below read
 # naturally -- matches the legacy identifiers used before the protocol
@@ -423,7 +424,7 @@ class TestWsTicketAuth:
         The server first sends ``{"action": "auth_ok"}`` so the client
         can transition to ``connected=true`` only after auth completes.
         """
-        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
         app_state = test_client.app.state["app_state"]
         user = AuthenticatedUser(
@@ -456,7 +457,7 @@ class TestWsTicketAuth:
         Closes the flash gap where ``connected=true`` was set client-side
         before the server validated the ticket.
         """
-        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
         app_state = test_client.app.state["app_state"]
         user = AuthenticatedUser(
@@ -478,7 +479,7 @@ class TestWsTicketAuth:
         test_client: TestClient[Any],
     ) -> None:
         """Client ping receives a server pong without affecting state."""
-        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
         app_state = test_client.app.state["app_state"]
         user = AuthenticatedUser(

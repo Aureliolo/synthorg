@@ -154,7 +154,7 @@ from synthorg.persistence.postgres.workflow_execution_repo import (
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
-    from synthorg.api.auth.config import AuthConfig
+    from synthorg.core.auth.config import AuthConfig
     from synthorg.hr.persistence_protocol import (
         CollaborationMetricRepository,
         LifecycleEventRepository,

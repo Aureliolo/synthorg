@@ -28,17 +28,7 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.security.models import AuditEntry, AuditVerdictStr
 
-_DUPLICATE_FRAGMENTS = (
-    "UNIQUE constraint failed: audit_entries.id",
-    "PRIMARY KEY",
-)
-
-
-def _sqlite_is_duplicate(exc: BaseException) -> bool:
-    """Detect SQLite duplicate-key violations by error message."""
-    text = str(exc)
-    return any(frag in text for frag in _DUPLICATE_FRAGMENTS)
-
+from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 
 logger = get_logger(__name__)
 
@@ -97,7 +87,7 @@ class SQLiteAuditRepository:
                 raise classify_audit_save_error(
                     exc,
                     entry_id=entry.id,
-                    is_duplicate=_sqlite_is_duplicate,
+                    is_duplicate=is_unique_constraint_error,
                 ) from exc
 
     async def _safe_rollback(self) -> None:

@@ -17,8 +17,6 @@ import structlog
 from pydantic import ValidationError
 
 from synthorg.api.auth.claims import JwtClaims
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import User
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import (
     SYSTEM_AUDIENCE,
@@ -28,7 +26,9 @@ from synthorg.api.auth.system_user import (
     USER_AUDIENCE,
     USER_ISSUER,
 )
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import User
+from synthorg.core.auth.roles import HumanRole
 
 _SECRET = "test-secret-that-is-at-least-32-chars-long!"
 _ALG: Literal["HS256"] = "HS256"

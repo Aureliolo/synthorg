@@ -154,6 +154,9 @@ class LlmDecompositionStrategy:
         last_response: CompletionResponse | None = None
         attempts = 1 + self._config.max_retries
 
+        # See docs/reference/retry-patterns.md: Pattern B -- semantic
+        # self-correction. Each attempt re-prompts the LLM with prior-
+        # attempt context; no temporal backoff between iterations.
         for attempt in range(attempts):
             if attempt > 0 and last_error is not None:
                 logger.info(

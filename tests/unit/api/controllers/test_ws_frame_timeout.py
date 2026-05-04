@@ -11,9 +11,9 @@ import asyncio
 
 import pytest
 
-from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.controllers.ws import _receive_loop
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.core.auth.roles import HumanRole
 
 pytestmark = pytest.mark.unit
 

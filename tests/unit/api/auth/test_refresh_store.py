@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import aiosqlite
 import pytest
 
-from synthorg.api.auth.refresh_record import RefreshRejectReason
+from synthorg.core.auth.refresh_record import RefreshRejectReason
 from synthorg.persistence.sqlite.refresh_repo import (
     SQLiteRefreshTokenRepository as RefreshStore,
 )

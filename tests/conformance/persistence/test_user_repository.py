@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.api.auth.models import ApiKey, User
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import ApiKey, User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend

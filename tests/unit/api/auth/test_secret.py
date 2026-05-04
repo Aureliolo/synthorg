@@ -24,14 +24,14 @@ class TestResolveJwtSecret:
         assert result == secret.strip()
 
     def test_exact_min_length_accepted(self) -> None:
-        from synthorg.api.auth.config import MIN_SECRET_LENGTH
+        from synthorg.core.auth.config import MIN_SECRET_LENGTH
 
         secret = "x" * MIN_SECRET_LENGTH
         with patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": secret}):
             assert resolve_jwt_secret() == secret
 
     def test_one_below_min_length_raises(self) -> None:
-        from synthorg.api.auth.config import MIN_SECRET_LENGTH
+        from synthorg.core.auth.config import MIN_SECRET_LENGTH
 
         short = "x" * (MIN_SECRET_LENGTH - 1)
         with (

@@ -307,6 +307,9 @@ class PostgresDecisionRepository:
         centralizes the error-mapping logic for the write path.
         """
         last_exc: psycopg.errors.UniqueViolation | None = None
+        # See docs/reference/retry-patterns.md: Pattern C/CAS -- version-
+        # race retry that branches on the constraint name to distinguish
+        # the (task_id, version) race from a real duplicate insert.
         for attempt in range(self._MAX_VERSION_RACE_ATTEMPTS):
             try:
                 async with (

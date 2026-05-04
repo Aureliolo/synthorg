@@ -15,9 +15,9 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
-from synthorg.api.auth.models import ApiKey, OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import ApiKey, OrgRole, User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description

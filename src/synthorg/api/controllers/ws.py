@@ -26,7 +26,6 @@ from litestar.channels import ChannelsPlugin
 from litestar.exceptions import WebSocketDisconnect
 from litestar.handlers import websocket
 
-from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.channels import ALL_CHANNELS, user_channel
 from synthorg.api.controllers.ws_protocol import (
     channel_allowed,
@@ -38,7 +37,9 @@ from synthorg.api.controllers.ws_revalidation import (
     _close_socket_safely,
     _periodic_revalidate,
 )
-from synthorg.api.guards import _READ_ROLES, HumanRole
+from synthorg.api.guards import _READ_ROLES
+from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_AUTH_OK,

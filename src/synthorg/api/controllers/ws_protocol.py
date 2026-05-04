@@ -13,7 +13,6 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.boundary import parse_typed
 from synthorg.api.channels import (
     ALL_CHANNELS,
@@ -22,13 +21,14 @@ from synthorg.api.channels import (
     is_user_channel,
     user_channel,
 )
-from synthorg.api.guards import HumanRole
 from synthorg.api.ws_control_models import (
     WS_CONTROL_MESSAGE_ADAPTER,
     WsPingMessage,
     WsSubscribeMessage,
     WsUnsubscribeMessage,
 )
+from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_INVALID_MESSAGE,

@@ -25,35 +25,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_LISTED,
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
+from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 
 logger = get_logger(__name__)
 
 _MAX_LIST_ROWS: int = 10_000
-
-_UNIQUE_CONSTRAINT_NAMES: frozenset[str] = frozenset(
-    {
-        "SQLITE_CONSTRAINT_UNIQUE",
-        "SQLITE_CONSTRAINT_PRIMARYKEY",
-    }
-)
-
-
-def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
-    """Return True when ``exc`` is a UNIQUE / PRIMARY KEY violation.
-
-    Mirrors the helper in ``decision_repo.py``.  Uses
-    ``sqlite_errorname`` (Python 3.11+) as the authoritative signal
-    rather than brittle substring matching on the error message;
-    project targets Python 3.14+ so the attribute is always present.
-
-    Other ``IntegrityError`` flavours -- ``NOT NULL``, ``CHECK``,
-    ``FOREIGN KEY``, ``TRIGGER`` -- represent schema-level invariants,
-    not lifecycle conflicts.  Mapping them to ``DuplicateRecordError``
-    would mask real bugs (e.g. an API caller leaving a NOT NULL field
-    blank) as if a duplicate already existed; surface them as
-    ``QueryError`` instead so the failure mode matches the cause.
-    """
-    return exc.sqlite_errorname in _UNIQUE_CONSTRAINT_NAMES
 
 
 def _row_to_project(row: aiosqlite.Row) -> Project:
@@ -152,7 +128,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     error=safe_error_description(exc),
                     sqlite_errorname=getattr(exc, "sqlite_errorname", None),
                 )
-                if _is_unique_constraint_error(exc):
+                if is_unique_constraint_error(exc):
                     msg = f"Project with id {project.id!r} already exists"
                     raise DuplicateRecordError(msg) from exc
                 # NOT NULL / CHECK / FOREIGN KEY / TRIGGER: real

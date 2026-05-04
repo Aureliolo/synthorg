@@ -94,9 +94,11 @@ class DistributedDispatcher:
         clock: Clock | None = None,
     ) -> None:
         self._task_queue = task_queue
-        # Forward the clock so tests can inject ``FakeClock`` and drive
-        # retry backoff deterministically; ``GeneralRetryHandler``
-        # defaults to ``SystemClock`` when omitted.
+        # See docs/reference/retry-patterns.md: Pattern A -- transient
+        # I/O retry for the NATS publish hot path. Forwards the clock so
+        # tests can inject ``FakeClock`` and drive retry backoff
+        # deterministically; ``GeneralRetryHandler`` defaults to
+        # ``SystemClock`` when omitted.
         self._retry = GeneralRetryHandler(
             retryable=lambda _exc: True,
             max_attempts=_PUBLISH_MAX_ATTEMPTS,

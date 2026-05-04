@@ -6,8 +6,9 @@ from typing import Any
 import pytest
 from litestar.exceptions import PermissionDeniedException
 
-from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, OrgRole
-from synthorg.api.guards import HumanRole, require_org_mutation
+from synthorg.api.guards import require_org_mutation
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, OrgRole
+from synthorg.core.auth.roles import HumanRole
 
 
 def _make_connection(

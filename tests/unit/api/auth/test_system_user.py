@@ -2,7 +2,6 @@
 
 import pytest
 
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import (
     SYSTEM_USER_ID,
@@ -10,7 +9,8 @@ from synthorg.api.auth.system_user import (
     ensure_system_user,
     is_system_user,
 )
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import QueryError
 from tests.unit.api.conftest import _TEST_JWT_SECRET
 from tests.unit.api.fakes import FakePersistenceBackend

@@ -27,8 +27,8 @@ import threading
 
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (

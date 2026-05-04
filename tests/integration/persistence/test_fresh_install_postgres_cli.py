@@ -45,7 +45,7 @@ class TestFreshInstallPostgresLifecycle:
         ``Postgres*`` variant via type dispatch; this test proves the
         happy path end-to-end.
         """
-        from synthorg.api.auth.config import AuthConfig
+        from synthorg.core.auth.config import AuthConfig
         from synthorg.persistence.postgres.lockout_repo import (
             PostgresLockoutRepository,
         )

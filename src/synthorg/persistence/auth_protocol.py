@@ -12,10 +12,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
-    from synthorg.api.auth.refresh_record import (
+    from synthorg.core.auth.refresh_record import (
         RefreshConsumeOutcome,
     )
-    from synthorg.api.auth.session import Session
+    from synthorg.core.auth.session import Session
 
 
 @runtime_checkable

@@ -58,6 +58,7 @@ CLI: see `cli/CLAUDE.md`. Use `go -C cli` (never `cd cli`).
 - [docs/reference/errors.md](docs/reference/errors.md): RFC 9457 codes + HTTP exception handler registration
 - [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md): currency / locale / timezone resolution chain
 - [docs/reference/typed-boundaries.md](docs/reference/typed-boundaries.md): per-boundary `parse_typed()` inventory + recipe
+- [docs/reference/retry-patterns.md](docs/reference/retry-patterns.md): retry-pattern decision tree (transient I/O, semantic self-correction, contention/sync) and the 5 inline-site map
 
 ## Web Dashboard Design System (MANDATORY)
 

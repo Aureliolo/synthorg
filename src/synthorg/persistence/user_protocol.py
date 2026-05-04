@@ -6,8 +6,8 @@ repositories share the auth admin surface.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.api.auth.models import ApiKey, User  # noqa: TC001
-from synthorg.api.guards import HumanRole  # noqa: TC001
+from synthorg.core.auth.models import ApiKey, User  # noqa: TC001
+from synthorg.core.auth.roles import HumanRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 

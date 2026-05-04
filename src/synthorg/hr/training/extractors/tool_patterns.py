@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
@@ -87,7 +88,7 @@ class ToolPatternExtractor:
         start = now - timedelta(days=self._lookback_days)
 
         # Deduplicate while preserving order to avoid redundant fetches.
-        unique_ids = list(dict.fromkeys(source_agent_ids))
+        unique_ids = list(dedupe_preserving_order(source_agent_ids))
 
         # Fetch records for each agent concurrently.
         async with asyncio.TaskGroup() as tg:

@@ -21,6 +21,7 @@ from types import MappingProxyType
 from typing import Final
 from uuid import uuid4
 
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.trajectory.scorer import TrajectoryScorer  # noqa: TC001
 from synthorg.hr.evaluation.config import EvalLoopConfig
@@ -399,12 +400,10 @@ class EvalLoopCoordinator:
                 continue
             actions.append(mapped)
 
-        # ``dict.fromkeys`` preserves first-seen order while
-        # deduplicating -- two distinct weak pillars that share an
-        # action id (e.g. an override collapsing two pillars onto
-        # ``"escalate_to_engineer"``) should not fire the remediation
-        # twice.
-        unique_actions = tuple(dict.fromkeys(actions))
+        # Two distinct weak pillars that share an action id (e.g. an
+        # override collapsing two pillars onto ``"escalate_to_engineer"``)
+        # must not fire the remediation twice.
+        unique_actions = dedupe_preserving_order(actions)
         if unique_actions:
             logger.info(
                 EVAL_LOOP_ACTION_PROPOSED,

@@ -1,6 +1,5 @@
 """LLM-backed requirement generator."""
 
-import json
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +8,7 @@ from pydantic import ValidationError
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.client.models import GenerationContext, TaskRequirement
 from synthorg.core.enums import Complexity, Priority, TaskType
+from synthorg.core.json_parsing import extract_json_array_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -183,21 +183,8 @@ class LLMGenerator:
 
     @staticmethod
     def _extract_json_array(content: str) -> list[dict[str, Any]] | None:
-        stripped = content.strip()
-        if not stripped:
-            return None
-        try:
-            parsed = json.loads(stripped)
-        except json.JSONDecodeError:
-            start = stripped.find("[")
-            end = stripped.rfind("]")
-            if start == -1 or end == -1 or end < start:
-                return None
-            try:
-                parsed = json.loads(stripped[start : end + 1])
-            except json.JSONDecodeError:
-                return None
-        if not isinstance(parsed, list):
+        parsed = extract_json_array_from_llm_response(content)
+        if parsed is None:
             return None
         return [item for item in parsed if isinstance(item, dict)]
 

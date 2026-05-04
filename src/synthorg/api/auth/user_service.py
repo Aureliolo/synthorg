@@ -13,7 +13,7 @@ chain.
 
 from typing import TYPE_CHECKING
 
-from synthorg.api.auth.models import User  # noqa: TC001
+from synthorg.core.auth.models import User  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
