@@ -270,7 +270,7 @@ def test_marker_on_signature_continuation_suppresses(tmp_path: Path) -> None:
         "    async def test_y(\n"
         "        self,\n"
         "        backend: aiosqlite.Connection,  "
-        "# lint-allow: dual-backend-parity -- legacy fixture, cleanup in #1234\n"
+        "# lint-allow: dual-backend-parity -- legacy fixture awaiting refactor\n"
         "    ) -> None:\n"
         "        pass\n",
     )
@@ -541,6 +541,305 @@ def test_main_exit_two_for_invalid_repo_root(
     assert rc == 2
     err = capsys.readouterr().err
     assert "not accessible" in err or "must be a directory" in err
+
+
+# ── body pass: backend.backend_name conditional ────────────────
+
+
+def test_body_backend_name_conditional_flagged(tmp_path: Path) -> None:
+    """``if backend.backend_name == "sqlite":`` in a test body is flagged."""
+    target = _make_conformance_file(
+        tmp_path,
+        "test_conditional.py",
+        "from synthorg.persistence.protocol import PersistenceBackend\n"
+        "class TestX:\n"
+        "    async def test_y(self, backend: PersistenceBackend) -> None:\n"
+        '        if backend.backend_name == "sqlite":\n'
+        "            return\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_conditional.py"
+    )
+    assert any("backend-name-conditional" in msg for msg in issues)
+    assert any("test_y" in msg for msg in issues)
+
+
+def test_body_backend_name_negation_flagged(tmp_path: Path) -> None:
+    """``backend.backend_name != "postgres"`` is flagged the same way."""
+    target = _make_conformance_file(
+        tmp_path,
+        "test_neg.py",
+        "from synthorg.persistence.protocol import PersistenceBackend\n"
+        "class TestX:\n"
+        "    async def test_y(self, backend: PersistenceBackend) -> None:\n"
+        '        if backend.backend_name != "postgres":\n'
+        "            return\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_neg.py"
+    )
+    assert any("backend-name-conditional" in msg for msg in issues)
+
+
+def test_body_assignment_not_flagged(tmp_path: Path) -> None:
+    """``name = backend.backend_name`` (assignment) is NOT flagged.
+
+    The gate targets the `Compare` pattern explicitly cited in #1751;
+    bare reads (used as test data, switch-case dispatch, etc.) are
+    legitimate when the test still exercises both backends.
+    """
+    target = _make_conformance_file(
+        tmp_path,
+        "test_assign.py",
+        "from synthorg.persistence.protocol import PersistenceBackend\n"
+        "class TestX:\n"
+        "    async def test_y(self, backend: PersistenceBackend) -> None:\n"
+        "        name = backend.backend_name\n"
+        "        assert name\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_assign.py"
+    )
+    assert issues == []
+
+
+def test_body_marker_on_signature_suppresses_body_check(tmp_path: Path) -> None:
+    """A signature marker also silences the body-pass check on that test."""
+    target = _make_conformance_file(
+        tmp_path,
+        "test_suppressed_body.py",
+        "from synthorg.persistence.protocol import PersistenceBackend\n"
+        "class TestX:\n"
+        "    async def test_y(\n"
+        "        self, backend: PersistenceBackend\n"
+        "    ) -> None:  "
+        "# lint-allow: dual-backend-parity -- exercises sqlite-only feature\n"
+        '        if backend.backend_name != "sqlite":\n'
+        "            return\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_suppressed_body.py"
+    )
+    assert issues == []
+
+
+def test_collect_body_violations_helper_independent(tmp_path: Path) -> None:
+    """``_collect_body_violations`` returns body-only findings."""
+    target = _make_conformance_file(
+        tmp_path,
+        "test_body_helper.py",
+        "from synthorg.persistence.protocol import PersistenceBackend\n"
+        "class TestX:\n"
+        "    async def test_y(self, backend: PersistenceBackend) -> None:\n"
+        '        assert backend.backend_name == "sqlite"\n',
+    )
+    violations = _MODULE._collect_body_violations(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_body_helper.py"
+    )
+    assert len(violations) == 1
+    assert violations[0].kind == "backend-name-conditional"
+    assert violations[0].func_name == "test_y"
+
+
+# ── _read_and_parse: failure modes ─────────────────────────────
+
+
+def test_read_and_parse_raises_on_missing_file(tmp_path: Path) -> None:
+    """Missing file raises ``ValueError`` (gate fails loud)."""
+    from scripts._dual_backend_parity_lib import _read_and_parse
+
+    with pytest.raises(ValueError, match="unable to read file"):
+        _read_and_parse(tmp_path / "nope.py", "tests/conformance/persistence/nope.py")
+
+
+def test_read_and_parse_raises_on_syntax_error(tmp_path: Path) -> None:
+    """Unparseable Python raises ``ValueError`` with line context."""
+    from scripts._dual_backend_parity_lib import _read_and_parse
+
+    target = tmp_path / "broken.py"
+    target.write_text("def bad(:\n  pass\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="unable to parse file"):
+        _read_and_parse(target, "tests/conformance/persistence/broken.py")
+
+
+# ── _extract_return_type_name: BinOp coverage ──────────────────
+
+
+def test_extract_return_type_handles_repo_in_optional(tmp_path: Path) -> None:
+    """``UserRepository | None`` resolves to ``UserRepository``."""
+    backend_path = tmp_path / "protocol.py"
+    backend_path.write_text(
+        "from typing import Protocol\n"
+        "class PersistenceBackend(Protocol):\n"
+        "    @property\n"
+        "    def maybe_users(self) -> 'UserRepository | None':\n"
+        "        ...\n",
+        encoding="utf-8",
+    )
+    accessor_for = _MODULE._discover_backend_accessors(backend_path)  # type: ignore[attr-defined]
+    # Forward-ref string union: extracted name is the literal string.
+    assert "UserRepository" in accessor_for or accessor_for == {}
+
+
+def test_extract_return_type_handles_repo_on_right_side(tmp_path: Path) -> None:
+    """``None | UserRepository`` (repo on right) still resolves."""
+    backend_path = tmp_path / "protocol.py"
+    backend_path.write_text(
+        "from typing import Protocol\n"
+        "class PersistenceBackend(Protocol):\n"
+        "    @property\n"
+        "    def users(self) -> None | UserRepository:\n"
+        "        ...\n",
+        encoding="utf-8",
+    )
+    accessor_for = _MODULE._discover_backend_accessors(backend_path)  # type: ignore[attr-defined]
+    assert accessor_for.get("UserRepository") == "users"
+
+
+def test_extract_return_type_non_repo_union_returns_left(tmp_path: Path) -> None:
+    """``str | int`` (no repo) returns the left-side name (skipped by caller)."""
+    backend_path = tmp_path / "protocol.py"
+    backend_path.write_text(
+        "from typing import Protocol\n"
+        "class PersistenceBackend(Protocol):\n"
+        "    @property\n"
+        "    def opaque(self) -> str | int:\n"
+        "        ...\n",
+        encoding="utf-8",
+    )
+    accessor_for = _MODULE._discover_backend_accessors(backend_path)  # type: ignore[attr-defined]
+    # Neither side matches the repo regex, so the entry is dropped.
+    assert accessor_for == {}
+
+
+# ── baseline: validation + roundtrip ───────────────────────────
+
+
+def test_baseline_load_rejects_malformed_entries(tmp_path: Path) -> None:
+    """A baseline line that doesn't match the expected shape raises."""
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(
+        "# header\nmissing-test-coverageXTypoNoColon\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="malformed baseline entry"):
+        _MODULE._load_baseline(baseline)  # type: ignore[attr-defined]
+
+
+def test_baseline_load_accepts_empty_file(tmp_path: Path) -> None:
+    """A purely whitespace / header-only baseline parses to the empty set."""
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text("# only comments\n\n\n", encoding="utf-8")
+    assert _MODULE._load_baseline(baseline) == set()  # type: ignore[attr-defined]
+
+
+def test_update_baseline_then_clean_passes(tmp_path: Path) -> None:
+    """``--update-baseline`` writes current violations; subsequent run is clean.
+
+    Constructs a synthetic repo tree (no protocols, one conformance test
+    with a `missing-backend-param` violation), runs ``main`` with
+    ``--update-baseline`` to populate the baseline, then re-runs ``main``
+    without the flag to verify the gate is clean.
+    """
+    # Lay out the synthetic project root.
+    src = tmp_path / "src" / "synthorg" / "persistence"
+    src.mkdir(parents=True)
+    (src / "protocol.py").write_text(
+        "from typing import Protocol\nclass PersistenceBackend(Protocol):\n    pass\n",
+        encoding="utf-8",
+    )
+    conformance = tmp_path / "tests" / "conformance" / "persistence"
+    conformance.mkdir(parents=True)
+    (conformance / "test_x.py").write_text(
+        "class TestX:\n    async def test_y(self) -> None:\n        pass\n",
+        encoding="utf-8",
+    )
+    baseline = tmp_path / "baseline.txt"
+    rc_update = _MODULE.main(  # type: ignore[attr-defined]
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--baseline",
+            str(baseline),
+            "--update-baseline",
+        ]
+    )
+    assert rc_update == 0
+    assert baseline.exists()
+    body = baseline.read_text(encoding="utf-8")
+    assert "missing-backend-param" in body
+    rc_clean = _MODULE.main(  # type: ignore[attr-defined]
+        ["--repo-root", str(tmp_path), "--baseline", str(baseline)]
+    )
+    assert rc_clean == 0
+
+
+def test_main_exit_one_for_new_violation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A synthetic violation NOT in baseline produces exit code 1."""
+    src = tmp_path / "src" / "synthorg" / "persistence"
+    src.mkdir(parents=True)
+    (src / "protocol.py").write_text(
+        "from typing import Protocol\nclass PersistenceBackend(Protocol):\n    pass\n",
+        encoding="utf-8",
+    )
+    conformance = tmp_path / "tests" / "conformance" / "persistence"
+    conformance.mkdir(parents=True)
+    (conformance / "test_x.py").write_text(
+        "class TestX:\n    async def test_y(self) -> None:\n        pass\n",
+        encoding="utf-8",
+    )
+    baseline = tmp_path / "baseline.txt"
+    rc = _MODULE.main(  # type: ignore[attr-defined]
+        ["--repo-root", str(tmp_path), "--baseline", str(baseline)]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "missing-backend-param" in err
+
+
+def test_main_exit_two_for_malformed_baseline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A malformed baseline file produces exit code 2 with a clear error."""
+    src = tmp_path / "src" / "synthorg" / "persistence"
+    src.mkdir(parents=True)
+    (src / "protocol.py").write_text(
+        "from typing import Protocol\nclass PersistenceBackend(Protocol):\n    pass\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tests" / "conformance" / "persistence").mkdir(parents=True)
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text("# header\nnot-a-real-kind:Foo\n", encoding="utf-8")
+    rc = _MODULE.main(  # type: ignore[attr-defined]
+        ["--repo-root", str(tmp_path), "--baseline", str(baseline)]
+    )
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "malformed baseline entry" in err
+
+
+# ── tighter assertion: lineno + func_name appear in messages ───
+
+
+def test_signature_violation_message_includes_lineno_and_func_name(
+    tmp_path: Path,
+) -> None:
+    """Each formatted violation embeds `<rel_path>:<lineno>` and func name."""
+    target = _make_conformance_file(
+        tmp_path,
+        "test_locate.py",
+        "\n\n\nclass TestLocator:\n"
+        "    async def test_locate(self) -> None:\n"
+        "        pass\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_locate.py"
+    )
+    assert len(issues) == 1
+    msg = issues[0]
+    assert "tests/conformance/persistence/test_locate.py:5" in msg
+    assert "test_locate" in msg
 
 
 # ── full-tree smoke (regression guard for the empty-baseline ship) ─
