@@ -1,0 +1,167 @@
+"""Postgres repository for {{.ModuleDocSlug}} items.
+
+Sibling of :class:`SQLite{{.ClassName}}Repository` backed by
+``psycopg_pool.AsyncConnectionPool``. Both implementations satisfy the
+:class:`{{.ClassName}}Repository` protocol structurally, so the
+service layer depends on the protocol, never on a backend impl.
+"""
+
+from typing import TYPE_CHECKING, Any
+
+import psycopg
+from psycopg.rows import dict_row
+
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.{{.Domain}} import (
+    {{shout .Domain}}_REPO_FAILED,
+    {{shout .Domain}}_REPO_FETCHED,
+    {{shout .Domain}}_REPO_LISTED,
+)
+from synthorg.persistence._shared import normalize_utc
+from synthorg.{{.Domain}}.models import {{.ClassName}}Item
+
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
+
+logger = get_logger(__name__)
+
+_MAX_PAGE_LIMIT = 1000
+
+_SELECT_COLS = "id, payload, created_at"
+
+_UPSERT_SQL = f"""
+    INSERT INTO {{.Domain}}_items ({_SELECT_COLS})
+    VALUES (%s, %s, %s)
+    ON CONFLICT (id) DO UPDATE SET
+        payload = EXCLUDED.payload,
+        created_at = EXCLUDED.created_at
+"""  # noqa: S608
+
+_SELECT_BY_ID_SQL = (
+    f"SELECT {_SELECT_COLS} FROM {{.Domain}}_items WHERE id = %s"  # noqa: S608
+)
+
+_LIST_SQL = (
+    f"SELECT {_SELECT_COLS} FROM {{.Domain}}_items "  # noqa: S608
+    "ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s"
+)
+
+_DELETE_SQL = "DELETE FROM {{.Domain}}_items WHERE id = %s"
+
+
+def _row_to_item(row: dict[str, Any]) -> {{.ClassName}}Item:
+    return {{.ClassName}}Item(
+        id=str(row["id"]),
+        payload=str(row["payload"]),
+        created_at=normalize_utc(row["created_at"]),
+    )
+
+
+class Postgres{{.ClassName}}Repository:
+    """Postgres-backed {{.ModuleDocSlug}} item repository.
+
+    Args:
+        pool: An active ``psycopg_pool.AsyncConnectionPool``.
+    """
+
+    def __init__(self, pool: "AsyncConnectionPool") -> None:
+        self._pool = pool
+
+    async def save(self, item: {{.ClassName}}Item) -> None:
+        """Upsert a {{.ModuleDocSlug}} item."""
+        params = (item.id, item.payload, item.created_at)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cursor:
+                await cursor.execute(_UPSERT_SQL, params)
+        except psycopg.errors.IntegrityError as exc:
+            msg = f"Constraint violation saving {{.Domain}} {item.id!r}"
+            logger.warning(
+                {{shout .Domain}}_REPO_FAILED,
+                item_id=item.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+        except psycopg.Error as exc:
+            msg = f"Failed to save {{.Domain}} {item.id!r}"
+            logger.warning(
+                {{shout .Domain}}_REPO_FAILED,
+                item_id=item.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def get(self, item_id: NotBlankStr) -> {{.ClassName}}Item | None:
+        """Fetch a single item by ID."""
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cursor,
+            ):
+                await cursor.execute(_SELECT_BY_ID_SQL, (item_id,))
+                row = await cursor.fetchone()
+        except psycopg.Error as exc:
+            msg = f"Failed to fetch {{.Domain}} {item_id!r}"
+            logger.warning(
+                {{shout .Domain}}_REPO_FAILED,
+                item_id=item_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        logger.debug({{shout .Domain}}_REPO_FETCHED, item_id=item_id)
+        return _row_to_item(row)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[{{.ClassName}}Item, ...]:
+        """List items with newest-first ordering."""
+        if limit < 1 or offset < 0:
+            msg = (
+                f"Invalid pagination: limit={limit} (must be >= 1), "
+                f"offset={offset} (must be >= 0)"
+            )
+            raise QueryError(msg)
+        capped = min(limit, _MAX_PAGE_LIMIT)
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cursor,
+            ):
+                await cursor.execute(_LIST_SQL, (capped, offset))
+                rows = await cursor.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list {{.Domain}} items"
+            logger.warning(
+                {{shout .Domain}}_REPO_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug({{shout .Domain}}_REPO_LISTED, count=len(rows))
+        return tuple(_row_to_item(row) for row in rows)
+
+    async def delete(self, item_id: NotBlankStr) -> bool:
+        """Delete an item by ID; returns ``True`` if a row was removed."""
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cursor:
+                await cursor.execute(_DELETE_SQL, (item_id,))
+                deleted = cursor.rowcount or 0
+        except psycopg.Error as exc:
+            msg = f"Failed to delete {{.Domain}} {item_id!r}"
+            logger.warning(
+                {{shout .Domain}}_REPO_FAILED,
+                item_id=item_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return deleted > 0

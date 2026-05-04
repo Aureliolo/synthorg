@@ -2,16 +2,46 @@ package scaffold
 
 import "fmt"
 
-// renderPersistence is implemented in a follow-up commit on this PR;
-// dispatch is wired now so the Cobra subcommand graph is complete.
+// renderPersistence emits the dual-backend repository skeleton:
 //
-// The intended layout (matching cli/internal/scaffold/templates/) is:
+//   - src/synthorg/<domain>/models.py                              -- frozen Pydantic entity model
+//   - src/synthorg/persistence/<domain>_protocol.py                -- Repository protocol
+//   - src/synthorg/persistence/sqlite/<domain>_repo.py             -- SQLite impl
+//   - src/synthorg/persistence/postgres/<domain>_repo.py           -- Postgres impl
+//   - src/synthorg/observability/events/<domain>.py                -- repo event constants
+//   - tests/conformance/persistence/test_<domain>_repository.py    -- parametrised dual-backend
+//   - src/synthorg/persistence/<domain>_WIRING.md                  -- schema + atlas + backend exposure
 //
-//   - src/synthorg/persistence/<domain>_protocol.py (Repository protocol)
-//   - src/synthorg/persistence/sqlite/<domain>_repo.py
-//   - src/synthorg/persistence/postgres/<domain>_repo.py
-//   - tests/conformance/persistence/test_<domain>_repository.py (parametrised dual-backend)
-//   - WIRING.md (PersistenceBackend exposure + atlas migrate diff steps)
-func renderPersistence(_ Params) ([]RenderedFile, error) {
-	return nil, fmt.Errorf("scaffold kind %q is not yet implemented", KindPersistence)
+// The Pydantic model carries a single `payload: str` placeholder so the
+// repos compile and tests run end-to-end against a fresh schema; the
+// WIRING.md walks the user through replacing the placeholder with the
+// real entity shape and re-running `atlas migrate diff`.
+//
+// The event constants file is shared with the service scaffold's
+// events file: when a domain has both a service AND persistence
+// scaffold, the second invocation will fail (Overwrite=false) so the
+// user picks an order. A future iteration could merge the two event
+// files; for v0 we keep them disjoint and document the constraint.
+func renderPersistence(p Params) ([]RenderedFile, error) {
+	files := []struct {
+		out string
+		tpl string
+	}{
+		{fmt.Sprintf("src/synthorg/%s/models.py", p.Domain), "persistence_models.py.tmpl"},
+		{fmt.Sprintf("src/synthorg/persistence/%s_protocol.py", p.Domain), "persistence_protocol.py.tmpl"},
+		{fmt.Sprintf("src/synthorg/persistence/sqlite/%s_repo.py", p.Domain), "persistence_sqlite_repo.py.tmpl"},
+		{fmt.Sprintf("src/synthorg/persistence/postgres/%s_repo.py", p.Domain), "persistence_postgres_repo.py.tmpl"},
+		{fmt.Sprintf("src/synthorg/observability/events/%s.py", p.Domain), "persistence_events.py.tmpl"},
+		{fmt.Sprintf("tests/conformance/persistence/test_%s_repository.py", p.Domain), "persistence_conformance_test.py.tmpl"},
+		{fmt.Sprintf("src/synthorg/persistence/%s_WIRING.md", p.Domain), "persistence_wiring.md.tmpl"},
+	}
+	out := make([]RenderedFile, 0, len(files))
+	for _, f := range files {
+		body, err := renderTemplate(f.tpl, p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, RenderedFile{Path: f.out, Contents: body})
+	}
+	return out, nil
 }

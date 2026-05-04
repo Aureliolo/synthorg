@@ -1,0 +1,105 @@
+"""Conformance tests for ``{{.ClassName}}Repository`` (SQLite + Postgres).
+
+Both backends exercise the same protocol surface so SQLite vs Postgres
+divergence (TEXT vs TEXT timestamps, INTEGER vs BOOLEAN nullability,
+JSON vs JSONB columns when this scaffold grows real fields) surfaces
+in the same assertion set.
+"""
+
+from datetime import UTC, datetime
+from typing import cast
+
+import aiosqlite
+import pytest
+
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.{{.Domain}}_protocol import {{.ClassName}}Repository
+from synthorg.persistence.postgres.{{.Domain}}_repo import (
+    Postgres{{.ClassName}}Repository,
+)
+from synthorg.persistence.sqlite.{{.Domain}}_repo import (
+    SQLite{{.ClassName}}Repository,
+)
+from synthorg.{{.Domain}}.models import {{.ClassName}}Item
+
+pytestmark = pytest.mark.integration
+
+
+def _repo(backend: PersistenceBackend) -> {{.ClassName}}Repository:
+    """Build a concrete ``{{.ClassName}}Repository`` bound to *backend*."""
+    name = backend.backend_name
+    handle = backend.get_db()
+    if name == "sqlite":
+        return SQLite{{.ClassName}}Repository(cast("aiosqlite.Connection", handle))
+    if name == "postgres":
+        from psycopg_pool import AsyncConnectionPool
+
+        return Postgres{{.ClassName}}Repository(cast("AsyncConnectionPool", handle))
+    msg = f"Unknown backend: {name}"
+    raise ValueError(msg)
+
+
+def _make_item(item_id: str = "{{.Domain}}-001", payload: str = "hello") -> {{.ClassName}}Item:
+    """Build a fixture {{.ModuleDocSlug}} item with a fixed timestamp."""
+    return {{.ClassName}}Item(
+        id=item_id,
+        payload=payload,
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+
+
+class Test{{.ClassName}}Repository:
+    async def test_save_and_get(self, backend: PersistenceBackend) -> None:
+        repo = _repo(backend)
+        item = _make_item()
+        await repo.save(item)
+        fetched = await repo.get(item.id)
+        assert fetched is not None
+        assert fetched.id == item.id
+        assert fetched.payload == item.payload
+        assert fetched.created_at.tzinfo is not None
+
+    async def test_get_returns_none_when_absent(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        assert await repo.get("{{.Domain}}-missing") is None
+
+    async def test_save_is_idempotent(self, backend: PersistenceBackend) -> None:
+        repo = _repo(backend)
+        first = _make_item(payload="first")
+        await repo.save(first)
+        updated = first.model_copy(update={"payload": "second"})
+        await repo.save(updated)
+        fetched = await repo.get(first.id)
+        assert fetched is not None
+        assert fetched.payload == "second"
+
+    async def test_list_returns_newest_first(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        older = {{.ClassName}}Item(
+            id="{{.Domain}}-older",
+            payload="older",
+            created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        )
+        newer = {{.ClassName}}Item(
+            id="{{.Domain}}-newer",
+            payload="newer",
+            created_at=datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
+        )
+        await repo.save(older)
+        await repo.save(newer)
+        rows = await repo.list_items(limit=10, offset=0)
+        ids = [row.id for row in rows]
+        assert ids[: 2] == [newer.id, older.id]
+
+    async def test_delete_returns_true_when_present(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        item = _make_item()
+        await repo.save(item)
+        assert await repo.delete(item.id) is True
+        assert await repo.delete(item.id) is False

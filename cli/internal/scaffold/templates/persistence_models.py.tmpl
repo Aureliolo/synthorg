@@ -1,0 +1,21 @@
+"""Entity model for the {{.ModuleDocSlug}} persistence layer.
+
+Replace the placeholder ``payload`` field with the real entity shape
+once the subsystem grows beyond opaque storage. The Pydantic config
+follows CLAUDE.md conventions (frozen, ``extra="forbid"``,
+``allow_inf_nan=False``); keep them when adding new fields.
+"""
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict
+
+from synthorg.core.types import NotBlankStr
+
+
+class {{.ClassName}}Item(BaseModel):
+    """A persisted {{.ModuleDocSlug}} entity."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    id: NotBlankStr
+    payload: str
+    created_at: AwareDatetime
