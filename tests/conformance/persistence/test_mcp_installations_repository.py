@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.persistence.protocol import PersistenceBackend
@@ -121,6 +122,32 @@ class TestMcpInstallationRepository:
         assert [r.catalog_entry_id for r in page_one] == ["cat_pag_0", "cat_pag_1"]
         assert [r.catalog_entry_id for r in page_two] == ["cat_pag_2", "cat_pag_3"]
         assert [r.catalog_entry_id for r in page_three] == ["cat_pag_4"]
+
+    @pytest.mark.parametrize(
+        ("limit", "offset"),
+        [
+            (0, 0),
+            (-1, 0),
+            (1, -1),
+            (True, 0),
+            (1, False),
+        ],
+    )
+    async def test_list_items_rejects_invalid_pagination(
+        self,
+        backend: PersistenceBackend,
+        limit: object,
+        offset: object,
+    ) -> None:
+        # Lock the QueryError contract across every backend so a
+        # silently-coercing impl can't drift away from the durable
+        # ones (sqlite + postgres reject these via
+        # ``validate_pagination_args``; the in-memory shim must too).
+        with pytest.raises(QueryError):
+            await backend.mcp_installations.list_items(
+                limit=limit,  # type: ignore[arg-type]
+                offset=offset,  # type: ignore[arg-type]
+            )
 
     async def test_delete_returns_true_when_present(
         self, backend: PersistenceBackend

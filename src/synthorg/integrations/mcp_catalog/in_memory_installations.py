@@ -15,6 +15,10 @@ from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALLED,
     MCP_SERVER_UNINSTALLED,
 )
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+)
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 logger = get_logger(__name__)
 
@@ -69,16 +73,25 @@ class InMemoryMcpInstallationRepository:
 
         ``limit`` defaults to the protocol-wide pagination floor;
         callers needing more must loop with ``offset`` or pass a
-        larger ``limit`` explicitly.
+        larger ``limit`` explicitly. Invalid inputs (``limit < 1``,
+        ``offset < 0``, non-int, or ``bool``) raise ``QueryError`` to
+        match the sqlite/postgres contract -- silently coercing them
+        would let bugs that the durable backends catch slip through
+        in tests and no-persistence deployments.
         """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+            backend="in_memory",
+        )
         rows = tuple(
             sorted(
                 self._store.values(),
                 key=lambda i: (i.installed_at, i.catalog_entry_id),
             ),
         )
-        effective_offset = max(0, int(offset))
-        return rows[effective_offset : effective_offset + max(0, int(limit))]
+        return rows[offset : offset + limit]
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete by catalog entry id."""
