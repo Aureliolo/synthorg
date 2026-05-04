@@ -651,11 +651,24 @@ def _load_baseline(path: Path | None = None) -> set[str]:
     return entries
 
 
+def _baseline_sort_key(entry: str) -> tuple[str, int, int]:
+    """Tuple sort key (path, lineno, col) so numeric components order numerically.
+
+    A pure string sort places ``foo.py:623:27`` before ``foo.py:73:30``
+    because lexicographic comparison sees ``"6" < "7"``. Splitting the
+    POSIX path off and casting line / column to ``int`` keeps the
+    documented "path then numeric line then numeric column" invariant
+    that the file header advertises.
+    """
+    path, lineno, col = entry.rsplit(":", 2)
+    return (path, int(lineno), int(col))
+
+
 def _write_baseline(hits: list[_Hit], path: Path | None = None) -> None:
     """Sort + write *hits* as a baseline file."""
     if path is None:
         path = _BASELINE_PATH
-    keys = sorted({hit.baseline_key() for hit in hits})
+    keys = sorted({hit.baseline_key() for hit in hits}, key=_baseline_sort_key)
     body = _BASELINE_HEADER + "\n".join(keys) + "\n"
     path.write_text(body, encoding="utf-8")
 

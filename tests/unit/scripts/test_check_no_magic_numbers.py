@@ -52,6 +52,8 @@ class _ScriptModule(Protocol):
     @staticmethod
     def _write_baseline(hits: list[_Hit], path: Path) -> None: ...
     @staticmethod
+    def _baseline_sort_key(entry: str) -> tuple[str, int, int]: ...
+    @staticmethod
     def main(argv: list[str] | None = None) -> int: ...
 
 
@@ -348,8 +350,14 @@ def test_baseline_rejects_duplicates(
 
 
 def test_baseline_sorted_deterministically(tmp_path: Path, write_py: WritePy) -> None:
-    """Sort key is (path, lineno, col) numerically -- not lexicographic."""
-    src = "_A = 100\n_B = 200\n_C = 300\n"
+    """Sort key is (path, lineno, col) numerically -- not lexicographic.
+
+    The trailing pad bumps ``_C`` past line 9 so the baseline file
+    contains the lex-mismatch case "73 vs 623": a pure ``str`` sort
+    places "9" after "12" because ``"9" > "1"`` codepoint-wise. Only a
+    numeric sort puts the entries in actual line order.
+    """
+    src = "_A = 100\n" + "\n" * 10 + "_B = 200\n_C = 300\n"
     py = write_py(src)
     hits = _MODULE._scan_file(py, "src/synthorg/foo.py")
     out = tmp_path / "baseline.txt"
@@ -358,6 +366,26 @@ def test_baseline_sorted_deterministically(tmp_path: Path, write_py: WritePy) ->
     keys = [line for line in body.splitlines() if line and not line.startswith("#")]
     line_numbers = [int(k.rsplit(":", 2)[-2]) for k in keys]
     assert line_numbers == sorted(line_numbers)
+
+
+def test_baseline_sort_key_is_numeric_not_lexicographic() -> None:
+    """``_baseline_sort_key`` orders ``foo.py:73`` before ``foo.py:623``.
+
+    Pure string sort would invert this because ``"6" < "7"``.
+    """
+    entries = [
+        "src/foo.py:623:27",
+        "src/foo.py:73:30",
+        "src/foo.py:9:0",
+        "src/foo.py:120:1",
+    ]
+    ordered = sorted(entries, key=_MODULE._baseline_sort_key)
+    assert ordered == [
+        "src/foo.py:9:0",
+        "src/foo.py:73:30",
+        "src/foo.py:120:1",
+        "src/foo.py:623:27",
+    ]
 
 
 # ── End-to-end CLI ──────────────────────────────────────────────

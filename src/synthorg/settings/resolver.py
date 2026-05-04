@@ -982,7 +982,8 @@ class ConfigResolver:
             raise ValueError(msg)
         try:
             table = tuple(
-                (float(vram_gb), int(batch_size)) for vram_gb, batch_size in parsed
+                (float(vram_gb), _coerce_batch_size(batch_size))
+                for vram_gb, batch_size in parsed
             )
         except (TypeError, ValueError) as exc:
             msg = (
@@ -1117,6 +1118,29 @@ class ConfigResolver:
             error_backoff_seconds=values["dispatcher_error_backoff_seconds"],
             max_consecutive_errors=values["dispatcher_max_consecutive_errors"],
         )
+
+
+def _coerce_batch_size(value: object) -> int:
+    """Coerce a parsed JSON value to an ``int`` batch size, rejecting bad shapes.
+
+    Plain ``int(value)`` would silently truncate ``64.9`` to ``64`` and
+    accept ``True`` / ``False`` (which are ``int`` subclasses), so a
+    typo in ``memory.fine_tune_vram_batch_table`` would apply with a
+    different value than the operator configured. Reject those at the
+    boundary so invalid stored settings fail deterministically.
+    """
+    if isinstance(value, bool):
+        msg = f"batch_size must be an integer, got bool {value!r}"
+        raise TypeError(msg)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not value.is_integer():
+            msg = f"batch_size must be an integer, got fractional float {value!r}"
+            raise ValueError(msg)
+        return int(value)
+    msg = f"batch_size must be an integer, got {type(value).__name__} {value!r}"
+    raise TypeError(msg)
 
 
 def _build_budget_alerts(warn: int, crit: int, stop: int) -> BudgetAlertConfig:

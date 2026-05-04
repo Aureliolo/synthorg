@@ -20,8 +20,9 @@ from synthorg.client.generators.procedural import ProceduralGenerator
 from synthorg.client.models import ClientProfile
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_BRIDGE_CONFIG_RESOLVE_FAILED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
 )
@@ -129,13 +130,31 @@ def _score_from_feedback(
 async def _resolve_client_bridge_config(app_state: AppState) -> ClientBridgeConfig:
     """Resolve the operator-tunable client bridge config.
 
-    Falls back to ``ClientBridgeConfig()`` defaults if the resolver is
-    not yet wired (e.g. during early bootstrap before the settings
-    service comes up); the defaults reproduce historical behaviour.
+    Falls back to ``ClientBridgeConfig()`` defaults in two cases:
+
+    * the resolver is not yet wired (early bootstrap before the
+      settings service comes up); and
+    * the resolver is wired but the call raises (transient settings
+      outage, malformed stored value, etc.).
+
+    The defaults reproduce historical behaviour, so client CRUD stays
+    available rather than 500-ing when only the operator-tunable
+    overrides happen to be unreachable.
     """
     if not app_state.has_config_resolver:
         return ClientBridgeConfig()
-    return await app_state.config_resolver.get_client_bridge_config()
+    try:
+        return await app_state.config_resolver.get_client_bridge_config()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_BRIDGE_CONFIG_RESOLVE_FAILED,
+            bridge="client",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ClientBridgeConfig()
 
 
 def _build_default_client(
