@@ -274,6 +274,19 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: dead-api-endpoints
+        name: dead-API-endpoint gate (frontend ↔ backend route parity)
+        entry: uv run python scripts/check_dead_api_endpoints.py
+        language: system
+        # Trigger on any change to controller registration, controller
+        # files, the WS handler, A2A controllers, every TS/TSX source
+        # under web/src/, the gate scripts themselves, or the baseline
+        # so a PR cannot land a frontend caller pointing at a dead
+        # endpoint without the gate running.
+        files: ^(src/synthorg/api/(app|controllers/.*)\.py|src/synthorg/a2a/.*\.py|web/src/.*\.(ts|tsx)|scripts/(check_dead_api_endpoints|_dead_api_endpoints_.*)\.py|scripts/dead_api_endpoints_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: request-dto-forbid-extra
         name: request-DTO extra="forbid" gate (src/synthorg/api)
         entry: uv run python scripts/check_request_dto_forbid_extra.py

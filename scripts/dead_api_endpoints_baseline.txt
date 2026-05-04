@@ -1,0 +1,11 @@
+# Frozen baseline of pre-existing dead-API-endpoint findings
+# (frontend call sites with no matching backend route).
+# Each line is `<file>:<line>:<col>:<method>:<url>` sorted in
+# deterministic order.
+#
+# scripts/check_dead_api_endpoints.py reads this file to suppress
+# violations at these exact entries. New violations NOT in this list
+# will fail the pre-push hook.
+#
+# Regenerate (rare; requires explicit user approval) with:
+#   uv run python scripts/check_dead_api_endpoints.py --update-baseline
