@@ -42,15 +42,46 @@ backend → frontend orphan (printed but does not block; could be a
 public REST / CLI consumer)."""
 
 
+def _validate_method_and_path(method: str, path: str) -> None:
+    """Validate method and path invariants shared across dataclasses.
+
+    Raises:
+        ValueError: If method is not uppercased or path is not normalised.
+    """
+    if method != method.upper():
+        msg = f"method must be uppercase; got {method!r}"
+        raise ValueError(msg)
+    if path != normalise_path(path):
+        msg = (
+            f"path must be normalised via normalise_path(); got "
+            f"{path!r}, expected {normalise_path(path)!r}"
+        )
+        raise ValueError(msg)
+
+
+def _validate_source_location(source_line: int, source_col: int) -> None:
+    """Validate source location invariants shared across dataclasses.
+
+    Raises:
+        ValueError: If source_line is not >= 1 or source_col is not >= 0.
+    """
+    if source_line < 1:
+        msg = f"source_line must be >= 1; got {source_line}"
+        raise ValueError(msg)
+    if source_col < 0:
+        msg = f"source_col must be >= 0; got {source_col}"
+        raise ValueError(msg)
+
+
 @dataclass(frozen=True)
 class RouteRecord:
     """A single backend HTTP / WebSocket route registered with Litestar.
 
-    Invariants:
+    Invariants (enforced in :meth:`__post_init__`):
 
     - ``method`` is uppercased (``GET``, ``POST``, ..., ``WS``).
     - ``path`` is normalised so every Litestar typed path-param
-      ``{name:str}`` is collapsed to ``{name}`` and the API prefix
+      ``{name:str}`` is collapsed to ``{*}`` and the API prefix
       (e.g. ``/api/v1``) is **already stripped** -- frontend URLs
       omit it (Axios's ``baseURL`` handles it). The single exception
       is the A2A well-known agent card which is mounted at the app
@@ -65,6 +96,10 @@ class RouteRecord:
     controller_name: str
     source_file: str
     source_line: int
+
+    def __post_init__(self) -> None:
+        """Reject records that would silently break comparator matching."""
+        _validate_method_and_path(self.method, self.path)
 
 
 @dataclass(frozen=True)
@@ -88,6 +123,11 @@ class CallSiteRecord:
     source_col: int
     has_suppression: bool
 
+    def __post_init__(self) -> None:
+        """Reject records that would silently break comparator matching."""
+        _validate_method_and_path(self.method, self.path)
+        _validate_source_location(self.source_line, self.source_col)
+
     def baseline_key(self) -> str:
         """Compact key used in the baseline file format."""
         return f"{self.source_file}:{self.source_line}:{self.source_col}:{self.method}:{self.path}"
@@ -104,6 +144,11 @@ class Violation:
     source_line: int
     source_col: int
     reason: str
+
+    def __post_init__(self) -> None:
+        """Reject records that would silently break baseline matching."""
+        _validate_method_and_path(self.method, self.path)
+        _validate_source_location(self.source_line, self.source_col)
 
     def baseline_key(self) -> str:
         """Baseline key matches :meth:`CallSiteRecord.baseline_key` for HIGH findings."""
@@ -200,6 +245,21 @@ def normalise_path(path: str) -> str:
 # ── Suppression-marker tokenisers ──────────────────────────────
 
 
+def _has_valid_justification_suffix(comment: str) -> bool:
+    """Check if a comment has the required ``-- <reason>`` suffix.
+
+    Returns True iff the comment starts with the marker and is followed
+    by `` -- `` (with surrounding whitespace) and non-empty justification.
+    """
+    if not comment.startswith(_SUPPRESSION_MARKER):
+        return False
+    suffix = comment[len(_SUPPRESSION_MARKER) :].strip()
+    if suffix.startswith("--"):
+        justification = suffix[2:].strip()
+        return bool(justification)
+    return False
+
+
 def _line_has_python_marker(line: str) -> bool:
     """Return True iff *line* carries the marker as a trailing ``#`` comment.
 
@@ -217,17 +277,12 @@ def _line_has_python_marker(line: str) -> bool:
         if tok.type != tokenize.COMMENT:
             continue
         comment = tok.string.lstrip("#").strip()
-        if not comment.startswith(_SUPPRESSION_MARKER):
-            continue
-        suffix = comment[len(_SUPPRESSION_MARKER) :].strip()
-        if suffix.startswith("--"):
-            justification = suffix[2:].strip()
-            if justification:
-                return True
+        if _has_valid_justification_suffix(comment):
+            return True
     return False
 
 
-def _line_has_js_marker(line: str) -> bool:  # noqa: C901, PLR0912 -- string-literal-aware line scanner
+def _line_has_js_marker(line: str) -> bool:  # noqa: C901 -- string-literal-aware line scanner
     """Return True iff a JS/TS *line* carries a trailing ``//`` marker.
 
     Naive single-line `//` scan: locates the rightmost `//` that is
@@ -269,14 +324,7 @@ def _line_has_js_marker(line: str) -> bool:  # noqa: C901, PLR0912 -- string-lit
                 in_backtick = True
             elif ch == "/" and i + 1 < len(line) and line[i + 1] == "/":
                 comment = line[i + 2 :].strip()
-                if not comment.startswith(_SUPPRESSION_MARKER):
-                    return False
-                suffix = comment[len(_SUPPRESSION_MARKER) :].strip()
-                if suffix.startswith("--"):
-                    justification = suffix[2:].strip()
-                    if bool(justification):
-                        return True
-                return False
+                return bool(_has_valid_justification_suffix(comment))
         elif in_single and ch == "'":
             in_single = False
         elif in_double and ch == '"':

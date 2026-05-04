@@ -61,6 +61,7 @@ CLI: see `cli/CLAUDE.md`. Use `go -C cli` (never `cd cli`).
 - [docs/reference/retry-patterns.md](docs/reference/retry-patterns.md): retry-pattern decision tree (transient I/O, semantic self-correction, contention/sync) and the 5 inline-site map
 - [docs/reference/scaffolding.md](docs/reference/scaffolding.md): `synthorg new <kind> <domain>` CLI scaffolder usage + per-kind file inventory + shape contract
 - [docs/reference/audit-category-gate-coverage.md](docs/reference/audit-category-gate-coverage.md): audit category resolution paths (standing gate / pre-PR mini-pass / architecture / reviewer-enforced)
+- [docs/reference/dead-api-endpoints.md](docs/reference/dead-api-endpoints.md): frontend ↔ backend route parity gate, opt-out marker, baseline mechanics
 
 ## Web Dashboard Design System (MANDATORY)
 
@@ -102,6 +103,7 @@ Existing gate inventory (all under `scripts/`):
 - `check_doc_drift_counts.py`
 - `check_openapi_liveness.py`
 - `check_orphan_fixtures.py`
+- `check_dead_api_endpoints.py`
 
 Wire each new gate into `.pre-commit-config.yaml` (pre-commit or
 pre-push stage as fits) so it runs locally and in CI; per-line opt-outs

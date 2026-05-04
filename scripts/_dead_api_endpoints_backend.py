@@ -74,14 +74,30 @@ _DEFAULT_API_PREFIX: Final[str] = "/api/v1"
 
 
 def _read_module(path: Path) -> ast.Module | None:
-    """Parse *path* into an :class:`ast.Module`, returning None on failure."""
+    """Parse *path* into an :class:`ast.Module`, returning None on failure.
+
+    Failures (OSError, UnicodeDecodeError, SyntaxError) are surfaced as a
+    one-line warning to stderr so a broken controller file is visible to
+    the operator -- otherwise a single syntax error would silently empty
+    the route inventory and turn every frontend call into a HIGH violation.
+    """
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError, UnicodeDecodeError:
+    except (OSError, UnicodeDecodeError) as exc:
+        print(
+            f"check_dead_api_endpoints: cannot read {path}: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return None
     try:
         return ast.parse(text, filename=str(path))
-    except SyntaxError:
+    except SyntaxError as exc:
+        print(
+            f"check_dead_api_endpoints: cannot parse {path}: {exc.msg} "
+            f"(line {exc.lineno})",
+            file=sys.stderr,
+        )
         return None
 
 
@@ -424,7 +440,17 @@ def collect_backend_routes(
     init_path = src_root / "api" / "controllers" / "__init__.py"
     init_tree = _read_module(init_path)
     if init_tree is None:
-        return []
+        # The init file is the route-inventory source of truth -- if we
+        # can't parse it, every backend route is missing and every
+        # frontend call would falsely report as a dead endpoint. Raise
+        # so the CLI's exit-code-2 path fires instead of a misleading
+        # exit-1 violation cascade. ``_read_module`` already wrote a
+        # specific stderr line describing the failure.
+        msg = (
+            f"cannot read controller registration file {init_path}; "
+            "see preceding stderr line for the parse error"
+        )
+        raise ValueError(msg)
 
     # Step 1: discover controller class names and where they live.
     referenced = _extract_controller_names_from_tuples(init_tree)

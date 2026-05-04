@@ -35,7 +35,7 @@ The four resolution paths are:
 | Race conditions / TOCTOU / shared-mutable-state without locks | Pre-PR mini-pass | `mini-pass-race-conditions` (audit agent 39) |
 | Bare `Exception` / `RuntimeError` raises in domain code | Reviewer-enforced (gate planned) | Tracked in #1738; worktree skill flags it in the Do-not-introduce block |
 | Magic numbers in scoring / threshold / timeout / retry contexts | Reviewer-enforced (gate planned) | Tracked in #1739; worktree skill flags it |
-| Frontend-backend API contract drift (dead endpoints) | Reviewer-enforced (gate planned) | Tracked in #1749 |
+| Frontend-backend API contract drift (dead endpoints) | Standing gate | `scripts/check_dead_api_endpoints.py` |
 | SQLite vs Postgres schema drift | Reviewer-enforced (gate planned) | Tracked in #1750 |
 | Dual-backend test parity gaps in `tests/conformance/persistence/` | Reviewer-enforced (gate planned) | Tracked in #1751 |
 | Missing pagination on `list_*` repository methods | Reviewer-enforced (gate planned) | Tracked in #1752 |

@@ -2,7 +2,7 @@
 
 Exercises the dead-API gate end-to-end: backend AST walker, frontend
 TS scanner, comparator, baseline I/O, and the seven verification
-scenarios from issue #1749 (frontend-only call, backend orphan,
+scenarios that motivate the gate (frontend-only call, backend orphan,
 matched pair, conditionally-registered controller, websocket call,
 router-prefix match, path-param normalisation).
 
@@ -576,3 +576,197 @@ def test_normalise_path(raw: str, expected: str) -> None:
     from scripts._dead_api_endpoints_models import normalise_path
 
     assert normalise_path(raw) == expected
+
+
+# ── regression: silent-failure surfacing ────────────────────
+
+
+def test_malformed_controller_init_raises(tmp_path: Path) -> None:
+    """A SyntaxError in controllers/__init__.py raises rather than silently
+    returning zero routes (which would inflate every frontend call to a
+    HIGH violation)."""
+    repo = _make_fake_repo(tmp_path)
+    # Overwrite with malformed Python.
+    init_path = repo / "src" / "synthorg" / "api" / "controllers" / "__init__.py"
+    init_path.write_text("def broken(:\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="cannot read controller registration"):
+        _MODULE.collect_backend_routes(repo)  # type: ignore[attr-defined]
+
+
+def test_malformed_controller_module_skipped_with_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A SyntaxError in a single controller module emits a stderr warning
+    and skips that module without aborting the run."""
+    repo = _make_fake_repo(
+        tmp_path,
+        controllers={
+            "agents": (
+                "from litestar import Controller, get\n"
+                "class AgentController(Controller):\n"
+                "    path = '/agents'\n"
+                "    @get()\n"
+                "    async def list_agents(self): ...\n"
+            ),
+            "broken": "def malformed(:\n",
+        },
+        init_body=(
+            "from litestar import Controller\n"
+            "from synthorg.api.controllers.agents import AgentController\n"
+            "from synthorg.api.controllers.broken import BrokenController\n"
+            "BASE_CONTROLLERS: tuple[type[Controller], ...] = (\n"
+            "    AgentController, BrokenController,\n"
+            ")\n"
+            "OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = ()\n"
+            "INTEGRATION_CONTROLLERS: tuple[type[Controller], ...] = ()\n"
+        ),
+    )
+    routes = _MODULE.collect_backend_routes(repo)  # type: ignore[attr-defined]
+    captured = capsys.readouterr()
+    # The valid AgentController route is still collected.
+    assert any(r.path == "/agents" for r in routes)
+    # The malformed file produces a stderr warning.
+    assert "cannot parse" in captured.err
+    assert "broken.py" in captured.err
+
+
+def test_missing_controller_import_handled(tmp_path: Path) -> None:
+    """A controller class referenced in a registration tuple but never
+    imported is skipped silently (no class to walk; no routes added)."""
+    repo = _make_fake_repo(
+        tmp_path,
+        init_body=(
+            "from litestar import Controller\n"
+            "# AgentController is referenced but never imported -- typo case\n"
+            "BASE_CONTROLLERS: tuple[type[Controller], ...] = (AgentController,)\n"
+            "OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = ()\n"
+            "INTEGRATION_CONTROLLERS: tuple[type[Controller], ...] = ()\n"
+        ),
+    )
+    routes = _MODULE.collect_backend_routes(repo)  # type: ignore[attr-defined]
+    # No imported controllers means zero routes; the tuple-walker silently
+    # skips names with no import-map entry.
+    assert routes == []
+
+
+# ── regression: baseline malformed entries ──────────────────
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # Empty col field.
+        "web/src/x.ts::0:GET:/x\n",
+        # Missing path field.
+        "web/src/x.ts:1:0:GET\n",
+    ],
+)
+def test_baseline_malformed_entries_raise(tmp_path: Path, body: str) -> None:
+    """Malformed baseline lines raise ValueError loudly rather than silently
+    dropping suppressions."""
+    baseline_path = tmp_path / "baseline.txt"
+    baseline_path.write_text(body, encoding="utf-8")
+    with pytest.raises(ValueError, match="malformed baseline entry"):
+        _MODULE.load_baseline(baseline_path)  # type: ignore[attr-defined]
+
+
+def test_empty_baseline_loads_as_empty_set(tmp_path: Path) -> None:
+    """A baseline with only comments / blank lines loads as an empty set."""
+    baseline_path = tmp_path / "baseline.txt"
+    baseline_path.write_text(
+        "# comment\n\n# another comment\n",
+        encoding="utf-8",
+    )
+    keys = _MODULE.load_baseline(baseline_path)  # type: ignore[attr-defined]
+    assert keys == set()
+
+
+# ── regression: frontend scanner coverage gaps ──────────────
+
+
+def test_frontend_nested_generics(tmp_path: Path) -> None:
+    """``apiClient.get<PaginatedResponse<AgentConfig>>('/agents')`` extracts
+    the URL despite nested ``<>`` levels."""
+    repo = _make_fake_repo(
+        tmp_path,
+        controllers={
+            "agents": (
+                "from litestar import Controller, get\n"
+                "class AgentController(Controller):\n"
+                "    path = '/agents'\n"
+                "    @get()\n"
+                "    async def list_agents(self): ...\n"
+            ),
+        },
+        init_body=(
+            "from litestar import Controller\n"
+            "from synthorg.api.controllers.agents import AgentController\n"
+            "BASE_CONTROLLERS: tuple[type[Controller], ...] = (AgentController,)\n"
+            "OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = ()\n"
+            "INTEGRATION_CONTROLLERS: tuple[type[Controller], ...] = ()\n"
+        ),
+        ts_files={
+            "api/endpoints/agents.ts": (
+                "import { apiClient } from '../client'\n"
+                "export async function listAgents() {\n"
+                "  return apiClient.get<PaginatedResponse<AgentConfig>>('/agents')\n"
+                "}\n"
+            ),
+        },
+    )
+    calls = _MODULE.collect_frontend_call_sites(repo)  # type: ignore[attr-defined]
+    assert any(c.method == "GET" and c.path == "/agents" for c in calls)
+    routes = _MODULE.collect_backend_routes(repo)  # type: ignore[attr-defined]
+    high, _ = _MODULE.compare(routes, calls)  # type: ignore[attr-defined]
+    assert high == []
+
+
+def test_a2a_well_known_root_mount(tmp_path: Path) -> None:
+    """``WellKnownAgentCardController`` is mounted at the app root, not under
+    the ``/api/v1`` prefix; the ``/.well-known/...`` path stays verbatim."""
+    repo = _make_fake_repo(
+        tmp_path,
+        app_body=(
+            "if effective_config.a2a.enabled:\n"
+            "    from synthorg.a2a.well_known import WellKnownAgentCardController\n"
+        ),
+    )
+    # Lay out the synthetic A2A module.
+    a2a_dir = repo / "src" / "synthorg" / "a2a"
+    a2a_dir.mkdir(parents=True)
+    (a2a_dir / "__init__.py").write_text("", encoding="utf-8")
+    (a2a_dir / "well_known.py").write_text(
+        "from litestar import Controller, get\n"
+        "class WellKnownAgentCardController(Controller):\n"
+        "    path = '/.well-known'\n"
+        "    @get('/agent-card.json')\n"
+        "    async def get_card(self): ...\n",
+        encoding="utf-8",
+    )
+    routes = _MODULE.collect_backend_routes(repo)  # type: ignore[attr-defined]
+    well_known = [r for r in routes if "well-known" in r.path]
+    assert any(r.path == "/.well-known/agent-card.json" for r in well_known)
+
+
+def test_suppression_does_not_leak_to_other_calls(tmp_path: Path) -> None:
+    """A ``// lint-allow:`` marker on one call site does not flag adjacent
+    calls as suppressed."""
+    repo = _make_fake_repo(
+        tmp_path,
+        ts_files={
+            "api/endpoints/foo.ts": (
+                "import { apiClient } from '../client'\n"
+                "export async function f() {\n"
+                "  apiClient.get('/call-one')\n"
+                "  apiClient.get('/call-two')"
+                "  // lint-allow: dead-api-endpoints -- intentional\n"
+                "  apiClient.get('/call-three')\n"
+                "}\n"
+            ),
+        },
+    )
+    calls = _MODULE.collect_frontend_call_sites(repo)  # type: ignore[attr-defined]
+    by_path = {c.path: c for c in calls}
+    assert by_path["/call-one"].has_suppression is False
+    assert by_path["/call-two"].has_suppression is True
+    assert by_path["/call-three"].has_suppression is False

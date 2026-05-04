@@ -32,6 +32,18 @@ Suppression
 Any call-site line carrying ``// lint-allow: dead-api-endpoints --
 <reason>`` is recorded with ``has_suppression=True`` so the
 comparator skips it.
+
+Limitations
+-----------
+
+Call sites whose URL is built from non-recognised variables, function
+calls, or other dynamic expressions (e.g. ``apiClient.get(buildPath(x))``,
+``apiClient.get(`${arbitraryVar}/x`)``) are dropped from the inventory
+because the gate cannot statically resolve them. Such call sites are
+invisible to the parity check; if a backend route they target gets
+removed, the runtime will 404 without the gate flagging it. The
+recommended workaround is to inline the URL or use one of the
+recognised "base"-style heads (``${BASE}`` const, ``${baseUrl}``).
 """
 
 import re
@@ -522,16 +534,23 @@ def collect_frontend_call_sites(
 ) -> list[CallSiteRecord]:
     """Scan ``web/src/`` and return every API call-site record.
 
-    File-system errors (unreadable files, encoding errors) drop the
-    file silently; the gate is only as good as the source it can
-    parse, but missing one file should not crash the run.
+    File-system errors (unreadable files, encoding errors) skip the
+    file but emit a one-line warning to stderr so a corrupt or
+    permission-denied .ts file is visible to the operator -- otherwise
+    the gate would silently miss every call site in that file and
+    inflate orphan-backend findings.
     """
     web_src = project_root / "web" / "src"
     out: list[CallSiteRecord] = []
     for path in _iter_ts_files(web_src):
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError) as exc:
+            print(
+                f"check_dead_api_endpoints: cannot read {path}: "
+                f"{type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
             continue
         rel = path.relative_to(project_root).as_posix()
         out.extend(_scan_file(rel, text))

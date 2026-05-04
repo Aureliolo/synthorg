@@ -9,13 +9,12 @@ gate (they may legitimately be CLI-only or public-REST surfaces).
 Why this exists
 ---------------
 
-The 2026-05-03 audit's ``frontend-backend-mismatch`` agent surfaced
-44 false-positive "dead endpoint" findings because its naive regex
-extraction missed conditionally-registered controllers, websocket
-handlers, Router-prefixed paths, and Litestar ``{var:type}`` vs
-frontend ``${var}`` path-param syntax. This gate handles those
-shapes natively so the second occurrence is caught at pre-commit
-instead of waiting for the next audit pass.
+Naive regex extraction of frontend API calls misses conditionally-
+registered controllers, websocket handlers, Router-prefixed paths,
+and Litestar ``{var:type}`` vs frontend ``${var}`` path-param syntax.
+This gate handles those shapes natively via AST + token scanning so
+mismatches are caught at pre-commit time rather than in retrospective
+audits.
 
 Per-line opt-out: append ``// lint-allow: dead-api-endpoints --
 <reason>`` (TS) or ``# lint-allow: dead-api-endpoints -- <reason>``
@@ -112,7 +111,7 @@ def _format_violation(v: Violation) -> str:
     )
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901 -- distinct exit-code branches per CLI failure mode
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 -- distinct exit-code branches per CLI failure mode
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -166,7 +165,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 -- distinct exit-c
         project_root / "scripts" / "dead_api_endpoints_baseline.txt"
     )
 
-    backend_routes = collect_backend_routes(project_root, api_prefix=args.api_prefix)
+    try:
+        backend_routes = collect_backend_routes(
+            project_root, api_prefix=args.api_prefix
+        )
+    except ValueError as exc:
+        print(f"check_dead_api_endpoints: {exc}", file=sys.stderr)
+        return 2
     frontend_calls = collect_frontend_call_sites(project_root)
     high, info = compare(backend_routes, frontend_calls)
 
