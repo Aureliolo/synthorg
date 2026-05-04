@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import WorkflowExecution
@@ -55,10 +55,10 @@ from synthorg.persistence.workflow_execution_repo import WorkflowExecutionReposi
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
-    from synthorg.api.auth.models import ApiKey, User
     from synthorg.budget.cost_record import CostRecord
     from synthorg.communication.message import Message
     from synthorg.core.artifact import Artifact
+    from synthorg.core.auth.models import ApiKey, User
     from synthorg.core.enums import (
         ApprovalRiskLevel,
         ArtifactType,

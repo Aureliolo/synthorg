@@ -5,9 +5,9 @@ import re
 
 import pytest
 
-from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.ticket_store import TicketLimitExceededError, WsTicketStore
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.core.auth.roles import HumanRole
 from tests._shared.fake_clock import FakeClock
 
 

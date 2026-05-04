@@ -6,11 +6,11 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
-from synthorg.api.auth.models import ApiKey
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
 from synthorg.core.artifact import Artifact
+from synthorg.core.auth.models import ApiKey
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ArtifactType,

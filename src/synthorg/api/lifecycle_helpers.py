@@ -355,7 +355,7 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
     if not users:
         return
 
-    from synthorg.api.auth.models import OrgRole  # noqa: PLC0415
+    from synthorg.core.auth.models import OrgRole  # noqa: PLC0415
 
     has_owner = any(OrgRole.OWNER in u.org_roles for u in users)
     if has_owner:

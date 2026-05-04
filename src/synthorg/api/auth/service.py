@@ -12,11 +12,11 @@ import argon2
 import jwt
 
 from synthorg.api.auth.claims import JwtClaims
-from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.boundary import parse_typed
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import User  # noqa: TC001
+from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
@@ -24,7 +24,7 @@ from synthorg.observability.events.security import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.auth.config import AuthConfig
+    from synthorg.core.auth.config import AuthConfig
 
 logger = get_logger(__name__)
 

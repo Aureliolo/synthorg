@@ -15,16 +15,16 @@ from litestar.exceptions import PermissionDeniedException
 from pydantic import ValidationError
 
 from synthorg.api.auth.claims import JwtClaims  # noqa: TC001 -- runtime annotation
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.cookies import (
     generate_csrf_token,
     make_csrf_cookie,
     make_refresh_cookie,
     make_session_cookie,
 )
-from synthorg.api.auth.models import AuthenticatedUser
-from synthorg.api.auth.session import Session
 from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.auth.session import Session
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_CONFIG_FALLBACK,
@@ -39,9 +39,9 @@ from synthorg.observability.events.security import (
 if TYPE_CHECKING:
     from litestar import Request
 
-    from synthorg.api.auth.models import User
     from synthorg.api.auth.service import AuthService
     from synthorg.api.state import AppState
+    from synthorg.core.auth.models import User
 
 logger = get_logger(__name__)
 

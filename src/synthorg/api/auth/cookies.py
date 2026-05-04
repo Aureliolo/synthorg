@@ -8,8 +8,8 @@ import secrets
 
 from litestar.datastructures import Cookie
 
-from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.core.auth.config import AuthConfig  # noqa: TC001
 
 
 def make_session_cookie(

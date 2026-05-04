@@ -7,13 +7,13 @@ import pytest
 from litestar import Litestar, get
 from litestar.testing import TestClient
 
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.middleware import create_auth_middleware_class
-from synthorg.api.auth.models import ApiKey, User
 from synthorg.api.auth.service import AuthService
 from synthorg.api.config import ApiConfig
-from synthorg.api.guards import HumanRole
 from synthorg.config.schema import RootConfig
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import ApiKey, User
+from synthorg.core.auth.roles import HumanRole
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 from tests.unit.api.conftest import FakePersistenceBackend
 

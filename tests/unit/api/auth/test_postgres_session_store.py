@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.api.auth.session import Session
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.roles import HumanRole
+from synthorg.core.auth.session import Session
 from synthorg.persistence.auth_protocol import SessionRepository as SessionStore
 from synthorg.persistence.postgres.session_repo import (
     PostgresSessionRepository as PostgresSessionStore,

@@ -176,7 +176,7 @@ class TestOwnerRevocationConstraint:
         mutation), then verifies DELETE maps the LAST_OWNER_TRIGGER
         constraint to a 409 response through the full ASGI stack.
         """
-        from synthorg.api.auth.models import OrgRole
+        from synthorg.core.auth.models import OrgRole
 
         ceo_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, "test-ceo"))
         manager_id = str(

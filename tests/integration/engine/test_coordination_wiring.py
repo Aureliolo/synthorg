@@ -17,11 +17,11 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.service import AuthService
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.auth.config import AuthConfig
 from synthorg.core.enums import (
     AgentStatus,
     CoordinationTopology,

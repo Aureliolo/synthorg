@@ -13,8 +13,8 @@ from typing import Any
 
 import aiosqlite
 
-from synthorg.api.auth.session import Session
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.roles import HumanRole
+from synthorg.core.auth.session import Session
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description

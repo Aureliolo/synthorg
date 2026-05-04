@@ -57,7 +57,7 @@ def _make_request(*, user: object = None) -> MagicMock:
 
 
 def _make_auth_user(username: str = "admin") -> MagicMock:
-    from synthorg.api.auth.models import AuthenticatedUser
+    from synthorg.core.auth.models import AuthenticatedUser
 
     user = MagicMock(spec=AuthenticatedUser)
     user.username = username

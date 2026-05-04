@@ -9,17 +9,18 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import AuthenticatedUser, OrgRole, User
 from synthorg.api.auth.user_service import UserService
 from synthorg.api.cursor import decode_keyset_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.guards import HumanRole, require_ceo
+from synthorg.api.guards import require_ceo
 from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import AuthenticatedUser, OrgRole, User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr

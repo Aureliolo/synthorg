@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.api.auth.config import AuthConfig
+from synthorg.core.auth.config import AuthConfig
 
 
 @pytest.mark.unit

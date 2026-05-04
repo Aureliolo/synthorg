@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from psycopg import Error as PsycopgError
 
-from synthorg.api.auth.refresh_record import (
+from synthorg.core.auth.refresh_record import (
     RefreshConsumeOutcome,
     RefreshRecord,
     RefreshRejectReason,

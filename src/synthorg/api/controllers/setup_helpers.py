@@ -8,7 +8,6 @@ import asyncio
 import json
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.controllers.setup_agents import (
     agents_to_summaries,
     departments_to_json,
@@ -19,8 +18,9 @@ from synthorg.api.controllers.setup_agents import (
 from synthorg.api.controllers.setup_models import (
     SetupAgentSummary,  # noqa: TC001
 )
-from synthorg.api.guards import HumanRole
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,

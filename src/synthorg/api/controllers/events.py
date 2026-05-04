@@ -16,8 +16,6 @@ from litestar.params import Parameter
 from litestar.response import ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.auth.config import SSE_REVALIDATE_INTERVAL_SECONDS
-from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import _READ_ROLES, require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -32,6 +30,8 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import StreamEvent  # noqa: TC001
+from synthorg.core.auth.config import SSE_REVALIDATE_INTERVAL_SECONDS
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.clock import SystemClock
 from synthorg.core.domain_errors import (
     NotFoundError,

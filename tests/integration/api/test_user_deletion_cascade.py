@@ -18,11 +18,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.api.auth.models import ApiKey, OrgRole, User
-from synthorg.api.auth.refresh_record import RefreshConsumeOutcome
-from synthorg.api.auth.session import Session
 from synthorg.api.auth.user_service import UserService
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import ApiKey, OrgRole, User
+from synthorg.core.auth.refresh_record import RefreshConsumeOutcome
+from synthorg.core.auth.roles import HumanRole
+from synthorg.core.auth.session import Session
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 _UNUSED_STUB_METHOD = "not used in this test"

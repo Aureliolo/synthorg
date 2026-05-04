@@ -4,8 +4,8 @@ import pytest
 from litestar import Litestar, get, post
 from litestar.testing import TestClient
 
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.csrf import create_csrf_middleware_class
+from synthorg.core.auth.config import AuthConfig
 
 
 def _build_csrf_app(

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 
 import aiosqlite
 
-from synthorg.api.auth.refresh_record import (
+from synthorg.core.auth.refresh_record import (
     RefreshConsumeOutcome,
     RefreshRecord,
     RefreshRejectReason,

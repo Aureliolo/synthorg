@@ -17,7 +17,7 @@ from typing import Any
 
 from litestar.types import ASGIApp, Receive, Scope, Send  # noqa: TC002
 
-from synthorg.api.auth.config import AuthConfig  # noqa: TC001
+from synthorg.core.auth.config import AuthConfig  # noqa: TC001
 from synthorg.core.normalization import normalize_path
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (

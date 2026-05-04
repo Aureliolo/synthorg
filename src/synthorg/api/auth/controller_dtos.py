@@ -8,8 +8,8 @@ from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.guards import HumanRole  # noqa: TC001
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.roles import HumanRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 _MIN_PASSWORD_LENGTH: int = AuthConfig().min_password_length

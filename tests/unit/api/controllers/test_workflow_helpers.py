@@ -9,12 +9,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.controllers._workflow_helpers import (
     get_auth_user_id,
     request_audit_actor,
 )
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.core.auth.roles import HumanRole
 
 pytestmark = pytest.mark.unit
 

@@ -17,7 +17,7 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.guards import HumanRole, require_roles
+from synthorg.api.guards import require_roles
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
@@ -39,6 +39,7 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
     ConflictError,
     ValidationError,

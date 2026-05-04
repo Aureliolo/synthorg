@@ -14,12 +14,9 @@ import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import User
 from synthorg.api.auth.service import AuthService
 from synthorg.api.config import ApiConfig, RateLimitConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
-from synthorg.api.guards import HumanRole
 from synthorg.api.state import AppState
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
@@ -30,6 +27,9 @@ from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
@@ -650,7 +650,7 @@ def _promote_first_owner(backend: FakePersistenceBackend) -> None:
     one user has ``OrgRole.OWNER``, matching the production
     startup behavior.
     """
-    from synthorg.api.auth.models import OrgRole
+    from synthorg.core.auth.models import OrgRole
 
     users = backend._users._users
     if not users:

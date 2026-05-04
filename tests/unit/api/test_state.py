@@ -65,8 +65,8 @@ class TestAppStateAccessors:
             _ = state.auth_service
 
     def test_auth_service_returns_when_set(self) -> None:
-        from synthorg.api.auth.config import AuthConfig
         from synthorg.api.auth.service import AuthService
+        from synthorg.core.auth.config import AuthConfig
 
         secret = "test-secret-that-is-at-least-32-characters-long"
         svc = AuthService(AuthConfig(jwt_secret=secret))
@@ -74,8 +74,8 @@ class TestAppStateAccessors:
         assert state.auth_service is svc
 
     def test_set_auth_service_succeeds_once(self) -> None:
-        from synthorg.api.auth.config import AuthConfig
         from synthorg.api.auth.service import AuthService
+        from synthorg.core.auth.config import AuthConfig
 
         secret = "test-secret-that-is-at-least-32-characters-long"
         svc = AuthService(AuthConfig(jwt_secret=secret))
@@ -84,8 +84,8 @@ class TestAppStateAccessors:
         assert state.auth_service is svc
 
     def test_set_auth_service_twice_raises(self) -> None:
-        from synthorg.api.auth.config import AuthConfig
         from synthorg.api.auth.service import AuthService
+        from synthorg.core.auth.config import AuthConfig
 
         secret = "test-secret-that-is-at-least-32-characters-long"
         svc = AuthService(AuthConfig(jwt_secret=secret))

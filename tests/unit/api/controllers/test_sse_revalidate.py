@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.auth.models import User
 from synthorg.api.controllers.events import _user_revocation_reason
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import User
+from synthorg.core.auth.roles import HumanRole
 
 pytestmark = pytest.mark.unit
 
@@ -119,8 +119,8 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
     and assert it yields a final 'revoked' event before terminating."""
     import json
 
-    from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
     from synthorg.api.controllers import events as events_mod
+    from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
     # Fast-path: shrink keepalive + revalidate cadence so the test
     # doesn't wait minutes for the revalidation tick. The fake

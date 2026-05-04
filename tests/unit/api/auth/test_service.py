@@ -5,11 +5,11 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import pytest
 
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import User
 from synthorg.api.auth.service import AuthService, SecretNotConfiguredError
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import User
+from synthorg.core.auth.roles import HumanRole
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 
 

@@ -11,7 +11,7 @@ import threading
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
-from synthorg.api.auth.config import AuthConfig  # noqa: TC001
+from synthorg.core.auth.config import AuthConfig  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (

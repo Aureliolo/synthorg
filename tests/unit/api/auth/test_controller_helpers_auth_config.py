@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 import structlog.testing
 
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.controller_helpers import get_auth_config
+from synthorg.core.auth.config import AuthConfig
 
 
 class _RaisesOnAuth:
