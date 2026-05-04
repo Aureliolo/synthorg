@@ -49,7 +49,7 @@ src/synthorg/api/controllers/audit.py:39:19
 src/synthorg/api/controllers/backup.py:187:29
 src/synthorg/api/controllers/budget.py:298:29
 src/synthorg/api/controllers/budget_config_versions.py:45:29
-src/synthorg/api/controllers/clients.py:198:29
+src/synthorg/api/controllers/clients.py:197:29
 src/synthorg/api/controllers/company_versions.py:45:29
 src/synthorg/api/controllers/connections.py:156:29
 src/synthorg/api/controllers/connections.py:65:20

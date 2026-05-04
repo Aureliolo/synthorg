@@ -1,11 +1,12 @@
 """Tests for the operator-tunable default scored-feedback wiring.
 
-Covers ``_resolve_client_bridge_config`` and ``_build_default_client``
-which were extended in #1739 to read passing-score, strictness
-multiplier, and strictness floor from ``ClientBridgeConfig``.
+Covers ``_resolve_client_bridge_config`` and ``_build_default_client``,
+asserting that the passing-score, strictness multiplier, and
+strictness floor flow from ``ClientBridgeConfig`` into the synthetic
+feedback profile attached to default ``AIClient`` instances.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -90,9 +91,12 @@ async def test_resolve_client_bridge_config_calls_resolver_when_wired() -> None:
         scored_feedback_strictness_floor=0.2,
     )
     resolver_mock = MagicMock(spec=ConfigResolver)
-    resolver_mock.get_client_bridge_config = AsyncMock(
-        spec=ConfigResolver.get_client_bridge_config, return_value=expected
-    )
+    # ``MagicMock(spec=ConfigResolver)`` auto-creates an ``AsyncMock``
+    # child for the async ``get_client_bridge_config`` method, so
+    # setting ``return_value`` on the auto-mock is correct (and the
+    # spec stays anchored to the concrete class per the project's
+    # mock-spec convention rather than spec'ing to a method object).
+    resolver_mock.get_client_bridge_config.return_value = expected
     app_state.config_resolver = resolver_mock
     result = await _resolve_client_bridge_config(app_state)
     assert result is expected

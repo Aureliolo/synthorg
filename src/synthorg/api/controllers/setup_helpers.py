@@ -452,13 +452,16 @@ async def auto_create_template_agents(
         """Resolve matcher config; degrade to None on resolution failure.
 
         Bridge-config resolution failures (missing setting, validation
-        error, persistence flake) must not abort the template bootstrap.
-        Mirrors the fail-open pattern used by ``post_setup_reinit``.
+        error, persistence flake) AND projection failures
+        (``from_bridge_config`` raising on a tampered field) must both
+        keep the template bootstrap alive. Mirrors the fail-open
+        pattern used by ``post_setup_reinit``.
         """
         if not app_state.has_config_resolver:
             return None
         try:
             bridge_cfg = await app_state.config_resolver.get_engine_bridge_config()
+            return ModelMatcherConfig.from_bridge_config(bridge_cfg)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -469,7 +472,6 @@ async def auto_create_template_agents(
                 error=safe_error_description(exc),
             )
             return None
-        return ModelMatcherConfig.from_bridge_config(bridge_cfg)
 
     async with asyncio.TaskGroup() as tg:
         loc_task = tg.create_task(read_name_locales(settings_svc))

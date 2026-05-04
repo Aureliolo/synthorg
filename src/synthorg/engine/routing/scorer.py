@@ -7,7 +7,7 @@ under ``engine.routing.*`` and reach the scorer via
 :class:`RoutingScorerConfig` (resolved at construction time).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -24,6 +24,16 @@ if TYPE_CHECKING:
     from synthorg.engine.decomposition.models import SubtaskDefinition
 
 logger = get_logger(__name__)
+
+# Soft validator ceilings on the documented routing-weight envelope.
+# The per-field bounds (Field ge/le) prevent invalid individual
+# weights; these constants only drive the aggregate sanity warning
+# emitted by ``_check_weight_sum``. Hardcoded here rather than read
+# from settings because the validator runs at Pydantic construction
+# time -- before any resolver is available -- and the values describe
+# a documented design envelope, not an operator-tunable knob.
+_DOC_WEIGHT_SUM_MAX: Final[float] = 1.1  # lint-allow: magic-numbers -- envelope
+_WEIGHT_SUM_WARN_CEILING: Final[float] = 1.3  # lint-allow: magic-numbers -- ceiling
 
 
 class RoutingScorerConfig(BaseModel):
@@ -52,13 +62,12 @@ class RoutingScorerConfig(BaseModel):
         """Warn (do not reject) when weights leave the documented envelope.
 
         The scorer caps the final score at 1.0, so weight sums above
-        the documented 1.1 ceiling produce surprising-but-bounded
+        the documented ceiling produce surprising-but-bounded
         behaviour. A logged warning surfaces operator-tunable
         misconfiguration without breaking the resolver hot path
         (Pydantic ``ValidationError`` would block bridge resolution
         and crash bootstrap).
         """
-        ceiling = 1.3
         weight_sum = (
             self.primary_skill_weight
             + self.secondary_skill_weight
@@ -66,14 +75,14 @@ class RoutingScorerConfig(BaseModel):
             + self.role_match_bonus
             + self.seniority_alignment_bonus
         )
-        if weight_sum > ceiling:
+        if weight_sum > _WEIGHT_SUM_WARN_CEILING:
             logger.warning(
                 TASK_ROUTING_SCORER_INVALID_CONFIG,
                 weight_sum=weight_sum,
                 error=(
                     f"routing weights sum to {weight_sum:.3f} "
-                    f"(documented max ~1.1, hard ceiling {ceiling}); "
-                    f"final score is still capped at 1.0"
+                    f"(documented max ~{_DOC_WEIGHT_SUM_MAX}, hard ceiling "
+                    f"{_WEIGHT_SUM_WARN_CEILING}); final score is still capped at 1.0"
                 ),
             )
         return self

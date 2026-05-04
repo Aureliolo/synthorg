@@ -953,8 +953,6 @@ class ConfigResolver:
 
     async def get_memory_bridge_config(self) -> MemoryBridgeConfig:
         """Assemble ``MemoryBridgeConfig`` from bridged memory settings."""
-        import json  # noqa: PLC0415
-
         from synthorg.settings.bridge_configs import MemoryBridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
@@ -983,7 +981,7 @@ class ConfigResolver:
             )
             raise ValueError(msg)
         try:
-            values["fine_tune_vram_batch_table"] = tuple(
+            table = tuple(
                 (float(vram_gb), int(batch_size)) for vram_gb, batch_size in parsed
             )
         except (TypeError, ValueError) as exc:
@@ -992,6 +990,19 @@ class ConfigResolver:
                 f"[vram_gb, batch_size] pairs; got {parsed!r}"
             )
             raise ValueError(msg) from exc
+        if any(vram_gb <= 0.0 or batch_size < 1 for vram_gb, batch_size in table):
+            msg = (
+                "memory.fine_tune_vram_batch_table requires vram_gb > 0 and "
+                f"batch_size >= 1; got {table!r}"
+            )
+            raise ValueError(msg)
+        if any(table[i][0] <= table[i + 1][0] for i in range(len(table) - 1)):
+            msg = (
+                "memory.fine_tune_vram_batch_table must be strictly descending "
+                f"by vram_gb so threshold selection is unambiguous; got {table!r}"
+            )
+            raise ValueError(msg)
+        values["fine_tune_vram_batch_table"] = table
         return MemoryBridgeConfig(**values)
 
     async def get_integrations_bridge_config(self) -> IntegrationsBridgeConfig:

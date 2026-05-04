@@ -1,6 +1,5 @@
 """Client simulation CRUD endpoints at /clients."""
 
-import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -292,19 +291,15 @@ class ClientController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        # Profile lookup and bridge-config resolution are independent;
-        # run them in parallel so config resolution does not bottleneck
-        # update latency. ``KeyError`` from the profile fetch is wrapped
-        # in an ``ExceptionGroup`` by ``TaskGroup``; ``except*`` unpacks it
-        # back into the same NotFoundError surface as the legacy path.
-        # The whole ExceptionGroup is chained as the cause so multiple
-        # KeyErrors (if a future task ever joins this group) all surface
-        # in the traceback rather than being silently dropped.
+        # Fetch the profile first so a missing client surfaces as a
+        # clean 404. Resolving the bridge config inside the same
+        # TaskGroup risked an ExceptionGroup that bypassed the
+        # NotFoundError handler when the resolver simultaneously
+        # failed; the latency cost of serial resolution is dwarfed by
+        # the profile fetch on this endpoint.
         try:
-            async with asyncio.TaskGroup() as tg:
-                profile_task = tg.create_task(sim_state.pool.get_profile(client_id))
-                config_task = tg.create_task(_resolve_client_bridge_config(app_state))
-        except* KeyError as exc_group:
+            current = await sim_state.pool.get_profile(client_id)
+        except KeyError as exc:
             msg = f"Client {client_id!r} not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -312,9 +307,8 @@ class ClientController(Controller):
                 client_id=client_id,
                 reason=msg,
             )
-            raise NotFoundError(msg) from exc_group
-        current = profile_task.result()
-        client_config = config_task.result()
+            raise NotFoundError(msg) from exc
+        client_config = await _resolve_client_bridge_config(app_state)
 
         updates = data.model_dump(exclude_none=True)
         updated = current.model_copy(update=updates)

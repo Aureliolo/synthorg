@@ -136,7 +136,7 @@ marker pointing at the canonical setting.
 | `api.lifecycle.message_bus_shutdown_seconds` | 3.0 | Lifecycle stop step deadline (in-process message bus). |
 | `api.lifecycle.persistence_shutdown_seconds` | 5.0 | Lifecycle stop step deadline (persistence backend drain + checkpoint). |
 | `api.lifecycle.approval_timeout_shutdown_seconds` | 1.0 | Lifecycle stop step deadline (approval timeout scheduler). |
-| `api.lifecycle.drain_timeout_seconds` | 25.0 | Outer `asyncio.wait_for` budget around the cumulative stop sequence. |
+| `api.lifecycle.drain_timeout_seconds` | 40.0 | Outer `asyncio.wait_for` budget around the cumulative stop sequence. |
 
 **Rationale.** Audit-set placeholders. Rate-limiter GC at 1024
 acquires balances bookkeeping latency against stale-bucket retention
@@ -148,9 +148,10 @@ reconnect without pushing publish latency into the multi-second
 tail. VRAM table (40GB->128, 16GB->64, 8GB->32) is a conventional
 GPU-memory-to-batch heuristic for transformer fine-tunes; revisit
 when distinct GPU profiles surface. Lifecycle stage budgets sum to
-~33s under the 25s drain ceiling intentionally, so the outer hard
-deadline cancels stuck stages even when individual budgets are
-generous; persistence and task-engine claim the largest slices
+~33s under the 40s drain ceiling, leaving ~7s of headroom so the
+outer hard deadline does not pre-empt normally-progressing stages
+yet still bounds stuck-stage tail latency; persistence and
+task-engine claim the largest slices
 because they own connection-pool drains and in-flight task
 finalisation respectively. Revisit when telemetry shows real-world
 shutdown timing distributions.

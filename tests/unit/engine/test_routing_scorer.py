@@ -4,12 +4,16 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
+import structlog
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
 from synthorg.core.role import Skill
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
+from synthorg.observability.events.task_routing import (
+    TASK_ROUTING_SCORER_INVALID_CONFIG,
+)
 
 
 def _as_skills(
@@ -497,15 +501,23 @@ class TestRoutingScorerConfigInjection:
     def test_weight_sum_validator_warns_on_excessive_weights(self) -> None:
         """Sum above the documented ceiling logs a warning but does not raise."""
         # All weights at 0.4 -> sum = 2.0, exceeds the 1.3 hard ceiling.
-        config = RoutingScorerConfig(
-            primary_skill_weight=0.4,
-            secondary_skill_weight=0.4,
-            tag_match_bonus=0.4,
-            role_match_bonus=0.4,
-            seniority_alignment_bonus=0.4,
-        )
-        # Construction succeeds (no ValidationError); warning side-effect
-        # is verified by the structured-log emission, not asserted here
-        # (would require monkeypatching the bound logger proxy and is
-        # already covered by the scorer-invalid-config code path).
+        with structlog.testing.capture_logs() as logs:
+            config = RoutingScorerConfig(
+                primary_skill_weight=0.4,
+                secondary_skill_weight=0.4,
+                tag_match_bonus=0.4,
+                role_match_bonus=0.4,
+                seniority_alignment_bonus=0.4,
+            )
         assert config.primary_skill_weight == pytest.approx(0.4)
+        warns = [
+            entry
+            for entry in logs
+            if entry.get("event") == TASK_ROUTING_SCORER_INVALID_CONFIG
+            and entry.get("log_level") == "warning"
+        ]
+        assert len(warns) == 1, (
+            "expected exactly one TASK_ROUTING_SCORER_INVALID_CONFIG warning, "
+            f"got {len(warns)} (logs={logs})"
+        )
+        assert warns[0]["weight_sum"] == pytest.approx(2.0)

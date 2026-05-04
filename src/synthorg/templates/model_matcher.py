@@ -385,7 +385,7 @@ class ModelMatcherConfig(BaseModel):
     via ``/settings`` without code changes.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     tier_base_score: float = Field(default=0.5, ge=0.0, le=1.0)
     headroom_max_bonus: float = Field(default=0.25, ge=0.0, le=1.0)
