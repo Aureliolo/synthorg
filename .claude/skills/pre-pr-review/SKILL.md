@@ -725,6 +725,37 @@ Read the linked issue's title, body, acceptance criteria, labels, and comments i
 
 **NOT_RESOLVED items always override the generic confidence-to-severity mapping and are surfaced as CRITICAL (blocking)**, regardless of the individual confidence score. This ensures missing acceptance criteria are never downgraded to a lower severity. The user decides whether to fix them in this PR or remove the closing keyword.
 
+## Phase 3.5: Audit-Skill Mini-Pass (diff scope)
+
+The full `/codebase-audit` runs ~155 agents and is too expensive for every PR. But a small, high-recurrence subset is cheap enough to run on the PR diff alone, catching new violations at PR time instead of waiting for the next scheduled audit. This phase adds five extra agents to Phase 4's parallel launch with their file scope constrained to the changed files.
+
+**Scope:** the same unified diff captured in Phase 3 (`git diff --staged main`) -- compute the set of changed files and pass it to each mini-pass agent as a hard scope override.
+
+**Mini-pass roster:**
+
+| Mini-pass agent | Source prompt | What it catches |
+|---|---|---|
+| `mini-pass-missing-logger` | Agent 01 in `.claude/skills/codebase-audit/SKILL.md` (section "Agent 01: missing-logger") | Business-logic modules without `logger = get_logger(__name__)` |
+| `mini-pass-missing-event-constants` | Agent 02 (section "Agent 02: missing-event-constants") | Logger calls using string / f-string / %-format literals instead of constants from `synthorg.observability.events.*` |
+| `mini-pass-missing-state-transition-log` | Agent 04 (section "Agent 04: missing-state-transition-log") | State / status mutations without an INFO log near the write |
+| `mini-pass-unwired-settings` | Agent 09 (section "Agent 09: unwired-settings") | Settings registered but consumed by no service started at boot |
+| `mini-pass-race-conditions` | Agent 39 (section "Agent 39: race-conditions") | Shared mutable state without locks, TOCTOU patterns, concurrent dict / list mutation, DB read-modify-write without transactions |
+
+**Prompt construction (per agent):** read the source prompt from `.claude/skills/codebase-audit/SKILL.md` by section header (line numbers drift; section headers are stable). Prepend a hard scope override:
+
+```text
+SCOPE OVERRIDE (mini-pass): only inspect the following files (the PR diff). Do not sweep the rest of src/. If a file in this list is outside the agent's normal scope (e.g. a test file for an agent that targets src/), skip it silently. File list:
+<one path per line from `git diff --staged main --name-only`, filtered to .py only for the four src-targeted agents>
+```
+
+For `mini-pass-missing-event-constants` and `mini-pass-race-conditions`, also include `tests/` paths from the diff so test-side regressions are caught. For `mini-pass-unwired-settings`, the diff scope must include `src/synthorg/settings/definitions/` AND `src/synthorg/api/lifecycle_helpers.py` whenever either changed (settings can be defined in one PR and ghost-wired in another -- the diff scope alone is too narrow).
+
+**Launch:** add the five mini-pass agents to the parallel Task call in Phase 4. Use `subagent_type: general-purpose`. The triage gate lock from Phase 4 covers their output too -- no separate lock needed.
+
+**Traceability:** every finding emitted by a mini-pass agent MUST set `Source: mini-pass-<agent-name>` in the Phase 5 triage table so users can downweight a category if it gets noisy without affecting the main agent roster.
+
+**Skip condition:** if the diff is `docs/`-only, `web/`-only, or `cli/`-only with zero `.py` changes under `src/synthorg/`, skip the mini-pass entirely (no Python diff = nothing for these five agents to find).
+
 ## Phase 4: Launch Review Agents (parallel)
 
 **Before launching any agent**, create the triage gate lock so the
