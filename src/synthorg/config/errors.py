@@ -38,6 +38,9 @@ class ConfigError(DomainError):
     error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
     status_code: ClassVar[int] = 500
 
+    message: str
+    locations: tuple[ConfigLocation, ...]
+
     def __init__(
         self,
         message: str,
@@ -88,6 +91,8 @@ class ConfigValidationError(ConfigError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
     status_code: ClassVar[int] = 422
+
+    field_errors: tuple[tuple[str, str], ...]
 
     def __init__(
         self,

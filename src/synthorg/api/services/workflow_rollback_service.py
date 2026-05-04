@@ -6,9 +6,11 @@ workflow_definitions repository, then constructed a fresh
 :class:`VersioningService` to record the post-rollback snapshot.
 Routing both writes through one cohesive service centralises:
 
-1. The durable definition save (raises :class:`VersionConflictError`
-   on optimistic-concurrency mismatch -- the controller still owns
-   the 409 translation).
+1. The durable definition save (raises
+   :class:`PersistenceVersionConflictError` on optimistic-concurrency
+   mismatch -- the controller catches it and re-raises the HTTP-aware
+   :class:`synthorg.core.domain_errors.VersionConflictError` so the
+   centralised RFC 9457 dispatch produces a 409).
 2. The best-effort post-rollback snapshot via
    :class:`VersioningService.snapshot_if_changed`.  A snapshot failure
    is logged at WARNING and swallowed -- the rollback itself has
@@ -79,9 +81,10 @@ class WorkflowRollbackService:
         """Persist ``rolled_back`` and snapshot the new revision.
 
         Raises:
-            VersionConflictError: When the optimistic-concurrency
+            PersistenceVersionConflictError: When the optimistic-concurrency
                 guard on ``definition_repo.save`` rejects the write
-                (the controller catches this and returns 409).
+                (the controller catches this and re-raises the domain
+                ``VersionConflictError`` so the response is 409).
 
         Returns ``rolled_back`` unchanged so the caller can serialise
         it onto the response without re-fetching.

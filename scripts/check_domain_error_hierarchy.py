@@ -83,8 +83,6 @@ _BASELINE_HEADER = """\
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_domain_error_hierarchy.py --update-baseline
-#
-# Issue #1738.
 """
 
 _BASELINE_ENTRY_PATTERN: Final[re.Pattern[str]] = re.compile(r"^.+:\d+:\w+$")
@@ -172,6 +170,16 @@ def _resolve_base(  # noqa: C901, PLR0911 -- AST base-class resolver covers Name
         ``(current_module, name)`` for local-module references with no
         matching import.
         ``None`` for unsupported expression forms (subscript, call, ...).
+
+    Edge case: deeply chained attribute access through a module alias
+    (``import x.y as z; class Foo(z.a.b.C):`` -> ``("x.y.a.b", "C")``)
+    constructs a synthetic dotted module path that may not match an
+    indexed entry. The closure pass treats unmatched bases as
+    "non-rooted, non-forbidden" -- the right outcome: such a class
+    surfaces as unresolved but is not flagged unless one of its other
+    bases is also forbidden. The codebase doesn't use this shape; the
+    branch exists for completeness and the index miss is the safe
+    default.
     """
     if isinstance(node, ast.Name):
         if node.id in alias_map:

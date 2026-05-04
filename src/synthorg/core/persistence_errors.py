@@ -118,6 +118,13 @@ class ConstraintViolationError(QueryError):
     default_message: ClassVar[str] = "Database constraint violated"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    # 400 instead of 422: a DB-level constraint violation is a
+    # malformed-request condition surfaced after the request reached the
+    # data layer (e.g. unique-key collision under concurrent insert), not
+    # a Pydantic-style schema-validation miss caught at the API boundary.
+    # The dedicated ``handle_persistence_integrity_error`` handler also
+    # hardcodes 400 for the same reason; this ClassVar matches that
+    # mapping so the two paths stay in lockstep.
     status_code: ClassVar[int] = 400
 
     def __init__(self, message: str, *, constraint: str) -> None:

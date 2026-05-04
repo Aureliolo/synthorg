@@ -170,8 +170,11 @@ class WsTicketStore:
                     pending=user_pending,
                     cap=self._max_pending,
                 )
-                msg = f"Ticket limit exceeded for user {user.user_id}"
-                raise TicketLimitExceededError(msg)
+                # Empty message lets the centralised handler fall back to
+                # the class default ("WebSocket ticket cap exceeded") so
+                # the 429 response carries no caller-identifying detail
+                # (the user_id is logged server-side just above).
+                raise TicketLimitExceededError
 
             ticket = secrets.token_urlsafe(get_auth_token_bytes())
             entry = _TicketEntry(

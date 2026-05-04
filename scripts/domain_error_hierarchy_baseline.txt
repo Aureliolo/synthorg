@@ -8,5 +8,3 @@
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_domain_error_hierarchy.py --update-baseline
-#
-# Issue #1738.

@@ -66,6 +66,11 @@ class WorkflowDefinitionNotFoundError(NotFoundError):
 class WorkflowDefinitionRevisionMismatchError(VersionConflictError):
     """Raised when an optimistic-concurrency revision check fails.
 
+    Inherits the HTTP 409 / ``VERSION_CONFLICT`` ClassVar mapping from
+    :class:`VersionConflictError`; the centralised RFC 9457 dispatch
+    therefore produces a 409 response without any controller-side
+    translation.
+
     ``actual`` is ``None`` when the persistence layer surfaces a
     conflict without a usable stored-revision read (e.g. the follow-up
     lookup raced with a delete). Callers should treat ``None`` as
