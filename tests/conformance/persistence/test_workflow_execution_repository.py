@@ -18,6 +18,7 @@ from synthorg.core.enums import (
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
+    RecordNotFoundError,
 )
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -310,6 +311,38 @@ class TestWorkflowExecutionRepository:
 
         with pytest.raises(PersistenceVersionConflictError):
             await exec_repo.save(stale)
+
+    async def test_update_after_delete_raises_record_not_found(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # Differentiates a delete race from a true version mismatch
+        # so the API surface keeps the 404 (not-found) path distinct
+        # from the 409 (conflict) path.
+        defn_repo = backend.workflow_definitions
+        exec_repo = backend.workflow_executions
+
+        defn = _make_workflow_definition("wf-delete-race", "Test")
+        await defn_repo.save(defn)
+
+        execution = _make_workflow_execution(
+            execution_id="exec-delete-race",
+            definition_id="wf-delete-race",
+        )
+        await exec_repo.save(execution)
+        deleted = await exec_repo.delete("exec-delete-race")
+        assert deleted is True
+
+        updated = _make_workflow_execution(
+            execution_id="exec-delete-race",
+            definition_id="wf-delete-race",
+            status=WorkflowExecutionStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+            version=2,
+        )
+
+        with pytest.raises(RecordNotFoundError):
+            await exec_repo.save(updated)
 
     async def test_delete_execution(
         self,

@@ -10,7 +10,7 @@ should override ``is_retryable = True`` explicitly.
 
 from typing import ClassVar
 
-from synthorg.core.domain_errors import ConflictError, DomainError
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
@@ -39,9 +39,19 @@ class HiringError(HRError):
 class HiringApprovalRequiredError(HiringError):
     """Hiring request requires approval before instantiation."""
 
+    default_message: ClassVar[str] = "Hiring request requires approval"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409
+
 
 class HiringRejectedError(HiringError):
     """Hiring request was rejected."""
+
+    default_message: ClassVar[str] = "Hiring request was rejected"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409
 
 
 class InvalidCandidateError(HiringError):
@@ -134,6 +144,11 @@ class PromotionCooldownError(PromotionError):
 class PromotionApprovalRequiredError(PromotionError):
     """Promotion requires human approval before proceeding."""
 
+    default_message: ClassVar[str] = "Promotion requires approval"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409
+
 
 # ── Pruning ────────────────────────────────────────────────────
 
@@ -142,7 +157,7 @@ class PruningError(HRError):
     """Error during the pruning process."""
 
 
-class PruningUnrestartableError(ConflictError):
+class PruningUnrestartableError(PruningError):
     """Raised when ``PruningService.start()`` is called after a timed-out stop.
 
     Mirrors :class:`BackupUnrestartableError`: a stuck drain leaves an
@@ -154,6 +169,9 @@ class PruningUnrestartableError(ConflictError):
     default_message: ClassVar[str] = (
         "Pruning service is unrestartable after a timed-out stop"
     )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409
 
 
 # ── Personalities ───────────────────────────────────────────────

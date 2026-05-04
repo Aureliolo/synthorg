@@ -27,8 +27,10 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 class InvalidCursorError(ValidationError):
     """Raised when a cursor token is malformed, tampered, or unsigned.
 
-    Controllers should translate this to HTTP 400 with a structured
-    ``ErrorDetail`` (``error_category=validation``).
+    Renders as HTTP 422 Unprocessable Entity with a structured
+    ``ErrorDetail`` (``error_category=validation``,
+    ``error_code=VALIDATION_ERROR``) via the centralised RFC 9457
+    dispatch.
     """
 
     default_message: ClassVar[str] = "Invalid cursor token"

@@ -244,6 +244,7 @@ class TestCheckHasNameLocales:
 
         original = settings_svc.get_entry
         settings_svc.get_entry = AsyncMock(
+            spec=original,
             side_effect=RuntimeError("db connection lost"),
         )
         try:
@@ -267,6 +268,7 @@ class TestCheckHasNameLocales:
 
         original = settings_svc.get_entry
         settings_svc.get_entry = AsyncMock(
+            spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
         try:
@@ -314,6 +316,7 @@ class TestReadNameLocales:
 
         original = settings_svc.get_entry
         settings_svc.get_entry = AsyncMock(
+            spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
         try:

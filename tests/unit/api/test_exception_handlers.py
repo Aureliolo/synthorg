@@ -1636,14 +1636,15 @@ class TestBareResponseFixes:
             )
 
 
-class TestMigratedDomainErrorFamilies:
-    """End-to-end ClassVar -> HTTP mapping for the #1738 migration.
+class TestDomainErrorFamilyClassVarHttpMapping:
+    """End-to-end ClassVar -> HTTP mapping for DomainError-rooted families.
 
     Catches typos in ``status_code`` / ``error_code`` / ``error_category``
-    on any migrated class. Without these, a refactor that flips a
-    ``status_code = 404`` to ``500`` on (for example) ``AgentNotFoundError``
-    would silently ship: the AST gate only checks that the class roots in
-    ``DomainError``, not that its HTTP metadata is sensible.
+    on any class in the domain-error tree. Without these, a refactor
+    that flips ``status_code = 404`` to ``500`` on (for example)
+    ``AgentNotFoundError`` would silently ship: the AST gate only
+    checks that the class roots in ``DomainError``, not that its HTTP
+    metadata is sensible.
     """
 
     @pytest.mark.parametrize(
@@ -1757,17 +1758,16 @@ class TestMigratedDomainErrorFamilies:
         error_code: int,
         error_category: ErrorCategory,
     ) -> None:
-        """Each migrated class's ClassVars produce the right HTTP envelope."""
+        """Each class's ClassVars produce the right HTTP envelope."""
         import importlib
 
         module = importlib.import_module(import_path)
         exc_cls: type[Exception] = getattr(module, exc_name)
 
-        # Some constructors take args (e.g. StrategyFactoryError takes
-        # message). All migrated classes accept `()` because DomainError's
-        # __init__ defaults message=None. Catch and skip the rare
-        # constructor that requires positional args (none in this list at
-        # the time of writing, but guards against future drift).
+        # Most DomainError subclasses accept ``()`` because the base
+        # ``__init__`` defaults ``message=None``; the fallback path
+        # below keeps the metadata-routing assertion alive even if a
+        # class ever requires a positional message argument.
         @get("/test")
         async def handler() -> None:
             try:

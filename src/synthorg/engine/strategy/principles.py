@@ -295,6 +295,13 @@ def load_and_merge(
             principle = ConstitutionalPrinciple(**raw)
         except (TypeError, PydanticValidationError) as exc:
             msg = f"Invalid custom principle at index {i}: {exc}"
+            logger.warning(
+                STRATEGY_PACK_INVALID,
+                source="custom",
+                index=i,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise StrategyPackValidationError(msg) from exc
         if principle.id not in existing_ids:
             principles.append(principle)

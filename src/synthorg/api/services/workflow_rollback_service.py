@@ -1,27 +1,20 @@
 """WorkflowRollbackService -- audit-aware facade for rollback persistence.
 
-The :class:`WorkflowVersionController.rollback_workflow` handler
-previously called ``repo.save(rolled_back)`` directly on the
-workflow_definitions repository, then constructed a fresh
-:class:`VersioningService` to record the post-rollback snapshot.
-Routing both writes through one cohesive service centralises:
+Routes the rollback save and the post-rollback snapshot through one
+cohesive service so callers get:
 
-1. The durable definition save (raises
+1. The durable definition save, which may raise
    :class:`PersistenceVersionConflictError` on optimistic-concurrency
-   mismatch -- the controller catches it and re-raises the HTTP-aware
-   :class:`synthorg.core.domain_errors.VersionConflictError` so the
-   centralised RFC 9457 dispatch produces a 409).
-2. The best-effort post-rollback snapshot via
-   :class:`VersioningService.snapshot_if_changed`.  A snapshot failure
-   is logged at WARNING and swallowed -- the rollback itself has
-   already been persisted, so dropping the audit row keeps service
-   availability while operators receive the WARN signal.
+   mismatch.
+2. A best-effort post-rollback snapshot via
+   :class:`VersioningService.snapshot_if_changed`. Snapshot failures
+   are logged at WARNING and swallowed so a snapshot write failure
+   cannot fail the whole rollback after the durable save committed.
 3. The audit-grade :data:`WORKFLOW_DEF_ROLLED_BACK` event emitted on
    success.
 
-The service is constructed per request from the controller (it is a
-thin two-method object whose lifecycle is bound to the request, not
-the process); no AppState wiring is required.
+The service is a thin two-method object constructed per request; no
+AppState wiring is required.
 """
 
 from typing import TYPE_CHECKING
@@ -82,9 +75,7 @@ class WorkflowRollbackService:
 
         Raises:
             PersistenceVersionConflictError: When the optimistic-concurrency
-                guard on ``definition_repo.save`` rejects the write
-                (the controller catches this and re-raises the domain
-                ``VersionConflictError`` so the response is 409).
+                guard on ``definition_repo.save`` rejects the write.
 
         Returns ``rolled_back`` unchanged so the caller can serialise
         it onto the response without re-fetching.

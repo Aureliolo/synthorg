@@ -413,7 +413,7 @@ def test_no_baseline_flag_reports_all(
             ),
         },
     )
-    monkeypatch.chdir(project_root)
+    monkeypatch.chdir(tmp_path.parent)
     rc = _MODULE.main(
         [
             "--repo-root",
@@ -441,7 +441,7 @@ def test_clean_tree_returns_zero(
             ),
         },
     )
-    monkeypatch.chdir(project_root)
+    monkeypatch.chdir(tmp_path.parent)
     rc = _MODULE.main(["--repo-root", str(project_root), "--no-baseline"])
     assert rc == 0
 
@@ -461,7 +461,7 @@ def test_update_baseline_writes_sorted(
     )
     baseline_path = project_root / "scripts" / "domain_error_hierarchy_baseline.txt"
     baseline_path.parent.mkdir(parents=True, exist_ok=True)
-    monkeypatch.chdir(project_root)
+    monkeypatch.chdir(tmp_path.parent)
     rc = _MODULE.main(["--repo-root", str(project_root), "--update-baseline"])
     assert rc == 0
     body = baseline_path.read_text(encoding="utf-8")

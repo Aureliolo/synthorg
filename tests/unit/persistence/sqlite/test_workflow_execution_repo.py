@@ -10,7 +10,10 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    RecordNotFoundError,
+)
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
@@ -178,6 +181,26 @@ class TestVersionConflict:
         assert loaded is not None
         assert loaded.version == 2
         assert loaded.status is WorkflowExecutionStatus.COMPLETED
+
+    @pytest.mark.unit
+    async def test_update_after_delete_raises_record_not_found(
+        self,
+        repo: SQLiteWorkflowExecutionRepository,
+    ) -> None:
+        # Differentiates a delete race (404 semantics) from a true
+        # version mismatch (409 semantics). Without the SELECT probe
+        # both collapse into PersistenceVersionConflictError and the
+        # API surface loses the not-found path.
+        exe = _make_execution()
+        await repo.save(exe)
+        deleted = await repo.delete("wfexec-test001")
+        assert deleted is True
+
+        updated = WorkflowExecution.model_validate(
+            {**exe.model_dump(mode="json"), "version": 2},
+        )
+        with pytest.raises(RecordNotFoundError):
+            await repo.save(updated)
 
 
 class TestListByDefinition:

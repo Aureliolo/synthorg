@@ -430,7 +430,9 @@ class CodeApplier:
             changes that were successfully written before the error.
 
         Raises:
-            RuntimeError: If a file write or delete fails.
+            PartialWriteError: If applying a change fails after one or
+                more changes were written; carries the applied subset
+                so the outer ``apply()`` can revert what already landed.
         """
         changed: list[str] = []
         applied: list[CodeChange] = []

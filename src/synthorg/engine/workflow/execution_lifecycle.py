@@ -13,7 +13,10 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    RecordNotFoundError,
+)
 from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
@@ -282,6 +285,25 @@ async def fail_execution(
 # -- Task-event handling ---------------------------------------------------
 
 
+def _retry_event_for(event: TaskStateChanged) -> str:
+    """Return the WORKFLOW_EXEC_NODE_TASK_* event for a retry log line."""
+    if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+        return WORKFLOW_EXEC_NODE_TASK_FAILED
+    return WORKFLOW_EXEC_NODE_TASK_COMPLETED
+
+
+async def _dispatch_task_handler(
+    repo: WorkflowExecutionRepository,
+    execution: WorkflowExecution,
+    event: TaskStateChanged,
+) -> None:
+    """Route a terminal task event to the matching lifecycle handler."""
+    if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+        await _handle_task_failed(repo, execution, event)
+    else:
+        await _handle_task_completed(repo, execution, event)
+
+
 async def handle_task_state_changed(
     repo: WorkflowExecutionRepository,
     event: TaskStateChanged,
@@ -302,16 +324,19 @@ async def handle_task_state_changed(
         return
 
     try:
-        if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
-            await _handle_task_failed(repo, execution, event)
-        else:
-            await _handle_task_completed(repo, execution, event)
-    except PersistenceVersionConflictError:
-        retry_event = (
-            WORKFLOW_EXEC_NODE_TASK_FAILED
-            if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}
-            else WORKFLOW_EXEC_NODE_TASK_COMPLETED
+        await _dispatch_task_handler(repo, execution, event)
+    except RecordNotFoundError:
+        # Execution row was deleted between read and update; retry
+        # would only fail the same way, so log and drop.
+        logger.warning(
+            _retry_event_for(event),
+            execution_id=execution.id,
+            task_id=event.task_id,
+            error="Execution deleted before lifecycle update could persist",
         )
+        return
+    except PersistenceVersionConflictError:
+        retry_event = _retry_event_for(event)
         logger.warning(
             retry_event,
             execution_id=execution.id,
@@ -334,13 +359,7 @@ async def handle_task_state_changed(
         }:
             return
         try:
-            if event.new_status in {
-                TaskStatus.FAILED,
-                TaskStatus.CANCELLED,
-            }:
-                await _handle_task_failed(repo, refreshed, event)
-            else:
-                await _handle_task_completed(repo, refreshed, event)
+            await _dispatch_task_handler(repo, refreshed, event)
         except Exception:
             logger.exception(
                 retry_event,

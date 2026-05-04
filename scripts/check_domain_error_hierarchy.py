@@ -151,7 +151,7 @@ def _build_alias_map(tree: ast.Module) -> dict[str, tuple[str, str | None]]:
                     aliases[alias.asname] = (alias.name, None)
                 else:
                     head = alias.name.split(".")[0]
-                    aliases.setdefault(head, (alias.name, None))
+                    aliases.setdefault(head, (head, None))
     return aliases
 
 
@@ -377,10 +377,9 @@ def _scan_tree(  # noqa: C901 -- two-pass closure + violation collection + drift
     for entry in all_entries:
         if entry.suppressed:
             continue
-        key = (entry.module, entry.name)
-        if key in rooted:
-            continue
         if not _has_forbidden_direct_base(entry):
+            continue
+        if (entry.module, entry.name) in rooted:
             continue
         baseline_key = _format_baseline_entry(entry.rel, entry.lineno, entry.name)
         seen_keys.add(baseline_key)
@@ -482,9 +481,9 @@ def _scan_for_baseline_entries(
     for entry in all_entries:
         if entry.suppressed:
             continue
-        if (entry.module, entry.name) in rooted:
-            continue
         if not _has_forbidden_direct_base(entry):
+            continue
+        if (entry.module, entry.name) in rooted:
             continue
         found.append((entry.rel, entry.lineno, entry.name))
     found.sort()

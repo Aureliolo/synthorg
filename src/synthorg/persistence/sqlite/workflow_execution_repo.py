@@ -20,6 +20,7 @@ from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
     QueryError,
+    RecordNotFoundError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.execution_models import (
@@ -161,7 +162,10 @@ class SQLiteWorkflowExecutionRepository:
 
         Raises:
             DuplicateRecordError: If inserting a duplicate ID.
-            PersistenceVersionConflictError: If optimistic concurrency check fails.
+            PersistenceVersionConflictError: If the row exists but its
+                stored version differs from ``execution.version - 1``.
+            RecordNotFoundError: If updating a row that no longer
+                exists (delete race between read and update).
             QueryError: If the database operation fails.
         """
         if execution.version == 1:
@@ -273,11 +277,27 @@ WHERE id = ? AND version = ?""",
                     ),
                 )
                 if cursor.rowcount == 0:
+                    probe = await self._db.execute(
+                        "SELECT version FROM workflow_executions WHERE id = ?",
+                        (execution.id,),
+                    )
+                    row = await probe.fetchone()
                     await self._db.rollback()
+                    if row is None:
+                        msg = (
+                            f"Workflow execution {execution.id!r} not found"
+                            f" (deleted between read and update)"
+                        )
+                        logger.warning(
+                            PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                            execution_id=execution.id,
+                            error=msg,
+                        )
+                        raise RecordNotFoundError(msg)
                     msg = (
                         f"Version conflict saving workflow execution"
                         f" {execution.id!r}: expected version"
-                        f" {execution.version - 1}, not found"
+                        f" {execution.version - 1}, current is {row[0]}"
                     )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,

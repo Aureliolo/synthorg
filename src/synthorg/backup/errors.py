@@ -9,7 +9,7 @@ subclass to a structured RFC 9457 response via the centralised
 
 from typing import ClassVar
 
-from synthorg.core.domain_errors import ConflictError, DomainError
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
@@ -56,7 +56,7 @@ class BackupNotFoundError(BackupError):
     status_code: ClassVar[int] = 404
 
 
-class BackupUnrestartableError(ConflictError):
+class BackupUnrestartableError(BackupError):
     """Raised when ``BackupScheduler.start()`` is called after a timed-out stop.
 
     The scheduler refuses to spawn a fresh loop on top of an orphan
@@ -67,3 +67,6 @@ class BackupUnrestartableError(ConflictError):
     default_message: ClassVar[str] = (
         "Backup scheduler is unrestartable after a timed-out stop"
     )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409

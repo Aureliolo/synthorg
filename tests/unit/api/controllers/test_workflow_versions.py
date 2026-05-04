@@ -5,6 +5,9 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.services.workflow_rollback_service import WorkflowRollbackService
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -344,17 +347,6 @@ class TestRollback:
         produces a 409 response. Without that translation the persistence
         error would escape uncaught and become a generic 500.
         """
-        from synthorg.api.services.workflow_rollback_service import (
-            WorkflowRollbackService,
-        )
-        from synthorg.core.error_taxonomy import (
-            ErrorCategory,
-            ErrorCode,
-        )
-        from synthorg.core.persistence_errors import (
-            PersistenceVersionConflictError,
-        )
-
         wf = _create_workflow(test_client, name="Original")
         wf_id = wf["id"]
         _update_workflow(test_client, wf_id, 1, name="Updated")

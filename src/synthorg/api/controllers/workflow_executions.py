@@ -23,6 +23,7 @@ from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import (
     PersistenceError,
     PersistenceVersionConflictError,
+    RecordNotFoundError,
 )
 from synthorg.engine.errors import (
     WorkflowConditionEvalError,
@@ -266,7 +267,7 @@ class WorkflowExecutionController(Controller):
                 execution_id,
                 cancelled_by=cancelled_by,
             )
-        except WorkflowExecutionNotFoundError:
+        except WorkflowExecutionNotFoundError, RecordNotFoundError:
             logger.warning(
                 WORKFLOW_EXEC_NOT_FOUND,
                 execution_id=execution_id,
