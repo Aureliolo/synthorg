@@ -21,6 +21,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import AuthenticatedUser, OrgRole, User
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
@@ -534,7 +535,9 @@ class UserController(Controller):
         new_scoped = (
             tuple(
                 sorted(
-                    dict.fromkeys([*user.scoped_departments, *data.scoped_departments]),
+                    dedupe_preserving_order(
+                        [*user.scoped_departments, *data.scoped_departments],
+                    ),
                 )
             )
             if data.role == OrgRole.DEPARTMENT_ADMIN

@@ -41,6 +41,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_LISTED,
     PERSISTENCE_TASK_SAVE_FAILED,
 )
+from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 
 logger = get_logger(__name__)
 
@@ -546,12 +547,7 @@ INSERT INTO messages (
                 )
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                error_text = str(exc)
-                is_duplicate_id = (
-                    "UNIQUE constraint failed: messages.id" in error_text
-                    or "PRIMARY KEY" in error_text
-                )
-                if is_duplicate_id:
+                if is_unique_constraint_error(exc):
                     err_msg = f"Message {msg_id} already exists"
                     logger.warning(PERSISTENCE_MESSAGE_DUPLICATE, message_id=msg_id)
                     raise DuplicateRecordError(err_msg) from exc

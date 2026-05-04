@@ -13,13 +13,12 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    field_validator,
     model_validator,
 )
 
 from synthorg.core.enums import TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.utils import deduplicate_tags
+from synthorg.memory.utils import make_dedupe_tags_model_validator
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -188,15 +187,9 @@ class ProceduralMemoryProposal(BaseModel):
         description="Last time an agent applied this proposal",
     )
 
-    @field_validator("tags", mode="before")
-    @classmethod
-    def _deduplicate_tags(cls, v: object) -> object:
-        """Deduplicate tags before max_length validation."""
-        if isinstance(v, list | tuple):
-            deduped = deduplicate_tags(v)
-            max_tags = 20
-            return deduped if len(deduped) <= max_tags else deduped[:max_tags]
-        return v
+    _deduplicate_tags = model_validator(mode="after")(
+        make_dedupe_tags_model_validator(max_items=20)
+    )
 
     @model_validator(mode="after")
     def _validate_supersession_consistency(self) -> Self:

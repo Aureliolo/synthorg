@@ -11,10 +11,10 @@ Strategies include:
 - Hybrid approaches combining multiple strategies
 """
 
-import json
 import re
 from typing import Any, Protocol, runtime_checkable
 
+from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import (
     STRATEGY_CONFLICT_PARSE_FAILED,
@@ -75,37 +75,8 @@ _IDENTITY_KEYS: frozenset[str] = frozenset(
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from text using brace matching.
-
-    Tries parsing the full text first.  If that fails, locates the
-    outermost ``{`` and ``}`` and parses the substring between them.
-
-    Args:
-        text: Raw text potentially containing a JSON object.
-
-    Returns:
-        Parsed dict if a valid JSON object is found, else ``None``.
-    """
-    # Try parsing entire text as JSON first (works for clean JSON)
-    try:
-        parsed = json.loads(text)
-        if isinstance(parsed, dict):
-            return parsed
-    except json.JSONDecodeError:
-        pass
-
-    # Find outermost braces to handle nested structures
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            parsed = json.loads(text[start : end + 1])
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-    return None
+    """Extract a JSON object from text via the shared LLM JSON helper."""
+    return extract_json_from_llm_response(text)
 
 
 class KeywordConflictDetector:

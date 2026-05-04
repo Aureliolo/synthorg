@@ -14,6 +14,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:
@@ -25,14 +26,6 @@ _COLS = (
     "id, timestamp, url, hostname, port, resolved_ip, "
     "blocked_range, provider_name, status, resolved_by, resolved_at"
 )
-
-
-def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
-    """Return True for UNIQUE/PRIMARY KEY violations."""
-    return exc.sqlite_errorname in {
-        "SQLITE_CONSTRAINT_UNIQUE",
-        "SQLITE_CONSTRAINT_PRIMARYKEY",
-    }
 
 
 class SQLiteSsrfViolationRepository:
@@ -102,7 +95,7 @@ class SQLiteSsrfViolationRepository:
                 await self._db.commit()
         except sqlite3.IntegrityError as exc:
             await self._rollback_quietly()
-            if _is_unique_constraint_error(exc):
+            if is_unique_constraint_error(exc):
                 msg = f"SSRF violation {violation.id!r} already exists"
                 raise DuplicateRecordError(msg) from exc
             msg = "Failed to save SSRF violation"

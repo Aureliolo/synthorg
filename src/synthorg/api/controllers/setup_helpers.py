@@ -21,6 +21,7 @@ from synthorg.api.controllers.setup_models import (
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
@@ -300,7 +301,7 @@ def validate_locale_selection(
         )
         msg = f"Invalid locale codes: {invalid}"
         raise ValidationError(msg)
-    unique = list(dict.fromkeys(locales))
+    unique = list(dedupe_preserving_order(locales))
     if len(unique) != len(locales):
         logger.warning(
             SETUP_NAME_LOCALES_INVALID,

@@ -1,0 +1,74 @@
+"""Tests for ``synthorg.core.json_parsing``."""
+
+import pytest
+
+from synthorg.core.json_parsing import (
+    extract_json_array_from_llm_response,
+    extract_json_from_llm_response,
+)
+
+
+@pytest.mark.unit
+class TestObjectExtractor:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ('{"k": "v"}', {"k": "v"}),
+            ('  {"k": "v"}  ', {"k": "v"}),
+            ('```json\n{"k": "v"}\n```', {"k": "v"}),
+            ('```\n{"k": "v"}\n```', {"k": "v"}),
+            ('Here is the JSON: {"k": "v"} done.', {"k": "v"}),
+        ],
+    )
+    def test_happy_paths(self, text: str, expected: dict[str, str]) -> None:
+        assert extract_json_from_llm_response(text) == expected
+
+    @pytest.mark.parametrize("text", ["", "   ", "not json at all"])
+    def test_failures_return_none(self, text: str) -> None:
+        assert extract_json_from_llm_response(text) is None
+
+    def test_array_input_rejected(self) -> None:
+        """The dict variant returns None when the response is a JSON array."""
+        assert extract_json_from_llm_response('["a", "b"]') is None
+
+    def test_logger_callback_invoked_on_failure(self) -> None:
+        seen: list[str] = []
+
+        def _capture(detail: str) -> None:
+            seen.append(detail)
+
+        extract_json_from_llm_response("garbage", logger_callback=_capture)
+        assert seen == ["json_decode_error"]
+
+    def test_logger_callback_swallows_exceptions(self) -> None:
+        """A misbehaving callback must not break the extractor's contract."""
+
+        def _broken(_detail: str) -> None:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        # Returns None (failure path) without re-raising the callback's error.
+        assert (
+            extract_json_from_llm_response("garbage", logger_callback=_broken) is None
+        )
+
+
+@pytest.mark.unit
+class TestArrayExtractor:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("[1, 2, 3]", [1, 2, 3]),
+            ("```json\n[1, 2]\n```", [1, 2]),
+            ("Result: [1, 2] (done)", [1, 2]),
+        ],
+    )
+    def test_happy_paths(self, text: str, expected: list[int]) -> None:
+        assert extract_json_array_from_llm_response(text) == expected
+
+    def test_object_input_rejected(self) -> None:
+        """The array variant returns None when the response is a JSON object."""
+        assert extract_json_array_from_llm_response('{"k": "v"}') is None
+
+    def test_empty_returns_none(self) -> None:
+        assert extract_json_array_from_llm_response("") is None
