@@ -10,8 +10,8 @@
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_no_magic_numbers.py --update
 src/synthorg/a2a/connection_types/a2a_peer.py:15:30
-src/synthorg/a2a/gateway.py:73:30
-src/synthorg/a2a/gateway.py:623:27
+src/synthorg/a2a/gateway.py:75:30
+src/synthorg/a2a/gateway.py:630:27
 src/synthorg/a2a/models.py:124:27
 src/synthorg/a2a/models.py:125:31
 src/synthorg/a2a/models.py:126:32
@@ -26,8 +26,8 @@ src/synthorg/a2a/models.py:136:29
 src/synthorg/a2a/push_verifier.py:22:30
 src/synthorg/api/app.py:138:42
 src/synthorg/api/auth/middleware.py:47:16
-src/synthorg/api/auth/ticket_store.py:56:29
-src/synthorg/api/auth/ticket_store.py:103:29
+src/synthorg/api/auth/ticket_store.py:64:29
+src/synthorg/api/auth/ticket_store.py:111:29
 src/synthorg/api/auth/token_size.py:22:33
 src/synthorg/api/auth/token_size.py:30:29
 src/synthorg/api/auth/token_size.py:38:29
@@ -48,9 +48,9 @@ src/synthorg/api/controllers/audit.py:39:19
 src/synthorg/api/controllers/audit.py:101:29
 src/synthorg/api/controllers/backup.py:187:29
 src/synthorg/api/controllers/budget.py:298:29
-src/synthorg/api/controllers/budget_config_versions.py:45:29
+src/synthorg/api/controllers/budget_config_versions.py:46:29
 src/synthorg/api/controllers/clients.py:216:29
-src/synthorg/api/controllers/company_versions.py:45:29
+src/synthorg/api/controllers/company_versions.py:46:29
 src/synthorg/api/controllers/connections.py:65:20
 src/synthorg/api/controllers/connections.py:66:22
 src/synthorg/api/controllers/connections.py:156:29
@@ -61,7 +61,7 @@ src/synthorg/api/controllers/custom_rules.py:435:29
 src/synthorg/api/controllers/departments.py:229:49
 src/synthorg/api/controllers/departments.py:392:29
 src/synthorg/api/controllers/escalations.py:132:29
-src/synthorg/api/controllers/evaluation_config_versions.py:45:29
+src/synthorg/api/controllers/evaluation_config_versions.py:46:29
 src/synthorg/api/controllers/events.py:54:34
 src/synthorg/api/controllers/events.py:101:36
 src/synthorg/api/controllers/integration_health.py:77:29
@@ -97,7 +97,7 @@ src/synthorg/api/controllers/projects.py:71:29
 src/synthorg/api/controllers/providers.py:1384:29
 src/synthorg/api/controllers/reports.py:144:29
 src/synthorg/api/controllers/requests.py:89:29
-src/synthorg/api/controllers/role_versions.py:43:29
+src/synthorg/api/controllers/role_versions.py:44:29
 src/synthorg/api/controllers/scaling.py:192:29
 src/synthorg/api/controllers/settings.py:298:29
 src/synthorg/api/controllers/simulations.py:291:29
@@ -105,9 +105,9 @@ src/synthorg/api/controllers/subworkflows.py:128:29
 src/synthorg/api/controllers/tasks.py:172:29
 src/synthorg/api/controllers/users.py:257:29
 src/synthorg/api/controllers/webhooks.py:57:32
-src/synthorg/api/controllers/workflow_executions.py:172:29
-src/synthorg/api/controllers/workflow_versions.py:206:29
-src/synthorg/api/controllers/workflows.py:109:29
+src/synthorg/api/controllers/workflow_executions.py:176:29
+src/synthorg/api/controllers/workflow_versions.py:197:29
+src/synthorg/api/controllers/workflows.py:108:29
 src/synthorg/api/controllers/ws.py:61:29
 src/synthorg/api/controllers/ws.py:64:33
 src/synthorg/api/controllers/ws.py:66:29
@@ -118,9 +118,9 @@ src/synthorg/api/controllers/ws_protocol.py:46:29
 src/synthorg/api/controllers/ws_protocol.py:51:29
 src/synthorg/api/controllers/ws_revalidation.py:36:27
 src/synthorg/api/controllers/ws_revalidation.py:37:30
-src/synthorg/api/cursor.py:35:17
-src/synthorg/api/cursor.py:42:18
-src/synthorg/api/cursor.py:229:22
+src/synthorg/api/cursor.py:44:17
+src/synthorg/api/cursor.py:51:18
+src/synthorg/api/cursor.py:238:22
 src/synthorg/api/dto.py:33:21
 src/synthorg/api/dto.py:34:17
 src/synthorg/api/dto.py:36:26
@@ -128,8 +128,8 @@ src/synthorg/api/dto.py:37:29
 src/synthorg/api/dto_discovery.py:9:12
 src/synthorg/api/etag.py:97:16
 src/synthorg/api/etag.py:98:26
-src/synthorg/api/exception_handlers.py:75:38
-src/synthorg/api/exception_handlers.py:79:30
+src/synthorg/api/exception_handlers.py:71:38
+src/synthorg/api/exception_handlers.py:75:30
 src/synthorg/api/lifecycle_helpers.py:207:55
 src/synthorg/api/lifecycle_helpers.py:208:63
 src/synthorg/api/lifecycle_helpers.py:272:32
@@ -202,12 +202,12 @@ src/synthorg/communication/conflict_resolution/escalation/sweeper.py:42:34
 src/synthorg/communication/conflict_resolution/human_strategy.py:71:48
 src/synthorg/communication/conflict_resolution/models.py:26:17
 src/synthorg/communication/delegation/record_store.py:29:23
-src/synthorg/communication/event_stream/stream.py:43:26
-src/synthorg/communication/event_stream/stream.py:44:29
-src/synthorg/communication/event_stream/stream.py:45:41
-src/synthorg/communication/event_stream/stream.py:46:39
-src/synthorg/communication/event_stream/stream.py:47:36
-src/synthorg/communication/event_stream/stream.py:48:40
+src/synthorg/communication/event_stream/stream.py:46:26
+src/synthorg/communication/event_stream/stream.py:47:29
+src/synthorg/communication/event_stream/stream.py:48:41
+src/synthorg/communication/event_stream/stream.py:49:39
+src/synthorg/communication/event_stream/stream.py:50:36
+src/synthorg/communication/event_stream/stream.py:51:40
 src/synthorg/communication/loop_prevention/dedup.py:38:30
 src/synthorg/communication/meeting/conflict_detection.py:35:39
 src/synthorg/communication/meeting/conflict_detection.py:58:35
@@ -283,9 +283,9 @@ src/synthorg/engine/policy_validation.py:33:33
 src/synthorg/engine/policy_validation.py:34:33
 src/synthorg/engine/quality/classifier.py:39:42
 src/synthorg/engine/quality/classifier.py:40:38
-src/synthorg/engine/quality/decomposers/llm.py:87:41
-src/synthorg/engine/quality/decomposers/llm.py:88:40
-src/synthorg/engine/quality/decomposers/llm.py:207:40
+src/synthorg/engine/quality/decomposers/llm.py:89:41
+src/synthorg/engine/quality/decomposers/llm.py:90:40
+src/synthorg/engine/quality/decomposers/llm.py:214:40
 src/synthorg/engine/quality/effort.py:21:29
 src/synthorg/engine/quality/effort.py:22:34
 src/synthorg/engine/quality/graders/llm.py:99:33
@@ -548,7 +548,7 @@ src/synthorg/meta/appliers/architecture_applier.py:68:34
 src/synthorg/meta/appliers/architecture_applier.py:69:37
 src/synthorg/meta/appliers/architecture_applier.py:70:32
 src/synthorg/meta/appliers/architecture_applier.py:75:41
-src/synthorg/meta/appliers/github_client.py:53:19
+src/synthorg/meta/appliers/github_client.py:62:19
 src/synthorg/meta/appliers/prompt_applier.py:29:23
 src/synthorg/meta/appliers/prompt_applier.py:30:23
 src/synthorg/meta/chief_of_staff/inflection.py:21:11
@@ -589,9 +589,9 @@ src/synthorg/meta/rollout/canary.py:58:38
 src/synthorg/meta/rollout/regression/statistical.py:118:31
 src/synthorg/meta/rollout/regression/statistical.py:119:36
 src/synthorg/meta/rollout/regression/welch.py:27:23
-src/synthorg/meta/rollout/regression/welch.py:125:19
-src/synthorg/meta/rollout/regression/welch.py:126:14
-src/synthorg/meta/rollout/regression/welch.py:127:16
+src/synthorg/meta/rollout/regression/welch.py:129:19
+src/synthorg/meta/rollout/regression/welch.py:130:14
+src/synthorg/meta/rollout/regression/welch.py:131:16
 src/synthorg/meta/rules/builtin.py:40:45
 src/synthorg/meta/rules/builtin.py:87:45
 src/synthorg/meta/rules/builtin.py:133:48
@@ -640,7 +640,7 @@ src/synthorg/notifications/adapters/email.py:72:38
 src/synthorg/notifications/adapters/ntfy.py:102:41
 src/synthorg/notifications/adapters/slack.py:92:41
 src/synthorg/observability/audit_chain/sink.py:105:42
-src/synthorg/observability/audit_chain/tsa_client.py:160:29
+src/synthorg/observability/audit_chain/tsa_client.py:162:29
 src/synthorg/observability/background_tasks.py:156:50
 src/synthorg/observability/config.py:29:35
 src/synthorg/observability/config.py:30:39
@@ -732,12 +732,12 @@ src/synthorg/persistence/postgres/repositories.py:392:21
 src/synthorg/persistence/postgres/repositories.py:620:21
 src/synthorg/persistence/postgres/session_repo.py:127:21
 src/synthorg/persistence/postgres/session_repo.py:155:21
-src/synthorg/persistence/postgres/settings_repo.py:125:21
+src/synthorg/persistence/postgres/settings_repo.py:127:21
 src/synthorg/persistence/postgres/ssrf_violation_repo.py:143:21
 src/synthorg/persistence/postgres/user_repo.py:514:21
 src/synthorg/persistence/postgres/version_repo.py:339:21
 src/synthorg/persistence/postgres/webhook_receipt_repo.py:147:21
-src/synthorg/persistence/postgres/workflow_execution_repo.py:54:22
+src/synthorg/persistence/postgres/workflow_execution_repo.py:55:22
 src/synthorg/persistence/provider_audit_protocol.py:62:21
 src/synthorg/persistence/settings_protocol.py:56:21
 src/synthorg/persistence/sqlite/approval_repo.py:30:23
@@ -774,7 +774,7 @@ src/synthorg/persistence/sqlite/ssrf_violation_repo.py:157:21
 src/synthorg/persistence/sqlite/user_repo.py:679:21
 src/synthorg/persistence/sqlite/version_repo.py:331:21
 src/synthorg/persistence/sqlite/webhook_receipt_repo.py:126:21
-src/synthorg/persistence/sqlite/workflow_execution_repo.py:49:22
+src/synthorg/persistence/sqlite/workflow_execution_repo.py:50:22
 src/synthorg/persistence/ssrf_violation_protocol.py:49:21
 src/synthorg/persistence/task_protocol.py:45:21
 src/synthorg/persistence/user_protocol.py:189:21
