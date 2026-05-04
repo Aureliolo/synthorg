@@ -337,9 +337,12 @@ def _substitute_template_expr(inner: str, constants: dict[str, str]) -> str:
       const literal value.
     - Recognised Axios-base token (``baseUrl``,
       ``apiClient.defaults.baseURL``, ``import.meta.env.VITE_API_BASE_URL``,
-      or any ``base.replace(...)`` chain rooted at ``base``) -> empty
-      string, because the base resolves to ``/api/v1`` and we strip
-      that prefix.
+      or any of those followed by a method-chain like ``.replace(...)``)
+      -> empty string, because the base resolves to ``/api/v1`` and we
+      strip that prefix. Multi-segment tokens are matched as a whole
+      prefix (``apiClient.defaults.baseURL.replace(...)`` matches the
+      ``apiClient.defaults.baseURL`` token), not just the first dotted
+      segment, so they don't fall through to ``{*}``.
     - ``encodeURIComponent(<name>)`` -> ``{<name>}`` so the path-param
       name surfaces in the comparator output (cosmetic only;
       :func:`normalise_path` collapses to ``{*}`` before compare).
@@ -348,12 +351,7 @@ def _substitute_template_expr(inner: str, constants: dict[str, str]) -> str:
     bare = inner.strip()
     if bare in constants:
         return constants[bare]
-    bare_root = bare.split(".", 1)[0].strip()
-    if (
-        bare in _BASE_DYNAMIC_TOKENS
-        or bare_root in _BASE_DYNAMIC_TOKENS
-        or bare.startswith("base.replace")
-    ):
+    if any(bare == t or bare.startswith(t + ".") for t in _BASE_DYNAMIC_TOKENS):
         return ""
     enc = re.match(r"encodeURIComponent\s*\(\s*(?P<name>[A-Za-z_$][\w$]*)", bare)
     if enc is not None:

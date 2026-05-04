@@ -46,7 +46,7 @@ The four resolution paths are:
 
 ## Out of scope here
 
-- The full walk-all-31-waves audit-the-audit retrofit (Lever 5 of #1740 in its broadest reading) is deliberately deferred: this document captures the gate inventory as it stands AND the four newly-filed tracking issues (#1749-1752). New gate additions land in their own PRs and update this document at the same time, per the Convention Rollout rule in `CLAUDE.md`.
+- The full walk-all-31-waves audit-the-audit retrofit (Lever 5 of #1740 in its broadest reading) is deliberately deferred: this document captures the gate inventory as it stands AND the three remaining newly-filed tracking issues (#1750-1752). New gate additions land in their own PRs and update this document at the same time, per the Convention Rollout rule in `CLAUDE.md`.
 - Categories that are pure-judgment (e.g. "code is hard to read") are intentionally absent: there is no useful automation for them and the four resolution paths above are exhaustive for everything that has a mechanical signature.
 
 ## Maintenance

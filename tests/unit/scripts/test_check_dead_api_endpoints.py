@@ -721,6 +721,57 @@ def test_frontend_nested_generics(tmp_path: Path) -> None:
     assert high == []
 
 
+def test_frontend_multi_segment_base_token(tmp_path: Path) -> None:
+    """Multi-segment Axios-base tokens followed by a method chain
+    (``${apiClient.defaults.baseURL.replace(...)}``,
+    ``${import.meta.env.VITE_API_BASE_URL.replace(...)}``) resolve to
+    an empty base prefix instead of falling through to ``{*}``.
+    """
+    repo = _make_fake_repo(
+        tmp_path,
+        controllers={
+            "agents": (
+                "from litestar import Controller, get\n"
+                "class AgentController(Controller):\n"
+                "    path = '/agents'\n"
+                "    @get()\n"
+                "    async def list_agents(self): ...\n"
+            ),
+        },
+        init_body=(
+            "from litestar import Controller\n"
+            "from synthorg.api.controllers.agents import AgentController\n"
+            "BASE_CONTROLLERS: tuple[type[Controller], ...] = (AgentController,)\n"
+            "OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = ()\n"
+            "INTEGRATION_CONTROLLERS: tuple[type[Controller], ...] = ()\n"
+        ),
+        ts_files={
+            "api/endpoints/agents_chain.ts": (
+                "import { apiClient } from '../client'\n"
+                "export async function listAgentsViaDefaults() {\n"
+                "  const u = `${apiClient.defaults.baseURL.replace("
+                "/\\\\/api\\\\/v1$/, '')}/agents`\n"
+                "  return apiClient.get(u)\n"
+                "}\n"
+            ),
+            "api/endpoints/agents_env.ts": (
+                "import { apiClient } from '../client'\n"
+                "export async function listAgentsViaEnv() {\n"
+                "  return apiClient.get("
+                "`${import.meta.env.VITE_API_BASE_URL.replace("
+                "/\\\\/api\\\\/v1$/, '')}/agents`)\n"
+                "}\n"
+            ),
+        },
+    )
+    calls = _MODULE.collect_frontend_call_sites(repo)  # type: ignore[attr-defined]
+    paths = [c.path for c in calls]
+    assert paths.count("/agents") == 2, paths
+    routes = _MODULE.collect_backend_routes(repo)  # type: ignore[attr-defined]
+    high, _ = _MODULE.compare(routes, calls)  # type: ignore[attr-defined]
+    assert high == []
+
+
 def test_a2a_well_known_root_mount(tmp_path: Path) -> None:
     """``WellKnownAgentCardController`` is mounted at the app root, not under
     the ``/api/v1`` prefix; the ``/.well-known/...`` path stays verbatim."""
