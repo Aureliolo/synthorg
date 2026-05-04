@@ -1,7 +1,6 @@
 """SQLite repository implementation for approval items."""
 
 import asyncio
-import contextlib
 import json
 import sqlite3
 from typing import TYPE_CHECKING
@@ -293,8 +292,27 @@ class SQLiteApprovalRepository:
                     rows = await cursor.fetchall()
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                # Log the rollback failure separately rather than
+                # suppressing it -- a silent rollback failure leaves
+                # the shared aiosqlite.Connection in an unknown state
+                # and the only diagnostic of why subsequent writes
+                # may start failing is then lost. Original ``exc`` is
+                # still chained on the QueryError so the caller sees
+                # the root cause.
+                try:
                     await self._db.rollback()
+                except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+                    # ``logger.error`` (not ``logger.exception``):
+                    # the rollback failure is a structured event, not
+                    # a stack-trace dump. ``rollback_exc`` is captured
+                    # in ``error_type`` + ``error`` already.
+                    logger.error(  # noqa: TRY400
+                        API_APPROVAL_REPO_FAILED,
+                        batch_size=len(ids),
+                        phase="rollback",
+                        error_type=type(rollback_exc).__name__,
+                        error=safe_error_description(rollback_exc),
+                    )
                 msg = f"Failed to expire approval batch (size={len(ids)})"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,

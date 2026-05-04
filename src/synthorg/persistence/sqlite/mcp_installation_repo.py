@@ -135,6 +135,10 @@ class SQLiteMcpInstallationRepository:
             # ``PERSISTENCE_MCP_INSTALLATION_LIST_FAILED`` event +
             # ``QueryError`` envelope as a DB failure, not as a raw
             # exception that escapes the persistence boundary.
+            # ``NotBlankStr`` raises ``ValueError`` on blank strings
+            # and ``coerce_row_timestamp`` raises ``ValueError`` /
+            # ``TypeError`` on malformed timestamps, both of which
+            # would slip past a ``sqlite3.Error``-only except.
             return tuple(
                 McpInstallation(
                     catalog_entry_id=NotBlankStr(row[0]),
@@ -143,7 +147,9 @@ class SQLiteMcpInstallationRepository:
                 )
                 for row in rows
             )
-        except (sqlite3.Error, aiosqlite.Error) as exc:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             msg = "Failed to list mcp installations"
             logger.warning(
                 PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,

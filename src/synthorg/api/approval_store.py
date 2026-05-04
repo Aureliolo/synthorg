@@ -45,7 +45,7 @@ from synthorg.core.enums import (
     ApprovalStatus,
 )
 from synthorg.core.persistence_errors import ConstraintViolationError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,
@@ -262,7 +262,7 @@ class ApprovalStore:
                 action_type=action_type,
             )
 
-    async def _list_from_repo(  # noqa: C901
+    async def _list_from_repo(  # noqa: C901, PLR0912, PLR0915
         self,
         *,
         status: ApprovalStatus | None,
@@ -397,15 +397,33 @@ class ApprovalStore:
                     )
                     raise
             # Lost-race rows: rows we tried to flip but the repo
-            # already had a newer terminal status. Drop them from the
-            # cache (next get() refetches authoritative state) and
-            # from the response (surfacing them as EXPIRED would
-            # leak stale data).
+            # already had a newer terminal status. Refetch them so
+            # the response reflects the authoritative state instead
+            # of either our stale EXPIRED guess or silent omission
+            # (an unfiltered ``list_items()`` must not under-report
+            # rows just because a concurrent save() raced with the
+            # expire pass). Apply the caller's filters to each
+            # refetched row; rows where the repo returns ``None``
+            # (deleted between page read and refetch) drop out.
             attempted_ids = {item.id for item in to_persist}
             lost_race_ids = attempted_ids - actually_expired_ids
+            refetched_rows: list[ApprovalItem] = []
+            for lost_id in lost_race_ids:
+                refetched = await self._repo.get(NotBlankStr(lost_id))
+                if refetched is None:
+                    continue
+                if status is not None and refetched.status != status:
+                    continue
+                if risk_level is not None and refetched.risk_level != risk_level:
+                    continue
+                if action_type is not None and refetched.action_type != action_type:
+                    continue
+                refetched_rows.append(refetched)
             # Refresh the entire page slice in the cache (not just the
             # EXPIRED transitions) so stale non-expired siblings can't
-            # outlive a fresh repo read. Generation guard: a concurrent
+            # outlive a fresh repo read; refetched lost-race rows
+            # land alongside so subsequent ``get()`` returns the
+            # authoritative state. Generation guard: a concurrent
             # ``clear()`` between the I/O and this critical section
             # bumps ``_generation``; skip the cache write so the
             # post-clear empty-cache invariant survives.
@@ -413,13 +431,17 @@ class ApprovalStore:
                 if self._generation == captured_generation:
                     for item_id, cached in page_cache.items():
                         if item_id in lost_race_ids:
-                            # Stale snapshot; evict so the next get()
-                            # refetches the authoritative row from
-                            # repo rather than returning our local
-                            # EXPIRED guess.
+                            # Stale local guess; either the refetch
+                            # below provides the authoritative copy
+                            # (and overwrites this slot a few lines
+                            # down) or the row no longer matches
+                            # filters and we evict so the next
+                            # ``get()`` refetches.
                             self._items.pop(item_id, None)
                         else:
                             self._items[item_id] = cached
+                    for refetched in refetched_rows:
+                        self._items[refetched.id] = refetched
             for expired in to_persist:
                 if expired.id not in actually_expired_ids:
                     continue
@@ -432,6 +454,7 @@ class ApprovalStore:
                 logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
                 self._fire_expire_callback(expired)
             result.extend(item for item in page_result if item.id not in lost_race_ids)
+            result.extend(refetched_rows)
             if len(page) < page_size:
                 break
             offset += page_size
