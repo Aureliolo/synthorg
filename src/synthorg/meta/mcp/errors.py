@@ -4,18 +4,23 @@ Raised by handler helpers (``require_arg``, ``require_destructive_guardrails``)
 when caller input is malformed or a guardrail has not been satisfied.  The
 handler is expected to catch these and return an ``err(...)`` envelope to
 the invoker; they are intentionally *not* system errors.
+
+The ``domain_code`` class attribute carries the stable wire identifier used
+in MCP error envelopes (``"invalid_argument"`` / ``"guardrail_violated"``).
+This is the MCP-layer dispatch token consumed by callers; it sits alongside
+the RFC 9457 ``error_code`` ClassVar (used by the HTTP layer) without
+overlap.
 """
 
-from typing import Literal
+from typing import ClassVar, Literal
+
+from synthorg.core.domain_errors import ForbiddenError, ValidationError
 
 GuardrailCode = Literal["missing_confirm", "missing_reason", "missing_actor"]
 
 
-class ArgumentValidationError(ValueError):
+class ArgumentValidationError(ValidationError):
     """Raised when a required handler argument is missing or wrongly typed.
-
-    The ``domain_code`` attribute carries the stable wire identifier used
-    in error envelopes so callers can dispatch programmatically.
 
     Call sites use the module-level factory ``invalid_argument(name, expected)``
     rather than instantiating this class directly; the factory keeps the
@@ -27,7 +32,7 @@ class ArgumentValidationError(ValueError):
         domain_code: Stable wire identifier (``"invalid_argument"``).
     """
 
-    domain_code = "invalid_argument"
+    domain_code: ClassVar[str] = "invalid_argument"
 
     def __init__(self, argument: str, expected: str) -> None:
         """Initialise with argument name and expected-type description.
@@ -42,7 +47,7 @@ class ArgumentValidationError(ValueError):
         self.expected = expected
 
 
-class GuardrailViolationError(PermissionError):
+class GuardrailViolationError(ForbiddenError):
     """Raised when a destructive-op call fails its guardrails.
 
     Guardrails are: ``confirm=True`` set, non-blank ``reason``, and a
@@ -56,7 +61,7 @@ class GuardrailViolationError(PermissionError):
         domain_code: Stable wire identifier (``"guardrail_violated"``).
     """
 
-    domain_code = "guardrail_violated"
+    domain_code: ClassVar[str] = "guardrail_violated"
 
     def __init__(self, violation: GuardrailCode, message: str) -> None:
         """Initialise with a violation code and human-readable message.

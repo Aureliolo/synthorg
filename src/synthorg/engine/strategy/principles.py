@@ -9,11 +9,13 @@ import re
 from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
-from pydantic import ValidationError
+from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.engine.strategy.models import (
     ConstitutionalPrinciple,
     ConstitutionalPrincipleConfig,
@@ -42,12 +44,22 @@ BUILTIN_PACKS: MappingProxyType[str, str] = MappingProxyType(
 )
 
 
-class StrategyPackNotFoundError(Exception):
+class StrategyPackNotFoundError(NotFoundError):
     """Raised when a requested principle pack cannot be found."""
 
+    default_message: ClassVar[str] = "Strategy pack not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404
 
-class StrategyPackValidationError(Exception):
+
+class StrategyPackValidationError(ValidationError):
     """Raised when a principle pack fails schema validation."""
+
+    default_message: ClassVar[str] = "Strategy pack validation failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
 
 
 def _validate_pack_name(name: str) -> str:
@@ -117,7 +129,7 @@ def _parse_pack_yaml(
             description=data.get("description", ""),
             principles=principles,
         )
-    except (TypeError, ValueError, KeyError, ValidationError) as exc:
+    except (TypeError, ValueError, KeyError, PydanticValidationError) as exc:
         msg = f"Validation failed for pack from {source_name}: {exc}"
         logger.warning(
             STRATEGY_PACK_INVALID,
@@ -281,8 +293,15 @@ def load_and_merge(
     for i, raw in enumerate(config.custom):
         try:
             principle = ConstitutionalPrinciple(**raw)
-        except (TypeError, ValidationError) as exc:
+        except (TypeError, PydanticValidationError) as exc:
             msg = f"Invalid custom principle at index {i}: {exc}"
+            logger.warning(
+                STRATEGY_PACK_INVALID,
+                source="custom",
+                index=i,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise StrategyPackValidationError(msg) from exc
         if principle.id not in existing_ids:
             principles.append(principle)

@@ -7,10 +7,12 @@ making this safe to run inside Docker containers.
 
 import base64
 import re
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 import httpx
 
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.integrations.errors import IntegrationError
 from synthorg.meta.models import CodeChange, CodeOperation
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
@@ -23,17 +25,19 @@ from synthorg.observability.events.meta import (
 # ── Custom exception types ───────────────────────────────────────
 
 
-class GitHubAPIError(Exception):
+class GitHubAPIError(IntegrationError):
     """Raised on non-auth GitHub API failures.
 
     Attributes:
-        status_code: HTTP status code from the response.
+        github_status_code: HTTP status code from the upstream response.
         action: Human-readable description of the attempted action.
         body: Sanitized response body snippet.
     """
 
+    default_message: ClassVar[str] = "GitHub API request failed"
+
     def __init__(self, *, status_code: int, action: str, body: str) -> None:
-        self.status_code = status_code
+        self.github_status_code = status_code
         self.action = action
         self.body = body
         super().__init__(
@@ -46,6 +50,11 @@ class GitHubAuthError(GitHubAPIError):
 
     Indicates invalid, expired, or insufficiently scoped credentials.
     """
+
+    default_message: ClassVar[str] = "GitHub API authentication failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    error_code: ClassVar[ErrorCode] = ErrorCode.UNAUTHORIZED
+    status_code: ClassVar[int] = 401
 
 
 logger = get_logger(__name__)

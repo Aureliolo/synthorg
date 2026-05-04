@@ -99,6 +99,16 @@ Each domain owns `errors.py` with a base error class carrying
 change. The HTTP exception handler keys off the base class so a new
 subclass automatically inherits the correct status mapping.
 
+Enforced at pre-push by `scripts/check_domain_error_hierarchy.py`,
+which AST-walks every `class .*` definition under `src/synthorg/` and
+fails the build if a class inherits directly from `Exception` /
+`RuntimeError` / `LookupError` / `PermissionError` / `ValueError` /
+`TypeError` / `KeyError` / `IndexError` / `AttributeError` / `OSError`
+/ `IOError` without reaching `DomainError` via another base. Per-line
+opt-out: `# lint-allow: domain-error-hierarchy -- <reason>`. See
+[errors.md](errors.md#domain-error-hierarchy-gate) for the full gate
+contract.
+
 References:
 
 * `src/synthorg/budget/errors.py`: `BudgetExhaustedError` family.

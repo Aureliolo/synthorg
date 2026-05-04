@@ -22,7 +22,9 @@ __all__ = [
 ]
 
 
-class DottedPathError(ValueError):
+class DottedPathError(
+    ValueError,
+):  # lint-allow: domain-error-hierarchy -- internal path-parse precondition
     """Raised when a dotted config path cannot be parsed or resolved."""
 
 

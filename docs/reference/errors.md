@@ -175,6 +175,32 @@ When introducing a new domain error family:
 4. Add tests in `tests/unit/api/test_exception_handlers.py` covering
    each branch and a regression test for the catch-all.
 
+## Domain-error-hierarchy gate
+
+`scripts/check_domain_error_hierarchy.py` enforces the rule at pre-push
+and in CI: every class definition under `src/synthorg/` whose direct
+base is one of `Exception` / `RuntimeError` / `LookupError` /
+`PermissionError` / `ValueError` / `TypeError` / `KeyError` /
+`IndexError` / `AttributeError` / `OSError` / `IOError` is a violation
+unless the class itself reaches `DomainError` via another base.
+
+Only the *root* of a stdlib-rooted chain is flagged; migrating the root
+to `DomainError` automatically corrects every descendant.
+
+Per-line opt-out:
+
+```python
+class TsaError(Exception):  # lint-allow: domain-error-hierarchy -- RFC 3161 internals; observability stays stdlib-rooted
+    ...
+```
+
+The justification after `--` is mandatory and must be non-empty. The
+gate also accepts a frozen baseline file
+(`scripts/domain_error_hierarchy_baseline.txt`) listing pre-existing
+violations a rollout has not yet reached. The baseline shrinks
+monotonically: any entry that no longer maps to a real violation is
+reported as drift, so the file cannot harbour stale rows.
+
 ## Further reading
 
 - [Design: security](../design/security.md): the SEC-1 rules behind the categories

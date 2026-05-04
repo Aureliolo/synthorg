@@ -6,7 +6,7 @@ import hmac
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import argon2
 import jwt
@@ -17,6 +17,8 @@ from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.boundary import parse_typed
 from synthorg.core.auth.models import User  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
@@ -29,8 +31,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class SecretNotConfiguredError(RuntimeError):
+class SecretNotConfiguredError(ServiceUnavailableError):
     """Raised when the JWT secret is required but not configured."""
+
+    default_message: ClassVar[str] = "JWT secret not configured"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    status_code: ClassVar[int] = 503
 
 
 _hasher = argon2.PasswordHasher(

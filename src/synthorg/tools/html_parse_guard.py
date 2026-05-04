@@ -70,12 +70,15 @@ _HTML_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
 )
 
 
-class XXEDetectedError(ValueError):
+class XXEDetectedError(
+    ValueError,
+):  # lint-allow: domain-error-hierarchy -- caught by HTMLParseGuard.sanitize
     """Pre-parse detection of an XXE payload.
 
-    Subclass of ``ValueError`` so the ``except Exception`` branch in
-    :meth:`HTMLParseGuard.sanitize` catches it naturally and routes
-    to the safe-empty fallback.
+    Subclass of ``ValueError``. :meth:`HTMLParseGuard.sanitize` catches
+    this explicitly (ahead of its generic ``except Exception`` branch)
+    and returns a safe-empty :class:`HTMLSanitizeResult` so the XXE
+    rejection event is not double-emitted.
 
     ``is_retryable = False`` so the resilience layer's retry-classifier
     (see ``BaseCompletionProvider`` / ``api/exception_handlers.py``)

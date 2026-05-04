@@ -2,25 +2,36 @@
 
 All persistence-related errors inherit from :class:`PersistenceError` so
 callers can catch the entire family with a single except clause.
+``PersistenceError`` itself is rooted in :class:`DomainError` so the API
+layer's centralised RFC 9457 dispatch picks up every subtype; the
+existing ``handle_record_not_found`` / ``handle_persistence_integrity_error``
+/ ``handle_duplicate_record`` / ``handle_persistence_error`` handlers
+remain registered so persistence-layer 4xx responses keep their fixed
+public messages (``"Resource not found"``, etc.) instead of leaking
+record identifiers from ``str(exc)``.
 
 Each concrete exception carries an ``is_retryable`` class attribute
 mirroring the provider-layer convention in
-:mod:`synthorg.providers.errors`.  Callers that implement bounded
+:mod:`synthorg.providers.errors`. Callers that implement bounded
 retry/backoff (e.g. a repository middleware) can branch on this flag
-without string-matching the driver exception.  Default: ``False``.
+without string-matching the driver exception. Default: ``False``.
 Transient I/O failures override to ``True``.
-
-This module is dependency-free apart from stdlib so the persistence
-implementation (SQLite/Postgres repositories) and any consumer
-(controllers, services, engine) can import it without pulling in the
-HTTP layer.
 """
 
+from typing import ClassVar
 
-class PersistenceError(Exception):
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+
+class PersistenceError(DomainError):
     """Base exception for all persistence operations."""
 
     is_retryable: bool = False
+    default_message: ClassVar[str] = "Persistence operation failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.PERSISTENCE_ERROR
+    status_code: ClassVar[int] = 500
 
 
 class PersistenceConnectionError(PersistenceError):
@@ -47,26 +58,35 @@ class RecordNotFoundError(PersistenceError):
     """Raised when a requested record does not exist.
 
     Used by ``ArtifactStorageBackend.retrieve()`` when no content
-    exists for the given artifact ID.  Repository ``get()`` methods
+    exists for the given artifact ID. Repository ``get()`` methods
     return ``None`` on miss instead of raising.
     """
 
     is_retryable: bool = False
+    default_message: ClassVar[str] = "Resource not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    status_code: ClassVar[int] = 404
 
 
 class DuplicateRecordError(PersistenceError):
     """Raised when inserting a record that already exists."""
 
     is_retryable: bool = False
+    default_message: ClassVar[str] = "Duplicate record"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.DUPLICATE_RECORD
+    status_code: ClassVar[int] = 409
 
 
 class QueryError(PersistenceError):
     """Raised when a query fails due to invalid parameters or backend issues.
 
     Transient by default: connection drops and deadlocks during a
-    query surface here and are safe to retry.  Deterministic failures
+    query surface here and are safe to retry. Deterministic failures
     (bad SQL, invalid params) use :class:`ConstraintViolationError`
-    or :class:`VersionConflictError` which override to non-retryable.
+    or :class:`PersistenceVersionConflictError` which override to
+    non-retryable.
     """
 
     is_retryable: bool = True
@@ -77,7 +97,7 @@ class ConstraintViolationError(QueryError):
 
     Carries a ``constraint`` attribute that identifies the violated
     constraint by its DB-side name (for Postgres) or by a stable
-    token parsed from the error message (for SQLite).  Callers can
+    token parsed from the error message (for SQLite). Callers can
     check this attribute to map the violation to a domain error
     without parsing error strings.
 
@@ -85,7 +105,7 @@ class ConstraintViolationError(QueryError):
     given input and will not succeed on a bare retry.
 
     Blank ``constraint`` (empty / whitespace-only) is normalised to the
-    sentinel ``"<unknown>"`` rather than raising.  Raising
+    sentinel ``"<unknown>"`` rather than raising. Raising
     :class:`ValueError` from ``__init__`` would bypass downstream
     ``except PersistenceError`` handlers; the sentinel keeps the
     construction inside the persistence-error family so callers that
@@ -95,6 +115,17 @@ class ConstraintViolationError(QueryError):
     UNKNOWN_CONSTRAINT: str = "<unknown>"
 
     is_retryable: bool = False
+    default_message: ClassVar[str] = "Database constraint violated"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    # 400 instead of 422: a DB-level constraint violation is a
+    # malformed-request condition surfaced after the request reached the
+    # data layer (e.g. unique-key collision under concurrent insert), not
+    # a Pydantic-style schema-validation miss caught at the API boundary.
+    # The dedicated ``handle_persistence_integrity_error`` handler also
+    # hardcodes 400 for the same reason; this ClassVar matches that
+    # mapping so the two paths stay in lockstep.
+    status_code: ClassVar[int] = 400
 
     def __init__(self, message: str, *, constraint: str) -> None:
         super().__init__(message)
@@ -102,15 +133,24 @@ class ConstraintViolationError(QueryError):
         self.constraint: str = stripped or self.UNKNOWN_CONSTRAINT
 
 
-class VersionConflictError(QueryError):
+class PersistenceVersionConflictError(QueryError):
     """Raised when an optimistic concurrency version check fails.
 
     Non-retryable at this layer: the caller must re-read, re-apply
-    its intended change, and resubmit with the fresh version.  A
+    its intended change, and resubmit with the fresh version. A
     blind retry would just lose the racing write.
+
+    The API layer translates this to
+    :class:`synthorg.core.domain_errors.VersionConflictError` (the
+    HTTP-aware sibling) so that controllers raise / catch consistently
+    with other 409 paths.
     """
 
     is_retryable: bool = False
+    default_message: ClassVar[str] = "Optimistic concurrency conflict"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.VERSION_CONFLICT
+    status_code: ClassVar[int] = 409
 
 
 class MalformedRowError(QueryError):
@@ -118,7 +158,7 @@ class MalformedRowError(QueryError):
 
     JSON decode failures, validation errors, and missing-key errors on
     rows already committed to the database are deterministic
-    data-integrity problems, not transient query failures.  Retrying
+    data-integrity problems, not transient query failures. Retrying
     the same read returns the same corrupt row -- it just burns the
     budget and obscures the underlying integrity issue.
 
@@ -132,9 +172,17 @@ class ArtifactTooLargeError(PersistenceError):
     """Raised when a single artifact exceeds the maximum allowed size."""
 
     is_retryable: bool = False
+    default_message: ClassVar[str] = "Artifact exceeds maximum size"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_TOO_LARGE
+    status_code: ClassVar[int] = 413
 
 
 class ArtifactStorageFullError(PersistenceError):
     """Raised when total artifact storage exceeds capacity."""
 
     is_retryable: bool = False
+    default_message: ClassVar[str] = "Artifact storage at capacity"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_STORAGE_FULL
+    status_code: ClassVar[int] = 507

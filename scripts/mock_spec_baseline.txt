@@ -366,9 +366,6 @@ tests/unit/api/controllers/test_setup.py:646:17
 tests/unit/api/controllers/test_setup.py:653:27
 tests/unit/api/controllers/test_setup.py:656:16
 tests/unit/api/controllers/test_setup.py:657:31
-tests/unit/api/controllers/test_setup.py:1186:33
-tests/unit/api/controllers/test_setup.py:1209:33
-tests/unit/api/controllers/test_setup.py:1256:33
 tests/unit/api/controllers/test_setup_agent_ops.py:80:21
 tests/unit/api/controllers/test_setup_agent_ops.py:83:31
 tests/unit/api/controllers/test_setup_agent_ops.py:86:20
@@ -387,9 +384,6 @@ tests/unit/api/controllers/test_setup_has_gpu.py:65:23
 tests/unit/api/controllers/test_setup_has_gpu.py:66:27
 tests/unit/api/controllers/test_setup_has_gpu.py:75:23
 tests/unit/api/controllers/test_setup_has_gpu.py:76:27
-tests/unit/api/controllers/test_setup_locales.py:246:33
-tests/unit/api/controllers/test_setup_locales.py:269:33
-tests/unit/api/controllers/test_setup_locales.py:316:33
 tests/unit/api/controllers/test_sse_keepalive_setting.py:28:31
 tests/unit/api/controllers/test_sse_keepalive_setting.py:29:41
 tests/unit/api/controllers/test_sse_revalidate.py:44:21

@@ -15,6 +15,7 @@ from synthorg.api.pagination import (
     CursorParam,
     encode_repo_seek_meta,
 )
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.role import Role
 from synthorg.observability import get_logger
 from synthorg.observability.events.versioning import (
@@ -90,12 +91,8 @@ class RoleVersionController(Controller):
                 entity_id=role_name,
                 version=version_num,
             )
-            return Response(
-                content=ApiResponse[SnapshotT](
-                    error=f"Version {version_num} not found for role {role_name!r}",
-                ),
-                status_code=404,
-            )
+            msg = f"Version {version_num} not found for role {role_name!r}"
+            raise NotFoundError(msg)
         return Response(
             content=ApiResponse[SnapshotT](data=version),
         )

@@ -12,7 +12,10 @@ if TYPE_CHECKING:
     import aiosqlite
 
 from synthorg.core.enums import WorkflowType
-from synthorg.core.persistence_errors import QueryError, VersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -165,8 +168,9 @@ class SQLiteWorkflowDefinitionRepository:
         Enforces the same optimistic-concurrency rule as
         :meth:`save`: the UPDATE only applies when the stored row's
         ``revision`` equals ``definition.revision - 1``; otherwise a
-        ``VersionConflictError`` is raised so callers distinguish
-        "row missing" (``False``) from "row changed concurrently".
+        ``PersistenceVersionConflictError`` is raised so callers
+        distinguish "row missing" (``False``) from "row changed
+        concurrently".
         """
         self._require_valid_revision(definition)
         nodes_json = json.dumps(
@@ -227,7 +231,7 @@ WHERE id = ? AND revision = ?""",
                         definition_id=definition.id,
                         error=msg,
                     )
-                    raise VersionConflictError(msg)
+                    raise PersistenceVersionConflictError(msg)
                 await self._db.commit()
             except sqlite3.Error as exc:
                 # Roll back the aiosqlite transaction so the shared
@@ -390,7 +394,7 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
                         definition_id=definition.id,
                         error=msg,
                     )
-                    raise VersionConflictError(msg)
+                    raise PersistenceVersionConflictError(msg)
                 await self._db.commit()
             except sqlite3.Error as exc:
                 await _rollback_quietly(self._db)

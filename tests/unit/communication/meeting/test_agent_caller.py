@@ -148,9 +148,11 @@ class TestBuildMeetingAgentCaller:
             pytest.raises(UnknownMeetingAgentError) as exc_info,
         ):
             await caller(_AGENT_ID, "prompt", 100, _MEETING_ID)
-        # LookupError-compatible so callers can catch with existing
-        # lookup-failure handlers.
-        assert isinstance(exc_info.value, LookupError)
+        # NotFoundError-rooted so the API layer's RFC 9457 dispatch
+        # produces a structured 404 instead of an opaque 500.
+        from synthorg.core.domain_errors import NotFoundError
+
+        assert isinstance(exc_info.value, NotFoundError)
         # agent_id must be available as a typed attribute for
         # programmatic handling (logging, retries, metric tagging).
         assert exc_info.value.agent_id == _AGENT_ID

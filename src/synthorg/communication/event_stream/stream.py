@@ -20,6 +20,7 @@ import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import ClassVar
 from uuid import uuid4
 
 from synthorg.communication.event_stream.types import (
@@ -27,6 +28,8 @@ from synthorg.communication.event_stream.types import (
     StreamEvent,
 )
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.domain_errors import ConflictError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_HUB_JANITOR_FAILED,
@@ -48,7 +51,7 @@ _DEFAULT_JANITOR_INTERVAL_SECONDS = 300.0
 _DEFAULT_JANITOR_STOP_TIMEOUT_SECONDS = 10.0
 
 
-class EventStreamHubUnrestartableError(RuntimeError):
+class EventStreamHubUnrestartableError(ConflictError):
     """Raised when ``start()`` is called on a hub that timed out during ``stop()``.
 
     Per the lifecycle-sync contract, a service whose ``stop()`` drain hits its
@@ -56,6 +59,13 @@ class EventStreamHubUnrestartableError(RuntimeError):
     new janitor on top of an orphaned task that ignored cancellation.
     Operators must construct a fresh hub instead.
     """
+
+    default_message: ClassVar[str] = (
+        "Event stream hub is unrestartable after a timed-out stop"
+    )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409
 
 
 # Intentionally NOT frozen: ``last_active`` is mutated in-place under

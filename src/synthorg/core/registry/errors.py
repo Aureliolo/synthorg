@@ -2,11 +2,19 @@
 
 import copy
 from types import MappingProxyType
-from typing import Any
+from typing import Any, ClassVar
+
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
-class StrategyFactoryError(LookupError):
+class StrategyFactoryError(DomainError):
     """Base class for strategy registry lookup failures."""
+
+    default_message: ClassVar[str] = "Strategy factory error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
     def __init__(
         self,
@@ -16,8 +24,6 @@ class StrategyFactoryError(LookupError):
     ) -> None:
         """Store *message* and an immutable *context* mapping."""
         self.message = message
-        # Deep-copy to insulate the stored context from later mutation of
-        # nested values supplied by the caller (e.g. a list of names).
         self.context: MappingProxyType[str, Any] = MappingProxyType(
             copy.deepcopy(context) if context else {},
         )
@@ -33,3 +39,8 @@ class StrategyFactoryError(LookupError):
 
 class StrategyFactoryNotFoundError(StrategyFactoryError):
     """No factory registered for the requested discriminator value."""
+
+    default_message: ClassVar[str] = "Strategy factory not registered"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404

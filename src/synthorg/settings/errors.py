@@ -1,16 +1,36 @@
 """Error hierarchy for the settings persistence layer."""
 
+from typing import ClassVar
 
-class SettingsError(Exception):
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+
+class SettingsError(DomainError):
     """Base exception for all settings-related errors."""
+
+    default_message: ClassVar[str] = "Settings operation failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
 
 class SettingNotFoundError(SettingsError):
     """Raised when a setting key is not found in the registry."""
 
+    default_message: ClassVar[str] = "Setting not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404
+
 
 class SettingValidationError(SettingsError):
     """Raised when a setting value fails type, range, or pattern validation."""
+
+    default_message: ClassVar[str] = "Setting validation failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
 
 
 class SettingReadOnlyError(SettingValidationError):

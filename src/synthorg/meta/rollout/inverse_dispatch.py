@@ -28,7 +28,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class UnknownRollbackOperationError(ValueError):
+class UnknownRollbackOperationError(
+    ValueError,
+):  # lint-allow: domain-error-hierarchy -- internal dispatch precondition
     """Raised when a ``RollbackOperation`` has no registered handler."""
 
 

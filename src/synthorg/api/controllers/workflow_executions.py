@@ -20,7 +20,11 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.error_taxonomy import ErrorCode
-from synthorg.core.persistence_errors import PersistenceError, VersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceError,
+    PersistenceVersionConflictError,
+    RecordNotFoundError,
+)
 from synthorg.engine.errors import (
     WorkflowConditionEvalError,
     WorkflowDefinitionInvalidError,
@@ -263,14 +267,14 @@ class WorkflowExecutionController(Controller):
                 execution_id,
                 cancelled_by=cancelled_by,
             )
-        except WorkflowExecutionNotFoundError:
+        except WorkflowExecutionNotFoundError, RecordNotFoundError:
             logger.warning(
                 WORKFLOW_EXEC_NOT_FOUND,
                 execution_id=execution_id,
             )
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
-        except (WorkflowExecutionError, VersionConflictError) as exc:
+        except (WorkflowExecutionError, PersistenceVersionConflictError) as exc:
             # Cancel was rejected (already-terminal status, version
             # mismatch). Emit a distinct conflict event so audit
             # streams and dashboards do NOT mistake a failed cancel
