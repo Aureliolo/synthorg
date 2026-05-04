@@ -27,13 +27,13 @@ class McpInstallationRepository(Protocol):
         """Fetch an installation by catalog entry id."""
         ...
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all recorded installations, optionally paginated.
+        """List recorded installations, optionally paginated.
 
         Implementations MUST return rows ordered by
         ``installed_at ASC, catalog_entry_id ASC`` so callers paging

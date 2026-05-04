@@ -55,7 +55,7 @@ class SupersessionResult(BaseModel):
         reason: Human-readable explanation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     verdict: SupersessionVerdict = Field(
         description="Supersession classification",

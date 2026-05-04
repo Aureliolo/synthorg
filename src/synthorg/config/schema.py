@@ -88,7 +88,7 @@ class RoutingRuleConfig(BaseModel):
         fallback: Fallback model alias or ID.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     role_level: SeniorityLevel | None = Field(
         default=None,
@@ -132,7 +132,7 @@ class RoutingConfig(BaseModel):
         fallback_chain: Ordered fallback model aliases or IDs.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: NotBlankStr = Field(
         default="cost_aware",
@@ -174,7 +174,7 @@ class AgentConfig(BaseModel):
             company strategy config default.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Agent display name")
     role: NotBlankStr = Field(description="Role name")
@@ -182,6 +182,15 @@ class AgentConfig(BaseModel):
     level: SeniorityLevel = Field(
         default=SeniorityLevel.MID,
         description="Seniority level",
+    )
+    personality_preset: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Named personality preset.  ``setup_agents`` writes the "
+            "resolved preset name back when bootstrapping from a "
+            "template, so the company-agents setting must round-trip "
+            "the field rather than reject it under ``extra=forbid``."
+        ),
     )
     personality: dict[str, Any] = Field(
         default_factory=dict,
@@ -230,7 +239,7 @@ class GracefulShutdownConfig(BaseModel):
             ``"finish_tool"`` strategy (seconds).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: Literal[
         "cooperative_timeout", "immediate", "finish_tool", "checkpoint"
@@ -269,7 +278,7 @@ class TaskAssignmentConfig(BaseModel):
             that filter out agents at capacity.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     # Known strategy names -- must stay in sync with
     # ``STRATEGY_NAME_*`` constants in ``engine.assignment.strategies``.
@@ -387,7 +396,7 @@ class RootConfig(BaseModel):
             (``None`` = disabled).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     company_name: NotBlankStr = Field(
         description="Company name",

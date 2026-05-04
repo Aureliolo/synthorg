@@ -38,6 +38,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -675,17 +676,18 @@ ON CONFLICT(id) DO UPDATE SET
         self,
         user_id: NotBlankStr,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
-        """List all API keys belonging to a user, ordered by creation date.
+        """List up to ``limit`` API keys for a user, ordered by creation date.
+
+        Defaults to a 100-key page; callers needing more must paginate
+        with ``offset``.
 
         Args:
             user_id: Owner user identifier.
-            limit: Maximum keys to return; ``None`` (default) preserves
-                fetch-all semantics.
-            offset: Keys to skip before applying *limit*; ignored when
-                *limit* is ``None``.
+            limit: Maximum keys to return (must be >= 1).
+            offset: Keys to skip before applying *limit* (must be >= 0).
 
         Returns:
             Tuple of ``ApiKey`` records, oldest first.
@@ -693,15 +695,16 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database query or deserialization fails.
         """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_API_KEY_LIST_FAILED,
+            user_id=user_id,
+        )
         sql = "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
-        effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " LIMIT -1 OFFSET ?"
-            params = (*params, effective_offset)
+        sql += " LIMIT ? OFFSET ?"
+        params = (*params, limit, offset)
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()

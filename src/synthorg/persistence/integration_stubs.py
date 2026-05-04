@@ -49,7 +49,7 @@ class InMemoryConnectionRepository:
     async def list_all(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all (deep-copied)."""
@@ -57,15 +57,13 @@ class InMemoryConnectionRepository:
             copy.deepcopy(c) for c in sorted(self._store.values(), key=lambda c: c.name)
         )
         effective_offset = max(0, int(offset))
-        if limit is None:
-            return rows[effective_offset:]
         return rows[effective_offset : effective_offset + max(0, int(limit))]
 
     async def list_by_type(
         self,
         connection_type: ConnectionType,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List by type (deep-copied)."""
@@ -75,8 +73,6 @@ class InMemoryConnectionRepository:
             if c.connection_type == connection_type
         )
         effective_offset = max(0, int(offset))
-        if limit is None:
-            return matches[effective_offset:]
         return matches[effective_offset : effective_offset + max(0, int(limit))]
 
     async def delete(self, name: str) -> bool:

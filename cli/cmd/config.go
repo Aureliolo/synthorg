@@ -58,8 +58,17 @@ Running 'synthorg config' without a subcommand shows the current configuration
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Display current configuration",
-	Args:  cobra.NoArgs,
-	RunE:  runConfigShow,
+	Long: `Display the resolved configuration as a single block.
+
+Renders every key from the config file alongside its current
+value. If the config file is missing the command reports
+"Not initialized" rather than rendering built-in defaults; use
+'synthorg config list' for per-key resolution and source
+attribution that still surfaces the default-value column.`,
+	Example: `  synthorg config show          # human-readable summary
+  synthorg --json config show   # JSON for scripts`,
+	Args: cobra.NoArgs,
+	RunE: runConfigShow,
 }
 
 var configGetCmd = &cobra.Command{
@@ -94,6 +103,9 @@ Supported keys:
 
 Plus 17 runtime tunables (registry host, image tags, timeouts, size
 limits, NATS defaults). See cli/CLAUDE.md for the full list.`,
+	Example: `  synthorg config get backend_port
+  synthorg config get channel
+  synthorg config get image_tag`,
 	Args:              cobra.ExactArgs(1),
 	RunE:              runConfigGet,
 	ValidArgsFunction: completeConfigGetKeys,
@@ -137,14 +149,26 @@ max_binary_bytes, max_archive_entry_bytes). See cli/CLAUDE.md for formats.
 Keys that affect Docker compose (backend_port, web_port, sandbox, docker_sock,
 image_tag, log_level, telemetry_opt_in, fine_tuning, fine_tuning_variant, and
 the registry/NATS tunables) trigger automatic compose.yml regeneration.`,
+	Example: `  synthorg config set backend_port 3001
+  synthorg config set channel dev
+  synthorg config set hints always
+  synthorg config set telemetry_opt_in true`,
 	Args:              cobra.ExactArgs(2),
 	RunE:              runConfigSet,
 	ValidArgsFunction: completeConfigSetKeys,
 }
 
 var configUnsetCmd = &cobra.Command{
-	Use:               "unset <key>",
-	Short:             "Reset a configuration key to its default value",
+	Use:   "unset <key>",
+	Short: "Reset a configuration key to its default value",
+	Long: `Remove a config-file override so the key falls back to its default.
+
+Use this rather than 'config set <key> <default>' when you want
+the key to follow future default changes (defaults can move
+between releases). Compose-affecting keys trigger compose.yml
+regeneration after the unset lands.`,
+	Example: `  synthorg config unset backend_port  # reset to platform default
+  synthorg config unset channel       # follow default channel`,
 	Args:              cobra.ExactArgs(1),
 	RunE:              runConfigUnset,
 	ValidArgsFunction: completeConfigUnsetKeys,
@@ -153,22 +177,45 @@ var configUnsetCmd = &cobra.Command{
 var configListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Show all config keys with resolved value and source",
-	Args:  cobra.NoArgs,
-	RunE:  runConfigList,
+	Long: `List every settable config key with its resolved value and source.
+
+Source is one of "default", "config", or "env" (env vars
+override the config file but cannot be set via 'config set').
+Useful for debugging precedence when a value disagrees with what
+'config show' implies.`,
+	Example: `  synthorg config list           # full table
+  synthorg --json config list    # JSON, one row per key`,
+	Args: cobra.NoArgs,
+	RunE: runConfigList,
 }
 
 var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "Print the config file path",
-	Args:  cobra.NoArgs,
-	RunE:  runConfigPath,
+	Long: `Print the absolute path to the config file the CLI uses.
+
+The path is platform-appropriate (XDG-compatible on Linux, the
+native config dir on macOS / Windows) and reflects --data-dir or
+SYNTHORG_DATA_DIR overrides if set.`,
+	Example: `  synthorg config path                # print path
+  cat "$(synthorg config path)"       # inspect raw file
+  synthorg config path --data-dir=/tmp/x`,
+	Args: cobra.NoArgs,
+	RunE: runConfigPath,
 }
 
 var configEditCmd = &cobra.Command{
 	Use:   "edit",
 	Short: "Open config file in your editor",
-	Args:  cobra.NoArgs,
-	RunE:  runConfigEdit,
+	Long: `Open the config file in $EDITOR (or VISUAL) for direct edits.
+
+Falls back to a platform-appropriate editor when neither env var
+is set (vim on POSIX, notepad on Windows). The CLI re-reads the
+file on the next invocation; no daemon to restart.`,
+	Example: `  synthorg config edit              # use $EDITOR
+  EDITOR=nano synthorg config edit  # one-shot override`,
+	Args: cobra.NoArgs,
+	RunE: runConfigEdit,
 }
 
 func init() {

@@ -60,7 +60,7 @@ class ProviderHealthRecord(BaseModel):
         error_message: Error description when ``success`` is False.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider_name: NotBlankStr = Field(description="Provider name")
     timestamp: AwareDatetime = Field(description="When the call occurred")

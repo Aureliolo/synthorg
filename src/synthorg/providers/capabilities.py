@@ -34,7 +34,7 @@ class ModelCapabilities(BaseModel):
             semantics as ``cost_per_1k_input``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     model_id: NotBlankStr = Field(description="Model identifier")
     provider: NotBlankStr = Field(description="Provider name")

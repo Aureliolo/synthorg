@@ -16,6 +16,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathName  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- Pydantic field annotation evaluated at runtime
 )
@@ -72,7 +73,10 @@ class OAuthController(Controller):
 
     @post(
         "/initiate",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("oauth.initiate", key="user"),
+        ],
         summary="Start an OAuth flow",
     )
     async def initiate_flow(
@@ -111,7 +115,7 @@ class OAuthController(Controller):
         # provider a URL this app never actually serves.
         api_prefix = state["app_state"].config.api.api_prefix
         redirect_uri = (
-            config.redirect_uri_base.rstrip("/")
+            strip_trailing_slash(config.redirect_uri_base)
             + "/"
             + api_prefix.strip("/")
             + "/oauth/callback"

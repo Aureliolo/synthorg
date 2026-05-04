@@ -64,7 +64,7 @@ class LlmDecompositionConfig(BaseModel):
         max_output_tokens: Maximum tokens for the LLM response.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_retries: int = Field(default=2, ge=0, le=5, description="Max retry attempts")
     temperature: float = Field(

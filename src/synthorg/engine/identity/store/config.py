@@ -14,7 +14,7 @@ class IdentityStoreConfig(BaseModel):
             per agent (None = unlimited).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["append_only", "copy_on_write"] = Field(
         default="append_only",

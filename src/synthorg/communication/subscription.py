@@ -15,7 +15,7 @@ class Subscription(BaseModel):
         subscribed_at: When the subscription was created.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     channel_name: NotBlankStr = Field(description="Channel name")
     subscriber_id: NotBlankStr = Field(description="Subscriber agent ID")
@@ -34,7 +34,7 @@ class DeliveryEnvelope(BaseModel):
         delivered_at: When the message was delivered to this subscriber.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     message: Message = Field(description="The delivered message")
     channel_name: NotBlankStr = Field(description="Delivery channel")

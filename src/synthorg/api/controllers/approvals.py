@@ -183,7 +183,7 @@ class ApprovalResponse(ApprovalItem):
         urgency_level: Urgency classification based on time remaining.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     seconds_remaining: float | None = Field(
         ge=0.0,

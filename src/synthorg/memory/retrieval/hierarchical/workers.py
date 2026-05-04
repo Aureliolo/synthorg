@@ -5,10 +5,10 @@ and scoring.  Workers implement the ``RetrievalWorker`` protocol.
 """
 
 import builtins
-import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory import errors as memory_errors
 from synthorg.memory.models import MemoryQuery
@@ -116,10 +116,12 @@ class SemanticWorker:
         backend: MemoryBackend,
         config: MemoryRetrievalConfig,
         shared_store: SharedKnowledgeStore | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._backend = backend
         self._config = config
         self._shared_store = shared_store
+        self._clock = clock or SystemClock()
 
     @property
     def name(self) -> str:
@@ -128,7 +130,7 @@ class SemanticWorker:
 
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
         """Execute semantic retrieval using dense + optional sparse."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
@@ -185,7 +187,7 @@ class SemanticWorker:
             candidates = tuple(
                 _scored_to_candidate(s, source_worker=self.name) for s in ranked
             )
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+            elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.info(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,
                 worker=self.name,
@@ -200,7 +202,7 @@ class SemanticWorker:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+            elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(
                 MEMORY_HIERARCHICAL_WORKER_FAILED,
                 worker=self.name,
@@ -273,6 +275,7 @@ class EpisodicWorker:
         backend: MemoryBackend,
         config: MemoryRetrievalConfig,
         time_window_hours: int = _DEFAULT_EPISODIC_WINDOW_HOURS,
+        clock: Clock | None = None,
     ) -> None:
         if time_window_hours <= 0:
             msg = f"time_window_hours must be positive, got {time_window_hours}"
@@ -280,6 +283,7 @@ class EpisodicWorker:
         self._backend = backend
         self._config = config
         self._time_window_hours = time_window_hours
+        self._clock = clock or SystemClock()
 
     @property
     def name(self) -> str:
@@ -288,7 +292,7 @@ class EpisodicWorker:
 
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
         """Retrieve recent episodic memories."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
@@ -300,7 +304,7 @@ class EpisodicWorker:
             query.categories is not None
             and MemoryCategory.EPISODIC not in query.categories
         ):
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+            elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             return RetrievalResult(
                 worker_name=self.name,
                 execution_ms=elapsed_ms,
@@ -362,7 +366,7 @@ class EpisodicWorker:
                 reverse=True,
             )
             candidates = tuple(candidates_list[: query.max_results])
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+            elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.info(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,
                 worker=self.name,
@@ -377,7 +381,7 @@ class EpisodicWorker:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+            elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(
                 MEMORY_HIERARCHICAL_WORKER_FAILED,
                 worker=self.name,
@@ -408,9 +412,11 @@ class ProceduralWorker:
         *,
         backend: MemoryBackend,
         config: MemoryRetrievalConfig,
+        clock: Clock | None = None,
     ) -> None:
         self._backend = backend
         self._config = config
+        self._clock = clock or SystemClock()
 
     @property
     def name(self) -> str:
@@ -419,7 +425,7 @@ class ProceduralWorker:
 
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
         """Retrieve procedural memories."""
-        start = time.monotonic()
+        start = self._clock.monotonic()
         logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
             worker=self.name,
@@ -430,7 +436,7 @@ class ProceduralWorker:
             query.categories is not None
             and MemoryCategory.PROCEDURAL not in query.categories
         ):
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+            elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             return RetrievalResult(
                 worker_name=self.name,
                 execution_ms=elapsed_ms,
@@ -464,7 +470,7 @@ class ProceduralWorker:
                     )
                 )
             candidates = tuple(candidates_list)
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+            elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.info(
                 MEMORY_HIERARCHICAL_WORKER_COMPLETE,
                 worker=self.name,
@@ -479,7 +485,7 @@ class ProceduralWorker:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
-            elapsed_ms = int((time.monotonic() - start) * 1000)
+            elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(
                 MEMORY_HIERARCHICAL_WORKER_FAILED,
                 worker=self.name,

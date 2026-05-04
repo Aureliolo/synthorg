@@ -19,7 +19,7 @@ class WorkspaceRequest(BaseModel):
         file_scope: Optional file path hints for the workspace.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Task requiring isolation")
     agent_id: NotBlankStr = Field(description="Agent working in workspace")
@@ -46,7 +46,7 @@ class Workspace(BaseModel):
         created_at: Timestamp of workspace creation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     workspace_id: NotBlankStr = Field(description="Unique workspace ID")
     task_id: NotBlankStr = Field(description="Task this workspace serves")
@@ -75,7 +75,7 @@ class MergeConflict(BaseModel):
         theirs_content: Content from the workspace branch side.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     file_path: NotBlankStr = Field(description="Conflicting file path")
     conflict_type: ConflictType = Field(
@@ -117,7 +117,7 @@ class MergeResult(BaseModel):
         semantic_conflicts: Semantic conflicts detected after merge.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     workspace_id: NotBlankStr = Field(description="Merged workspace ID")
     branch_name: NotBlankStr = Field(description="Merged branch name")

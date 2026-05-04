@@ -12,12 +12,12 @@ Default TTL is 24 hours (matches Stripe-style retry windows).
 import asyncio
 import hashlib
 import json
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
@@ -127,6 +127,7 @@ class IdempotencyService:
         repository: IdempotencyRepository,
         *,
         ttl_seconds: int = DEFAULT_IDEMPOTENCY_TTL_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         # Invariant: the configured TTL must outlive a polling cycle.
         # The leader-failed takeover path in ``_wait_for_in_flight``
@@ -149,6 +150,7 @@ class IdempotencyService:
             raise ValueError(msg)
         self._repo = repository
         self._ttl_seconds = ttl_seconds
+        self._clock = clock or SystemClock()
 
     async def run_idempotent(
         self,
@@ -317,9 +319,9 @@ class IdempotencyService:
         a single ``None`` would 409 every retry after a failed
         leader, defeating redelivery semantics.
         """
-        deadline = time.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
+        deadline = self._clock.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
         backoff = _IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS
-        while time.monotonic() < deadline:
+        while self._clock.monotonic() < deadline:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, _IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS)
             record = await self._repo.get(scope=scope, key=key)

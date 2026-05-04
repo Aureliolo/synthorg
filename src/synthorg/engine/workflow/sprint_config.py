@@ -43,7 +43,7 @@ class SprintCeremonyConfig(BaseModel):
             ceremony scheduling policy.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(
         description="Ceremony identifier",
@@ -95,7 +95,7 @@ class SprintConfig(BaseModel):
         ceremonies: Sprint ceremony definitions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     duration_days: int = Field(
         default=14,

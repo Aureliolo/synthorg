@@ -109,6 +109,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "memory.fine_tune_resume": (5, 3600),
     # oauth
     "oauth.callback": (30, 60),
+    "oauth.initiate": (10, 60),
     # ontology
     "ontology.admin_derive": (5, 60),
     "ontology.admin_sync_org_memory": (5, 60),
@@ -157,6 +158,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "scaling.update_strategy": (30, 60),
     # settings
     "settings.delete": (60, 60),
+    "settings.import": (5, 3600),
     "settings.update": (60, 60),
     # setup
     "setup.complete": (5, 3600),

@@ -35,7 +35,7 @@ class A2AAuthConfig(BaseModel):
         outbound_scheme: Default auth scheme for outbound requests.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     inbound_scheme: A2AAuthScheme = Field(
         default="api_key",
@@ -67,7 +67,7 @@ class A2APushConfig(BaseModel):
             protection.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     signature_algorithm: A2ASignatureAlgorithm = Field(
@@ -98,7 +98,7 @@ class A2AAgentCardVerificationConfig(BaseModel):
             verification.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     require_signatures: bool = False
@@ -152,7 +152,7 @@ class A2AConfig(BaseModel):
         agent_card_verification: Agent Card signature verification.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     allowed_peers: tuple[NotBlankStr, ...] = ()

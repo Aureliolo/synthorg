@@ -38,7 +38,7 @@ class FailureMode(BaseModel):
         mitigation: Proposed mitigation or preventive action.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     description: NotBlankStr = Field(
         description="Description of how the decision could fail"
@@ -65,7 +65,7 @@ class PremortemOutput(BaseModel):
         assumptions: Key assumptions underlying the decision.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     failure_modes: tuple[FailureMode, ...] = Field(
         default=(),

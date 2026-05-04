@@ -73,7 +73,7 @@ class OverrideResponse(BaseModel):
         expires_at: When the override expires.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     score: float = Field(ge=0.0, le=10.0)

@@ -26,7 +26,7 @@ class ArchivalResult(BaseModel):
         strategy_name: Name of the archival strategy used.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent whose memories were archived")
     total_archived: int = Field(ge=0, description="Memories archived")

@@ -35,6 +35,16 @@ var (
 var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update CLI, refresh compose template, and pull new container images",
+	Long: `Bring the local installation up to the channel's latest version.
+
+Self-updates the CLI binary, regenerates compose.yml from the
+embedded template, then pulls the matching container images
+(verifying signatures and SLSA attestations) and restarts the
+running stack. Pass --cli-only or --images-only to scope the
+update, --check to exit 10 if an update is available without
+applying it, --dry-run to preview the planned changes, or
+--no-restart to pull images but leave the running containers
+untouched.`,
 	Example: `  synthorg update                # update CLI + images
   synthorg update --cli-only     # update CLI binary only
   synthorg update --images-only  # update container images only

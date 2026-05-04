@@ -60,7 +60,7 @@ class CandidateResult(BaseModel):
         trace_tokens: Total output tokens across all turns.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     candidate_index: int = Field(
         ge=0,

@@ -8,6 +8,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
 import { springDefault, overlayBackdrop, tweenExitFast } from '@/lib/motion'
 import { ApprovalTimeline } from './ApprovalTimeline'
+import { REJECTION_REASON_REQUIRED } from './errors'
 import {
   getApprovalStatusLabel,
   getRiskLevelColor,
@@ -189,14 +190,11 @@ export function ApprovalDetailDrawer({
       // Inline field error so the user sees a red border + helper
       // text on the InputField itself, not just a toast that flies
       // away. The toast remains as a secondary live-region signal.
-      setReasonError(
-        'Rejection requires a reason for the approval record. Provide a brief explanation.',
-      )
+      setReasonError(REJECTION_REASON_REQUIRED)
       useToastStore.getState().add({
         variant: 'error',
         title: 'Rejection reason required',
-        description:
-          'Rejection requires a reason for the approval record. Provide a brief explanation.',
+        description: REJECTION_REASON_REQUIRED,
       })
       return false
     }

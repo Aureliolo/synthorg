@@ -99,7 +99,7 @@ class ParallelExecutionGroup(BaseModel):
         fail_fast: Cancel remaining assignments on first failure.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     group_id: NotBlankStr = Field(
         description="Unique group identifier",

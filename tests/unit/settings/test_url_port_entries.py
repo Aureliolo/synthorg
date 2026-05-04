@@ -56,14 +56,14 @@ _URL_PORT_ENTRIES: tuple[tuple[str, str, SettingType, str, str], ...] = (
         "observability",
         "tsa_endpoint_digicert",
         SettingType.STRING,
-        "http://timestamp.digicert.com",
+        "https://timestamp.digicert.com",
         "https://timestamp.digicert.example.com",
     ),
     (
         "observability",
         "tsa_endpoint_sectigo",
         SettingType.STRING,
-        "http://timestamp.sectigo.com",
+        "https://timestamp.sectigo.com",
         "https://timestamp.sectigo.example.com",
     ),
     (

@@ -6,9 +6,9 @@ wasting time on later steps.
 """
 
 import asyncio
-import time
 from pathlib import Path
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.meta.models import CIValidationResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
@@ -32,8 +32,14 @@ class LocalCIValidator:
         timeout_seconds: Maximum wall-clock time for each subprocess.
     """
 
-    def __init__(self, *, timeout_seconds: int = 300) -> None:
+    def __init__(
+        self,
+        *,
+        timeout_seconds: int = 300,
+        clock: Clock | None = None,
+    ) -> None:
         self._timeout = timeout_seconds
+        self._clock = clock or SystemClock()
 
     async def validate(
         self,
@@ -54,7 +60,7 @@ class LocalCIValidator:
             META_CI_VALIDATION_STARTED,
             file_count=len(changed_files),
         )
-        start = time.monotonic()
+        start = self._clock.monotonic()
         errors: list[str] = []
 
         # Step 1: Lint.
@@ -78,7 +84,7 @@ class LocalCIValidator:
                 errors,
             )
 
-        elapsed = time.monotonic() - start
+        elapsed = self._clock.monotonic() - start
         passed = lint_ok and typecheck_ok and tests_ok
 
         if passed:

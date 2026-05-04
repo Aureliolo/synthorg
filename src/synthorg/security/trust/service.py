@@ -4,6 +4,7 @@ Central service for managing progressive trust state, evaluation,
 and trust level changes for agents.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -63,6 +64,14 @@ class TrustService:
         self._approval_store = approval_store
         self._trust_states: dict[str, TrustState] = {}
         self._change_history: dict[str, list[TrustChangeRecord]] = {}
+        # Hot-path lock guarding _trust_states + _change_history.
+        # Two concurrent apply_trust_change / evaluate_agent calls for
+        # the same agent could otherwise interleave between read of
+        # _trust_states[key] and the assignment back, losing one
+        # update; the setdefault().append() pattern at the end of
+        # apply_trust_change is similarly non-atomic. Lock the full
+        # read-modify-write region in both methods.
+        self._state_lock = asyncio.Lock()
 
     def initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
         """Create initial trust state for a new agent.
@@ -105,7 +114,8 @@ class TrustService:
                 evaluation fails.
         """
         key = str(agent_id)
-        state = self._trust_states.get(key)
+        async with self._state_lock:
+            state = self._trust_states.get(key)
         if state is None:
             msg = f"Agent {agent_id!r} not initialized for trust tracking"
             logger.warning(
@@ -132,10 +142,13 @@ class TrustService:
 
         # Update last_evaluated_at
         now = datetime.now(UTC)
-        updated_state = state.model_copy(
-            update={"last_evaluated_at": now},
-        )
-        self._trust_states[key] = updated_state
+        async with self._state_lock:
+            # Re-read in case another coroutine raced us; merge the
+            # last_evaluated_at update onto whatever the latest state is.
+            current = self._trust_states.get(key, state)
+            self._trust_states[key] = current.model_copy(
+                update={"last_evaluated_at": now},
+            )
 
         logger.debug(
             TRUST_EVALUATE_COMPLETE,
@@ -168,17 +181,6 @@ class TrustService:
         if not result.should_change:
             return None
 
-        key = str(agent_id)
-        state = self._trust_states.get(key)
-        if state is None:
-            msg = f"Agent {agent_id!r} not initialized for trust tracking"
-            logger.warning(
-                TRUST_EVALUATE_FAILED,
-                agent_id=agent_id,
-                error=msg,
-            )
-            raise TrustEvaluationError(msg)
-
         # Defense-in-depth: re-enforce elevated gate on the result
         # to prevent crafted TrustEvaluationResults from bypassing
         # the mandatory human approval gate.
@@ -188,36 +190,52 @@ class TrustService:
             await self._create_approval(agent_id, result)
             return None
 
-        # Apply the change
+        key = str(agent_id)
         now = datetime.now(UTC)
         reason = self._infer_reason(result)
 
-        record = TrustChangeRecord(
-            agent_id=agent_id,
-            old_level=state.global_level,
-            new_level=result.recommended_level,
-            reason=reason,
-            timestamp=now,
-            details=result.details,
-        )
-
-        # Update state -- only set last_promoted_at on actual promotions
         from synthorg.security.trust.levels import (  # noqa: PLC0415
             TRUST_LEVEL_RANK,
         )
 
-        is_promotion = TRUST_LEVEL_RANK.get(
-            result.recommended_level, 0
-        ) > TRUST_LEVEL_RANK.get(state.global_level, 0)
-        state_update: dict[str, object] = {
-            "global_level": result.recommended_level,
-            "trust_score": result.score,
-        }
-        if is_promotion:
-            state_update["last_promoted_at"] = now
-        updated = state.model_copy(update=state_update)
-        self._trust_states[key] = updated
-        self._change_history.setdefault(key, []).append(record)
+        # Hold the lock across the whole read-modify-write so a
+        # concurrent ``apply_trust_change`` for the same agent cannot
+        # observe stale state at the read and overwrite a peer's update
+        # at the write. Building the change record under the lock also
+        # closes the gap where an evaluation can race past initialisation
+        # and produce a record against a removed state row.
+        async with self._state_lock:
+            state = self._trust_states.get(key)
+            if state is None:
+                msg = f"Agent {agent_id!r} not initialized for trust tracking"
+                logger.warning(
+                    TRUST_EVALUATE_FAILED,
+                    agent_id=agent_id,
+                    error=msg,
+                )
+                raise TrustEvaluationError(msg)
+
+            record = TrustChangeRecord(
+                agent_id=agent_id,
+                old_level=state.global_level,
+                new_level=result.recommended_level,
+                reason=reason,
+                timestamp=now,
+                details=result.details,
+            )
+
+            is_promotion = TRUST_LEVEL_RANK.get(
+                result.recommended_level, 0
+            ) > TRUST_LEVEL_RANK.get(state.global_level, 0)
+            state_update: dict[str, object] = {
+                "global_level": result.recommended_level,
+                "trust_score": result.score,
+            }
+            if is_promotion:
+                state_update["last_promoted_at"] = now
+            updated = state.model_copy(update=state_update)
+            self._trust_states[key] = updated
+            self._change_history.setdefault(key, []).append(record)
 
         logger.info(
             TRUST_LEVEL_CHANGED,

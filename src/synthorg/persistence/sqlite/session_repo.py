@@ -142,7 +142,7 @@ class SQLiteSessionRepository:
         self,
         user_id: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
@@ -155,12 +155,8 @@ class SQLiteSessionRepository:
         )
         params: tuple[object, ...] = (user_id, now)
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " LIMIT -1 OFFSET ?"
-            params = (*params, effective_offset)
+        sql += " LIMIT ? OFFSET ?"
+        params = (*params, int(limit), effective_offset)
         cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
@@ -168,7 +164,7 @@ class SQLiteSessionRepository:
     async def list_all(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""
@@ -180,12 +176,8 @@ class SQLiteSessionRepository:
         )
         params: tuple[object, ...] = (now,)
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " LIMIT -1 OFFSET ?"
-            params = (*params, effective_offset)
+        sql += " LIMIT ? OFFSET ?"
+        params = (*params, int(limit), effective_offset)
         cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)

@@ -31,7 +31,7 @@ class KanbanWipLimit(BaseModel):
         limit: Maximum number of tasks allowed in the column.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     column: KanbanColumn = Field(description="Target column")
     limit: int = Field(
@@ -51,7 +51,7 @@ class WipCheckResult(BaseModel):
         limit: Configured limit (``None`` if no limit set).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     allowed: bool = Field(description="Whether the move is allowed")
     column: KanbanColumn = Field(description="Checked column")
@@ -76,7 +76,7 @@ class KanbanConfig(BaseModel):
             are advisory-only (logged as warnings but ``allowed=True``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     wip_limits: tuple[KanbanWipLimit, ...] = Field(
         default=(

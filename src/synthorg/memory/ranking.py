@@ -77,7 +77,7 @@ class ScoredMemory(BaseModel):
             or None when unset (backward compatibility).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     entry: MemoryEntry = Field(description="The original memory entry")
     relevance_score: float = Field(

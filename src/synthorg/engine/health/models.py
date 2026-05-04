@@ -5,11 +5,13 @@ health judge and consumed by the triage filter.
 """
 
 import copy
+from collections.abc import Mapping  # noqa: TC003 -- runtime Pydantic field annotation
 from datetime import UTC, datetime
 from enum import StrEnum
+from types import MappingProxyType
 from uuid import uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.quality.models import StepQualitySignal  # noqa: TC001
@@ -56,7 +58,7 @@ class EscalationTicket(BaseModel):
         metadata: Arbitrary structured context.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: str(uuid4()),
@@ -95,13 +97,23 @@ class EscalationTicket(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Ticket creation timestamp (UTC)",
     )
-    metadata: dict[str, object] = Field(
-        default_factory=dict,
-        description="Arbitrary structured context",
+    metadata: Mapping[str, object] = Field(
+        default_factory=lambda: MappingProxyType({}),
+        description="Arbitrary structured context (read-only at runtime)",
     )
 
-    def __init__(self, **data: object) -> None:
-        """Deep-copy metadata dict at construction boundary."""
-        if "metadata" in data and isinstance(data["metadata"], dict):
-            data["metadata"] = copy.deepcopy(data["metadata"])
-        super().__init__(**data)
+    @field_validator("metadata", mode="after")
+    @classmethod
+    def _freeze_metadata(cls, value: Mapping[str, object]) -> Mapping[str, object]:
+        """Deep-copy and wrap metadata as a read-only mapping.
+
+        Pydantic 2.x unwraps generic ``Mapping[...]`` annotations into
+        a plain ``dict`` during validation, so a pre-validation wrap
+        in ``__init__`` would silently be discarded and the caller
+        would still receive a mutable dict on the field. The freeze
+        runs ``mode="after"`` to act on the validated value. The
+        deep copy guards against the caller retaining a reference to
+        the original dict and mutating it post-construction; the
+        proxy guards against direct item assignment on the field.
+        """
+        return MappingProxyType(copy.deepcopy(dict(value)))

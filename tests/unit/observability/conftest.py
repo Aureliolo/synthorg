@@ -82,6 +82,14 @@ def _reset_logging() -> Iterator[None]:
     clear_logging_state()
 
 
+# Per-test snapshot seeding lives in the individual file fixtures
+# (e.g. test_prometheus_collector_new_metrics.py). A session-scoped
+# autouse seed here would be wiped immediately by the top-level
+# ``tests/conftest.py`` autouse reset that runs before each test, so
+# the seeding has to be function-scoped to be observable inside the
+# test body.
+
+
 @pytest.fixture
 def handler_cleanup() -> Iterator[list[logging.Handler]]:
     """Collect handlers and close them after the test."""

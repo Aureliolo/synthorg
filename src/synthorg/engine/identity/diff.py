@@ -34,7 +34,7 @@ class IdentityFieldChange(BaseModel):
         - ``"modified"``: both ``old_value`` and ``new_value`` must be non-``None``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     field_path: NotBlankStr
     change_type: ChangeType

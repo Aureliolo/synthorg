@@ -36,6 +36,7 @@ API_APPROVAL_CREATED: Final[str] = "api.approval.created"
 # (SECURITY_APPROVAL_APPROVED / SECURITY_APPROVAL_REJECTED) so the audit
 # chain signs the human decision.
 API_APPROVAL_EXPIRED: Final[str] = "api.approval.expired"
+API_APPROVAL_EXPIRE_BATCH_FAILED: Final[str] = "api.approval.expire_batch_failed"
 API_APPROVAL_EXPIRE_CALLBACK_FAILED: Final[str] = "api.approval.expire_callback_failed"
 API_APPROVAL_PUBLISH_FAILED: Final[str] = "api.approval.publish_failed"
 API_APPROVAL_CONFLICT: Final[str] = "api.approval.conflict"
@@ -217,10 +218,9 @@ API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"
 API_ARTIFACT_UPDATED: Final[str] = "api.artifact.updated"
 API_ARTIFACT_DELETED: Final[str] = "api.artifact.deleted"
 
-# SSRF violation mutations (recorded by self-healing security flow,
-# resolved by an operator via the dashboard).
-API_SSRF_VIOLATION_RECORDED: Final[str] = "api.ssrf_violation.recorded"
-API_SSRF_VIOLATION_STATUS_UPDATED: Final[str] = "api.ssrf_violation.status_updated"
+# SSRF violation read-side events (mutations live on the security audit
+# chain via SECURITY_SSRF_VIOLATION_* in observability/events/security.py
+# so signed audit consumers see the WHO+WHEN of recordings + resolutions).
 API_SSRF_VIOLATION_LISTED: Final[str] = "api.ssrf_violation.listed"
 API_SSRF_VIOLATION_FETCH_FAILED: Final[str] = "api.ssrf_violation.fetch_failed"
 

@@ -111,7 +111,9 @@ from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.security.audit import AuditLog
-from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
+from synthorg.security.timeout.policies import WaitForeverPolicy
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.security.timeout.timeout_checker import TimeoutChecker
 from synthorg.security.trust.service import TrustService  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
@@ -122,6 +124,40 @@ if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
+
+
+# Default approval-timeout interval mirrors the registry default for
+# ``security.timeout_check_interval_seconds`` defined in
+# ``src/synthorg/settings/definitions/security.py``. Held here as a
+# constant so the bootstrap and the registry definition cannot drift;
+# future reads from ConfigResolver still override at runtime via the
+# scheduler's ``reschedule()`` (called from a settings subscriber).
+# Update both sites together if the default ever changes; otherwise a
+# bootstrap value will silently disagree with operator-editable
+# overrides resolved through ``ConfigResolver``.
+_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS = 60.0
+
+
+def _build_default_approval_timeout_scheduler(
+    *,
+    approval_store: ApprovalStoreProtocol,
+) -> ApprovalTimeoutScheduler:
+    """Construct an :class:`ApprovalTimeoutScheduler` with safe defaults.
+
+    Uses :class:`WaitForeverPolicy` so the scheduler runs the periodic
+    scan and emits TIMEOUT_WAITING events but never auto-decides
+    pending approvals. Operators wire a real policy via the
+    ``security.timeout_*`` settings; the settings subscriber on
+    ``security.timeout_check_interval_seconds`` invokes
+    ``scheduler.reschedule()`` so the cadence stays operator-tunable
+    without restart.
+    """
+    timeout_checker = TimeoutChecker(policy=WaitForeverPolicy())
+    return ApprovalTimeoutScheduler(
+        approval_store=approval_store,
+        timeout_checker=timeout_checker,
+        interval_seconds=_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS,
+    )
 
 
 # 2-Phase Init: Phase 1 (construct) bakes immutable middleware/CORS/routes
@@ -809,10 +845,15 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
         app_state.set_review_gate_service(review_gate_service)
 
-    # Approval timeout scheduler -- None here; auto-creation from
-    # settings at startup is not yet wired.  Pass explicitly via the
-    # lifecycle when a TimeoutChecker is available.
-    approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
+    # Approval timeout scheduler -- bootstrapped here with the
+    # operator-tunable interval from
+    # ``security.timeout_check_interval_seconds``. The default policy
+    # is ``WaitForeverPolicy`` so the scheduler runs but never
+    # auto-decides; operators can swap in DenyOnTimeout / Tiered /
+    # EscalationChain via the security.* settings at runtime.
+    approval_timeout_scheduler = _build_default_approval_timeout_scheduler(
+        approval_store=effective_approval_store,
+    )
 
     startup, shutdown = _build_lifecycle(
         persistence,

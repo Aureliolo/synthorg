@@ -32,7 +32,7 @@ class CriterionResult(BaseModel):
         weight: Weight of this criterion (None if not weighted).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Criterion name")
     met: bool = Field(description="Whether the criterion was met")
@@ -146,7 +146,7 @@ class PromotionRecord(BaseModel):
         new_model_id: New model ID (None if not changed).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -224,7 +224,7 @@ class PromotionRequest(BaseModel):
         approval_id: Linked approval item ID (for human approval).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),

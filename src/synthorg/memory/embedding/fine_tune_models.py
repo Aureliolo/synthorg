@@ -33,7 +33,7 @@ class FineTuneRequest(BaseModel):
         validation_split: Fraction of data held out for evaluation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     source_dir: NotBlankStr = Field(
         description="Directory containing org documents",
@@ -126,7 +126,7 @@ class FineTuneStatus(BaseModel):
         error: Error message if the pipeline failed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     run_id: NotBlankStr | None = Field(
         default=None,
@@ -221,7 +221,7 @@ class FineTuneRunConfig(BaseModel):
         validation_split: Fraction held out for evaluation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     source_dir: NotBlankStr = Field(description="Source document directory")
     base_model: NotBlankStr = Field(description="Base embedding model")
@@ -341,7 +341,7 @@ class CheckpointRecord(BaseModel):
         backup_config_json: JSON backup of pre-deployment config.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique checkpoint ID")
     run_id: NotBlankStr = Field(description="Originating run ID")
@@ -374,7 +374,7 @@ class PreflightCheck(BaseModel):
         detail: Optional additional detail.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Check identifier")
     status: Literal["pass", "warn", "fail"] = Field(description="Result")
@@ -427,7 +427,7 @@ class FineTuneExecutionConfig(BaseModel):
         timeout_seconds: Maximum wall-clock time for a single stage.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backend: Literal["in-process", "docker"] = "in-process"
     image: NotBlankStr | None = None

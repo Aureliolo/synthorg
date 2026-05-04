@@ -20,6 +20,16 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Score-component weights. Tuned empirically; sum to 1.1 with the tag
+# bonus, capped at 1.0 by the caller. Extracted to module-level
+# constants so the same value drives both the docstring and the
+# arithmetic in one place.
+_PRIMARY_SKILL_WEIGHT = 0.4
+_SECONDARY_SKILL_WEIGHT = 0.2
+_TAG_MATCH_BONUS = 0.1
+_ROLE_MATCH_BONUS = 0.2
+_SENIORITY_ALIGNMENT_BONUS = 0.2
+
 # Seniority-to-complexity alignment mapping
 _SENIORITY_COMPLEXITY: dict[SeniorityLevel, tuple[Complexity, ...]] = {
     SeniorityLevel.JUNIOR: (Complexity.SIMPLE,),
@@ -155,7 +165,7 @@ def _score_skill_tiers(
     primary_contrib = (
         sum(primary_by_id[sid].proficiency for sid in primary_matched)
         / len(required)
-        * 0.4
+        * _PRIMARY_SKILL_WEIGHT
     )
     score += primary_contrib
     all_matched.extend(primary_matched)
@@ -165,7 +175,7 @@ def _score_skill_tiers(
     secondary_contrib = (
         sum(secondary_by_id[sid].proficiency for sid in secondary_matched)
         / len(required)
-        * 0.2
+        * _SECONDARY_SKILL_WEIGHT
     )
     score += secondary_contrib
     all_matched.extend(secondary_matched)
@@ -180,7 +190,7 @@ def _score_skill_tiers(
         for sid in secondary_matched:
             matched_tags.update(secondary_by_id[sid].tags)
         if required_tags <= matched_tags:
-            score += 0.1
+            score += _TAG_MATCH_BONUS
             reasons.append(f"tag match: {sorted(required_tags)}")
 
     return score, all_matched
@@ -191,13 +201,13 @@ def _score_role(
     subtask: SubtaskDefinition,
     reasons: list[str],
 ) -> float:
-    """Award 0.2 when the subtask's required_role matches the agent's role."""
+    """Award the role-match bonus when the agent's role matches required_role."""
     if (
         subtask.required_role is not None
         and agent.role.casefold() == subtask.required_role.casefold()
     ):
         reasons.append("role match")
-        return 0.2
+        return _ROLE_MATCH_BONUS
     return 0.0
 
 
@@ -206,12 +216,12 @@ def _score_seniority_alignment(
     subtask: SubtaskDefinition,
     reasons: list[str],
 ) -> float:
-    """Award 0.2 when the agent's seniority matches the subtask's complexity."""
+    """Award the seniority-alignment bonus when level matches complexity."""
     aligned = _SENIORITY_COMPLEXITY.get(agent.level, ())
     if subtask.estimated_complexity in aligned:
         reasons.append(
             f"seniority {agent.level.value} aligns with "
             f"complexity {subtask.estimated_complexity.value}"
         )
-        return 0.2
+        return _SENIORITY_ALIGNMENT_BONUS
     return 0.0

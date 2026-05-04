@@ -43,7 +43,7 @@ class EmbeddingModelRanking(BaseModel):
         output_dims: Output embedding vector dimensions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     model_id: NotBlankStr = Field(
         description="Model identifier",

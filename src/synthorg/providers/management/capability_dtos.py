@@ -169,7 +169,7 @@ class ProviderAuditActor(BaseModel):
         label: Human-readable display label (username, role, ...).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Stable actor identifier")
     label: NotBlankStr = Field(description="Human-readable actor label")
@@ -283,7 +283,7 @@ class RateLimitsResponse(BaseModel):
             (``0`` = unlimited).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     requests_per_minute: int = Field(
         default=0,
@@ -387,7 +387,7 @@ class PresetOverride(BaseModel):
         updated_by: Actor id of the last override writer.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     preset_name: NotBlankStr = Field(description="Preset this override targets")
     default_models: tuple[ProviderModelConfig, ...] | None = Field(
@@ -628,7 +628,7 @@ class SyncModelsResponse(BaseModel):
         models: The new persisted model list.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     added: tuple[NotBlankStr, ...]
     removed: tuple[NotBlankStr, ...]

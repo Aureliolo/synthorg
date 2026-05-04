@@ -36,7 +36,7 @@ class SubtaskDefinition(BaseModel):
         required_role: Optional role name for routing.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique subtask identifier")
     title: NotBlankStr = Field(description="Short subtask title")
@@ -86,7 +86,7 @@ class DecompositionPlan(BaseModel):
         coordination_topology: Selected coordination topology.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     parent_task_id: NotBlankStr = Field(
         description="ID of the task being decomposed",
@@ -139,7 +139,7 @@ class DecompositionResult(BaseModel):
         dependency_edges: Directed edges (from_id, to_id) in the DAG.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     plan: DecompositionPlan = Field(description="Executed decomposition plan")
     created_tasks: tuple[Task, ...] = Field(
@@ -282,7 +282,7 @@ class DecompositionContext(BaseModel):
         current_depth: Current nesting depth.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_subtasks: int = Field(
         default=10,

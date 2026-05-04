@@ -33,7 +33,7 @@ class PerformanceConfig(BaseModel):
             score (default 0.6).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     min_data_points: int = Field(
         default=5,

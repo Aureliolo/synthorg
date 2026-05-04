@@ -36,7 +36,7 @@ class ReviewStageResult(BaseModel):
         metadata: Additional stage-specific metadata.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     stage_name: NotBlankStr = Field(
         description="Identifier of the review stage",
@@ -68,7 +68,7 @@ class PipelineResult(BaseModel):
         reviewed_at: Timestamp of pipeline completion.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(
         description="ID of the reviewed task",

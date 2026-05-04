@@ -40,7 +40,7 @@ class ShadowTaskOutcome(BaseModel):
         error: Short error message when ``success`` is False.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     success: bool = Field(description="Task completed successfully")
     quality_score: float | None = Field(

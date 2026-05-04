@@ -35,7 +35,7 @@ class JsonRpcRequest(BaseModel):
         params: Method parameters.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     jsonrpc: Literal["2.0"] = "2.0"
     id: str | int = Field(
@@ -64,7 +64,7 @@ class JsonRpcErrorData(BaseModel):
         data: Additional error data.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     code: int = Field(description="Integer error code")
     message: str = Field(description="Human-readable error description")
@@ -93,7 +93,7 @@ class JsonRpcResponse(BaseModel):
         error: Error payload.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     jsonrpc: Literal["2.0"] = "2.0"
     id: str | int | None = None
@@ -166,7 +166,7 @@ class A2ATextPart(BaseModel):
         text: The text content.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["text"] = "text"
     text: NotBlankStr = Field(description="Text content")
@@ -181,7 +181,7 @@ class A2ADataPart(BaseModel):
         mime_type: Optional MIME type hint.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["data"] = "data"
     data: dict[str, Any] = Field(description="Structured JSON content")
@@ -207,7 +207,7 @@ class A2AFilePart(BaseModel):
         name: Optional human-readable filename.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["file"] = "file"
     uri: NotBlankStr = Field(description="File URI or URL")
@@ -247,7 +247,7 @@ class A2AMessage(BaseModel):
         metadata: Optional metadata key-value pairs.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     role: A2AMessageRole = Field(description="Sender role")
     parts: tuple[A2AMessagePart, ...] = Field(
@@ -279,7 +279,7 @@ class A2ATask(BaseModel):
         metadata: Task-level metadata.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: str(uuid4()),
@@ -320,7 +320,7 @@ class A2AAgentSkill(BaseModel):
         output_modes: Produced output content types.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique skill identifier")
     name: NotBlankStr = Field(description="Human-readable skill name")
@@ -354,7 +354,7 @@ class A2AAuthSchemeInfo(BaseModel):
             endpoint).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     scheme: NotBlankStr = Field(description="Auth scheme identifier")
     service_url: str | None = Field(
@@ -371,7 +371,7 @@ class A2AAgentProvider(BaseModel):
         url: Organization URL.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     organization: NotBlankStr = Field(description="Organization name")
     url: str | None = Field(
@@ -396,7 +396,7 @@ class A2AAgentCard(BaseModel):
         version: Agent Card schema version.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Agent display name")
     description: str = Field(

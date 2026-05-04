@@ -26,7 +26,7 @@ class MessageRepository(Protocol):
         self,
         channel: NotBlankStr,
         *,
-        limit: int | None = None,
+        limit: int = 100,
     ) -> tuple[Message, ...]:
         """Retrieve message history for a channel.
 

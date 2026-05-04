@@ -92,7 +92,7 @@ class SparseVector(BaseModel):
         values: Corresponding term frequency values (positive).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     indices: tuple[int, ...] = Field(
         default=(),

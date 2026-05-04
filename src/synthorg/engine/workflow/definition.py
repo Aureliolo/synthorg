@@ -93,7 +93,7 @@ class WorkflowIODeclaration(BaseModel):
         description: Free-text description for the UI.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Identifier")
     type: WorkflowValueType = Field(description="Typed value kind")
@@ -131,7 +131,7 @@ class WorkflowNode(BaseModel):
             agent role, condition expression, etc.).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique node identifier")
     type: WorkflowNodeType = Field(description="Node type")
@@ -155,7 +155,7 @@ class WorkflowEdge(BaseModel):
         label: Optional display label (e.g. condition text).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique edge identifier")
     source_node_id: NotBlankStr = Field(description="Source node ID")
@@ -197,7 +197,7 @@ class WorkflowDefinition(BaseModel):
         revision: Optimistic concurrency counter (monotonic integer).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique workflow definition ID")
     name: NotBlankStr = Field(description="Workflow name")

@@ -50,7 +50,7 @@ logger = get_logger(__name__)
 class EscalationResponse(BaseModel):
     """Escalation row enriched for the dashboard."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     escalation: Escalation
     conflict_id: NotBlankStr

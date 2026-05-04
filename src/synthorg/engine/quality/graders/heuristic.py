@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _PASS_THRESHOLD = 0.5
+_PASS_GRADE = 0.8
+_FAIL_GRADE = 0.3
+_CONFIDENCE_CEILING = 0.9
+_CONFIDENCE_BIAS = 0.1
 
 
 class HeuristicRubricGrader:
@@ -85,10 +89,10 @@ class HeuristicRubricGrader:
             # All criteria share the global probe_ratio because the
             # data model has no probe-to-criterion mapping yet.
             per_criterion_grades[criterion.name] = (
-                0.8 if probe_ratio >= _PASS_THRESHOLD else 0.3
+                _PASS_GRADE if probe_ratio >= _PASS_THRESHOLD else _FAIL_GRADE
             )
 
-        confidence = min(0.9, probe_ratio + 0.1)
+        confidence = min(_CONFIDENCE_CEILING, probe_ratio + _CONFIDENCE_BIAS)
 
         min_conf = rubric.min_confidence
         if confidence < min_conf:

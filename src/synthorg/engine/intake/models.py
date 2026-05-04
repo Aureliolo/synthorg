@@ -22,7 +22,7 @@ class IntakeResult(BaseModel):
         processed_at: Timestamp of processing completion.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     request_id: NotBlankStr = Field(
         description="ID of the processed request",

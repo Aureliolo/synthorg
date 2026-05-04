@@ -34,8 +34,8 @@ class TsaPreset(StrEnum):
 _DEFAULT_PRESET_URLS: MappingProxyType[TsaPreset, str] = MappingProxyType(
     {
         TsaPreset.FREETSA: "https://freetsa.org/tsr",
-        TsaPreset.DIGICERT: "http://timestamp.digicert.com",
-        TsaPreset.SECTIGO: "http://timestamp.sectigo.com",
+        TsaPreset.DIGICERT: "https://timestamp.digicert.com",
+        TsaPreset.SECTIGO: "https://timestamp.sectigo.com",
     }
 )
 """Hardcoded baseline URLs for each non-CUSTOM TSA preset, kept in sync

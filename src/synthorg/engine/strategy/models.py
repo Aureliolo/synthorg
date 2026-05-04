@@ -129,7 +129,7 @@ class ConfidenceConfig(BaseModel):
         format: Output format for confidence metadata.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     format: ConfidenceFormat = Field(
         default=ConfidenceFormat.STRUCTURED,
@@ -148,7 +148,7 @@ class ConsensusVelocityConfig(BaseModel):
         threshold: Consensus velocity threshold (0.0-1.0).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     action: ConsensusAction = Field(
         default=ConsensusAction.DEVIL_ADVOCATE,
@@ -169,7 +169,7 @@ class PremortemConfig(BaseModel):
         participants: Who participates in premortem analysis.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     participants: PremortemParticipation = Field(
         default=PremortemParticipation.ALL,
@@ -184,7 +184,7 @@ class ConflictDetectionConfig(BaseModel):
         strategy: Detection strategy to use.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: ConflictDetectionStrategy = Field(
         default=ConflictDetectionStrategy.AUTO,
@@ -205,7 +205,7 @@ class StrategicContextConfig(BaseModel):
         competitive_position: Market position.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     source: ContextSource = Field(
         default=ContextSource.CONFIG,
@@ -243,7 +243,7 @@ class ProgressiveWeights(BaseModel):
         strategic_alignment: Weight for strategic alignment dimension.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     budget_impact: float = Field(
         default=0.2,
@@ -337,7 +337,7 @@ class ProgressiveThresholds(BaseModel):
         generous: Lower threshold for generous tier.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     moderate: float = Field(
         default=0.4,
@@ -377,7 +377,7 @@ class ProgressiveConfig(BaseModel):
         thresholds: Thresholds for cost tier resolution.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     weights: ProgressiveWeights = Field(
         default_factory=ProgressiveWeights,
@@ -397,7 +397,7 @@ class ConstitutionalPrincipleConfig(BaseModel):
         custom: Additional custom principles appended after the pack.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     pack: NotBlankStr = Field(
         default="default",
@@ -443,7 +443,7 @@ class StrategyConfig(BaseModel):
         progressive: Progressive cost tier resolution configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     output_mode: StrategicOutputMode = Field(
         default=StrategicOutputMode.ADVISOR,
@@ -528,7 +528,7 @@ class StrategicContext(BaseModel):
         competitive_position: Market competitive position.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     maturity_stage: NotBlankStr = Field(description="Company maturity stage")
     industry: NotBlankStr = Field(description="Industry sector")
@@ -547,7 +547,7 @@ class ConstitutionalPrinciple(BaseModel):
         severity: How strictly this principle must be followed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique principle identifier")
     text: NotBlankStr = Field(description="Principle rule text")
@@ -571,7 +571,7 @@ class PrinciplePack(BaseModel):
         principles: Ordered tuple of principles in this pack.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Pack identifier")
     version: NotBlankStr = Field(description="Semantic version string")
@@ -607,7 +607,7 @@ class RiskCard(BaseModel):
         time_horizon: How far into the future effects extend.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     decision_type: NotBlankStr = Field(description="Type of decision")
     reversibility: Reversibility = Field(
@@ -633,7 +633,7 @@ class ImpactScore(BaseModel):
         tier: Resolved cost tier based on composite score.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     dimensions: dict[str, float] = Field(
         description="Per-dimension scores (0.0-1.0)",
@@ -676,7 +676,7 @@ class ConfidenceMetadata(BaseModel):
         uncertainty_factors: Factors contributing to uncertainty.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     level: float = Field(
         ge=0.0,
@@ -727,7 +727,7 @@ class LensAttribution(BaseModel):
         weight: How much this lens influenced the final recommendation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     lens: NotBlankStr = Field(description="Strategic lens name")
     insight: NotBlankStr = Field(description="Insight from this lens")

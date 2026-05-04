@@ -40,7 +40,7 @@ class ExecutionFrame(BaseModel):
         depth: Nesting depth (root frame is ``0``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     workflow_id: NotBlankStr = Field(description="Workflow definition ID")
     workflow_version: NotBlankStr = Field(description="Semver version")
@@ -94,7 +94,7 @@ class WorkflowNodeExecution(BaseModel):
             (e.g. conditional branch not taken).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     node_id: NotBlankStr = Field(description="Source node ID")
     node_type: WorkflowNodeType = Field(description="Node type")
@@ -169,7 +169,7 @@ class WorkflowExecution(BaseModel):
         version: Optimistic concurrency version counter.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique execution ID")
     definition_id: NotBlankStr = Field(description="Source definition ID")

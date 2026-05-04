@@ -28,7 +28,7 @@ class IntelligenceConfig(BaseModel):
         llm_calibration_weight: Weight for LLM calibration metric.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     weight: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -65,7 +65,7 @@ class EfficiencyConfig(BaseModel):
         reference_tokens: Reference token count for normalization.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     weight: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -108,7 +108,7 @@ class ResilienceConfig(BaseModel):
         consistency_k: Sensitivity factor for stddev penalty.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     weight: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -151,7 +151,7 @@ class GovernanceConfig(BaseModel):
         autonomy_compliance_weight: Weight for autonomy compliance metric.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     weight: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -194,7 +194,7 @@ class ExperienceConfig(BaseModel):
         min_feedback_count: Minimum feedback records for meaningful scoring.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     weight: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -244,7 +244,7 @@ class EvalLoopConfig(BaseModel):
             shipped default map.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,
@@ -305,7 +305,7 @@ class EvaluationConfig(BaseModel):
         eval_loop: Closed-loop evaluation coordinator configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     intelligence: IntelligenceConfig = Field(
         default_factory=IntelligenceConfig,

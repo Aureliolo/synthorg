@@ -1,7 +1,9 @@
 """Training mode domain models.
 
 Frozen Pydantic models for training plans, items, guard decisions,
-and results.  All models use ``ConfigDict(frozen=True, allow_inf_nan=False)``.
+and results. All models use the standard frozen ConfigDict with
+``extra="forbid"`` so unknown payload fields are rejected at
+validation time.
 """
 
 from enum import StrEnum
@@ -56,7 +58,7 @@ class TrainingItem(BaseModel):
         created_at: When the item was created.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -101,7 +103,7 @@ class TrainingGuardDecision(BaseModel):
         approval_item_id: ApprovalStore item ID (ReviewGateGuard only).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     approved_items: tuple[TrainingItem, ...] = Field(
         description="Items that passed the guard",
@@ -168,7 +170,7 @@ class TrainingPlan(BaseModel):
         executed_at: Execution completion timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -287,7 +289,7 @@ class TrainingApprovalHandle(BaseModel):
         item_count: Number of items blocked by the gate.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     approval_item_id: NotBlankStr = Field(
         description="ApprovalStore item ID",
@@ -323,7 +325,7 @@ class TrainingResult(BaseModel):
         completed_at: Pipeline completion timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),

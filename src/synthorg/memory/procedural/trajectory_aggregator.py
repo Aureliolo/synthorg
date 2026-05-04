@@ -34,7 +34,7 @@ class AggregatedTrajectory(BaseModel):
         recorded_at: When this trajectory was recorded.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Executing agent")
     task_id: NotBlankStr = Field(description="Task identifier")
@@ -78,7 +78,7 @@ class TrajectoryPattern(BaseModel):
         representative_trajectory: Example trajectory for context.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     pattern_id: NotBlankStr = Field(description="Unique identifier")
     description: NotBlankStr = Field(description="Pattern description")

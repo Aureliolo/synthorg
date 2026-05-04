@@ -7,13 +7,13 @@ Uses ``aiodocker`` for asynchronous Docker daemon communication.
 
 import asyncio
 import platform
-import time
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
 
 import aiodocker
 import aiodocker.containers
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CONTAINER_CREATED,
@@ -120,6 +120,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         config: DockerSandboxConfig | None = None,
         workspace: Path,
         log_shipping_config: ContainerLogShippingConfig | None = None,
+        clock: Clock | None = None,
     ) -> None:
         """Initialize the Docker sandbox.
 
@@ -128,6 +129,9 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             workspace: Absolute path to the workspace root. Must exist.
             log_shipping_config: Container log shipping configuration.
                 Default-constructed if not provided.
+            clock: Time source for execution-duration measurements.
+                Defaults to ``SystemClock()``; tests inject ``FakeClock``
+                to drive elapsed-ms assertions deterministically.
 
         Raises:
             ValueError: If *workspace* is not absolute or does not exist.
@@ -146,6 +150,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         self._docker: aiodocker.Docker | None = None
         self._tracked_containers: dict[str, str | None] = {}
         self._lock = asyncio.Lock()
+        self._clock = clock or SystemClock()
         self._credential_manager = SandboxCredentialManager()
         self._runtime_resolver: SandboxRuntimeResolver | None = None
         if log_shipping_config is None:
@@ -696,14 +701,14 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             )
             raise SandboxStartError(msg) from exc
 
-        start_mono = time.monotonic()
+        start_mono = self._clock.monotonic()
         timed_out, returncode = await self._wait_for_exit(
             docker=docker,
             container_obj=container_obj,
             container_id=container_id,
             timeout=timeout,
         )
-        elapsed_ms = int((time.monotonic() - start_mono) * 1000)
+        elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
 
         stdout, stderr = await self._safe_collect_logs(
             container_obj,

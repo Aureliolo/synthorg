@@ -47,7 +47,7 @@ class EmbeddingFineTuneConfig(BaseModel):
             training step, not by checkpoint lookup.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -149,7 +149,7 @@ class Mem0EmbedderConfig(BaseModel):
             ``True``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider: NotBlankStr = Field(
         description="Embedding provider name (Mem0 SDK identifier)",
@@ -192,7 +192,7 @@ class EmbeddingCostConfig(BaseModel):
             count to token count.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
@@ -242,7 +242,7 @@ class Mem0BackendConfig(BaseModel):
         embedder: Embedder settings (required -- no defaults).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     data_dir: NotBlankStr = Field(
         default="/data/memory",

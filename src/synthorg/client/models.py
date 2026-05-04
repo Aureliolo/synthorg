@@ -97,7 +97,7 @@ class ClientProfile(BaseModel):
             (0.0 = lenient, 1.0 = very strict).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     client_id: NotBlankStr = Field(description="Unique client identifier")
     name: NotBlankStr = Field(description="Human-readable client name")
@@ -128,7 +128,7 @@ class TaskRequirement(BaseModel):
         acceptance_criteria: Criteria for task acceptance.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     title: NotBlankStr = Field(description="Short requirement title")
     description: NotBlankStr = Field(
@@ -162,7 +162,7 @@ class GenerationContext(BaseModel):
         count: Number of requirements to generate.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: NotBlankStr = Field(
         description="Project to generate requirements for",
@@ -200,7 +200,7 @@ class ReviewContext(BaseModel):
         prior_feedback: Previous feedback on this task (for rework).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(
         description="ID of the task being reviewed",
@@ -235,7 +235,7 @@ class ClientFeedback(BaseModel):
         created_at: Timestamp of feedback creation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     feedback_id: NotBlankStr = Field(
         default_factory=lambda: str(uuid4()),
@@ -296,7 +296,7 @@ class ClientRequest(BaseModel):
         metadata: Additional request metadata.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     request_id: NotBlankStr = Field(
         default_factory=lambda: str(uuid4()),
@@ -364,7 +364,7 @@ class PoolConstraints(BaseModel):
         max_clients: Maximum number of clients to select.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     min_strictness: float = Field(
         default=0.0,
@@ -411,7 +411,7 @@ class SimulationConfig(BaseModel):
         requirements_per_client: Requirements each client generates.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     simulation_id: NotBlankStr = Field(
         default_factory=lambda: str(uuid4()),

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Self
 
 import httpx
 
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.meta.telemetry.anonymizer import anonymize_decision, anonymize_rollout
 from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent, EventBatch
@@ -397,7 +398,9 @@ class HttpAnalyticsEmitter:
         if self._analytics_config.collector_url is None:
             msg = "collector_url is required when analytics is enabled"
             raise ValueError(msg)
-        url = str(self._analytics_config.collector_url).rstrip("/") + "/events"
+        url = (
+            strip_trailing_slash(str(self._analytics_config.collector_url)) + "/events"
+        )
         payload = EventBatch(events=events).model_dump(mode="json")
         event_count = len(events)
 

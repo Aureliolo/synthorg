@@ -57,7 +57,7 @@ class LensDefinition(BaseModel):
         is_default: Whether this lens is active by default.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Human-readable lens name")
     description: NotBlankStr = Field(description="What this lens evaluates")

@@ -17,6 +17,7 @@ import pytest
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.postgres.approval_repo import (
     PostgresApprovalRepository,
@@ -266,3 +267,130 @@ class TestApprovalRepository:
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         repo = _approval_repo(backend)
         assert isinstance(repo, ApprovalRepository)
+
+    async def test_save_many_round_trips_batch(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # save_many writes every item under one transaction.  All rows
+        # must be visible to a fresh repo read after the call returns.
+        repo = _approval_repo(backend)
+        items = tuple(_make_item(approval_id=f"approval-batch-{i}") for i in range(5))
+        await repo.save_many(items)
+
+        fresh = _approval_repo(backend)
+        for original in items:
+            fetched = await fresh.get(original.id)
+            assert fetched is not None, original.id
+            assert fetched.id == original.id
+
+    async def test_save_many_empty_input_is_noop(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        # Empty input must not open a transaction or raise.
+        await repo.save_many(())
+        # Confirm no rows were written: a fresh repo on the same
+        # connection sees an empty list. Without this post-condition
+        # the test would pass even if save_many silently opened and
+        # committed an empty transaction.
+        fresh = _approval_repo(backend)
+        assert await fresh.list_items() == ()
+
+    async def test_save_many_upserts_existing_rows(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # save_many must obey the same upsert semantics as save() so a
+        # batched expiry loop can transition PENDING to EXPIRED on
+        # already-persisted items in one call. Use a multi-item batch
+        # (a peer fresh insert + the upsert under test) so the repo
+        # actually exercises its executemany / batched-upsert path
+        # rather than delegating to the single-item ``save()``
+        # fast-path that both backends short-circuit on len(items)==1.
+        repo = _approval_repo(backend)
+        original = _make_item(approval_id="approval-batch-upsert")
+        await repo.save(original)
+
+        updated = original.model_copy(update={"status": ApprovalStatus.EXPIRED})
+        peer = _make_item(approval_id="approval-batch-upsert-peer")
+        await repo.save_many((updated, peer))
+
+        fetched = await repo.get(original.id)
+        assert fetched is not None
+        assert fetched.status is ApprovalStatus.EXPIRED
+        peer_fetched = await repo.get(peer.id)
+        assert peer_fetched is not None
+        assert peer_fetched.status is ApprovalStatus.PENDING
+
+    async def test_save_many_duplicate_ids_within_batch_settle_to_last(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # The protocol contract is upsert per id. When the same id
+        # appears twice in a batch the repository must converge on the
+        # last value rather than open a half-applied state where a
+        # concurrent reader could observe the intermediate version.
+        repo = _approval_repo(backend)
+        first = _make_item(
+            approval_id="approval-batch-dup",
+            status=ApprovalStatus.PENDING,
+        )
+        second = first.model_copy(update={"status": ApprovalStatus.EXPIRED})
+        await repo.save_many((first, second))
+
+        fetched = await repo.get(first.id)
+        assert fetched is not None
+        assert fetched.status is ApprovalStatus.EXPIRED
+
+    async def test_expire_if_pending_flips_pending_rows_only(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # Compare-and-set contract: rows still PENDING transition to
+        # EXPIRED; rows already in a terminal status are silently
+        # skipped. Returned ids reflect what actually changed.
+        repo = _approval_repo(backend)
+        pending = _make_item(
+            approval_id="approval-expire-pending",
+            status=ApprovalStatus.PENDING,
+        )
+        approved = _make_item(
+            approval_id="approval-expire-approved",
+            status=ApprovalStatus.APPROVED,
+        )
+        rejected = _make_item(
+            approval_id="approval-expire-rejected",
+            status=ApprovalStatus.REJECTED,
+        )
+        await repo.save_many((pending, approved, rejected))
+
+        updated = await repo.expire_if_pending(
+            (pending.id, approved.id, rejected.id),
+        )
+        assert set(updated) == {pending.id}
+        assert (await repo.get(pending.id)).status is ApprovalStatus.EXPIRED  # type: ignore[union-attr]
+        assert (await repo.get(approved.id)).status is ApprovalStatus.APPROVED  # type: ignore[union-attr]
+        assert (await repo.get(rejected.id)).status is ApprovalStatus.REJECTED  # type: ignore[union-attr]
+
+    async def test_expire_if_pending_empty_input_is_noop(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        result = await repo.expire_if_pending(())
+        assert result == ()
+
+    async def test_expire_if_pending_unknown_ids_returned_empty(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # Ids that don't exist in the table are silently skipped, same
+        # as a row that's already terminal -- the compare-and-set
+        # WHERE clause matches no row, so no row is returned.
+        repo = _approval_repo(backend)
+        updated = await repo.expire_if_pending(
+            (NotBlankStr("approval-expire-missing"),),
+        )
+        assert updated == ()

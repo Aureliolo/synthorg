@@ -108,7 +108,7 @@ class TestSinkConfigResponse(BaseModel):
         error: Validation error message (None when valid).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     valid: bool
     error: NotBlankStr | None = None
@@ -128,7 +128,7 @@ class TestSinkConfigResponse(BaseModel):
 class SecurityConfigExportResponse(BaseModel):
     """Exported security configuration with metadata."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     config: dict[str, Any]
     exported_at: AwareDatetime
@@ -640,7 +640,13 @@ class SettingsController(Controller):
             ),
         )
 
-    @post("/security/import", guards=[require_ceo_or_manager])
+    @post(
+        "/security/import",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("settings.import", key="user"),
+        ],
+    )
     async def import_security_config(
         self,
         state: State,

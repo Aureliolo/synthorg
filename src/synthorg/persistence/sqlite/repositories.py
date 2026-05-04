@@ -211,7 +211,7 @@ id, title, description, type, priority, project, created_by,
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         """List tasks with optional filters and pagination.
@@ -235,17 +235,10 @@ id, title, description, type, priority, project, created_by,
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY id ASC"
-        if limit is not None:
-            query += " LIMIT ?"
-            params.append(int(limit))
-            if offset:
-                query += " OFFSET ?"
-                params.append(int(offset))
-        elif offset:
-            # SQLite rejects ``OFFSET`` without a preceding ``LIMIT``;
-            # ``LIMIT -1`` is the documented idiom for "no limit" so
-            # offset-only calls produce valid SQL.
-            query += " LIMIT -1 OFFSET ?"
+        query += " LIMIT ?"
+        params.append(int(limit))
+        if offset:
+            query += " OFFSET ?"
             params.append(int(offset))
 
         try:
@@ -376,7 +369,7 @@ INSERT INTO cost_records (
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters and pagination."""
@@ -397,12 +390,8 @@ FROM cost_records"""
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params.extend([int(limit), effective_offset])
-        elif effective_offset > 0:
-            sql += " LIMIT -1 OFFSET ?"
-            params.append(effective_offset)
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([int(limit), effective_offset])
 
         try:
             cursor = await self._db.execute(sql, params)
@@ -616,7 +605,7 @@ INSERT INTO messages (
         self,
         channel: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
     ) -> tuple[Message, ...]:
         """Retrieve message history for a channel, newest first."""
         if limit is not None and limit < 1:

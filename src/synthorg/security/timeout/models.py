@@ -18,7 +18,7 @@ class TimeoutAction(BaseModel):
             action is ESCALATE).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     action: TimeoutActionType = Field(description="Timeout action type")
     reason: NotBlankStr = Field(description="Explanation for the action")

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from psycopg.rows import dict_row
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
@@ -21,7 +22,11 @@ from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALLED,
     MCP_SERVER_UNINSTALLED,
 )
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+)
 from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -123,51 +128,56 @@ class PostgresMcpInstallationRepository:
             return None
         return _row_to_installation(row)
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all recorded installations in a deterministic order.
+        """List recorded installations in a deterministic order.
 
         Sorted by ``installed_at`` ascending with ``catalog_entry_id``
         as a stable tiebreaker so rows with identical timestamps
         (restores, backfills, clock skew) are always returned in the
         same order across calls.
         """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+        )
         sql = (
             "SELECT catalog_entry_id, connection_name, installed_at "
             "FROM mcp_installations "
-            "ORDER BY installed_at ASC, catalog_entry_id ASC"
+            "ORDER BY installed_at ASC, catalog_entry_id ASC "
+            "LIMIT %s OFFSET %s"
         )
-        params: tuple[object, ...] = ()
-        effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " OFFSET %s"
-            params = (effective_offset,)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(sql, params)
+                await cur.execute(sql, (limit, offset))
                 rows = await cur.fetchall()
+            # Deserialization runs inside the same try/except so a
+            # malformed persisted row surfaces under the same
+            # ``PERSISTENCE_MCP_INSTALLATION_LIST_FAILED`` event +
+            # ``QueryError`` envelope as a DB failure, not as a raw
+            # exception that escapes the persistence boundary.
+            return tuple(_row_to_installation(row) for row in rows)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            msg = "Failed to list mcp installations"
             logger.warning(
-                MCP_SERVER_INSTALL_FAILED,
-                operation="list_all",
+                PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+                limit=limit,
+                offset=offset,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 backend="postgres",
             )
-            raise
-        return tuple(_row_to_installation(row) for row in rows)
+            raise QueryError(msg) from exc
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete an installation.  Returns ``True`` if a row was removed."""

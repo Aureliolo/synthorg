@@ -113,7 +113,7 @@ class PostgresLifecycleEventRepository:
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
         since: AwareDatetime | None = None,
-        limit: int | None = None,
+        limit: int = 100,
     ) -> tuple[AgentLifecycleEvent, ...]:
         """List lifecycle events with optional filters."""
         clauses: list[str] = []
@@ -135,20 +135,19 @@ FROM lifecycle_events"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC"
-        if limit is not None:
-            # Validate at the repository boundary so callers cannot
-            # accidentally pass a float, bool, or negative value into
-            # the raw "LIMIT %s" parameter and get a confusing DB-side
-            # error (or worse, a silently-wrong result).
-            if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
-                msg = f"limit must be a positive integer, got {limit!r}"
-                logger.warning(
-                    PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
-                    error=msg,
-                )
-                raise QueryError(msg)
-            sql += " LIMIT %s"
-            params.append(limit)
+        # Validate at the repository boundary so callers cannot
+        # accidentally pass a float, bool, or negative value into
+        # the raw "LIMIT %s" parameter and get a confusing DB-side
+        # error (or worse, a silently-wrong result).
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            msg = f"limit must be a positive integer, got {limit!r}"
+            logger.warning(
+                PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
+                error=msg,
+            )
+            raise QueryError(msg)
+        sql += " LIMIT %s"
+        params.append(limit)
 
         try:
             async with (

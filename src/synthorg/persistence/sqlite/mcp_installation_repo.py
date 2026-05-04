@@ -17,9 +17,11 @@ from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_MCP_INSTALLATION_DELETE_FAILED,
+    PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
     PERSISTENCE_MCP_INSTALLATION_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 logger = get_logger(__name__)
 
@@ -101,36 +103,62 @@ class SQLiteMcpInstallationRepository:
             installed_at=coerce_row_timestamp(row[2]),
         )
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all recorded installations, oldest-first."""
+        """Return up to ``limit`` recorded installations, oldest-first.
+
+        ``limit`` defaults to 100 (matches the protocol-wide pagination
+        floor) and accepts any positive integer; no upper bound is
+        enforced. Callers may either pass a larger ``limit`` or loop
+        with ``offset`` for cursor-style pagination.
+        """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+        )
         sql = (
             "SELECT catalog_entry_id, connection_name, installed_at "
             "FROM mcp_installations "
-            "ORDER BY installed_at ASC, catalog_entry_id ASC"
+            "ORDER BY installed_at ASC, catalog_entry_id ASC "
+            "LIMIT ? OFFSET ?"
         )
-        params: tuple[object, ...] = ()
-        effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " LIMIT -1 OFFSET ?"
-            params = (effective_offset,)
-        async with self._db.execute(sql, params) as cursor:
-            rows = await cursor.fetchall()
-        return tuple(
-            McpInstallation(
-                catalog_entry_id=NotBlankStr(row[0]),
-                connection_name=(NotBlankStr(row[1]) if row[1] else None),
-                installed_at=coerce_row_timestamp(row[2]),
+        try:
+            async with self._db.execute(sql, (limit, offset)) as cursor:
+                rows = await cursor.fetchall()
+            # Deserialization runs inside the same try/except so a
+            # malformed persisted row surfaces under the same
+            # ``PERSISTENCE_MCP_INSTALLATION_LIST_FAILED`` event +
+            # ``QueryError`` envelope as a DB failure, not as a raw
+            # exception that escapes the persistence boundary.
+            # ``NotBlankStr`` raises ``ValueError`` on blank strings
+            # and ``coerce_row_timestamp`` raises ``ValueError`` /
+            # ``TypeError`` on malformed timestamps, both of which
+            # would slip past a ``sqlite3.Error``-only except.
+            return tuple(
+                McpInstallation(
+                    catalog_entry_id=NotBlankStr(row[0]),
+                    connection_name=(NotBlankStr(row[1]) if row[1] else None),
+                    installed_at=coerce_row_timestamp(row[2]),
+                )
+                for row in rows
             )
-            for row in rows
-        )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            msg = "Failed to list mcp installations"
+            logger.warning(
+                PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+                limit=limit,
+                offset=offset,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete an installation.  Returns ``True`` if a row was removed."""

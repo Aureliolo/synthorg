@@ -15,7 +15,7 @@ class PruningConfig(BaseModel):
             (default 100).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["ttl", "pareto", "hybrid"] = Field(
         default="ttl",

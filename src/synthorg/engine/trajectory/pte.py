@@ -30,7 +30,7 @@ class PTEConfig(BaseModel):
             (tool responses displace more than their own tokens).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     eviction_penalty: float = Field(
         default=0.3,

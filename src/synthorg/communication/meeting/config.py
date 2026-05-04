@@ -17,7 +17,7 @@ class RoundRobinConfig(BaseModel):
             for the summary phase (0.0--1.0).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_turns_per_agent: int = Field(
         default=2,
@@ -53,7 +53,7 @@ class PositionPapersConfig(BaseModel):
             for the synthesis phase (0.0--1.0).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_tokens_per_position: int = Field(
         default=300,
@@ -84,7 +84,7 @@ class StructuredPhasesConfig(BaseModel):
             budget reserved for the synthesis phase (0.0--1.0).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     skip_discussion_if_no_conflicts: bool = Field(
         default=True,
@@ -120,7 +120,7 @@ class MeetingProtocolConfig(BaseModel):
         structured_phases: Structured-phases protocol settings.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     protocol: MeetingProtocolType = Field(
         default=MeetingProtocolType.ROUND_ROBIN,

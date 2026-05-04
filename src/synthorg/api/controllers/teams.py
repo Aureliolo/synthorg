@@ -80,7 +80,7 @@ class ReorderTeamsRequest(BaseModel):
 class TeamResponse(BaseModel):
     """Response body for a single team."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     lead: NotBlankStr

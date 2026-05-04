@@ -61,7 +61,7 @@ class ConflictPosition(BaseModel):
         timestamp: When the position was stated.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent taking the position")
     agent_department: NotBlankStr = Field(description="Agent's department")
@@ -131,7 +131,7 @@ class ConflictResolution(BaseModel):
         resolved_at: When the resolution was produced.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     conflict_id: NotBlankStr = Field(description="Resolved conflict ID")
     outcome: ConflictResolutionOutcome = Field(description="Resolution outcome")
@@ -192,7 +192,7 @@ class DissentRecord(BaseModel):
         metadata: Extra key-value metadata pairs.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique dissent record ID")
     conflict: Conflict = Field(description="Original conflict")
@@ -265,7 +265,7 @@ class DissentPayload(BaseModel):
         strategy_used: Resolution strategy that was applied.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     dissent_id: NotBlankStr = Field(description="Dissent record ID")
     conflict_id: NotBlankStr = Field(description="Originating conflict ID")

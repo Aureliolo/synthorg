@@ -41,7 +41,7 @@ logger = get_logger(__name__)
 class StartSimulationPayload(BaseModel):
     """Request payload for starting a new simulation run."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     config: SimulationConfig = Field(description="Simulation configuration")
 
@@ -49,7 +49,7 @@ class StartSimulationPayload(BaseModel):
 class SimulationStatusResponse(BaseModel):
     """Public view of a simulation run."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     simulation_id: NotBlankStr
     status: NotBlankStr

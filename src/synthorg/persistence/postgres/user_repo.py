@@ -39,6 +39,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_USER_LISTED,
     PERSISTENCE_USER_SAVE_FAILED,
 )
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -510,19 +511,24 @@ class PostgresApiKeyRepository:
         self,
         user_id: NotBlankStr,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
-        """List all API keys belonging to a user, ordered by creation date."""
+        """List up to ``limit`` API keys for a user, ordered by creation date.
+
+        Defaults to a 100-key page; callers needing more must paginate
+        with ``offset``.
+        """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_API_KEY_LIST_FAILED,
+            user_id=user_id,
+        )
         sql = "SELECT * FROM api_keys WHERE user_id = %s ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
-        effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " OFFSET %s"
-            params = (*params, effective_offset)
+        sql += " LIMIT %s OFFSET %s"
+        params = (*params, limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,

@@ -30,7 +30,7 @@ class PerformanceInflection(BaseModel):
         detected_at: When the inflection was detected.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     metric_name: NotBlankStr

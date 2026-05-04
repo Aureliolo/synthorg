@@ -77,7 +77,7 @@ class MessageRetentionConfig(BaseModel):
             exhausting memory at queue creation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_messages_per_channel: int = Field(
         default=1000,
@@ -120,7 +120,7 @@ class NatsConfig(BaseModel):
             publish ack before considering the publish failed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     # Default points at a local-loopback NATS dev server. In-container
     # deployments override via ``SYNTHORG_NATS_URL`` (read by
@@ -229,7 +229,7 @@ class MessageBusConfig(BaseModel):
             ``backend == NATS``, ignored otherwise).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backend: MessageBusBackend = Field(
         default=MessageBusBackend.INTERNAL,
@@ -277,7 +277,7 @@ class MeetingTypeConfig(BaseModel):
         duration_tokens: Token budget for the meeting.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Meeting type name")
     frequency: MeetingFrequency | None = Field(
@@ -338,7 +338,7 @@ class MeetingsConfig(BaseModel):
         types: Configured meeting types (unique by name).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(default=True, description="Meetings subsystem active")
     types: tuple[MeetingTypeConfig, ...] = Field(
@@ -367,7 +367,7 @@ class HierarchyConfig(BaseModel):
         allow_skip_level: Whether skip-level messaging is allowed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enforce_chain_of_command: bool = Field(
         default=True,
@@ -389,7 +389,7 @@ class RateLimitConfig(BaseModel):
         burst_allowance: Extra burst capacity above the rate limit.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_per_pair_per_minute: int = Field(
         default=10,
@@ -413,7 +413,7 @@ class CircuitBreakerConfig(BaseModel):
         cooldown_seconds: Seconds to wait before retrying after trip.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     bounce_threshold: int = Field(
         default=3,
@@ -454,7 +454,7 @@ class LoopPreventionConfig(BaseModel):
         ancestry_tracking: Must always be ``True``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_delegation_depth: int = Field(
         default=5,
@@ -493,7 +493,7 @@ class CommunicationConfig(BaseModel):
         loop_prevention: Loop prevention safeguards.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     default_pattern: CommunicationPattern = Field(
         default=CommunicationPattern.HYBRID,

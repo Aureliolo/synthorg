@@ -86,7 +86,7 @@ class AgentContribution(BaseModel):
             (``None`` when the agent succeeded).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Contributing agent")
     subtask_id: NotBlankStr = Field(description="Subtask executed")

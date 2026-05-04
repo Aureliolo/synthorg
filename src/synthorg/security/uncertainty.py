@@ -17,7 +17,6 @@ Design invariants:
 import asyncio
 import math
 import re
-import time
 from collections import Counter
 from itertools import combinations
 from typing import TYPE_CHECKING, Final
@@ -31,6 +30,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -78,7 +78,7 @@ class UncertaintyResult(BaseModel):
         check_duration_ms: Total time for the check.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     confidence_score: float = Field(ge=0.0, le=1.0)
     provider_count: int = Field(ge=0)
@@ -222,11 +222,13 @@ class UncertaintyChecker:
         model_resolver: ModelResolver,
         config: UncertaintyCheckConfig,
         cost_tracker: CostTracker | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._registry = provider_registry
         self._resolver = model_resolver
         self._config = config
         self._cost_tracker = cost_tracker
+        self._clock = clock or SystemClock()
 
     async def check(self, prompt: str) -> UncertaintyResult:
         """Run cross-provider uncertainty check.
@@ -238,11 +240,11 @@ class UncertaintyChecker:
             An ``UncertaintyResult`` with the confidence score
             and similarity metrics.
         """
-        start = time.monotonic()
+        start = self._clock.monotonic()
 
         # Skip if no model ref configured.
         if self._config.model_ref is None:
-            duration_ms = (time.monotonic() - start) * 1000
+            duration_ms = (self._clock.monotonic() - start) * 1000
             logger.info(
                 SECURITY_UNCERTAINTY_CHECK_SKIPPED,
                 reason="no model_ref configured",
@@ -266,7 +268,7 @@ class UncertaintyChecker:
                 unique.append(c)
         candidates = tuple(unique)
         if len(candidates) < self._config.min_providers:
-            duration_ms = (time.monotonic() - start) * 1000
+            duration_ms = (self._clock.monotonic() - start) * 1000
             logger.info(
                 SECURITY_UNCERTAINTY_CHECK_SKIPPED,
                 reason="insufficient providers",
@@ -293,7 +295,7 @@ class UncertaintyChecker:
         # Send prompt to all providers in parallel.
         responses = await self._collect_responses(prompt, candidates)
 
-        duration_ms = (time.monotonic() - start) * 1000
+        duration_ms = (self._clock.monotonic() - start) * 1000
 
         # If only one response, insufficient for comparison.
         if len(responses) < 2:  # noqa: PLR2004

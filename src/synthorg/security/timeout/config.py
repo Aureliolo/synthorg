@@ -15,7 +15,7 @@ class WaitForeverConfig(BaseModel):
         policy: Discriminator tag.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     policy: Literal["wait"] = "wait"
 
@@ -28,7 +28,7 @@ class DenyOnTimeoutConfig(BaseModel):
         timeout_minutes: Minutes before auto-deny.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     policy: Literal["deny"] = "deny"
     timeout_minutes: float = Field(
@@ -48,7 +48,7 @@ class TierConfig(BaseModel):
             (if empty, the tier is matched by risk level).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     timeout_minutes: float = Field(
         gt=0,
@@ -88,7 +88,7 @@ class TieredTimeoutConfig(BaseModel):
         tiers: Tier configurations keyed by risk level name.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     policy: Literal["tiered"] = "tiered"
     tiers: dict[str, TierConfig] = Field(
@@ -119,7 +119,7 @@ class EscalationStep(BaseModel):
             moving to the next.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     role: NotBlankStr = Field(description="Escalation target role")
     timeout_minutes: float = Field(
@@ -141,7 +141,7 @@ class EscalationChainConfig(BaseModel):
         on_chain_exhausted: Action when all steps exhaust.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     policy: Literal["escalation"] = "escalation"
     chain: tuple[EscalationStep, ...] = Field(

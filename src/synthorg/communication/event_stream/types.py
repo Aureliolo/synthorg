@@ -81,7 +81,7 @@ class StreamEvent(BaseModel):
         payload: Event-specific data (deep-copied at construction).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique event identifier")
     type: AgUiEventType = Field(description="AG-UI event type")

@@ -31,7 +31,7 @@ class CategoryWriteRule(BaseModel):
         human_allowed: Whether human operators can write.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     allowed_seniority: SeniorityLevel | None = Field(
         default=None,
@@ -63,7 +63,7 @@ class WriteAccessConfig(BaseModel):
         rules: Per-category write rules (read-only mapping).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     rules: dict[OrgFactCategory, CategoryWriteRule] = Field(
         default_factory=_default_rules,

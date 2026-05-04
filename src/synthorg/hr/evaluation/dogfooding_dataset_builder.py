@@ -29,7 +29,7 @@ class DogfoodingDatasetConfig(BaseModel):
         min_trace_quality: Minimum quality score to include.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_cases_per_tag: int = Field(
         default=100,

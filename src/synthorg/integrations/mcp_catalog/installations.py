@@ -47,8 +47,20 @@ class McpInstallationRepository(Protocol):
         """Fetch an installation by catalog entry id."""
         ...
 
-    async def list_all(self) -> tuple[McpInstallation, ...]:
-        """List all recorded installations."""
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[McpInstallation, ...]:
+        """List recorded installations.
+
+        ``limit`` defaults to the protocol-wide pagination floor; pass
+        a larger ``limit`` or loop with ``offset`` for cursor-style
+        pagination. Implementations enforce ``limit >= 1`` /
+        ``offset >= 0`` via the shared ``validate_pagination_args``
+        helper and raise ``QueryError`` on invalid inputs.
+        """
         ...
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:

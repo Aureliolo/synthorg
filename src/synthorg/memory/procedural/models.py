@@ -19,6 +19,7 @@ from pydantic import (
 
 from synthorg.core.enums import TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.memory.utils import deduplicate_tags
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -68,7 +69,7 @@ class FailureAnalysisPayload(BaseModel):
             if identifiable.  ``None`` when not determinable.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Failed task identifier")
     task_title: NotBlankStr = Field(description="Task title")
@@ -131,7 +132,7 @@ class ProceduralMemoryProposal(BaseModel):
         tags: Semantic tags for filtering (max 20 tags).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     discovery: NotBlankStr = Field(
         max_length=600,
@@ -192,7 +193,7 @@ class ProceduralMemoryProposal(BaseModel):
     def _deduplicate_tags(cls, v: object) -> object:
         """Deduplicate tags before max_length validation."""
         if isinstance(v, list | tuple):
-            deduped = tuple(dict.fromkeys(v))
+            deduped = deduplicate_tags(v)
             max_tags = 20
             return deduped if len(deduped) <= max_tags else deduped[:max_tags]
         return v
@@ -226,7 +227,7 @@ class ProceduralMemoryConfig(BaseModel):
             versioning.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,

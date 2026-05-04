@@ -61,7 +61,7 @@ class ShutdownResult(BaseModel):
         duration_seconds: Wall-clock duration of the entire shutdown.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy_type: NotBlankStr = Field(
         description="Name of the strategy that executed the shutdown",

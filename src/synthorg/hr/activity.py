@@ -36,7 +36,7 @@ class ActivityEvent(BaseModel):
         related_ids: Related entity identifiers (e.g. task_id, agent_id).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     event_type: ActivityEventType = Field(description="Event category")
     timestamp: AwareDatetime = Field(description="When the event occurred")
@@ -62,7 +62,7 @@ class CareerEvent(BaseModel):
         metadata: Additional structured metadata.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     event_type: LifecycleEventType = Field(description="Lifecycle event type")
     timestamp: AwareDatetime = Field(description="When the event occurred")

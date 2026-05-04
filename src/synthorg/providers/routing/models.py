@@ -19,7 +19,7 @@ class ResolvedModel(BaseModel):
         estimated_latency_ms: Estimated median latency in milliseconds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider_name: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
@@ -74,7 +74,7 @@ class RoutingRequest(BaseModel):
             total session budget -- use the budget module for that.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_level: SeniorityLevel | None = Field(
         default=None,
@@ -108,7 +108,7 @@ class RoutingDecision(BaseModel):
         fallbacks_tried: Model refs that were tried before the final choice.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     resolved_model: ResolvedModel = Field(description="The chosen model")
     strategy_used: NotBlankStr = Field(description="Strategy name")

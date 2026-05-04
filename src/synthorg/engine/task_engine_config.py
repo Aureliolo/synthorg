@@ -21,7 +21,7 @@ class TaskEngineConfig(BaseModel):
             events to the message bus after each mutation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_queue_size: int = Field(
         default=1000,

@@ -390,10 +390,3 @@ def _compute_alert_level(
     if used_pct >= alerts.warn_at:
         return BudgetAlertLevel.WARNING
     return BudgetAlertLevel.NORMAL
-
-
-def _group_records_by_agent(
-    records: Sequence[CostRecord],
-) -> dict[str, list[CostRecord]]:
-    """Group records by agent_id for efficient per-agent iteration."""
-    return group_by_agent(records)

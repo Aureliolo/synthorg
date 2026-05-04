@@ -29,7 +29,7 @@ class EvolverConfig(BaseModel):
         requires_human_approval: Structurally enforced as True.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,

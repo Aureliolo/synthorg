@@ -174,7 +174,7 @@ class MeetingResponse(MeetingRecord):
             minutes are present, ``None`` otherwise).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     token_usage_by_participant: dict[str, int] = Field(
         default_factory=dict,

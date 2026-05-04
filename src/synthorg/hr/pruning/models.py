@@ -33,7 +33,7 @@ class PruningEvaluation(BaseModel):
         evaluated_at: When evaluation occurred.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent being evaluated")
     eligible: bool = Field(description="Whether agent should be pruned")
@@ -77,7 +77,7 @@ class PruningRequest(BaseModel):
         decided_by: Who made the approval decision.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -152,7 +152,7 @@ class PruningRecord(BaseModel):
         completed_at: When process finished.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent who was pruned")
     agent_name: NotBlankStr = Field(description="Agent display name")
@@ -193,7 +193,7 @@ class PruningJobRun(BaseModel):
         errors: Non-fatal errors encountered.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     job_id: NotBlankStr = Field(description="Unique cycle identifier")
     run_at: AwareDatetime = Field(description="When the cycle started")
@@ -237,7 +237,7 @@ class PruningServiceConfig(BaseModel):
         approval_expiry_days: Days until pending approval expires.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     evaluation_interval_seconds: float = Field(
         default=3600.0,

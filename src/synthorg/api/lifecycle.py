@@ -12,7 +12,7 @@ from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.backup.models import BackupTrigger
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
 from synthorg.persistence.auth_protocol import (
     LockoutRepository,  # noqa: TC001
@@ -578,8 +578,22 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 app_state.set_approval_timeout_scheduler(
                     approval_timeout_scheduler,
                 )
-                approval_timeout_scheduler.start()
+                await approval_timeout_scheduler.start()
                 started_approval_timeout_scheduler = True
+            except RuntimeError as exc:
+                # ``ApprovalTimeoutScheduler.start()`` raises
+                # ``RuntimeError`` when a prior ``stop()`` timed out
+                # and the scheduler is now unrestartable. The fresh
+                # instance rule applies: log without the stack trace
+                # (the underlying cause was already logged at stop
+                # time) and propagate so startup fails closed.
+                logger.error(  # noqa: TRY400
+                    API_APP_STARTUP,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="Approval timeout scheduler is unrestartable",
+                )
+                raise
             except Exception:
                 logger.exception(
                     API_APP_STARTUP,
@@ -634,11 +648,18 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
     disconnect so shutdown backup can still access the DB.
     """
     if approval_timeout_scheduler is not None:
+        # Inner timeout sets the scheduler's ``_stop_failed`` flag on
+        # drain timeout so a subsequent ``start()`` raises rather than
+        # spawning a duplicate task on top of an in-flight cancelled
+        # one. The outer ``_try_stop`` budget exceeds the inner so the
+        # unrestartable guard actually fires before cancellation.
         await _try_stop(
-            approval_timeout_scheduler.stop(),
+            approval_timeout_scheduler.stop(
+                timeout=_APPROVAL_TIMEOUT_SHUTDOWN_SECONDS,
+            ),
             API_APP_SHUTDOWN,
             "Failed to stop approval timeout scheduler",
-            timeout=_APPROVAL_TIMEOUT_SHUTDOWN_SECONDS,
+            timeout=_APPROVAL_TIMEOUT_SHUTDOWN_SECONDS * 2.0 + 1.0,
             service="approval_timeout_scheduler",
         )
     if meeting_scheduler is not None:

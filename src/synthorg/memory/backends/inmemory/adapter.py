@@ -64,6 +64,13 @@ class InMemoryBackend:
         self._store: dict[str, dict[str, MemoryEntry]] = {}
         self._connected = False
         self._connect_lock = asyncio.Lock()
+        # Hot-path lock guarding _store mutations.  Without it, two
+        # concurrent store() calls for the same agent can race
+        # between the setdefault() / capacity check and the assign,
+        # silently exceeding max_memories_per_agent.  Separate from
+        # the connect_lock so connect()/disconnect() do not serialise
+        # store/retrieve traffic.
+        self._store_lock = asyncio.Lock()
 
     # -- Lifecycle ----------------------------------------------------
 
@@ -169,21 +176,6 @@ class InMemoryBackend:
             MemoryStoreError: If the per-agent limit is reached.
         """
         self._require_connected()
-        agent_store = self._store.setdefault(str(agent_id), {})
-        # Prune expired entries before checking quota.
-        _prune_expired(agent_store)
-        if len(agent_store) >= self._max_memories_per_agent:
-            msg = (
-                f"Agent {agent_id} has reached the memory limit "
-                f"({self._max_memories_per_agent})"
-            )
-            logger.warning(
-                MEMORY_ENTRY_STORE_FAILED,
-                agent_id=agent_id,
-                reason="limit_reached",
-                error=msg,
-            )
-            raise MemoryStoreError(msg)
         memory_id = NotBlankStr(str(uuid.uuid4()))
         now = datetime.now(UTC)
         entry = MemoryEntry(
@@ -196,7 +188,23 @@ class InMemoryBackend:
             created_at=now,
             expires_at=request.expires_at,
         )
-        agent_store[str(memory_id)] = entry
+        async with self._store_lock:
+            agent_store = self._store.setdefault(str(agent_id), {})
+            # Prune expired entries before checking quota.
+            _prune_expired(agent_store)
+            if len(agent_store) >= self._max_memories_per_agent:
+                msg = (
+                    f"Agent {agent_id} has reached the memory limit "
+                    f"({self._max_memories_per_agent})"
+                )
+                logger.warning(
+                    MEMORY_ENTRY_STORE_FAILED,
+                    agent_id=agent_id,
+                    reason="limit_reached",
+                    error=msg,
+                )
+                raise MemoryStoreError(msg)
+            agent_store[str(memory_id)] = entry
         logger.debug(
             MEMORY_ENTRY_STORED,
             backend="inmemory",

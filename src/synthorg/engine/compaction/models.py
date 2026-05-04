@@ -42,7 +42,7 @@ class CompactionConfig(BaseModel):
             markers (hedging, reconsideration, etc.) in summaries.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     fill_threshold_percent: float = Field(
         default=80.0,
@@ -109,7 +109,7 @@ class CompressionMetadata(BaseModel):
         compactions_performed: Total number of compactions so far.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     compression_point: int = Field(
         ge=0,

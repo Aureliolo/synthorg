@@ -35,7 +35,7 @@ class MemoryStorageConfig(BaseModel):
         history_store: History store backend name.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _VALID_VECTOR_STORES: ClassVar[frozenset[str]] = frozenset(
         {"qdrant", "qdrant-external"},
@@ -118,7 +118,7 @@ class MemoryOptionsConfig(BaseModel):
         shared_knowledge_base: Whether shared knowledge is enabled.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     retention_days: int | None = Field(
         default=None,
@@ -214,7 +214,7 @@ class CompanyMemoryConfig(BaseModel):
             backend is ``"composite"``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset(
         {"mem0", "composite", "inmemory"},

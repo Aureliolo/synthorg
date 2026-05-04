@@ -13,6 +13,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -37,7 +38,7 @@ class ProbeResult(BaseModel):
         candidates_tried: Number of candidate URLs attempted.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     url: NotBlankStr | None = None
     model_count: int = Field(default=0, ge=0)
@@ -133,7 +134,7 @@ def _build_probe_endpoint(base_url: str, preset_name: str) -> str:
     Returns:
         Full URL to the model-listing endpoint.
     """
-    stripped = base_url.rstrip("/")
+    stripped = strip_trailing_slash(base_url)
     if preset_name == "ollama":
         return f"{stripped}/api/tags"
     return f"{stripped}/models"

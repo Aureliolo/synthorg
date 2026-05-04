@@ -33,7 +33,7 @@ class PlanStep(BaseModel):
         actual_outcome: Observed result after execution (if any).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     step_number: int = Field(gt=0, description="1-indexed step number")
     description: NotBlankStr = Field(description="Step description")
@@ -59,7 +59,7 @@ class ExecutionPlan(BaseModel):
         original_task_summary: Brief summary of the task being planned.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     steps: tuple[PlanStep, ...] = Field(
         min_length=1,

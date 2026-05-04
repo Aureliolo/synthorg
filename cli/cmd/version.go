@@ -13,6 +13,11 @@ var versionShort bool
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print CLI version and build info",
+	Long: `Print the CLI version, commit hash, and build date.
+
+The default form renders a logo banner plus build metadata
+suitable for issue reports. Pass --short for a single-line
+semantic version string, useful in shell pipelines.`,
 	Example: `  synthorg version          # full version info with logo
   synthorg version --short  # version number only`,
 	RunE: func(cmd *cobra.Command, args []string) error {

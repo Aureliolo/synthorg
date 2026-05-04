@@ -41,7 +41,7 @@ class WikiExportResult(BaseModel):
         export_root: Root directory of the export.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     raw_count: int = Field(default=0, ge=0)
     compressed_count: int = Field(default=0, ge=0)

@@ -488,7 +488,7 @@ class SQLiteOrgFactRepository:
         self,
         category: OrgFactCategory,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """List all active facts in a category, optionally paginated."""
@@ -498,13 +498,16 @@ class SQLiteOrgFactRepository:
             "ORDER BY created_at DESC, fact_id ASC"
         )
         params: tuple[object, ...] = (category.value,)
+        # Clamp ``limit`` to a sane positive range at the boundary so
+        # SQLite's ``LIMIT -1`` "unlimited" semantics cannot leak in
+        # via a caller passing a negative or oversized value, and so
+        # the SQLite path agrees with Postgres on the bounded contract
+        # (Postgres rejects negative LIMIT outright; SQLite would
+        # silently drop the cap).
+        effective_limit = max(1, min(int(limit), 100))
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " LIMIT -1 OFFSET ?"
-            params = (*params, effective_offset)
+        sql += " LIMIT ? OFFSET ?"
+        params = (*params, effective_limit, effective_offset)
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()

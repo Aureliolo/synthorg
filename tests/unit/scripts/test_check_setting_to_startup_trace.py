@@ -166,11 +166,13 @@ def test_inventory_rejects_empty_suppression_justification(tmp_path: Path) -> No
 def test_real_repo_violations_match_expected() -> None:
     """Lint against the actual src/synthorg/ tree.
 
-    Asserts exactly the 8 expected ghost-wired violations:
-
-      - 7 ``backup.*`` settings (BackupService factory-gated by default).
-      - ``security.timeout_check_interval_seconds`` (ApprovalTimeoutScheduler
-        hardcoded to None in app.py).
+    Asserts exactly the 7 expected ghost-wired violations: the
+    ``backup.*`` settings the BackupService factory still resolves
+    only when the operator opts in.  ``security.timeout_check_interval_seconds``
+    used to ghost-wire here as well; the audit-bucket PR wired
+    ``ApprovalTimeoutScheduler`` into the lifespan startup so the
+    setting is now resolved on every cold start, and the lint should
+    no longer flag it.
 
     Asserts zero false positives on the negative ``security.*`` settings
     (audit_enabled, post_tool_scanning_enabled, ...) and on
@@ -194,7 +196,6 @@ def test_real_repo_violations_match_expected() -> None:
         "backup.path",
         "backup.retention_days",
         "backup.schedule_hours",
-        "security.timeout_check_interval_seconds",
     }
     assert expected_positives.issubset(flagged), (
         f"missing expected positives: {expected_positives - flagged}"
@@ -208,6 +209,7 @@ def test_real_repo_violations_match_expected() -> None:
         "security.audit_retention_days",
         "security.retention_cleanup_paused",
         "security.auth_token_bytes",
+        "security.timeout_check_interval_seconds",
         "engine.timeout_enforcement_enabled",
     }
     leaked = flagged & must_not_flag

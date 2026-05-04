@@ -49,7 +49,7 @@ class AgentMiddlewareContext(BaseModel):
             Keyed by middleware name to avoid collisions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_context: AgentContext = Field(
         description="Mutable-via-copy runtime execution state",
@@ -116,7 +116,7 @@ class ModelCallResult(BaseModel):
         error: Error description if the call failed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     response_text: str = Field(
         default="",
@@ -147,7 +147,7 @@ class ToolCallResult(BaseModel):
             (loaded tools, resources, auto-unload) persist.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     tool_name: NotBlankStr = Field(
         description="Name of the invoked tool",
@@ -223,7 +223,7 @@ class AssumptionViolationEvent(BaseModel):
         turn_number: Turn in which the violation was detected.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(
         description="Agent that detected the violation",
@@ -264,7 +264,7 @@ class TaskLedger(BaseModel):
         superseded_at: When this version was replaced (None if current).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     plan_text: NotBlankStr = Field(
         description="Serialized decomposition plan text",
@@ -322,7 +322,7 @@ class ProgressLedger(BaseModel):
         next_action: Recommended action (continue, replan, escalate).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     round_number: int = Field(
         ge=1,

@@ -117,6 +117,9 @@ PERSISTENCE_MCP_INSTALLATION_SAVE_FAILED: Final[str] = (
 PERSISTENCE_MCP_INSTALLATION_DELETE_FAILED: Final[str] = (
     "persistence.mcp_installation.delete_failed"
 )
+PERSISTENCE_MCP_INSTALLATION_LIST_FAILED: Final[str] = (
+    "persistence.mcp_installation.list_failed"
+)
 PERSISTENCE_PARKED_CONTEXT_DELETED: Final[str] = "persistence.parked_context.deleted"
 PERSISTENCE_PARKED_CONTEXT_DELETE_FAILED: Final[str] = (
     "persistence.parked_context.delete_failed"

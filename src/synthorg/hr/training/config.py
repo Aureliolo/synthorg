@@ -41,7 +41,7 @@ class TrainingConfig(BaseModel):
         training_tags: Default tags applied to stored items.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,

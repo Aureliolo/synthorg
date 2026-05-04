@@ -115,7 +115,7 @@ async def _resolve_agent_identity(
 class TrustSummary(BaseModel):
     """Trust state summary for the health endpoint."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     level: ToolAccessLevel
     score: float | None = Field(
@@ -136,7 +136,7 @@ class TrustSummary(BaseModel):
 class PerformanceSummary(BaseModel):
     """Performance snapshot summary for the health endpoint."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     quality_score: float | None = Field(
         default=None,
@@ -165,7 +165,7 @@ class PerformanceSummary(BaseModel):
 class AgentHealthResponse(BaseModel):
     """Composite health snapshot for a single agent."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     agent_name: NotBlankStr

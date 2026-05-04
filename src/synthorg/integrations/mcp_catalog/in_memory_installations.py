@@ -15,6 +15,10 @@ from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALLED,
     MCP_SERVER_UNINSTALLED,
 )
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+)
+from synthorg.persistence._shared.pagination import validate_pagination_args
 
 logger = get_logger(__name__)
 
@@ -55,28 +59,39 @@ class InMemoryMcpInstallationRepository:
         """Fetch by catalog entry id."""
         return self._store.get(catalog_entry_id)
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all installations ordered by ``installed_at, catalog_entry_id`` ASC.
+        """List installations ordered by ``installed_at, catalog_entry_id`` ASC.
 
         Tiebreaker on ``catalog_entry_id`` matches the durable backends
         so the in-memory shim produces identical pagination windows for
         rows that share an ``installed_at`` instant.
+
+        ``limit`` defaults to the protocol-wide pagination floor;
+        callers needing more must loop with ``offset`` or pass a
+        larger ``limit`` explicitly. Invalid inputs (``limit < 1``,
+        ``offset < 0``, non-int, or ``bool``) raise ``QueryError`` to
+        match the sqlite/postgres contract -- silently coercing them
+        would let bugs that the durable backends catch slip through
+        in tests and no-persistence deployments.
         """
+        validate_pagination_args(
+            limit,
+            offset,
+            event=PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+            backend="in_memory",
+        )
         rows = tuple(
             sorted(
                 self._store.values(),
                 key=lambda i: (i.installed_at, i.catalog_entry_id),
             ),
         )
-        effective_offset = max(0, int(offset))
-        if limit is None:
-            return rows[effective_offset:]
-        return rows[effective_offset : effective_offset + max(0, int(limit))]
+        return rows[offset : offset + limit]
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete by catalog entry id."""

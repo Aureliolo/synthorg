@@ -138,11 +138,11 @@ class ObservabilityBridgeConfig(BaseModel):
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
     tsa_endpoint_digicert: NotBlankStr = Field(
-        default=NotBlankStr("http://timestamp.digicert.com"),
+        default=NotBlankStr("https://timestamp.digicert.com"),
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
     tsa_endpoint_sectigo: NotBlankStr = Field(
-        default=NotBlankStr("http://timestamp.sectigo.com"),
+        default=NotBlankStr("https://timestamp.sectigo.com"),
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
 

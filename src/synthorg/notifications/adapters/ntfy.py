@@ -12,6 +12,7 @@ import httpx
 if TYPE_CHECKING:
     from types import TracebackType
 
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.notifications.models import (
     Notification,
     NotificationSeverity,
@@ -107,7 +108,7 @@ class NtfyNotificationSink:
                 f"{webhook_timeout_seconds}"
             )
             raise ValueError(msg)
-        self._server_url = server_url.rstrip("/")
+        self._server_url = strip_trailing_slash(server_url)
         self._topic = topic
         self._token = token
         self._webhook_timeout_seconds = webhook_timeout_seconds

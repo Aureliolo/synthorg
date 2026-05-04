@@ -64,7 +64,7 @@ class AgentContextSnapshot(BaseModel):
         message_count: Number of messages in the conversation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     execution_id: NotBlankStr = Field(description="Unique execution identifier")
     agent_id: NotBlankStr = Field(description="Agent identifier")

@@ -358,6 +358,18 @@ def _rank_by_priority(
     return min(models, key=lambda m: abs(m.cost_per_1k_input - mid))
 
 
+# Three score components, each contributing up to ``_TIER_BASE_SCORE`` /
+# ``_HEADROOM_MAX_BONUS`` / ``_PRIORITY_MAX_BONUS``. Sum is capped at
+# 1.0 by ``_compute_score``. ``_HEADROOM_RATIO_CAP`` clamps the
+# headroom curve so a model with 10x the requested context does not
+# displace a tighter fit on the priority axis.
+_TIER_BASE_SCORE = 0.5
+_HEADROOM_MAX_BONUS = 0.25
+_PRIORITY_MAX_BONUS = 0.25
+_HEADROOM_RATIO_CAP = 2.0
+_BALANCED_PARTIAL_CREDIT = 0.125
+
+
 def _compute_score(
     model: ProviderModelConfig,
     requirement: ModelRequirement,
@@ -365,21 +377,26 @@ def _compute_score(
 ) -> float:
     """Compute a 0-1 quality score for a match.
 
-    Factors: base score (0.5), context headroom (0.25), priority
-    alignment (0.25).
+    Factors: base score (_TIER_BASE_SCORE), context headroom
+    (_HEADROOM_MAX_BONUS), priority alignment (_PRIORITY_MAX_BONUS).
     """
-    score = 0.5  # Base score for being in the right tier.
+    score = _TIER_BASE_SCORE
 
     # Context headroom bonus.
     if requirement.min_context > 0:
         headroom = model.max_context / requirement.min_context
-        score += min(0.25, 0.25 * min(headroom, 2.0) / 2.0)
+        score += min(
+            _HEADROOM_MAX_BONUS,
+            _HEADROOM_MAX_BONUS
+            * min(headroom, _HEADROOM_RATIO_CAP)
+            / _HEADROOM_RATIO_CAP,
+        )
     else:
-        score += 0.25
+        score += _HEADROOM_MAX_BONUS
 
     # Priority alignment bonus.
     if len(tier_candidates) <= 1:
-        score += 0.25
+        score += _PRIORITY_MAX_BONUS
     else:
         score += _priority_alignment_bonus(
             model,
@@ -414,9 +431,9 @@ def _priority_alignment_bonus(
     max_rank = len(ranked) - 1
 
     if priority == "quality":
-        return 0.25 * (model_rank / max_rank)
+        return _PRIORITY_MAX_BONUS * (model_rank / max_rank)
     if priority == "cost":
-        return 0.25 * (1 - model_rank / max_rank)
+        return _PRIORITY_MAX_BONUS * (1 - model_rank / max_rank)
     if priority == "speed":
         # Rank by latency: lowest latency gets full bonus.
         latency_ranked = sorted(
@@ -429,6 +446,6 @@ def _priority_alignment_bonus(
         )
         latency_map = {id(m): r for r, m in enumerate(latency_ranked)}
         latency_rank = latency_map.get(id(model), 0)
-        return 0.25 * (1 - latency_rank / max_rank)
+        return _PRIORITY_MAX_BONUS * (1 - latency_rank / max_rank)
     # "balanced" -- partial credit.
-    return 0.125
+    return _BALANCED_PARTIAL_CREDIT

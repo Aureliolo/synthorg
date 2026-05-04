@@ -125,7 +125,7 @@ class LlmFallbackConfig(BaseModel):
             arguments in the LLM prompt.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     model: NotBlankStr | None = None
@@ -150,7 +150,7 @@ class SecurityPolicyRule(BaseModel):
         enabled: Whether this rule is active.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     description: str = ""
@@ -200,7 +200,7 @@ class RuleEngineConfig(BaseModel):
             scanning always runs first.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     credential_patterns_enabled: bool = True
     data_leak_detection_enabled: bool = True
@@ -238,7 +238,7 @@ class SafetyClassifierConfig(BaseModel):
             security context.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     model: NotBlankStr | None = None
@@ -271,7 +271,7 @@ class UncertaintyCheckConfig(BaseModel):
         timeout_seconds: Maximum time per provider call.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
     model_ref: NotBlankStr | None = None
@@ -300,7 +300,7 @@ class SecurityConfig(BaseModel):
             (Cedar-based pre-execution gate, opt-in).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
     enforcement_mode: SecurityEnforcementMode = Field(

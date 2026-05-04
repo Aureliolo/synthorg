@@ -27,6 +27,14 @@ var (
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
 	Short: "Stop containers, remove data, and uninstall SynthOrg",
+	Long: `Tear down the SynthOrg installation.
+
+Stops every container, removes named volumes, deletes the data
+directory, and removes pulled images. Each destructive step is
+confirmed interactively unless --yes is set. Pass --keep-data to
+preserve the data directory and config (useful before a clean
+re-install) or --keep-images to leave pulled images on disk for
+faster re-init later.`,
 	Example: `  synthorg uninstall                # interactive uninstall (prompts for each step)
   synthorg uninstall --yes          # non-interactive full uninstall
   synthorg uninstall --keep-data    # uninstall but preserve config and data

@@ -8,6 +8,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.normalization import normalize_optional_string
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_SUMMARY_MISSING_FIELDS,
@@ -444,7 +445,7 @@ def validate_agents_value(raw: str, *, strict: bool) -> bool:
 
 def normalize_description(raw: str | None) -> str | None:
     """Strip whitespace from description, treating blank as None."""
-    return (raw.strip() or None) if raw else None
+    return normalize_optional_string(raw)
 
 
 def departments_to_json(
@@ -495,9 +496,9 @@ def agent_dict_to_summary(
         name=name,
         role=role,
         department=department,
-        level=(agent.get("level") or "").strip() or None,  # type: ignore[arg-type]
-        model_provider=(model.get("provider") or "").strip() or None,
-        model_id=(model.get("model_id") or "").strip() or None,
+        level=normalize_optional_string(agent.get("level")),  # type: ignore[arg-type]
+        model_provider=normalize_optional_string(model.get("provider")),
+        model_id=normalize_optional_string(model.get("model_id")),
         tier=(agent.get("tier") or "").strip() or "medium",  # type: ignore[arg-type]
-        personality_preset=(agent.get("personality_preset") or "").strip() or None,
+        personality_preset=normalize_optional_string(agent.get("personality_preset")),
     )

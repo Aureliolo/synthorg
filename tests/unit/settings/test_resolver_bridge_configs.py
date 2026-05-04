@@ -255,16 +255,16 @@ _HAPPY_CASES: tuple[
             (
                 "observability",
                 "tsa_endpoint_digicert",
-            ): "http://timestamp.digicert.com",
-            ("observability", "tsa_endpoint_sectigo"): "http://timestamp.sectigo.com",
+            ): "https://timestamp.digicert.com",
+            ("observability", "tsa_endpoint_sectigo"): "https://timestamp.sectigo.com",
         },
         {
             "http_batch_size": 250,
             "http_max_retries": 5,
             "audit_chain_signing_timeout_seconds": 10.0,
             "tsa_endpoint_freetsa": "https://tsa.example.com/tsr",
-            "tsa_endpoint_digicert": "http://timestamp.digicert.com",
-            "tsa_endpoint_sectigo": "http://timestamp.sectigo.com",
+            "tsa_endpoint_digicert": "https://timestamp.digicert.com",
+            "tsa_endpoint_sectigo": "https://timestamp.sectigo.com",
         },
     ),
     (

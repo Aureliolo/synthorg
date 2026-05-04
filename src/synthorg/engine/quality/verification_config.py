@@ -33,7 +33,7 @@ class VerificationConfig(BaseModel):
         min_confidence_override: Override rubric min_confidence.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     decomposer: DecomposerVariant = Field(
         default=DecomposerVariant.IDENTITY,

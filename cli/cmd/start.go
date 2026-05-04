@@ -36,6 +36,14 @@ var (
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Pull images and start the SynthOrg stack",
+	Long: `Start every container in the SynthOrg compose stack.
+
+By default this pulls each image (verifying signatures and SLSA
+attestations against the pinned digests) before bringing the stack
+up detached, then waits for the backend's /api/v1/readyz to return
+healthy. Pass --no-pull to skip the pull when iterating locally,
+--no-detach to stream logs in the foreground, or --dry-run to print
+the docker commands the run would issue without executing them.`,
 	Example: `  synthorg start              # pull, verify, and start
   synthorg start --no-pull    # start without pulling images
   synthorg start --dry-run    # preview what would happen

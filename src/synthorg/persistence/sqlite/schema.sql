@@ -1278,7 +1278,9 @@ CREATE TABLE provider_audit_events (
     event_type TEXT NOT NULL CHECK(length(trim(event_type)) > 0),
     actor_id TEXT NOT NULL CHECK(length(trim(actor_id)) > 0),
     actor_label TEXT NOT NULL CHECK(length(trim(actor_label)) > 0),
-    payload TEXT NOT NULL DEFAULT '{}',
+    -- payload mirrors the Postgres JSONB column; SQLite has no JSONB
+    -- type so we store TEXT and enforce JSON validity via json_valid().
+    payload TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(payload)),
     -- Timestamp format is enforced by the Python layer via
     -- ``parse_iso_utc`` / ``format_iso_utc`` (see
     -- ``persistence/_shared/datetime_marshaller.py``); the DB only
@@ -1299,10 +1301,17 @@ CREATE INDEX idx_provider_audit_events_occurred
 CREATE TABLE preset_overrides (
     preset_name TEXT NOT NULL PRIMARY KEY
         CHECK(length(trim(preset_name)) > 0),
-    -- Column names aligned with Postgres.
-    default_models TEXT,
-    supported_auth_types TEXT,
-    candidate_urls TEXT,
+    -- Column names aligned with Postgres.  default_models /
+    -- supported_auth_types / candidate_urls are JSONB on Postgres;
+    -- here we store TEXT and enforce JSON validity via json_valid().
+    -- Each column is nullable, and SQLite's json_valid() returns 0
+    -- for NULL so the CHECK is guarded with IS NULL OR.
+    default_models TEXT
+        CHECK(default_models IS NULL OR json_valid(default_models)),
+    supported_auth_types TEXT
+        CHECK(supported_auth_types IS NULL OR json_valid(supported_auth_types)),
+    candidate_urls TEXT
+        CHECK(candidate_urls IS NULL OR json_valid(candidate_urls)),
     base_url TEXT,
     updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0),
     updated_by TEXT NOT NULL CHECK(length(trim(updated_by)) > 0)

@@ -70,7 +70,7 @@ class OverviewMetrics(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_tasks: int = Field(ge=0, description="Total number of tasks")
     tasks_by_status: dict[str, int] = Field(
@@ -118,7 +118,7 @@ class TrendsResponse(BaseModel):
         data_points: Bucketed time-series data.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     period: TrendPeriod = Field(description="Lookback period")
     metric: TrendMetric = Field(description="Metric type queried")
@@ -140,7 +140,7 @@ class ForecastResponse(BaseModel):
         avg_daily_spend: Average daily spend used for projection.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     horizon_days: int = Field(ge=1, description="Projection horizon")
     projected_total: float = Field(

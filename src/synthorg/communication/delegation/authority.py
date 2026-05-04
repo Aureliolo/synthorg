@@ -26,7 +26,7 @@ class AuthorityCheckResult(BaseModel):
         reason: Explanation (empty on success).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     allowed: bool = Field(description="Whether delegation is allowed")
     reason: str = Field(default="", description="Explanation")

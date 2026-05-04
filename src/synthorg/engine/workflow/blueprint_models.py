@@ -28,7 +28,7 @@ class BlueprintNodeData(BaseModel):
         config: Type-specific configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique node identifier")
     type: WorkflowNodeType = Field(description="Node type")
@@ -52,7 +52,7 @@ class BlueprintEdgeData(BaseModel):
         label: Optional display label.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique edge identifier")
     source_node_id: NotBlankStr = Field(description="Source node ID")
@@ -84,7 +84,7 @@ class BlueprintData(BaseModel):
         edges: Edges connecting nodes.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Blueprint identifier")
     display_name: NotBlankStr = Field(description="Human-readable name")

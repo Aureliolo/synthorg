@@ -84,7 +84,7 @@ class InteractionFeedback(BaseModel):
             "llm_judge").
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -173,7 +173,7 @@ class ResilienceMetrics(BaseModel):
             (None if insufficient scored tasks).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_tasks: int = Field(ge=0, description="Total task count")
     failed_tasks: int = Field(ge=0, description="Number of failed tasks")
@@ -237,7 +237,7 @@ class PillarScore(BaseModel):
         evaluated_at: When this score was computed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     pillar: EvaluationPillar = Field(description="Which pillar this score represents")
     score: float = Field(ge=0.0, le=10.0, description="Overall pillar score")
@@ -276,7 +276,7 @@ class EvaluationContext(BaseModel):
         autonomy_downgrades_in_window: Autonomy downgrades in the window.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Agent being evaluated")
     now: AwareDatetime = Field(description="Reference timestamp")
@@ -364,7 +364,7 @@ class EvaluationReport(BaseModel):
         pillar_weights: Applied weights as (pillar_name, weight) pairs.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),

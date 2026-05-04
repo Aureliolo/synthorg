@@ -22,7 +22,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FAILED,
@@ -32,6 +32,8 @@ from synthorg.observability.events.api import (
 from synthorg.persistence._shared import coerce_row_timestamp
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
@@ -222,6 +224,104 @@ class PostgresApprovalRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+
+    async def save_many(self, items: Sequence[ApprovalItem]) -> None:
+        """Upsert multiple approval items in a single transaction.
+
+        Empty input is a no-op.  Single-item input falls back to
+        :meth:`save` so the per-item error context still names the
+        offending id on constraint violation.
+        """
+        if not items:
+            return
+        if len(items) == 1:
+            await self.save(items[0])
+            return
+        param_rows = []
+        for item in items:
+            evidence_json = (
+                Jsonb(item.evidence_package.model_dump(mode="json"))
+                if item.evidence_package is not None
+                else None
+            )
+            param_rows.append(
+                (
+                    item.id,
+                    item.action_type,
+                    item.title,
+                    item.description,
+                    item.requested_by,
+                    item.risk_level.value,
+                    item.status.value,
+                    item.created_at,
+                    item.expires_at,
+                    item.decided_at,
+                    item.decided_by,
+                    item.decision_reason,
+                    item.task_id,
+                    evidence_json,
+                    Jsonb(item.metadata),
+                ),
+            )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.executemany(_APPROVALS_UPSERT_SQL, param_rows)
+                await conn.commit()
+        except psycopg.errors.IntegrityError as exc:
+            constraint = (
+                getattr(getattr(exc, "diag", None), "constraint_name", None)
+                or "<unknown>"
+            )
+            msg = f"Constraint violation saving approval batch (size={len(items)})"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                batch_size=len(items),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ConstraintViolationError(msg, constraint=constraint) from exc
+        except psycopg.Error as exc:
+            msg = f"Failed to save approval batch (size={len(items)})"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                batch_size=len(items),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def expire_if_pending(
+        self, ids: Sequence[NotBlankStr]
+    ) -> tuple[NotBlankStr, ...]:
+        """Compare-and-set: flip rows still PENDING to EXPIRED.
+
+        Uses ``UPDATE ... WHERE id = ANY(%s) AND status='pending'
+        RETURNING id`` so the compare-and-set is atomic at the row
+        level and the returned ids reflect what actually transitioned.
+        """
+        if not ids:
+            return ()
+        sql = (
+            f"UPDATE approvals SET status = '{ApprovalStatus.EXPIRED.value}' "  # noqa: S608
+            "WHERE id = ANY(%s) "
+            f"AND status = '{ApprovalStatus.PENDING.value}' "
+            "RETURNING id"
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, (list(ids),))
+                rows = await cur.fetchall()
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to expire approval batch (size={len(ids)})"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                batch_size=len(ids),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(NotBlankStr(row[0]) for row in rows)
 
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID, or ``None`` if not found.

@@ -62,7 +62,7 @@ class ThresholdPruningPolicyConfig(BaseModel):
         minimum_window_data_points: Minimum records to evaluate a window.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     quality_threshold: float = Field(
         default=3.5,
@@ -210,7 +210,7 @@ class TrendPruningPolicyConfig(BaseModel):
         metric_name: Which metric to track for trend evaluation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     minimum_data_points_per_window: int = Field(
         default=5,

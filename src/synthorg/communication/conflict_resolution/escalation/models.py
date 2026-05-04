@@ -42,7 +42,7 @@ class WinnerDecision(BaseModel):
             :class:`ConflictResolution.reasoning` field.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["winner"] = "winner"
     winning_agent_id: NotBlankStr
@@ -57,7 +57,7 @@ class RejectDecision(BaseModel):
         reasoning: Operator's explanation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["reject"] = "reject"
     reasoning: NotBlankStr = Field(max_length=4096)
@@ -95,7 +95,7 @@ class Escalation(BaseModel):
         decision: The decision payload (``None`` while pending).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     conflict: Conflict

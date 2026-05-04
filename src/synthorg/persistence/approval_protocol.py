@@ -11,7 +11,7 @@ Mirrors the pattern of ``persistence/fine_tune_protocol.py`` and
 ``persistence/escalation_protocol.py``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.core.enums import (
@@ -19,6 +19,9 @@ from synthorg.core.enums import (
     ApprovalStatus,  # noqa: TC001
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @runtime_checkable
@@ -37,6 +40,41 @@ class ApprovalRepository(Protocol):
         Raises:
             ConstraintViolationError: On constraint violations.
             QueryError: On other database errors.
+        """
+        ...
+
+    async def save_many(self, items: Sequence[ApprovalItem]) -> None:
+        """Upsert multiple approval items in a single transaction.
+
+        All-or-nothing: if any row raises a constraint violation the
+        whole batch rolls back. Empty input is a no-op (returns
+        without opening a transaction).
+
+        Raises:
+            ConstraintViolationError: On constraint violations.
+            QueryError: On other database errors.
+        """
+        ...
+
+    async def expire_if_pending(
+        self, ids: Sequence[NotBlankStr]
+    ) -> tuple[NotBlankStr, ...]:
+        """Compare-and-set: flip rows still ``PENDING`` to ``EXPIRED``.
+
+        Updates only rows whose current persisted status is still
+        ``PENDING``; rows that have transitioned to a terminal status
+        (APPROVED, REJECTED, CANCELLED) since the caller's snapshot
+        are silently skipped. Returns the ids actually updated, so
+        the lazy-expire path in :class:`ApprovalStore` can drive
+        cache refresh, audit events, and ``on_expire`` callbacks
+        only for rows that truly transitioned -- without this
+        compare-and-set a blind upsert would clobber a concurrent
+        ``save()`` decision back to ``EXPIRED``.
+
+        Empty input is a no-op (returns ``()``).
+
+        Raises:
+            QueryError: On database errors.
         """
         ...
 

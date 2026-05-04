@@ -51,7 +51,7 @@ class StagnationConfig(BaseModel):
             before any check fires.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=True,
@@ -109,7 +109,7 @@ class StagnationResult(BaseModel):
         details: Forward-compatible metadata dict.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     verdict: StagnationVerdict = Field(
         description="What action to take",

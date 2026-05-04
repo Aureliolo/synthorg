@@ -221,7 +221,7 @@ class PostgresTaskRepository:
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         """List tasks with optional filters and pagination.
@@ -389,7 +389,7 @@ class PostgresCostRecordRepository:
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters and pagination."""
@@ -411,12 +411,8 @@ class PostgresCostRecordRepository:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params.extend([int(limit), effective_offset])
-        elif effective_offset > 0:
-            sql += " OFFSET %s"
-            params.append(effective_offset)
+        sql += " LIMIT %s OFFSET %s"
+        params.extend([int(limit), effective_offset])
 
         try:
             async with (
@@ -621,7 +617,7 @@ class PostgresMessageRepository:
         self,
         channel: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
     ) -> tuple[Message, ...]:
         """Retrieve message history for a channel, newest first."""
         if limit is not None and (

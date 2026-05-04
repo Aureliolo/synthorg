@@ -58,6 +58,12 @@ class _FakeAppState:
         # has_config_resolver=False so the helper returns the
         # registered fallback constant (which the test monkeypatches).
         self.has_config_resolver = False
+        # The SSE stream consults app_state.clock for keepalive +
+        # revalidation deadlines; the real AppState exposes a clock
+        # attribute so the test fake mirrors it.
+        from synthorg.core.clock import SystemClock
+
+        self.clock = SystemClock()
 
 
 async def test_revocation_reason_returns_user_deleted_when_user_missing() -> None:
@@ -155,6 +161,13 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
     )
     saw_revoked = False
     iterations = 0
+    # The loop body sleeps via real asyncio.wait_for, not the injected
+    # clock seam, so the iteration cap is a wall-clock safety net. Set
+    # the cap to handle slow-CI variance without masking a genuine
+    # regression: the role-demoted check fires once per
+    # SSE_REVALIDATE_INTERVAL_SECONDS, and 200 iterations at 20ms
+    # gives 4s of headroom.
+    iteration_cap = 200
     async for event in gen:
         iterations += 1
         if event.get("event") == "revoked":
@@ -162,8 +175,5 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
             assert payload["reason"] == "role_demoted"
             saw_revoked = True
             break
-        # Safety net: at the configured cadence we should hit revoked
-        # within a handful of keepalive ticks (>= 1 keepalive_count
-        # required by the loop math). 50 is generous.
-        assert iterations < 50
+        assert iterations < iteration_cap
     assert saw_revoked, "SSE stream never emitted the revoked event"

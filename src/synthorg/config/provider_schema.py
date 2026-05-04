@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 class LocalModelParams(BaseModel):
     """Per-model launch parameters for local providers."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     num_ctx: int | None = Field(default=None, gt=0)
     num_gpu_layers: int | None = Field(default=None, ge=0)
@@ -42,7 +42,7 @@ class LocalModelParams(BaseModel):
 class ProviderModelConfig(BaseModel):
     """Configuration for a single LLM model within a provider."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Model identifier")
     alias: NotBlankStr | None = Field(
@@ -79,7 +79,7 @@ class ProviderModelConfig(BaseModel):
 class ProviderConfig(BaseModel):
     """Configuration for an LLM provider."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     driver: NotBlankStr = Field(
         default="litellm",

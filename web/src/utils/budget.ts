@@ -118,6 +118,26 @@ export function computeAgentSpending(
   return rows.sort((a, b) => b.totalCost - a.totalCost)
 }
 
+interface DimensionResolver {
+  key: (record: CostRecord, agentDeptMap: ReadonlyMap<string, string>) => string
+  label: (key: string, agentNameMap: ReadonlyMap<string, string>) => string
+}
+
+const DIMENSION_RESOLVERS: Record<BreakdownDimension, DimensionResolver> = {
+  agent: {
+    key: (r) => r.agent_id,
+    label: (key, agentNameMap) => agentNameMap.get(key) ?? key,
+  },
+  provider: {
+    key: (r) => r.provider,
+    label: (key) => key,
+  },
+  department: {
+    key: (r, agentDeptMap) => agentDeptMap.get(r.agent_id) ?? 'Unknown',
+    label: (key) => key,
+  },
+}
+
 /**
  * Group cost records by the given dimension and compute breakdown slices.
  *
@@ -132,22 +152,12 @@ export function computeCostBreakdown(
 ): BreakdownSlice[] {
   if (records.length === 0) return []
 
+  const resolver = DIMENSION_RESOLVERS[dimension]
   const groups = new Map<string, number>()
   let totalCost = 0
 
   for (const r of records) {
-    let key: string
-    switch (dimension) {
-      case 'agent':
-        key = r.agent_id
-        break
-      case 'provider':
-        key = r.provider
-        break
-      case 'department':
-        key = agentDeptMap.get(r.agent_id) ?? 'Unknown'
-        break
-    }
+    const key = resolver.key(r, agentDeptMap)
     groups.set(key, (groups.get(key) ?? 0) + r.cost)
     totalCost += r.cost
   }
@@ -156,19 +166,9 @@ export function computeCostBreakdown(
   // so the highest-cost slice always gets the first palette color.
   const unsorted: Omit<BreakdownSlice, 'color'>[] = []
   for (const [key, cost] of groups) {
-    let label: string
-    switch (dimension) {
-      case 'agent':
-        label = agentNameMap.get(key) ?? key
-        break
-      case 'provider':
-      case 'department':
-        label = key
-        break
-    }
     unsorted.push({
       key,
-      label,
+      label: resolver.label(key, agentNameMap),
       cost,
       percent: totalCost > 0 ? (cost / totalCost) * 100 : 0,
     })

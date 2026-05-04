@@ -24,7 +24,7 @@ class ExtendedStoreConfig(BaseModel):
         max_retrieved_per_query: Maximum facts to retrieve per query.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset({"sqlite"})
 
@@ -67,7 +67,7 @@ class OrgMemoryConfig(BaseModel):
         write_access: Write access control configuration.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset(
         {"hybrid_prompt_retrieval"},

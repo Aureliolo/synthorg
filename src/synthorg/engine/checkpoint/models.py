@@ -35,7 +35,7 @@ class Checkpoint(BaseModel):
         created_at: Timestamp when the checkpoint was created.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(
         default_factory=lambda: str(uuid4()),
@@ -75,7 +75,7 @@ class Heartbeat(BaseModel):
         last_heartbeat_at: Timestamp of the last heartbeat update.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     execution_id: NotBlankStr = Field(description="Execution run identifier")
     agent_id: NotBlankStr = Field(description="Agent identifier")
@@ -97,7 +97,7 @@ class CheckpointConfig(BaseModel):
             falling back to fail-and-reassign.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     persist_every_n_turns: int = Field(
         default=1,

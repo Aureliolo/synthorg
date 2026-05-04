@@ -6,7 +6,6 @@ deployments and testing.
 
 import asyncio
 import contextlib
-import time
 from collections import deque
 from collections.abc import Sequence  # noqa: TC003
 from datetime import UTC, datetime
@@ -27,6 +26,7 @@ from synthorg.communication.subscription import (
     DeliveryEnvelope,
     Subscription,
 )
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_BATCH_PUBLISHED,
@@ -99,8 +99,14 @@ class InMemoryMessageBus:
             channels and retention settings.
     """
 
-    def __init__(self, *, config: MessageBusConfig) -> None:
+    def __init__(
+        self,
+        *,
+        config: MessageBusConfig,
+        clock: Clock | None = None,
+    ) -> None:
         self._config = config
+        self._clock = clock or SystemClock()
         self._lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
         self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
@@ -118,7 +124,7 @@ class InMemoryMessageBus:
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._idle_poll_count: int = 0
-        self._last_idle_summary: float = time.monotonic()
+        self._last_idle_summary: float = self._clock.monotonic()
 
     @property
     def is_running(self) -> bool:
@@ -163,7 +169,7 @@ class InMemoryMessageBus:
             self._running = True
             self._shutdown_event.clear()
             self._idle_poll_count = 0
-            self._last_idle_summary = time.monotonic()
+            self._last_idle_summary = self._clock.monotonic()
             maxlen = self._config.retention.max_messages_per_channel
             for name in self._config.channels:
                 ch = Channel(name=name, type=ChannelType.TOPIC)
@@ -657,7 +663,7 @@ class InMemoryMessageBus:
             )
         else:
             self._idle_poll_count += 1
-            now = time.monotonic()
+            now = self._clock.monotonic()
             if now - self._last_idle_summary >= _IDLE_SUMMARY_INTERVAL_SECONDS:
                 logger.debug(
                     COMM_CHANNELS_IDLE_SUMMARY,

@@ -9,9 +9,9 @@ See ``docs/design/ceremony-scheduling.md`` for the full design.
 """
 
 import asyncio
-import time
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.workflow.ceremony_bridge import (
     build_trigger_event_name,
 )
@@ -86,6 +86,7 @@ class CeremonyScheduler:
         "_activation_time",
         "_active_sprint",
         "_active_strategy",
+        "_clock",
         "_completion_counters",
         "_fired_once_triggers",
         "_lock",
@@ -100,8 +101,10 @@ class CeremonyScheduler:
         self,
         *,
         meeting_scheduler: MeetingScheduler,
+        clock: Clock | None = None,
     ) -> None:
         self._meeting_scheduler = meeting_scheduler
+        self._clock = clock or SystemClock()
         self._active_strategy: CeremonySchedulingStrategy | None = None
         self._active_sprint: Sprint | None = None
         self._sprint_config: SprintConfig | None = None
@@ -204,7 +207,7 @@ class CeremonyScheduler:
             self._completion_counters = {c.name: 0 for c in config.ceremonies}
             self._fired_once_triggers = set()
             self._total_completions = 0
-            self._activation_time = time.monotonic()
+            self._activation_time = self._clock.monotonic()
             self._running = True
 
             try:
@@ -515,7 +518,7 @@ class CeremonyScheduler:
             completions_since_last_trigger=0,
             total_completions_this_sprint=self._total_completions,
             total_tasks_in_sprint=total_tasks,
-            elapsed_seconds=time.monotonic() - self._activation_time,
+            elapsed_seconds=self._clock.monotonic() - self._activation_time,
             # Budget integration is a follow-up.
             budget_consumed_fraction=0.0,
             budget_remaining=0.0,
@@ -541,7 +544,7 @@ class CeremonyScheduler:
             ),
             total_completions_this_sprint=self._total_completions,
             total_tasks_in_sprint=total_tasks,
-            elapsed_seconds=time.monotonic() - self._activation_time,
+            elapsed_seconds=self._clock.monotonic() - self._activation_time,
             # Budget integration is a follow-up.
             budget_consumed_fraction=0.0,
             budget_remaining=0.0,

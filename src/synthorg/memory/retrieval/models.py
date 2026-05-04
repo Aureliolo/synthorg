@@ -22,7 +22,7 @@ class RetrievalQuery(BaseModel):
         token_budget: Optional token limit for result formatting.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     text: NotBlankStr = Field(description="Semantic search text")
     agent_id: NotBlankStr = Field(
@@ -57,7 +57,7 @@ class RetrievalCandidate(BaseModel):
         is_shared: Whether from SharedKnowledgeStore.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     entry: MemoryEntry = Field(description="The underlying memory entry")
     relevance_score: float = Field(
@@ -93,7 +93,7 @@ class RetrievalResult(BaseModel):
         error: Error message if retrieval failed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     candidates: tuple[RetrievalCandidate, ...] = Field(
         default=(),
@@ -132,7 +132,7 @@ class FinalRetrievalResult(BaseModel):
         rerank_applied: Whether query-specific re-ranking was applied.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     candidates: tuple[RetrievalCandidate, ...] = Field(
         default=(),

@@ -467,6 +467,9 @@ class TestAppLifecycle:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
         from synthorg.api.state import AppState
+        from synthorg.communication.meeting.scheduler import (
+            MeetingScheduler,
+        )
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -474,9 +477,9 @@ class TestAppLifecycle:
 
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
-        mock_sched = MagicMock()
-        mock_sched.start = AsyncMock()
-        mock_sched.stop = AsyncMock()
+        mock_sched = MagicMock(spec=MeetingScheduler)
+        mock_sched.start = AsyncMock(spec=MeetingScheduler.start)
+        mock_sched.stop = AsyncMock(spec=MeetingScheduler.stop)
 
         app_state = AppState(
             config=root_config,
@@ -510,6 +513,9 @@ class TestAppLifecycle:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
         from synthorg.api.state import AppState
+        from synthorg.security.timeout.scheduler import (
+            ApprovalTimeoutScheduler,
+        )
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -517,9 +523,9 @@ class TestAppLifecycle:
 
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
-        mock_sched = MagicMock()
-        mock_sched.start = MagicMock()  # start() is sync
-        mock_sched.stop = AsyncMock()
+        mock_sched = MagicMock(spec=ApprovalTimeoutScheduler)
+        mock_sched.start = AsyncMock(spec=ApprovalTimeoutScheduler.start)
+        mock_sched.stop = AsyncMock(spec=ApprovalTimeoutScheduler.stop)
 
         app_state = AppState(
             config=root_config,
@@ -538,7 +544,7 @@ class TestAppLifecycle:
             mock_sched,
             app_state,
         )
-        mock_sched.start.assert_called_once()
+        mock_sched.start.assert_awaited_once()
 
         await _safe_shutdown(None, None, None, mock_sched, None, None, None, None)
         mock_sched.stop.assert_awaited_once()

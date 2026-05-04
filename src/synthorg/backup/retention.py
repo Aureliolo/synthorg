@@ -7,6 +7,8 @@ import tarfile
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from synthorg.backup.errors import RetentionError
 from synthorg.backup.models import BackupManifest, BackupTrigger
 from synthorg.observability import get_logger, safe_error_description
@@ -171,16 +173,36 @@ class RetentionManager:
         try:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             return BackupManifest.model_validate(data)
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
-                exc_info=True,
+                category="json_parse_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        except ValidationError as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(manifest_path),
+                category="schema_validation_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        except OSError as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(manifest_path),
+                category="io_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
     @staticmethod
-    def _load_archive_manifest(entry: Path) -> BackupManifest | None:
+    def _load_archive_manifest(entry: Path) -> BackupManifest | None:  # noqa: PLR0911
         """Load a manifest from a compressed tar.gz archive."""
         try:
             with tarfile.open(entry, "r:gz") as tar:
@@ -188,18 +210,49 @@ class RetentionManager:
                     member = tar.getmember("manifest.json")
                 except KeyError:
                     return None
-                f = tar.extractfile(member)
-                if f is None:
+                extracted = tar.extractfile(member)
+                if extracted is None:
                     return None
-                data = json.loads(f.read())
+                with extracted as f:
+                    raw = f.read()
+                data = json.loads(raw)
                 return BackupManifest.model_validate(data)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except tarfile.TarError as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(entry),
-                exc_info=True,
+                category="archive_corrupt",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(entry),
+                category="json_parse_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        except ValidationError as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(entry),
+                category="schema_validation_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        except OSError as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(entry),
+                category="io_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 

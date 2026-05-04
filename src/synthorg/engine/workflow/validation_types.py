@@ -58,7 +58,7 @@ class ValidationErrorCode(StrEnum):
 class WorkflowValidationError(BaseModel):
     """A single validation error with optional location context."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     code: ValidationErrorCode = Field(description="Error code")
     message: NotBlankStr = Field(description="Human-readable message")

@@ -23,7 +23,7 @@ class PolicyActionRequest(BaseModel):
             autonomy level, etc.).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     action_type: NotBlankStr = Field(
         description="Semantic action key",
@@ -73,7 +73,7 @@ class PolicyDecision(BaseModel):
         latency_ms: Time taken for evaluation in milliseconds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     allow: bool = Field(description="Whether the action is permitted")
     reason: NotBlankStr = Field(description="Human-readable explanation")

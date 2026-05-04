@@ -3,16 +3,20 @@
 import asyncio
 import json
 import sqlite3
+from typing import TYPE_CHECKING
 
 import aiosqlite
 from aiosqlite import Row
 from pydantic import ValidationError
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FAILED,
@@ -199,6 +203,125 @@ class SQLiteApprovalRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
+
+    async def save_many(self, items: Sequence[ApprovalItem]) -> None:
+        """Upsert multiple approval items in a single transaction.
+
+        Empty input is a no-op.  Single-item input falls back to the
+        scalar ``save()`` path so the per-item error context still
+        names the offending id on constraint violation.
+        """
+        if not items:
+            return
+        if len(items) == 1:
+            await self.save(items[0])
+            return
+        param_rows = []
+        for item in items:
+            evidence_json = (
+                item.evidence_package.model_dump_json()
+                if item.evidence_package is not None
+                else None
+            )
+            param_rows.append(
+                (
+                    item.id,
+                    item.action_type,
+                    item.title,
+                    item.description,
+                    item.requested_by,
+                    item.risk_level.value,
+                    item.status.value,
+                    format_iso_utc(item.created_at),
+                    format_iso_utc(item.expires_at) if item.expires_at else None,
+                    format_iso_utc(item.decided_at) if item.decided_at else None,
+                    item.decided_by,
+                    item.decision_reason,
+                    item.task_id,
+                    evidence_json,
+                    json.dumps(item.metadata),
+                ),
+            )
+        async with self._write_lock:
+            try:
+                await self._db.executemany(_APPROVALS_UPSERT_SQL, param_rows)
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await self._db.rollback()
+                msg = f"Constraint violation saving approval batch (size={len(items)})"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    batch_size=len(items),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._db.rollback()
+                msg = f"Failed to save approval batch (size={len(items)})"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    batch_size=len(items),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+
+    async def expire_if_pending(
+        self, ids: Sequence[NotBlankStr]
+    ) -> tuple[NotBlankStr, ...]:
+        """Compare-and-set: flip rows still PENDING to EXPIRED.
+
+        Uses ``UPDATE ... WHERE id IN (?,...) AND status='pending'
+        RETURNING id`` (SQLite >= 3.35) so the compare-and-set is
+        atomic at the row level and the returned ids reflect what
+        actually transitioned.
+        """
+        if not ids:
+            return ()
+        placeholders = ",".join(["?"] * len(ids))
+        sql = (
+            f"UPDATE approvals SET status = '{ApprovalStatus.EXPIRED.value}' "  # noqa: S608
+            f"WHERE id IN ({placeholders}) "
+            f"AND status = '{ApprovalStatus.PENDING.value}' "
+            "RETURNING id"
+        )
+        async with self._write_lock:
+            try:
+                async with self._db.execute(sql, tuple(ids)) as cursor:
+                    rows = await cursor.fetchall()
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                # Log the rollback failure separately rather than
+                # suppressing it -- a silent rollback failure leaves
+                # the shared aiosqlite.Connection in an unknown state
+                # and the only diagnostic of why subsequent writes
+                # may start failing is then lost. Original ``exc`` is
+                # still chained on the QueryError so the caller sees
+                # the root cause.
+                try:
+                    await self._db.rollback()
+                except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+                    # ``logger.error`` (not ``logger.exception``):
+                    # the rollback failure is a structured event, not
+                    # a stack-trace dump. ``rollback_exc`` is captured
+                    # in ``error_type`` + ``error`` already.
+                    logger.error(  # noqa: TRY400
+                        API_APPROVAL_REPO_FAILED,
+                        batch_size=len(ids),
+                        phase="rollback",
+                        error_type=type(rollback_exc).__name__,
+                        error=safe_error_description(rollback_exc),
+                    )
+                msg = f"Failed to expire approval batch (size={len(ids)})"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    batch_size=len(ids),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return tuple(NotBlankStr(row[0]) for row in rows)
 
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID.

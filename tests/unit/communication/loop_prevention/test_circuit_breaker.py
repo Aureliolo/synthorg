@@ -1,5 +1,7 @@
 """Tests for delegation circuit breaker."""
 
+import threading
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -289,8 +291,12 @@ class TestCircuitBreakerDirtyTracking:
         assert ("a", "b") in cb._dirty
 
     async def test_persist_dirty_clears_set(self) -> None:
+        from synthorg.persistence.circuit_breaker_repo import (
+            CircuitBreakerStateRepository,
+        )
+
         config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=10)
-        repo = MagicMock()
+        repo = MagicMock(spec=CircuitBreakerStateRepository)
         repo.save = AsyncMock()
         cb = DelegationCircuitBreaker(config, state_repo=repo)
         cb.record_delegation("a", "b")
@@ -303,6 +309,7 @@ class TestCircuitBreakerDirtyTracking:
     async def test_load_state_restores_pairs(self) -> None:
         from synthorg.persistence.circuit_breaker_repo import (
             CircuitBreakerStateRecord,
+            CircuitBreakerStateRepository,
         )
 
         config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
@@ -313,7 +320,7 @@ class TestCircuitBreakerDirtyTracking:
             trip_count=2,
             opened_at=50.0,
         )
-        repo = MagicMock()
+        repo = MagicMock(spec=CircuitBreakerStateRepository)
         repo.load_all = AsyncMock(return_value=(record,))
 
         cb = DelegationCircuitBreaker(config, state_repo=repo)
@@ -323,4 +330,203 @@ class TestCircuitBreakerDirtyTracking:
         assert pair is not None
         assert pair.bounce_count == 1
         assert pair.trip_count == 2
-        assert pair.opened_at == 50.0
+        # ``opened_at`` is dropped on restore: the persisted value
+        # was captured by a different process's monotonic clock and
+        # cannot be safely compared against ``self._clock()`` here.
+        # Trip-count history survives so the next backoff escalation
+        # fires at the correct level; in-flight cooldown is reset.
+        assert pair.opened_at is None
+
+    async def test_load_state_does_not_overwrite_newer_in_memory(
+        self,
+    ) -> None:
+        """``load_state`` preserves entries that ``record_delegation``
+        seeded between process start and the persistence load
+        completing.  Without this, a hot-path trip recorded at
+        startup gets clobbered by the stale persisted snapshot.
+        """
+        from synthorg.persistence.circuit_breaker_repo import (
+            CircuitBreakerStateRecord,
+            CircuitBreakerStateRepository,
+        )
+
+        config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
+        record = CircuitBreakerStateRecord(
+            pair_key_a="a",
+            pair_key_b="b",
+            bounce_count=1,
+            trip_count=1,
+            opened_at=None,
+        )
+        repo = MagicMock(spec=CircuitBreakerStateRepository)
+        repo.load_all = AsyncMock(return_value=(record,))
+
+        cb = DelegationCircuitBreaker(config, state_repo=repo)
+        # Pre-populate with a "live" entry that record_delegation
+        # produced before load_state ran.
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
+        live_bounce = cb._pairs[("a", "b")].bounce_count
+
+        await cb.load_state()
+
+        # Live entry survives; persisted snapshot does not overwrite.
+        assert cb._pairs[("a", "b")].bounce_count == live_bounce
+
+
+@pytest.mark.unit
+class TestCheckAtomicity:
+    """Regression coverage for the ``check()`` TOCTOU race.
+
+    The previous implementation called ``get_state()`` (which released
+    the lock on return), then re-acquired the pair via a second
+    ``_get_pair`` lookup outside the lock to compute the cooldown for
+    the OPEN-branch log message.  A concurrent ``record_delegation``
+    on the same pair could mutate the dict between those reads,
+    surfacing a stale cooldown value or a missing pair.
+    """
+
+    def test_check_open_branch_runs_under_state_lock(self) -> None:
+        """The whole OPEN-branch decision (state + cooldown read)
+        runs while holding ``_state_lock``."""
+        config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=10)
+        clock_time = 0.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+        cb.record_delegation("a", "b")
+
+        # Wrap the lock so we can observe whether the protected
+        # region was held across the OPEN-branch reads. Substituting
+        # a tracking RLock keeps the API identical -- both
+        # acquire/release pairs delegate to the underlying lock so
+        # threading semantics are preserved.
+        underlying = cb._state_lock
+        acquired_during_check: list[bool] = []
+
+        class _TrackingLock:
+            def __enter__(self) -> _TrackingLock:
+                underlying.acquire()
+                acquired_during_check.append(True)
+                return self
+
+            def __exit__(
+                self,
+                exc_type: object,
+                exc: object,
+                tb: object,
+            ) -> None:
+                acquired_during_check.append(False)
+                underlying.release()
+
+            def acquire(self, *args: object, **kwargs: object) -> bool:
+                return underlying.acquire()
+
+            def release(self) -> None:
+                underlying.release()
+
+        cb._state_lock = _TrackingLock()  # type: ignore[assignment]
+        result = cb.check("a", "b")
+        assert result.passed is False
+        # Exactly one acquire/release pair across the check, meaning
+        # the entire OPEN branch decision was inside the critical
+        # section (no second unlocked read).
+        assert acquired_during_check == [True, False]
+
+    def test_record_delegation_after_get_state_does_not_drop_pair(
+        self,
+    ) -> None:
+        """A concurrent ``record_delegation`` between ``get_state`` and
+        the cooldown read cannot leave ``check`` reading a missing pair.
+
+        The fix folds both reads under one lock so the resetting
+        branch in ``get_state`` and the OPEN-branch read in ``check``
+        cannot interleave with a sibling mutation.
+        """
+        config = CircuitBreakerConfig(bounce_threshold=2, cooldown_seconds=10)
+        clock_time = 0.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
+        # Pair is OPEN.  Wrap ``_state_lock`` with a tracking proxy
+        # that fires a sibling thread's mutation while ``check``
+        # holds the lock.  Under the fix, ``check`` reads
+        # ``opened_at`` and ``trip_count`` while holding
+        # ``_state_lock``; the sibling thread blocks on the lock
+        # until ``check`` exits, so its mutation cannot influence
+        # the OPEN-branch verdict.  Without the fix, the sibling
+        # would race the post-``get_state`` re-read and the test
+        # would observe ``passed=True``.
+        from threading import Thread
+
+        underlying = cb._state_lock
+        # Deterministic handshake: the sibling sets ``blocked_on_lock``
+        # exactly when its non-blocking acquire fails (i.e. once it has
+        # observed that ``check`` holds the lock); the main thread waits
+        # on that signal instead of sleeping a fixed 50ms. Sleeping does
+        # NOT prove the sibling reached a contended acquire before
+        # ``check`` finished, so the regression could pass without
+        # exercising the interleaving it claims to cover.
+        blocked_on_lock = threading.Event()
+        injection_done = threading.Event()
+
+        def _mutate_in_sibling() -> None:
+            if not underlying.acquire(blocking=False):
+                blocked_on_lock.set()
+                underlying.acquire()
+            try:
+                pair = cb._pairs.get(("a", "b"))
+                if pair is not None:
+                    pair.opened_at = None
+                injection_done.set()
+            finally:
+                underlying.release()
+
+        recorded_during_check: list[bool] = []
+
+        class _TrackingLock:
+            def __enter__(self) -> Any:
+                result = underlying.__enter__()
+                if not recorded_during_check:
+                    recorded_during_check.append(True)
+                    t = Thread(target=_mutate_in_sibling, daemon=True)
+                    t.start()
+                    # Wait until the sibling proves it observed the
+                    # contended acquire; only then can ``check`` proceed
+                    # to its OPEN-branch read of ``opened_at``.
+                    assert blocked_on_lock.wait(timeout=1.0), (
+                        "sibling thread did not reach contended "
+                        "acquire within 1s; the test cannot prove "
+                        "the OPEN-branch race is closed."
+                    )
+                return result
+
+            def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+                underlying.__exit__(exc_type, exc, tb)
+
+            def acquire(self, *args: Any, **kwargs: Any) -> Any:
+                return underlying.acquire(*args, **kwargs)
+
+            def release(self) -> None:
+                underlying.release()
+
+        cb._state_lock = _TrackingLock()  # type: ignore[assignment]
+        clock_time = 5.0
+        result = cb.check("a", "b")
+        cb._state_lock = underlying
+        assert injection_done.wait(timeout=1.0), (
+            "sibling mutation never completed; the deterministic handshake stalled."
+        )
+        assert recorded_during_check, (
+            "check() never acquired _state_lock through the tracked "
+            "wrapper; the OPEN-branch decision is NOT covered by "
+            "the regression."
+        )
+        assert result.passed is False
+        assert "cooldown" in (result.message or "")

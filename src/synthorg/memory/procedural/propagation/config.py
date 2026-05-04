@@ -14,7 +14,7 @@ class PropagationConfig(BaseModel):
             (default 10).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["none", "role_scoped", "department_scoped"] = Field(
         default="none",

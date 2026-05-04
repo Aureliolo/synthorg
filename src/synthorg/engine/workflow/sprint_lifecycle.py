@@ -114,7 +114,7 @@ class Sprint(BaseModel):
         story_points_completed: Story points delivered.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique sprint identifier")
     name: NotBlankStr = Field(description="Sprint display name")

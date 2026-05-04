@@ -51,7 +51,7 @@ class BackupManifest(BaseModel):
         backup_id: Unique identifier for this backup (12-char hex).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     synthorg_version: NotBlankStr
     timestamp: NotBlankStr
@@ -94,7 +94,7 @@ class BackupInfo(BaseModel):
         compressed: Whether the backup is compressed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backup_id: NotBlankStr
     timestamp: NotBlankStr
@@ -136,7 +136,7 @@ class RestoreRequest(BaseModel):
         confirm: Safety gate -- must be ``True`` to proceed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backup_id: NotBlankStr
     components: tuple[BackupComponent, ...] | None = None
@@ -163,7 +163,7 @@ class RestoreResponse(BaseModel):
         restart_required: Whether the application must be restarted.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     manifest: BackupManifest
     restored_components: tuple[BackupComponent, ...]

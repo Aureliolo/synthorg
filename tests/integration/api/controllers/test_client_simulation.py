@@ -371,13 +371,17 @@ class TestReviewController:
                 json={
                     "verdict": "pass",
                     "reason": "manual override",
-                    "decided_by": "ceo",
                 },
             )
             # Without a task_engine the lookup may 404/503 instead
             # of producing a decision. Accept any 4xx/5xx defensive
             # response here; the happy path is exercised via
             # dedicated unit tests for the review controller.
+            # ``StageDecisionPayload`` enforces ``extra="forbid"``, so
+            # the body sent above only carries the fields the model
+            # declares; a Pydantic-level rejection would otherwise
+            # surface as 400 and mask the missing-task path that this
+            # smoke test exists to assert.
             assert resp.status_code in {404, 409, 503}
 
 

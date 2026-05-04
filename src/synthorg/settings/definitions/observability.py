@@ -251,7 +251,7 @@ _r.register(
         namespace=SettingNamespace.OBSERVABILITY,
         key="tsa_endpoint_digicert",
         type=SettingType.STRING,
-        default="http://timestamp.digicert.com",
+        default="https://timestamp.digicert.com",
         description=(
             "RFC 3161 Time-Stamp Authority endpoint URL for the DigiCert"
             " preset.  Override only if DigiCert changes its endpoint."
@@ -269,7 +269,7 @@ _r.register(
         namespace=SettingNamespace.OBSERVABILITY,
         key="tsa_endpoint_sectigo",
         type=SettingType.STRING,
-        default="http://timestamp.sectigo.com",
+        default="https://timestamp.sectigo.com",
         description=(
             "RFC 3161 Time-Stamp Authority endpoint URL for the Sectigo"
             " preset.  Override only if Sectigo changes its endpoint."

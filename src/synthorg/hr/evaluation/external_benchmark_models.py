@@ -26,7 +26,7 @@ class EvalTestCase(BaseModel):
         metadata: Additional benchmark-specific metadata.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique case identifier")
     behavior_tags: tuple[BehaviorTag, ...] = Field(
@@ -61,7 +61,7 @@ class BenchmarkGrade(BaseModel):
         explanation: Human-readable grading rationale.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     passed: bool = Field(description="Whether the test passed")
     score: float = Field(
@@ -87,7 +87,7 @@ class BenchmarkRunResult(BaseModel):
         completed_at: When the run finished.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     benchmark_name: NotBlankStr = Field(
         description="Which benchmark was run",
@@ -127,7 +127,7 @@ class EvalDataset(BaseModel):
         version: Version identifier.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Dataset identifier")
     source: Literal["dogfooding", "external", "hand_written"] = Field(
@@ -153,7 +153,7 @@ class BenchmarkRef(BaseModel):
         enabled: Whether this benchmark is active.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(
         description="Benchmark name matching the registry key",
@@ -181,7 +181,7 @@ class EvalCycleReport(BaseModel):
         created_at: When cycle completed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cycle_id: NotBlankStr = Field(description="Unique cycle identifier")
     window_start: AwareDatetime = Field(

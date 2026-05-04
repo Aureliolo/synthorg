@@ -155,7 +155,7 @@ class TestCatalogInstall:
         )
         assert first.catalog_entry_id == second.catalog_entry_id
         # Only one row remains after the re-install.
-        all_rows = await repo.list_all()
+        all_rows = await repo.list_items()
         assert len(all_rows) == 1
 
     async def test_install_missing_entry(self) -> None:

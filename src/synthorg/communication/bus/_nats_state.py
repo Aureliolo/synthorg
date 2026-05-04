@@ -14,6 +14,7 @@ from synthorg.communication.config import (  # noqa: TC001
     MessageBusConfig,
     NatsConfig,
 )
+from synthorg.core.clock import Clock, SystemClock
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NatsClient
@@ -61,8 +62,18 @@ class _NatsState:
     # in-memory bus, where every dropped envelope emits.
     last_overflow_log: dict[tuple[str, str], float] = field(default_factory=dict)
 
+    # Injectable time source. Submodule functions consult ``state.clock``
+    # for monotonic deadlines and overflow rate-limit windows so tests
+    # can drive virtual time without monkey-patching ``time.monotonic``
+    # at module scope.
+    clock: Clock = field(default_factory=SystemClock)
 
-def create_state(config: MessageBusConfig) -> _NatsState:
+
+def create_state(
+    config: MessageBusConfig,
+    *,
+    clock: Clock | None = None,
+) -> _NatsState:
     """Build a ``_NatsState`` from validated bus configuration.
 
     The caller (``JetStreamMessageBus.__init__``) must ensure
@@ -77,4 +88,5 @@ def create_state(config: MessageBusConfig) -> _NatsState:
         nats_config=nats_config,
         stream_name=f"{nats_config.stream_name_prefix}_BUS",
         kv_bucket_name=f"{nats_config.stream_name_prefix}_BUS_CHANNELS",
+        clock=clock or SystemClock(),
     )

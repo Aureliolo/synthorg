@@ -124,7 +124,7 @@ class PostgresSessionRepository:
         self,
         user_id: str,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
@@ -139,12 +139,8 @@ class PostgresSessionRepository:
         )
         params: tuple[object, ...] = (user_id, now)
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " OFFSET %s"
-            params = (*params, effective_offset)
+        sql += " LIMIT %s OFFSET %s"
+        params = (*params, int(limit), effective_offset)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
@@ -156,7 +152,7 @@ class PostgresSessionRepository:
     async def list_all(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""
@@ -170,12 +166,8 @@ class PostgresSessionRepository:
         )
         params: tuple[object, ...] = (now,)
         effective_offset = max(0, int(offset))
-        if limit is not None:
-            sql += " LIMIT %s OFFSET %s"
-            params = (*params, int(limit), effective_offset)
-        elif effective_offset > 0:
-            sql += " OFFSET %s"
-            params = (*params, effective_offset)
+        sql += " LIMIT %s OFFSET %s"
+        params = (*params, int(limit), effective_offset)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
