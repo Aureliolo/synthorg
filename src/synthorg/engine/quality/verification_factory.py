@@ -20,7 +20,10 @@ from synthorg.engine.quality.decomposers.identity import (
 )
 from synthorg.engine.quality.decomposers.llm import LLMCriteriaDecomposer
 from synthorg.engine.quality.grader_protocol import RubricGrader  # noqa: TC001
-from synthorg.engine.quality.graders.heuristic import HeuristicRubricGrader
+from synthorg.engine.quality.graders.heuristic import (
+    HeuristicGraderConfig,
+    HeuristicRubricGrader,
+)
 from synthorg.engine.quality.graders.llm import LLMRubricGrader
 from synthorg.engine.quality.verification_config import (
     DecomposerVariant,
@@ -136,7 +139,7 @@ def build_grader(
     *,
     provider: CompletionProvider | None = None,
     tier_resolver: TierResolver | None = None,
-    heuristic_grader_config: object = None,
+    heuristic_grader_config: HeuristicGraderConfig | None = None,
 ) -> RubricGrader:
     """Build a rubric grader from config.
 
@@ -158,7 +161,7 @@ def build_grader(
             requested without ``provider`` and ``tier_resolver``.
     """
     if config.grader == GraderVariant.HEURISTIC:
-        return HeuristicRubricGrader(config=heuristic_grader_config)  # type: ignore[arg-type]
+        return HeuristicRubricGrader(config=heuristic_grader_config)
     if config.grader == GraderVariant.LLM:
         if provider is None or tier_resolver is None:
             logger.error(

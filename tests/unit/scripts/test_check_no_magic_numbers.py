@@ -221,15 +221,17 @@ def test_io_buffering_default_allowlisted(write_py: WritePy) -> None:
     assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
 
 
-def test_io_chunk_size_default_allowlisted(write_py: WritePy) -> None:
+def test_io_chunk_size_default_now_flagged(write_py: WritePy) -> None:
+    """``chunk_size`` is no longer in the I/O allowlist; defaults flag."""
     src = "def stream(chunk_size: int = 4096) -> int:\n    return chunk_size\n"
     path = write_py(src)
-    assert _MODULE._scan_file(path, "src/synthorg/foo.py") == []
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
 
 
 def test_io_keyword_with_non_pow2_still_flagged(write_py: WritePy) -> None:
-    """``chunk_size=3000`` is policy disguised as I/O size; flag it."""
-    src = "def stream(chunk_size: int = 3000) -> int:\n    return chunk_size\n"
+    """``buffer_size=3000`` is policy disguised as I/O size; flag it."""
+    src = "def stream(buffer_size: int = 3000) -> int:\n    return buffer_size\n"
     path = write_py(src)
     hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
     assert len(hits) == 1

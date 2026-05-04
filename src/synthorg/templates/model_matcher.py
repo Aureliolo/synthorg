@@ -491,5 +491,9 @@ def _priority_alignment_bonus(
         latency_map = {id(m): r for r, m in enumerate(latency_ranked)}
         latency_rank = latency_map.get(id(model), 0)
         return matcher_config.priority_max_bonus * (1 - latency_rank / max_rank)
-    # "balanced" -- partial credit.
-    return matcher_config.balanced_partial_credit
+    # "balanced" -- partial credit, clamped so the bonus never
+    # exceeds the documented priority cap.
+    return min(
+        matcher_config.balanced_partial_credit,
+        matcher_config.priority_max_bonus,
+    )

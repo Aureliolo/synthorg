@@ -752,7 +752,7 @@ _r.register(
 # Fallback module constants in api/rate_limits/in_memory*.py mirror
 # these defaults so a limiter constructed without a settings service
 # (test harness, anonymous boot path) still observes the documented
-# GC cadence; full bridge-config wiring is tracked as follow-up work.
+# GC cadence.
 
 _r.register(
     SettingDefinition(
@@ -1014,11 +1014,13 @@ _r.register(
         namespace=SettingNamespace.API,
         key="lifecycle_drain_timeout_seconds",
         type=SettingType.FLOAT,
-        default="25.0",
+        default="40.0",
         description=(
             "Lifecycle shutdown: hard deadline on the cumulative"
             " stop sequence. Acts as the outer ``asyncio.wait_for``"
-            " budget covering every per-stage step."
+            " budget covering every per-stage step. Default 40s sits"
+            " comfortably above the 33s sum of the per-stage soft"
+            " deadlines so the outer budget never pre-empts a stage."
         ),
         group="Lifecycle Shutdown",
         level=SettingLevel.ADVANCED,

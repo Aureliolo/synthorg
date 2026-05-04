@@ -72,7 +72,7 @@ in the artifact payload (case-insensitive).
 | `engine.quality.heuristic.confidence_bias` | 0.1 | Additive bias on derived confidence (prevents 0%). |
 
 **Rationale.** Audit-set placeholders. Pass threshold of 0.5 means
-"more than half the probes match". Pass/fail grades of 0.8/0.3 give a
+"at least half the probes match". Pass/fail grades of 0.8/0.3 give a
 clean PASS-vs-FAIL split that downstream consumers can threshold
 against. Confidence ceiling 0.9 acknowledges the heuristic is
 deterministic but not authoritative; bias 0.1 ensures every grading

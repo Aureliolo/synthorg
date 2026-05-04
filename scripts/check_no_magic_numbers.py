@@ -37,8 +37,12 @@ The following bare literals are NOT violations:
   default in the caller.
 - Powers of 2 in ``{1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072}``
   -- only when the literal is the default of a function parameter named
-  ``buffering``, ``buffer_size``, ``bufsize``, ``chunk_size``,
-  ``blocksize``, or ``block_size``. The gate does not scan call-site
+  ``buffering``, ``buffer_size``, ``bufsize``, ``blocksize``, or
+  ``block_size``. ``chunk_size`` is intentionally excluded: the name is
+  generic enough that ``chunk_size=512`` may legitimately be a
+  business-policy literal masquerading as an I/O size, so any
+  ``chunk_size`` default registers as a magic number unless explicitly
+  opted out. The gate does not scan call-site
   positional arguments to I/O methods such as ``read`` / ``recv`` /
   ``write``; literals at those sites either flow through a
   function-default that already satisfies the allowlist or carry a
@@ -90,6 +94,17 @@ from typing import Final
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _BASELINE_PATH: Final[Path] = _REPO_ROOT / "scripts" / "no_magic_numbers_baseline.txt"
 
+
+def _baseline_path(project_root: Path) -> Path:
+    """Return the baseline file location anchored at *project_root*.
+
+    The baseline lives at ``<project_root>/scripts/no_magic_numbers_baseline.txt``
+    so that ``--repo-root`` runs read and write the correct file rather
+    than the one belonging to the checkout that contains this script.
+    """
+    return project_root / "scripts" / "no_magic_numbers_baseline.txt"
+
+
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: magic-numbers"
 
 # ── Allowlists ──────────────────────────────────────────────────
@@ -112,7 +127,6 @@ _IO_KEYWORD_NAMES: Final[frozenset[str]] = frozenset(
         "buffering",
         "buffer_size",
         "bufsize",
-        "chunk_size",
         "blocksize",
         "block_size",
     }
@@ -683,8 +697,9 @@ def cmd_update(roots: list[Path], project_root: Path) -> int:
     except ScanError as exc:
         print(f"check_no_magic_numbers: {exc}", file=sys.stderr)
         return 2
-    _write_baseline(hits)
-    rel = _BASELINE_PATH.relative_to(_REPO_ROOT).as_posix()
+    baseline_path = _baseline_path(project_root)
+    _write_baseline(hits, baseline_path)
+    rel = baseline_path.relative_to(project_root).as_posix()
     print(
         f"Wrote {len({h.baseline_key() for h in hits})} entries to {rel}.",
         file=sys.stderr,
@@ -695,7 +710,7 @@ def cmd_update(roots: list[Path], project_root: Path) -> int:
 def cmd_scan(roots: list[Path], project_root: Path) -> int:
     """Scan and exit non-zero on any new violation outside the baseline."""
     try:
-        baseline = _load_baseline()
+        baseline = _load_baseline(_baseline_path(project_root))
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2

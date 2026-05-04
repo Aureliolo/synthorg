@@ -39,7 +39,7 @@ class HeuristicGraderConfig(BaseModel):
     via ``/settings`` without code changes.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     pass_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     pass_grade: float = Field(default=0.8, ge=0.0, le=1.0)

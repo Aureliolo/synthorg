@@ -448,6 +448,29 @@ async def auto_create_template_agents(
         fetch_custom_presets_map,
     )
 
+    async def _resolve_matcher_config() -> ModelMatcherConfig | None:
+        """Resolve matcher config; degrade to None on resolution failure.
+
+        Bridge-config resolution failures (missing setting, validation
+        error, persistence flake) must not abort the template bootstrap.
+        Mirrors the fail-open pattern used by ``post_setup_reinit``.
+        """
+        if not app_state.has_config_resolver:
+            return None
+        try:
+            bridge_cfg = await app_state.config_resolver.get_engine_bridge_config()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SETUP_STATUS_SETTINGS_UNAVAILABLE,
+                context="matcher_config",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        return ModelMatcherConfig.from_bridge_config(bridge_cfg)
+
     async with asyncio.TaskGroup() as tg:
         loc_task = tg.create_task(read_name_locales(settings_svc))
         preset_task = tg.create_task(
@@ -456,11 +479,7 @@ async def auto_create_template_agents(
         prov_task = tg.create_task(
             app_state.provider_management.list_providers(),
         )
-        bridge_task = (
-            tg.create_task(app_state.config_resolver.get_engine_bridge_config())
-            if app_state.has_config_resolver
-            else None
-        )
+        matcher_task = tg.create_task(_resolve_matcher_config())
     locales = loc_task.result()
     custom_presets = preset_task.result()
     agents = expand_template_agents(
@@ -470,11 +489,7 @@ async def auto_create_template_agents(
     )
     providers = prov_task.result()
     _validate_tier_coverage(providers)
-    matcher_config = (
-        ModelMatcherConfig.from_bridge_config(bridge_task.result())
-        if bridge_task is not None
-        else None
-    )
+    matcher_config = matcher_task.result()
     agents = match_and_assign_models(agents, providers, matcher_config)
 
     async with AGENT_LOCK:

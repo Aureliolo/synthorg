@@ -38,7 +38,7 @@ class RoutingScorerConfig(BaseModel):
     score at 1.0.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     primary_skill_weight: float = Field(default=0.4, ge=0.0, le=1.0)
     secondary_skill_weight: float = Field(default=0.2, ge=0.0, le=1.0)

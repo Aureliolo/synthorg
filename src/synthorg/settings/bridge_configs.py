@@ -31,7 +31,7 @@ class CommunicationBridgeConfig(BaseModel):
     event-stream backpressure, and loop-prevention window.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     bus_bridge_poll_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
     bus_bridge_max_consecutive_errors: int = Field(default=30, ge=5, le=100)
@@ -47,7 +47,7 @@ class CommunicationBridgeConfig(BaseModel):
 class A2ABridgeConfig(BaseModel):
     """Operator-tunable values for the A2A federation subsystem."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     client_timeout_seconds: float = Field(default=30.0, ge=5.0, le=300.0)
     push_verification_clock_skew_seconds: int = Field(default=300, ge=0, le=3600)
@@ -60,7 +60,7 @@ class IntegrationsBridgeConfig(BaseModel):
     OAuth device-flow max wait, and rate-limit coordinator poll.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     health_probe_interval_seconds: int = Field(default=300, ge=30, le=3600)
     oauth_http_timeout_seconds: float = Field(default=30.0, ge=5.0, le=300.0)
@@ -73,7 +73,7 @@ class IntegrationsBridgeConfig(BaseModel):
 class MetaBridgeConfig(BaseModel):
     """Operator-tunable values for the meta-agent subsystem."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     ci_timeout_seconds: int = Field(default=300, ge=30, le=600)
     proposal_rate_limit_max: int = Field(default=10, ge=1, le=100)
@@ -83,7 +83,7 @@ class MetaBridgeConfig(BaseModel):
 class NotificationsBridgeConfig(BaseModel):
     """Operator-tunable timeouts and defaults for notification sink adapters."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     slack_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     ntfy_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
@@ -102,7 +102,7 @@ class ToolsBridgeConfig(BaseModel):
     kill-grace.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     git_kill_grace_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
     atlas_kill_grace_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
@@ -126,7 +126,7 @@ class ObservabilityBridgeConfig(BaseModel):
     and the per-preset RFC 3161 Time-Stamp Authority endpoints.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     http_batch_size: int = Field(default=100, ge=10, le=1000)
     http_flush_interval_seconds: float = Field(default=5.0, ge=0.5, le=60.0)
@@ -150,7 +150,7 @@ class ObservabilityBridgeConfig(BaseModel):
 class SettingsDispatcherBridgeConfig(BaseModel):
     """Operator-tunable values for the settings-change dispatcher itself."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     poll_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
     error_backoff_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
@@ -166,7 +166,7 @@ class ApiBridgeConfig(BaseModel):
     meeting context).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     ticket_cleanup_interval_seconds: float = Field(default=60.0, ge=5.0, le=3600.0)
     ws_ticket_max_pending_per_user: int = Field(default=5, ge=1, le=50)
@@ -211,7 +211,7 @@ class ApiBridgeConfig(BaseModel):
     lifecycle_approval_timeout_shutdown_seconds: float = Field(
         default=1.0, ge=0.5, le=60.0
     )
-    lifecycle_drain_timeout_seconds: float = Field(default=25.0, ge=5.0, le=300.0)
+    lifecycle_drain_timeout_seconds: float = Field(default=40.0, ge=5.0, le=300.0)
 
 
 class EngineBridgeConfig(BaseModel):
@@ -222,7 +222,7 @@ class EngineBridgeConfig(BaseModel):
     weights + minimum candidate score.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     approval_interrupt_timeout_seconds: float = Field(default=300.0, ge=30.0, le=3600.0)
     health_quality_degradation_threshold: int = Field(default=3, ge=1, le=10)
@@ -251,7 +251,7 @@ class ClientBridgeConfig(BaseModel):
     :class:`~synthorg.client.ai_client.AIClient` instances.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     scored_feedback_passing_score: float = Field(default=0.5, ge=0.0, le=1.0)
     scored_feedback_strictness_multiplier: float = Field(default=2.0, ge=0.5, le=10.0)
@@ -265,7 +265,7 @@ class CoordinationBridgeConfig(BaseModel):
     on shared mutation surfaces (departments, approval transitions).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cas_max_retries: int = Field(default=2, ge=1, le=10)
 
@@ -276,7 +276,7 @@ class WorkersBridgeConfig(BaseModel):
     Drives the JetStream task-claim publish retry budget.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     dispatcher_publish_max_attempts: int = Field(default=3, ge=1, le=10)
     dispatcher_publish_backoff_base_seconds: float = Field(
@@ -292,7 +292,7 @@ class MemoryBridgeConfig(BaseModel):
     preflight (VRAM-to-batch-size table + word-chunk size).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     consolidation_enforce_batch_size: int = Field(default=1000, ge=100, le=10_000)
     fine_tune_vram_batch_table: tuple[tuple[float, int], ...] = Field(

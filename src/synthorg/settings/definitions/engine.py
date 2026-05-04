@@ -518,7 +518,7 @@ _r.register(
         default="0.1",
         description=(
             "Heuristic grader: additive bias on the derived confidence."
-            " Prevents a 0%% pass-ratio from collapsing confidence to 0."
+            " Prevents a 0% pass-ratio from collapsing confidence to 0."
         ),
         group="Quality Grader",
         level=SettingLevel.ADVANCED,

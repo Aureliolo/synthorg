@@ -973,9 +973,25 @@ class ConfigResolver:
                 f"got {raw_table!r}"
             )
             raise ValueError(msg) from exc
-        values["fine_tune_vram_batch_table"] = tuple(
-            (float(row[0]), int(row[1])) for row in parsed
-        )
+        if not isinstance(parsed, list) or any(
+            not isinstance(row, list | tuple) or len(row) != 2  # noqa: PLR2004 -- pair shape
+            for row in parsed
+        ):
+            msg = (
+                "memory.fine_tune_vram_batch_table must be a JSON array of "
+                f"[vram_gb, batch_size] pairs; got {parsed!r}"
+            )
+            raise ValueError(msg)
+        try:
+            values["fine_tune_vram_batch_table"] = tuple(
+                (float(vram_gb), int(batch_size)) for vram_gb, batch_size in parsed
+            )
+        except (TypeError, ValueError) as exc:
+            msg = (
+                "memory.fine_tune_vram_batch_table must contain numeric "
+                f"[vram_gb, batch_size] pairs; got {parsed!r}"
+            )
+            raise ValueError(msg) from exc
         return MemoryBridgeConfig(**values)
 
     async def get_integrations_bridge_config(self) -> IntegrationsBridgeConfig:

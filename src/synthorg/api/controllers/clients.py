@@ -297,6 +297,9 @@ class ClientController(Controller):
         # update latency. ``KeyError`` from the profile fetch is wrapped
         # in an ``ExceptionGroup`` by ``TaskGroup``; ``except*`` unpacks it
         # back into the same NotFoundError surface as the legacy path.
+        # The whole ExceptionGroup is chained as the cause so multiple
+        # KeyErrors (if a future task ever joins this group) all surface
+        # in the traceback rather than being silently dropped.
         try:
             async with asyncio.TaskGroup() as tg:
                 profile_task = tg.create_task(sim_state.pool.get_profile(client_id))
@@ -309,7 +312,7 @@ class ClientController(Controller):
                 client_id=client_id,
                 reason=msg,
             )
-            raise NotFoundError(msg) from exc_group.exceptions[0]
+            raise NotFoundError(msg) from exc_group
         current = profile_task.result()
         client_config = config_task.result()
 
