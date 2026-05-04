@@ -1,5 +1,6 @@
 """Shared fixtures for API unit tests."""
 
+import asyncio
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -166,8 +167,8 @@ def _get_test_password_hash(
     claims.
     """
     if role not in _TEST_PASSWORD_HASHES:
-        _TEST_PASSWORD_HASHES[role] = auth_service.hash_password(
-            "test-password-12chars",
+        _TEST_PASSWORD_HASHES[role] = asyncio.run(
+            auth_service.hash_password_async("test-password-12chars"),
         )
     return _TEST_PASSWORD_HASHES[role]
 

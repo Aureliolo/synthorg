@@ -1,5 +1,6 @@
 """Tests for ApiAuthMiddleware."""
 
+import asyncio
 import hashlib
 from datetime import UTC, datetime, timedelta
 
@@ -46,12 +47,21 @@ def _make_auth_service() -> AuthService:
     return AuthService(AuthConfig(jwt_secret=_SECRET))
 
 
+# Pre-computed at module load so ``_make_user`` (a sync helper called from
+# async tests) does not need ``asyncio.run`` -- which would deadlock once a
+# test loop is running. The hash value is opaque to the tests; they verify
+# semantics through ``hash_password_async`` / ``verify_password_async``.
+_USER_PWD_HASH = asyncio.run(
+    _make_auth_service().hash_password_async("test-password-12chars"),
+)
+
+
 def _make_user(svc: AuthService) -> User:
     now = datetime.now(UTC)
     return User(
         id="mw-user-001",
         username="mw-admin",
-        password_hash=svc.hash_password("test-password-12chars"),
+        password_hash=_USER_PWD_HASH,
         role=HumanRole.CEO,
         must_change_password=False,
         created_at=now,
@@ -161,7 +171,7 @@ class TestAuthMiddlewareJWT:
         updated_user = User(
             id=user.id,
             username=user.username,
-            password_hash=svc.hash_password("new-password-12chars"),
+            password_hash=await svc.hash_password_async("new-password-12chars"),
             role=user.role,
             must_change_password=False,
             created_at=user.created_at,
@@ -490,7 +500,7 @@ class TestAuthMiddlewareSystemUser:
         system_user = User(
             id="system",
             username="system",
-            password_hash=svc.hash_password("random-password-12chars"),
+            password_hash=await svc.hash_password_async("random-password-12chars"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -534,7 +544,7 @@ class TestAuthMiddlewareSystemUser:
         system_user = User(
             id="system",
             username="system",
-            password_hash=svc.hash_password("random-password-12chars"),
+            password_hash=await svc.hash_password_async("random-password-12chars"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -585,7 +595,7 @@ class TestAuthMiddlewareSystemUser:
         system_user = User(
             id="system",
             username="system",
-            password_hash=svc.hash_password("random-password-12chars"),
+            password_hash=await svc.hash_password_async("random-password-12chars"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -629,7 +639,7 @@ class TestAuthMiddlewareSystemUser:
         system_user = User(
             id="system",
             username="system",
-            password_hash=svc.hash_password("random-password-12chars"),
+            password_hash=await svc.hash_password_async("random-password-12chars"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -682,7 +692,7 @@ class TestAuthMiddlewareSystemUser:
         system_user = User(
             id="system",
             username="system",
-            password_hash=svc.hash_password("random-password-12chars"),
+            password_hash=await svc.hash_password_async("random-password-12chars"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
