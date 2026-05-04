@@ -18,7 +18,7 @@ from pydantic import (
 
 from synthorg.core.enums import TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.utils import make_dedupe_tags_model_validator
+from synthorg.memory.utils import dedupe_tags_in_place
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -187,9 +187,11 @@ class ProceduralMemoryProposal(BaseModel):
         description="Last time an agent applied this proposal",
     )
 
-    _deduplicate_tags = model_validator(mode="after")(
-        make_dedupe_tags_model_validator(max_items=20)
-    )
+    @model_validator(mode="after")
+    def _deduplicate_tags(self) -> Self:
+        """Deduplicate tags and clamp at the per-record limit."""
+        dedupe_tags_in_place(self, max_items=20)
+        return self
 
     @model_validator(mode="after")
     def _validate_supersession_consistency(self) -> Self:

@@ -1,15 +1,13 @@
 """Shared helpers for memory domain models."""
 
-from typing import TYPE_CHECKING, TypeVar
-
-from pydantic import BaseModel
+from typing import TYPE_CHECKING
 
 from synthorg.core.collections import dedupe_preserving_order
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Iterable
 
-_M = TypeVar("_M", bound=BaseModel)
+    from pydantic import BaseModel
 
 
 def deduplicate_tags[T](tags: Iterable[T]) -> tuple[T, ...]:
@@ -22,40 +20,35 @@ def deduplicate_tags[T](tags: Iterable[T]) -> tuple[T, ...]:
     return dedupe_preserving_order(tags)
 
 
-# Factory implements dedup-and-keep-first semantics. The
-# reject-on-duplicate validator in synthorg.core.role uses a different
-# invariant (raises on duplicates rather than silently collapsing
-# them); do NOT unify the two -- the choice between "fix it for me"
-# and "fail loudly" is a per-domain policy decision.
-def make_dedupe_tags_model_validator(
+# Implements dedup-and-keep-first semantics. The reject-on-duplicate
+# validator in synthorg.core.role uses a different invariant (raises
+# on duplicates rather than silently collapsing them); do NOT unify
+# the two -- the choice between "fix it for me" and "fail loudly" is
+# a per-domain policy decision.
+def dedupe_tags_in_place(
+    model: BaseModel,
     field_name: str = "tags",
     *,
     max_items: int | None = None,
-) -> Callable[[_M], _M]:
-    """Build a ``@model_validator(mode='after')`` callable that dedupes ``field_name``.
+) -> None:
+    """Dedupe and (optionally) truncate ``field_name`` on a frozen model.
 
-    When ``max_items`` is set, the deduped tuple is also truncated.
     Mutation uses ``object.__setattr__`` because the model is frozen
     (Pydantic blocks ordinary attribute assignment on
-    ``ConfigDict(frozen=True)`` instances).
+    ``ConfigDict(frozen=True)`` instances). Caller wraps this in a
+    standard ``@model_validator(mode="after")`` method to keep the
+    decorator form readable to mkdocstrings / griffe templates -- the
+    factory-returns-callable form (``_x = model_validator(...)(factory())``)
+    breaks the Pydantic-model rendering template downstream.
 
     Args:
-        field_name: Field on the model whose value is deduplicated.
+        model: The Pydantic model instance (must be frozen).
+        field_name: Field whose value is deduplicated.
         max_items: Optional maximum length after deduplication.
-
-    Returns:
-        A callable suitable for use as
-        ``model_validator(mode="after")(make_dedupe_tags_model_validator(...))``
-        on a Pydantic v2 model.
     """
-
-    def _validator(self: _M) -> _M:
-        current = getattr(self, field_name)
-        unique = deduplicate_tags(current)
-        if max_items is not None and len(unique) > max_items:
-            unique = unique[:max_items]
-        if len(unique) != len(current):
-            object.__setattr__(self, field_name, unique)
-        return self
-
-    return _validator
+    current = getattr(model, field_name)
+    unique = deduplicate_tags(current)
+    if max_items is not None and len(unique) > max_items:
+        unique = unique[:max_items]
+    if len(unique) != len(current):
+        object.__setattr__(model, field_name, unique)

@@ -44,4 +44,7 @@ def test_humanrole_defined_only_in_core_auth_roles() -> None:
 
     assert HumanRole.CEO.value == "ceo"
     assert HumanRole.SYSTEM.value == "system"
-    assert guards_module.HumanRole is HumanRole
+    # The HumanRole binding on ``guards`` is a runtime re-import, not an
+    # explicit re-export. mypy's strict ``no_implicit_reexport`` rule
+    # cannot see it, so the attribute access is suppressed.
+    assert guards_module.HumanRole is HumanRole  # type: ignore[attr-defined]

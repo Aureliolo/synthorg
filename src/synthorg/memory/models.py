@@ -11,7 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.utils import make_dedupe_tags_model_validator
+from synthorg.memory.utils import dedupe_tags_in_place
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import MEMORY_MODEL_INVALID
 
@@ -44,9 +44,11 @@ class MemoryMetadata(BaseModel):
         description="Categorization tags",
     )
 
-    _deduplicate_tags = model_validator(mode="after")(
-        make_dedupe_tags_model_validator()
-    )
+    @model_validator(mode="after")
+    def _deduplicate_tags(self) -> Self:
+        """Remove duplicate tags while preserving order."""
+        dedupe_tags_in_place(self)
+        return self
 
 
 class MemoryStoreRequest(BaseModel):
@@ -215,9 +217,11 @@ class MemoryQuery(BaseModel):
         description="Only memories created before this timestamp",
     )
 
-    _deduplicate_tags = model_validator(mode="after")(
-        make_dedupe_tags_model_validator()
-    )
+    @model_validator(mode="after")
+    def _deduplicate_tags(self) -> Self:
+        """Remove duplicate tags while preserving order."""
+        dedupe_tags_in_place(self)
+        return self
 
     @model_validator(mode="after")
     def _validate_time_range(self) -> Self:

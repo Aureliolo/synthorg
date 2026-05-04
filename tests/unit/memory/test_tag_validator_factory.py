@@ -1,9 +1,11 @@
-"""Tests for ``make_dedupe_tags_model_validator``."""
+"""Tests for ``dedupe_tags_in_place``."""
+
+from typing import Self
 
 import pytest
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from synthorg.memory.utils import make_dedupe_tags_model_validator
+from synthorg.memory.utils import dedupe_tags_in_place
 
 
 class _DedupOnly(BaseModel):
@@ -11,7 +13,10 @@ class _DedupOnly(BaseModel):
 
     tags: tuple[str, ...] = ()
 
-    _dedup = model_validator(mode="after")(make_dedupe_tags_model_validator())
+    @model_validator(mode="after")
+    def _dedup(self) -> Self:
+        dedupe_tags_in_place(self)
+        return self
 
 
 class _DedupAndTruncate(BaseModel):
@@ -19,13 +24,14 @@ class _DedupAndTruncate(BaseModel):
 
     tags: tuple[str, ...] = ()
 
-    _dedup = model_validator(mode="after")(
-        make_dedupe_tags_model_validator(max_items=3)
-    )
+    @model_validator(mode="after")
+    def _dedup(self) -> Self:
+        dedupe_tags_in_place(self, max_items=3)
+        return self
 
 
 @pytest.mark.unit
-class TestDedupeTagsValidator:
+class TestDedupeTagsInPlace:
     def test_dedupes_input(self) -> None:
         m = _DedupOnly(tags=("a", "b", "a", "c", "b"))
         assert m.tags == ("a", "b", "c")
