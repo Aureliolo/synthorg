@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from synthorg.settings.bridge_configs import (
         A2ABridgeConfig,
         ApiBridgeConfig,
+        ClientBridgeConfig,
         CommunicationBridgeConfig,
         EngineBridgeConfig,
         IntegrationsBridgeConfig,
@@ -871,9 +872,39 @@ class ConfigResolver:
             (
                 ("approval_interrupt_timeout_seconds", "float"),
                 ("health_quality_degradation_threshold", "int"),
+                ("routing_weight_primary_skill", "float"),
+                ("routing_weight_secondary_skill", "float"),
+                ("routing_weight_tag_match_bonus", "float"),
+                ("routing_weight_role_match_bonus", "float"),
+                ("routing_weight_seniority_alignment_bonus", "float"),
+                ("routing_min_score", "float"),
+                ("matcher_tier_base_score", "float"),
+                ("matcher_headroom_max_bonus", "float"),
+                ("matcher_priority_max_bonus", "float"),
+                ("matcher_headroom_ratio_cap", "float"),
+                ("matcher_balanced_partial_credit", "float"),
+                ("quality_heuristic_pass_threshold", "float"),
+                ("quality_heuristic_pass_grade", "float"),
+                ("quality_heuristic_fail_grade", "float"),
+                ("quality_heuristic_confidence_ceiling", "float"),
+                ("quality_heuristic_confidence_bias", "float"),
             ),
         )
         return EngineBridgeConfig(**values)
+
+    async def get_client_bridge_config(self) -> ClientBridgeConfig:
+        """Assemble ``ClientBridgeConfig`` from bridged client settings."""
+        from synthorg.settings.bridge_configs import ClientBridgeConfig  # noqa: PLC0415
+
+        values = await self._resolve_bridge_fields(
+            "client",
+            (
+                ("scored_feedback_passing_score", "float"),
+                ("scored_feedback_strictness_multiplier", "float"),
+                ("scored_feedback_strictness_floor", "float"),
+            ),
+        )
+        return ClientBridgeConfig(**values)
 
     async def get_memory_bridge_config(self) -> MemoryBridgeConfig:
         """Assemble ``MemoryBridgeConfig`` from bridged memory settings."""

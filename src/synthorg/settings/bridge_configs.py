@@ -192,14 +192,45 @@ class ApiBridgeConfig(BaseModel):
 class EngineBridgeConfig(BaseModel):
     """Operator-tunable values for the engine subsystem.
 
-    Covers approval-gate interrupt timeout and health-judge quality
-    degradation threshold.
+    Covers approval-gate interrupt timeout, health-judge quality
+    degradation threshold, and the AgentTaskScorer score-component
+    weights + minimum candidate score.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     approval_interrupt_timeout_seconds: float = Field(default=300.0, ge=30.0, le=3600.0)
     health_quality_degradation_threshold: int = Field(default=3, ge=1, le=10)
+    routing_weight_primary_skill: float = Field(default=0.4, ge=0.0, le=1.0)
+    routing_weight_secondary_skill: float = Field(default=0.2, ge=0.0, le=1.0)
+    routing_weight_tag_match_bonus: float = Field(default=0.1, ge=0.0, le=1.0)
+    routing_weight_role_match_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
+    routing_weight_seniority_alignment_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
+    routing_min_score: float = Field(default=0.1, ge=0.0, le=1.0)
+    matcher_tier_base_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    matcher_headroom_max_bonus: float = Field(default=0.25, ge=0.0, le=1.0)
+    matcher_priority_max_bonus: float = Field(default=0.25, ge=0.0, le=1.0)
+    matcher_headroom_ratio_cap: float = Field(default=2.0, ge=1.0, le=100.0)
+    matcher_balanced_partial_credit: float = Field(default=0.125, ge=0.0, le=1.0)
+    quality_heuristic_pass_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    quality_heuristic_pass_grade: float = Field(default=0.8, ge=0.0, le=1.0)
+    quality_heuristic_fail_grade: float = Field(default=0.3, ge=0.0, le=1.0)
+    quality_heuristic_confidence_ceiling: float = Field(default=0.9, ge=0.0, le=1.0)
+    quality_heuristic_confidence_bias: float = Field(default=0.1, ge=0.0, le=1.0)
+
+
+class ClientBridgeConfig(BaseModel):
+    """Operator-tunable values for the client (CRM simulation) subsystem.
+
+    Drives the synthetic feedback profile attached to default
+    :class:`~synthorg.client.ai_client.AIClient` instances.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    scored_feedback_passing_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    scored_feedback_strictness_multiplier: float = Field(default=2.0, ge=0.5, le=10.0)
+    scored_feedback_strictness_floor: float = Field(default=0.1, ge=0.0, le=1.0)
 
 
 class MemoryBridgeConfig(BaseModel):

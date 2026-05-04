@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from synthorg.engine.quality.verification import (
     VerificationResult,
     VerificationRubric,
@@ -21,26 +23,55 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_PASS_THRESHOLD = 0.5
-_PASS_GRADE = 0.8
-_FAIL_GRADE = 0.3
-_CONFIDENCE_CEILING = 0.9
-_CONFIDENCE_BIAS = 0.1
+
+class HeuristicGraderConfig(BaseModel):
+    """Operator-tunable thresholds + per-criterion grades for the heuristic grader.
+
+    ``pass_threshold`` is the probe-pass-ratio cutoff between PASS
+    and FAIL; ``pass_grade`` / ``fail_grade`` are the per-criterion
+    scores assigned in each branch; ``confidence_ceiling`` clamps the
+    derived confidence; ``confidence_bias`` bumps the floor so a 0%
+    pass rate still produces non-zero confidence.
+
+    Defaults match the historical hardcoded values; production wiring
+    populates the fields from
+    :func:`ConfigResolver.get_engine_bridge_config` so operators tune
+    via ``/settings`` without code changes.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    pass_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    pass_grade: float = Field(default=0.8, ge=0.0, le=1.0)
+    fail_grade: float = Field(default=0.3, ge=0.0, le=1.0)
+    confidence_ceiling: float = Field(default=0.9, ge=0.0, le=1.0)
+    confidence_bias: float = Field(default=0.1, ge=0.0, le=1.0)
 
 
 class HeuristicRubricGrader:
     """Rule-based grader for testing and deterministic fallback.
 
     Grades binary probes by checking whether the source criterion
-    text appears (case-insensitive) in the payload values.  Scores
-    each rubric criterion at a fixed 0.8 for PASS, 0.3 for FAIL.
-    Empty probes produce a REFER verdict (cannot verify).
+    text appears (case-insensitive) in the payload values. Per-criterion
+    scores and the pass/fail probe-ratio cutoff come from the injected
+    :class:`HeuristicGraderConfig`. Empty probes produce a REFER
+    verdict (cannot verify).
     """
+
+    __slots__ = ("_config",)
+
+    def __init__(self, config: HeuristicGraderConfig | None = None) -> None:
+        self._config = config if config is not None else HeuristicGraderConfig()
 
     @property
     def name(self) -> str:
         """Strategy name."""
         return "heuristic"
+
+    @property
+    def config(self) -> HeuristicGraderConfig:
+        """Snapshot of the operator-tunable grader thresholds."""
+        return self._config
 
     async def grade(
         self,
@@ -84,20 +115,21 @@ class HeuristicRubricGrader:
         )
         probe_ratio = probe_pass_count / len(probes)
 
+        cfg = self._config
         per_criterion_grades: dict[str, float] = {}
         for criterion in rubric.criteria:
             # All criteria share the global probe_ratio because the
             # data model has no probe-to-criterion mapping yet.
             per_criterion_grades[criterion.name] = (
-                _PASS_GRADE if probe_ratio >= _PASS_THRESHOLD else _FAIL_GRADE
+                cfg.pass_grade if probe_ratio >= cfg.pass_threshold else cfg.fail_grade
             )
 
-        confidence = min(_CONFIDENCE_CEILING, probe_ratio + _CONFIDENCE_BIAS)
+        confidence = min(cfg.confidence_ceiling, probe_ratio + cfg.confidence_bias)
 
         min_conf = rubric.min_confidence
         if confidence < min_conf:
             verdict = VerificationVerdict.REFER
-        elif probe_ratio >= _PASS_THRESHOLD:
+        elif probe_ratio >= cfg.pass_threshold:
             verdict = VerificationVerdict.PASS
         else:
             verdict = VerificationVerdict.FAIL

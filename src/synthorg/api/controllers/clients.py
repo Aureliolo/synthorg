@@ -25,6 +25,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.settings.bridge_configs import ClientBridgeConfig
 
 logger = get_logger(__name__)
 
@@ -125,15 +126,40 @@ def _score_from_feedback(
     return 1.0 if accepted else 0.0
 
 
-def _build_default_client(profile: ClientProfile) -> AIClient:
-    """Construct a default AI client backing for a profile."""
+async def _resolve_client_bridge_config(app_state: AppState) -> ClientBridgeConfig:
+    """Resolve the operator-tunable client bridge config.
+
+    Falls back to ``ClientBridgeConfig()`` defaults if the resolver is
+    not yet wired (e.g. during early bootstrap before the settings
+    service comes up); the defaults reproduce historical behaviour.
+    """
+    if not app_state.has_config_resolver:
+        return ClientBridgeConfig()
+    return await app_state.config_resolver.get_client_bridge_config()
+
+
+def _build_default_client(
+    profile: ClientProfile,
+    config: ClientBridgeConfig | None = None,
+) -> AIClient:
+    """Construct a default AI client backing for a profile.
+
+    *config* drives the synthetic feedback profile; ``None`` falls
+    back to ``ClientBridgeConfig()`` whose defaults match the
+    historical hardcoded values (passing_score=0.5,
+    strictness_multiplier=2.0, strictness_floor=0.1).
+    """
+    cfg = config if config is not None else ClientBridgeConfig()
     return AIClient(
         profile=profile,
         generator=ProceduralGenerator(seed=abs(hash(profile.client_id)) & 0xFFFF),
         feedback=ScoredFeedback(
             client_id=profile.client_id,
-            passing_score=0.5,
-            strictness_multiplier=max(0.1, profile.strictness_level * 2),
+            passing_score=cfg.scored_feedback_passing_score,
+            strictness_multiplier=max(
+                cfg.scored_feedback_strictness_floor,
+                profile.strictness_level * cfg.scored_feedback_strictness_multiplier,
+            ),
         ),
     )
 
@@ -244,7 +270,8 @@ class ClientController(Controller):
             expertise_domains=data.expertise_domains,
             strictness_level=data.strictness_level,
         )
-        client = _build_default_client(profile)
+        client_config = await _resolve_client_bridge_config(app_state)
+        client = _build_default_client(profile, client_config)
         await sim_state.pool.add(profile=profile, client=client)
         _publish_client_event(request, WsEventType.CLIENT_CREATED, profile)
         return ApiResponse(data=profile)
@@ -278,7 +305,8 @@ class ClientController(Controller):
 
         updates = data.model_dump(exclude_none=True)
         updated = current.model_copy(update=updates)
-        new_client = _build_default_client(updated)
+        client_config = await _resolve_client_bridge_config(app_state)
+        new_client = _build_default_client(updated, client_config)
         await sim_state.pool.add(profile=updated, client=new_client)
         _publish_client_event(request, WsEventType.CLIENT_UPDATED, updated)
         return ApiResponse(data=updated)
