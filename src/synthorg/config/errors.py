@@ -1,6 +1,10 @@
 """Custom exception hierarchy for configuration errors."""
 
 from dataclasses import dataclass
+from typing import ClassVar
+
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
 @dataclass(frozen=True)
@@ -21,13 +25,18 @@ class ConfigLocation:
     column: int | None = None
 
 
-class ConfigError(Exception):
+class ConfigError(DomainError):
     """Base exception for configuration errors.
 
     Attributes:
         message: Human-readable error description.
         locations: Source locations associated with this error.
     """
+
+    default_message: ClassVar[str] = "Configuration error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
     def __init__(
         self,
@@ -74,6 +83,11 @@ class ConfigValidationError(ConfigError):
         field_errors: Per-field error messages as
             ``(key_path, message)`` pairs.
     """
+
+    default_message: ClassVar[str] = "Configuration validation error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
 
     def __init__(
         self,

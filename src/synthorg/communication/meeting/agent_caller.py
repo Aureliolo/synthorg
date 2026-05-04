@@ -19,7 +19,7 @@ papers, structured phases) are responsible for sequencing turns; this
 module only runs a single agent's inference.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -32,6 +32,8 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.meeting.models import AgentResponse
 from synthorg.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from synthorg.core.domain_errors import DomainError, NotFoundError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,
@@ -56,12 +58,17 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class UnknownMeetingAgentError(LookupError):
+class UnknownMeetingAgentError(NotFoundError):
     """Raised when the meeting orchestrator invokes an unregistered agent.
 
     Attributes:
         agent_id: The agent identifier that was not found in the registry.
     """
+
+    default_message: ClassVar[str] = "Meeting agent not registered"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404
 
     def __init__(self, agent_id: NotBlankStr) -> None:
         super().__init__(
@@ -216,7 +223,7 @@ def _render_system_prompt(identity: AgentIdentity) -> str:
     return f"{body}\n\n{directive}"
 
 
-class MeetingAgentCallerNotConfiguredError(RuntimeError):
+class MeetingAgentCallerNotConfiguredError(DomainError):
     """Raised when a meeting runs without an agent + provider registry.
 
     The meeting orchestrator is structurally wired during Phase 1 so
@@ -237,6 +244,13 @@ class MeetingAgentCallerNotConfiguredError(RuntimeError):
         ValueError: If *missing_dependencies* is empty -- the error is
             only meaningful when at least one dependency is missing.
     """
+
+    default_message: ClassVar[str] = (
+        "Meeting agent caller missing wire-time dependencies"
+    )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
     def __init__(
         self,

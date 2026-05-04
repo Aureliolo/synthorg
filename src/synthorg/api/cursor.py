@@ -17,17 +17,24 @@ import hashlib
 import hmac
 import json
 import secrets
-from typing import Self
+from typing import ClassVar, Self
 
 from synthorg.api.cursor_config import CursorConfig  # noqa: TC001
+from synthorg.core.domain_errors import ValidationError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
-class InvalidCursorError(ValueError):
+class InvalidCursorError(ValidationError):
     """Raised when a cursor token is malformed, tampered, or unsigned.
 
     Controllers should translate this to HTTP 400 with a structured
     ``ErrorDetail`` (``error_category=validation``).
     """
+
+    default_message: ClassVar[str] = "Invalid cursor token"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
 
 
 # Minimum key length (bytes) enforced on HMAC secrets. 16 bytes = 128

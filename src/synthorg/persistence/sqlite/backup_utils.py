@@ -47,7 +47,9 @@ def vacuum_into(source_path: str, target_path: str) -> int:
     return Path(target_path).stat().st_size
 
 
-class IntegrityCheckError(RuntimeError):
+class IntegrityCheckError(
+    RuntimeError,
+):  # lint-allow: domain-error-hierarchy -- CLI/operator flow; not HTTP-exposed
     """Raised when ``PRAGMA integrity_check`` cannot run.
 
     Distinct from the check itself reporting corruption (which returns

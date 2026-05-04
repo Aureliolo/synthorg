@@ -15,7 +15,10 @@ from synthorg.core.enums import (
     WorkflowNodeType,
     WorkflowType,
 )
-from synthorg.core.persistence_errors import DuplicateRecordError, VersionConflictError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    PersistenceVersionConflictError,
+)
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -282,7 +285,7 @@ class TestWorkflowExecutionRepository:
         self,
         backend: PersistenceBackend,
     ) -> None:
-        """Update with wrong version raises VersionConflictError."""
+        """Update with wrong version raises PersistenceVersionConflictError."""
         defn_repo = backend.workflow_definitions
         exec_repo = backend.workflow_executions
 
@@ -305,7 +308,7 @@ class TestWorkflowExecutionRepository:
             version=5,
         )
 
-        with pytest.raises(VersionConflictError):
+        with pytest.raises(PersistenceVersionConflictError):
             await exec_repo.save(stale)
 
     async def test_delete_execution(

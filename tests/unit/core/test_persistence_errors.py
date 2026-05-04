@@ -11,9 +11,9 @@ from synthorg.core.persistence_errors import (
     MigrationError,
     PersistenceConnectionError,
     PersistenceError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
-    VersionConflictError,
 )
 
 pytestmark = pytest.mark.unit
@@ -30,7 +30,7 @@ class TestHierarchy:
             DuplicateRecordError,
             QueryError,
             ConstraintViolationError,
-            VersionConflictError,
+            PersistenceVersionConflictError,
             MalformedRowError,
             ArtifactTooLargeError,
             ArtifactStorageFullError,
@@ -41,7 +41,7 @@ class TestHierarchy:
         assert issubclass(ConstraintViolationError, QueryError)
 
     def test_version_conflict_is_query_error(self) -> None:
-        assert issubclass(VersionConflictError, QueryError)
+        assert issubclass(PersistenceVersionConflictError, QueryError)
 
     def test_malformed_row_is_query_error(self) -> None:
         assert issubclass(MalformedRowError, QueryError)
@@ -59,7 +59,7 @@ class TestRetryabilityFlags:
             (RecordNotFoundError, False),
             (DuplicateRecordError, False),
             (QueryError, True),
-            (VersionConflictError, False),
+            (PersistenceVersionConflictError, False),
             (MalformedRowError, False),
             (ArtifactTooLargeError, False),
             (ArtifactStorageFullError, False),

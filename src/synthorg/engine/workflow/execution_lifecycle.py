@@ -13,7 +13,7 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.core.persistence_errors import VersionConflictError
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
@@ -306,7 +306,7 @@ async def handle_task_state_changed(
             await _handle_task_failed(repo, execution, event)
         else:
             await _handle_task_completed(repo, execution, event)
-    except VersionConflictError:
+    except PersistenceVersionConflictError:
         retry_event = (
             WORKFLOW_EXEC_NODE_TASK_FAILED
             if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}

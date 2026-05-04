@@ -267,7 +267,7 @@ class TestCheckHasNameLocales:
 
         original = settings_svc.get_entry
         settings_svc.get_entry = AsyncMock(
-            side_effect=SettingNotFoundError("company", "name_locales"),
+            side_effect=SettingNotFoundError("company/name_locales"),
         )
         try:
             result = await _check_has_name_locales(settings_svc)
@@ -314,7 +314,7 @@ class TestReadNameLocales:
 
         original = settings_svc.get_entry
         settings_svc.get_entry = AsyncMock(
-            side_effect=SettingNotFoundError("company", "name_locales"),
+            side_effect=SettingNotFoundError("company/name_locales"),
         )
         try:
             result = await _read_name_locales(settings_svc)

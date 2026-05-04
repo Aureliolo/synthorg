@@ -11,7 +11,10 @@ from synthorg.core.enums import (
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
 )
-from synthorg.core.persistence_errors import DuplicateRecordError, VersionConflictError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    PersistenceVersionConflictError,
+)
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     WorkflowDefinitionInvalidError,
@@ -87,7 +90,7 @@ class FakeExecutionRepo:
         if stored is None:
             if execution.version != 1:
                 msg = f"Cannot insert with version {execution.version}"
-                raise VersionConflictError(msg)
+                raise PersistenceVersionConflictError(msg)
         else:
             if execution.version == 1:
                 msg = f"Execution {execution.id!r} already exists"
@@ -97,7 +100,7 @@ class FakeExecutionRepo:
                     f"Version conflict: expected {stored.version + 1},"
                     f" got {execution.version}"
                 )
-                raise VersionConflictError(msg)
+                raise PersistenceVersionConflictError(msg)
         self._store[execution.id] = copy.deepcopy(execution)
 
     async def get(self, execution_id: str) -> WorkflowExecution | None:

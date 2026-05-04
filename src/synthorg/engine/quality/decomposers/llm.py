@@ -14,7 +14,7 @@ server-side (never taken from the model).
 
 import json
 from collections.abc import Mapping
-from typing import Any, Final, NoReturn
+from typing import Any, ClassVar, Final, NoReturn
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -22,6 +22,8 @@ from synthorg.budget.call_category import LLMCallCategory
 # annotation, so it must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.prompt_safety import (
@@ -89,8 +91,13 @@ _MIN_CRITERION_DESC_CHARS: Final[int] = 16
 _DECOMPOSER_TOOL_REQUIRED_KEYS: Final[frozenset[str]] = frozenset({"probes"})
 
 
-class LLMDecompositionError(RuntimeError):
+class LLMDecompositionError(DomainError):
     """Raised when the LLM decomposer cannot obtain a valid probe list."""
+
+    default_message: ClassVar[str] = "LLM decomposition failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
 
 def _decomposer_instructions(max_probes: int) -> str:

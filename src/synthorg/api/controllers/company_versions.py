@@ -16,6 +16,7 @@ from synthorg.api.pagination import (
     encode_repo_seek_meta,
 )
 from synthorg.core.company import Company
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.observability import get_logger
 from synthorg.observability.events.versioning import (
     VERSION_LISTED,
@@ -91,12 +92,8 @@ class CompanyVersionController(Controller):
                 entity_id=_ENTITY_ID,
                 version=version_num,
             )
-            return Response(
-                content=ApiResponse[SnapshotT](
-                    error=f"Version {version_num} not found",
-                ),
-                status_code=404,
-            )
+            msg = f"Version {version_num} not found"
+            raise NotFoundError(msg)
         return Response(
             content=ApiResponse[SnapshotT](data=version),
         )

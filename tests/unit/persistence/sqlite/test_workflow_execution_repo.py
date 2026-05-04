@@ -10,7 +10,7 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.core.persistence_errors import VersionConflictError
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
@@ -154,7 +154,7 @@ class TestVersionConflict:
         stale = WorkflowExecution.model_validate(
             {**exe.model_dump(mode="json"), "version": 3},
         )
-        with pytest.raises(VersionConflictError):
+        with pytest.raises(PersistenceVersionConflictError):
             await repo.save(stale)
 
     @pytest.mark.unit

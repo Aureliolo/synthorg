@@ -18,8 +18,8 @@ from synthorg.core.enums import (
 )
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    PersistenceVersionConflictError,
     QueryError,
-    VersionConflictError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.execution_models import (
@@ -161,7 +161,7 @@ class SQLiteWorkflowExecutionRepository:
 
         Raises:
             DuplicateRecordError: If inserting a duplicate ID.
-            VersionConflictError: If optimistic concurrency check fails.
+            PersistenceVersionConflictError: If optimistic concurrency check fails.
             QueryError: If the database operation fails.
         """
         if execution.version == 1:
@@ -284,7 +284,7 @@ WHERE id = ? AND version = ?""",
                         execution_id=execution.id,
                         error=msg,
                     )
-                    raise VersionConflictError(msg)
+                    raise PersistenceVersionConflictError(msg)
                 await self._db.commit()
             except sqlite3.Error as exc:
                 await self._db.rollback()

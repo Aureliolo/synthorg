@@ -9,7 +9,7 @@ catalog credentials.
 import asyncio
 import hmac
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State  # noqa: TC002
@@ -40,6 +40,8 @@ from synthorg.a2a.rpc_params import (
 from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_INBOUND_AUTH_FAILED,
@@ -612,8 +614,13 @@ def _extract_peer_name(
     return None
 
 
-class _A2AMethodError(Exception):
+class _A2AMethodError(DomainError):
     """Error raised by method handlers for JSON-RPC error responses."""
+
+    default_message: ClassVar[str] = "A2A method dispatch failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
     def __init__(
         self,

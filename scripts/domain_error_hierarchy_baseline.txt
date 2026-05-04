@@ -1,0 +1,12 @@
+# Frozen baseline of pre-existing plain-Exception class definitions in
+# src/synthorg/. Each line is `path:lineno:class_name` (POSIX path,
+# 1-indexed line) sorted in deterministic order.
+#
+# scripts/check_domain_error_hierarchy.py reads this file to suppress
+# violations at these exact entries. New violations NOT in this list
+# will fail the pre-push hook.
+#
+# Regenerate (rare; requires explicit user approval) with:
+#   uv run python scripts/check_domain_error_hierarchy.py --update-baseline
+#
+# Issue #1738.

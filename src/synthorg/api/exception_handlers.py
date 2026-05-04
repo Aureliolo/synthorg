@@ -31,11 +31,6 @@ from litestar.exceptions import (
 from synthorg.api.auth_response_discriminator import discriminate_unauthorized
 from synthorg.api.cursor import InvalidCursorError
 from synthorg.api.dto import ApiResponse, ErrorDetail, ProblemDetail
-from synthorg.backup.errors import (
-    BackupError,
-    BackupInProgressError,
-    BackupNotFoundError,
-)
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     MixedCurrencyAggregationError,
@@ -446,52 +441,6 @@ def handle_persistence_integrity_error(
     )
 
 
-def handle_backup_error(
-    request: Request[Any, Any, Any],
-    exc: BackupError,
-) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``BackupError`` subclasses to structured HTTP responses.
-
-    ``BackupNotFoundError`` and ``BackupInProgressError`` carry semantic
-    HTTP analogues (404 / 409); every other ``BackupError`` subtype
-    surfaces as a structured 5xx instead of falling through to
-    ``handle_unexpected`` and producing an unstructured generic 500.
-
-    The 4xx branches pass the exception's message through to the client
-    because ``BackupError`` instances raised by ``synthorg.backup`` carry
-    user-safe identifiers only (backup_id, the in-progress reason);
-    they do not embed filesystem paths, secrets, or internal state.
-    The 5xx branch scrubs the message via the standard server-error
-    convention (the original is logged server-side via ``_log_error``).
-    """
-    if isinstance(exc, BackupNotFoundError):
-        _log_error(request, exc, status=404)
-        return _build_response(
-            request,
-            detail=str(exc) or "Backup not found",
-            error_code=ErrorCode.RECORD_NOT_FOUND,
-            error_category=ErrorCategory.NOT_FOUND,
-            status_code=404,
-        )
-    if isinstance(exc, BackupInProgressError):
-        _log_error(request, exc, status=409)
-        return _build_response(
-            request,
-            detail=str(exc) or "Backup operation already in progress",
-            error_code=ErrorCode.RESOURCE_CONFLICT,
-            error_category=ErrorCategory.CONFLICT,
-            status_code=409,
-        )
-    _log_error(request, exc, status=500)
-    return _build_response(
-        request,
-        detail="Backup operation failed",
-        error_code=ErrorCode.INTERNAL_ERROR,
-        error_category=ErrorCategory.INTERNAL,
-        status_code=500,
-    )
-
-
 def _normalize_status_code(raw: object) -> int:
     """Coerce a raw ``status_code`` attribute to a valid HTTP error code.
 
@@ -857,7 +806,6 @@ _HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
     (IntegrationError, handle_domain_error),
     (ToolError, handle_domain_error),
     (DomainError, handle_domain_error),
-    (BackupError, handle_backup_error),
     (Exception, handle_unexpected),
 )
 

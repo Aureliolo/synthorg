@@ -68,7 +68,9 @@ _REQ_CONTENT_TYPE = "application/timestamp-query"
 _RESP_CONTENT_TYPE = "application/timestamp-reply"
 
 
-class TsaError(Exception):
+class TsaError(
+    Exception,
+):  # lint-allow: domain-error-hierarchy -- RFC 3161 client; obs internals stdlib-rooted
     """Base class for TSA client failures.
 
     Every subclass signals a specific failure mode so the audit

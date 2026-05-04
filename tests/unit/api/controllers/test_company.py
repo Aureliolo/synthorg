@@ -109,7 +109,7 @@ class TestCompanyControllerDbOverride:
                 side_effect=SettingNotFoundError("company/company_name"),
             )
             resp = client.get("/api/v1/company")
-            assert resp.status_code == 500
+            assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
             assert body["error"] is not None

@@ -27,11 +27,15 @@ logger = get_logger(__name__)
 _MIN_SAMPLES_PER_ARM = 2
 
 
-class InsufficientDataError(ValueError):
+class InsufficientDataError(
+    ValueError,
+):  # lint-allow: domain-error-hierarchy -- statistical precondition
     """Raised when either arm has fewer than two observations."""
 
 
-class ZeroVarianceError(ValueError):
+class ZeroVarianceError(
+    ValueError,
+):  # lint-allow: domain-error-hierarchy -- statistical precondition
     """Raised when the combined Welch statistics are undefined.
 
     The guard fires when ``se_sq <= 0`` (both arms flat, so the

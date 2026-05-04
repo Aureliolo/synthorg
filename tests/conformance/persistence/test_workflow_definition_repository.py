@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
-from synthorg.core.persistence_errors import VersionConflictError
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -201,7 +201,7 @@ class TestWorkflowDefinitionRepository:
             revision=5,
         )
 
-        with pytest.raises(VersionConflictError):
+        with pytest.raises(PersistenceVersionConflictError):
             await repo.save(stale)
 
     async def test_delete_workflow_definition(

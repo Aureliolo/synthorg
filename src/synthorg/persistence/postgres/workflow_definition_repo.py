@@ -14,7 +14,10 @@ from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from synthorg.core.enums import WorkflowType
-from synthorg.core.persistence_errors import QueryError, VersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -189,7 +192,7 @@ class PostgresWorkflowDefinitionRepository:
                         definition_id=definition.id,
                         error=msg,
                     )
-                    raise VersionConflictError(msg)
+                    raise PersistenceVersionConflictError(msg)
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to update workflow definition {definition.id!r}"
@@ -267,7 +270,7 @@ class PostgresWorkflowDefinitionRepository:
 
         Raises:
             QueryError: If the database operation fails.
-            VersionConflictError: If optimistic concurrency check fails.
+            PersistenceVersionConflictError: If optimistic concurrency check fails.
         """
         self._require_valid_revision(definition)
 
@@ -355,7 +358,7 @@ class PostgresWorkflowDefinitionRepository:
                         definition_id=definition.id,
                         error=msg,
                     )
-                    raise VersionConflictError(msg)
+                    raise PersistenceVersionConflictError(msg)
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save workflow definition {definition.id!r}"

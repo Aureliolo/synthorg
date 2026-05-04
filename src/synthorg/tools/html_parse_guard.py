@@ -70,7 +70,9 @@ _HTML_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
 )
 
 
-class XXEDetectedError(ValueError):
+class XXEDetectedError(
+    ValueError,
+):  # lint-allow: domain-error-hierarchy -- caught by HTMLParseGuard.sanitize
     """Pre-parse detection of an XXE payload.
 
     Subclass of ``ValueError`` so the ``except Exception`` branch in

@@ -10,10 +10,11 @@ should override ``is_retryable = True`` explicitly.
 
 from typing import ClassVar
 
-from synthorg.core.domain_errors import ConflictError
+from synthorg.core.domain_errors import ConflictError, DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
-class HRError(Exception):
+class HRError(DomainError):
     """Base error for all HR operations.
 
     ``is_retryable`` defaults to ``False`` so the provider-retry layer
@@ -22,6 +23,10 @@ class HRError(Exception):
     """
 
     is_retryable: bool = False
+    default_message: ClassVar[str] = "HR operation failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
 
 # ── Hiring ────────────────────────────────────────────────────────
@@ -41,6 +46,11 @@ class HiringRejectedError(HiringError):
 
 class InvalidCandidateError(HiringError):
     """Candidate card is invalid or does not exist on the request."""
+
+    default_message: ClassVar[str] = "Invalid candidate card"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
 
 
 # ── Firing / Offboarding ─────────────────────────────────────────
@@ -79,9 +89,19 @@ class AgentRegistryError(HRError):
 class AgentNotFoundError(AgentRegistryError):
     """Agent not found in the registry."""
 
+    default_message: ClassVar[str] = "Agent not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404
+
 
 class AgentAlreadyRegisteredError(AgentRegistryError):
     """Agent is already registered."""
+
+    default_message: ClassVar[str] = "Agent already registered"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409
 
 
 # ── Performance ──────────────────────────────────────────────────
@@ -104,6 +124,11 @@ class PromotionError(HRError):
 
 class PromotionCooldownError(PromotionError):
     """Promotion is blocked by the cooldown period."""
+
+    default_message: ClassVar[str] = "Promotion blocked by cooldown"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409
 
 
 class PromotionApprovalRequiredError(PromotionError):
@@ -141,6 +166,11 @@ class PersonalityError(HRError):
 class PersonalityNotFoundError(PersonalityError):
     """Personality preset not found in the catalogue."""
 
+    default_message: ClassVar[str] = "Personality preset not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404
+
 
 # ── Training ────────────────────────────────────────────────────
 
@@ -151,3 +181,8 @@ class TrainingError(HRError):
 
 class TrainingSessionNotFoundError(TrainingError):
     """Training session not found in the session store."""
+
+    default_message: ClassVar[str] = "Training session not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404

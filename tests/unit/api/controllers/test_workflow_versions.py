@@ -241,14 +241,17 @@ class TestDiff:
         assert "name" in meta_fields
 
     @pytest.mark.unit
-    def test_diff_same_version_400(self, test_client: TestClient[Any]) -> None:
+    def test_diff_same_version_returns_validation_error(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
         wf = _create_workflow(test_client)
         resp = test_client.get(
             f"/api/v1/workflows/{wf['id']}/diff",
             params={"from_version": 1, "to_version": 1},
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
 
     @pytest.mark.unit
     def test_diff_version_not_found(self, test_client: TestClient[Any]) -> None:
