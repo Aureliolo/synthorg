@@ -393,6 +393,23 @@ class ModelMatcherConfig(BaseModel):
     headroom_ratio_cap: float = Field(default=2.0, ge=1.0, le=100.0)
     balanced_partial_credit: float = Field(default=0.125, ge=0.0, le=1.0)
 
+    @classmethod
+    def from_bridge_config(cls, bridge: object) -> ModelMatcherConfig:
+        """Project the matcher subset out of an ``EngineBridgeConfig``.
+
+        See :meth:`RoutingScorerConfig.from_bridge_config` for the
+        rationale behind the ``object``-typed parameter (avoids an
+        engine -> settings import cycle while keeping field access
+        statically type-checked at the call site).
+        """
+        return cls(
+            tier_base_score=bridge.matcher_tier_base_score,  # type: ignore[attr-defined]
+            headroom_max_bonus=bridge.matcher_headroom_max_bonus,  # type: ignore[attr-defined]
+            priority_max_bonus=bridge.matcher_priority_max_bonus,  # type: ignore[attr-defined]
+            headroom_ratio_cap=bridge.matcher_headroom_ratio_cap,  # type: ignore[attr-defined]
+            balanced_partial_credit=bridge.matcher_balanced_partial_credit,  # type: ignore[attr-defined]
+        )
+
 
 _DEFAULT_MATCHER_CONFIG = ModelMatcherConfig()
 

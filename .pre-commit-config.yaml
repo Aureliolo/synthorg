@@ -14,7 +14,7 @@ ci:
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
   #     domain-error-hierarchy / list-pagination / dead-api-endpoints /
-  #     dual-backend-test-parity / schema-drift:
+  #     dual-backend-test-parity / schema-drift / no-magic-numbers:
   #     scoped gates that need ``uv`` + repo source -- redundant given
   #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
   #   - check-push-rebased / check-single-migration-per-pr /

@@ -30,7 +30,7 @@ _r.register(
     )
 )
 
-# ── Default scored feedback shape (#1739) ───────────────────────
+# ── Default scored feedback shape ───────────────────────────────
 # Controls the synthetic feedback profile attached to a default
 # ``AIClient`` when none is provided. ``passing_score`` is the
 # midpoint at which an interaction is considered acceptable;

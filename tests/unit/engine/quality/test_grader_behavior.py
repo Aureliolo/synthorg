@@ -4,7 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.engine.quality.graders.heuristic import HeuristicRubricGrader
+from synthorg.engine.quality.graders.heuristic import (
+    HeuristicGraderConfig,
+    HeuristicRubricGrader,
+)
 from synthorg.engine.quality.graders.llm import LLMRubricGrader
 from synthorg.engine.quality.verification import (
     AtomicProbe,
@@ -139,3 +142,70 @@ class TestLLMGraderBehavior:
             model_id="test-medium-001",
         )
         assert grader.name == "llm"
+
+
+@pytest.mark.unit
+class TestHeuristicGraderConfigInjection:
+    """Verify operator-tunable thresholds flow through the grader."""
+
+    def test_default_config_matches_historical_values(self) -> None:
+        config = HeuristicGraderConfig()
+        assert config.pass_threshold == pytest.approx(0.5)
+        assert config.pass_grade == pytest.approx(0.8)
+        assert config.fail_grade == pytest.approx(0.3)
+        assert config.confidence_ceiling == pytest.approx(0.9)
+        assert config.confidence_bias == pytest.approx(0.1)
+
+    async def test_custom_pass_grade_changes_per_criterion_score(self) -> None:
+        """Changing pass_grade changes the per-criterion score on PASS."""
+        config = HeuristicGraderConfig(pass_grade=0.95, fail_grade=0.05)
+        grader = HeuristicRubricGrader(config=config)
+        rubric = _rubric()
+        artifact = _artifact("Feature complete")
+        probes = (_probe("Feature complete"),)
+        result = await grader.grade(
+            artifact=artifact,
+            rubric=rubric,
+            probes=probes,
+            generator_agent_id="gen",
+            evaluator_agent_id="eval",
+        )
+        assert result.verdict == VerificationVerdict.PASS
+        assert result.per_criterion_grades["quality"] == pytest.approx(0.95)
+
+    async def test_custom_pass_threshold_inverts_verdict(self) -> None:
+        """Lifting pass_threshold above the probe ratio flips PASS to FAIL."""
+        config = HeuristicGraderConfig(
+            pass_threshold=0.99, confidence_bias=0.5, confidence_ceiling=1.0
+        )
+        grader = HeuristicRubricGrader(config=config)
+        rubric = _rubric()
+        artifact = _artifact("Feature complete")
+        # One matching probe, one not -> ratio = 0.5, below 0.99.
+        probes = (_probe("Feature complete"), _probe("missing thing"))
+        result = await grader.grade(
+            artifact=artifact,
+            rubric=rubric,
+            probes=probes,
+            generator_agent_id="gen",
+            evaluator_agent_id="eval",
+        )
+        assert result.verdict == VerificationVerdict.FAIL
+
+    def test_from_bridge_config_extracts_quality_subset(self) -> None:
+        """Bridge-config projection wires every heuristic grader field."""
+        from synthorg.settings.bridge_configs import EngineBridgeConfig
+
+        bridge = EngineBridgeConfig(
+            quality_heuristic_pass_threshold=0.6,
+            quality_heuristic_pass_grade=0.85,
+            quality_heuristic_fail_grade=0.25,
+            quality_heuristic_confidence_ceiling=0.95,
+            quality_heuristic_confidence_bias=0.05,
+        )
+        config = HeuristicGraderConfig.from_bridge_config(bridge)
+        assert config.pass_threshold == pytest.approx(0.6)
+        assert config.pass_grade == pytest.approx(0.85)
+        assert config.fail_grade == pytest.approx(0.25)
+        assert config.confidence_ceiling == pytest.approx(0.95)
+        assert config.confidence_bias == pytest.approx(0.05)

@@ -9,8 +9,6 @@
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_no_magic_numbers.py --update
-#
-# Issue #1739 (no-hardcoded-values rule).
 src/synthorg/a2a/connection_types/a2a_peer.py:15:30
 src/synthorg/a2a/gateway.py:623:27
 src/synthorg/a2a/gateway.py:73:30
@@ -35,8 +33,6 @@ src/synthorg/api/auth/token_size.py:30:29
 src/synthorg/api/auth/token_size.py:38:29
 src/synthorg/api/auth_response_discriminator.py:29:30
 src/synthorg/api/boundary.py:46:24
-src/synthorg/api/bus_bridge.py:38:38
-src/synthorg/api/bus_bridge.py:40:44
 src/synthorg/api/controllers/activities.py:341:29
 src/synthorg/api/controllers/activities.py:45:24
 src/synthorg/api/controllers/agent_identity_versions.py:111:29
@@ -53,7 +49,7 @@ src/synthorg/api/controllers/audit.py:39:19
 src/synthorg/api/controllers/backup.py:187:29
 src/synthorg/api/controllers/budget.py:298:29
 src/synthorg/api/controllers/budget_config_versions.py:45:29
-src/synthorg/api/controllers/clients.py:197:29
+src/synthorg/api/controllers/clients.py:198:29
 src/synthorg/api/controllers/company_versions.py:45:29
 src/synthorg/api/controllers/connections.py:156:29
 src/synthorg/api/controllers/connections.py:65:20
@@ -134,25 +130,12 @@ src/synthorg/api/etag.py:97:16
 src/synthorg/api/etag.py:98:26
 src/synthorg/api/exception_handlers.py:75:38
 src/synthorg/api/exception_handlers.py:79:30
-src/synthorg/api/lifecycle.py:66:39
-src/synthorg/api/lifecycle.py:67:45
-src/synthorg/api/lifecycle.py:68:47
-src/synthorg/api/lifecycle.py:69:34
-src/synthorg/api/lifecycle.py:70:47
-src/synthorg/api/lifecycle.py:71:34
-src/synthorg/api/lifecycle.py:72:45
-src/synthorg/api/lifecycle.py:73:39
-src/synthorg/api/lifecycle.py:74:39
-src/synthorg/api/lifecycle.py:76:32
 src/synthorg/api/lifecycle_helpers.py:207:55
 src/synthorg/api/lifecycle_helpers.py:208:63
 src/synthorg/api/lifecycle_helpers.py:272:32
 src/synthorg/api/lifecycle_helpers.py:355:46
 src/synthorg/api/openapi.py:297:39
 src/synthorg/api/path_params.py:64:24
-src/synthorg/api/rate_limits/in_memory.py:29:35
-src/synthorg/api/rate_limits/in_memory.py:30:38
-src/synthorg/api/rate_limits/in_memory_inflight.py:33:35
 src/synthorg/api/rate_limits/inflight_middleware.py:41:29
 src/synthorg/api/services/idempotency_service.py:47:41
 src/synthorg/api/services/idempotency_service.py:48:49
@@ -226,7 +209,6 @@ src/synthorg/communication/event_stream/stream.py:46:39
 src/synthorg/communication/event_stream/stream.py:47:36
 src/synthorg/communication/event_stream/stream.py:48:40
 src/synthorg/communication/loop_prevention/dedup.py:38:30
-src/synthorg/communication/loop_prevention/rate_limit.py:17:26
 src/synthorg/communication/meeting/conflict_detection.py:35:39
 src/synthorg/communication/meeting/conflict_detection.py:58:35
 src/synthorg/communication/meeting/frequency.py:11:33
@@ -238,7 +220,6 @@ src/synthorg/communication/meeting/scheduler.py:58:37
 src/synthorg/config/rate_limits.py:20:22
 src/synthorg/constants.py:3:28
 src/synthorg/core/auth/config.py:9:20
-src/synthorg/core/concurrency/cas_retry.py:30:36
 src/synthorg/core/error_taxonomy.py:138:29
 src/synthorg/core/personality.py:25:19
 src/synthorg/core/personality.py:26:24
@@ -511,14 +492,13 @@ src/synthorg/memory/consolidation/simple_strategy.py:24:27
 src/synthorg/memory/consolidation/simple_strategy.py:26:27
 src/synthorg/memory/consolidation/simple_strategy.py:28:23
 src/synthorg/memory/consolidation/two_tier_strategy.py:39:23
-src/synthorg/memory/embedding/fine_tune.py:139:45
-src/synthorg/memory/embedding/fine_tune.py:179:30
-src/synthorg/memory/embedding/fine_tune.py:282:17
-src/synthorg/memory/embedding/fine_tune.py:406:18
-src/synthorg/memory/embedding/fine_tune.py:407:27
-src/synthorg/memory/embedding/fine_tune.py:408:25
-src/synthorg/memory/embedding/fine_tune.py:409:22
-src/synthorg/memory/embedding/fine_tune.py:642:13
+src/synthorg/memory/embedding/fine_tune.py:182:30
+src/synthorg/memory/embedding/fine_tune.py:285:17
+src/synthorg/memory/embedding/fine_tune.py:409:18
+src/synthorg/memory/embedding/fine_tune.py:410:27
+src/synthorg/memory/embedding/fine_tune.py:411:25
+src/synthorg/memory/embedding/fine_tune.py:412:22
+src/synthorg/memory/embedding/fine_tune.py:645:13
 src/synthorg/memory/embedding/fine_tune_runner.py:42:35
 src/synthorg/memory/embedding/fine_tune_runner.py:45:28
 src/synthorg/memory/embedding/fine_tune_runner.py:46:36
@@ -887,5 +867,3 @@ src/synthorg/tools/web/http_request.py:64:34
 src/synthorg/tools/web/http_request.py:65:33
 src/synthorg/tools/web/web_search.py:55:27
 src/synthorg/workers/__main__.py:48:24
-src/synthorg/workers/dispatcher.py:52:36
-src/synthorg/workers/dispatcher.py:67:46

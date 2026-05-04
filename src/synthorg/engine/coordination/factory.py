@@ -12,7 +12,7 @@ from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.parallel import ParallelExecutor
-from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
 from synthorg.observability import get_logger
@@ -168,6 +168,7 @@ def build_coordinator(  # noqa: PLR0913
     workspace_config: WorkspaceIsolationConfig | None = None,
     shutdown_manager: ShutdownManager | None = None,
     performance_tracker: PerformanceTracker | None = None,
+    routing_scorer_config: RoutingScorerConfig | None = None,
 ) -> MultiAgentCoordinator:
     """Build a fully wired :class:`MultiAgentCoordinator`.
 
@@ -176,7 +177,11 @@ def build_coordinator(  # noqa: PLR0913
         2. ``DecompositionStrategy`` -- LLM if provider+model provided,
            otherwise a placeholder that raises at decompose-time
         3. ``DecompositionService(strategy, classifier)``
-        4. ``AgentTaskScorer(min_score=task_assignment_config.min_score)``
+        4. ``AgentTaskScorer`` -- instantiated with
+           *routing_scorer_config* (operator-tunable weights resolved
+           from ``EngineBridgeConfig`` via
+           :meth:`RoutingScorerConfig.from_bridge_config`) if provided,
+           else with the legacy ``min_score`` override only
         5. ``TopologySelector(config.auto_topology_rules)``
         6. ``TaskRoutingService(scorer, topology_selector)``
         7. ``ParallelExecutor(engine=engine)``
@@ -186,7 +191,8 @@ def build_coordinator(  # noqa: PLR0913
     Args:
         config: Company-level coordination section config.
         engine: Agent execution engine (for parallel executor).
-        task_assignment_config: Task assignment config (for min_score).
+        task_assignment_config: Task assignment config (for min_score
+            fallback when ``routing_scorer_config`` is not provided).
         provider: Optional LLM provider for decomposition.
         decomposition_model: Optional model ID for decomposition.
         task_engine: Optional task engine for parent status updates.
@@ -195,6 +201,13 @@ def build_coordinator(  # noqa: PLR0913
         shutdown_manager: Optional shutdown manager for the executor.
         performance_tracker: Optional tracker for recording
             per-agent coordination contributions.
+        routing_scorer_config: Operator-tunable scorer weights. Pass
+            ``RoutingScorerConfig.from_bridge_config(bridge)`` after
+            resolving an ``EngineBridgeConfig`` at startup so changes
+            via ``/settings`` flow into the routing scorer. ``None``
+            falls back to scorer defaults that mirror the historical
+            hardcoded values; ``task_assignment_config.min_score`` is
+            still honoured as a min-score override in that case.
 
     Returns:
         A fully constructed ``MultiAgentCoordinator``.
@@ -203,7 +216,10 @@ def build_coordinator(  # noqa: PLR0913
     strategy = _build_decomposition_strategy(provider, decomposition_model)
     decomposition_service = DecompositionService(strategy, classifier)
 
-    scorer = AgentTaskScorer(min_score=task_assignment_config.min_score)
+    if routing_scorer_config is None:
+        scorer = AgentTaskScorer(min_score=task_assignment_config.min_score)
+    else:
+        scorer = AgentTaskScorer(config=routing_scorer_config)
     topology_selector = TopologySelector(config.auto_topology_rules)
     routing_service = TaskRoutingService(scorer, topology_selector)
 

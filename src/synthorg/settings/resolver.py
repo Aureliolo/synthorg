@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         ApiBridgeConfig,
         ClientBridgeConfig,
         CommunicationBridgeConfig,
+        CoordinationBridgeConfig,
         EngineBridgeConfig,
         IntegrationsBridgeConfig,
         MemoryBridgeConfig,
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
         ObservabilityBridgeConfig,
         SettingsDispatcherBridgeConfig,
         ToolsBridgeConfig,
+        WorkersBridgeConfig,
     )
     from synthorg.settings.service import SettingsService
 
@@ -824,9 +826,52 @@ class ConfigResolver:
                 ("max_audit_records_per_query", "int"),
                 ("max_metrics_per_query", "int"),
                 ("max_meeting_context_keys", "int"),
+                ("rate_limit_gc_every_n_acquires", "int"),
+                ("rate_limit_gc_min_horizon_seconds", "int"),
+                ("rate_limit_inflight_gc_every_n_acquires", "int"),
+                ("rate_limit_inflight_min_retry_after_seconds", "int"),
+                ("lifecycle_task_engine_shutdown_seconds", "float"),
+                ("lifecycle_meeting_scheduler_shutdown_seconds", "float"),
+                ("lifecycle_performance_tracker_shutdown_seconds", "float"),
+                ("lifecycle_backup_shutdown_seconds", "float"),
+                ("lifecycle_settings_dispatcher_shutdown_seconds", "float"),
+                ("lifecycle_bridge_shutdown_seconds", "float"),
+                ("lifecycle_distributed_queue_shutdown_seconds", "float"),
+                ("lifecycle_message_bus_shutdown_seconds", "float"),
+                ("lifecycle_persistence_shutdown_seconds", "float"),
+                ("lifecycle_approval_timeout_shutdown_seconds", "float"),
+                ("lifecycle_drain_timeout_seconds", "float"),
             ),
         )
         return ApiBridgeConfig(**values)
+
+    async def get_coordination_bridge_config(self) -> CoordinationBridgeConfig:
+        """Assemble ``CoordinationBridgeConfig`` from bridged coordination settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            CoordinationBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "coordination",
+            (("cas_max_retries", "int"),),
+        )
+        return CoordinationBridgeConfig(**values)
+
+    async def get_workers_bridge_config(self) -> WorkersBridgeConfig:
+        """Assemble ``WorkersBridgeConfig`` from bridged workers settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            WorkersBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "workers",
+            (
+                ("dispatcher_publish_max_attempts", "int"),
+                ("dispatcher_publish_backoff_base_seconds", "float"),
+                ("dispatcher_publish_backoff_cap_seconds", "float"),
+            ),
+        )
+        return WorkersBridgeConfig(**values)
 
     async def get_communication_bridge_config(self) -> CommunicationBridgeConfig:
         """Assemble ``CommunicationBridgeConfig`` from bridged settings."""
@@ -908,11 +953,28 @@ class ConfigResolver:
 
     async def get_memory_bridge_config(self) -> MemoryBridgeConfig:
         """Assemble ``MemoryBridgeConfig`` from bridged memory settings."""
+        import json  # noqa: PLC0415
+
         from synthorg.settings.bridge_configs import MemoryBridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
             "memory",
-            (("consolidation_enforce_batch_size", "int"),),
+            (
+                ("consolidation_enforce_batch_size", "int"),
+                ("fine_tune_chunk_size", "int"),
+            ),
+        )
+        raw_table = await self.get_str("memory", "fine_tune_vram_batch_table")
+        try:
+            parsed = json.loads(raw_table)
+        except json.JSONDecodeError as exc:
+            msg = (
+                "memory.fine_tune_vram_batch_table is not valid JSON; "
+                f"got {raw_table!r}"
+            )
+            raise ValueError(msg) from exc
+        values["fine_tune_vram_batch_table"] = tuple(
+            (float(row[0]), int(row[1])) for row in parsed
         )
         return MemoryBridgeConfig(**values)
 

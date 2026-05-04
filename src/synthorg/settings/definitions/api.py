@@ -747,3 +747,283 @@ _r.register(
         max_value=604_800.0,
     )
 )
+
+# ── Sliding-window rate-limiter GC tuning ───────────────────────
+# Fallback module constants in api/rate_limits/in_memory*.py mirror
+# these defaults so a limiter constructed without a settings service
+# (test harness, anonymous boot path) still observes the documented
+# GC cadence; full bridge-config wiring is tracked as follow-up work.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="rate_limit_gc_every_n_acquires",
+        type=SettingType.INTEGER,
+        default="1024",
+        description=(
+            "Sliding-window limiter: number of acquires between"
+            " cold-bucket GC sweeps. Higher values reduce sweep"
+            " frequency at the cost of slower stale-bucket eviction."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        min_value=64,
+        max_value=65_536,
+        yaml_path="api.rate_limit.gc_every_n_acquires",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="rate_limit_gc_min_horizon_seconds",
+        type=SettingType.INTEGER,
+        default="60",
+        description=(
+            "Sliding-window limiter: minimum horizon (seconds) for"
+            " evicting cold buckets. Caps the window-derived eviction"
+            " floor so fast-rotating buckets are not held forever."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=3600,
+        yaml_path="api.rate_limit.gc_min_horizon_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="rate_limit_inflight_gc_every_n_acquires",
+        type=SettingType.INTEGER,
+        default="1024",
+        description=(
+            "Inflight (per-op concurrency) limiter: number of acquires"
+            " between cold-bucket GC sweeps."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        min_value=64,
+        max_value=65_536,
+        yaml_path="api.rate_limit.inflight_gc_every_n_acquires",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="rate_limit_inflight_min_retry_after_seconds",
+        type=SettingType.INTEGER,
+        default="1",
+        description=(
+            "Inflight (per-op concurrency) limiter: floor on the"
+            " ``Retry-After`` header value emitted on 429 responses."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=300,
+        yaml_path="api.rate_limit.inflight_min_retry_after_seconds",
+    )
+)
+
+# ── Lifecycle shutdown stage budgets ────────────────────────────
+# Per-stage soft deadlines for the graceful shutdown sequence.
+# Fallback module constants in api/lifecycle.py mirror these defaults.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_task_engine_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="8.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the task engine"
+            " stop step. Beyond this, in-flight tasks are cancelled."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=120.0,
+        yaml_path="api.lifecycle.task_engine_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_meeting_scheduler_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="2.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the meeting scheduler stop step."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="api.lifecycle.meeting_scheduler_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_performance_tracker_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="2.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the performance tracker stop step."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="api.lifecycle.performance_tracker_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_backup_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="5.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the backup service"
+            " stop step. Allows in-flight archive flushes to complete."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="api.lifecycle.backup_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_settings_dispatcher_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="2.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the settings dispatcher stop step."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="api.lifecycle.settings_dispatcher_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_bridge_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="2.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the bus / webhook"
+            " bridge stop step (per bridge)."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="api.lifecycle.bridge_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_distributed_queue_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="3.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the JetStream"
+            " distributed queue stop step."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="api.lifecycle.distributed_queue_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_message_bus_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="3.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the in-process"
+            " message bus stop step."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="api.lifecycle.message_bus_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_persistence_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="5.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the persistence"
+            " backend stop step (connection pool drain + checkpoint)."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=120.0,
+        yaml_path="api.lifecycle.persistence_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_approval_timeout_shutdown_seconds",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "Lifecycle shutdown: soft deadline for the approval"
+            " timeout scheduler stop step."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="api.lifecycle.approval_timeout_shutdown_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_drain_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="25.0",
+        description=(
+            "Lifecycle shutdown: hard deadline on the cumulative"
+            " stop sequence. Acts as the outer ``asyncio.wait_for``"
+            " budget covering every per-stage step."
+        ),
+        group="Lifecycle Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=300.0,
+        yaml_path="api.lifecycle.drain_timeout_seconds",
+    )
+)

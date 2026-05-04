@@ -189,3 +189,28 @@ _r.register(
         level=SettingLevel.ADVANCED,
     )
 )
+
+# ── CAS optimistic-concurrency retry tuning ─────────────────────
+# Fallback module constant in core/concurrency/cas_retry.py mirrors
+# this default so a handler constructed without an explicit override
+# observes the documented attempt budget.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="cas_max_retries",
+        type=SettingType.INTEGER,
+        default="2",
+        description=(
+            "Compare-and-set retry budget for optimistic concurrency"
+            " on shared mutation surfaces (departments, approval"
+            " transitions). Total attempts including the first call;"
+            " ``2`` means one retry."
+        ),
+        group="Concurrency",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=10,
+        yaml_path="coordination.cas.max_retries",
+    )
+)

@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 V = TypeVar("V")
 
-_DEFAULT_MAX_ATTEMPTS: Final[int] = 2
+_DEFAULT_MAX_ATTEMPTS: Final[int] = 2  # lint-allow: magic-numbers -- bootstrap
 
 
 class CASRetryHandler:

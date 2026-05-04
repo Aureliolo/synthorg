@@ -136,6 +136,7 @@ def build_grader(
     *,
     provider: CompletionProvider | None = None,
     tier_resolver: TierResolver | None = None,
+    heuristic_grader_config: object = None,
 ) -> RubricGrader:
     """Build a rubric grader from config.
 
@@ -144,6 +145,10 @@ def build_grader(
         provider: Required for ``GraderVariant.LLM``; ignored otherwise.
         tier_resolver: Maps ``config.grader_model_tier`` to a concrete
             model identifier.  Required for ``GraderVariant.LLM``.
+        heuristic_grader_config: Optional :class:`HeuristicGraderConfig`
+            with operator-tunable thresholds resolved from
+            ``EngineBridgeConfig``. ``None`` falls back to grader
+            defaults that mirror the historical hardcoded values.
 
     Returns:
         A ``RubricGrader`` instance.
@@ -153,7 +158,7 @@ def build_grader(
             requested without ``provider`` and ``tier_resolver``.
     """
     if config.grader == GraderVariant.HEURISTIC:
-        return HeuristicRubricGrader()
+        return HeuristicRubricGrader(config=heuristic_grader_config)  # type: ignore[arg-type]
     if config.grader == GraderVariant.LLM:
         if provider is None or tier_resolver is None:
             logger.error(

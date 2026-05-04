@@ -1,5 +1,6 @@
 """Client simulation CRUD endpoints at /clients."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -291,9 +292,16 @@ class ClientController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
+        # Profile lookup and bridge-config resolution are independent;
+        # run them in parallel so config resolution does not bottleneck
+        # update latency. ``KeyError`` from the profile fetch is wrapped
+        # in an ``ExceptionGroup`` by ``TaskGroup``; ``except*`` unpacks it
+        # back into the same NotFoundError surface as the legacy path.
         try:
-            current = await sim_state.pool.get_profile(client_id)
-        except KeyError as exc:
+            async with asyncio.TaskGroup() as tg:
+                profile_task = tg.create_task(sim_state.pool.get_profile(client_id))
+                config_task = tg.create_task(_resolve_client_bridge_config(app_state))
+        except* KeyError as exc_group:
             msg = f"Client {client_id!r} not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -301,11 +309,12 @@ class ClientController(Controller):
                 client_id=client_id,
                 reason=msg,
             )
-            raise NotFoundError(msg) from exc
+            raise NotFoundError(msg) from exc_group.exceptions[0]
+        current = profile_task.result()
+        client_config = config_task.result()
 
         updates = data.model_dump(exclude_none=True)
         updated = current.model_copy(update=updates)
-        client_config = await _resolve_client_bridge_config(app_state)
         new_client = _build_default_client(updated, client_config)
         await sim_state.pool.add(profile=updated, client=new_client)
         _publish_client_event(request, WsEventType.CLIENT_UPDATED, updated)

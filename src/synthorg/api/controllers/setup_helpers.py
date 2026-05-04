@@ -443,6 +443,7 @@ async def auto_create_template_agents(
     settings_svc: SettingsService,
 ) -> tuple[SetupAgentSummary, ...]:
     """Expand template agents, match models, persist, and return summaries."""
+    from synthorg.templates.model_matcher import ModelMatcherConfig  # noqa: PLC0415
     from synthorg.templates.preset_service import (  # noqa: PLC0415
         fetch_custom_presets_map,
     )
@@ -455,6 +456,11 @@ async def auto_create_template_agents(
         prov_task = tg.create_task(
             app_state.provider_management.list_providers(),
         )
+        bridge_task = (
+            tg.create_task(app_state.config_resolver.get_engine_bridge_config())
+            if app_state.has_config_resolver
+            else None
+        )
     locales = loc_task.result()
     custom_presets = preset_task.result()
     agents = expand_template_agents(
@@ -464,7 +470,12 @@ async def auto_create_template_agents(
     )
     providers = prov_task.result()
     _validate_tier_coverage(providers)
-    agents = match_and_assign_models(agents, providers)
+    matcher_config = (
+        ModelMatcherConfig.from_bridge_config(bridge_task.result())
+        if bridge_task is not None
+        else None
+    )
+    agents = match_and_assign_models(agents, providers, matcher_config)
 
     async with AGENT_LOCK:
         await settings_svc.set(

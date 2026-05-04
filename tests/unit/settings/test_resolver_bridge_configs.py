@@ -108,6 +108,21 @@ _HAPPY_CASES: tuple[
             ("api", "max_audit_records_per_query"): "10000",
             ("api", "max_metrics_per_query"): "10000",
             ("api", "max_meeting_context_keys"): "20",
+            ("api", "rate_limit_gc_every_n_acquires"): "1024",
+            ("api", "rate_limit_gc_min_horizon_seconds"): "60",
+            ("api", "rate_limit_inflight_gc_every_n_acquires"): "1024",
+            ("api", "rate_limit_inflight_min_retry_after_seconds"): "1",
+            ("api", "lifecycle_task_engine_shutdown_seconds"): "8.0",
+            ("api", "lifecycle_meeting_scheduler_shutdown_seconds"): "2.0",
+            ("api", "lifecycle_performance_tracker_shutdown_seconds"): "2.0",
+            ("api", "lifecycle_backup_shutdown_seconds"): "5.0",
+            ("api", "lifecycle_settings_dispatcher_shutdown_seconds"): "2.0",
+            ("api", "lifecycle_bridge_shutdown_seconds"): "2.0",
+            ("api", "lifecycle_distributed_queue_shutdown_seconds"): "3.0",
+            ("api", "lifecycle_message_bus_shutdown_seconds"): "3.0",
+            ("api", "lifecycle_persistence_shutdown_seconds"): "5.0",
+            ("api", "lifecycle_approval_timeout_shutdown_seconds"): "1.0",
+            ("api", "lifecycle_drain_timeout_seconds"): "25.0",
         },
         {
             "ticket_cleanup_interval_seconds": 60.0,
@@ -122,6 +137,8 @@ _HAPPY_CASES: tuple[
             "max_lifecycle_events_per_query": 10_000,
             "max_audit_records_per_query": 10_000,
             "max_metrics_per_query": 10_000,
+            "rate_limit_gc_every_n_acquires": 1024,
+            "lifecycle_drain_timeout_seconds": 25.0,
             "max_meeting_context_keys": 20,
         },
     ),
@@ -192,8 +209,22 @@ _HAPPY_CASES: tuple[
     (
         "get_memory_bridge_config",
         MemoryBridgeConfig,
-        {("memory", "consolidation_enforce_batch_size"): "2500"},
-        {"consolidation_enforce_batch_size": 2500},
+        {
+            ("memory", "consolidation_enforce_batch_size"): "2500",
+            ("memory", "fine_tune_chunk_size"): "512",
+            ("memory", "fine_tune_vram_batch_table"): (
+                "[[40.0, 128], [16.0, 64], [8.0, 32]]"
+            ),
+        },
+        {
+            "consolidation_enforce_batch_size": 2500,
+            "fine_tune_chunk_size": 512,
+            "fine_tune_vram_batch_table": (
+                (40.0, 128),
+                (16.0, 64),
+                (8.0, 32),
+            ),
+        },
     ),
     (
         "get_integrations_bridge_config",
@@ -359,6 +390,21 @@ async def test_get_api_bridge_config_rejects_out_of_range(
             ("api", "max_audit_records_per_query"): "10000",
             ("api", "max_metrics_per_query"): "10000",
             ("api", "max_meeting_context_keys"): "20",
+            ("api", "rate_limit_gc_every_n_acquires"): "1024",
+            ("api", "rate_limit_gc_min_horizon_seconds"): "60",
+            ("api", "rate_limit_inflight_gc_every_n_acquires"): "1024",
+            ("api", "rate_limit_inflight_min_retry_after_seconds"): "1",
+            ("api", "lifecycle_task_engine_shutdown_seconds"): "8.0",
+            ("api", "lifecycle_meeting_scheduler_shutdown_seconds"): "2.0",
+            ("api", "lifecycle_performance_tracker_shutdown_seconds"): "2.0",
+            ("api", "lifecycle_backup_shutdown_seconds"): "5.0",
+            ("api", "lifecycle_settings_dispatcher_shutdown_seconds"): "2.0",
+            ("api", "lifecycle_bridge_shutdown_seconds"): "2.0",
+            ("api", "lifecycle_distributed_queue_shutdown_seconds"): "3.0",
+            ("api", "lifecycle_message_bus_shutdown_seconds"): "3.0",
+            ("api", "lifecycle_persistence_shutdown_seconds"): "5.0",
+            ("api", "lifecycle_approval_timeout_shutdown_seconds"): "1.0",
+            ("api", "lifecycle_drain_timeout_seconds"): "25.0",
         }
     )
     with pytest.raises(ValidationError):

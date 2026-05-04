@@ -30,13 +30,19 @@ The following bare literals are NOT violations:
 
 - ``0``, ``1``, ``-1``, ``0.0``, ``1.0``, ``-1.0`` -- sentinel /
   off-by-one / boolean-ish values.
-- HTTP status codes ``100..599`` -- only when the literal is the value
-  of a ``status_code=N`` keyword (or appears in a function signature
-  whose default is named ``status_code`` / ``status``).
-- Powers of 2 in ``1024..65536`` -- only when the literal is a positional
-  arg to a known I/O method (``read``, ``readinto``, ``recv``, ``write``)
-  or a keyword arg named ``buffering``, ``chunk_size``, ``buffer_size``,
-  ``bufsize``.
+- HTTP status codes -- only when the literal is the default of a
+  function parameter named ``status_code`` or ``status``. The gate
+  inspects function signatures, not call sites; ``Response(status_code=404)``
+  passes because ``404`` is not a module-level assign or function
+  default in the caller.
+- Powers of 2 in ``{1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072}``
+  -- only when the literal is the default of a function parameter named
+  ``buffering``, ``buffer_size``, ``bufsize``, ``chunk_size``,
+  ``blocksize``, or ``block_size``. The gate does not scan call-site
+  positional arguments to I/O methods such as ``read`` / ``recv`` /
+  ``write``; literals at those sites either flow through a
+  function-default that already satisfies the allowlist or carry a
+  per-line ``# lint-allow:`` marker.
 - Hex literals whose source spelling starts with ``0x`` -- conventional
   bit-mask form; the value itself is unrestricted because masks are
   the algorithm, not policy.
@@ -172,7 +178,13 @@ def _git_tracked_python_files(
     abs_root: Path,
     project_root: Path,
 ) -> list[tuple[Path, str]]:
-    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``."""
+    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``.
+
+    Falls back to :meth:`Path.rglob` when ``git`` is unavailable or fails;
+    the fallback widens scope to include untracked / gitignored files,
+    so a stderr warning is emitted to make the semantic change visible
+    rather than silently mutating what the gate scans.
+    """
     rel_root = abs_root.relative_to(project_root).as_posix() or "."
     try:
         result = subprocess.run(
@@ -181,7 +193,14 @@ def _git_tracked_python_files(
             capture_output=True,
             cwd=project_root,
         )
-    except subprocess.CalledProcessError, FileNotFoundError:
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        print(
+            f"check_no_magic_numbers: git ls-files failed in "
+            f"{project_root} ({type(exc).__name__}: {exc}); falling back "
+            f"to rglob (scope widens to include untracked / gitignored "
+            f"files).",
+            file=sys.stderr,
+        )
         return [
             (p, p.relative_to(project_root).as_posix()) for p in abs_root.rglob("*.py")
         ]
@@ -379,16 +398,34 @@ class _Hit:
         )
 
 
+class ScanError(Exception):
+    """Raised when *file_path* cannot be read or parsed for scanning.
+
+    Carries the relative path and a human-readable reason. Surfaced
+    via :func:`main` as exit code 2 so the gate fails loud rather
+    than silently letting an unscannable file through.
+    """
+
+
 def _scan_file(file_path: Path, rel: str) -> list[_Hit]:
-    """Return every magic-number hit in *file_path* (no allowlist applied)."""
+    """Return every magic-number hit in *file_path* (no allowlist applied).
+
+    Raises :class:`ScanError` when the file cannot be read (`OSError`,
+    `UnicodeDecodeError`) or parsed (`SyntaxError`). Silent fallbacks
+    would let a corrupted file or merge-conflict-mangled module hide
+    a magic number behind an empty hit list -- the gate is load-bearing
+    at pre-push, so it must surface scan failures rather than mask them.
+    """
     try:
         text = file_path.read_text(encoding="utf-8")
-    except OSError, UnicodeDecodeError:
-        return []
+    except (OSError, UnicodeDecodeError) as exc:
+        msg = f"{rel}: cannot read file ({type(exc).__name__}: {exc})"
+        raise ScanError(msg) from exc
     try:
         tree = ast.parse(text, filename=str(file_path))
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        msg = f"{rel}: cannot parse file (SyntaxError at line {exc.lineno}: {exc.msg})"
+        raise ScanError(msg) from exc
     _ParentTracker().visit(tree)
     source_lines = text.splitlines()
     hits: list[_Hit] = [
@@ -543,15 +580,20 @@ _BASELINE_HEADER: Final[str] = """\
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_no_magic_numbers.py --update
-#
-# Issue #1739 (no-hardcoded-values rule).
 """
 
 _BASELINE_ENTRY_RE: Final[re.Pattern[str]] = re.compile(r"^.+:\d+:\d+$")
 
 
 def _load_baseline(path: Path | None = None) -> set[str]:
-    """Return the set of allowlisted ``path:lineno:col`` entries."""
+    """Return the set of allowlisted ``path:lineno:col`` entries.
+
+    Raises :class:`ValueError` on validation failures (malformed or
+    duplicate entries), corrupted UTF-8 encoding, or unreadable file
+    permissions. Failing loud here keeps the gate's promise -- a
+    silently-truncated baseline would let real violations slip
+    past the pre-push hook.
+    """
     if path is None:
         path = _BASELINE_PATH
     if not path.exists():
@@ -563,10 +605,12 @@ def _load_baseline(path: Path | None = None) -> set[str]:
         if (path.is_relative_to(_REPO_ROOT))
         else str(path)
     )
-    for lineno, line in enumerate(
-        path.read_text(encoding="utf-8").splitlines(),
-        start=1,
-    ):
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        msg = f"{rel_path}: cannot read baseline ({type(exc).__name__}: {exc})"
+        raise ValueError(msg) from exc
+    for lineno, line in enumerate(text.splitlines(), start=1):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -634,7 +678,11 @@ def _scan_all(
 
 def cmd_update(roots: list[Path], project_root: Path) -> int:
     """Regenerate ``no_magic_numbers_baseline.txt`` from the current tree."""
-    hits = _scan_all(roots, project_root)
+    try:
+        hits = _scan_all(roots, project_root)
+    except ScanError as exc:
+        print(f"check_no_magic_numbers: {exc}", file=sys.stderr)
+        return 2
     _write_baseline(hits)
     rel = _BASELINE_PATH.relative_to(_REPO_ROOT).as_posix()
     print(
@@ -651,7 +699,11 @@ def cmd_scan(roots: list[Path], project_root: Path) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    hits = _scan_all(roots, project_root)
+    try:
+        hits = _scan_all(roots, project_root)
+    except ScanError as exc:
+        print(f"check_no_magic_numbers: {exc}", file=sys.stderr)
+        return 2
     new_violations = [h for h in hits if h.baseline_key() not in baseline]
     if not new_violations:
         return 0

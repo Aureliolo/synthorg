@@ -187,6 +187,31 @@ class ApiBridgeConfig(BaseModel):
     max_audit_records_per_query: int = Field(default=10_000, ge=100, le=1_000_000)
     max_metrics_per_query: int = Field(default=10_000, ge=100, le=1_000_000)
     max_meeting_context_keys: int = Field(default=20, ge=5, le=100)
+    rate_limit_gc_every_n_acquires: int = Field(default=1024, ge=64, le=65_536)
+    rate_limit_gc_min_horizon_seconds: int = Field(default=60, ge=1, le=3600)
+    rate_limit_inflight_gc_every_n_acquires: int = Field(default=1024, ge=64, le=65_536)
+    rate_limit_inflight_min_retry_after_seconds: int = Field(default=1, ge=1, le=300)
+    lifecycle_task_engine_shutdown_seconds: float = Field(default=8.0, ge=1.0, le=120.0)
+    lifecycle_meeting_scheduler_shutdown_seconds: float = Field(
+        default=2.0, ge=0.5, le=60.0
+    )
+    lifecycle_performance_tracker_shutdown_seconds: float = Field(
+        default=2.0, ge=0.5, le=60.0
+    )
+    lifecycle_backup_shutdown_seconds: float = Field(default=5.0, ge=0.5, le=60.0)
+    lifecycle_settings_dispatcher_shutdown_seconds: float = Field(
+        default=2.0, ge=0.5, le=60.0
+    )
+    lifecycle_bridge_shutdown_seconds: float = Field(default=2.0, ge=0.5, le=60.0)
+    lifecycle_distributed_queue_shutdown_seconds: float = Field(
+        default=3.0, ge=0.5, le=60.0
+    )
+    lifecycle_message_bus_shutdown_seconds: float = Field(default=3.0, ge=0.5, le=60.0)
+    lifecycle_persistence_shutdown_seconds: float = Field(default=5.0, ge=1.0, le=120.0)
+    lifecycle_approval_timeout_shutdown_seconds: float = Field(
+        default=1.0, ge=0.5, le=60.0
+    )
+    lifecycle_drain_timeout_seconds: float = Field(default=25.0, ge=5.0, le=300.0)
 
 
 class EngineBridgeConfig(BaseModel):
@@ -233,9 +258,44 @@ class ClientBridgeConfig(BaseModel):
     scored_feedback_strictness_floor: float = Field(default=0.1, ge=0.0, le=1.0)
 
 
+class CoordinationBridgeConfig(BaseModel):
+    """Operator-tunable values for the coordination subsystem.
+
+    Currently scoped to the CAS-retry budget for optimistic-concurrency
+    on shared mutation surfaces (departments, approval transitions).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    cas_max_retries: int = Field(default=2, ge=1, le=10)
+
+
+class WorkersBridgeConfig(BaseModel):
+    """Operator-tunable values for the worker / dispatcher subsystem.
+
+    Drives the JetStream task-claim publish retry budget.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    dispatcher_publish_max_attempts: int = Field(default=3, ge=1, le=10)
+    dispatcher_publish_backoff_base_seconds: float = Field(
+        default=0.1, ge=0.01, le=10.0
+    )
+    dispatcher_publish_backoff_cap_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
+
+
 class MemoryBridgeConfig(BaseModel):
-    """Operator-tunable values for the memory subsystem."""
+    """Operator-tunable values for the memory subsystem.
+
+    Covers consolidation batch-size and the embedding fine-tune
+    preflight (VRAM-to-batch-size table + word-chunk size).
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     consolidation_enforce_batch_size: int = Field(default=1000, ge=100, le=10_000)
+    fine_tune_vram_batch_table: tuple[tuple[float, int], ...] = Field(
+        default=((40.0, 128), (16.0, 64), (8.0, 32))
+    )
+    fine_tune_chunk_size: int = Field(default=512, ge=64, le=4096)

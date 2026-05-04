@@ -92,7 +92,7 @@ _r.register(
     )
 )
 
-# ── Kill switches (CFG-1 audit) ──────────────────────────────────
+# ── Kill switches ────────────────────────────────────────────────
 
 _r.register(
     SettingDefinition(
@@ -117,7 +117,7 @@ _r.register(
     )
 )
 
-# ── Quality + classification thresholds (CFG-1 audit) ───────────
+# ── Quality + classification thresholds ─────────────────────────
 
 _r.register(
     SettingDefinition(
@@ -212,7 +212,7 @@ _r.register(
     )
 )
 
-# ── Routing scorer weights (#1739) ──────────────────────────────
+# ── Routing scorer weights ──────────────────────────────────────
 # Weights for the AgentTaskScorer score components. Sum is 1.1 with
 # the tag bonus; capped at 1.0 by the caller. See
 # docs/reference/scoring-hyperparameters.md for rationale.
@@ -328,7 +328,7 @@ _r.register(
     )
 )
 
-# ── Model matcher score weights (#1739) ─────────────────────────
+# ── Model matcher score weights ─────────────────────────────────
 # Three score components contribute up to ``matcher_tier_base_score`` /
 # ``matcher_headroom_max_bonus`` / ``matcher_priority_max_bonus``;
 # ``matcher_headroom_ratio_cap`` clamps the headroom curve;
@@ -429,7 +429,7 @@ _r.register(
     )
 )
 
-# ── Heuristic grader thresholds (#1739) ─────────────────────────
+# ── Heuristic grader thresholds ─────────────────────────────────
 # Drives the rule-based ``HeuristicRubricGrader``. Pass-threshold is
 # the probe-pass-ratio cutoff; pass/fail grades are the per-criterion
 # scores assigned in each branch; confidence ceiling/bias derive the
@@ -462,7 +462,8 @@ _r.register(
         default="0.8",
         description=(
             "Heuristic grader: per-criterion grade when the probe"
-            " pass-ratio meets ``quality_heuristic_pass_threshold``."
+            " pass-ratio is greater than or equal to"
+            " ``quality_heuristic_pass_threshold``."
         ),
         group="Quality Grader",
         level=SettingLevel.ADVANCED,

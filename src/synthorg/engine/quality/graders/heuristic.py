@@ -47,6 +47,22 @@ class HeuristicGraderConfig(BaseModel):
     confidence_ceiling: float = Field(default=0.9, ge=0.0, le=1.0)
     confidence_bias: float = Field(default=0.1, ge=0.0, le=1.0)
 
+    @classmethod
+    def from_bridge_config(cls, bridge: object) -> HeuristicGraderConfig:
+        """Project the heuristic-grader subset out of an ``EngineBridgeConfig``.
+
+        See ``RoutingScorerConfig.from_bridge_config`` (in
+        :mod:`synthorg.engine.routing.scorer`) for the import-cycle
+        rationale behind the ``object``-typed parameter.
+        """
+        return cls(
+            pass_threshold=bridge.quality_heuristic_pass_threshold,  # type: ignore[attr-defined]
+            pass_grade=bridge.quality_heuristic_pass_grade,  # type: ignore[attr-defined]
+            fail_grade=bridge.quality_heuristic_fail_grade,  # type: ignore[attr-defined]
+            confidence_ceiling=bridge.quality_heuristic_confidence_ceiling,  # type: ignore[attr-defined]
+            confidence_bias=bridge.quality_heuristic_confidence_bias,  # type: ignore[attr-defined]
+        )
+
 
 class HeuristicRubricGrader:
     """Rule-based grader for testing and deterministic fallback.

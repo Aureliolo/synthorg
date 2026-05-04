@@ -39,6 +39,8 @@ class _Hit(Protocol):
 class _ScriptModule(Protocol):
     """Subset of the script's surface the tests exercise."""
 
+    ScanError: type[Exception]
+
     @staticmethod
     def _scan_file(file_path: Path, rel: str) -> list[_Hit]: ...
     @staticmethod
@@ -418,3 +420,52 @@ def test_main_refuses_path_outside_repo(
     rc = _MODULE.main(["--repo-root", str(tmp_path), "--paths", "/etc"])
     assert rc == 2
     assert "outside project root" in capsys.readouterr().err
+
+
+# ── Scan error surfacing (fail loud) ────────────────────────────
+
+
+def test_scan_file_raises_on_unreadable_encoding(tmp_path: Path) -> None:
+    """Invalid UTF-8 surfaces ``ScanError`` rather than a silent empty list."""
+    bad = tmp_path / "bad.py"
+    # Latin-1 byte sequence that is not valid UTF-8.
+    bad.write_bytes(b"\xff\xfe= 1\n")
+    with pytest.raises(_MODULE.ScanError, match="cannot read file"):
+        _MODULE._scan_file(bad, "src/synthorg/bad.py")
+
+
+def test_scan_file_raises_on_syntax_error(tmp_path: Path) -> None:
+    """Files that fail to parse surface ``ScanError`` rather than empty hits."""
+    bad = tmp_path / "syntax.py"
+    bad.write_text("def foo(:\n    pass\n", encoding="utf-8")
+    with pytest.raises(_MODULE.ScanError, match="cannot parse file"):
+        _MODULE._scan_file(bad, "src/synthorg/syntax.py")
+
+
+# ── Negated default-arg detection ───────────────────────────────
+
+
+def test_negated_int_default_flagged(write_py: WritePy) -> None:
+    src = "def f(offset: int = -5) -> int:\n    return offset\n"
+    path = write_py(src)
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
+    assert hits[0].value == "-5"
+
+
+def test_negated_float_default_flagged(write_py: WritePy) -> None:
+    src = "def f(bias: float = -0.5) -> float:\n    return bias\n"
+    path = write_py(src)
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
+    assert hits[0].value == "-0.5"
+
+
+# ── Baseline UnicodeDecodeError ────────────────────────────────
+
+
+def test_baseline_load_raises_on_invalid_utf8(tmp_path: Path) -> None:
+    bad = tmp_path / "baseline.txt"
+    bad.write_bytes(b"\xff\xfeinvalid\n")
+    with pytest.raises(ValueError, match="cannot read baseline"):
+        _MODULE._load_baseline(bad)

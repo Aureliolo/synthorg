@@ -9,7 +9,7 @@ under ``engine.routing.*`` and reach the scorer via
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
 from synthorg.engine.routing.models import RoutingCandidate
@@ -32,9 +32,10 @@ class RoutingScorerConfig(BaseModel):
     Field defaults mirror the historical hardcoded values so a default
     construction reproduces legacy behaviour. Production wiring
     populates the fields from :func:`ConfigResolver.get_engine_bridge_config`
-    so operators can tune via ``/settings`` without code changes.
-    Sum of skill-weights + bonuses is 1.1 (tag bonus pushes the
-    maximum above 1.0); the caller caps the final score at 1.0.
+    via :meth:`from_bridge_config` so operators can tune via ``/settings``
+    without code changes. Sum of skill-weights + bonuses is 1.1 (tag
+    bonus pushes the maximum above 1.0); the caller caps the final
+    score at 1.0.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -45,6 +46,56 @@ class RoutingScorerConfig(BaseModel):
     role_match_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
     seniority_alignment_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
     min_score: float = Field(default=0.1, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _check_weight_sum(self) -> RoutingScorerConfig:
+        """Warn (do not reject) when weights leave the documented envelope.
+
+        The scorer caps the final score at 1.0, so weight sums above
+        the documented 1.1 ceiling produce surprising-but-bounded
+        behaviour. A logged warning surfaces operator-tunable
+        misconfiguration without breaking the resolver hot path
+        (Pydantic ``ValidationError`` would block bridge resolution
+        and crash bootstrap).
+        """
+        ceiling = 1.3
+        weight_sum = (
+            self.primary_skill_weight
+            + self.secondary_skill_weight
+            + self.tag_match_bonus
+            + self.role_match_bonus
+            + self.seniority_alignment_bonus
+        )
+        if weight_sum > ceiling:
+            logger.warning(
+                TASK_ROUTING_SCORER_INVALID_CONFIG,
+                weight_sum=weight_sum,
+                error=(
+                    f"routing weights sum to {weight_sum:.3f} "
+                    f"(documented max ~1.1, hard ceiling {ceiling}); "
+                    f"final score is still capped at 1.0"
+                ),
+            )
+        return self
+
+    @classmethod
+    def from_bridge_config(cls, bridge: object) -> RoutingScorerConfig:
+        """Project the routing-scorer subset out of an ``EngineBridgeConfig``.
+
+        Accepts ``object`` rather than the concrete bridge type to
+        keep the scorer module free of an import cycle through
+        ``settings.bridge_configs``. Attribute access is statically
+        type-checked at every call site that imports
+        :class:`~synthorg.settings.bridge_configs.EngineBridgeConfig`.
+        """
+        return cls(
+            primary_skill_weight=bridge.routing_weight_primary_skill,  # type: ignore[attr-defined]
+            secondary_skill_weight=bridge.routing_weight_secondary_skill,  # type: ignore[attr-defined]
+            tag_match_bonus=bridge.routing_weight_tag_match_bonus,  # type: ignore[attr-defined]
+            role_match_bonus=bridge.routing_weight_role_match_bonus,  # type: ignore[attr-defined]
+            seniority_alignment_bonus=bridge.routing_weight_seniority_alignment_bonus,  # type: ignore[attr-defined]
+            min_score=bridge.routing_min_score,  # type: ignore[attr-defined]
+        )
 
 
 # Seniority-to-complexity alignment mapping

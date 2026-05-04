@@ -65,7 +65,7 @@ in the artifact payload (case-insensitive).
 
 | Setting | Default | Controls |
 |---|---:|---|
-| `engine.quality.heuristic.pass_threshold` | 0.5 | Probe-pass-ratio cutoff for the PASS verdict. |
+| `engine.quality.heuristic.pass_threshold` | 0.5 | Probe-pass-ratio threshold; ratio greater than or equal to this value earns the PASS verdict. |
 | `engine.quality.heuristic.pass_grade` | 0.8 | Per-criterion grade on pass. |
 | `engine.quality.heuristic.fail_grade` | 0.3 | Per-criterion grade on fail. |
 | `engine.quality.heuristic.confidence_ceiling` | 0.9 | Maximum reported confidence. |
@@ -100,28 +100,57 @@ boundary. Strictness multiplier of 2.0 means a profile with
 collapses entirely. No empirical derivation; revisit when client
 simulation calibration data is available.
 
-## Pending migrations
+## Limit / timeout settings (cluster #28)
 
-The following audit-cited sites in clusters #28 and #29 are tracked
-in the AST gate's baseline but not yet migrated to settings (single-PR
-scope cap). Follow-up issues filed against #1739 cover each:
+Operator-tunable concurrency, retry, and shutdown budgets. The
+consumer modules (rate-limit stores, CAS retry handler, bus bridge,
+dispatcher, lifecycle stop sequence, fine-tune chunker) keep
+module-level constants that mirror these defaults so a service
+constructed without an explicit settings handle still observes the
+documented behaviour. Each fallback constant carries a
+`# lint-allow: magic-numbers -- bootstrap fallback for <yaml_path>`
+marker pointing at the canonical setting.
 
-- Rate-limiter GC threshold and horizon (`api/rate_limits/in_memory*.py`).
-- CAS retry attempts (`core/concurrency/cas_retry.py`).
-- Bus bridge max errors + drain timeout fallback constants
-  (`api/bus_bridge.py`; already partially settings-driven, only the
-  fallback module constants remain bare).
-- Task dispatcher publish retry attempts and backoff bounds
-  (`workers/dispatcher.py`).
-- VRAM-to-batch-size table (`api/controllers/memory.py`).
-- Fine-tune text chunk size (`memory/fine_tune.py`).
-- Loop-prevention rate-limit window fallback constant
-  (`communication/loop_prevention/rate_limit.py`; already partially
-  settings-driven).
-- Lifecycle shutdown stage budgets (`api/lifecycle.py`, 11 sites).
+| Setting | Default | Controls |
+|---|---:|---|
+| `api.rate_limit.gc_every_n_acquires` | 1024 | Sliding-window limiter: acquires between cold-bucket GC sweeps. |
+| `api.rate_limit.gc_min_horizon_seconds` | 60 | Sliding-window limiter: floor on the cold-bucket eviction horizon. |
+| `api.rate_limit.inflight_gc_every_n_acquires` | 1024 | Inflight (per-op concurrency) limiter: acquires between GC sweeps. |
+| `api.rate_limit.inflight_min_retry_after_seconds` | 1 | Inflight limiter: minimum `Retry-After` value emitted on 429. |
+| `coordination.cas.max_retries` | 2 | CAS retry budget for optimistic-concurrency mutations. |
+| `communication.bus_bridge.max_consecutive_errors` | 30 | Bus bridge poll-loop error budget before back-off escalates. |
+| `communication.bus_bridge.drain_timeout_seconds` | 10.0 | Bus bridge `stop()` drain hard deadline. |
+| `workers.dispatcher.publish_max_attempts` | 3 | Task-claim publish retry budget. |
+| `workers.dispatcher.publish_backoff_base_seconds` | 0.1 | Dispatcher exponential-backoff base. |
+| `workers.dispatcher.publish_backoff_cap_seconds` | 1.0 | Dispatcher backoff per-attempt ceiling. |
+| `memory.fine_tune.vram_batch_table` | `[[40,128],[16,64],[8,32]]` | VRAM-to-batch-size mapping for embedding fine-tune preflight. |
+| `memory.fine_tune.chunk_size` | 512 | Word-chunk size for synthetic-data generation. |
+| `communication.loop_prevention_window_seconds` | 60.0 | Per-pair delegation rate-limit window. |
+| `api.lifecycle.task_engine_shutdown_seconds` | 8.0 | Lifecycle stop step deadline (task engine). |
+| `api.lifecycle.meeting_scheduler_shutdown_seconds` | 2.0 | Lifecycle stop step deadline (meeting scheduler). |
+| `api.lifecycle.performance_tracker_shutdown_seconds` | 2.0 | Lifecycle stop step deadline (performance tracker). |
+| `api.lifecycle.backup_shutdown_seconds` | 5.0 | Lifecycle stop step deadline (backup service). |
+| `api.lifecycle.settings_dispatcher_shutdown_seconds` | 2.0 | Lifecycle stop step deadline (settings dispatcher). |
+| `api.lifecycle.bridge_shutdown_seconds` | 2.0 | Lifecycle stop step deadline (bus / webhook bridge, per bridge). |
+| `api.lifecycle.distributed_queue_shutdown_seconds` | 3.0 | Lifecycle stop step deadline (JetStream distributed queue). |
+| `api.lifecycle.message_bus_shutdown_seconds` | 3.0 | Lifecycle stop step deadline (in-process message bus). |
+| `api.lifecycle.persistence_shutdown_seconds` | 5.0 | Lifecycle stop step deadline (persistence backend drain + checkpoint). |
+| `api.lifecycle.approval_timeout_shutdown_seconds` | 1.0 | Lifecycle stop step deadline (approval timeout scheduler). |
+| `api.lifecycle.drain_timeout_seconds` | 25.0 | Outer `asyncio.wait_for` budget around the cumulative stop sequence. |
 
-Each follow-up retains the settings-as-source-of-truth pattern
-established in this PR: register the setting in
-`src/synthorg/settings/definitions/<namespace>.py`, add the field to
-the matching `*BridgeConfig`, wire the resolver entry, and refactor
-the consumer to read the resolved value.
+**Rationale.** Audit-set placeholders. Rate-limiter GC at 1024
+acquires balances bookkeeping latency against stale-bucket retention
+under typical request volumes; the 60s horizon matches the common
+sliding-window default. CAS retry of 2 (one retry) keeps mutation
+contention bounded without amplifying load on a hot row. Dispatcher
+3 attempts with 0.1s base / 1.0s cap absorbs a transient NATS
+reconnect without pushing publish latency into the multi-second
+tail. VRAM table (40GB->128, 16GB->64, 8GB->32) is a conventional
+GPU-memory-to-batch heuristic for transformer fine-tunes; revisit
+when distinct GPU profiles surface. Lifecycle stage budgets sum to
+~33s under the 25s drain ceiling intentionally, so the outer hard
+deadline cancels stuck stages even when individual budgets are
+generous; persistence and task-engine claim the largest slices
+because they own connection-pool drains and in-flight task
+finalisation respectively. Revisit when telemetry shows real-world
+shutdown timing distributions.
