@@ -247,6 +247,15 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    - NEVER defer anything. If a finding says "fix X", fix X completely. No TODOs, no stubs, no "phase 2" thinking.
    - Still alpha: breaking API/interface changes are fine, no backward compatibility shims. BUT schema changes MUST ship proper Atlas migrations (never edit an existing migration; always generate a new one. For SQLite: `atlas migrate diff <migration_name> --env sqlite`; for Postgres: `atlas migrate diff <migration_name> --env postgres`) so migration paths stay testable.
    - Every piece of work must meet the highest standard of security, UX, maintainability, and correctness.
+
+   ## Do-not-introduce
+   These categories are gated; new instances are rejected at pre-commit / pre-push / `/pre-pr-review`. Don't write them in the first place.
+   - Bare `Exception` / `RuntimeError` raises in domain code -- use a `<Domain><Condition>Error` subclass of `DomainError` registered in `src/synthorg/api/exception_handlers.py` (gated by the domain-error hierarchy check).
+   - Magic numbers in scoring / threshold / timeout / retry contexts -- name the constant in the relevant module or settings registry (gated by the no-magic-numbers check).
+   - Settings consumed by services that aren't started at boot -- wire the consumer through `src/synthorg/api/lifecycle_helpers.py` (gated by `scripts/check_setting_to_startup_trace.py`).
+   - `Mock()` / `AsyncMock()` / `MagicMock()` without `spec=ConcreteClass` -- always pass `spec=` (gated by `scripts/check_mock_spec.py`).
+   - `import logging` / `logging.getLogger(...)` / `print(...)` in application code -- use `from synthorg.observability import get_logger` and structured kwargs (gated by pre-commit + reviewer checks).
+   - `cd <dir> && <cmd>` prefixes in Bash commands or `git -C <cwd> ...` to the current working directory -- use the tool's native `-C` / `--prefix` / `--project` flag, or `bash -c "cd <dir> && <cmd>"` for tools without one (gated by hookify `no-cd-prefix` and `scripts/check_git_c_cwd.sh`).
    ~~~
 
    If there are multiple issues in one worktree that have a natural ordering (from dependency parsing or logical sequence), add an `## Implementation order` section.
