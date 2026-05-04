@@ -192,36 +192,12 @@ def test_text_vs_timestamptz_is_flagged_as_drift() -> None:
     assert "column:t:created_at:TEXT:TIMESTAMPTZ" in findings
 
 
-def test_text_vs_text_is_default_equivalent() -> None:
-    """Same logical type produces no drift."""
-    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT);"
-    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT);"
-    assert _diff(sqlite_sql, postgres_sql) == []
-
-
-def test_integer_vs_bigint_is_default_equivalent() -> None:
-    """Per the equivalence table, INTEGER ↔ BIGINT is allowed without baseline."""
-    sqlite_sql = "CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER);"
-    postgres_sql = "CREATE TABLE t (id BIGINT PRIMARY KEY, n BIGINT);"
-    assert _diff(sqlite_sql, postgres_sql) == []
-
-
-def test_real_vs_double_precision_is_default_equivalent() -> None:
-    """SQLite REAL ↔ Postgres DOUBLE PRECISION (same DType.FLOAT family)."""
-    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, x REAL);"
-    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, x DOUBLE PRECISION);"
-    assert _diff(sqlite_sql, postgres_sql) == []
-
-
-def test_blob_vs_bytea_is_default_equivalent() -> None:
-    """SQLite BLOB ↔ Postgres BYTEA (both DType.VARBINARY)."""
-    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload BLOB);"
-    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload BYTEA);"
-    assert _diff(sqlite_sql, postgres_sql) == []
-
-
 def test_integer_with_check_zero_one_matches_postgres_boolean() -> None:
-    """``INTEGER ... CHECK (col IN (0, 1))`` is the SQLite boolean idiom."""
+    """Column-level ``CHECK (col IN (0, 1))`` collapses INTEGER to BOOLEAN.
+
+    Sibling parametrized test ``test_default_equivalent_types_produce_no_drift``
+    covers the rest of the type-equivalence families.
+    """
     sqlite_sql = (
         "CREATE TABLE t (id TEXT PRIMARY KEY, "
         "is_active INTEGER NOT NULL DEFAULT 0 CHECK(is_active IN (0, 1)));"
@@ -482,7 +458,7 @@ def test_load_baseline_rejects_too_few_fields(tmp_path: Path) -> None:
 def test_load_baseline_rejects_unknown_kind(tmp_path: Path) -> None:
     """Lines with an unrecognised first field raise ``ValueError``."""
     path = _write_baseline(tmp_path, ["bogus:t:c:TEXT:JSONB:r"])
-    with pytest.raises(ValueError, match="unknown baseline kind"):
+    with pytest.raises(ValueError, match="unknown kind"):
         _MODULE.load_baseline(path)
 
 
@@ -501,6 +477,408 @@ def test_shipped_baseline_loads_without_error() -> None:
     if not _BASELINE_PATH.exists():
         pytest.skip("baseline not yet generated")
     keys = _MODULE.load_baseline(_BASELINE_PATH)
-    valid_kinds = {"column", "index", "table", "migration"}
+    valid_kinds = {
+        "column",
+        "nullable",
+        "pk",
+        "unique",
+        "index",
+        "index_columns",
+        "index_attr",
+        "table",
+        "migration",
+    }
     # Every key starts with a known kind prefix.
     assert all(k.split(":", 1)[0] in valid_kinds for k in keys)
+
+
+def test_load_baseline_error_messages_carry_line_number(tmp_path: Path) -> None:
+    """ValueError messages must reference the offending line number."""
+    path = _write_baseline(
+        tmp_path,
+        [
+            "# header",
+            "column:t:c:TEXT:JSONB:good entry",
+            "bogus:line:here:reason",
+        ],
+    )
+    with pytest.raises(ValueError, match="line 3"):
+        _MODULE.load_baseline(path)
+
+
+# ── nullability + PK + UNIQUE constraint diffing ──────────────────
+
+
+def test_not_null_drift_is_flagged() -> None:
+    """A column NOT NULL on one side and nullable on the other surfaces drift."""
+    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT NOT NULL);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT);"
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "nullable:t:name:N:Y" in findings
+
+
+def test_matching_nullability_produces_no_drift() -> None:
+    """Same NOT NULL across both sides produces no nullability finding."""
+    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT NOT NULL);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT NOT NULL);"
+    assert _diff(sqlite_sql, postgres_sql) == []
+
+
+def test_pk_drift_is_flagged() -> None:
+    """Different PRIMARY KEY column lists across backends surface as ``pk:`` finding."""
+    sqlite_sql = "CREATE TABLE t (a TEXT, b TEXT, PRIMARY KEY (a));"
+    postgres_sql = "CREATE TABLE t (a TEXT, b TEXT, PRIMARY KEY (a, b));"
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "pk:t:a:a,b" in findings
+
+
+def test_pk_drift_one_side_missing_pk() -> None:
+    """A PK on one side and none on the other surfaces with ``_`` placeholder."""
+    sqlite_sql = "CREATE TABLE t (a TEXT PRIMARY KEY);"
+    postgres_sql = "CREATE TABLE t (a TEXT);"
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "pk:t:a:_" in findings
+
+
+def test_unique_drift_is_flagged_one_sided() -> None:
+    """A UNIQUE constraint on one side only surfaces as ``unique:`` finding."""
+    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT UNIQUE);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT);"
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "unique:t:name:sqlite_only" in findings
+
+
+def test_matching_unique_constraints_produce_no_drift() -> None:
+    """Same UNIQUE shape on both sides produces no finding."""
+    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT UNIQUE);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT UNIQUE);"
+    assert _diff(sqlite_sql, postgres_sql) == []
+
+
+# ── boolean-via-CHECK detection edge cases ────────────────────────
+
+
+def test_boolean_check_in_table_level_collapses_to_bool() -> None:
+    """A table-level CHECK(col IN (0, 1)) collapses INTEGER to BOOLEAN."""
+    sqlite_sql = (
+        "CREATE TABLE t ("
+        "  id TEXT PRIMARY KEY, "
+        "  is_active INTEGER NOT NULL DEFAULT 0, "
+        "  CHECK (is_active IN (0, 1))"
+        ");"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, "
+        "is_active BOOLEAN NOT NULL DEFAULT FALSE);"
+    )
+    assert _diff(sqlite_sql, postgres_sql) == []
+
+
+def test_boolean_check_with_reversed_in_order() -> None:
+    """``CHECK(col IN (1, 0))`` collapses to BOOLEAN (order irrelevant)."""
+    sqlite_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, "
+        "flag INTEGER NOT NULL DEFAULT 0 CHECK(flag IN (1, 0)));"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, flag BOOLEAN NOT NULL DEFAULT FALSE);"
+    )
+    assert _diff(sqlite_sql, postgres_sql) == []
+
+
+def test_boolean_check_with_smallint() -> None:
+    """SMALLINT + CHECK(col IN (0, 1)) collapses to BOOLEAN."""
+    sqlite_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, "
+        "flag SMALLINT NOT NULL DEFAULT 0 CHECK(flag IN (0, 1)));"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, flag BOOLEAN NOT NULL DEFAULT FALSE);"
+    )
+    assert _diff(sqlite_sql, postgres_sql) == []
+
+
+def test_boolean_check_with_string_literals_does_not_collapse() -> None:
+    """``CHECK(col IN ('0', '1'))`` is TEXT-stored, NOT the SQLite boolean idiom."""
+    sqlite_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, "
+        "flag TEXT NOT NULL DEFAULT '0' CHECK(flag IN ('0', '1')));"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, flag BOOLEAN NOT NULL DEFAULT FALSE);"
+    )
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "column:t:flag:TEXT:BOOLEAN" in findings
+
+
+# ── parametrized type-equivalence families ────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("sqlite_type", "postgres_type"),
+    [
+        ("TEXT", "TEXT"),
+        ("TEXT", "VARCHAR"),
+        ("TEXT", "VARCHAR(64)"),
+        ("TEXT", "CHAR"),
+        ("INTEGER", "INTEGER"),
+        ("INTEGER", "BIGINT"),
+        ("INTEGER", "SMALLINT"),
+        ("INTEGER", "BIGSERIAL"),
+        ("INTEGER", "SERIAL"),
+        ("REAL", "DOUBLE PRECISION"),
+        ("REAL", "FLOAT"),
+        ("REAL", "NUMERIC"),
+        ("REAL", "DECIMAL"),
+        ("BLOB", "BYTEA"),
+    ],
+)
+def test_default_equivalent_types_produce_no_drift(
+    sqlite_type: str, postgres_type: str
+) -> None:
+    """Types in the same default family must not produce drift findings."""
+    sqlite_sql = f"CREATE TABLE t (id TEXT PRIMARY KEY, x {sqlite_type});"
+    postgres_sql = f"CREATE TABLE t (id TEXT PRIMARY KEY, x {postgres_type});"
+    assert _diff(sqlite_sql, postgres_sql) == []
+
+
+# ── index attribute parity ────────────────────────────────────────
+
+
+def test_index_unique_flag_drift_is_flagged() -> None:
+    """A shared-name index with different UNIQUE flag surfaces as ``index_attr:``."""
+    sqlite_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT);"
+        "CREATE INDEX idx_name ON t(name);"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT);"
+        "CREATE UNIQUE INDEX idx_name ON t(name);"
+    )
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "index_attr:idx_name:unique:N:Y" in findings
+
+
+def test_index_using_drift_is_flagged() -> None:
+    """A shared-name index with different ``USING`` method surfaces as drift."""
+    sqlite_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, m TEXT);CREATE INDEX idx_m ON t(m);"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, m JSONB);"
+        "CREATE INDEX idx_m ON t USING GIN (m);"
+    )
+    findings = _diff(sqlite_sql, postgres_sql)
+    # The column type drift produces its own finding; we only assert
+    # the index_attr finding here.
+    assert "index_attr:idx_m:using:BTREE:GIN" in findings
+
+
+def test_index_columns_drift_is_flagged() -> None:
+    """A shared-name index with different indexed columns surfaces drift."""
+    sqlite_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, a TEXT, b TEXT);"
+        "CREATE INDEX idx_ab ON t(a, b);"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, a TEXT, b TEXT);"
+        "CREATE INDEX idx_ab ON t(b, a);"
+    )
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "index_columns:idx_ab:a,b:b,a" in findings
+
+
+# ── --update-baseline round-trip ──────────────────────────────────
+
+
+def test_update_baseline_writes_round_trippable_format(tmp_path: Path) -> None:
+    """``--update-baseline`` writes a file that ``load_baseline`` can read back."""
+    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload TEXT);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload JSONB);"
+    sqlite_path = tmp_path / "sqlite.sql"
+    postgres_path = tmp_path / "postgres.sql"
+    sqlite_path.write_text(sqlite_sql, encoding="utf-8")
+    postgres_path.write_text(postgres_sql, encoding="utf-8")
+    baseline_path = tmp_path / "baseline.txt"
+    rc = _MODULE.main(
+        [
+            "--sqlite-schema",
+            str(sqlite_path),
+            "--postgres-schema",
+            str(postgres_path),
+            "--baseline",
+            str(baseline_path),
+            "--skip-migrations",
+            "--update-baseline",
+        ]
+    )
+    assert rc == 0
+    assert baseline_path.exists()
+    content = baseline_path.read_text(encoding="utf-8")
+    assert content.startswith("# Frozen baseline")
+    keys = _MODULE.load_baseline(baseline_path)
+    assert "column:t:payload:TEXT:JSONB" in keys
+
+
+def test_update_baseline_fails_when_parent_dir_missing(tmp_path: Path) -> None:
+    """Writing to a path whose parent does not exist exits 2 with a clear message."""
+    sqlite_path = tmp_path / "sqlite.sql"
+    postgres_path = tmp_path / "postgres.sql"
+    sqlite_path.write_text("CREATE TABLE t (id TEXT PRIMARY KEY);", encoding="utf-8")
+    postgres_path.write_text("CREATE TABLE t (id TEXT PRIMARY KEY);", encoding="utf-8")
+    bad_path = tmp_path / "no_such_dir" / "baseline.txt"
+    rc = _MODULE.main(
+        [
+            "--sqlite-schema",
+            str(sqlite_path),
+            "--postgres-schema",
+            str(postgres_path),
+            "--baseline",
+            str(bad_path),
+            "--skip-migrations",
+            "--update-baseline",
+        ]
+    )
+    assert rc == 2
+
+
+# ── --explain output ──────────────────────────────────────────────
+
+
+def test_explain_table_prints_inventory_for_existing_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--explain TABLE`` prints column inventory for both backends."""
+    sqlite_path = tmp_path / "sqlite.sql"
+    postgres_path = tmp_path / "postgres.sql"
+    sqlite_path.write_text(
+        "CREATE TABLE t (id TEXT PRIMARY KEY, count INTEGER NOT NULL);",
+        encoding="utf-8",
+    )
+    postgres_path.write_text(
+        "CREATE TABLE t (id TEXT PRIMARY KEY, count BIGINT NOT NULL);",
+        encoding="utf-8",
+    )
+    rc = _MODULE.main(
+        [
+            "--sqlite-schema",
+            str(sqlite_path),
+            "--postgres-schema",
+            str(postgres_path),
+            "--explain",
+            "t",
+            "--skip-migrations",
+        ]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "sqlite:" in captured.out
+    assert "postgres:" in captured.out
+    assert "id" in captured.out
+    assert "count" in captured.out
+
+
+def test_explain_table_handles_missing_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--explain TABLE`` reports ``<missing>`` when the table is absent."""
+    sqlite_path = tmp_path / "sqlite.sql"
+    postgres_path = tmp_path / "postgres.sql"
+    sqlite_path.write_text("", encoding="utf-8")
+    postgres_path.write_text("", encoding="utf-8")
+    rc = _MODULE.main(
+        [
+            "--sqlite-schema",
+            str(sqlite_path),
+            "--postgres-schema",
+            str(postgres_path),
+            "--explain",
+            "missing_table",
+            "--skip-migrations",
+        ]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "<missing>" in captured.out
+
+
+# ── stale-baseline warning ────────────────────────────────────────
+
+
+def test_stale_baseline_entry_warns_but_passes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Baseline entries no longer detected print warning to stderr but pass."""
+    sqlite_path = tmp_path / "sqlite.sql"
+    postgres_path = tmp_path / "postgres.sql"
+    sqlite_path.write_text("CREATE TABLE t (id TEXT PRIMARY KEY);", encoding="utf-8")
+    postgres_path.write_text("CREATE TABLE t (id TEXT PRIMARY KEY);", encoding="utf-8")
+    baseline_path = _write_baseline(
+        tmp_path,
+        ["column:t:gone_column:TEXT:JSONB:resolved drift"],
+    )
+    rc = _MODULE.main(
+        [
+            "--sqlite-schema",
+            str(sqlite_path),
+            "--postgres-schema",
+            str(postgres_path),
+            "--baseline",
+            str(baseline_path),
+            "--skip-migrations",
+        ]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+    assert "gone_column" in captured.err
+
+
+# ── error handling ────────────────────────────────────────────────
+
+
+def test_missing_schema_file_exits_with_clean_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A non-existent schema path exits 2 with a clear stderr message."""
+    rc = _MODULE.main(
+        [
+            "--sqlite-schema",
+            str(tmp_path / "no_sqlite.sql"),
+            "--postgres-schema",
+            str(tmp_path / "no_postgres.sql"),
+            "--baseline",
+            str(tmp_path / "baseline.txt"),
+            "--skip-migrations",
+        ]
+    )
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "schema file not found" in captured.err
+
+
+def test_malformed_sql_exits_with_clean_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """SQL that sqlglot cannot parse exits 2 with a clear stderr message."""
+    sqlite_path = tmp_path / "sqlite.sql"
+    postgres_path = tmp_path / "postgres.sql"
+    # An unterminated string literal is a tokenisation error.
+    sqlite_path.write_text(
+        "CREATE TABLE t (id TEXT DEFAULT 'unterminated", encoding="utf-8"
+    )
+    postgres_path.write_text("CREATE TABLE t (id TEXT);", encoding="utf-8")
+    rc = _MODULE.main(
+        [
+            "--sqlite-schema",
+            str(sqlite_path),
+            "--postgres-schema",
+            str(postgres_path),
+            "--baseline",
+            str(tmp_path / "baseline.txt"),
+            "--skip-migrations",
+        ]
+    )
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "schema parsing failed" in captured.err

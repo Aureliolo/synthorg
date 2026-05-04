@@ -50,15 +50,6 @@ justification after `--` is required).
    the SQLite side.  Monetary columns carry a sibling
    `currency TEXT NOT NULL` with a CHECK constraint.
 
-   `scripts/check_schema_drift.py` (pre-push + CI Lint) compares the
-   two files and flags any structural drift not pinned in
-   `scripts/schema_drift_baseline.txt`.  TEXT-vs-JSONB,
-   TEXT-vs-TIMESTAMPTZ, INTEGER-vs-BOOLEAN and Postgres-only GIN
-   indexes are the documented intentional drift pre-loaded in the
-   baseline; a new pairing in the same shape needs an explicit
-   baseline entry (regenerate via `--update-baseline`, then
-   hand-edit the per-entry reason before commit).
-
 4. **Generate migrations with Atlas.**
 
    ```bash
@@ -78,6 +69,37 @@ justification after `--` is required).
    the existing `backend` fixture in `conftest.py`; it parametrizes
    over `["sqlite", "postgres"]` and applies migrations fresh per
    test.  Postgres arm auto-skips when Docker is unavailable.
+
+## Validating schema parity
+
+`scripts/check_schema_drift.py` (pre-push + CI Lint) compares the two
+`schema.sql` files via sqlglot and the two `revisions/` directories
+by filename suffix.  It catches per-column type drift,
+NOT NULL / PRIMARY KEY / UNIQUE constraint drift, one-sided indexes,
+and shared-name index attribute mismatches (UNIQUE / WHERE / USING).
+
+Currently-tolerated drift is frozen in
+`scripts/schema_drift_baseline.txt` with one line per entry and a
+required justification.  The default-equivalent type families are
+documented in the script's module docstring; pairings outside the
+defaults (TEXT vs JSONB, TEXT vs TIMESTAMPTZ, TEXT vs UUID, the
+TimescaleDB composite-PK pattern, GIN-only-on-Postgres indexes) all
+require an explicit baseline entry.
+
+Workflow when adding intentional new drift:
+
+1. Run the gate locally and observe the new `DRIFT:` lines in the
+   error output.
+2. Decide whether the drift is intentional (the conformance suite
+   should still pass behaviourally).
+3. Either close the drift in `schema.sql`, or regenerate the baseline
+   with `--update-baseline` and **hand-edit the per-entry reason
+   before commit**.  The auto-generated reason is a placeholder;
+   leaving it in place trips the comment-quality reviewer.
+
+The baseline is shrink-only by default: the gate refuses to silently
+accept new entries.  Adding one requires explicit `--update-baseline`
+plus the per-entry edit.
 
 ## What You Must Not Do
 
