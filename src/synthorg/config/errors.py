@@ -1,6 +1,10 @@
 """Custom exception hierarchy for configuration errors."""
 
 from dataclasses import dataclass
+from typing import ClassVar
+
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
 @dataclass(frozen=True)
@@ -21,13 +25,21 @@ class ConfigLocation:
     column: int | None = None
 
 
-class ConfigError(Exception):
+class ConfigError(DomainError):
     """Base exception for configuration errors.
 
     Attributes:
         message: Human-readable error description.
         locations: Source locations associated with this error.
     """
+
+    default_message: ClassVar[str] = "Configuration error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
+
+    message: str
+    locations: tuple[ConfigLocation, ...]
 
     def __init__(
         self,
@@ -62,9 +74,19 @@ class ConfigError(Exception):
 class ConfigFileNotFoundError(ConfigError):
     """Raised when a configuration file does not exist."""
 
+    default_message: ClassVar[str] = "Configuration file not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404
+
 
 class ConfigParseError(ConfigError):
     """Raised when YAML parsing fails."""
+
+    default_message: ClassVar[str] = "Configuration file parse error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 400
 
 
 class ConfigValidationError(ConfigError):
@@ -74,6 +96,13 @@ class ConfigValidationError(ConfigError):
         field_errors: Per-field error messages as
             ``(key_path, message)`` pairs.
     """
+
+    default_message: ClassVar[str] = "Configuration validation error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
+
+    field_errors: tuple[tuple[str, str], ...]
 
     def __init__(
         self,

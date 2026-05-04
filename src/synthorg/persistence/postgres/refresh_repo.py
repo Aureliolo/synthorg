@@ -44,7 +44,9 @@ def _import_dict_row() -> Any:
 logger = get_logger(__name__)
 
 
-class _SessionRevokedError(Exception):
+class _SessionRevokedError(
+    Exception,
+):  # lint-allow: domain-error-hierarchy -- internal txn-rollback sentinel
     """Internal sentinel: rollback the consume() transaction.
 
     Raised inside the ``conn.transaction()`` context when the

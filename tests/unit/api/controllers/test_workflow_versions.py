@@ -5,6 +5,9 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.services.workflow_rollback_service import WorkflowRollbackService
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -241,14 +244,28 @@ class TestDiff:
         assert "name" in meta_fields
 
     @pytest.mark.unit
-    def test_diff_same_version_400(self, test_client: TestClient[Any]) -> None:
+    def test_diff_same_version_returns_validation_error(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
         wf = _create_workflow(test_client)
         resp = test_client.get(
             f"/api/v1/workflows/{wf['id']}/diff",
             params={"from_version": 1, "to_version": 1},
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        from synthorg.core.error_taxonomy import (
+            ErrorCategory,
+            ErrorCode,
+        )
+
+        assert detail["error_code"] == ErrorCode.VALIDATION_ERROR
+        assert detail["error_category"] == ErrorCategory.VALIDATION
+        assert detail["retryable"] is False
 
     @pytest.mark.unit
     def test_diff_version_not_found(self, test_client: TestClient[Any]) -> None:
@@ -315,3 +332,51 @@ class TestRollback:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
+
+    @pytest.mark.unit
+    def test_rollback_persistence_version_conflict_translates_to_409(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A late persistence-layer concurrency miss surfaces as 409.
+
+        The controller catches ``PersistenceVersionConflictError`` from
+        the rollback service and re-raises the HTTP-aware
+        ``VersionConflictError`` so the centralised RFC 9457 dispatch
+        produces a 409 response. Without that translation the persistence
+        error would escape uncaught and become a generic 500.
+        """
+        wf = _create_workflow(test_client, name="Original")
+        wf_id = wf["id"]
+        _update_workflow(test_client, wf_id, 1, name="Updated")
+
+        # Patch the ``rollback`` method at the class level so the
+        # AppState-wired instance picks up the stub via normal attribute
+        # lookup. ``WorkflowRollbackService`` uses ``__slots__``, which
+        # makes per-instance method substitution a no-go;
+        # ``workflow_rollback_service`` is also a read-only property on
+        # ``AppState``. Class-level patching is the supported path.
+        async def _raise_conflict(
+            self: WorkflowRollbackService,
+            rolled_back: object,
+            *,
+            target_version: int,
+            saved_by: object,
+        ) -> None:
+            msg = "racing write"
+            raise PersistenceVersionConflictError(msg)
+
+        monkeypatch.setattr(WorkflowRollbackService, "rollback", _raise_conflict)
+
+        resp = test_client.post(
+            f"/api/v1/workflows/{wf_id}/rollback",
+            json={"target_version": 1, "expected_revision": 2},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        detail = body["error_detail"]
+        assert detail["error_code"] == ErrorCode.VERSION_CONFLICT
+        assert detail["error_category"] == ErrorCategory.CONFLICT

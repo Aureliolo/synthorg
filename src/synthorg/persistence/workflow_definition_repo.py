@@ -69,8 +69,8 @@ class WorkflowDefinitionRepository(Protocol):
 
         Raises:
             PersistenceError: If the operation fails.
-            VersionConflictError: If optimistic-concurrency fields do
-                not match (backends that enforce ``revision``-based
+            PersistenceVersionConflictError: If optimistic-concurrency
+                fields do not match (backends that enforce ``revision``-based
                 concurrency should raise).
         """
         ...

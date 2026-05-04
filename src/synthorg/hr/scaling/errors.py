@@ -1,8 +1,18 @@
 """Scaling domain exceptions."""
 
+from typing import ClassVar
 
-class ScalingError(Exception):
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+
+class ScalingError(DomainError):
     """Base exception for scaling operations."""
+
+    default_message: ClassVar[str] = "Scaling operation failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
 
 class ScalingStrategyError(ScalingError):
@@ -19,3 +29,8 @@ class ScalingExecutionError(ScalingError):
 
 class ScalingCooldownActiveError(ScalingError):
     """Action blocked by an active cooldown window."""
+
+    default_message: ClassVar[str] = "Scaling blocked by active cooldown"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409

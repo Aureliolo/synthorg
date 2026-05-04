@@ -10,8 +10,10 @@ use the GitHub API, making this safe to run inside containers.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.core.domain_errors import DomainError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.meta.models import (
     ApplyResult,
     CIValidationResult,
@@ -41,7 +43,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class PartialWriteError(RuntimeError):
+class PartialWriteError(DomainError):
     """Raised by ``_write_changes`` on partial application failure.
 
     Carries the ordered subset of ``CodeChange`` instances that were
@@ -50,6 +52,11 @@ class PartialWriteError(RuntimeError):
     revert with the full proposal would attempt to undo changes that
     were never made and could clobber files the proposal never touched.
     """
+
+    default_message: ClassVar[str] = "Partial code write failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
 
     def __init__(self, message: str, *, applied: tuple[CodeChange, ...]) -> None:
         super().__init__(message)
@@ -423,7 +430,9 @@ class CodeApplier:
             changes that were successfully written before the error.
 
         Raises:
-            RuntimeError: If a file write or delete fails.
+            PartialWriteError: If applying a change fails after one or
+                more changes were written; carries the applied subset
+                so the outer ``apply()`` can revert what already landed.
         """
         changed: list[str] = []
         applied: list[CodeChange] = []
