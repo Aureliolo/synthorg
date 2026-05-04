@@ -204,6 +204,55 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         )
 
 
+_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS: Final[float] = 600.0
+_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS: Final[float] = 60.0
+
+
+async def _resolve_event_stream_janitor_settings(
+    app_state: AppState,
+) -> tuple[float, float]:
+    """Return ``(idle_ttl, janitor_interval)`` for the EventStreamHub janitor.
+
+    Falls back to the registered defaults when the settings resolver is
+    unavailable or either read fails. The fallback keeps the janitor
+    enabled rather than disabling pruning on a broken settings backend
+    -- leaking subscriber state silently is the worse failure mode.
+    """
+    if not app_state.has_config_resolver:
+        return (
+            _DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
+            _DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS,
+        )
+    try:
+        idle = await app_state.config_resolver.get_float(
+            SettingNamespace.COMMUNICATION.value,
+            "event_stream_subscriber_idle_ttl_seconds",
+        )
+        interval = await app_state.config_resolver.get_float(
+            SettingNamespace.COMMUNICATION.value,
+            "event_stream_janitor_interval_seconds",
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            error=(
+                "Failed to resolve event stream janitor settings;"
+                " falling back to defaults"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+        return (
+            _DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
+            _DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS,
+        )
+    return idle, interval
+
+
 async def _ticket_cleanup_loop(app_state: AppState) -> None:
     """Periodically prune expired WS tickets and sessions.
 

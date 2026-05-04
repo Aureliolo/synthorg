@@ -210,6 +210,51 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMMUNICATION,
+        key="event_stream_subscriber_idle_ttl_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Inactivity TTL for SSE subscribers on the EventStreamHub."
+            " Subscribers whose queue has not received an event within"
+            " this window are pruned by the janitor. Bounds memory growth"
+            " when an SSE client disconnects without unsubscribe (browser"
+            " tab kill, network partition). Resolved once at lifespan"
+            " startup; runtime changes require a restart."
+        ),
+        group="Event Stream",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=30.0,
+        max_value=86400.0,
+        yaml_path="communication.event_stream.subscriber_idle_ttl_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="event_stream_janitor_interval_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=(
+            "Wall-clock interval between EventStreamHub janitor sweeps."
+            " A shorter interval reclaims memory faster after disconnect;"
+            " a longer interval reduces wakeups under low subscriber"
+            " churn. Resolved once at lifespan startup; runtime changes"
+            " require a restart."
+        ),
+        group="Event Stream",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=5.0,
+        max_value=3600.0,
+        yaml_path="communication.event_stream.janitor_interval_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
         key="loop_prevention_window_seconds",
         type=SettingType.FLOAT,
         default="60.0",

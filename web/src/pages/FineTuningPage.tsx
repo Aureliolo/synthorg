@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { useChannelHandler } from '@/hooks/useChannelHandler'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 import { useWebSocketStore } from '@/stores/websocket'
 
@@ -38,10 +39,8 @@ export default function FineTuningPage() {
     fetchRuns: s.fetchRuns,
     handleWsEvent: s.handleWsEvent,
   })))
-  const { onChannelEvent, offChannelEvent, subscribe, unsubscribe } =
+  const { subscribe, unsubscribe } =
     useWebSocketStore(useShallow((s) => ({
-      onChannelEvent: s.onChannelEvent,
-      offChannelEvent: s.offChannelEvent,
       subscribe: s.subscribe,
       unsubscribe: s.unsubscribe,
     })))
@@ -73,14 +72,14 @@ export default function FineTuningPage() {
     [handleWsEvent],
   )
 
+  useChannelHandler('system', wsHandler)
+
   useEffect(() => {
     subscribe(['system'])
-    onChannelEvent('system', wsHandler)
     return () => {
-      offChannelEvent('system', wsHandler)
       unsubscribe(['system'])
     }
-  }, [subscribe, unsubscribe, onChannelEvent, offChannelEvent, wsHandler])
+  }, [subscribe, unsubscribe])
 
   const isActive = status != null && ACTIVE_STAGES.has(status.stage)
   const hasDependencyFailure =

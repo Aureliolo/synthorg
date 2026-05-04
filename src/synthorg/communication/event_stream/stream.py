@@ -4,11 +4,21 @@ The ``EventStreamHub`` is the shared event source for all real-time
 consumers: the AG-UI dashboard (internal) and the future A2A gateway
 (external).  Each consumer subscribes to a session-scoped queue and
 receives projected ``StreamEvent`` objects.
+
+The hub owns an optional inactivity-TTL janitor task that prunes
+subscribers whose queues have not received an event within a
+configurable idle window.  Without the janitor, a client that
+crashes or disconnects without calling ``unsubscribe`` (HTTP keep-
+alive drop, network partition, browser-tab kill) would leak its
+queue + dedup-window state for the lifetime of the process. The
+janitor only runs while ``start()`` -> ``stop()`` lifecycle has been
+invoked; tests that construct a hub without lifecycle wiring keep
+the legacy synchronous behaviour.
 """
 
 import asyncio
-import contextlib
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -19,8 +29,12 @@ from synthorg.communication.event_stream.types import (
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.event_stream import (
+    EVENT_STREAM_HUB_JANITOR_PRUNED,
     EVENT_STREAM_HUB_PUBLISH_DEDUPED,
     EVENT_STREAM_HUB_PUBLISH_FAILED,
+    EVENT_STREAM_HUB_STARTED,
+    EVENT_STREAM_HUB_STOP_TIMEOUT,
+    EVENT_STREAM_HUB_STOPPED,
 )
 
 logger = get_logger(__name__)
@@ -28,6 +42,33 @@ logger = get_logger(__name__)
 _DEFAULT_MAX_QUEUE_SIZE = 256
 _DEFAULT_DEDUP_TTL_SECONDS = 60.0
 _DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION = 1024
+_DEFAULT_SUBSCRIBER_IDLE_TTL_SECONDS = 600.0
+_DEFAULT_JANITOR_INTERVAL_SECONDS = 60.0
+_DEFAULT_JANITOR_STOP_TIMEOUT_SECONDS = 10.0
+
+
+class EventStreamHubUnrestartableError(RuntimeError):
+    """Raised when ``start()`` is called on a hub that timed out during ``stop()``.
+
+    Per the lifecycle-sync contract, a service whose ``stop()`` drain hits its
+    hard deadline cannot be safely restarted: a late ``start()`` would stack a
+    new janitor on top of an orphaned task that ignored cancellation.
+    Operators must construct a fresh hub instead.
+    """
+
+
+@dataclass(slots=True)
+class _Subscriber:
+    """Per-subscriber bookkeeping owned by ``EventStreamHub``.
+
+    ``last_active`` carries the monotonic timestamp of the most recent
+    activity (subscribe call or successful publish to this subscriber).
+    The janitor reads ``last_active`` to evict idle subscribers; the
+    field is mutated in-place under ``EventStreamHub._lock``.
+    """
+
+    queue: asyncio.Queue[StreamEvent] = field()
+    last_active: float = field()
 
 
 class EventStreamHub:
@@ -50,19 +91,24 @@ class EventStreamHub:
             session. When the bound is hit, the oldest entry is
             evicted FIFO. Bounds memory growth even for noisy
             sessions that never get TTL-evicted. Default 1024.
-        clock: Time source used for the dedup TTL. Inject a
-            ``FakeClock`` from ``tests._shared.fake_clock`` to drive
-            virtual time in tests; production wiring leaves this
-            ``None`` so the hub uses ``SystemClock``.
+        clock: Time source used for the dedup TTL and the janitor's
+            inactivity check. Inject a ``FakeClock`` from
+            ``tests._shared.fake_clock`` to drive virtual time in
+            tests; production wiring leaves this ``None`` so the hub
+            uses ``SystemClock``.
     """
 
     __slots__ = (
         "_clock",
         "_dedup_max_entries_per_session",
         "_dedup_ttl_seconds",
+        "_janitor_task",
+        "_lifecycle_lock",
         "_lock",
         "_max_queue_size",
+        "_running",
         "_seen_event_ids",
+        "_stop_failed",
         "_subscribers",
     )
 
@@ -96,7 +142,7 @@ class EventStreamHub:
         self._dedup_ttl_seconds = dedup_ttl_seconds
         self._dedup_max_entries_per_session = dedup_max_entries_per_session
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._subscribers: dict[str, list[asyncio.Queue[StreamEvent]]] = {}
+        self._subscribers: dict[str, list[_Subscriber]] = {}
         # Per-session insertion-ordered map of ``event.id`` ->
         # ``monotonic_seen_at``. Bounded per session and TTL-evicted on
         # publish so a long-lived session cannot grow the dedup window
@@ -105,6 +151,151 @@ class EventStreamHub:
         # retries) would emit the same event twice to all subscribers.
         self._seen_event_ids: dict[str, OrderedDict[str, float]] = {}
         self._lock = asyncio.Lock()
+        # Lifecycle-only lock. Distinct from ``_lock`` (the operational
+        # lock used by subscribe/publish) so normal traffic is not
+        # serialised against start/stop transitions per the canonical
+        # lifecycle pattern in docs/reference/lifecycle-sync.md.
+        self._lifecycle_lock = asyncio.Lock()
+        self._janitor_task: asyncio.Task[None] | None = None
+        self._running = False
+        self._stop_failed = False
+
+    # ── Lifecycle ────────────────────────────────────────────────
+
+    async def start(
+        self,
+        *,
+        idle_ttl_seconds: float = _DEFAULT_SUBSCRIBER_IDLE_TTL_SECONDS,
+        janitor_interval_seconds: float = _DEFAULT_JANITOR_INTERVAL_SECONDS,
+    ) -> None:
+        """Spawn the inactivity-TTL janitor task.
+
+        Idempotent: a second ``start()`` while the janitor is already
+        running is a no-op. The hub continues to function without the
+        janitor when ``start()`` is never invoked (the legacy path).
+
+        Args:
+            idle_ttl_seconds: Subscribers whose ``last_active`` is older
+                than this many seconds are pruned by the janitor.
+            janitor_interval_seconds: Wall-clock interval between janitor
+                sweeps. The janitor sleeps via the injected ``Clock`` so
+                ``FakeClock`` advances cleanly in tests.
+
+        Raises:
+            EventStreamHubUnrestartableError: If a previous ``stop()``
+                hit its hard deadline. Construct a fresh hub instead.
+            ValueError: If either argument is non-positive.
+        """
+        if idle_ttl_seconds <= 0:
+            msg = f"idle_ttl_seconds must be > 0, got {idle_ttl_seconds}"
+            raise ValueError(msg)
+        if janitor_interval_seconds <= 0:
+            msg = (
+                f"janitor_interval_seconds must be > 0, got {janitor_interval_seconds}"
+            )
+            raise ValueError(msg)
+        async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "EventStreamHub cannot restart after a timed-out"
+                    " stop(); construct a fresh instance"
+                )
+                raise EventStreamHubUnrestartableError(msg)
+            if self._running:
+                return
+            self._running = True
+            self._janitor_task = asyncio.create_task(
+                self._janitor_loop(
+                    idle_ttl_seconds=idle_ttl_seconds,
+                    janitor_interval_seconds=janitor_interval_seconds,
+                ),
+                name="event-stream-hub-janitor",
+            )
+            logger.info(
+                EVENT_STREAM_HUB_STARTED,
+                idle_ttl_seconds=idle_ttl_seconds,
+                janitor_interval_seconds=janitor_interval_seconds,
+            )
+
+    async def stop(
+        self,
+        *,
+        stop_timeout_seconds: float = _DEFAULT_JANITOR_STOP_TIMEOUT_SECONDS,
+    ) -> None:
+        """Cancel the janitor task and drain it within ``stop_timeout_seconds``.
+
+        If the drain exceeds the deadline, the hub is marked
+        unrestartable and the orphaned task is left behind for the
+        process to outlive. Subscribers are NOT cleared -- callers can
+        still drain queues after ``stop()``.
+
+        Idempotent: ``stop()`` on a hub that is not running is a no-op.
+        """
+        async with self._lifecycle_lock:
+            if not self._running:
+                return
+            self._running = False
+            task = self._janitor_task
+            self._janitor_task = None
+            if task is None:
+                logger.info(EVENT_STREAM_HUB_STOPPED)
+                return
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=stop_timeout_seconds)
+            except asyncio.CancelledError:
+                pass
+            except TimeoutError:
+                self._stop_failed = True
+                logger.error(  # noqa: TRY400 -- structlog event constant
+                    EVENT_STREAM_HUB_STOP_TIMEOUT,
+                    stop_timeout_seconds=stop_timeout_seconds,
+                )
+                return
+            logger.info(EVENT_STREAM_HUB_STOPPED)
+
+    async def _janitor_loop(
+        self,
+        *,
+        idle_ttl_seconds: float,
+        janitor_interval_seconds: float,
+    ) -> None:
+        """Periodically prune subscribers idle past ``idle_ttl_seconds``."""
+        while True:
+            await self._clock.sleep(janitor_interval_seconds)
+            await self._prune_idle_subscribers(idle_ttl_seconds)
+
+    async def _prune_idle_subscribers(self, idle_ttl_seconds: float) -> None:
+        """Drop subscribers whose ``last_active`` is older than the TTL.
+
+        Public-ish: also exercised directly from tests so the prune
+        invariant can be asserted without driving the janitor task.
+        """
+        now = self._clock.monotonic()
+        cutoff = now - idle_ttl_seconds
+        pruned = 0
+        async with self._lock:
+            for session_id in list(self._subscribers):
+                kept = [
+                    sub
+                    for sub in self._subscribers[session_id]
+                    if sub.last_active >= cutoff
+                ]
+                pruned += len(self._subscribers[session_id]) - len(kept)
+                if kept:
+                    self._subscribers[session_id] = kept
+                else:
+                    del self._subscribers[session_id]
+                    self._seen_event_ids.pop(session_id, None)
+        if pruned > 0:
+            logger.info(
+                EVENT_STREAM_HUB_JANITOR_PRUNED,
+                pruned_subscribers=pruned,
+                remaining_sessions=len(self._subscribers),
+                idle_ttl_seconds=idle_ttl_seconds,
+            )
+
+    # ── Subscribe / unsubscribe / publish ────────────────────────
 
     async def subscribe(
         self,
@@ -121,8 +312,9 @@ class EventStreamHub:
         queue: asyncio.Queue[StreamEvent] = asyncio.Queue(
             maxsize=self._max_queue_size,
         )
+        subscriber = _Subscriber(queue=queue, last_active=self._clock.monotonic())
         async with self._lock:
-            self._subscribers.setdefault(session_id, []).append(queue)
+            self._subscribers.setdefault(session_id, []).append(subscriber)
         return queue
 
     async def unsubscribe(
@@ -137,12 +329,13 @@ class EventStreamHub:
             queue: The queue to remove.
         """
         async with self._lock:
-            queues = self._subscribers.get(session_id)
-            if queues is None:
+            subs = self._subscribers.get(session_id)
+            if subs is None:
                 return
-            with contextlib.suppress(ValueError):
-                queues.remove(queue)
-            if not queues:
+            self._subscribers[session_id] = [
+                sub for sub in subs if sub.queue is not queue
+            ]
+            if not self._subscribers[session_id]:
                 del self._subscribers[session_id]
                 # Drop the per-session dedup window once the last
                 # subscriber leaves so a long-lived hub with churn
@@ -166,6 +359,10 @@ class EventStreamHub:
         double-deliver. The first publish wins; subsequent publishes
         with the same id within the TTL are skipped and logged.
 
+        Successful per-subscriber deliveries also bump ``last_active``
+        so a session that is actively producing events never gets
+        evicted by the inactivity-TTL janitor.
+
         The subscriber list is snapshotted under the lock and
         ``put_nowait`` is invoked outside the lock so a slow consumer's
         ``QueueFull`` warning cannot serialize other publishers behind
@@ -176,7 +373,7 @@ class EventStreamHub:
         """
         now = self._clock.monotonic()
         async with self._lock:
-            queues_snapshot = list(self._subscribers.get(event.session_id, ()))
+            subs_snapshot = list(self._subscribers.get(event.session_id, ()))
             # If no subscribers, the event would be dropped anyway.
             # Don't record it in the dedup window: a later retry that
             # arrives after the client reconnects within the TTL must
@@ -184,7 +381,7 @@ class EventStreamHub:
             # attempt fell on an empty session. Also drop any orphan
             # dedup-window state for that session so it cannot grow
             # without bound across publish-without-subscribers cycles.
-            if not queues_snapshot:
+            if not subs_snapshot:
                 self._seen_event_ids.pop(event.session_id, None)
                 return
             if self._is_duplicate_locked(event, now):
@@ -196,9 +393,9 @@ class EventStreamHub:
                 )
                 return
             self._record_published_locked(event, now)
-        for queue in queues_snapshot:
+        for sub in subs_snapshot:
             try:
-                queue.put_nowait(event)
+                sub.queue.put_nowait(event)
             except asyncio.QueueFull:
                 logger.warning(
                     EVENT_STREAM_HUB_PUBLISH_FAILED,
@@ -206,6 +403,12 @@ class EventStreamHub:
                     event_id=event.id,
                     note="Subscriber queue full, event dropped",
                 )
+            else:
+                # In-place mutation under the dataclass's slot. The
+                # _Subscriber dict-view inside ``_subscribers`` shares
+                # the same instance; readers under the lock see the
+                # updated value on the next iteration.
+                sub.last_active = now
 
     def _is_duplicate_locked(self, event: StreamEvent, now: float) -> bool:
         """Return ``True`` if *event* was already published within the TTL.
