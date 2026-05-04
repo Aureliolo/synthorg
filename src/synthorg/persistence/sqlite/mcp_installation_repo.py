@@ -127,8 +127,19 @@ class SQLiteMcpInstallationRepository:
             "ORDER BY installed_at ASC, catalog_entry_id ASC "
             "LIMIT ? OFFSET ?"
         )
-        async with self._db.execute(sql, (limit, offset)) as cursor:
-            rows = await cursor.fetchall()
+        try:
+            async with self._db.execute(sql, (limit, offset)) as cursor:
+                rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list mcp installations"
+            logger.warning(
+                PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+                limit=limit,
+                offset=offset,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
         return tuple(
             McpInstallation(
                 catalog_entry_id=NotBlankStr(row[0]),

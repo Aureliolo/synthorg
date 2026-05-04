@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from psycopg.rows import dict_row
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
@@ -161,14 +162,16 @@ class PostgresMcpInstallationRepository:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            msg = "Failed to list mcp installations"
             logger.warning(
-                MCP_SERVER_INSTALL_FAILED,
-                operation="list_all",
+                PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+                limit=limit,
+                offset=offset,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 backend="postgres",
             )
-            raise
+            raise QueryError(msg) from exc
         return tuple(_row_to_installation(row) for row in rows)
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:

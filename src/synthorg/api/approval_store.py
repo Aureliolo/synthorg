@@ -283,6 +283,22 @@ class ApprovalStore:
         Each page is independent so a failure on one page does not
         leave a half-applied state on a later page.
 
+        Generation guard: captures ``self._generation`` under the lock
+        before any repo I/O, then skips the cache-update step on a
+        per-page basis if the captured generation no longer matches
+        ``self._generation`` (i.e. a concurrent ``clear()`` landed
+        between the capture and the cache write). Without this guard
+        an in-flight scan could repopulate ``_items`` after a clear
+        finished, undoing the post-clear empty-cache invariant the
+        ``save()`` path already protects via the same generation check.
+
+        Cache refresh scope: every row in a fetched page is written
+        into ``_items`` (not just the EXPIRED transitions), so a
+        non-expired sibling whose authoritative repo state has drifted
+        from the cache still gets refreshed. Otherwise a stale cached
+        copy could survive a repo read and leak into a later ``get()``
+        / ``save_if_pending()`` decision.
+
         Status filtering:
 
         * When ``status`` is ``EXPIRED`` (or ``None``), the repo query
@@ -302,6 +318,12 @@ class ApprovalStore:
           logged at ERROR but do not unwind the expiration).
         """
         assert self._repo is not None  # noqa: S101 -- caller invariant
+        # Capture generation under the lock before any repo I/O so a
+        # concurrent ``clear()`` landing mid-scan can be detected and
+        # prevent a post-clear cache resurrection. Mirrors the same
+        # guard ``save()`` already applies.
+        async with self._lock:
+            captured_generation = self._generation
         # Push the status filter down for non-EXPIRED queries so the
         # DB doesn't have to scan the whole table; only EXPIRED (and
         # the unfiltered ``None`` case) need the broad read so PENDING
@@ -323,15 +345,15 @@ class ApprovalStore:
             )
             if not page:
                 break
-            page_result, to_persist, cache_updates = self._compute_page(
+            page_result, to_persist, page_cache = self._compute_page(
                 page,
                 status=status,
                 risk_level=risk_level,
             )
             if to_persist:
-                # Durable write outside the lock; only re-acquire to
-                # apply the cache delta once ``save_many`` succeeds.
-                # Audit events + callbacks fire outside the lock too.
+                # Durable write outside the lock; cache refresh + audit
+                # events + callbacks all fire below regardless of
+                # whether expirations landed on this page.
                 try:
                     await self._repo.save_many(to_persist)
                 except MemoryError, RecursionError:
@@ -350,23 +372,24 @@ class ApprovalStore:
                         error=safe_error_description(exc),
                     )
                     raise
-                async with self._lock:
-                    self._items.update(cache_updates)
-                for expired in to_persist:
-                    logger.info(
-                        APPROVAL_STATUS_TRANSITIONED,
-                        approval_id=expired.id,
-                        from_status=ApprovalStatus.PENDING.value,
-                        to_status=ApprovalStatus.EXPIRED.value,
-                    )
-                    logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
-                    self._fire_expire_callback(expired)
-            else:
-                # No expirations on this page; still need a brief
-                # lock to populate the cache from the repo read.
-                async with self._lock:
-                    for item in page:
-                        self._items[item.id] = item
+            # Refresh the entire page slice in the cache (not just the
+            # EXPIRED transitions) so stale non-expired siblings can't
+            # outlive a fresh repo read. Generation guard: a concurrent
+            # ``clear()`` between the I/O and this critical section
+            # bumps ``_generation``; skip the cache write so the
+            # post-clear empty-cache invariant survives.
+            async with self._lock:
+                if self._generation == captured_generation:
+                    self._items.update(page_cache)
+            for expired in to_persist:
+                logger.info(
+                    APPROVAL_STATUS_TRANSITIONED,
+                    approval_id=expired.id,
+                    from_status=ApprovalStatus.PENDING.value,
+                    to_status=ApprovalStatus.EXPIRED.value,
+                )
+                logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
+                self._fire_expire_callback(expired)
             result.extend(page_result)
             if len(page) < page_size:
                 break
@@ -384,29 +407,32 @@ class ApprovalStore:
         list[ApprovalItem],
         dict[str, ApprovalItem],
     ]:
-        """Pure: classify a repo page into (filtered, to_persist, cache_updates).
+        """Pure: classify a repo page into (filtered, to_persist, page_cache).
 
         Companion to :meth:`_list_from_repo`. Walks ``page`` once,
         computing lazy expiration via :meth:`_compute_expiration` and
         applying caller-supplied filters. No I/O, no lock acquisition.
-        Splitting this out keeps the per-page pipeline in
-        ``_list_from_repo`` short and lets the lock-released chunked
-        flow remain readable.
+
+        ``page_cache`` carries every row from the page (with the
+        possibly-EXPIRED replacement substituted in) so the caller
+        can refresh the entire page slice in ``_items``, not just the
+        EXPIRED transitions. ``to_persist`` carries only the rows that
+        actually flipped, which is what ``save_many`` writes.
         """
         page_result: list[ApprovalItem] = []
         to_persist: list[ApprovalItem] = []
-        cache_updates: dict[str, ApprovalItem] = {}
+        page_cache: dict[str, ApprovalItem] = {}
         for item in page:
             checked = self._compute_expiration(item)
+            page_cache[item.id] = checked
             if checked is not item:
                 to_persist.append(checked)
-                cache_updates[item.id] = checked
             if status is not None and checked.status != status:
                 continue
             if risk_level is not None and checked.risk_level != risk_level:
                 continue
             page_result.append(checked)
-        return page_result, to_persist, cache_updates
+        return page_result, to_persist, page_cache
 
     async def _list_from_cache_locked(
         self,
