@@ -42,6 +42,8 @@ class _CheckListPaginationModule(Protocol):
     def cmd_scan_all() -> int: ...
     @staticmethod
     def cmd_update() -> int: ...
+    @staticmethod
+    def main(argv: list[str] | None = None) -> int: ...
 
 
 def _load_module() -> _CheckListPaginationModule:
@@ -296,6 +298,82 @@ class TestListPaginationGate:
             "        self,\n"
             "        *,\n"
             "        limit: int = PageSize.DEFAULT,\n"
+            "    ) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        assert _scan(write_sample(src)) == []
+
+    @pytest.mark.parametrize(
+        "annotation",
+        ["int", "int | None", "None | int", "Optional[int]"],
+    )
+    def test_int_compatible_limit_annotations_pass(
+        self, write_sample: WriteSampleFile, annotation: str
+    ) -> None:
+        """``int``-shaped annotations on ``limit`` satisfy the gate."""
+        src = (
+            "class FooRepository:\n"
+            "    def list_items(\n"
+            "        self,\n"
+            "        *,\n"
+            f"        limit: {annotation} = None,\n"
+            "        cursor: str | None = None,\n"
+            "    ) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        assert _scan(write_sample(src)) == []
+
+    @pytest.mark.parametrize(
+        ("signature", "comment"),
+        [
+            ("limit: str", "string-typed limit is not a row count"),
+            ("limit: object = 100", "object annotation hides any actual type"),
+            ("limit: str | int", "union with non-int leg is unbounded"),
+            ("limit", "unannotated limit slips type-checker entirely"),
+            ("limit = 100", "unannotated with default still has no type"),
+        ],
+    )
+    def test_non_int_limit_annotation_fails(
+        self, write_sample: WriteSampleFile, signature: str, comment: str
+    ) -> None:
+        """``limit`` typed as anything other than ``int``/``int | None`` fails."""
+        del comment
+        src = (
+            "class FooRepository:\n"
+            "    def list_items(\n"
+            "        self,\n"
+            "        *,\n"
+            f"        {signature},\n"
+            "    ) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        violations = _scan(write_sample(src))
+        assert len(violations) == 1
+        assert violations[0][2] == "invalid-limit-annotation"
+
+    def test_annotated_sequence_filter_passes(
+        self, write_sample: WriteSampleFile
+    ) -> None:
+        """``Annotated[Sequence[str], ...]`` (PEP 593) bounds the result."""
+        src = (
+            "class FooRepository:\n"
+            "    async def list_by_ids(\n"
+            "        self,\n"
+            "        *,\n"
+            "        ids: Annotated[Sequence[str], MinLen(1)],\n"
+            "    ) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        assert _scan(write_sample(src)) == []
+
+    def test_annotated_int_limit_passes(self, write_sample: WriteSampleFile) -> None:
+        """``Annotated[int, ...]`` resolves through the metadata wrapper."""
+        src = (
+            "class FooRepository:\n"
+            "    def list_items(\n"
+            "        self,\n"
+            "        *,\n"
+            "        limit: Annotated[int, Field(ge=1)] = 100,\n"
             "    ) -> tuple[int, ...]:\n"
             "        ...\n"
         )
@@ -556,3 +634,21 @@ class TestListPaginationGate:
         path = write_sample("def broken(:\n")
         with pytest.raises(_MODULE.InspectionError):
             _scan(path)
+
+    def test_main_normalises_inspection_error_from_update(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``main --update`` returns exit 2 on parse failure, not a traceback."""
+        broken = tmp_path / "broken_repo.py"
+        broken.write_text("def broken(:\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_PERSISTENCE_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_BASELINE_PATH", tmp_path / "baseline.txt")
+        rc = _MODULE.main(["--update"])
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "check_list_pagination:" in err
+        assert "broken_repo.py" in err

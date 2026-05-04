@@ -37,6 +37,10 @@ Per-method classification:
   with no cursor sibling.
 * FAIL ``missing-limit-param`` -- no ``limit`` parameter at all and
   no Sequence-bounded filter.
+* FAIL ``invalid-limit-annotation`` -- ``limit`` parameter is present
+  but its annotation is missing or is not ``int`` / ``int | None`` /
+  ``Optional[int]`` (e.g. ``limit: str``, ``limit: object = 100``).
+  A non-int ``limit`` is just as unbounded as no limit at all.
 
 Known signature loophole (intentional, narrow):
 
@@ -112,6 +116,7 @@ _SEQUENCE_ANNOTATION_NAMES: frozenset[str] = frozenset(
 
 _REASON_MISSING = "missing-limit-param"
 _REASON_NULLABLE = "nullable-limit-no-cursor"
+_REASON_INVALID_ANNOTATION = "invalid-limit-annotation"
 
 _BASELINE_HEADER = """\
 # Frozen baseline of pre-existing list_*/query repository methods missing
@@ -121,6 +126,7 @@ _BASELINE_HEADER = """\
 # Reasons:
 #   missing-limit-param      -- no `limit` parameter exists
 #   nullable-limit-no-cursor -- limit default is None and no cursor/offset sibling
+#   invalid-limit-annotation -- `limit` annotation is missing or not int/int|None
 #
 # scripts/check_list_pagination.py reads this file to suppress violations
 # at these exact sites. New offenders NOT in this list will fail the
@@ -190,22 +196,104 @@ def _is_numeric_constant(value: ast.expr | None) -> bool:
     return isinstance(value, ast.Constant) and isinstance(value.value, (int, float))
 
 
+def _annotated_first_arg(annotation: ast.Subscript) -> ast.expr:
+    """Return the first slice element of ``Annotated[T, ...]``.
+
+    Caller has already verified the outer name is ``Annotated``. PEP 593
+    requires at least two arguments (``T`` plus a metadata entry), so
+    ``ast.Tuple`` is the expected shape; CPython tolerates a single-arg
+    ``Annotated[T]`` though, so we handle the bare-``slice`` fallback.
+    """
+    inner = annotation.slice
+    if isinstance(inner, ast.Tuple) and inner.elts:
+        return inner.elts[0]
+    return inner
+
+
+def _int_subscript_inner(annotation: ast.Subscript) -> ast.expr | None:
+    """Return the type ``Optional[T]`` / ``Annotated[T, ...]`` wraps, else None.
+
+    A subscript whose outer name is anything other than ``Optional`` or
+    ``Annotated`` does not narrow to ``int`` and the caller rejects.
+    """
+    outer = _annotation_root_name(annotation.value)
+    if outer == "Optional":
+        return annotation.slice
+    if outer == "Annotated":
+        return _annotated_first_arg(annotation)
+    return None
+
+
+def _is_int_annotation(annotation: ast.expr | None) -> bool:
+    """Return True if *annotation* permits only ``int`` or ``int | None``.
+
+    Accepted shapes:
+
+    * ``int`` (bare ``ast.Name``).
+    * ``int | None`` / ``None | int`` (``ast.BinOp`` over ``BitOr``,
+      either operand order).
+    * ``Optional[int]`` (``ast.Subscript`` over ``Optional``).
+    * ``Annotated[int, ...]`` / ``Annotated[int | None, ...]`` (PEP 593
+      metadata wrapper; the gate looks through the wrapper at the first
+      slice element).
+
+    A missing annotation, an annotation typed as ``str`` / ``object`` /
+    any other base type, or a union containing a non-``int`` member
+    returns ``False`` -- the caller treats that as
+    ``invalid-limit-annotation``.
+    """
+    if annotation is None:
+        return False
+    if isinstance(annotation, ast.Name):
+        return annotation.id == "int"
+    if isinstance(annotation, ast.Constant):
+        return annotation.value is None
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _is_int_annotation(annotation.left) and _is_int_annotation(
+            annotation.right
+        )
+    if isinstance(annotation, ast.Subscript):
+        return _is_int_annotation(_int_subscript_inner(annotation))
+    return False
+
+
+def _find_arg(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, name: str
+) -> ast.arg | None:
+    """Return the ``ast.arg`` for parameter *name* on *func*, or ``None``.
+
+    Searches positional-only, positional-or-keyword, and keyword-only
+    parameters; ``*args`` / ``**kwargs`` collectors are out of scope
+    because the gate's vocabulary names a concrete parameter.
+    """
+    args = func.args
+    for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
+        if arg.arg == name:
+            return arg
+    return None
+
+
 def _annotation_root_name(annotation: ast.expr | None) -> str | None:
     """Return the outermost identifier of *annotation*, or ``None``.
 
     Handles ``Sequence[str]`` (Subscript over Name), ``list[str]``,
-    ``collections.abc.Sequence[str]`` (Subscript over Attribute), and
-    bare ``Sequence``. Anything that is not a Name, Attribute, or
-    Subscript wrapping one of those returns ``None``.
+    ``collections.abc.Sequence[str]`` (Subscript over Attribute), bare
+    ``Sequence``, and ``Annotated[Sequence[str], ...]`` (PEP 593, the
+    Pydantic / metadata-bearing shape) by recursing into the first
+    argument of ``Annotated[...]``. Anything that is not a Name,
+    Attribute, or Subscript wrapping one of those returns ``None``.
     """
     if annotation is None:
         return None
-    if isinstance(annotation, ast.Subscript):
-        return _annotation_root_name(annotation.value)
     if isinstance(annotation, ast.Name):
         return annotation.id
     if isinstance(annotation, ast.Attribute):
         return annotation.attr
+    if isinstance(annotation, ast.Subscript):
+        outer = _annotation_root_name(annotation.value)
+        if outer != "Annotated":
+            return outer
+        return _annotation_root_name(_annotated_first_arg(annotation))
     return None
 
 
@@ -246,16 +334,26 @@ def _classify_method(
 
     * ``limit`` parameter missing AND a required Sequence-typed filter is
       present (cardinality of the input bounds the result set).
-    * ``limit`` is required (no default).
-    * ``limit`` has a numeric constant default.
-    * ``limit`` defaults to ``None`` AND a cursor sibling exists.
-    * ``limit`` has a non-literal default (enum / module constant); the
-      gate accepts these by design (see the "Known signature loophole"
-      section in the module docstring).
+    * ``limit`` is annotated as ``int`` / ``int | None`` /
+      ``Optional[int]`` AND one of:
+        * required (no default), OR
+        * has a numeric constant default, OR
+        * defaults to ``None`` AND a cursor sibling exists, OR
+        * has a non-literal default (enum / module constant) -- the
+          "Known signature loophole" in the module docstring.
+
+    A ``limit`` parameter whose annotation is missing or not an
+    ``int``-compatible shape (``str``, ``object``, ``Any``, etc.)
+    returns ``invalid-limit-annotation``: the gate's contract is
+    ``limit: int``, and a parameter merely *named* limit with the wrong
+    type is just as unbounded as no limit at all.
     """
     params = _params_with_defaults(func)
     if "limit" not in params:
         return None if _has_required_sequence_param(func) else _REASON_MISSING
+    limit_arg = _find_arg(func, "limit")
+    if limit_arg is None or not _is_int_annotation(limit_arg.annotation):
+        return _REASON_INVALID_ANNOTATION
     default = params["limit"]
     if default is None or _is_numeric_constant(default):
         return None
@@ -606,7 +704,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.scan_all:
             return cmd_scan_all()
         return cmd_scan_paths(args.paths)
-    except ValueError as exc:
+    except (InspectionError, ValueError) as exc:
         print(f"check_list_pagination: {exc}", file=sys.stderr)
         return 2
 
