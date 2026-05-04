@@ -81,7 +81,18 @@ func newKindCmd(kind scaffold.Kind, useName string) *cobra.Command {
 				DryRun:    flagDryRun,
 			})
 			if err != nil {
-				return fmt.Errorf("writing scaffold: %w", err)
+				if len(written) > 0 {
+					w := out.Writer()
+					_, _ = fmt.Fprintln(w, "WARNING: scaffold partially written before failure; remove these files and re-run:")
+					for _, abs := range written {
+						rel, relErr := filepath.Rel(root, abs)
+						if relErr != nil {
+							rel = abs
+						}
+						_, _ = fmt.Fprintf(w, "  %s\n", rel)
+					}
+				}
+				return fmt.Errorf("writing %s scaffold: %w", useName, err)
 			}
 
 			verb := "Wrote"

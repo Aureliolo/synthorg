@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.mcp.domains._common_args import PaginationFields
 from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
 from synthorg.meta.mcp.handlers.common import dump_many, err, ok, paginate_sequence
@@ -50,10 +51,17 @@ async def _list(
         validation_error = ArgumentValidationError(invalid_argument("arguments", str(exc)))
         log_handler_argument_invalid(_TOOL_LIST, validation_error)
         return err(validation_error)
-    try:
-        items = await app_state.{{.Domain}}_service.list_items(
-            limit=args.limit, offset=args.offset
+    service = getattr(app_state, "{{.Domain}}_service", None)
+    if service is None:
+        msg = (
+            "{{.Domain}}_service not wired on app_state; see "
+            "src/synthorg/{{.Domain}}/WIRING.md or the controller scaffold's WIRING."
         )
+        wiring_error = ServiceUnavailableError(msg)
+        log_handler_invoke_failed(_TOOL_LIST, wiring_error)
+        return err(wiring_error)
+    try:
+        items = await service.list_items(limit=args.limit, offset=args.offset)
         page, meta = paginate_sequence(items, offset=args.offset, limit=args.limit)
     except (MemoryError, RecursionError):
         raise

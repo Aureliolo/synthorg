@@ -149,6 +149,7 @@ class SQLite{{.ClassName}}Repository:
             try:
                 cursor = await self._db.execute(_DELETE_SQL, (item_id,))
                 await self._db.commit()
+                deleted = (cursor.rowcount or 0) > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._db.rollback()
                 msg = f"Failed to delete {{.Domain}} {item_id!r}"
@@ -159,4 +160,4 @@ class SQLite{{.ClassName}}Repository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return (cursor.rowcount or 0) > 0
+        return deleted

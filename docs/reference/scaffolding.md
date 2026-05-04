@@ -38,6 +38,7 @@ Files:
 - `src/synthorg/<domain>/service.py` -- `<ClassName>Service` with `run` / `stop` and `is_running`
 - `src/synthorg/<domain>/errors.py` -- `<ClassName>Error(DomainError)` + `<ClassName>NotFoundError(NotFoundError)`
 - `src/synthorg/observability/events/<domain>.py` -- service lifecycle event constants
+- `tests/unit/<domain>/__init__.py` -- test package marker
 - `tests/unit/<domain>/test_service.py` -- FakeClock + `asyncio.TaskGroup` smoke
 - `src/synthorg/<domain>/WIRING.md` -- registration steps
 
