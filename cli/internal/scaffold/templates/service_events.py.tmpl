@@ -1,0 +1,12 @@
+"""{{title .ModuleDocSlug}} domain event constants.
+
+Imported by ``synthorg.{{.Domain}}.service``; never reference these
+event strings as bare literals from a logger call (the project's
+``Agent 02: missing-event-constants`` audit will flag it).
+"""
+
+from typing import Final
+
+# Service lifecycle
+{{shout .Domain}}_SERVICE_STARTED: Final[str] = "{{.Domain}}.service.started"
+{{shout .Domain}}_SERVICE_STOPPED: Final[str] = "{{.Domain}}.service.stopped"

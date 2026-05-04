@@ -59,6 +59,8 @@ CLI: see `cli/CLAUDE.md`. Use `go -C cli` (never `cd cli`).
 - [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md): currency / locale / timezone resolution chain
 - [docs/reference/typed-boundaries.md](docs/reference/typed-boundaries.md): per-boundary `parse_typed()` inventory + recipe
 - [docs/reference/retry-patterns.md](docs/reference/retry-patterns.md): retry-pattern decision tree (transient I/O, semantic self-correction, contention/sync) and the 5 inline-site map
+- [docs/reference/scaffolding.md](docs/reference/scaffolding.md): `synthorg new <kind> <domain>` CLI scaffolder usage + per-kind file inventory + shape contract
+- [docs/reference/audit-category-gate-coverage.md](docs/reference/audit-category-gate-coverage.md): audit category resolution paths (standing gate / pre-PR mini-pass / architecture / reviewer-enforced)
 
 ## Web Dashboard Design System (MANDATORY)
 
@@ -71,6 +73,39 @@ No default may privilege a region, currency, or locale. Resolution: user/company
 ## Persistence Boundary (MANDATORY)
 
 `src/synthorg/persistence/` is the only place that may import `aiosqlite` / `sqlite3` / `psycopg` / `psycopg_pool` or emit raw SQL DDL/DML. Every durable feature defines a Protocol in `persistence/<domain>_protocol.py` + concrete impls under `persistence/{sqlite,postgres}/` exposed on `PersistenceBackend`. Controllers and API endpoints access persistence through domain-scoped service layers (e.g. `ArtifactService`, `WorkflowService`, `MemoryService`); services centralize audit logging; repositories must not log mutations themselves. Adding a migration: read `docs/guides/persistence-migrations.md`; never hand-edit SQL or `atlas.sum`. Per-line opt-out: `# lint-allow: persistence-boundary -- <reason>`. Enforced by `scripts/check_persistence_boundary.py`. See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md).
+
+## Convention Rollout (MANDATORY)
+
+Any PR that establishes or expands a project-wide convention (error
+hierarchies, persistence boundary, mock-spec, regional defaults, typed
+boundary, settings-to-startup wiring, secret-log redaction, request-DTO
+`extra="forbid"`, no-magic-numbers, no-em-dashes, etc.) MUST include the
+AST/script gate that prevents regression. PRs proposing a convention
+without enforcement are rejected. The gate's job is to catch the SECOND
+occurrence of the category; the audit's job is finding the FIRST.
+
+Existing gate inventory (all under `scripts/`):
+
+- `check_persistence_boundary.py`
+- `check_mock_spec.py`
+- `check_setting_to_startup_trace.py`
+- `check_logger_exception_str_exc.py`
+- `check_boundary_typed.py`
+- `check_forbidden_literals.py`
+- `check_backend_regional_defaults.py`
+- `check_request_dto_forbid_extra.py`
+- `check_no_em_dashes.py`
+- `check_no_redundant_timeout.py`
+- `check_no_bulk_edit.py`
+- `check_provider_complete_chokepoint.py`
+- `check_web_design_system.py`
+- `check_doc_drift_counts.py`
+- `check_openapi_liveness.py`
+- `check_orphan_fixtures.py`
+
+Wire each new gate into `.pre-commit-config.yaml` (pre-commit or
+pre-push stage as fits) so it runs locally and in CI; per-line opt-outs
+use a stable `# lint-allow: <gate-name> -- <reason>` comment.
 
 ## Configuration Precedence (MANDATORY)
 
