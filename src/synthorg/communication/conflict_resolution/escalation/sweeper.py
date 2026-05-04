@@ -88,14 +88,33 @@ class EscalationExpirationSweeper:
         self._stop_failed: bool = False
         self._stop_drain_timeout_seconds: float = 30.0
 
-    def _is_running_on_current_loop(self) -> bool:
-        """True iff the existing task is alive on the running loop."""
+    def _task_is_on_current_loop(self) -> bool:
+        """True iff the existing task is alive on the running loop.
+
+        Used internally by ``start()`` to detect cross-loop reuse.
+        Returns ``True`` when the task or loop cannot be introspected
+        (e.g. ``MagicMock(spec=asyncio.Task)`` in tests where
+        ``get_loop()`` returns a mock instead of a real loop) so that
+        unit tests that mock ``asyncio.create_task`` are not penalised
+        by spurious task drops.
+        """
         if self._task is None or self._task.done():
             return False
         try:
-            return self._task.get_loop() is asyncio.get_running_loop()
+            # ``object`` annotation defeats mypy's narrowing of
+            # ``Task.get_loop`` so the runtime ``isinstance`` check
+            # below is reachable for ``MagicMock(spec=Task)`` test
+            # fixtures whose ``get_loop`` returns a mock value.
+            task_loop: object = self._task.get_loop()
+        except RuntimeError, AttributeError:
+            return True
+        if not isinstance(task_loop, asyncio.AbstractEventLoop):
+            return True
+        try:
+            current = asyncio.get_running_loop()
         except RuntimeError:
-            return False
+            return True
+        return task_loop is current
 
     def _drop_stale_loop_state(self) -> None:
         """Discard task/primitives bound to a closed-or-other event loop."""
@@ -123,7 +142,7 @@ class EscalationExpirationSweeper:
         # ``<Lock> is bound to a different event loop`` on the FIRST line
         # of the function and there is nothing the sweeper can do to
         # recover after that.
-        if self._task is not None and not self._is_running_on_current_loop():
+        if self._task is not None and not self._task_is_on_current_loop():
             self._drop_stale_loop_state()
         if self._lifecycle_lock is None:
             self._lifecycle_lock = asyncio.Lock()

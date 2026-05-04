@@ -205,6 +205,8 @@ class TestSchedulerLoop:
                 raise asyncio.CancelledError
             raise TimeoutError
 
+        scheduler._wake_event = asyncio.Event()
+        scheduler._stop_event = asyncio.Event()
         with (
             patch(
                 "synthorg.backup.scheduler.asyncio.wait_for",
@@ -237,6 +239,8 @@ class TestSchedulerLoop:
                 raise asyncio.CancelledError
             raise TimeoutError
 
+        scheduler._wake_event = asyncio.Event()
+        scheduler._stop_event = asyncio.Event()
         with (
             patch(
                 "synthorg.backup.scheduler.asyncio.wait_for",
@@ -264,6 +268,8 @@ class TestSchedulerLoop:
                 coro.close()
             raise TimeoutError
 
+        scheduler._wake_event = asyncio.Event()
+        scheduler._stop_event = asyncio.Event()
         with (
             patch(
                 "synthorg.backup.scheduler.asyncio.wait_for",
@@ -290,6 +296,8 @@ class TestSchedulerLoop:
             recorded_timeouts.append(timeout)
             raise asyncio.CancelledError
 
+        scheduler._wake_event = asyncio.Event()
+        scheduler._stop_event = asyncio.Event()
         with (
             patch(
                 "synthorg.backup.scheduler.asyncio.wait_for",

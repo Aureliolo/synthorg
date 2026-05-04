@@ -121,7 +121,9 @@ class EventStreamHub:
         "_dedup_ttl_seconds",
         "_janitor_task",
         "_lifecycle_lock",
+        "_lifecycle_lock_loop",
         "_lock",
+        "_lock_loop",
         "_max_queue_size",
         "_running",
         "_seen_event_ids",
@@ -167,15 +169,53 @@ class EventStreamHub:
         # webhook handler that catches a transient publish failure and
         # retries) would emit the same event twice to all subscribers.
         self._seen_event_ids: dict[str, OrderedDict[str, float]] = {}
-        self._lock = asyncio.Lock()
-        # Lifecycle-only lock. Distinct from ``_lock`` (the operational
-        # lock used by subscribe/publish) so normal traffic is not
-        # serialised against start/stop transitions per the canonical
-        # lifecycle pattern in docs/reference/lifecycle-sync.md.
-        self._lifecycle_lock = asyncio.Lock()
+        # Loop-bound asyncio primitives are deferred until first use
+        # so the hub can be safely re-used across event loops (test
+        # scenarios where pytest-asyncio creates a fresh loop per
+        # test while a session-scoped Litestar app holds this hub).
+        # ``_lock`` is operational (every subscribe/publish acquires
+        # it) and ``_lifecycle_lock`` is lifecycle-only.  Both rebind
+        # to the running loop on first access via the
+        # ``_*_for_current_loop`` helpers.
+        self._lock: asyncio.Lock | None = None
+        self._lock_loop: asyncio.AbstractEventLoop | None = None
+        self._lifecycle_lock: asyncio.Lock | None = None
+        self._lifecycle_lock_loop: asyncio.AbstractEventLoop | None = None
         self._janitor_task: asyncio.Task[None] | None = None
         self._running = False
         self._stop_failed = False
+
+    def _lock_for_current_loop(self) -> asyncio.Lock:
+        """Operational lock bound to the running loop, rebinding if needed.
+
+        ``_lock`` is acquired by every subscribe/publish call.  Lazy
+        creation + per-loop rebind keeps the hub usable across
+        pytest-asyncio's per-test loops without false-sharing locks
+        between unrelated tests.
+        """
+        try:
+            current = asyncio.get_running_loop()
+        except RuntimeError:
+            if self._lock is None:
+                self._lock = asyncio.Lock()
+            return self._lock
+        if self._lock is None or self._lock_loop is not current:
+            self._lock = asyncio.Lock()
+            self._lock_loop = current
+        return self._lock
+
+    def _lifecycle_lock_for_current_loop(self) -> asyncio.Lock:
+        """Lifecycle lock bound to the running loop, rebinding if needed."""
+        try:
+            current = asyncio.get_running_loop()
+        except RuntimeError:
+            if self._lifecycle_lock is None:
+                self._lifecycle_lock = asyncio.Lock()
+            return self._lifecycle_lock
+        if self._lifecycle_lock is None or self._lifecycle_lock_loop is not current:
+            self._lifecycle_lock = asyncio.Lock()
+            self._lifecycle_lock_loop = current
+        return self._lifecycle_lock
 
     # ── Lifecycle ────────────────────────────────────────────────
 
@@ -211,7 +251,7 @@ class EventStreamHub:
                 f"janitor_interval_seconds must be > 0, got {janitor_interval_seconds}"
             )
             raise ValueError(msg)
-        async with self._lifecycle_lock:
+        async with self._lifecycle_lock_for_current_loop():
             if self._stop_failed:
                 msg = (
                     "EventStreamHub cannot restart after a timed-out"
@@ -248,7 +288,7 @@ class EventStreamHub:
 
         Idempotent: ``stop()`` on a hub that is not running is a no-op.
         """
-        async with self._lifecycle_lock:
+        async with self._lifecycle_lock_for_current_loop():
             if not self._running:
                 return
             self._running = False
@@ -310,7 +350,7 @@ class EventStreamHub:
         now = self._clock.monotonic()
         cutoff = now - idle_ttl_seconds
         pruned = 0
-        async with self._lock:
+        async with self._lock_for_current_loop():
             for session_id in list(self._subscribers):
                 kept = [
                     sub
@@ -349,7 +389,7 @@ class EventStreamHub:
             maxsize=self._max_queue_size,
         )
         subscriber = _Subscriber(queue=queue, last_active=self._clock.monotonic())
-        async with self._lock:
+        async with self._lock_for_current_loop():
             self._subscribers.setdefault(session_id, []).append(subscriber)
         return queue
 
@@ -364,7 +404,7 @@ class EventStreamHub:
             session_id: Session the queue belongs to.
             queue: The queue to remove.
         """
-        async with self._lock:
+        async with self._lock_for_current_loop():
             subs = self._subscribers.get(session_id)
             if subs is None:
                 return
@@ -408,7 +448,7 @@ class EventStreamHub:
             event: The stream event to publish.
         """
         now = self._clock.monotonic()
-        async with self._lock:
+        async with self._lock_for_current_loop():
             subs_snapshot = list(self._subscribers.get(event.session_id, ()))
             # If no subscribers, the event would be dropped anyway.
             # Don't record it in the dedup window: a later retry that

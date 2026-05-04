@@ -94,19 +94,41 @@ class ApprovalTimeoutScheduler:
 
     @property
     def is_running(self) -> bool:
-        """Whether the scheduler loop is currently active.
+        """Whether the scheduler loop is currently active."""
+        return self._task is not None and not self._task.done()
 
-        Returns ``False`` when the existing task is bound to a loop
-        other than the currently-running one (e.g. test scenarios where
-        the scheduler outlived its original loop).  In that case
-        :meth:`start` will discard the stale task and spawn a fresh one.
+    def _task_is_on_current_loop(self) -> bool:
+        """True iff the existing task is alive on the current loop.
+
+        Used internally by ``start()`` to detect cross-loop reuse.
+        Distinct from :attr:`is_running` so the public predicate stays
+        cheap and mockable in tests; loop introspection only matters
+        on the cross-loop-restart path.
+
+        Returns ``True`` (i.e. "do not drop state") when the task or
+        loop cannot be introspected -- typically a ``MagicMock(spec=
+        asyncio.Task)`` in tests where ``get_loop()`` returns a mock.
+        Erring on the side of "same loop" prevents spurious task drops
+        in unit tests; the genuine cross-loop scenario in production
+        always returns a real ``AbstractEventLoop``.
         """
         if self._task is None or self._task.done():
             return False
         try:
-            return self._task.get_loop() is asyncio.get_running_loop()
+            # ``object`` annotation defeats mypy's narrowing of
+            # ``Task.get_loop`` so the runtime ``isinstance`` check
+            # below is reachable for ``MagicMock(spec=Task)`` test
+            # fixtures whose ``get_loop`` returns a mock value.
+            task_loop: object = self._task.get_loop()
+        except RuntimeError, AttributeError:
+            return True
+        if not isinstance(task_loop, asyncio.AbstractEventLoop):
+            return True
+        try:
+            current = asyncio.get_running_loop()
         except RuntimeError:
-            return False
+            return True
+        return task_loop is current
 
     def _drop_stale_loop_state(self) -> None:
         """Discard task/primitives bound to a closed-or-other event loop."""
@@ -134,14 +156,8 @@ class ApprovalTimeoutScheduler:
         # ``<Lock> is bound to a different event loop`` on the FIRST line
         # of the function and there is nothing the scheduler can do to
         # recover after that.
-        if self._task is not None:
-            current = asyncio.get_running_loop()
-            try:
-                same_loop = self._task.get_loop() is current
-            except RuntimeError:
-                same_loop = False
-            if not same_loop:
-                self._drop_stale_loop_state()
+        if self._task is not None and not self._task_is_on_current_loop():
+            self._drop_stale_loop_state()
         if self._lifecycle_lock is None:
             self._lifecycle_lock = asyncio.Lock()
         if self._wake_event is None:

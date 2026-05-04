@@ -83,9 +83,11 @@ class MeetingScheduler:
         "_clock",
         "_config",
         "_cooldown_lock",
+        "_cooldown_lock_loop",
         "_event_publisher",
         "_last_triggered",
         "_lifecycle_lock",
+        "_lifecycle_lock_loop",
         "_orchestrator",
         "_resolver",
         "_running",
@@ -107,13 +109,18 @@ class MeetingScheduler:
         self._resolver = participant_resolver
         self._event_publisher = event_publisher
         self._clock = clock or time.monotonic
-        self._cooldown_lock = asyncio.Lock()
-        # Serializes start() / stop() so the _running check-and-set
-        # and the per-type periodic-task spawn loop are atomic
-        # against concurrent lifecycle calls. Scoped separately from
-        # _cooldown_lock so trigger_event() is never blocked by a
-        # lifecycle transition.
-        self._lifecycle_lock = asyncio.Lock()
+        # Loop-bound asyncio primitives are deferred so the scheduler
+        # can be safely re-used across event loops (test scenarios
+        # where pytest-asyncio creates a fresh loop per test while a
+        # session-scoped Litestar app holds this instance).  The
+        # cooldown lock is operational (used by every trigger_event
+        # call); the lifecycle lock guards start/stop transitions.
+        # Both rebind to the running loop on first access via the
+        # ``_lock_for_current_loop`` helper.
+        self._cooldown_lock: asyncio.Lock | None = None
+        self._cooldown_lock_loop: asyncio.AbstractEventLoop | None = None
+        self._lifecycle_lock: asyncio.Lock | None = None
+        self._lifecycle_lock_loop: asyncio.AbstractEventLoop | None = None
         self._tasks: list[asyncio.Task[None]] = []
         self._running = False
         # Set to True when a stop() drain exceeds the hard deadline.
@@ -129,6 +136,40 @@ class MeetingScheduler:
         """Whether the scheduler is currently running."""
         return self._running
 
+    def _lifecycle_lock_for_current_loop(self) -> asyncio.Lock:
+        """Return a lifecycle lock bound to the running loop, rebinding if needed."""
+        try:
+            current = asyncio.get_running_loop()
+        except RuntimeError:
+            if self._lifecycle_lock is None:
+                self._lifecycle_lock = asyncio.Lock()
+            return self._lifecycle_lock
+        if self._lifecycle_lock is None or self._lifecycle_lock_loop is not current:
+            self._lifecycle_lock = asyncio.Lock()
+            self._lifecycle_lock_loop = current
+        return self._lifecycle_lock
+
+    def _cooldown_lock_for_current_loop(self) -> asyncio.Lock:
+        """Return a cooldown lock bound to the running loop, rebinding if needed.
+
+        ``_cooldown_lock`` is operational (acquired by every
+        ``trigger_event`` call), so we cannot defer creation to a
+        ``start()`` lifecycle hook.  Rebind on each access when the
+        loop has changed -- a no-op in production (single loop) and
+        the safe path in tests where pytest-asyncio creates a fresh
+        loop per test.
+        """
+        try:
+            current = asyncio.get_running_loop()
+        except RuntimeError:
+            if self._cooldown_lock is None:
+                self._cooldown_lock = asyncio.Lock()
+            return self._cooldown_lock
+        if self._cooldown_lock is None or self._cooldown_lock_loop is not current:
+            self._cooldown_lock = asyncio.Lock()
+            self._cooldown_lock_loop = current
+        return self._cooldown_lock
+
     async def start(self) -> None:
         """Start periodic tasks for all frequency-based meeting types.
 
@@ -141,7 +182,7 @@ class MeetingScheduler:
         Raises:
             SchedulerAlreadyRunningError: If the scheduler is already running.
         """
-        async with self._lifecycle_lock:
+        async with self._lifecycle_lock_for_current_loop():
             if self._stop_failed:
                 logger.warning(
                     MEETING_SCHEDULER_ERROR,
@@ -215,7 +256,7 @@ class MeetingScheduler:
         Holds ``_lifecycle_lock`` so ``stop()`` cannot race a
         partially-constructed ``start()``.
         """
-        async with self._lifecycle_lock:
+        async with self._lifecycle_lock_for_current_loop():
             if not self._running:
                 return
 
@@ -329,7 +370,7 @@ class MeetingScheduler:
 
         # Serialize cooldown check + time recording to prevent
         # concurrent trigger_event() calls from both bypassing cooldown.
-        async with self._cooldown_lock:
+        async with self._cooldown_lock_for_current_loop():
             now = self._clock()
             eligible: list[MeetingTypeConfig] = []
             for mt in matching:
