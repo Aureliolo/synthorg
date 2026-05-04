@@ -5,9 +5,9 @@ A repository ``list_users``/``query`` method that returns every row in the
 table is a DoS vector: any caller that triggers it (an unauth'd endpoint,
 a debug script, an integration test) materialises an arbitrarily-large
 tuple in memory. The CRUD vocabulary in
-``docs/reference/conventions.md`` §14 mandates ``limit`` (offset or cursor)
-on every ``list_items`` and ``query``; this gate prevents regression of
-that convention.
+``docs/reference/conventions.md`` section 14 mandates ``limit`` (offset or
+cursor) on every ``list_items`` and ``query``; this gate prevents
+regression of that convention.
 
 Scope:
 
@@ -27,9 +27,28 @@ Per-method classification:
 * PASS -- ``limit`` default is ``None`` AND another parameter named
   ``cursor`` / ``offset`` / ``after_id`` / ``before_id`` exists
   (cursor-pagination is the alternative to a numeric default).
+* PASS -- ``limit`` is missing AND a required parameter's annotation is
+  a Sequence-like generic (``Sequence[X]`` / ``list[X]`` / ``tuple[X,
+  ...]`` / ``set[X]`` / ``frozenset[X]`` / ``Iterable[X]`` /
+  ``Collection[X]``). The cardinality of the input sequence bounds
+  the result set the same way ``limit`` does, so a ``WHERE col IN
+  (...)``-style query is intrinsically bounded.
 * FAIL ``nullable-limit-no-cursor`` -- ``limit`` default is ``None``
   with no cursor sibling.
-* FAIL ``missing-limit-param`` -- no ``limit`` parameter at all.
+* FAIL ``missing-limit-param`` -- no ``limit`` parameter at all and
+  no Sequence-bounded filter.
+
+Known signature loophole (intentional, narrow):
+
+* ``limit: int = SOME_NON_LITERAL`` -- when the default expression is
+  neither a numeric literal nor ``None`` (an enum, a settings call, a
+  module-level constant), the gate treats it as compliant. The
+  parameter is present and named ``limit``; the gate's job is to catch
+  the unbounded shape, not to police the default's runtime value. If
+  ``SOME_NON_LITERAL`` resolves to an unbounded sentinel at runtime,
+  that's a defect at the call site that this signature gate cannot
+  detect; runtime validation belongs in the repository's own input
+  guards, not here.
 
 Allowlist
 ---------
@@ -48,9 +67,10 @@ Per-line opt-out
 
 Append ``# lint-allow: list-pagination -- <reason>`` to a method's
 ``def`` line to bypass the gate at that exact site (rare; rule of
-thumb: prefer fixing the signature). The marker is honoured AST-by-line
-on the function definition line, so a misplaced marker on a body line
-does not silence the violation.
+thumb: prefer fixing the signature). The marker is honoured only when
+it appears inside the line's actual comment (after an unquoted ``#``);
+the same string inside a default value or docstring does not silence
+the violation.
 
 Usage
 -----
@@ -65,7 +85,7 @@ import ast
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -81,6 +101,13 @@ _OPT_OUT_MARKER = "lint-allow: list-pagination"
 # is unbounded UNLESS one of these siblings is present.
 _CURSOR_PARAM_NAMES: frozenset[str] = frozenset(
     {"cursor", "offset", "after_id", "before_id"}
+)
+
+# Sequence-like generic annotations that bound the result set by the
+# cardinality of the input. A method with no ``limit`` but a required
+# ``ids: Sequence[str]`` parameter is intrinsically bounded.
+_SEQUENCE_ANNOTATION_NAMES: frozenset[str] = frozenset(
+    {"Sequence", "list", "tuple", "set", "frozenset", "Iterable", "Collection"}
 )
 
 _REASON_MISSING = "missing-limit-param"
@@ -103,8 +130,6 @@ _BASELINE_HEADER = """\
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_list_pagination.py --update
-#
-# Issue #1752 (audit cluster #19).
 """
 
 
@@ -112,9 +137,11 @@ class InspectionError(RuntimeError):
     """A source file could not be parsed for AST inspection."""
 
 
-# Concrete violation tuple: ``(class_name, method_name, reason, lineno)``.
-# Lineno is the ``def`` line, used for the per-line opt-out marker check.
-_Violation = tuple[str, str, str, int]
+class _Violation(NamedTuple):
+    class_name: str
+    method_name: str
+    reason: str
+    lineno: int
 
 
 def _is_target_method_name(name: str) -> bool:
@@ -163,27 +190,78 @@ def _is_numeric_constant(value: ast.expr | None) -> bool:
     return isinstance(value, ast.Constant) and isinstance(value.value, (int, float))
 
 
+def _annotation_root_name(annotation: ast.expr | None) -> str | None:
+    """Return the outermost identifier of *annotation*, or ``None``.
+
+    Handles ``Sequence[str]`` (Subscript over Name), ``list[str]``,
+    ``collections.abc.Sequence[str]`` (Subscript over Attribute), and
+    bare ``Sequence``. Anything that is not a Name, Attribute, or
+    Subscript wrapping one of those returns ``None``.
+    """
+    if annotation is None:
+        return None
+    if isinstance(annotation, ast.Subscript):
+        return _annotation_root_name(annotation.value)
+    if isinstance(annotation, ast.Name):
+        return annotation.id
+    if isinstance(annotation, ast.Attribute):
+        return annotation.attr
+    return None
+
+
+def _has_required_sequence_param(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    """Return True if *func* has a required Sequence-typed parameter.
+
+    A Sequence-typed REQUIRED parameter (no default) bounds the result
+    set the same way a ``limit`` does: a ``WHERE col IN (...)``-style
+    query is intrinsically bounded by the cardinality of the input.
+    Optional Sequence parameters (default ``None``) do not count
+    because the method behaves unbounded when the caller omits them.
+    """
+    args = func.args
+    pos = list(args.posonlyargs) + list(args.args)
+    pos_defaults: list[ast.expr | None] = [None] * (
+        len(pos) - len(args.defaults)
+    ) + list(args.defaults)
+    candidates: list[tuple[ast.arg, ast.expr | None]] = list(
+        zip(pos, pos_defaults, strict=True)
+    ) + list(zip(args.kwonlyargs, args.kw_defaults, strict=True))
+    for arg, default in candidates:
+        if default is not None:
+            continue
+        root = _annotation_root_name(arg.annotation)
+        if root in _SEQUENCE_ANNOTATION_NAMES:
+            return True
+    return False
+
+
 def _classify_method(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> str | None:
-    """Return a violation reason for *func*, or ``None`` if it's compliant."""
+    """Return a violation reason for *func*, or ``None`` if it's compliant.
+
+    Compliance shapes (any one is enough):
+
+    * ``limit`` parameter missing AND a required Sequence-typed filter is
+      present (cardinality of the input bounds the result set).
+    * ``limit`` is required (no default).
+    * ``limit`` has a numeric constant default.
+    * ``limit`` defaults to ``None`` AND a cursor sibling exists.
+    * ``limit`` has a non-literal default (enum / module constant); the
+      gate accepts these by design (see the "Known signature loophole"
+      section in the module docstring).
+    """
     params = _params_with_defaults(func)
     if "limit" not in params:
-        return _REASON_MISSING
+        return None if _has_required_sequence_param(func) else _REASON_MISSING
     default = params["limit"]
-    if default is None:
-        return None
-    if _is_numeric_constant(default):
+    if default is None or _is_numeric_constant(default):
         return None
     if _is_literal_none(default):
         cursor_sibling = any(name in params for name in _CURSOR_PARAM_NAMES)
-        if cursor_sibling:
-            return None
-        return _REASON_NULLABLE
-    # Default is some other expression (an enum, a Settings lookup,
-    # etc.). Treat as compliant: the parameter is present and the
-    # gate's job is to catch the unbounded shapes, not to police
-    # literal default expressions.
+        return None if cursor_sibling else _REASON_NULLABLE
     return None
 
 
@@ -196,15 +274,51 @@ def _iter_class_methods(
             yield node
 
 
+def _comment_text(line: str) -> str:
+    """Return the comment portion of *line* (text after an unquoted ``#``).
+
+    Walks the line tracking single- and double-quote string state so a
+    ``#`` inside a string literal does not start a comment. This is
+    deliberately a lightweight character scanner rather than ``tokenize``
+    because it runs on a single line per call -- spinning up the full
+    tokenizer per def-line would dominate scan time.
+
+    Triple-quoted strings, f-string expressions, and multi-line strings
+    crossing the def line are out of scope: the marker check operates on
+    the single ``def`` line, and a real-world ``def`` with an embedded
+    triple-quoted default is rare enough that we accept a false negative
+    over the cost of full token-stream parsing.
+    """
+    in_quote: str | None = None
+    escaped = False
+    for i, ch in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if in_quote is not None:
+            if ch == in_quote:
+                in_quote = None
+            continue
+        if ch in ("'", '"'):
+            in_quote = ch
+            continue
+        if ch == "#":
+            return line[i:]
+    return ""
+
+
 def _line_has_opt_out(source_lines: list[str], lineno: int) -> bool:
-    """Return True if the line carries the per-line opt-out marker."""
+    """Return True if the line's comment carries the per-line opt-out marker."""
     if not 1 <= lineno <= len(source_lines):
         return False
-    return _OPT_OUT_MARKER in source_lines[lineno - 1]
+    return _OPT_OUT_MARKER in _comment_text(source_lines[lineno - 1])
 
 
 def _scan_file(path: Path, rel: str) -> list[_Violation]:
-    """Return ``(class_name, method_name, reason, lineno)`` for *path*.
+    """Return ``_Violation`` records for every flagged method in *path*.
 
     Walks every top-level ``ClassDef`` (nested classes are out of scope --
     persistence files don't use them) and inspects each direct method
@@ -237,7 +351,7 @@ def _scan_file(path: Path, rel: str) -> list[_Violation]:
                 continue
             if _line_has_opt_out(source_lines, method.lineno):
                 continue
-            violations.append((node.name, method.name, reason, method.lineno))
+            violations.append(_Violation(node.name, method.name, reason, method.lineno))
     return violations
 
 
@@ -291,9 +405,10 @@ def _load_baseline() -> set[str]:
     if errors:
         for err in errors:
             print(err, file=sys.stderr)
+        plural = "s" if len(errors) != 1 else ""
         msg = (
             f"{rel_path}: baseline failed validation "
-            f"({len(errors)} error{'s' if len(errors) != 1 else ''}); "
+            f"({len(errors)} error{plural}; first: {errors[0]}); "
             "regenerate with 'uv run python scripts/check_list_pagination.py "
             "--update' or fix by hand."
         )
@@ -323,16 +438,18 @@ def _scan(path: Path, baseline: set[str]) -> tuple[list[str], set[str]]:
     entries that suppressed something" lets ``cmd_scan_all`` compute
     ``baseline - hits`` to detect stale (shrinkage-eligible) entries
     after every file is processed.
+
+    Re-raises :class:`InspectionError` so callers can distinguish a
+    genuine pagination violation (exit 1) from a parse failure (exit 2);
+    flattening parse errors into the violation stream would let a
+    syntax-broken file silently disable the gate's coverage there.
     """
     rel = _rel(path)
-    try:
-        scan_hits = _scan_file(path, rel)
-    except InspectionError as exc:
-        return [f"{rel}: inspection failed: {exc}"], set()
+    scan_hits = _scan_file(path, rel)
     violations: list[str] = []
     hits: set[str] = set()
-    for class_name, method_name, reason, _lineno in scan_hits:
-        entry = _format_entry(rel, class_name, method_name, reason)
+    for hit in scan_hits:
+        entry = _format_entry(rel, hit.class_name, hit.method_name, hit.reason)
         if entry in baseline:
             hits.add(entry)
             continue
@@ -352,9 +469,10 @@ def _scan_all_for_baseline() -> list[str]:
     entries: list[str] = []
     for path in _iter_persistence_files():
         rel = _rel(path)
-        scan_hits = _scan_file(path, rel)
-        for class_name, method_name, reason, _lineno in scan_hits:
-            entries.append(_format_entry(rel, class_name, method_name, reason))
+        entries.extend(
+            _format_entry(rel, hit.class_name, hit.method_name, hit.reason)
+            for hit in _scan_file(path, rel)
+        )
     return sorted(entries)
 
 
@@ -375,40 +493,60 @@ def cmd_scan_all() -> int:
     baseline = _load_baseline()
     violations: list[str] = []
     matched: set[str] = set()
+    inspection_errors: list[str] = []
     for path in _iter_persistence_files():
-        v, h = _scan(path, baseline)
+        try:
+            v, h = _scan(path, baseline)
+        except InspectionError as exc:
+            inspection_errors.append(str(exc))
+            continue
         violations.extend(v)
         matched |= h
+    if inspection_errors:
+        for err in inspection_errors:
+            print(f"check_list_pagination: {err}", file=sys.stderr)
+        return 2
     stale = sorted(baseline - matched)
     return _report(violations, stale)
 
 
 def cmd_scan_paths(paths: Iterable[str]) -> int:
-    """Scan the supplied paths (pre-push entry point).
+    """Scan the supplied paths (pre-commit / pre-push entry point).
 
     Files outside ``_PERSISTENCE_ROOT`` are skipped because the gate's
     contract is repository-only; mistakenly running it across
     ``src/synthorg/api/`` should be a no-op rather than crash.
 
     Shrinkage detection is intentionally *not* run in this entry point:
-    pre-push receives only the changed files, so a baseline entry that
-    no longer matches because its file wasn't in the diff would be a
-    false positive. ``cmd_scan_all`` is the canonical place to enforce
-    shrinkage.
+    pre-commit / pre-push receive only the changed files, so a baseline
+    entry that no longer matches because its file wasn't in the diff
+    would be a false positive. ``cmd_scan_all`` is the canonical place
+    to enforce shrinkage.
+
+    A parse failure on any scanned file exits 2 (consistent with
+    ``cmd_scan_all``); the developer's local push fails loudly rather
+    than rolling a syntax error into the violation stream.
     """
     baseline = _load_baseline()
     persistence_root = _PERSISTENCE_ROOT.resolve()
     violations: list[str] = []
+    inspection_errors: list[str] = []
     for raw in paths:
         path = Path(raw).resolve()
         if not path.exists() or path.suffix != ".py":
             continue
-        try:
-            path.relative_to(persistence_root)
-        except ValueError:
+        if not path.is_relative_to(persistence_root):
             continue
-        v, _ = _scan(path, baseline)
+        try:
+            v, _ = _scan(path, baseline)
+        except InspectionError as exc:
+            inspection_errors.append(str(exc))
+            continue
         violations.extend(v)
+    if inspection_errors:
+        for err in inspection_errors:
+            print(f"check_list_pagination: {err}", file=sys.stderr)
+        return 2
     return _report(violations, stale=[])
 
 
@@ -448,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "paths",
         nargs="*",
-        help="Files to check (pre-push supplies these).",
+        help="Files to check (pre-commit / pre-push supplies these).",
     )
     parser.add_argument(
         "--scan-all",

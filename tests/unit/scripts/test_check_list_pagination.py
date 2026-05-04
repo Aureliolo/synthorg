@@ -24,11 +24,14 @@ class _CheckListPaginationModule(Protocol):
     _REPO_ROOT: Path
     _PERSISTENCE_ROOT: Path
     _BASELINE_PATH: Path
+    _BASELINE_HEADER: str
 
     @staticmethod
     def _load_baseline() -> set[str]: ...
     @staticmethod
     def _scan_file(path: Path, rel: str) -> list[tuple[str, str, str, int]]: ...
+    @staticmethod
+    def _scan(path: Path, baseline: set[str]) -> tuple[list[str], set[str]]: ...
     @staticmethod
     def _format_entry(
         rel: str, class_name: str, method_name: str, reason: str
@@ -37,6 +40,8 @@ class _CheckListPaginationModule(Protocol):
     def cmd_scan_paths(paths: Iterable[str]) -> int: ...
     @staticmethod
     def cmd_scan_all() -> int: ...
+    @staticmethod
+    def cmd_update() -> int: ...
 
 
 def _load_module() -> _CheckListPaginationModule:
@@ -71,8 +76,6 @@ def _scan(path: Path) -> list[tuple[str, str, str, int]]:
 
 
 class TestListPaginationGate:
-    """Signature-level pagination contract for repository methods."""
-
     def test_list_with_required_limit_passes(
         self, write_sample: WriteSampleFile
     ) -> None:
@@ -181,7 +184,7 @@ class TestListPaginationGate:
     def test_bare_query_treated_like_query_underscore(
         self, write_sample: WriteSampleFile
     ) -> None:
-        """``query`` (no underscore) is the canonical CRUD name in §14."""
+        """``query`` (no underscore) is the canonical CRUD name."""
         src = (
             "class FooRepository:\n"
             "    def query(self) -> tuple[int, ...]:\n"
@@ -206,7 +209,6 @@ class TestListPaginationGate:
         assert violations[0][2] == "missing-limit-param"
 
     def test_private_methods_skipped(self, write_sample: WriteSampleFile) -> None:
-        """``_list_*`` is a private helper, not a public list endpoint."""
         src = (
             "class FooRepository:\n"
             "    def _list_internal(self) -> tuple[int, ...]:\n"
@@ -219,7 +221,6 @@ class TestListPaginationGate:
     def test_non_list_query_methods_not_flagged(
         self, write_sample: WriteSampleFile
     ) -> None:
-        """Other names (``get_history``, ``search``, ``list_all``) are out of scope."""
         src = (
             "class FooRepository:\n"
             "    def get_history(self) -> tuple[int, ...]:\n"
@@ -231,27 +232,79 @@ class TestListPaginationGate:
         )
         assert _scan(write_sample(src)) == []
 
-    def test_list_with_after_id_cursor_passes(
-        self, write_sample: WriteSampleFile
+    @pytest.mark.parametrize(
+        "cursor_name", ["cursor", "offset", "after_id", "before_id"]
+    )
+    def test_list_with_any_cursor_name_passes(
+        self, write_sample: WriteSampleFile, cursor_name: str
     ) -> None:
-        """``after_id`` is a recognised keyset-cursor name."""
         src = (
             "class FooRepository:\n"
             "    async def list_pages(\n"
             "        self,\n"
             "        *,\n"
-            "        after_id: str | None = None,\n"
+            f"        {cursor_name}: str | None = None,\n"
             "        limit: int | None = None,\n"
             "    ) -> tuple[int, ...]:\n"
             "        ...\n"
         )
         assert _scan(write_sample(src)) == []
 
-    def test_lint_allow_marker_suppresses_violation(
+    @pytest.mark.parametrize(
+        "annotation",
+        ["Sequence[str]", "list[str]", "tuple[str, ...]", "Iterable[str]"],
+    )
+    def test_list_with_required_sequence_filter_passes(
+        self, write_sample: WriteSampleFile, annotation: str
+    ) -> None:
+        """A required Sequence-typed filter bounds the result by input cardinality."""
+        src = (
+            "class FooRepository:\n"
+            "    async def list_by_ids(\n"
+            "        self,\n"
+            "        *,\n"
+            f"        ids: {annotation},\n"
+            "    ) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        assert _scan(write_sample(src)) == []
+
+    def test_list_with_optional_sequence_filter_fails(
+        self, write_sample: WriteSampleFile
+    ) -> None:
+        """A defaulted Sequence (caller can omit) does NOT bound the result."""
+        src = (
+            "class FooRepository:\n"
+            "    async def list_by_ids(\n"
+            "        self,\n"
+            "        *,\n"
+            "        ids: list[str] | None = None,\n"
+            "    ) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        violations = _scan(write_sample(src))
+        assert len(violations) == 1
+        assert violations[0][2] == "missing-limit-param"
+
+    def test_non_literal_default_expression_passes(
+        self, write_sample: WriteSampleFile
+    ) -> None:
+        """``limit: int = SOME_CONST`` slips through by design (loophole)."""
+        src = (
+            "class FooRepository:\n"
+            "    def list_items(\n"
+            "        self,\n"
+            "        *,\n"
+            "        limit: int = PageSize.DEFAULT,\n"
+            "    ) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        assert _scan(write_sample(src)) == []
+
+    def test_lint_allow_marker_in_comment_suppresses(
         self,
         tmp_path: Path,
     ) -> None:
-        """A ``# lint-allow: list-pagination -- <reason>`` marker suppresses."""
         src = (
             "class FooRepository:\n"
             "    def list_items(self) -> tuple[int, ...]:  "
@@ -260,24 +313,38 @@ class TestListPaginationGate:
         )
         path = tmp_path / "sample.py"
         path.write_text(src, encoding="utf-8")
+        assert _scan(path) == []
+
+    def test_lint_allow_marker_in_string_default_does_not_suppress(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The marker only counts when in the actual comment, not in a string."""
+        src = (
+            "class FooRepository:\n"
+            "    def list_items(self, msg: str = "
+            "'lint-allow: list-pagination -- fake'):\n"
+            "        ...\n"
+        )
+        path = tmp_path / "sample.py"
+        path.write_text(src, encoding="utf-8")
         violations = _scan(path)
-        assert violations == []
+        assert len(violations) == 1
+        assert violations[0][2] == "missing-limit-param"
 
     def test_baseline_entry_suppresses_violation(
         self,
         write_sample: WriteSampleFile,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Entries in the baseline are not re-reported by ``cmd_scan_paths``."""
         src = (
             "class FooRepository:\n"
             "    def list_items(self) -> tuple[int, ...]:\n"
             "        ...\n"
         )
         path = write_sample(src, name="legacy_repo.py")
-        rel = "legacy_repo.py"
         baselined = _MODULE._format_entry(
-            rel, "FooRepository", "list_items", "missing-limit-param"
+            "legacy_repo.py", "FooRepository", "list_items", "missing-limit-param"
         )
         monkeypatch.setattr(_MODULE, "_REPO_ROOT", path.parent)
         monkeypatch.setattr(_MODULE, "_PERSISTENCE_ROOT", path.parent)
@@ -291,7 +358,6 @@ class TestListPaginationGate:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """A new violation absent from the baseline trips the gate."""
         src = (
             "class NewRepository:\n"
             "    def list_widgets(self) -> tuple[int, ...]:\n"
@@ -307,7 +373,186 @@ class TestListPaginationGate:
         assert "NewRepository.list_widgets" in out
         assert "missing-limit-param" in out
 
-    def test_unparseable_file_raises(self, write_sample: WriteSampleFile) -> None:
+    def test_cmd_scan_paths_skips_paths_outside_persistence_root(
+        self,
+        write_sample: WriteSampleFile,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Pre-push must never crash on files outside the persistence tree."""
+        src = (
+            "class NewRepository:\n"
+            "    def list_widgets(self) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        path = write_sample(src, name="api_handler.py")
+        outside_root = path.parent / "other_root"
+        outside_root.mkdir()
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", path.parent)
+        monkeypatch.setattr(_MODULE, "_PERSISTENCE_ROOT", outside_root)
+        monkeypatch.setattr(_MODULE, "_load_baseline", set)
+        rc = _MODULE.cmd_scan_paths([str(path)])
+        assert rc == 0
+
+    def test_cmd_scan_paths_exit_2_on_parse_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A syntax-broken file inside persistence root fails loudly (exit 2)."""
+        broken = tmp_path / "broken_repo.py"
+        broken.write_text("def broken(:\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_PERSISTENCE_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_load_baseline", set)
+        rc = _MODULE.cmd_scan_paths([str(broken)])
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "broken_repo.py" in err
+        assert "SyntaxError" in err
+
+    def test_cmd_scan_all_reports_baseline_stale_for_shrinkage(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A baseline entry that no longer matches surfaces as ``baseline-stale``."""
+        # Persistence dir contains one offender that IS in the baseline.
+        compliant_repo = tmp_path / "compliant_repo.py"
+        compliant_repo.write_text(
+            "class FooRepository:\n"
+            "    def list_items(self, *, limit: int = 100) -> tuple[int, ...]:\n"
+            "        ...\n",
+            encoding="utf-8",
+        )
+        # Baseline has an entry for a DIFFERENT method that no longer exists.
+        stale_entry = _MODULE._format_entry(
+            "compliant_repo.py",
+            "FooRepository",
+            "list_orphans",
+            "missing-limit-param",
+        )
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_PERSISTENCE_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_load_baseline", lambda: {stale_entry})
+        rc = _MODULE.cmd_scan_all()
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert f"baseline-stale: {stale_entry}" in out
+
+    def test_cmd_scan_all_exit_2_on_parse_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A parse failure during full scan exits 2, not 1."""
+        broken = tmp_path / "broken_repo.py"
+        broken.write_text("def broken(:\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_PERSISTENCE_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_load_baseline", set)
+        rc = _MODULE.cmd_scan_all()
+        assert rc == 2
+
+    def test_cmd_update_writes_sorted_baseline_with_header(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``--update`` regenerates a sorted, header-prefixed baseline."""
+        # Two offenders in alphabetical-reverse order across two files.
+        (tmp_path / "z_repo.py").write_text(
+            "class ZRepository:\n"
+            "    def list_z(self) -> tuple[int, ...]:\n"
+            "        ...\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "a_repo.py").write_text(
+            "class ARepository:\n"
+            "    def list_a(self) -> tuple[int, ...]:\n"
+            "        ...\n",
+            encoding="utf-8",
+        )
+        baseline_target = tmp_path / "baseline.txt"
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_PERSISTENCE_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_BASELINE_PATH", baseline_target)
+        rc = _MODULE.cmd_update()
+        assert rc == 0
+        body = baseline_target.read_text(encoding="utf-8")
+        assert body.startswith(_MODULE._BASELINE_HEADER)
+        entries = [
+            line for line in body.splitlines() if line and not line.startswith("#")
+        ]
+        assert entries == sorted(entries)
+        assert any("ARepository.list_a" in e for e in entries)
+        assert any("ZRepository.list_z" in e for e in entries)
+
+    def test_load_baseline_returns_empty_when_file_absent(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Init case: baseline file missing → empty allowlist, no crash."""
+        missing = tmp_path / "does_not_exist.txt"
+        monkeypatch.setattr(_MODULE, "_BASELINE_PATH", missing)
+        assert _MODULE._load_baseline() == set()
+
+    def test_load_baseline_rejects_malformed_entries(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Malformed line raises ValueError with diagnostic on stderr."""
+        baseline = tmp_path / "baseline.txt"
+        baseline.write_text(
+            "# header comment\n"
+            "src/synthorg/persistence/x.py:Foo.bar:missing-limit-param\n"
+            "this-is-not-a-valid-entry\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(_MODULE, "_BASELINE_PATH", baseline)
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        with pytest.raises(ValueError, match="failed validation"):
+            _MODULE._load_baseline()
+        err = capsys.readouterr().err
+        assert "malformed entry" in err
+        assert "this-is-not-a-valid-entry" in err
+
+    def test_load_baseline_rejects_duplicate_entries(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        baseline = tmp_path / "baseline.txt"
+        entry = "src/synthorg/persistence/x.py:Foo.bar:missing-limit-param"
+        baseline.write_text(f"{entry}\n{entry}\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_BASELINE_PATH", baseline)
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        with pytest.raises(ValueError, match="failed validation"):
+            _MODULE._load_baseline()
+        err = capsys.readouterr().err
+        assert "duplicate entry" in err
+
+    def test_load_baseline_value_error_includes_first_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The exception message embeds the first error for pipeline visibility."""
+        baseline = tmp_path / "baseline.txt"
+        baseline.write_text("garbage-line\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_BASELINE_PATH", baseline)
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        with pytest.raises(ValueError, match=r"first: .*malformed entry"):
+            _MODULE._load_baseline()
+
+    def test_unparseable_file_raises_inspection_error(
+        self, write_sample: WriteSampleFile
+    ) -> None:
         path = write_sample("def broken(:\n")
         with pytest.raises(_MODULE.InspectionError):
             _scan(path)

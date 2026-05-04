@@ -12,7 +12,8 @@ ci:
   #     too slow / toolchain-heavy for the cloud runner.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
-  #     orphan-fixtures / boundary-typed / setting-to-startup-trace:
+  #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
+  #     list-pagination:
   #     scoped gates that need ``uv`` + repo source -- redundant given
   #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
   #   - check-push-rebased / check-single-migration-per-pr /
@@ -24,7 +25,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -263,12 +264,12 @@ repos:
         stages: [pre-push]
 
       - id: list-pagination
-        name: list_*/query repository pagination gate (#1752)
+        name: list_*/query repository pagination gate
         entry: uv run python scripts/check_list_pagination.py --scan-all
         language: system
         files: ^(src/synthorg/persistence/.*\.py|scripts/check_list_pagination\.py|scripts/list_pagination_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-push]
+        stages: [pre-commit, pre-push]
 
       - id: setting-to-startup-trace
         name: settings → startup wiring trace (ghost-wired settings gate)

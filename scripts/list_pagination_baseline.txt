@@ -14,8 +14,6 @@
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_list_pagination.py --update
-#
-# Issue #1752 (audit cluster #19).
 src/synthorg/persistence/custom_rule_repo.py:CustomRuleRepository.list_rules:missing-limit-param
 src/synthorg/persistence/postgres/custom_rule_repo.py:PostgresCustomRuleRepository.list_rules:missing-limit-param
 src/synthorg/persistence/postgres/hr_repositories.py:PostgresCollaborationMetricRepository.query:missing-limit-param
