@@ -28,6 +28,7 @@ from litestar.exceptions import (
     ValidationException,
 )
 
+from synthorg.a2a.client import A2AClientError
 from synthorg.api.auth_response_discriminator import discriminate_unauthorized
 from synthorg.api.cursor import InvalidCursorError
 from synthorg.api.dto import ApiResponse, ErrorDetail, ProblemDetail
@@ -805,6 +806,7 @@ _HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
     (CommunicationError, handle_domain_error),
     (IntegrationError, handle_domain_error),
     (ToolError, handle_domain_error),
+    (A2AClientError, handle_domain_error),
     (DomainError, handle_domain_error),
     (Exception, handle_unexpected),
 )

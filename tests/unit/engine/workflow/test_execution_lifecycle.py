@@ -17,6 +17,7 @@ from synthorg.core.enums import (
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
+    RecordNotFoundError,
 )
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
@@ -88,8 +89,8 @@ class FakeExecutionRepo:
         stored = self._store.get(execution.id)
         if stored is None:
             if execution.version != 1:
-                msg = f"Cannot insert with version {execution.version}"
-                raise PersistenceVersionConflictError(msg)
+                msg = f"Execution {execution.id!r} not found"
+                raise RecordNotFoundError(msg)
         else:
             if execution.version == 1:
                 msg = f"Execution {execution.id!r} already exists"

@@ -74,9 +74,19 @@ class ConfigError(DomainError):
 class ConfigFileNotFoundError(ConfigError):
     """Raised when a configuration file does not exist."""
 
+    default_message: ClassVar[str] = "Configuration file not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404
+
 
 class ConfigParseError(ConfigError):
     """Raised when YAML parsing fails."""
+
+    default_message: ClassVar[str] = "Configuration file parse error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 400
 
 
 class ConfigValidationError(ConfigError):
