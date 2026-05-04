@@ -350,12 +350,21 @@ async def _retry_after_version_conflict(
         return
     try:
         await _dispatch_task_handler(repo, refreshed, event)
-    except Exception:
-        logger.exception(
+    except MemoryError, RecursionError:
+        raise
+    except RecordNotFoundError:
+        logger.warning(
             retry_event,
             execution_id=execution.id,
             task_id=event.task_id,
-            error="Retry after version conflict also failed",
+            error="Execution deleted during retry",
+        )
+    except PersistenceVersionConflictError:
+        logger.warning(
+            retry_event,
+            execution_id=execution.id,
+            task_id=event.task_id,
+            error="Concurrent modification during retry",
         )
 
 
