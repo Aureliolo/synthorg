@@ -447,23 +447,36 @@ def test_clean_tree_returns_zero(
     assert rc == 0
 
 
+_INHERITED_GIT_VARS: tuple[tuple[str, str], ...] = (
+    ("GIT_DIR", "/outer/repo/.git"),
+    ("GIT_WORK_TREE", "/outer/repo"),
+    ("GIT_INDEX_FILE", "/outer/repo/.git/index"),
+    ("GIT_OBJECT_DIRECTORY", "/outer/repo/.git/objects"),
+    ("GIT_COMMON_DIR", "/outer/repo/.git"),
+)
+
+
+def _spy_subprocess_run(
+    monkeypatch: pytest.MonkeyPatch, captured_env: dict[str, str]
+) -> None:
+    """Patch ``subprocess.run`` on the gate to record env and force fallback."""
+
+    def _fake_run(*args: object, **kwargs: object) -> object:
+        del args
+        env = kwargs.get("env")
+        if isinstance(env, dict):
+            captured_env.update(env)
+        raise subprocess.CalledProcessError(returncode=1, cmd=["git", "ls-files"])
+
+    module_subprocess = getattr(_MODULE, "subprocess")  # noqa: B009
+    monkeypatch.setattr(module_subprocess, "run", _fake_run)
+
+
 def test_scan_tree_ignores_inherited_git_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pre-push leaks GIT_DIR/GIT_WORK_TREE; the gate must scope to ``cwd``.
-
-    Without this guard, ``git ls-files`` would honour the inherited Git
-    pointers and return the *outer* repo's tracked files, producing a
-    flood of "unable to read file" parse errors against tmp_path paths
-    that do not exist.
-
-    Asserting on ``issues == []`` alone is not discriminating: even
-    without the env strip the call may fall back to ``rglob`` on a
-    non-existent ``.git`` and produce no issues. So spy on
-    ``subprocess.run`` and check the actual ``env`` that was passed --
-    that is what the implementation must scrub.
-    """
+    """Pre-push-inherited GIT_* env vars must be scrubbed before git ls-files."""
     project_root, _ = _make_project(
         tmp_path,
         {
@@ -475,25 +488,16 @@ def test_scan_tree_ignores_inherited_git_dir(
             ),
         },
     )
-    monkeypatch.setenv("GIT_DIR", "/outer/repo/.git")
-    monkeypatch.setenv("GIT_WORK_TREE", "/outer/repo")
-    monkeypatch.setenv("GIT_INDEX_FILE", "/outer/repo/.git/index")
+    for name, value in _INHERITED_GIT_VARS:
+        monkeypatch.setenv(name, value)
 
     captured_env: dict[str, str] = {}
+    _spy_subprocess_run(monkeypatch, captured_env)
 
-    def _fake_run(*args: object, **kwargs: object) -> object:
-        del args
-        env = kwargs.get("env")
-        if isinstance(env, dict):
-            captured_env.update(env)
-        raise subprocess.CalledProcessError(returncode=1, cmd=["git", "ls-files"])
-
-    module_subprocess = getattr(_MODULE, "subprocess")  # noqa: B009
-    monkeypatch.setattr(module_subprocess, "run", _fake_run)
     issues = _MODULE._scan_tree(project_root, project_root / "src" / "synthorg")
     assert issues == []
     assert captured_env, "subprocess.run was not invoked"
-    for leaked in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+    for leaked, _ in _INHERITED_GIT_VARS:
         assert leaked not in captured_env, (
             f"{leaked} leaked into git ls-files env: scrubbing regressed"
         )
