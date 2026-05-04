@@ -262,6 +262,14 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: list-pagination
+        name: list_*/query repository pagination gate (#1752)
+        entry: uv run python scripts/check_list_pagination.py --scan-all
+        language: system
+        files: ^(src/synthorg/persistence/.*\.py|scripts/check_list_pagination\.py|scripts/list_pagination_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: setting-to-startup-trace
         name: settings → startup wiring trace (ghost-wired settings gate)
         entry: uv run python scripts/check_setting_to_startup_trace.py
