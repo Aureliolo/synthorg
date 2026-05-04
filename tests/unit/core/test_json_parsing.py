@@ -68,6 +68,35 @@ class TestObjectExtractor:
             extract_json_from_llm_response("garbage", logger_callback=_broken) is None
         )
 
+    def test_logger_callback_propagates_system_errors(self) -> None:
+        """System-level callback errors must NOT be swallowed.
+
+        A naive ``contextlib.suppress(Exception)`` would also absorb
+        ``MemoryError`` and ``RecursionError``, masking process-level
+        resource exhaustion. The project convention is to re-raise so
+        the caller sees the unrecoverable state.
+        """
+
+        def _oom(_detail: str) -> None:
+            raise MemoryError
+
+        with pytest.raises(MemoryError):
+            extract_json_from_llm_response("garbage", logger_callback=_oom)
+
+        def _stack(_detail: str) -> None:
+            raise RecursionError
+
+        with pytest.raises(RecursionError):
+            extract_json_from_llm_response("garbage", logger_callback=_stack)
+
+    def test_stray_braces_in_prose_do_not_defeat_fallback(self) -> None:
+        """``find/rfind`` would slice from the first opener to the last
+        closer across the full string and fail to parse; the per-opener
+        ``raw_decode`` scan picks the first valid object instead.
+        """
+        text = 'Use {x} as notation. Final JSON: {"k": "v"}'
+        assert extract_json_from_llm_response(text) == {"k": "v"}
+
 
 @pytest.mark.unit
 class TestArrayExtractor:
@@ -92,3 +121,11 @@ class TestArrayExtractor:
 
     def test_empty_returns_none(self) -> None:
         assert extract_json_array_from_llm_response("") is None
+
+    def test_stray_brackets_in_prose_do_not_defeat_fallback(self) -> None:
+        """Prose with bracketed examples (``Example [a]``) before the
+        actual array would defeat ``find/rfind``; the per-opener
+        ``raw_decode`` scan finds the first valid array.
+        """
+        text = "Example [a] then result: [1, 2, 3]"
+        assert extract_json_array_from_llm_response(text) == [1, 2, 3]

@@ -6,15 +6,16 @@ prose, or both. The extractors here handle the common shapes:
 
   1. Plain JSON: ``{"k": "v"}``
   2. Markdown-fenced JSON: `````json\n{"k": "v"}\n`````
-  3. JSON nested inside chatty prose: brace-matching the outermost
-     ``{`` ... ``}`` (object) or ``[`` ... ``]`` (array) substring.
+  3. JSON nested inside chatty prose: scan each ``{`` / ``[`` opener
+     and try ``JSONDecoder().raw_decode()`` until one parses with the
+     expected top-level type. This is robust against responses with
+     stray ``{x}``-style placeholders or bracketed examples in prose.
 
 Callers pass an optional ``logger_callback`` so the extractor stays
 logger-agnostic; each callsite continues to log against its own
 module logger using its own domain event constants.
 """
 
-import contextlib
 import json
 import re
 
@@ -48,12 +49,42 @@ def _safe_log(callback: Callable[[str], None] | None, detail: str) -> None:
     A logger callback that raises (e.g. a misconfigured handler)
     would mask the actual extraction failure that the caller cares
     about, so we keep parsing failures observable while never letting
-    the logger break the extractor's contract.
+    the logger break the extractor's contract. Process-level resource
+    errors (``MemoryError``, ``RecursionError``) propagate; the
+    project-wide convention is that those signal an unrecoverable
+    state and must not be silently absorbed.
     """
     if callback is None:
         return
-    with contextlib.suppress(Exception):
+    try:
         callback(detail)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        return
+
+
+def _scan_for_json(stripped: str, opener: str) -> dict[str, Any] | list[Any] | None:
+    """Scan ``stripped`` for the first parseable JSON value at each ``opener``.
+
+    Walks every ``opener`` position (``{`` for objects, ``[`` for arrays)
+    and attempts ``JSONDecoder().raw_decode()`` from there. Returns the
+    first decoded value, regardless of top-level type; the caller
+    isinstance-filters to its expected shape. Robust against stray
+    ``{x}`` placeholders or bracketed examples that would defeat a
+    naive ``find``/``rfind`` slice.
+    """
+    decoder = json.JSONDecoder()
+    for idx, char in enumerate(stripped):
+        if char != opener:
+            continue
+        try:
+            value, _ = decoder.raw_decode(stripped[idx:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, (dict, list)):
+            return value
+    return None
 
 
 def extract_json_from_llm_response(
@@ -64,8 +95,8 @@ def extract_json_from_llm_response(
     """Extract a JSON object from an LLM response.
 
     Strips markdown fences first; on parse failure, falls back to
-    matching the outermost ``{`` and ``}`` substring for noisy
-    responses that wrap the JSON in prose.
+    scanning each ``{`` opener and using ``raw_decode()`` until a
+    valid object is found.
 
     Args:
         text: The raw LLM response.
@@ -100,17 +131,9 @@ def extract_json_from_llm_response(
         _safe_log(logger_callback, "json_wrong_top_level_type")
         return None
 
-    # Brace-matching fallback for prose-wrapped JSON.
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            fallback = json.loads(stripped[start : end + 1])
-        except json.JSONDecodeError:
-            _safe_log(logger_callback, "json_decode_error")
-            return None
-        if isinstance(fallback, dict):
-            return fallback
+    fallback = _scan_for_json(stripped, "{")
+    if isinstance(fallback, dict):
+        return fallback
 
     _safe_log(logger_callback, "json_decode_error")
     return None
@@ -124,7 +147,8 @@ def extract_json_array_from_llm_response(
     """Extract a JSON array from an LLM response (mirror of dict variant).
 
     Strips markdown fences first; on parse failure, falls back to
-    matching the outermost ``[`` and ``]`` substring.
+    scanning each ``[`` opener and using ``raw_decode()`` until a
+    valid array is found.
 
     Args:
         text: The raw LLM response.
@@ -152,16 +176,9 @@ def extract_json_array_from_llm_response(
         _safe_log(logger_callback, "json_wrong_top_level_type")
         return None
 
-    start = stripped.find("[")
-    end = stripped.rfind("]")
-    if start != -1 and end != -1 and end > start:
-        try:
-            fallback = json.loads(stripped[start : end + 1])
-        except json.JSONDecodeError:
-            _safe_log(logger_callback, "json_decode_error")
-            return None
-        if isinstance(fallback, list):
-            return fallback
+    fallback = _scan_for_json(stripped, "[")
+    if isinstance(fallback, list):
+        return fallback
 
     _safe_log(logger_callback, "json_decode_error")
     return None
