@@ -58,6 +58,10 @@ func TestNewParamsInvalid(t *testing.T) {
 		{"class", "reserved"},       // python keyword
 		{"if", "reserved"},          // python keyword
 		{"none", "reserved"},        // PascalCase("none") collides with None literal
+		{"con", "reserved"},         // Windows device name
+		{"nul", "reserved"},         // Windows device name
+		{"com1", "reserved"},        // Windows device name
+		{"lpt9", "reserved"},        // Windows device name
 	}
 	for _, c := range cases {
 		t.Run(c.raw, func(t *testing.T) {

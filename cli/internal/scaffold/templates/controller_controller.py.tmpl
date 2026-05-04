@@ -49,17 +49,18 @@ class {{.ClassName}}Controller(Controller):
         """
         items = tuple(await _service(state).list_items(limit=limit, offset=offset))
         # Placeholder pagination: ``PaginationMeta`` is cursor-based, but
-        # the scaffold's ``list_items`` returns only the bare item tuple.
-        # ``has_more`` is a heuristic derived from ``len == limit``; the
-        # accompanying ``<domain>_WIRING.md`` walks through promoting
-        # this to real cursor pagination once the service exposes the
-        # backend's cursor metadata.
+        # the scaffold's ``list_items`` returns only the bare item tuple
+        # with no cursor metadata. ``has_more=False`` keeps the contract
+        # internally consistent (a cursorless page cannot honestly
+        # advertise a next page); the accompanying ``<domain>_WIRING.md``
+        # walks through promoting this to real cursor pagination once
+        # the service exposes the backend's cursor metadata.
         return PaginatedResponse[{{.ClassName}}Item](
             data=items,
             pagination=PaginationMeta(
                 limit=limit,
                 next_cursor=None,
-                has_more=len(items) == limit,
+                has_more=False,
             ),
         )
 

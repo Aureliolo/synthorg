@@ -90,6 +90,35 @@ var reservedDomains = map[string]struct{}{
 	"tools":         {},
 	"utils":         {},
 	"workers":       {},
+	// Windows reserved device names. The snake_case regex accepts
+	// these but `mkdir src/synthorg/<name>` later fails on Windows
+	// because the kernel treats `con`, `nul`, `aux`, `prn`, `com1`..
+	// `com9`, `lpt1`..`lpt9` as device handles, not files. Reject up
+	// front so the scaffolder fails with a clear message rather than
+	// at write time. The snake_case regex already lowercases input,
+	// so a lowercase-only key set is sufficient.
+	"aux":  {},
+	"com1": {},
+	"com2": {},
+	"com3": {},
+	"com4": {},
+	"com5": {},
+	"com6": {},
+	"com7": {},
+	"com8": {},
+	"com9": {},
+	"con":  {},
+	"lpt1": {},
+	"lpt2": {},
+	"lpt3": {},
+	"lpt4": {},
+	"lpt5": {},
+	"lpt6": {},
+	"lpt7": {},
+	"lpt8": {},
+	"lpt9": {},
+	"nul":  {},
+	"prn":  {},
 	// Python keywords / common stdlib names that would create import
 	// shadows or syntactically invalid module / class names. The full
 	// keyword set (matches `keyword.kwlist` minus the ones the

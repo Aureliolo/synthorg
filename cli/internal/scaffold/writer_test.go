@@ -73,6 +73,22 @@ func TestWriteRejectsWindowsAbsolutePaths(t *testing.T) {
 	}
 }
 
+func TestWriteRejectsDuplicateTargets(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	files := []RenderedFile{
+		{Path: "src/dup.py", Contents: []byte("# first")},
+		{Path: "src/dup.py", Contents: []byte("# second")},
+	}
+	_, err := Write(files, WriteOptions{RootDir: root})
+	if err == nil {
+		t.Fatal("duplicate target accepted; want rejection")
+	}
+	if !strings.Contains(err.Error(), "duplicate scaffold target") {
+		t.Errorf("error %q does not mention duplicate target", err)
+	}
+}
+
 func TestWriteRejectsEmptyContent(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

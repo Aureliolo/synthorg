@@ -45,6 +45,11 @@ func Write(files []RenderedFile, opts WriteOptions) ([]string, error) {
 		return nil, fmt.Errorf("resolving root dir: %w", err)
 	}
 	resolved := make([]string, len(files))
+	// Track resolved targets to fail fast on intra-call duplicates: two
+	// RenderedFile entries pointing at the same absolute path would let
+	// the later atomic-rename silently overwrite the earlier one,
+	// defeating the existence guard below for template-path collisions.
+	seen := make(map[string]int, len(files))
 	for i, f := range files {
 		// Reject empty content up front. A template that renders to
 		// nothing would silently write an empty .py file the user's
@@ -64,6 +69,13 @@ func Write(files []RenderedFile, opts WriteOptions) ([]string, error) {
 		if !strings.HasPrefix(abs+string(filepath.Separator), absRoot+string(filepath.Separator)) && abs != absRoot {
 			return nil, fmt.Errorf("scaffold path escapes root: %q", f.Path)
 		}
+		if prior, dup := seen[abs]; dup {
+			return nil, fmt.Errorf(
+				"duplicate scaffold target %q (entries %d and %d resolve to %s)",
+				f.Path, prior, i, abs,
+			)
+		}
+		seen[abs] = i
 		resolved[i] = abs
 	}
 	if !opts.Overwrite {
