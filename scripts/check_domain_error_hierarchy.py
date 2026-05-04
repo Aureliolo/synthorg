@@ -323,6 +323,32 @@ def _format_baseline_entry(rel: str, lineno: int, class_name: str) -> str:
     return f"{rel}:{lineno}:{class_name}"
 
 
+_GIT_INHERITED_ENV_VARS: Final[tuple[str, ...]] = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
+)
+
+
+def _subprocess_env_without_inherited_git() -> dict[str, str]:
+    """Return ``os.environ`` minus inherited Git overrides.
+
+    When this script runs from a Git pre-push hook, ``GIT_DIR`` /
+    ``GIT_WORK_TREE`` / friends are set in the environment by Git. Those
+    propagate to ``git ls-files`` even when we pass an explicit ``cwd=``
+    -- ``GIT_DIR`` wins over ``cwd``. The gate (and any test that
+    invokes it on a synthetic tree) needs ``cwd`` to decide which repo
+    we're querying, so strip the inherited Git pointers before each
+    invocation.
+    """
+    env = os.environ.copy()
+    for name in _GIT_INHERITED_ENV_VARS:
+        env.pop(name, None)
+    return env
+
+
 def _git_tracked_python_files(
     abs_root: Path,
     project_root: Path,
@@ -335,6 +361,7 @@ def _git_tracked_python_files(
             check=True,
             capture_output=True,
             cwd=project_root,
+            env=_subprocess_env_without_inherited_git(),
         )
     except subprocess.CalledProcessError, FileNotFoundError:
         return [

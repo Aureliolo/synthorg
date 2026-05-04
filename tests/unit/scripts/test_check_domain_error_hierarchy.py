@@ -446,6 +446,34 @@ def test_clean_tree_returns_zero(
     assert rc == 0
 
 
+def test_scan_tree_ignores_inherited_git_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pre-push leaks GIT_DIR/GIT_WORK_TREE; the gate must scope to ``cwd``.
+
+    Without this guard, ``git ls-files`` would honour the inherited Git
+    pointers and return the *outer* repo's tracked files, producing a
+    flood of "unable to read file" parse errors against tmp_path
+    paths that do not exist.
+    """
+    project_root, _ = _make_project(
+        tmp_path,
+        {
+            "src/synthorg/foo/errors.py": (
+                "from synthorg.core.domain_errors import DomainError\n"
+                "\n"
+                "class FooError(DomainError):\n"
+                "    pass\n"
+            ),
+        },
+    )
+    monkeypatch.setenv("GIT_DIR", ".git")
+    monkeypatch.setenv("GIT_WORK_TREE", ".")
+    issues = _MODULE._scan_tree(project_root, project_root / "src" / "synthorg")
+    assert issues == []
+
+
 def test_update_baseline_writes_sorted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
