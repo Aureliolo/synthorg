@@ -1,7 +1,6 @@
 """Tests for delegation circuit breaker."""
 
 import threading
-import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -467,14 +466,27 @@ class TestCheckAtomicity:
         from threading import Thread
 
         underlying = cb._state_lock
+        # Deterministic handshake: the sibling sets ``blocked_on_lock``
+        # exactly when its non-blocking acquire fails (i.e. once it has
+        # observed that ``check`` holds the lock); the main thread waits
+        # on that signal instead of sleeping a fixed 50ms. Sleeping does
+        # NOT prove the sibling reached a contended acquire before
+        # ``check`` finished, so the regression could pass without
+        # exercising the interleaving it claims to cover.
+        blocked_on_lock = threading.Event()
         injection_done = threading.Event()
 
         def _mutate_in_sibling() -> None:
-            with underlying:
+            if not underlying.acquire(blocking=False):
+                blocked_on_lock.set()
+                underlying.acquire()
+            try:
                 pair = cb._pairs.get(("a", "b"))
                 if pair is not None:
                     pair.opened_at = None
                 injection_done.set()
+            finally:
+                underlying.release()
 
         recorded_during_check: list[bool] = []
 
@@ -485,9 +497,14 @@ class TestCheckAtomicity:
                     recorded_during_check.append(True)
                     t = Thread(target=_mutate_in_sibling, daemon=True)
                     t.start()
-                    # Yield to the sibling so it observes the lock
-                    # held; it blocks on us until __exit__ fires.
-                    time.sleep(0.05)
+                    # Wait until the sibling proves it observed the
+                    # contended acquire; only then can ``check`` proceed
+                    # to its OPEN-branch read of ``opened_at``.
+                    assert blocked_on_lock.wait(timeout=1.0), (
+                        "sibling thread did not reach contended "
+                        "acquire within 1s; the test cannot prove "
+                        "the OPEN-branch race is closed."
+                    )
                 return result
 
             def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -503,7 +520,9 @@ class TestCheckAtomicity:
         clock_time = 5.0
         result = cb.check("a", "b")
         cb._state_lock = underlying
-        injection_done.wait(timeout=1.0)
+        assert injection_done.wait(timeout=1.0), (
+            "sibling mutation never completed; the deterministic handshake stalled."
+        )
         assert recorded_during_check, (
             "check() never acquired _state_lock through the tracked "
             "wrapper; the OPEN-branch decision is NOT covered by "

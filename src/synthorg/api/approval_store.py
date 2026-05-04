@@ -249,20 +249,20 @@ class ApprovalStore:
         Returns:
             Tuple of matching approval items.
         """
+        if self._repo is not None:
+            return await self._list_from_repo(
+                status=status,
+                risk_level=risk_level,
+                action_type=action_type,
+            )
         async with self._lock:
-            if self._repo is not None:
-                return await self._list_from_repo_locked(
-                    status=status,
-                    risk_level=risk_level,
-                    action_type=action_type,
-                )
             return await self._list_from_cache_locked(
                 status=status,
                 risk_level=risk_level,
                 action_type=action_type,
             )
 
-    async def _list_from_repo_locked(  # noqa: C901
+    async def _list_from_repo(
         self,
         *,
         status: ApprovalStatus | None,
@@ -271,13 +271,17 @@ class ApprovalStore:
     ) -> tuple[ApprovalItem, ...]:
         """Repo-backed list path with batched expiry persistence.
 
-        Pure-compute pass first collects the EXPIRED transitions into
-        ``to_persist`` and stages cache updates in a side dict; the
-        persistence write fans out as a single ``save_many`` so K
-        simultaneous expiries yield one DB round-trip rather than K.
-        Cache promotions only land *after* ``save_many`` succeeds so a
-        failed batch cannot leave an EXPIRED row in the cache that
-        contradicts the still-PENDING repo state.
+        Per-page chunked so the store lock is held only for short
+        cache-mutation critical sections, never across repo I/O,
+        ``save_many``, or callback dispatch. A long unbounded scan
+        cannot stall concurrent ``get()`` / ``save()`` callers that
+        serialize on the same lock.
+
+        Per-page protocol: read page (no lock) -> compute expirations
+        (pure, no lock) -> ``save_many`` (no lock) -> brief lock for
+        cache update -> emit audit events + fire callbacks (no lock).
+        Each page is independent so a failure on one page does not
+        leave a half-applied state on a later page.
 
         Status filtering:
 
@@ -289,7 +293,7 @@ class ApprovalStore:
           status and lazy expiration cannot promote into it -- the
           filter is pushed down so the DB only returns matching rows.
 
-        Side effects after the batch save:
+        Side effects after each per-page batch save:
 
         * Emits one ``APPROVAL_STATUS_TRANSITIONED`` + one
           ``API_APPROVAL_EXPIRED`` audit event per newly-expired item.
@@ -303,16 +307,13 @@ class ApprovalStore:
         # the unfiltered ``None`` case) need the broad read so PENDING
         # rows that should lazily flip to EXPIRED are visible to the
         # expiration pass below.
-        # ``ApprovalRepository.list_items`` is bounded to 100 rows
-        # per call, so we page until exhausted -- otherwise older
-        # PENDING rows that should lazily flip to EXPIRED here would
-        # never be visited once there are >100 newer non-expired
-        # rows in the table.
         repo_status = None if status in {None, ApprovalStatus.EXPIRED} else status
         page_size = 100
-        repo_pages: list[ApprovalItem] = []
+        result: list[ApprovalItem] = []
         offset = 0
         while True:
+            # Repo I/O outside the store lock so concurrent get() /
+            # save() callers are never blocked by a long scan.
             page = await self._repo.list_items(
                 status=repo_status,
                 risk_level=risk_level,
@@ -320,17 +321,82 @@ class ApprovalStore:
                 limit=page_size,
                 offset=offset,
             )
-            repo_pages.extend(page)
+            if not page:
+                break
+            page_result, to_persist, cache_updates = self._compute_page(
+                page,
+                status=status,
+                risk_level=risk_level,
+            )
+            if to_persist:
+                # Durable write outside the lock; only re-acquire to
+                # apply the cache delta once ``save_many`` succeeds.
+                # Audit events + callbacks fire outside the lock too.
+                try:
+                    await self._repo.save_many(to_persist)
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    # Log the affected ids before re-raising so a
+                    # production failure on the batched expiry path
+                    # is diagnosable -- otherwise the caller sees the
+                    # ``QueryError`` and has no record of which lazy
+                    # expirations were attempted.
+                    logger.warning(
+                        API_APPROVAL_EXPIRE_BATCH_FAILED,
+                        batch_size=len(to_persist),
+                        approval_ids=tuple(item.id for item in to_persist),
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise
+                async with self._lock:
+                    self._items.update(cache_updates)
+                for expired in to_persist:
+                    logger.info(
+                        APPROVAL_STATUS_TRANSITIONED,
+                        approval_id=expired.id,
+                        from_status=ApprovalStatus.PENDING.value,
+                        to_status=ApprovalStatus.EXPIRED.value,
+                    )
+                    logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
+                    self._fire_expire_callback(expired)
+            else:
+                # No expirations on this page; still need a brief
+                # lock to populate the cache from the repo read.
+                async with self._lock:
+                    for item in page:
+                        self._items[item.id] = item
+            result.extend(page_result)
             if len(page) < page_size:
                 break
             offset += page_size
-        repo_items: tuple[ApprovalItem, ...] = tuple(repo_pages)
-        for item in repo_items:
-            self._items[item.id] = item
-        result: list[ApprovalItem] = []
+        return tuple(result)
+
+    def _compute_page(
+        self,
+        page: tuple[ApprovalItem, ...],
+        *,
+        status: ApprovalStatus | None,
+        risk_level: ApprovalRiskLevel | None,
+    ) -> tuple[
+        list[ApprovalItem],
+        list[ApprovalItem],
+        dict[str, ApprovalItem],
+    ]:
+        """Pure: classify a repo page into (filtered, to_persist, cache_updates).
+
+        Companion to :meth:`_list_from_repo`. Walks ``page`` once,
+        computing lazy expiration via :meth:`_compute_expiration` and
+        applying caller-supplied filters. No I/O, no lock acquisition.
+        Splitting this out keeps the per-page pipeline in
+        ``_list_from_repo`` short and lets the lock-released chunked
+        flow remain readable.
+        """
+        page_result: list[ApprovalItem] = []
         to_persist: list[ApprovalItem] = []
         cache_updates: dict[str, ApprovalItem] = {}
-        for item in repo_items:
+        for item in page:
             checked = self._compute_expiration(item)
             if checked is not item:
                 to_persist.append(checked)
@@ -339,41 +405,8 @@ class ApprovalStore:
                 continue
             if risk_level is not None and checked.risk_level != risk_level:
                 continue
-            result.append(checked)
-        if to_persist:
-            # Durable write first; only mutate the cache once the
-            # batch commits. Any callback or audit-event emission
-            # follows the cache update so observers cannot see a
-            # cached EXPIRED state that the repo never accepted.
-            try:
-                await self._repo.save_many(to_persist)
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                # Log the affected ids before re-raising so a
-                # production failure on the batched expiry path is
-                # diagnosable -- otherwise the caller sees the
-                # ``QueryError`` and has no record of which lazy
-                # expirations were attempted.
-                logger.warning(
-                    API_APPROVAL_EXPIRE_BATCH_FAILED,
-                    batch_size=len(to_persist),
-                    approval_ids=tuple(item.id for item in to_persist),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise
-            self._items.update(cache_updates)
-            for expired in to_persist:
-                logger.info(
-                    APPROVAL_STATUS_TRANSITIONED,
-                    approval_id=expired.id,
-                    from_status=ApprovalStatus.PENDING.value,
-                    to_status=ApprovalStatus.EXPIRED.value,
-                )
-                logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
-                self._fire_expire_callback(expired)
-        return tuple(result)
+            page_result.append(checked)
+        return page_result, to_persist, cache_updates
 
     async def _list_from_cache_locked(
         self,
@@ -620,12 +653,15 @@ class ApprovalStore:
                 except MemoryError, RecursionError:
                     raise
                 except Exception as exc:
-                    # Best-effort: the approval is already transitioned
-                    # to EXPIRED in cache + repo at this point; callback
-                    # failure must not unwind the expiration itself.
-                    # Emit a dedicated event so operators can filter
-                    # callback failures from successful expirations.
-                    logger.warning(
+                    # ERROR (matching ``_fire_expire_callback``): the
+                    # approval is already EXPIRED in cache + repo, so
+                    # the callback failure can't unwind the expiration,
+                    # but a dropped downstream side effect (webhook,
+                    # audit dispatch, workflow resume) is operationally
+                    # meaningful and operators must be able to alert
+                    # on it. Both paths emit at ERROR so alerting is
+                    # not sensitive to which expiration path fired.
+                    logger.error(  # noqa: TRY400
                         API_APPROVAL_EXPIRE_CALLBACK_FAILED,
                         approval_id=item.id,
                         error_type=type(exc).__name__,

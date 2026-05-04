@@ -112,8 +112,9 @@ class SQLiteMcpInstallationRepository:
         """Return up to ``limit`` recorded installations, oldest-first.
 
         ``limit`` defaults to 100 (matches the protocol-wide pagination
-        floor); callers needing more must loop with ``offset`` rather
-        than passing a larger ``limit``.
+        floor) and accepts any positive integer; no upper bound is
+        enforced. Callers may either pass a larger ``limit`` or loop
+        with ``offset`` for cursor-style pagination.
         """
         validate_pagination_args(
             limit,
