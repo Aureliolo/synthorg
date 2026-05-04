@@ -18,7 +18,7 @@ Every implementation plan must be presented to the user for accept/deny before c
 
 ## Diagrams in Documentation
 
-`\`\`\`d2` for architecture / nested containers; `\`\`\`mermaid` for flowcharts / sequence / pipelines; markdown tables for tabular data. Never `\`\`\`text` blocks with ASCII box-drawing. D2 uses theme 200 (Dark Mauve), dark-only, configured in `mkdocs.yml`; CI pins D2 CLI to v0.7.1 in `.github/workflows/pages.yml`. `diagram-syntax-validator` runs in `/pre-pr-review` and `/aurelio-review-pr`.
+Use fenced code blocks with language tags: `d2` for architecture / nested containers, `mermaid` for flowcharts / sequence / pipelines. Use markdown tables for tabular data; never use `text` fences with ASCII box-drawing. D2 uses theme 200 (Dark Mauve), dark-only, configured in `mkdocs.yml`; CI pins D2 CLI to v0.7.1 in `.github/workflows/pages.yml`. `diagram-syntax-validator` runs in `/pre-pr-review` and `/aurelio-review-pr`.
 
 ## Quick Commands
 
@@ -36,8 +36,8 @@ uv run python -m pytest tests/benchmarks/ --codspeed -n0  # CodSpeed (-n0 requir
 HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n 8 -k properties   # 1000 examples
 HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit -n 8 --timeout=0    # 10k examples
 uv run pre-commit run --all-files
-atlas migrate diff --env {sqlite,postgres} <name>      # migration from schema.sql diff
-PYTHONPATH=. uv run zensical {build,serve}             # docs (PYTHONPATH=. enables d2_fence.py)
+atlas migrate diff --env sqlite <name>                 # migration from schema.sql diff (or --env postgres)
+PYTHONPATH=. uv run zensical build                     # docs build (or `serve` for local preview); PYTHONPATH=. enables d2_fence.py
 ```
 
 Web: see `web/CLAUDE.md`. Async-leak ceiling lives in `.github/ci/web-async-leaks.max`; full-suite check is `npm --prefix web run test -- --coverage --detect-async-leaks`.
@@ -65,7 +65,7 @@ Reuse components from `web/src/components/ui/`. Never hardcode hex colors, font-
 
 ## Regional Defaults (MANDATORY)
 
-No default may privilege a region, currency, or locale. Resolution: user/company → browser/system → neutral fallback. Currency, locale, timezone, date/number formats all flow through `@/utils/format` + `@/utils/locale` (frontend) and `DEFAULT_CURRENCY` from `synthorg.budget.currency` (backend); no `_usd` suffixes; metric units only; International / British English UI default. Every cost-bearing Pydantic model carries `currency: CurrencyCode`; mixing raises `MixedCurrencyAggregationError` (HTTP 409). Enforced by `scripts/check_web_design_system.py`, `scripts/check_backend_regional_defaults.py`, and `scripts/check_forbidden_literals.py`. Per-line opt-out: `# lint-allow: regional-defaults`. See [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md).
+No default may privilege a region, currency, or locale. Resolution: user/company → browser/system → neutral fallback. Currency, locale, timezone, date/number formats all flow through `@/utils/format` + `@/utils/locale` (frontend) and `DEFAULT_CURRENCY` from `synthorg.budget.currency` (backend); no `_usd` suffixes; metric units only; International / British English UI default (e.g. `colour`, `behaviour`, `organise`, `centred`, `analyse`). Every cost-bearing Pydantic model carries `currency: CurrencyCode`; mixing raises `MixedCurrencyAggregationError` (HTTP 409). Enforced by `scripts/check_web_design_system.py`, `scripts/check_backend_regional_defaults.py`, and `scripts/check_forbidden_literals.py`. Per-line opt-out: `# lint-allow: regional-defaults`. See [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md).
 
 ## Persistence Boundary (MANDATORY)
 
@@ -98,7 +98,7 @@ For every mutable setting: **DB > env (`SYNTHORG_<NS>_<KEY>`) > YAML > code defa
 - **Untrusted-content fences (SEC-1)**: wrap attacker-controllable strings via `wrap_untrusted()` from `synthorg.engine.prompt_safety`; append `untrusted_content_directive(tags)`.
 - **HTML parsing (SEC-1)**: never call `lxml.html.fromstring` on attacker input; use `HTMLParseGuard`. See [sec-prompt-safety.md](docs/reference/sec-prompt-safety.md).
 - **Pluggable subsystems**: protocol + strategy + factory + config discriminator with safe defaults. Services (which wrap repositories) are a distinct pattern. See [pluggable-subsystems.md](docs/reference/pluggable-subsystems.md).
-- **Sizes**: line 88 (ruff); functions <50 lines; files <800 lines.
+- **Sizes**: line length 88 (ruff); functions <50 lines; files <800 lines.
 - **Errors**: handle explicitly, never swallow. Domain error families register a base-class entry in `EXCEPTION_HANDLERS` (`src/synthorg/api/exception_handlers.py`). Use `<Domain><Condition>Error` inheriting from `DomainError`; bare `Exception` / `RuntimeError` at domain boundaries is forbidden. See [errors.md](docs/reference/errors.md) + `src/synthorg/core/domain_errors.py`.
 - **Repository CRUD**: `save(entity) -> None` (idempotent), `get(id) -> Entity | None`, `delete(id) -> bool`, `list_items(...) -> tuple[Entity, ...]`, `query(...) -> tuple[Entity, ...]`. Query methods always return tuples. See [conventions.md](docs/reference/conventions.md) §14.
 - **Validate** at system boundaries (user input, external APIs, config files).
@@ -113,7 +113,7 @@ For every mutable setting: **DB > env (`SYNTHORG_<NS>_<KEY>`) > YAML > code defa
 - **Error paths** log at WARNING or ERROR with context before raising / returning.
 - **State transitions** log INFO via `*_STATUS_TRANSITIONED` constants (with `from_status` / `to_status` / domain id) AFTER the persistence write succeeds.
 - **DEBUG** for object creation, internal flow, key entry/exit. Pure data models, enums, re-exports skip logging.
-- **Secret-log redaction (SEC-1)**: never call any `logger` severity with `error=str(exc)`; use `error_type=type(exc).__name__` + `error=safe_error_description(exc)`. Enforced by `scripts/check_logger_exception_str_exc.py` (AST-walks `error=` value subtree, catches wrapped forms). See [sec-prompt-safety.md](docs/reference/sec-prompt-safety.md).
+- **Secret-log redaction (SEC-1)**: never call any `logger` severity with `error=str(exc)`; use `error_type=type(exc).__name__` and `error=safe_error_description(exc)`. Enforced by `scripts/check_logger_exception_str_exc.py` (AST-walks `error=` value subtree, catches wrapped forms). See [sec-prompt-safety.md](docs/reference/sec-prompt-safety.md).
 
 ## MCP Handler Layer
 
