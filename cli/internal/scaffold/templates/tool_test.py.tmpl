@@ -59,3 +59,10 @@ class TestListHandler:
         result = await _list(app_state=state, arguments={"offset": 0, "limit": 0})
         body = json.loads(result)
         assert body["status"] == "error"
+
+    async def test_returns_error_when_service_not_wired(self) -> None:
+        state = MagicMock(spec=_AppState)
+        state.{{.Domain}}_service = None
+        result = await _list(app_state=state, arguments={"offset": 0, "limit": 10})
+        body = json.loads(result)
+        assert body["status"] == "error"

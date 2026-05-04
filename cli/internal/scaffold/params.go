@@ -91,15 +91,48 @@ var reservedDomains = map[string]struct{}{
 	"utils":         {},
 	"workers":       {},
 	// Python keywords / common stdlib names that would create import
-	// shadows even though they are not yet present in src/synthorg/.
-	"async":  {},
-	"await":  {},
-	"class":  {},
-	"def":    {},
-	"import": {},
-	"return": {},
-	"types":  {},
-	"typing": {},
+	// shadows or syntactically invalid module / class names. The full
+	// keyword set (matches `keyword.kwlist` minus the ones the
+	// snake_case domain regex already rejects, e.g. ``True`` /
+	// ``False`` / ``None`` -- their lowercase forms are listed here
+	// because PascalCase("none") -> "None" collides with the literal).
+	"and":      {},
+	"as":       {},
+	"assert":   {},
+	"async":    {},
+	"await":    {},
+	"break":    {},
+	"class":    {},
+	"continue": {},
+	"def":      {},
+	"del":      {},
+	"elif":     {},
+	"else":     {},
+	"except":   {},
+	"false":    {},
+	"finally":  {},
+	"for":      {},
+	"from":     {},
+	"global":   {},
+	"if":       {},
+	"import":   {},
+	"in":       {},
+	"is":       {},
+	"lambda":   {},
+	"none":     {},
+	"nonlocal": {},
+	"not":      {},
+	"or":       {},
+	"pass":     {},
+	"raise":    {},
+	"return":   {},
+	"true":     {},
+	"try":      {},
+	"types":    {},
+	"typing":   {},
+	"while":    {},
+	"with":     {},
+	"yield":    {},
 }
 
 // validateDomain enforces snake_case and rejects reserved names.

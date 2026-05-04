@@ -9,7 +9,7 @@ from aiosqlite import Row
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.{{.Domain}} import (
+from synthorg.observability.events.{{.Domain}}_repo import (
     {{shout .Domain}}_REPO_FAILED,
     {{shout .Domain}}_REPO_FETCHED,
     {{shout .Domain}}_REPO_LISTED,
@@ -52,10 +52,17 @@ def _row_to_item(row: Row) -> {{.ClassName}}Item:
 class SQLite{{.ClassName}}Repository:
     """SQLite-backed {{.ModuleDocSlug}} item repository.
 
+    The constructor sets ``db.row_factory = aiosqlite.Row`` so ``_row_to_item``
+    can index columns by name. Because ``row_factory`` is a per-connection
+    attribute, this mutates the caller-owned :class:`aiosqlite.Connection`
+    -- pass a connection dedicated to this repository, or one whose other
+    consumers also expect :class:`aiosqlite.Row` rows.
+
     Args:
-        db: An open ``aiosqlite.Connection``.
-        write_lock: Optional shared write lock; falls back to a
-            private lock for standalone test construction.
+        db: An open ``aiosqlite.Connection`` whose ``row_factory`` this
+            repository owns.
+        write_lock: Optional shared write lock; falls back to a private
+            lock for standalone test construction.
     """
 
     def __init__(

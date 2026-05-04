@@ -2,6 +2,7 @@ package scaffold
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,9 +136,17 @@ func writeFileAtomic(abs string, contents []byte) error {
 	// Best-effort directory fsync so the rename's metadata is durable
 	// across a crash. Failure here does not roll back the rename; we
 	// have already returned a usable file. Mirrors compose/writer.go.
+	// Sync / Close errors are logged at debug rather than swallowed so
+	// a recurring filesystem fault is observable in support logs.
 	if d, derr := os.Open(dir); derr == nil {
-		_ = d.Sync()
-		_ = d.Close()
+		if serr := d.Sync(); serr != nil {
+			slog.Debug("scaffold: dir fsync failed", "dir", dir, "err", serr)
+		}
+		if cerr := d.Close(); cerr != nil {
+			slog.Debug("scaffold: dir close failed", "dir", dir, "err", cerr)
+		}
+	} else {
+		slog.Debug("scaffold: dir open for fsync failed", "dir", dir, "err", derr)
 	}
 	return nil
 }

@@ -56,7 +56,7 @@ Files:
 - `src/synthorg/persistence/<domain>_protocol.py` -- `<ClassName>Repository`
 - `src/synthorg/persistence/sqlite/<domain>_repo.py` -- aiosqlite impl
 - `src/synthorg/persistence/postgres/<domain>_repo.py` -- psycopg + pool impl
-- `src/synthorg/observability/events/<domain>.py` -- repo event constants (`<DOMAIN>_REPO_*`)
+- `src/synthorg/observability/events/<domain>_repo.py` -- repo event constants (`<DOMAIN>_REPO_*`); the `_repo` suffix keeps this file disjoint from the service scaffold's `events/<domain>.py` so a domain that needs both layers can be scaffolded in either order.
 - `tests/conformance/persistence/test_<domain>_repository.py` -- dual-backend assertions
 - `src/synthorg/persistence/<domain>_WIRING.md`
 

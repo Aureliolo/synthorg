@@ -14,7 +14,7 @@ from psycopg.rows import dict_row
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.{{.Domain}} import (
+from synthorg.observability.events.{{.Domain}}_repo import (
     {{shout .Domain}}_REPO_FAILED,
     {{shout .Domain}}_REPO_FETCHED,
     {{shout .Domain}}_REPO_LISTED,
@@ -83,7 +83,10 @@ class Postgres{{.ClassName}}Repository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            constraint_name = (
+                getattr(exc.diag, "constraint_name", None) or type(exc).__name__
+            )
+            raise ConstraintViolationError(msg, constraint=constraint_name) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save {{.Domain}} {item.id!r}"
             logger.warning(

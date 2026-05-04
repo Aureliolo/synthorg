@@ -19,9 +19,18 @@ func renderTool(p Params) ([]RenderedFile, error) {
 		out string
 		tpl string
 	}{
-		{fmt.Sprintf("src/synthorg/meta/mcp/handlers/%s.py", p.Domain), "tool_handler.py.tmpl"},
-		{fmt.Sprintf("tests/unit/meta/mcp/handlers/test_%s.py", p.Domain), "tool_test.py.tmpl"},
-		{fmt.Sprintf("src/synthorg/meta/mcp/handlers/%s_WIRING.md", p.Domain), "tool_wiring.md.tmpl"},
+		{
+			fmt.Sprintf("src/synthorg/meta/mcp/handlers/%s.py", p.Domain),
+			"tool_handler.py.tmpl",
+		},
+		{
+			fmt.Sprintf("tests/unit/meta/mcp/handlers/test_%s.py", p.Domain),
+			"tool_test.py.tmpl",
+		},
+		{
+			fmt.Sprintf("src/synthorg/meta/mcp/handlers/%s_WIRING.md", p.Domain),
+			"tool_wiring.md.tmpl",
+		},
 	}
 	out := make([]RenderedFile, 0, len(files))
 	for _, f := range files {

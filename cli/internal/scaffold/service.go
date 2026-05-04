@@ -2,14 +2,15 @@ package scaffold
 
 import "fmt"
 
-// renderService emits a six-file service skeleton:
+// renderService emits a seven-file service skeleton:
 //
-//   - src/synthorg/<domain>/__init__.py     -- empty package marker (D104 carve-out)
-//   - src/synthorg/<domain>/service.py      -- Service class with lifecycle lock + Clock seam + structured logging
-//   - src/synthorg/<domain>/errors.py       -- DomainError-rooted exception family
-//   - tests/unit/<domain>/__init__.py       -- empty package marker
-//   - tests/unit/<domain>/test_service.py   -- FakeClock + Mock(spec=) integration smoke
-//   - WIRING.md                             -- copy-paste snippets for EXCEPTION_HANDLERS / app boot
+//   - src/synthorg/<domain>/__init__.py             -- empty package marker (D104 carve-out)
+//   - src/synthorg/<domain>/service.py              -- Service class with lifecycle lock + Clock seam + structured logging
+//   - src/synthorg/<domain>/errors.py               -- DomainError-rooted exception family
+//   - src/synthorg/observability/events/<domain>.py -- service-level event constants
+//   - tests/unit/<domain>/__init__.py               -- empty package marker
+//   - tests/unit/<domain>/test_service.py           -- FakeClock + Mock(spec=) integration smoke
+//   - src/synthorg/<domain>/WIRING.md               -- copy-paste snippets for EXCEPTION_HANDLERS / app boot
 //
 // Each file is conventions-clean on its own (passes ruff / mypy / every
 // active scripts/check_*.py gate); the WIRING.md describes the manual

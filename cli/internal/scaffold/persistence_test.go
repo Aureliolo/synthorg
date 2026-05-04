@@ -17,7 +17,7 @@ func TestRenderPersistenceShape(t *testing.T) {
 		"src/synthorg/persistence/widget_protocol.py",
 		"src/synthorg/persistence/sqlite/widget_repo.py",
 		"src/synthorg/persistence/postgres/widget_repo.py",
-		"src/synthorg/observability/events/widget.py",
+		"src/synthorg/observability/events/widget_repo.py",
 		"tests/conformance/persistence/test_widget_repository.py",
 		"src/synthorg/persistence/widget_WIRING.md",
 	}
@@ -74,8 +74,10 @@ func TestPersistenceSQLiteRepoConventions(t *testing.T) {
 		t.Error("sqlite repo must not call logger with error=str(exc) (secret-log redaction gate)")
 	}
 
-	// Event constants imported from synthorg.observability.events.<domain>.
-	mustContain(t, body, "from synthorg.observability.events.widget import")
+	// Event constants imported from synthorg.observability.events.<domain>_repo
+	// (suffixed so the persistence scaffold's events module never collides
+	// with the service scaffold's events/<domain>.py).
+	mustContain(t, body, "from synthorg.observability.events.widget_repo import")
 	mustContain(t, body, "WIDGET_REPO_FAILED")
 	mustContain(t, body, "WIDGET_REPO_FETCHED")
 	mustContain(t, body, "WIDGET_REPO_LISTED")

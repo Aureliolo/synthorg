@@ -76,7 +76,36 @@ No default may privilege a region, currency, or locale. Resolution: user/company
 
 ## Convention Rollout (MANDATORY)
 
-Any PR that establishes or expands a project-wide convention (error hierarchies, persistence boundary, mock-spec, regional defaults, typed boundary, settings-to-startup wiring, secret-log redaction, request-DTO `extra="forbid"`, no-magic-numbers, no-em-dashes, etc.) MUST include the AST/script gate that prevents regression. PRs proposing a convention without enforcement are rejected. The gate's job is to catch the SECOND occurrence of the category; the audit's job is finding the FIRST. Existing inventory: `scripts/check_persistence_boundary.py`, `scripts/check_mock_spec.py`, `scripts/check_setting_to_startup_trace.py`, `scripts/check_logger_exception_str_exc.py`, `scripts/check_boundary_typed.py`, `scripts/check_forbidden_literals.py`, `scripts/check_backend_regional_defaults.py`, `scripts/check_request_dto_forbid_extra.py`, `scripts/check_no_em_dashes.py`, `scripts/check_no_redundant_timeout.py`, `scripts/check_no_bulk_edit.py`, `scripts/check_provider_complete_chokepoint.py`, `scripts/check_web_design_system.py`, `scripts/check_doc_drift_counts.py`, `scripts/check_openapi_liveness.py`, `scripts/check_orphan_fixtures.py`. Wire each new gate into `.pre-commit-config.yaml` (pre-commit or pre-push stage as fits) so it runs locally and in CI; per-line opt-outs use a stable `# lint-allow: <gate-name> -- <reason>` comment.
+Any PR that establishes or expands a project-wide convention (error
+hierarchies, persistence boundary, mock-spec, regional defaults, typed
+boundary, settings-to-startup wiring, secret-log redaction, request-DTO
+`extra="forbid"`, no-magic-numbers, no-em-dashes, etc.) MUST include the
+AST/script gate that prevents regression. PRs proposing a convention
+without enforcement are rejected. The gate's job is to catch the SECOND
+occurrence of the category; the audit's job is finding the FIRST.
+
+Existing gate inventory (all under `scripts/`):
+
+- `check_persistence_boundary.py`
+- `check_mock_spec.py`
+- `check_setting_to_startup_trace.py`
+- `check_logger_exception_str_exc.py`
+- `check_boundary_typed.py`
+- `check_forbidden_literals.py`
+- `check_backend_regional_defaults.py`
+- `check_request_dto_forbid_extra.py`
+- `check_no_em_dashes.py`
+- `check_no_redundant_timeout.py`
+- `check_no_bulk_edit.py`
+- `check_provider_complete_chokepoint.py`
+- `check_web_design_system.py`
+- `check_doc_drift_counts.py`
+- `check_openapi_liveness.py`
+- `check_orphan_fixtures.py`
+
+Wire each new gate into `.pre-commit-config.yaml` (pre-commit or
+pre-push stage as fits) so it runs locally and in CI; per-line opt-outs
+use a stable `# lint-allow: <gate-name> -- <reason>` comment.
 
 ## Configuration Precedence (MANDATORY)
 

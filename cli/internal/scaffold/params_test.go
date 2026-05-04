@@ -56,16 +56,24 @@ func TestNewParamsInvalid(t *testing.T) {
 		{"persistence", "reserved"}, // existing package
 		{"typing", "reserved"},      // stdlib shadow
 		{"class", "reserved"},       // python keyword
+		{"if", "reserved"},          // python keyword
+		{"none", "reserved"},        // PascalCase("none") collides with None literal
 	}
 	for _, c := range cases {
 		t.Run(c.raw, func(t *testing.T) {
 			t.Parallel()
 			_, err := NewParams(c.raw)
 			if err == nil {
-				t.Fatalf("NewParams(%q) returned no error; want one containing %q", c.raw, c.wantInErr)
+				t.Fatalf(
+					"NewParams(%q) returned no error; want one containing %q",
+					c.raw, c.wantInErr,
+				)
 			}
 			if !strings.Contains(err.Error(), c.wantInErr) {
-				t.Errorf("NewParams(%q) error = %v, want substring %q", c.raw, err, c.wantInErr)
+				t.Errorf(
+					"NewParams(%q) error = %v, want substring %q",
+					c.raw, err, c.wantInErr,
+				)
 			}
 		})
 	}

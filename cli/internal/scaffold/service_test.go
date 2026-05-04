@@ -126,20 +126,42 @@ func TestServiceTestTemplateConventions(t *testing.T) {
 
 	// check_mock_spec.py: any Mock/AsyncMock/MagicMock must declare
 	// spec=. The current service test fixture has no mocks, but if a
-	// future template adds one without spec=, this assertion catches it.
+	// future template adds one without spec=, this assertion catches
+	// it. Walk every occurrence (not just the first) and find the
+	// matching close paren by counting paren depth so nested calls
+	// like ``Mock(spec=Sub())`` are handled correctly.
 	for _, mockKind := range []string{"AsyncMock(", "MagicMock(", "Mock("} {
-		idx := strings.Index(body, mockKind)
-		if idx == -1 {
-			continue
-		}
-		// Find the end of the call (matching close paren).
-		closeIdx := strings.Index(body[idx:], ")")
-		if closeIdx == -1 {
-			t.Fatalf("malformed %s call near offset %d", mockKind, idx)
-		}
-		call := body[idx : idx+closeIdx+1]
-		if !strings.Contains(call, "spec=") {
-			t.Errorf("%s missing spec= argument: %s", mockKind, call)
+		start := 0
+		for {
+			rel := strings.Index(body[start:], mockKind)
+			if rel == -1 {
+				break
+			}
+			idx := start + rel
+			depth := 0
+			closeAbs := -1
+			for i := idx + len(mockKind) - 1; i < len(body); i++ {
+				switch body[i] {
+				case '(':
+					depth++
+				case ')':
+					depth--
+					if depth == 0 {
+						closeAbs = i
+					}
+				}
+				if closeAbs != -1 {
+					break
+				}
+			}
+			if closeAbs == -1 {
+				t.Fatalf("malformed %s call near offset %d", mockKind, idx)
+			}
+			call := body[idx : closeAbs+1]
+			if !strings.Contains(call, "spec=") {
+				t.Errorf("%s missing spec= argument: %s", mockKind, call)
+			}
+			start = closeAbs + 1
 		}
 	}
 }

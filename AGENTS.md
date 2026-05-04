@@ -11,7 +11,8 @@ Read CLAUDE.md for:
 - Testing standards, coverage requirements
 - Design spec (docs/design/): MANDATORY reading before implementation
 - Logging, resilience, security patterns
-- Convention rollout: every new project-wide convention ships its enforcement gate (the "Convention Rollout (MANDATORY)" section)
+- Convention rollout: every new project-wide convention ships its
+  enforcement gate (the "Convention Rollout (MANDATORY)" section)
 - Telemetry (opt-in product telemetry): privacy allowlist + forbidden patterns, environment resolution chain, Docker daemon enrichment
 
 ## Memory Directory

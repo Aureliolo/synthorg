@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from synthorg.api.boundary import parse_typed
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.mcp.domains._common_args import PaginationFields
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.errors import invalid_argument
 from synthorg.meta.mcp.handlers.common import dump_many, err, ok, paginate_sequence
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -48,7 +48,10 @@ async def _list(
             {{.ClassName}}ListArgs,
         )
     except ValidationError as exc:
-        validation_error = ArgumentValidationError(invalid_argument("arguments", str(exc)))
+        # ``invalid_argument`` already returns an ``ArgumentValidationError``;
+        # wrapping it again would pass an exception object where a
+        # message string is expected.
+        validation_error = invalid_argument("arguments", str(exc))
         log_handler_argument_invalid(_TOOL_LIST, validation_error)
         return err(validation_error)
     service = getattr(app_state, "{{.Domain}}_service", None)
@@ -62,6 +65,12 @@ async def _list(
         return err(wiring_error)
     try:
         items = await service.list_items(limit=args.limit, offset=args.offset)
+        # ``paginate_sequence`` is the right helper when ``list_items``
+        # returns the FULL collection in one call. If a future
+        # implementation paginates at the repository level (the
+        # controller scaffold does), drop this call and have
+        # ``list_items`` return ``(items, PaginationMeta)`` so the
+        # cursor metadata flows through directly.
         page, meta = paginate_sequence(items, offset=args.offset, limit=args.limit)
     except (MemoryError, RecursionError):
         raise

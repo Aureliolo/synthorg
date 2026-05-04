@@ -201,4 +201,11 @@ func TestWritePartialFailureReturnsWrittenList(t *testing.T) {
 	if len(written) != 1 {
 		t.Fatalf("partial-write list = %v, want exactly the first path", written)
 	}
+	wantFirst := filepath.Join(root, "src", "a.py")
+	if written[0] != wantFirst {
+		t.Fatalf(
+			"partial-write first path = %q, want %q",
+			written[0], wantFirst,
+		)
+	}
 }

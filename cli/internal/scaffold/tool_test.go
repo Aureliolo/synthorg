@@ -85,7 +85,46 @@ func TestToolTestConventions(t *testing.T) {
 	// these with real types once the service module exists.
 	mustContain(t, body, "MagicMock(spec=")
 	mustContain(t, body, "AsyncMock(")
-	if strings.Contains(body, "MagicMock()") || strings.Contains(body, "AsyncMock()") {
-		t.Error("test scaffold contains a Mock() / AsyncMock() / MagicMock() without spec= argument (mock-spec gate fails)")
+	// Walk every Mock / AsyncMock / MagicMock invocation (matching the
+	// closing paren via depth counting so calls like ``AsyncMock(spec=Sub())``
+	// are not truncated) and fail if any one of them lacks ``spec=``.
+	// Catches the bypass where ``AsyncMock(return_value=...)`` slips
+	// past a literal ``AsyncMock()`` substring check.
+	for _, mockKind := range []string{"AsyncMock(", "MagicMock(", "Mock("} {
+		start := 0
+		for {
+			rel := strings.Index(body[start:], mockKind)
+			if rel == -1 {
+				break
+			}
+			idx := start + rel
+			depth := 0
+			closeAbs := -1
+			for i := idx + len(mockKind) - 1; i < len(body); i++ {
+				switch body[i] {
+				case '(':
+					depth++
+				case ')':
+					depth--
+					if depth == 0 {
+						closeAbs = i
+					}
+				}
+				if closeAbs != -1 {
+					break
+				}
+			}
+			if closeAbs == -1 {
+				t.Fatalf("malformed %s call near offset %d", mockKind, idx)
+			}
+			call := body[idx : closeAbs+1]
+			if !strings.Contains(call, "spec=") {
+				t.Errorf(
+					"%s missing spec= argument (mock-spec gate fails): %s",
+					mockKind, call,
+				)
+			}
+			start = closeAbs + 1
+		}
 	}
 }

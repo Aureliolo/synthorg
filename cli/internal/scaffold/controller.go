@@ -19,10 +19,22 @@ func renderController(p Params) ([]RenderedFile, error) {
 		out string
 		tpl string
 	}{
-		{fmt.Sprintf("src/synthorg/api/controllers/%s.py", p.Domain), "controller_controller.py.tmpl"},
-		{fmt.Sprintf("src/synthorg/api/services/%s_service.py", p.Domain), "controller_service.py.tmpl"},
-		{fmt.Sprintf("tests/unit/api/controllers/test_%s.py", p.Domain), "controller_test.py.tmpl"},
-		{fmt.Sprintf("src/synthorg/api/controllers/%s_WIRING.md", p.Domain), "controller_wiring.md.tmpl"},
+		{
+			fmt.Sprintf("src/synthorg/api/controllers/%s.py", p.Domain),
+			"controller_controller.py.tmpl",
+		},
+		{
+			fmt.Sprintf("src/synthorg/api/services/%s_service.py", p.Domain),
+			"controller_service.py.tmpl",
+		},
+		{
+			fmt.Sprintf("tests/unit/api/controllers/test_%s.py", p.Domain),
+			"controller_test.py.tmpl",
+		},
+		{
+			fmt.Sprintf("src/synthorg/api/controllers/%s_WIRING.md", p.Domain),
+			"controller_wiring.md.tmpl",
+		},
 	}
 	out := make([]RenderedFile, 0, len(files))
 	for _, f := range files {

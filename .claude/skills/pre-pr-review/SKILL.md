@@ -754,7 +754,11 @@ For `mini-pass-missing-event-constants` and `mini-pass-race-conditions`, also in
 
 **Traceability:** every finding emitted by a mini-pass agent MUST set `Source: mini-pass-<agent-name>` in the Phase 5 triage table so users can downweight a category if it gets noisy without affecting the main agent roster.
 
-**Skip condition:** if the diff is `docs/`-only, `web/`-only, or `cli/`-only with zero `.py` changes under `src/synthorg/`, skip the mini-pass entirely (no Python diff = nothing for these five agents to find).
+**Skip condition:** skip the mini-pass only when the diff has zero relevant `.py` changes for any of the five agents after scope expansion above. Concretely:
+
+- skip the mini-pass entirely when the diff is `docs/`-only, `web/`-only, or `cli/`-only AND has zero `.py` changes under `src/synthorg/` AND zero `.py` changes under `tests/`;
+- when the diff touches `tests/` Python files but has zero `.py` changes under `src/synthorg/`, run only `mini-pass-missing-event-constants` and `mini-pass-race-conditions` (the two agents whose scope already extends into `tests/`) and skip the other three;
+- `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers.py` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow).
 
 ## Phase 4: Launch Review Agents (parallel)
 

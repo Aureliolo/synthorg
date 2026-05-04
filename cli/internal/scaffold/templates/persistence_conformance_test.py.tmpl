@@ -92,8 +92,11 @@ class Test{{.ClassName}}Repository:
         await repo.save(older)
         await repo.save(newer)
         rows = await repo.list_items(limit=10, offset=0)
-        ids = [row.id for row in rows]
-        assert ids[: 2] == [newer.id, older.id]
+        # Filter to just the items this test created so a fixture that
+        # leaks rows from another test does not flip the assertion.
+        created_ids = {older.id, newer.id}
+        ids = [row.id for row in rows if row.id in created_ids]
+        assert ids == [newer.id, older.id]
 
     async def test_delete_returns_true_when_present(
         self, backend: PersistenceBackend
