@@ -28,11 +28,14 @@ Per-method classification:
   ``cursor`` / ``offset`` / ``after_id`` / ``before_id`` exists
   (cursor-pagination is the alternative to a numeric default).
 * PASS -- ``limit`` is missing AND a required parameter's annotation is
-  a Sequence-like generic (``Sequence[X]`` / ``list[X]`` / ``tuple[X,
-  ...]`` / ``set[X]`` / ``frozenset[X]`` / ``Iterable[X]`` /
-  ``Collection[X]``). The cardinality of the input sequence bounds
-  the result set the same way ``limit`` does, so a ``WHERE col IN
-  (...)``-style query is intrinsically bounded.
+  a Sized-sequence generic (``Sequence[X]`` / ``list[X]`` / ``tuple[X,
+  ...]`` / ``set[X]`` / ``frozenset[X]`` / ``Collection[X]``). The
+  cardinality of the input sequence bounds the result set the same way
+  ``limit`` does, so a ``WHERE col IN (...)``-style query is
+  intrinsically bounded. ``Iterable[X]`` is intentionally excluded
+  here -- the protocol only requires ``__iter__`` (not ``__len__``),
+  so an arbitrary generator can satisfy it and the gate would then
+  certify an unbounded scan as compliant.
 * FAIL ``nullable-limit-no-cursor`` -- ``limit`` default is ``None``
   with no cursor sibling.
 * FAIL ``missing-limit-param`` -- no ``limit`` parameter at all and
@@ -107,11 +110,14 @@ _CURSOR_PARAM_NAMES: frozenset[str] = frozenset(
     {"cursor", "offset", "after_id", "before_id"}
 )
 
-# Sequence-like generic annotations that bound the result set by the
+# Sized-sequence generic annotations that bound the result set by the
 # cardinality of the input. A method with no ``limit`` but a required
-# ``ids: Sequence[str]`` parameter is intrinsically bounded.
+# ``ids: Sequence[str]`` parameter is intrinsically bounded. Note
+# ``Iterable`` is deliberately excluded: it only requires ``__iter__``,
+# not ``__len__``, so a generator can satisfy it and the gate would
+# then certify an unbounded scan as compliant.
 _SEQUENCE_ANNOTATION_NAMES: frozenset[str] = frozenset(
-    {"Sequence", "list", "tuple", "set", "frozenset", "Iterable", "Collection"}
+    {"Sequence", "list", "tuple", "set", "frozenset", "Collection"}
 )
 
 _REASON_MISSING = "missing-limit-param"
@@ -224,6 +230,24 @@ def _int_subscript_inner(annotation: ast.Subscript) -> ast.expr | None:
     return None
 
 
+def _is_none_annotation(annotation: ast.expr | None) -> bool:
+    """Return True if *annotation* is the literal ``None`` constant."""
+    return isinstance(annotation, ast.Constant) and annotation.value is None
+
+
+def _is_int_or_none_binop(annotation: ast.BinOp) -> bool:
+    """Return True for ``int | None`` / ``None | int`` BinOp shapes only.
+
+    Accepts the two permutations of an ``int``-with-``None`` union; any
+    other combination (``int | str``, ``None | None``, ``str | None``,
+    nested unions ending elsewhere) returns False so the caller rejects.
+    """
+    left, right = annotation.left, annotation.right
+    return (_is_int_annotation(left) and _is_none_annotation(right)) or (
+        _is_none_annotation(left) and _is_int_annotation(right)
+    )
+
+
 def _is_int_annotation(annotation: ast.expr | None) -> bool:
     """Return True if *annotation* permits only ``int`` or ``int | None``.
 
@@ -231,27 +255,26 @@ def _is_int_annotation(annotation: ast.expr | None) -> bool:
 
     * ``int`` (bare ``ast.Name``).
     * ``int | None`` / ``None | int`` (``ast.BinOp`` over ``BitOr``,
-      either operand order).
+      with one operand ``int`` and the other literally ``None``).
     * ``Optional[int]`` (``ast.Subscript`` over ``Optional``).
     * ``Annotated[int, ...]`` / ``Annotated[int | None, ...]`` (PEP 593
       metadata wrapper; the gate looks through the wrapper at the first
       slice element).
 
-    A missing annotation, an annotation typed as ``str`` / ``object`` /
-    any other base type, or a union containing a non-``int`` member
-    returns ``False`` -- the caller treats that as
-    ``invalid-limit-annotation``.
+    Standalone ``None`` is NOT a valid ``limit`` type; it only counts as
+    valid when paired with ``int`` inside a union. A missing annotation,
+    a non-``int`` base type (``str`` / ``object`` / ...), or a union
+    containing a non-``int``/``None`` member returns ``False`` -- the
+    caller treats that as ``invalid-limit-annotation``.
     """
     if annotation is None:
         return False
     if isinstance(annotation, ast.Name):
         return annotation.id == "int"
     if isinstance(annotation, ast.Constant):
-        return annotation.value is None
+        return False
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return _is_int_annotation(annotation.left) and _is_int_annotation(
-            annotation.right
-        )
+        return _is_int_or_none_binop(annotation)
     if isinstance(annotation, ast.Subscript):
         return _is_int_annotation(_int_subscript_inner(annotation))
     return False

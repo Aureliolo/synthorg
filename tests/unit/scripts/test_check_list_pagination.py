@@ -254,12 +254,12 @@ class TestListPaginationGate:
 
     @pytest.mark.parametrize(
         "annotation",
-        ["Sequence[str]", "list[str]", "tuple[str, ...]", "Iterable[str]"],
+        ["Sequence[str]", "list[str]", "tuple[str, ...]", "Collection[str]"],
     )
     def test_list_with_required_sequence_filter_passes(
         self, write_sample: WriteSampleFile, annotation: str
     ) -> None:
-        """A required Sequence-typed filter bounds the result by input cardinality."""
+        """A required Sized-sequence filter bounds the result by input cardinality."""
         src = (
             "class FooRepository:\n"
             "    async def list_by_ids(\n"
@@ -270,6 +270,23 @@ class TestListPaginationGate:
             "        ...\n"
         )
         assert _scan(write_sample(src)) == []
+
+    def test_iterable_filter_does_not_bound_result(
+        self, write_sample: WriteSampleFile
+    ) -> None:
+        """``Iterable[X]`` is unbounded (no ``__len__``); must not satisfy gate."""
+        src = (
+            "class FooRepository:\n"
+            "    async def list_by_ids(\n"
+            "        self,\n"
+            "        *,\n"
+            "        ids: Iterable[str],\n"
+            "    ) -> tuple[int, ...]:\n"
+            "        ...\n"
+        )
+        violations = _scan(write_sample(src))
+        assert len(violations) == 1
+        assert violations[0][2] == "missing-limit-param"
 
     def test_list_with_optional_sequence_filter_fails(
         self, write_sample: WriteSampleFile
@@ -331,6 +348,8 @@ class TestListPaginationGate:
             ("limit: str | int", "union with non-int leg is unbounded"),
             ("limit", "unannotated limit slips type-checker entirely"),
             ("limit = 100", "unannotated with default still has no type"),
+            ("limit: None = 100", "standalone None is not an int"),
+            ("limit: None | None", "union of None with itself never accepts an int"),
         ],
     )
     def test_non_int_limit_annotation_fails(
