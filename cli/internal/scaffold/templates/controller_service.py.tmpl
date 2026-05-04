@@ -1,0 +1,45 @@
+"""Service layer for the {{.ModuleDocSlug}} API surface.
+
+Wraps the {{.ClassName}}Repository so the controller stays free of
+direct persistence calls (per CLAUDE.md persistence-boundary rule:
+controllers and API endpoints access persistence through service
+layers; services centralize audit logging; repositories must not log
+mutations themselves).
+"""
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.persistence.{{.Domain}}_protocol import (
+    {{.ClassName}}Repository,  # noqa: TC001
+)
+from synthorg.{{.Domain}}.models import {{.ClassName}}Item  # noqa: TC001
+
+logger = get_logger(__name__)
+
+
+class {{.ClassName}}Service:
+    """Read-side facade over the {{.ClassName}}Repository.
+
+    Args:
+        repo: The repository protocol the service wraps.
+    """
+
+    def __init__(self, repo: {{.ClassName}}Repository) -> None:
+        self._repo = repo
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[{{.ClassName}}Item, ...]:
+        """List items, ordered newest first."""
+        return await self._repo.list_items(limit=limit, offset=offset)
+
+    async def get(self, item_id: NotBlankStr) -> {{.ClassName}}Item | None:
+        """Fetch a single item by ID."""
+        return await self._repo.get(item_id)
+
+    async def delete(self, item_id: NotBlankStr) -> bool:
+        """Delete an item by ID; returns ``True`` if a row was removed."""
+        return await self._repo.delete(item_id)

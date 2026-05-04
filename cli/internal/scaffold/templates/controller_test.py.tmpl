@@ -1,0 +1,53 @@
+"""Unit tests for :class:`synthorg.api.controllers.{{.Domain}}.{{.ClassName}}Controller`."""
+
+from datetime import UTC, datetime
+from typing import Protocol
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from synthorg.api.controllers.{{.Domain}} import _service
+from synthorg.api.services.{{.Domain}}_service import {{.ClassName}}Service
+from synthorg.{{.Domain}}.models import {{.ClassName}}Item
+
+pytestmark = pytest.mark.unit
+
+
+class _Repo(Protocol):
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[{{.ClassName}}Item, ...]: ...
+    async def get(self, item_id: str) -> {{.ClassName}}Item | None: ...
+    async def delete(self, item_id: str) -> bool: ...
+
+
+def _make_state(repo: MagicMock) -> MagicMock:
+    """Build a Litestar State that exposes the repo on app_state.persistence."""
+    state = MagicMock(spec=["app_state"])
+    state.app_state = MagicMock(spec=["persistence"])
+    state.app_state.persistence = MagicMock(spec=["{{.Domain}}_items"])
+    state.app_state.persistence.{{.Domain}}_items = repo
+    return state
+
+
+class TestServiceFactory:
+    def test_returns_service_bound_to_repo(self) -> None:
+        repo = MagicMock(spec=_Repo)
+        state = _make_state(repo)
+        service = _service(state)
+        assert isinstance(service, {{.ClassName}}Service)
+
+
+class TestServiceList:
+    async def test_returns_repo_results(self) -> None:
+        item = {{.ClassName}}Item(
+            id="{{.Domain}}-1",
+            payload="hello",
+            created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        )
+        repo = MagicMock(spec=_Repo)
+        repo.list_items = AsyncMock(spec=_Repo.list_items, return_value=(item,))
+        service = {{.ClassName}}Service(repo=repo)
+        rows = await service.list_items(limit=10, offset=0)
+        assert rows == (item,)
+        repo.list_items.assert_awaited_once_with(limit=10, offset=0)

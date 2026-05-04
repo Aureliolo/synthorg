@@ -1,0 +1,61 @@
+"""Unit tests for the ``synthorg_{{.Domain}}_list`` MCP handler."""
+
+import json
+from typing import Any, Protocol
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from synthorg.meta.mcp.handlers.{{.Domain}} import _list
+
+pytestmark = pytest.mark.unit
+
+
+class _{{.ClassName}}Service(Protocol):
+    """Local stub of the service the handler calls into.
+
+    Replace with the real ``synthorg.{{.Domain}}.service.{{.ClassName}}Service``
+    type once that module exists; the spec= keyword argument needs a
+    concrete attribute surface to enforce.
+    """
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[Any, ...]: ...
+
+
+class _AppState(Protocol):
+    """Local stub of the part of app_state the handler reaches into."""
+
+    {{.Domain}}_service: _{{.ClassName}}Service
+
+
+def _stub_app_state(items: list[Any]) -> MagicMock:
+    """Build an app_state stub whose `{{.Domain}}_service.list_items` returns *items*."""
+    state = MagicMock(spec=_AppState)
+    state.{{.Domain}}_service = MagicMock(spec=_{{.ClassName}}Service)
+    state.{{.Domain}}_service.list_items = AsyncMock(
+        spec=_{{.ClassName}}Service.list_items, return_value=tuple(items)
+    )
+    return state
+
+
+class TestListHandler:
+    async def test_returns_ok_envelope_with_pagination(self) -> None:
+        state = _stub_app_state([])
+        result = await _list(app_state=state, arguments={"offset": 0, "limit": 10})
+        body = json.loads(result)
+        assert body["status"] == "ok"
+        assert "pagination" in body
+
+    async def test_rejects_negative_offset(self) -> None:
+        state = _stub_app_state([])
+        result = await _list(app_state=state, arguments={"offset": -1, "limit": 10})
+        body = json.loads(result)
+        assert body["status"] == "error"
+
+    async def test_rejects_invalid_limit(self) -> None:
+        state = _stub_app_state([])
+        result = await _list(app_state=state, arguments={"offset": 0, "limit": 0})
+        body = json.loads(result)
+        assert body["status"] == "error"

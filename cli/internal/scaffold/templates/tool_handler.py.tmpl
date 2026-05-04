@@ -1,0 +1,64 @@
+"""MCP tool handler for the {{.ModuleDocSlug}} domain.
+
+Implements one paginated list handler as a starting point. Add more
+handlers (get / create / destructive ops) by following the same
+pattern: typed args mixin, ``parse_typed`` boundary call, the three
+``common_logging`` helpers for the three log paths.
+"""
+
+from typing import TYPE_CHECKING, Any
+
+from pydantic import ValidationError
+
+from synthorg.api.boundary import parse_typed
+from synthorg.meta.mcp.domains._common_args import PaginationFields
+from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.handlers.common import dump_many, err, ok, paginate_sequence
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
+
+logger = get_logger(__name__)
+
+_TOOL_LIST = "synthorg_{{.Domain}}_list"
+
+
+class {{.ClassName}}ListArgs(PaginationFields):
+    """Typed args for ``synthorg_{{.Domain}}_list``."""
+
+
+async def _list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: "AgentIdentity | None" = None,  # noqa: ARG001
+) -> str:
+    """Paginated list of {{.ModuleDocSlug}} items."""
+    try:
+        args = parse_typed(
+            "mcp.tool",
+            arguments,
+            {{.ClassName}}ListArgs,
+        )
+    except ValidationError as exc:
+        validation_error = ArgumentValidationError(invalid_argument("arguments", str(exc)))
+        log_handler_argument_invalid(_TOOL_LIST, validation_error)
+        return err(validation_error)
+    try:
+        items = await app_state.{{.Domain}}_service.list_items(
+            limit=args.limit, offset=args.offset
+        )
+        page, meta = paginate_sequence(items, offset=args.offset, limit=args.limit)
+    except (MemoryError, RecursionError):
+        raise
+    except Exception as exc:
+        log_handler_invoke_failed(_TOOL_LIST, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_LIST)
+    return ok(data=dump_many(page), pagination=meta)
