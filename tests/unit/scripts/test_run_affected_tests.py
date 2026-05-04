@@ -2,12 +2,16 @@
 
 Covers ``_check_timing_regression`` and its helpers
 (``_load_baseline_snapshot``, ``_check_per_test_regression``,
-``_check_env_cap``).  Loads the script as a module so the private
-helpers are callable.
+``_check_env_cap``), the isolation-gate output classifier, the banner
+emitter, the ``_run_isolation_gate`` orchestrator, and the
+``event_loop_policy`` fixture wired by ``tests/unit/conftest.py``.
+Loads the script as a module so the private helpers are callable.
 """
 
+import asyncio
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,6 +35,10 @@ def _load_script_module() -> object:
     return module
 
 
+# ``_MODULE`` is loaded once at import time and shared across all tests.
+# Isolation is preserved because every test mutates module attributes
+# via ``monkeypatch`` (auto-reverted at function teardown) rather than
+# touching them directly.
 _MODULE = _load_script_module()
 
 
@@ -414,7 +422,10 @@ def test_classify_crash_advisory_when_returncode_zero_with_crashes() -> None:
     )
     assert outcome.kind == "crash_advisory"
     assert outcome.exit_code == 0
-    assert len(outcome.crashed_tests) == 1
+    assert outcome.crashed_tests == (
+        "tests/unit/api/auth/test_postgres_session_store.py"
+        "::test_enforce_session_limit_revokes_oldest[2-2]",
+    )
 
 
 def test_classify_regression_when_real_failure_no_crash() -> None:
@@ -506,3 +517,285 @@ def test_classify_regression_when_returncode_nonzero_no_signals() -> None:
     )
     assert outcome.kind == "regression"
     assert outcome.exit_code == 2
+    assert outcome.failed_tests == ()
+    assert outcome.repeated_crashes == ()
+
+
+def test_classify_advisory_when_single_crash_below_threshold() -> None:
+    """A single crash of one test is below the real-bug threshold.
+
+    Proves the boundary directly: if the threshold check ever flips
+    from ``>= 2`` to ``>= 1`` the gate would wrongly escalate single
+    transient crashes to regressions.
+    """
+    stdout = _CRASH_LINE  # Single crash, no repeat iteration.
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=stdout,
+    )
+    assert outcome.kind == "crash_advisory"
+    assert outcome.exit_code == 0
+    assert outcome.repeated_crashes == ()
+
+
+def test_classify_regression_when_three_iteration_run_all_crash() -> None:
+    """Pytest-repeat ``--count 3`` -- all three iterations crash on the same test.
+
+    The classifier strips ``[N-3]`` suffixes the same way as ``[N-2]``,
+    so three crashes of the same logical test count as a real bug.
+    """
+    base = "tests/unit/foo.py::test_bar"
+    stdout = "".join(
+        f"worker 'gw{i}' crashed while running '{base}[{i + 1}-3]'\n" for i in range(3)
+    )
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=stdout,
+    )
+    assert outcome.kind == "regression"
+    assert outcome.repeated_crashes == (base,)
+
+
+def test_parse_worker_crashes_ignores_malformed_line() -> None:
+    """Lines that don't match the regex are silently skipped, not raised."""
+    stdout = (
+        "worker gw0 crashed (no quotes around test id)\n"
+        "worker 'gw1' completed normally\n"
+        "worker 'gw2' crashed while running 'valid_test_id'\n"
+    )
+    crashes = _MODULE._parse_worker_crashes(stdout)  # type: ignore[attr-defined]
+    assert crashes == (("gw2", "valid_test_id"),)
+
+
+# ── IsolationOutcome invariant enforcement ───────────────────────
+
+
+def test_isolation_outcome_pass_with_evidence_raises() -> None:
+    """Constructing a ``pass`` outcome with non-empty evidence is rejected."""
+    with pytest.raises(ValueError, match="pass outcome"):
+        _MODULE.IsolationOutcome(  # type: ignore[attr-defined]
+            kind="pass",
+            exit_code=0,
+            failed_tests=("tests/foo.py::test_x",),
+        )
+
+
+def test_isolation_outcome_crash_advisory_without_crashes_raises() -> None:
+    """``crash_advisory`` requires non-empty ``crashed_tests``."""
+    with pytest.raises(ValueError, match="crash_advisory"):
+        _MODULE.IsolationOutcome(  # type: ignore[attr-defined]
+            kind="crash_advisory",
+            exit_code=0,
+        )
+
+
+def test_isolation_outcome_regression_with_zero_exit_raises() -> None:
+    """``regression`` must carry a non-zero exit code."""
+    with pytest.raises(ValueError, match="non-zero exit_code"):
+        _MODULE.IsolationOutcome(  # type: ignore[attr-defined]
+            kind="regression",
+            exit_code=0,
+            failed_tests=("tests/foo.py::test_x",),
+        )
+
+
+# ── _print_isolation_banner ──────────────────────────────────────
+
+
+def test_print_isolation_banner_pass_emits_nothing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``pass`` outcome prints no banner."""
+    outcome = _MODULE.IsolationOutcome(kind="pass", exit_code=0)  # type: ignore[attr-defined]
+    _MODULE._print_isolation_banner(outcome)  # type: ignore[attr-defined]
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == ""
+
+
+def test_print_isolation_banner_regression_failed_tests_blames_state_leak(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Regression with failed_tests names module-level state leak."""
+    outcome = _MODULE.IsolationOutcome(  # type: ignore[attr-defined]
+        kind="regression",
+        exit_code=1,
+        failed_tests=("tests/unit/foo.py::test_bar",),
+    )
+    _MODULE._print_isolation_banner(outcome)  # type: ignore[attr-defined]
+    err = capsys.readouterr().err
+    assert "Module-level state likely leaked" in err
+    assert "tests/unit/foo.py::test_bar" in err
+
+
+def test_print_isolation_banner_regression_repeated_crash_blames_real_bug(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Regression with repeated_crashes blames a real test bug."""
+    outcome = _MODULE.IsolationOutcome(  # type: ignore[attr-defined]
+        kind="regression",
+        exit_code=1,
+        crashed_tests=(
+            "tests/unit/foo.py::test_bar[1-2]",
+            "tests/unit/foo.py::test_bar[2-2]",
+        ),
+        repeated_crashes=("tests/unit/foo.py::test_bar",),
+    )
+    _MODULE._print_isolation_banner(outcome)  # type: ignore[attr-defined]
+    err = capsys.readouterr().err
+    assert "crashed the xdist worker on" in err
+    assert "real bug" in err
+    assert "tests/unit/foo.py::test_bar" in err
+
+
+def test_print_isolation_banner_crash_advisory_blames_proactor_race(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Crash advisory blames Windows ProactorEventLoop / cross-worktree."""
+    outcome = _MODULE.IsolationOutcome(  # type: ignore[attr-defined]
+        kind="crash_advisory",
+        exit_code=0,
+        crashed_tests=("tests/unit/foo.py::test_bar[2-2]",),
+    )
+    _MODULE._print_isolation_banner(outcome)  # type: ignore[attr-defined]
+    err = capsys.readouterr().err
+    assert "ADVISORY" in err
+    assert "ProactorEventLoop" in err
+    assert "concurrent worktrees" in err
+
+
+def test_print_isolation_banner_regression_no_evidence_uses_failclosed_text(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Fail-closed regression (degraded pytest output) emits a generic banner."""
+    outcome = _MODULE.IsolationOutcome(  # type: ignore[attr-defined]
+        kind="regression",
+        exit_code=2,
+    )
+    _MODULE._print_isolation_banner(outcome)  # type: ignore[attr-defined]
+    err = capsys.readouterr().err
+    assert "could not" in err
+    assert "parse" in err
+    assert "(2)" in err
+
+
+# ── _run_isolation_gate orchestrator ─────────────────────────────
+
+
+def test_run_isolation_gate_skips_when_env_var_set(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``SYNTHORG_SKIP_ISOLATION_GATE=1`` short-circuits to exit 0."""
+    monkeypatch.setenv("SYNTHORG_SKIP_ISOLATION_GATE", "1")
+    # _stream_pytest must NOT be invoked; replace with one that fails the test
+    # if called.
+    monkeypatch.setattr(
+        _MODULE,
+        "_stream_pytest",
+        lambda _cmd: pytest.fail("_stream_pytest must not run when gate is skipped"),
+    )
+    rc = _MODULE._run_isolation_gate(["tests/unit/foo/"])  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "skipped via SYNTHORG_SKIP_ISOLATION_GATE" in capsys.readouterr().err
+
+
+def test_run_isolation_gate_skips_when_paths_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty path list short-circuits to exit 0 before running pytest."""
+    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
+    monkeypatch.setattr(
+        _MODULE,
+        "_stream_pytest",
+        lambda _cmd: pytest.fail("_stream_pytest must not run on empty paths"),
+    )
+    assert _MODULE._run_isolation_gate([]) == 0  # type: ignore[attr-defined]
+
+
+def test_run_isolation_gate_passes_through_classifier_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Green pytest output -> classifier returns pass -> exit 0."""
+    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
+    monkeypatch.setattr(
+        _MODULE,
+        "_stream_pytest",
+        lambda _cmd: (0, "500 passed in 12.34s\n"),
+    )
+    assert _MODULE._run_isolation_gate(["tests/unit/foo/"]) == 0  # type: ignore[attr-defined]
+
+
+def test_run_isolation_gate_returns_advisory_zero_on_native_crash(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Native worker crashes alone -> classifier returns crash_advisory -> exit 0."""
+    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
+    stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
+    monkeypatch.setattr(
+        _MODULE,
+        "_stream_pytest",
+        lambda _cmd: (1, stdout),
+    )
+    rc = _MODULE._run_isolation_gate(["tests/unit/api/"])  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "ADVISORY" in capsys.readouterr().err
+
+
+def test_run_isolation_gate_returns_nonzero_on_real_regression(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Real test failure -> classifier returns regression -> exit non-zero."""
+    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
+    monkeypatch.setattr(
+        _MODULE,
+        "_stream_pytest",
+        lambda _cmd: (1, _FAILED_LINE + "499 passed, 1 failed in 12s\n"),
+    )
+    rc = _MODULE._run_isolation_gate(["tests/unit/api/"])  # type: ignore[attr-defined]
+    assert rc == 1
+    assert "ISOLATION REGRESSION" in capsys.readouterr().err
+
+
+def test_run_isolation_gate_invokes_pytest_with_correct_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gate command embeds ``--count 2`` and ``--max-worker-restart=4``."""
+    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
+    captured: dict[str, list[str]] = {}
+
+    def _capture(cmd: list[str]) -> tuple[int, str]:
+        captured["cmd"] = cmd
+        return 0, "1 passed in 0.1s\n"
+
+    monkeypatch.setattr(_MODULE, "_stream_pytest", _capture)
+    _MODULE._run_isolation_gate(["tests/unit/foo/"])  # type: ignore[attr-defined]
+    cmd = captured["cmd"]
+    assert "--count" in cmd
+    assert "2" in cmd
+    assert "--max-worker-restart=4" in cmd
+    assert "tests/unit/foo/" in cmd
+
+
+# ── event loop policy fixtures ───────────────────────────────────
+
+
+async def test_unit_tier_uses_selector_event_loop_on_windows() -> None:
+    """Async tests in the unit tier run under a non-Proactor loop on Windows.
+
+    The unit-tier ``event_loop_policy`` fixture pins
+    ``WindowsSelectorEventLoopPolicy``, so pytest-asyncio creates a
+    selector-based loop for every async test.  Checking the running
+    loop directly catches a regression where the policy fixture
+    silently disappeared and tests fell back to the Python default
+    ProactorEventLoop -- the exact failure mode the policy guards
+    against.
+    """
+    if sys.platform != "win32":
+        pytest.skip("Windows-specific policy")
+    loop_class_name = type(asyncio.get_running_loop()).__name__
+    assert "Proactor" not in loop_class_name, (
+        f"unit tier ran under {loop_class_name}; expected a selector-based loop"
+    )

@@ -32,6 +32,12 @@ def event_loop_policy() -> Any:
     ``event_loop_policy`` overrides in
     ``tests/integration/persistence/conftest.py`` and
     ``tests/conformance/persistence/conftest.py``.
+
+    ``tests/unit/tools/conftest.py`` shadows this fixture for tool
+    tests that must keep ``ProactorEventLoopPolicy`` (they drive real
+    ``asyncio.create_subprocess_exec`` which the selector loop cannot).
+    pytest's nested-conftest fixture resolution gives each test the
+    closest definition, so the override applies cleanly per directory.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)

@@ -11,15 +11,19 @@ other module, so changes to them trigger a full test run. Same for any
 ``conftest.py`` and top-level source files (``__init__.py``, ``constants.py``).
 
 When the affected-tests run goes green, an isolation regression gate runs
-``pytest --count 2 -x`` over the same selection: a test that passes the
-primary run but fails the second invocation almost always means a fixture
-leaked process-global state into the next run, the exact failure mode that
-splits a green local run from a red xdist push. Set
+``pytest --count 2 --max-worker-restart=4`` over the same selection and
+classifies the outcome.  A test that passes the primary run but fails the
+replay points at fixture state leaking process-global state, the exact
+failure mode that splits a green local run from a red xdist push.  Worker
+crashes scattered across unrelated tests (commonly the Python 3.14 +
+Windows ProactorEventLoop IOCP teardown race) are surfaced as advisory
+and do not block the gate; a test that crashes the worker on EVERY replay
+iteration is still treated as a real bug.  Set
 ``SYNTHORG_SKIP_ISOLATION_GATE=1`` to bypass for emergency pushes (the
 primary run still gates on first-run failures regardless).
 
-Exit codes match pytest: 0 (passed/nothing to run), 1 (failures), etc.
-Git command failures fall back to running the full unit suite.
+Exit codes match pytest: 0 (passed/nothing to run / advisory), 1 (failures),
+etc.  Git command failures fall back to running the full unit suite.
 """
 
 import math
@@ -198,17 +202,25 @@ _WORKER_CRASH_RE = re.compile(
 
 # pytest in ``-q`` mode prints ``FAILED <test_id> - <reason>`` (or just
 # ``FAILED <test_id>``) at the start of a line for every failure in the
-# session summary.
+# session summary.  ``\S+`` captures up to the first whitespace; valid
+# pytest test ids never contain whitespace, so the boundary is safe.
 _FAILED_RE = re.compile(r"^FAILED (?P<test>\S+)", re.MULTILINE)
 
 # pytest-repeat appends a ``[N-M]`` suffix to each repetition's test id.
 # Stripping it lets the classifier recognise the same logical test
-# crashing on multiple iterations.
+# crashing on multiple iterations.  Anchored to ``$`` so a parametrize
+# value like ``test_foo[a-b][1-2]`` strips only the trailing repeat
+# suffix.  A naturally-parametrized id of the bare shape ``test_foo[1-2]``
+# is indistinguishable from a pytest-repeat suffix, but the project's
+# parametrize values use descriptive names so the collision is theoretical.
 _REPEAT_SUFFIX_RE = re.compile(r"\[\d+-\d+\]$")
 
-# Threshold above which the same logical test crashing the worker is
-# treated as a real bug rather than transient native-level flakiness.
-_REAL_BUG_CRASH_THRESHOLD = 2
+# Minimum crash count for the same logical test to be treated as a real
+# bug rather than transient native-level flakiness.  Two crashes across
+# distinct pytest-repeat iterations of the same test (e.g. ``[1-2]``
+# AND ``[2-2]``) means every replay of the test crashed the worker --
+# very different signal from a single crash that may just be infra noise.
+_MIN_CRASHES_FOR_REAL_BUG = 2
 
 
 def _parse_test_count(pytest_output: str) -> int | None:
@@ -480,6 +492,18 @@ class IsolationOutcome:
     script should return.  ``crashed_tests`` / ``failed_tests`` /
     ``repeated_crashes`` carry the supporting evidence so the banner
     can name names.
+
+    Invariants (enforced in ``__post_init__``):
+
+    * ``pass`` -- ``exit_code == 0`` and every evidence tuple is empty.
+    * ``crash_advisory`` -- ``exit_code == 0``, ``crashed_tests`` is
+      non-empty, ``failed_tests`` and ``repeated_crashes`` are empty.
+    * ``regression`` -- ``exit_code >= 1``.  Evidence tuples may all be
+      empty when pytest exits non-zero with degraded output the parser
+      cannot interpret -- we fail closed rather than silently pass.
+
+    Enforcing these at construction means the banner can rely on the
+    invariant without re-checking at the print site.
     """
 
     kind: Literal["pass", "regression", "crash_advisory"]
@@ -487,6 +511,35 @@ class IsolationOutcome:
     crashed_tests: tuple[str, ...] = field(default_factory=tuple)
     failed_tests: tuple[str, ...] = field(default_factory=tuple)
     repeated_crashes: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Reject illegal ``(kind, exit_code, evidence)`` combinations."""
+        if self.kind == "pass":
+            if self.exit_code != 0:
+                msg = f"pass outcome must have exit_code=0, got {self.exit_code}"
+                raise ValueError(msg)
+            if self.crashed_tests or self.failed_tests or self.repeated_crashes:
+                msg = "pass outcome must carry no evidence tuples"
+                raise ValueError(msg)
+        elif self.kind == "crash_advisory":
+            if self.exit_code != 0:
+                msg = (
+                    "crash_advisory outcome must have exit_code=0, "
+                    f"got {self.exit_code}"
+                )
+                raise ValueError(msg)
+            if not self.crashed_tests:
+                msg = "crash_advisory outcome must list at least one crashed test"
+                raise ValueError(msg)
+            if self.failed_tests or self.repeated_crashes:
+                msg = (
+                    "crash_advisory outcome must not carry failed_tests or "
+                    "repeated_crashes"
+                )
+                raise ValueError(msg)
+        elif self.exit_code == 0:  # regression
+            msg = "regression outcome must have non-zero exit_code"
+            raise ValueError(msg)
 
 
 def _parse_worker_crashes(stdout: str) -> tuple[tuple[str, str], ...]:
@@ -533,7 +586,7 @@ def _classify_isolation_outcome(
 
     normalized = Counter(_REPEAT_SUFFIX_RE.sub("", t) for t in crashed_tests)
     repeated = tuple(
-        sorted(t for t, n in normalized.items() if n >= _REAL_BUG_CRASH_THRESHOLD)
+        sorted(t for t, n in normalized.items() if n >= _MIN_CRASHES_FOR_REAL_BUG)
     )
 
     if real_failures:
@@ -589,13 +642,24 @@ def _print_isolation_banner(outcome: IsolationOutcome) -> None:
                 f"Failed: {', '.join(outcome.failed_tests)}\n"
                 f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1"
             )
-        else:
+        elif outcome.repeated_crashes:
             body = (
                 "ISOLATION REGRESSION: a test crashed the xdist worker on\n"
                 "every replay.  This is a real bug in the test or its\n"
                 "fixtures (memory corruption, segfault, native-level\n"
                 "deadlock), not transient infra noise.\n"
                 f"Repeated crashes: {', '.join(outcome.repeated_crashes)}\n"
+                f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1"
+            )
+        else:
+            # Fail-closed: pytest exited non-zero but emitted no parsable
+            # FAILED or worker-crash signal.  Don't silently pass; surface
+            # the raw exit code and ask the operator to inspect the run.
+            body = (
+                "ISOLATION REGRESSION: pytest exited non-zero "
+                f"({outcome.exit_code}) with output the gate could not\n"
+                "parse.  Inspect the captured pytest output above for\n"
+                "the underlying failure.\n"
                 f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1"
             )
         print(f"\n{border}\n{body}\n{border}", file=sys.stderr)
@@ -664,37 +728,40 @@ def _run_isolation_gate(paths: list[str]) -> int:
     return outcome.exit_code
 
 
-def main() -> int:  # noqa: PLR0911
-    """Entry point."""
+def _resolve_changed_files() -> list[str] | None:
+    """Return changed files, or ``None`` if we should run the full suite.
+
+    Returns ``None`` for any condition that forces a full unit run:
+    git command failure (no merge-base, shallow history, etc.) or a
+    ``pyproject.toml`` change.  ``pyproject.toml`` carries the pytest
+    config (addopts, xdist, plugin list, markers); a push that touches
+    it but no Python file would otherwise skip every test, shipping
+    the configuration change unverified.
+    """
     try:
         base = _merge_base()
-    except _GitError as exc:
-        print(f"ERROR: {exc} -- running full unit suite", file=sys.stderr)
-        return _run_pytest(["tests/unit/"], run_all=True)
-
-    try:
         changed = _changed_files(base)
     except _GitError as exc:
         print(f"ERROR: {exc} -- running full unit suite", file=sys.stderr)
-        return _run_pytest(["tests/unit/"], run_all=True)
-
-    # ``pyproject.toml`` carries the pytest config (addopts, xdist
-    # distribution, plugin list, markers). A push that touches it but
-    # no Python file would otherwise skip every test, so the
-    # configuration change ships unverified -- the exact failure mode
-    # that lets a regressed test runner sit on main.
+        return None
     if "pyproject.toml" in changed:
         print("pyproject.toml changed -- running full unit suite.")
+        return None
+    return changed
+
+
+def main() -> int:
+    """Entry point."""
+    changed = _resolve_changed_files()
+    if changed is None:
         return _run_pytest(["tests/unit/"], run_all=True)
 
-    # Filter to Python files only.
     py_changed = [f for f in changed if f.endswith(".py")]
     if not py_changed:
         print("No Python files changed -- skipping unit tests.")
         return 0
 
     test_dirs, run_all = _affected_test_dirs(py_changed)
-
     if run_all:
         print("Foundational module or conftest changed -- running full unit suite.")
         # Full-suite runs skip the isolation gate: doubling a multi-minute
