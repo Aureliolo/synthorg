@@ -13,7 +13,7 @@ ci:
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
-  #     list-pagination / dead-api-endpoints:
+  #     list-pagination / dead-api-endpoints / schema-drift:
   #     scoped gates that need ``uv`` + repo source -- redundant given
   #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
   #   - check-push-rebased / check-single-migration-per-pr /
@@ -25,7 +25,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy, dead-api-endpoints]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy, dead-api-endpoints, schema-drift]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -353,5 +353,16 @@ repos:
         # changing the trigger pattern) cannot bypass the check by
         # not touching ``src/synthorg/`` Python files.
         files: ^(src/synthorg/.*\.py|scripts/check_provider_complete_chokepoint\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: schema-drift
+        name: schema-drift gate (SQLite vs Postgres parity)
+        entry: uv run python scripts/check_schema_drift.py
+        language: system
+        # Trigger on schema files, revision files, the script itself,
+        # the baseline, or this config so a PR that weakens the gate
+        # cannot bypass the check by not touching schema.sql.
+        files: ^(src/synthorg/persistence/(sqlite|postgres)/(schema\.sql|revisions/.*\.sql)|scripts/check_schema_drift\.py|scripts/schema_drift_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]

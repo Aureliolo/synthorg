@@ -50,6 +50,15 @@ justification after `--` is required).
    the SQLite side.  Monetary columns carry a sibling
    `currency TEXT NOT NULL` with a CHECK constraint.
 
+   `scripts/check_schema_drift.py` (pre-push + CI Lint) compares the
+   two files and flags any structural drift not pinned in
+   `scripts/schema_drift_baseline.txt`.  TEXT-vs-JSONB,
+   TEXT-vs-TIMESTAMPTZ, INTEGER-vs-BOOLEAN and Postgres-only GIN
+   indexes are the documented intentional drift pre-loaded in the
+   baseline; a new pairing in the same shape needs an explicit
+   baseline entry (regenerate via `--update-baseline`, then
+   hand-edit the per-entry reason before commit).
+
 4. **Generate migrations with Atlas.**
 
    ```bash
