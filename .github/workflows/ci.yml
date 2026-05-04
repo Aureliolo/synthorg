@@ -121,6 +121,11 @@ jobs:
           uv run python scripts/check_setting_to_startup_trace.py
           --repo-root "${{ github.workspace }}"
 
+      - name: Dual-backend test parity gate (conformance + protocols)
+        run: >-
+          uv run python scripts/check_dual_backend_test_parity.py
+          --repo-root "${{ github.workspace }}"
+
       - name: Cost-recording chokepoint gate
         run: uv run python scripts/check_provider_complete_chokepoint.py
 

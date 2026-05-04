@@ -1,0 +1,13 @@
+# Frozen baseline of pre-existing dual-backend test parity violations.
+# Each line is one of:
+#   missing-test-coverage:<RepositoryClassName>
+#   missing-backend-param:<rel_posix_path>:<lineno>:<func_name>
+#   direct-backend-typing:<rel_posix_path>:<lineno>:<func_name>
+#
+# scripts/check_dual_backend_test_parity.py reads this file to
+# suppress violations at these exact entries. New violations NOT
+# in this list fail the pre-push hook; stale entries warn (but
+# pass) so the file can be tightened over time.
+#
+# Regenerate (rare; requires explicit user approval) with:
+#   uv run python scripts/check_dual_backend_test_parity.py --update-baseline
