@@ -17,6 +17,7 @@ import pytest
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.postgres.approval_repo import (
     PostgresApprovalRepository,
@@ -342,3 +343,54 @@ class TestApprovalRepository:
         fetched = await repo.get(first.id)
         assert fetched is not None
         assert fetched.status is ApprovalStatus.EXPIRED
+
+    async def test_expire_if_pending_flips_pending_rows_only(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # Compare-and-set contract: rows still PENDING transition to
+        # EXPIRED; rows already in a terminal status are silently
+        # skipped. Returned ids reflect what actually changed.
+        repo = _approval_repo(backend)
+        pending = _make_item(
+            approval_id="approval-expire-pending",
+            status=ApprovalStatus.PENDING,
+        )
+        approved = _make_item(
+            approval_id="approval-expire-approved",
+            status=ApprovalStatus.APPROVED,
+        )
+        rejected = _make_item(
+            approval_id="approval-expire-rejected",
+            status=ApprovalStatus.REJECTED,
+        )
+        await repo.save_many((pending, approved, rejected))
+
+        updated = await repo.expire_if_pending(
+            (pending.id, approved.id, rejected.id),
+        )
+        assert set(updated) == {pending.id}
+        assert (await repo.get(pending.id)).status is ApprovalStatus.EXPIRED  # type: ignore[union-attr]
+        assert (await repo.get(approved.id)).status is ApprovalStatus.APPROVED  # type: ignore[union-attr]
+        assert (await repo.get(rejected.id)).status is ApprovalStatus.REJECTED  # type: ignore[union-attr]
+
+    async def test_expire_if_pending_empty_input_is_noop(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        result = await repo.expire_if_pending(())
+        assert result == ()
+
+    async def test_expire_if_pending_unknown_ids_returned_empty(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # Ids that don't exist in the table are silently skipped, same
+        # as a row that's already terminal -- the compare-and-set
+        # WHERE clause matches no row, so no row is returned.
+        repo = _approval_repo(backend)
+        updated = await repo.expire_if_pending(
+            (NotBlankStr("approval-expire-missing"),),
+        )
+        assert updated == ()

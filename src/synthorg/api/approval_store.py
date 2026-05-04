@@ -262,7 +262,7 @@ class ApprovalStore:
                 action_type=action_type,
             )
 
-    async def _list_from_repo(
+    async def _list_from_repo(  # noqa: C901
         self,
         *,
         status: ApprovalStatus | None,
@@ -278,7 +278,8 @@ class ApprovalStore:
         serialize on the same lock.
 
         Per-page protocol: read page (no lock) -> compute expirations
-        (pure, no lock) -> ``save_many`` (no lock) -> brief lock for
+        (pure, no lock) -> ``expire_if_pending`` (no lock; compare-and-
+        set so concurrent saves can't be clobbered) -> brief lock for
         cache update -> emit audit events + fire callbacks (no lock).
         Each page is independent so a failure on one page does not
         leave a half-applied state on a later page.
@@ -301,9 +302,16 @@ class ApprovalStore:
 
         Status filtering:
 
-        * When ``status`` is ``EXPIRED`` (or ``None``), the repo query
-          omits the status filter so PENDING rows that should lazily
-          flip to EXPIRED still surface and get persisted.
+        * When ``status`` is ``EXPIRED``, ``PENDING``, or ``None``,
+          the repo query omits the status filter. ``PENDING`` cannot
+          be pushed down because :meth:`_compute_page` flips PENDING
+          rows to EXPIRED between pages; a repo-side ``status=pending``
+          filter would shrink the result set under the iterator, so
+          ``offset += 100`` would skip rows that were still PENDING
+          when the previous page was read but should remain visible
+          to the caller. ``EXPIRED`` also stays unfiltered so PENDING
+          rows that should lazily flip to EXPIRED surface and get
+          persisted.
         * When ``status`` is any other terminal value (APPROVED,
           REJECTED, CANCELLED), the repo authoritatively persists that
           status and lazy expiration cannot promote into it -- the
@@ -324,12 +332,18 @@ class ApprovalStore:
         # guard ``save()`` already applies.
         async with self._lock:
             captured_generation = self._generation
-        # Push the status filter down for non-EXPIRED queries so the
-        # DB doesn't have to scan the whole table; only EXPIRED (and
-        # the unfiltered ``None`` case) need the broad read so PENDING
-        # rows that should lazily flip to EXPIRED are visible to the
-        # expiration pass below.
-        repo_status = None if status in {None, ApprovalStatus.EXPIRED} else status
+        # Push the status filter down only for terminal non-EXPIRED
+        # queries (APPROVED / REJECTED / CANCELLED). PENDING cannot
+        # be pushed down because the per-page expiration flip removes
+        # rows from the filtered set as the iterator advances --
+        # ``offset += 100`` would then skip PENDING rows that should
+        # have been visible. EXPIRED also stays unfiltered so the
+        # lazy-expire pass can promote the PENDING rows.
+        repo_status = (
+            None
+            if status in {None, ApprovalStatus.PENDING, ApprovalStatus.EXPIRED}
+            else status
+        )
         page_size = 100
         result: list[ApprovalItem] = []
         offset = 0
@@ -350,16 +364,26 @@ class ApprovalStore:
                 status=status,
                 risk_level=risk_level,
             )
+            actually_expired_ids: set[str] = set()
             if to_persist:
-                # Durable write outside the lock; cache refresh + audit
-                # events + callbacks all fire below regardless of
-                # whether expirations landed on this page.
+                # Compare-and-set at the repo boundary: only flip rows
+                # still PENDING. A concurrent save() that landed a
+                # newer terminal status (APPROVED / REJECTED /
+                # CANCELLED) between our page read and this call wins
+                # the race; ``expire_if_pending`` returns only the ids
+                # that actually transitioned, so audit events,
+                # callbacks, and cache writes don't fire for rows we
+                # never persisted.
                 try:
-                    await self._repo.save_many(to_persist)
+                    actually_expired_ids = set(
+                        await self._repo.expire_if_pending(
+                            tuple(item.id for item in to_persist),
+                        ),
+                    )
                 except MemoryError, RecursionError:
                     raise
                 except Exception as exc:
-                    # Log the affected ids before re-raising so a
+                    # Log the attempted ids before re-raising so a
                     # production failure on the batched expiry path
                     # is diagnosable -- otherwise the caller sees the
                     # ``QueryError`` and has no record of which lazy
@@ -372,6 +396,13 @@ class ApprovalStore:
                         error=safe_error_description(exc),
                     )
                     raise
+            # Lost-race rows: rows we tried to flip but the repo
+            # already had a newer terminal status. Drop them from the
+            # cache (next get() refetches authoritative state) and
+            # from the response (surfacing them as EXPIRED would
+            # leak stale data).
+            attempted_ids = {item.id for item in to_persist}
+            lost_race_ids = attempted_ids - actually_expired_ids
             # Refresh the entire page slice in the cache (not just the
             # EXPIRED transitions) so stale non-expired siblings can't
             # outlive a fresh repo read. Generation guard: a concurrent
@@ -380,8 +411,18 @@ class ApprovalStore:
             # post-clear empty-cache invariant survives.
             async with self._lock:
                 if self._generation == captured_generation:
-                    self._items.update(page_cache)
+                    for item_id, cached in page_cache.items():
+                        if item_id in lost_race_ids:
+                            # Stale snapshot; evict so the next get()
+                            # refetches the authoritative row from
+                            # repo rather than returning our local
+                            # EXPIRED guess.
+                            self._items.pop(item_id, None)
+                        else:
+                            self._items[item_id] = cached
             for expired in to_persist:
+                if expired.id not in actually_expired_ids:
+                    continue
                 logger.info(
                     APPROVAL_STATUS_TRANSITIONED,
                     approval_id=expired.id,
@@ -390,7 +431,7 @@ class ApprovalStore:
                 )
                 logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
                 self._fire_expire_callback(expired)
-            result.extend(page_result)
+            result.extend(item for item in page_result if item.id not in lost_race_ids)
             if len(page) < page_size:
                 break
             offset += page_size
@@ -416,8 +457,9 @@ class ApprovalStore:
         ``page_cache`` carries every row from the page (with the
         possibly-EXPIRED replacement substituted in) so the caller
         can refresh the entire page slice in ``_items``, not just the
-        EXPIRED transitions. ``to_persist`` carries only the rows that
-        actually flipped, which is what ``save_many`` writes.
+        EXPIRED transitions. ``to_persist`` carries only the rows
+        that flipped locally, which is the candidate set the caller
+        feeds to ``expire_if_pending`` for the compare-and-set.
         """
         page_result: list[ApprovalItem] = []
         to_persist: list[ApprovalItem] = []

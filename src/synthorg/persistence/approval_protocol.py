@@ -56,6 +56,28 @@ class ApprovalRepository(Protocol):
         """
         ...
 
+    async def expire_if_pending(
+        self, ids: Sequence[NotBlankStr]
+    ) -> tuple[NotBlankStr, ...]:
+        """Compare-and-set: flip rows still ``PENDING`` to ``EXPIRED``.
+
+        Updates only rows whose current persisted status is still
+        ``PENDING``; rows that have transitioned to a terminal status
+        (APPROVED, REJECTED, CANCELLED) since the caller's snapshot
+        are silently skipped. Returns the ids actually updated, so
+        the lazy-expire path in :class:`ApprovalStore` can drive
+        cache refresh, audit events, and ``on_expire`` callbacks
+        only for rows that truly transitioned -- without this
+        compare-and-set a blind upsert would clobber a concurrent
+        ``save()`` decision back to ``EXPIRED``.
+
+        Empty input is a no-op (returns ``()``).
+
+        Raises:
+            QueryError: On database errors.
+        """
+        ...
+
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID, or ``None`` if not found.
 

@@ -159,6 +159,12 @@ class PostgresMcpInstallationRepository:
             ):
                 await cur.execute(sql, (limit, offset))
                 rows = await cur.fetchall()
+            # Deserialization runs inside the same try/except so a
+            # malformed persisted row surfaces under the same
+            # ``PERSISTENCE_MCP_INSTALLATION_LIST_FAILED`` event +
+            # ``QueryError`` envelope as a DB failure, not as a raw
+            # exception that escapes the persistence boundary.
+            return tuple(_row_to_installation(row) for row in rows)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -172,7 +178,6 @@ class PostgresMcpInstallationRepository:
                 backend="postgres",
             )
             raise QueryError(msg) from exc
-        return tuple(_row_to_installation(row) for row in rows)
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete an installation.  Returns ``True`` if a row was removed."""

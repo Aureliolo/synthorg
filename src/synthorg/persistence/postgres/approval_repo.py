@@ -22,7 +22,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FAILED,
@@ -289,6 +289,39 @@ class PostgresApprovalRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+
+    async def expire_if_pending(
+        self, ids: Sequence[NotBlankStr]
+    ) -> tuple[NotBlankStr, ...]:
+        """Compare-and-set: flip rows still PENDING to EXPIRED.
+
+        Uses ``UPDATE ... WHERE id = ANY(%s) AND status='pending'
+        RETURNING id`` so the compare-and-set is atomic at the row
+        level and the returned ids reflect what actually transitioned.
+        """
+        if not ids:
+            return ()
+        sql = (
+            f"UPDATE approvals SET status = '{ApprovalStatus.EXPIRED.value}' "  # noqa: S608
+            "WHERE id = ANY(%s) "
+            f"AND status = '{ApprovalStatus.PENDING.value}' "
+            "RETURNING id"
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, (list(ids),))
+                rows = await cur.fetchall()
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to expire approval batch (size={len(ids)})"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                batch_size=len(ids),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(NotBlankStr(row[0]) for row in rows)
 
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID, or ``None`` if not found.

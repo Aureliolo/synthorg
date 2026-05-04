@@ -130,6 +130,19 @@ class SQLiteMcpInstallationRepository:
         try:
             async with self._db.execute(sql, (limit, offset)) as cursor:
                 rows = await cursor.fetchall()
+            # Deserialization runs inside the same try/except so a
+            # malformed persisted row surfaces under the same
+            # ``PERSISTENCE_MCP_INSTALLATION_LIST_FAILED`` event +
+            # ``QueryError`` envelope as a DB failure, not as a raw
+            # exception that escapes the persistence boundary.
+            return tuple(
+                McpInstallation(
+                    catalog_entry_id=NotBlankStr(row[0]),
+                    connection_name=(NotBlankStr(row[1]) if row[1] else None),
+                    installed_at=coerce_row_timestamp(row[2]),
+                )
+                for row in rows
+            )
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list mcp installations"
             logger.warning(
@@ -140,14 +153,6 @@ class SQLiteMcpInstallationRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(
-            McpInstallation(
-                catalog_entry_id=NotBlankStr(row[0]),
-                connection_name=(NotBlankStr(row[1]) if row[1] else None),
-                installed_at=coerce_row_timestamp(row[2]),
-            )
-            for row in rows
-        )
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete an installation.  Returns ``True`` if a row was removed."""
