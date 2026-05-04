@@ -6,6 +6,8 @@ never observes the post-sleep wakeup before the assertions read
 ``_subscribers``.
 """
 
+import asyncio
+import contextlib
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -117,3 +119,91 @@ async def test_start_rejects_non_positive_arguments() -> None:
         await hub.start(idle_ttl_seconds=0.0, janitor_interval_seconds=1.0)
     with pytest.raises(ValueError, match="janitor_interval_seconds"):
         await hub.start(idle_ttl_seconds=10.0, janitor_interval_seconds=0.0)
+
+
+@pytest.mark.unit
+async def test_subscribe_initialises_last_active() -> None:
+    """``subscribe()`` stamps a fresh ``last_active`` from the clock.
+
+    A subscriber whose ``last_active`` is left at the dataclass default
+    (0.0) would be eligible for pruning on the very next janitor sweep,
+    re-introducing the leak the janitor was added to prevent.
+    """
+    clock = FakeClock()
+    hub = EventStreamHub(clock=clock)
+    before = clock.monotonic()
+    await hub.subscribe("session-x")
+    after = clock.monotonic()
+    sub = hub._subscribers["session-x"][0]
+    assert before <= sub.last_active <= after
+
+
+@pytest.mark.unit
+async def test_stop_timeout_marks_unrestartable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A drain that hits the deadline forces ``_stop_failed=True``.
+
+    Driving a real "ignores-cancel" coroutine is brittle on 3.14
+    because ``CancelledError`` semantics consume the cancellation
+    flag on first raise rather than re-raising every await. Stubbing
+    ``asyncio.wait_for`` to raise ``TimeoutError`` exercises the
+    same branch in ``stop()`` -- timeout caught, ``_stop_failed``
+    set, error log fired -- and the follow-up ``start()`` rejection
+    is the user-observable contract that matters here.
+    """
+    hub = EventStreamHub(clock=FakeClock())
+
+    async def _benign_loop() -> None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            return
+
+    async with hub._lifecycle_lock:
+        hub._running = True
+        hub._janitor_task = asyncio.create_task(
+            _benign_loop(),
+            name="event-stream-hub-janitor-test",
+        )
+
+    async def _raise_timeout(*_args: object, **_kwargs: object) -> None:
+        raise TimeoutError
+
+    monkeypatch.setattr(
+        "synthorg.communication.event_stream.stream.asyncio.wait_for",
+        _raise_timeout,
+    )
+
+    await hub.stop(stop_timeout_seconds=0.05)
+    assert hub._stop_failed is True
+    with pytest.raises(EventStreamHubUnrestartableError):
+        await hub.start(idle_ttl_seconds=10.0, janitor_interval_seconds=1.0)
+    # Drain the lingering benign loop so xdist's leak detection stays
+    # clean. ``_janitor_task`` was cleared by ``stop()`` itself, but the
+    # underlying coroutine is still pending; cancel + await drains it.
+    name = "event-stream-hub-janitor-test"
+    pending = [t for t in asyncio.all_tasks() if t.get_name() == name]
+    for t in pending:
+        t.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await t
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"max_queue_size": 0}, "max_queue_size"),
+        ({"max_queue_size": -3}, "max_queue_size"),
+        ({"dedup_ttl_seconds": -1.0}, "dedup_ttl_seconds"),
+        ({"dedup_max_entries_per_session": 0}, "dedup_max_entries_per_session"),
+    ],
+)
+def test_constructor_rejects_invalid_arguments(
+    kwargs: dict[str, object],
+    match: str,
+) -> None:
+    """The constructor fail-fasts on out-of-range bounds parameters."""
+    with pytest.raises(ValueError, match=match):
+        EventStreamHub(**kwargs)  # type: ignore[arg-type]

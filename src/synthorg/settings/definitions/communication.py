@@ -212,13 +212,15 @@ _r.register(
         namespace=SettingNamespace.COMMUNICATION,
         key="event_stream_subscriber_idle_ttl_seconds",
         type=SettingType.FLOAT,
-        default="600.0",
+        default="86400.0",
         description=(
             "Inactivity TTL for SSE subscribers on the EventStreamHub."
             " Subscribers whose queue has not received an event within"
-            " this window are pruned by the janitor. Bounds memory growth"
-            " when an SSE client disconnects without unsubscribe (browser"
-            " tab kill, network partition). Resolved once at lifespan"
+            " this window are pruned by the janitor. Default 24h matches"
+            " the long-lived-SSE-client expectation: a dashboard tab"
+            " can stay subscribed across a quiet workday without being"
+            " evicted, while crashed/disconnected sessions still get"
+            " reclaimed within the day. Resolved once at lifespan"
             " startup; runtime changes require a restart."
         ),
         group="Event Stream",
@@ -235,13 +237,12 @@ _r.register(
         namespace=SettingNamespace.COMMUNICATION,
         key="event_stream_janitor_interval_seconds",
         type=SettingType.FLOAT,
-        default="60.0",
+        default="300.0",
         description=(
             "Wall-clock interval between EventStreamHub janitor sweeps."
-            " A shorter interval reclaims memory faster after disconnect;"
-            " a longer interval reduces wakeups under low subscriber"
-            " churn. Resolved once at lifespan startup; runtime changes"
-            " require a restart."
+            " Default 5min balances memory-reclaim latency against"
+            " wakeup overhead under low subscriber churn. Resolved once"
+            " at lifespan startup; runtime changes require a restart."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,

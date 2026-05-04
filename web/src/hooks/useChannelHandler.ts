@@ -11,6 +11,12 @@
  * optional ``signal`` argument lets ad-hoc callers (e.g. an upstream
  * fetch abort, a user-cancelled long-running mutation) tear the
  * binding down before the component itself unmounts.
+ *
+ * Wrap ``handler`` in ``useCallback`` at the call site. The effect
+ * deps include ``handler``, so a fresh function reference each
+ * parent render would re-run the effect (off-then-on), churning the
+ * store registration map. The ``detached`` guard makes the churn
+ * idempotent but still adds work the caller can avoid by memoizing.
  */
 import { useEffect } from 'react'
 
@@ -37,6 +43,12 @@ export function useChannelHandler(
 
     signal?.addEventListener('abort', detach)
     return () => {
+      // Order matters: drop the abort listener BEFORE invoking
+      // detach(). If the listener fired during cleanup it would
+      // hit the same detach() (idempotent via the ``detached``
+      // guard), but removing the listener first keeps the cleanup
+      // paths single-purpose and avoids a redundant scheduled
+      // microtask in the abort propagation path.
       signal?.removeEventListener('abort', detach)
       detach()
     }

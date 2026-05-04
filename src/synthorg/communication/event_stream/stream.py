@@ -27,8 +27,9 @@ from synthorg.communication.event_stream.types import (
     StreamEvent,
 )
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.event_stream import (
+    EVENT_STREAM_HUB_JANITOR_FAILED,
     EVENT_STREAM_HUB_JANITOR_PRUNED,
     EVENT_STREAM_HUB_PUBLISH_DEDUPED,
     EVENT_STREAM_HUB_PUBLISH_FAILED,
@@ -42,8 +43,8 @@ logger = get_logger(__name__)
 _DEFAULT_MAX_QUEUE_SIZE = 256
 _DEFAULT_DEDUP_TTL_SECONDS = 60.0
 _DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION = 1024
-_DEFAULT_SUBSCRIBER_IDLE_TTL_SECONDS = 600.0
-_DEFAULT_JANITOR_INTERVAL_SECONDS = 60.0
+_DEFAULT_SUBSCRIBER_IDLE_TTL_SECONDS = 86400.0
+_DEFAULT_JANITOR_INTERVAL_SECONDS = 300.0
 _DEFAULT_JANITOR_STOP_TIMEOUT_SECONDS = 10.0
 
 
@@ -57,6 +58,11 @@ class EventStreamHubUnrestartableError(RuntimeError):
     """
 
 
+# Intentionally NOT frozen: ``last_active`` is mutated in-place under
+# ``EventStreamHub._lock`` per the docstring below. CLAUDE.md "Frozen
+# by default" deviation is justified because allocating a fresh
+# ``_Subscriber`` on every successful publish would churn the hot
+# fan-out path.
 @dataclass(slots=True)
 class _Subscriber:
     """Per-subscriber bookkeeping owned by ``EventStreamHub``.
@@ -64,7 +70,8 @@ class _Subscriber:
     ``last_active`` carries the monotonic timestamp of the most recent
     activity (subscribe call or successful publish to this subscriber).
     The janitor reads ``last_active`` to evict idle subscribers; the
-    field is mutated in-place under ``EventStreamHub._lock``.
+    field is mutated in-place under ``EventStreamHub._lock`` so all
+    reads / writes happen-before each other through the lock.
     """
 
     queue: asyncio.Queue[StreamEvent] = field()
@@ -260,10 +267,29 @@ class EventStreamHub:
         idle_ttl_seconds: float,
         janitor_interval_seconds: float,
     ) -> None:
-        """Periodically prune subscribers idle past ``idle_ttl_seconds``."""
+        """Periodically prune subscribers idle past ``idle_ttl_seconds``.
+
+        A prune failure (lock acquisition error, clock failure, dict-
+        mutation race) must not kill the loop -- otherwise the hub
+        silently stops reclaiming memory and the original leak the
+        janitor was added to fix returns. Re-raise only the system-
+        level errors (``CancelledError``, ``MemoryError``,
+        ``RecursionError``); log every other exception and continue.
+        """
         while True:
             await self._clock.sleep(janitor_interval_seconds)
-            await self._prune_idle_subscribers(idle_ttl_seconds)
+            try:
+                await self._prune_idle_subscribers(idle_ttl_seconds)
+            except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    EVENT_STREAM_HUB_JANITOR_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def _prune_idle_subscribers(self, idle_ttl_seconds: float) -> None:
         """Drop subscribers whose ``last_active`` is older than the TTL.
@@ -393,6 +419,19 @@ class EventStreamHub:
                 )
                 return
             self._record_published_locked(event, now)
+            # Mutate ``last_active`` while the lock is still held so the
+            # janitor's read at ``_prune_idle_subscribers`` sees a value
+            # that happens-before the publish through ``_lock``. Doing
+            # the put_nowait inside the lock would gate concurrent
+            # publishers behind a slow consumer, so the queue write
+            # itself stays out -- but the timestamp bump is cheap and
+            # belongs under the same invariant the dataclass docstring
+            # promises. ``put_nowait`` happens after the lock is
+            # released; if the queue is full the timestamp is still
+            # bumped to "intent to publish" rather than "delivery
+            # confirmed", which is the right signal for the janitor.
+            for sub in subs_snapshot:
+                sub.last_active = now
         for sub in subs_snapshot:
             try:
                 sub.queue.put_nowait(event)
@@ -403,12 +442,6 @@ class EventStreamHub:
                     event_id=event.id,
                     note="Subscriber queue full, event dropped",
                 )
-            else:
-                # In-place mutation under the dataclass's slot. The
-                # _Subscriber dict-view inside ``_subscribers`` shares
-                # the same instance; readers under the lock see the
-                # updated value on the next iteration.
-                sub.last_active = now
 
     def _is_duplicate_locked(self, event: StreamEvent, now: float) -> bool:
         """Return ``True`` if *event* was already published within the TTL.

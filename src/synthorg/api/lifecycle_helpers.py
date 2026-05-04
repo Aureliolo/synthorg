@@ -204,8 +204,8 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         )
 
 
-_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS: Final[float] = 600.0
-_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS: Final[float] = 60.0
+_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS: Final[float] = 86400.0
+_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS: Final[float] = 300.0
 
 
 async def _resolve_event_stream_janitor_settings(

@@ -51,7 +51,7 @@ The error taxonomy and exception classes live in
 The auth domain types (`AuthConfig`, `User`, `ApiKey`,
 `AuthenticatedUser`, `OrgRole`, `HumanRole`, `Session`,
 `RefreshRecord`) live under
-[`synthorg.core.auth`](../core/index.md#auth); the HTTP-coupled
+[`synthorg.core.auth`](core.md#auth); the HTTP-coupled
 service and middleware live in `synthorg.api.auth`.
 
 ::: synthorg.api.auth.service
