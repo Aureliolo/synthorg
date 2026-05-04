@@ -505,8 +505,36 @@ class TestApprovalTimeoutScheduler:
         with pytest.raises(error_cls):
             await scheduler._check_pending_approvals()
 
-    def test_reschedule_sets_wake_event(self) -> None:
-        """reschedule() sets the wake event to interrupt the sleep loop."""
+    async def test_reschedule_sets_wake_event_when_running(self) -> None:
+        """reschedule() sets the wake event to interrupt the sleep loop.
+
+        Verified after ``start()`` because the loop-bound wake event is
+        deferred until then; calling reschedule on an unstarted scheduler
+        is still legal but only updates the interval (no event to wake).
+        """
+        store = _make_mock_store()
+        checker = _make_mock_checker()
+        scheduler = ApprovalTimeoutScheduler(
+            approval_store=store,
+            timeout_checker=checker,
+            interval_seconds=60.0,
+        )
+        await scheduler.start()
+        try:
+            assert scheduler._wake_event is not None
+            scheduler._wake_event.clear()
+            scheduler.reschedule(120.0)
+            assert scheduler._wake_event.is_set()
+            assert scheduler._interval == 120.0
+        finally:
+            await scheduler.stop()
+
+    def test_reschedule_before_start_updates_interval(self) -> None:
+        """reschedule() before start() updates the interval but skips waking.
+
+        Loop-bound primitives are not yet created at this point; the
+        next ``start()`` will see the updated interval.
+        """
         store = _make_mock_store()
         checker = _make_mock_checker()
         scheduler = ApprovalTimeoutScheduler(
@@ -516,4 +544,5 @@ class TestApprovalTimeoutScheduler:
         )
 
         scheduler.reschedule(120.0)
-        assert scheduler._wake_event.is_set()
+        assert scheduler._interval == 120.0
+        assert scheduler._wake_event is None

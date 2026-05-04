@@ -75,35 +75,77 @@ class ApprovalTimeoutScheduler:
         self._on_resolve = on_timeout_resolve
         self._notification_dispatcher = notification_dispatcher
         self._task: asyncio.Task[None] | None = None
-        self._wake_event = asyncio.Event()
         self._background_tasks = BackgroundTaskRegistry(
             owner="security.timeout.scheduler",
         )
-        # Lifecycle lock per docs/reference/lifecycle-sync.md.  Held
-        # across the full body of start() and stop() so two concurrent
-        # start() calls cannot both pass the is_running guard and
-        # spawn duplicate scheduler tasks; symmetrically, a racing
-        # stop()/start() cannot interleave between cancel and the
-        # task=None assignment.
-        self._lifecycle_lock = asyncio.Lock()
+        # Loop-bound asyncio primitives are deferred until ``start()``
+        # so the scheduler can be safely re-started on a different
+        # event loop.  Eager construction in ``__init__`` would stick
+        # them to whichever loop happened to be current at instantiation
+        # time -- typically a problem in tests where pytest-asyncio
+        # creates a fresh function-scoped loop per test while the
+        # scheduler instance is held by a session-scoped Litestar app.
+        # ``_lifecycle_lock`` still serialises concurrent start/stop on
+        # the SAME loop; the running-loop check inside ``start()``
+        # handles the cross-loop case before we ever try to acquire it.
+        self._lifecycle_lock: asyncio.Lock | None = None
+        self._wake_event: asyncio.Event | None = None
         self._stop_failed = False
 
     @property
     def is_running(self) -> bool:
-        """Whether the scheduler loop is currently active."""
-        return self._task is not None and not self._task.done()
+        """Whether the scheduler loop is currently active.
+
+        Returns ``False`` when the existing task is bound to a loop
+        other than the currently-running one (e.g. test scenarios where
+        the scheduler outlived its original loop).  In that case
+        :meth:`start` will discard the stale task and spawn a fresh one.
+        """
+        if self._task is None or self._task.done():
+            return False
+        try:
+            return self._task.get_loop() is asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+
+    def _drop_stale_loop_state(self) -> None:
+        """Discard task/primitives bound to a closed-or-other event loop."""
+        self._task = None
+        self._wake_event = None
+        self._lifecycle_lock = None
 
     async def start(self) -> None:
         """Start the background scheduler loop.
 
         Creates an ``asyncio.Task`` running ``_run_loop``.
-        No-op if already running.
+        No-op if already running on the current loop.  When a previous
+        ``start()`` ran on a different (now-closed) loop -- e.g. across
+        pytest-asyncio's per-test loops -- the stale task and its
+        loop-bound primitives are discarded and fresh ones are spawned
+        on the current loop.
 
         Raises:
             RuntimeError: If a prior :meth:`stop` timed out and the
                 scheduler is now unrestartable; construct a fresh
                 instance instead.
         """
+        # Detect cross-loop reuse before touching any lifecycle primitive.
+        # Otherwise ``async with self._lifecycle_lock`` would itself raise
+        # ``<Lock> is bound to a different event loop`` on the FIRST line
+        # of the function and there is nothing the scheduler can do to
+        # recover after that.
+        if self._task is not None:
+            current = asyncio.get_running_loop()
+            try:
+                same_loop = self._task.get_loop() is current
+            except RuntimeError:
+                same_loop = False
+            if not same_loop:
+                self._drop_stale_loop_state()
+        if self._lifecycle_lock is None:
+            self._lifecycle_lock = asyncio.Lock()
+        if self._wake_event is None:
+            self._wake_event = asyncio.Event()
         async with self._lifecycle_lock:
             if self._stop_failed:
                 msg = (
@@ -147,6 +189,10 @@ class ApprovalTimeoutScheduler:
         if timeout is not None and timeout <= 0:
             msg = f"stop() timeout must be > 0, got {timeout!r}"
             raise ValueError(msg)
+        if self._lifecycle_lock is None:
+            # Scheduler was never started; nothing to stop.
+            await self._background_tasks.drain()
+            return
         async with self._lifecycle_lock:
             if self._task is None:
                 await self._background_tasks.drain()
@@ -194,7 +240,11 @@ class ApprovalTimeoutScheduler:
             msg = f"interval_seconds must be positive, got {interval_seconds}"
             raise ValueError(msg)
         self._interval = interval_seconds
-        self._wake_event.set()
+        if self._wake_event is not None:
+            # Scheduler is started; wake the loop so the new interval
+            # takes effect immediately.  When not started yet, the
+            # interval update lands on the next ``start()``.
+            self._wake_event.set()
         logger.info(
             TIMEOUT_SCHEDULER_RESCHEDULED,
             interval_seconds=interval_seconds,
@@ -204,13 +254,19 @@ class ApprovalTimeoutScheduler:
         """Sleep-and-check loop.
 
         Logs and suppresses errors except ``MemoryError`` and
-        ``RecursionError``.
+        ``RecursionError``.  ``self._wake_event`` is always non-None
+        here because ``start()`` initialises it before spawning the
+        task that drives this coroutine.
         """
+        wake_event = self._wake_event
+        if wake_event is None:  # defensive; start() guarantees non-None
+            msg = "_run_loop invoked without an initialised wake event"
+            raise RuntimeError(msg)
         while True:
-            self._wake_event.clear()
+            wake_event.clear()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
-                    self._wake_event.wait(),
+                    wake_event.wait(),
                     timeout=self._interval,
                 )
             logger.debug(TIMEOUT_SCHEDULER_TICK)

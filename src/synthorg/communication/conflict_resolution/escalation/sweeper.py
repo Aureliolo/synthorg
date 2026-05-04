@@ -67,17 +67,18 @@ class EscalationExpirationSweeper:
         self._interval = interval_seconds
         self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
-        # Eager construction of the lifecycle primitives. Python 3.10+
-        # ``asyncio.Lock`` / ``asyncio.Event`` are loop-agnostic until
-        # first ``acquire()`` / ``set()``, so constructing them at
-        # app-wire time (no loop yet) is safe; they bind to whichever
-        # loop calls ``start()`` first. Lazy-creating them inside
-        # ``start()`` would publish the lock attribute *before* the
-        # ``async with`` body ran, letting a racing ``stop()``
-        # observe a fresh lock instance and operate on different
-        # primitives than the in-flight ``start()``.
-        self._stop_event: asyncio.Event = asyncio.Event()
-        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        # Loop-bound asyncio primitives are deferred until ``start()``
+        # so the sweeper can be safely re-started on a different event
+        # loop.  Eager construction in ``__init__`` would stick them to
+        # whichever loop happened to be current at instantiation -- a
+        # problem in tests where pytest-asyncio creates a fresh
+        # function-scoped loop per test while the sweeper instance is
+        # held by a session-scoped Litestar app.  ``_lifecycle_lock``
+        # still serialises concurrent start/stop on the SAME loop;
+        # the running-loop check inside ``start()`` handles the
+        # cross-loop case before we ever try to acquire it.
+        self._stop_event: asyncio.Event | None = None
+        self._lifecycle_lock: asyncio.Lock | None = None
         # Per ``docs/reference/lifecycle-sync.md``: a ``stop()`` drain
         # that exceeds the hard deadline marks the service unrestartable
         # so a subsequent ``start()`` cannot attach a fresh task while
@@ -87,6 +88,21 @@ class EscalationExpirationSweeper:
         self._stop_failed: bool = False
         self._stop_drain_timeout_seconds: float = 30.0
 
+    def _is_running_on_current_loop(self) -> bool:
+        """True iff the existing task is alive on the running loop."""
+        if self._task is None or self._task.done():
+            return False
+        try:
+            return self._task.get_loop() is asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+
+    def _drop_stale_loop_state(self) -> None:
+        """Discard task/primitives bound to a closed-or-other event loop."""
+        self._task = None
+        self._stop_event = None
+        self._lifecycle_lock = None
+
     async def start(self) -> None:
         """Schedule the background loop.
 
@@ -95,9 +111,24 @@ class EscalationExpirationSweeper:
         created even when multiple callers race. Per the canonical
         lifecycle pattern (``docs/reference/lifecycle-sync.md``), the
         lock is held across the full body including the success log
-        AND no lifecycle primitive is published outside the lock
-        (those are constructed once in ``__init__``).
+        AND no lifecycle primitive is published outside the lock.
+
+        When a previous ``start()`` ran on a different (now-closed)
+        loop -- e.g. across pytest-asyncio's per-test loops -- the
+        stale task and its loop-bound primitives are discarded and
+        fresh ones are spawned on the current loop.
         """
+        # Detect cross-loop reuse before touching any lifecycle primitive.
+        # Otherwise ``async with self._lifecycle_lock`` would itself raise
+        # ``<Lock> is bound to a different event loop`` on the FIRST line
+        # of the function and there is nothing the sweeper can do to
+        # recover after that.
+        if self._task is not None and not self._is_running_on_current_loop():
+            self._drop_stale_loop_state()
+        if self._lifecycle_lock is None:
+            self._lifecycle_lock = asyncio.Lock()
+        if self._stop_event is None:
+            self._stop_event = asyncio.Event()
         async with self._lifecycle_lock:
             if self._stop_failed:
                 msg = (
@@ -135,6 +166,9 @@ class EscalationExpirationSweeper:
         the lock and returns cleanly; this keeps the lifecycle
         contract uniform regardless of whether ``start()`` ever ran.
         """
+        if self._lifecycle_lock is None or self._stop_event is None:
+            # Sweeper was never started; nothing to stop.
+            return
         async with self._lifecycle_lock:
             self._stop_event.set()
             task = self._task
@@ -199,24 +233,29 @@ class EscalationExpirationSweeper:
                 )
                 raise
             self._task = None
-            # Re-create the loop-bound stop event WHILE holding the
-            # lifecycle lock. Doing it outside the lock would leave a
-            # window where a racing ``start()`` could spawn ``_run()``
-            # bound to the OLD event before this assignment lands; a
-            # later stop() would then signal a different event than
-            # the running task is waiting on, stalling shutdown until
-            # the interval timeout. ``asyncio.Event`` binds to the
-            # running loop on first ``set()``, so a fresh instance is
-            # always required across loops; ``self._lifecycle_lock``
-            # itself MUST stay the same instance for the service's
-            # lifetime. Tests that span multiple event loops construct
-            # a fresh sweeper per loop instead of reusing one.
-            self._stop_event = asyncio.Event()
+            # Drop loop-bound primitives so the next ``start()`` rebinds
+            # them to whichever loop is current then.  Required for
+            # tests that span multiple event loops (pytest-asyncio's
+            # function-scoped loops) to keep a single session-scoped
+            # sweeper instance from carrying loop A's primitives into
+            # loop B.
+            self._stop_event = None
+            self._lifecycle_lock = None
             logger.info(CONFLICT_ESCALATION_SWEEPER_STOPPED)
 
     async def _run(self) -> None:
-        """Main loop body."""
-        while not self._stop_event.is_set():
+        """Main loop body.
+
+        Captures ``self._stop_event`` into a local so a concurrent
+        ``stop()`` that sets it to ``None`` cannot trip an ``is_set``
+        attribute access here.  ``start()`` guarantees the event is
+        non-None at the moment the task is spawned.
+        """
+        stop_event = self._stop_event
+        if stop_event is None:  # defensive; start() guarantees non-None
+            msg = "_run invoked without an initialised stop event"
+            raise RuntimeError(msg)
+        while not stop_event.is_set():
             try:
                 await self._sweep_once()
             except asyncio.CancelledError:
@@ -234,7 +273,7 @@ class EscalationExpirationSweeper:
                 )
             try:
                 await asyncio.wait_for(
-                    self._stop_event.wait(),
+                    stop_event.wait(),
                     timeout=self._interval,
                 )
             except TimeoutError:
