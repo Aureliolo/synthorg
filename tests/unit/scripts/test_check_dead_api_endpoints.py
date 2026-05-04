@@ -749,9 +749,9 @@ def test_frontend_multi_segment_base_token(tmp_path: Path) -> None:
             "api/endpoints/agents_chain.ts": (
                 "import { apiClient } from '../client'\n"
                 "export async function listAgentsViaDefaults() {\n"
-                "  const u = `${apiClient.defaults.baseURL.replace("
-                "/\\\\/api\\\\/v1$/, '')}/agents`\n"
-                "  return apiClient.get(u)\n"
+                "  return apiClient.get("
+                "`${apiClient.defaults.baseURL.replace("
+                "/\\\\/api\\\\/v1$/, '')}/agents`)\n"
                 "}\n"
             ),
             "api/endpoints/agents_env.ts": (
