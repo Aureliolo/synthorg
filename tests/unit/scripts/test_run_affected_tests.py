@@ -329,3 +329,180 @@ def test_load_baseline_snapshot_derives_per_test_ms_when_absent(
     # Default threshold ratio when omitted.
     assert snapshot.threshold_ratio == pytest.approx(1.3)
     assert snapshot.baseline_test_count == 10_000
+
+
+# ── isolation-gate output classifier ─────────────────────────────
+
+
+_CRASH_LINE = (
+    "worker 'gw0' crashed while running "
+    "'tests/unit/api/auth/test_postgres_session_store.py"
+    "::test_enforce_session_limit_revokes_oldest[2-2]'\n"
+)
+_CRASH_LINE_OTHER_TEST = (
+    "worker 'gw1' crashed while running "
+    "'tests/unit/api/controllers/test_meetings.py::test_completed[2-2]'\n"
+)
+_CRASH_LINE_SAME_TEST_OTHER_ITER = (
+    "worker 'gw2' crashed while running "
+    "'tests/unit/api/auth/test_postgres_session_store.py"
+    "::test_enforce_session_limit_revokes_oldest[1-2]'\n"
+)
+_FAILED_LINE = (
+    "FAILED tests/unit/api/auth/test_csrf.py::test_revealed_state[2-2]"
+    " - AssertionError: expected 401, got 200\n"
+)
+
+
+def test_parse_worker_crashes_extracts_worker_test_pairs() -> None:
+    """``_parse_worker_crashes`` returns ``(worker, test_id)`` for each line."""
+    stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
+    crashes = _MODULE._parse_worker_crashes(stdout)  # type: ignore[attr-defined]
+    assert crashes == (
+        (
+            "gw0",
+            "tests/unit/api/auth/test_postgres_session_store.py"
+            "::test_enforce_session_limit_revokes_oldest[2-2]",
+        ),
+        (
+            "gw1",
+            "tests/unit/api/controllers/test_meetings.py::test_completed[2-2]",
+        ),
+    )
+
+
+def test_parse_worker_crashes_returns_empty_on_clean_output() -> None:
+    """No ``crashed`` line in stdout returns an empty tuple."""
+    stdout = "100 passed in 1.23s\n"
+    assert _MODULE._parse_worker_crashes(stdout) == ()  # type: ignore[attr-defined]
+
+
+def test_parse_test_failures_extracts_failed_test_ids() -> None:
+    """``_parse_test_failures`` returns the test id from each ``FAILED`` line."""
+    stdout = _FAILED_LINE + "FAILED tests/unit/foo.py::test_bar - assert 1 == 2\n"
+    failures = _MODULE._parse_test_failures(stdout)  # type: ignore[attr-defined]
+    assert failures == (
+        "tests/unit/api/auth/test_csrf.py::test_revealed_state[2-2]",
+        "tests/unit/foo.py::test_bar",
+    )
+
+
+def test_parse_test_failures_returns_empty_on_clean_output() -> None:
+    """No ``FAILED`` line in stdout returns an empty tuple."""
+    stdout = "200 passed in 5.67s\n"
+    assert _MODULE._parse_test_failures(stdout) == ()  # type: ignore[attr-defined]
+
+
+def test_classify_pass_when_returncode_zero_and_no_crashes() -> None:
+    """Clean green run -> ``pass`` outcome with exit code 0."""
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=0,
+        stdout="500 passed in 12.34s\n",
+    )
+    assert outcome.kind == "pass"
+    assert outcome.exit_code == 0
+    assert outcome.crashed_tests == ()
+    assert outcome.failed_tests == ()
+    assert outcome.repeated_crashes == ()
+
+
+def test_classify_crash_advisory_when_returncode_zero_with_crashes() -> None:
+    """xdist recovered (returncode 0) but a worker did crash -> advisory pass."""
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=0,
+        stdout=_CRASH_LINE + "499 passed, 1 errors in 12.34s\n",
+    )
+    assert outcome.kind == "crash_advisory"
+    assert outcome.exit_code == 0
+    assert len(outcome.crashed_tests) == 1
+
+
+def test_classify_regression_when_real_failure_no_crash() -> None:
+    """A genuine assertion failure with no worker crash -> regression."""
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=_FAILED_LINE + "499 passed, 1 failed in 12.34s\n",
+    )
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
+    assert outcome.failed_tests == (
+        "tests/unit/api/auth/test_csrf.py::test_revealed_state[2-2]",
+    )
+    assert outcome.crashed_tests == ()
+
+
+def test_classify_regression_when_failure_alongside_crash() -> None:
+    """Real failure (FAILED line for a non-crashed test) wins over crashes."""
+    stdout = _CRASH_LINE + _FAILED_LINE + "498 passed, 2 failed in 12.34s\n"
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=stdout,
+    )
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
+    # The failed test is the assertion failure, not the crashed one.
+    assert outcome.failed_tests == (
+        "tests/unit/api/auth/test_csrf.py::test_revealed_state[2-2]",
+    )
+    assert len(outcome.crashed_tests) == 1
+
+
+def test_classify_regression_when_same_test_crashed_twice() -> None:
+    """Same logical test crashing on both repeat iterations -> real bug."""
+    # Same test, ``[1-2]`` and ``[2-2]`` -- both pytest-repeat iterations crashed.
+    stdout = _CRASH_LINE + _CRASH_LINE_SAME_TEST_OTHER_ITER
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=stdout,
+    )
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
+    # Repeat suffix stripped before counting.
+    assert outcome.repeated_crashes == (
+        "tests/unit/api/auth/test_postgres_session_store.py"
+        "::test_enforce_session_limit_revokes_oldest",
+    )
+
+
+def test_classify_crash_advisory_when_distinct_crashes_only() -> None:
+    """Crashes spread across distinct tests, no real failures -> advisory."""
+    stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
+    # xdist exhausted restarts; returncode is non-zero, but the signal is
+    # purely native crashes scattered across unrelated tests.
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=stdout,
+    )
+    assert outcome.kind == "crash_advisory"
+    # Advisory: exit 0 even though pytest reported non-zero.
+    assert outcome.exit_code == 0
+    assert len(outcome.crashed_tests) == 2
+    assert outcome.repeated_crashes == ()
+
+
+def test_classify_filters_crashed_test_from_failed_line() -> None:
+    """xdist marks a crashed test ``FAILED``; the classifier strips it."""
+    crash_line = (
+        "worker 'gw0' crashed while running 'tests/unit/foo.py::test_bar[2-2]'\n"
+    )
+    failed_line = (
+        "FAILED tests/unit/foo.py::test_bar[2-2] - test execution worker died\n"
+    )
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=1,
+        stdout=crash_line + failed_line,
+    )
+    # Only the crash signal survives; the FAILED line is collateral.
+    assert outcome.kind == "crash_advisory"
+    assert outcome.failed_tests == ()
+    assert outcome.crashed_tests == ("tests/unit/foo.py::test_bar[2-2]",)
+
+
+def test_classify_regression_when_returncode_nonzero_no_signals() -> None:
+    """Non-zero exit with no parsable signal -> fail closed (regression)."""
+    outcome = _MODULE._classify_isolation_outcome(  # type: ignore[attr-defined]
+        returncode=2,
+        stdout="(degraded output, no FAILED or crash lines)\n",
+    )
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 2

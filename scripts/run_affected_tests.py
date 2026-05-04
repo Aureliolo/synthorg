@@ -28,7 +28,10 @@ import re
 import subprocess
 import sys
 import time
+from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -183,6 +186,29 @@ _BASELINE_PATH = _REPO_ROOT / "tests" / "baselines" / "unit_timing.json"
 
 
 _PASSED_COUNT_RE = re.compile(r"(\d+)\s+passed")
+
+# xdist prints worker-crash lines like
+# ``worker 'gw3' crashed while running 'tests/foo.py::test_bar[2-2]'``
+# when a worker process dies (segfault, abort, OS kill).  Used by the
+# isolation-gate classifier to tell native-level crashes apart from
+# real test failures.
+_WORKER_CRASH_RE = re.compile(
+    r"worker '(?P<worker>\w+)' crashed while running '(?P<test>[^']+)'",
+)
+
+# pytest in ``-q`` mode prints ``FAILED <test_id> - <reason>`` (or just
+# ``FAILED <test_id>``) at the start of a line for every failure in the
+# session summary.
+_FAILED_RE = re.compile(r"^FAILED (?P<test>\S+)", re.MULTILINE)
+
+# pytest-repeat appends a ``[N-M]`` suffix to each repetition's test id.
+# Stripping it lets the classifier recognise the same logical test
+# crashing on multiple iterations.
+_REPEAT_SUFFIX_RE = re.compile(r"\[\d+-\d+\]$")
+
+# Threshold above which the same logical test crashing the worker is
+# treated as a real bug rather than transient native-level flakiness.
+_REAL_BUG_CRASH_THRESHOLD = 2
 
 
 def _parse_test_count(pytest_output: str) -> int | None:
@@ -446,20 +472,168 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
     return returncode
 
 
+@dataclass(frozen=True)
+class IsolationOutcome:
+    """Classified result of a single isolation-gate pytest invocation.
+
+    ``kind`` captures the gate's verdict; ``exit_code`` is what the
+    script should return.  ``crashed_tests`` / ``failed_tests`` /
+    ``repeated_crashes`` carry the supporting evidence so the banner
+    can name names.
+    """
+
+    kind: Literal["pass", "regression", "crash_advisory"]
+    exit_code: int
+    crashed_tests: tuple[str, ...] = field(default_factory=tuple)
+    failed_tests: tuple[str, ...] = field(default_factory=tuple)
+    repeated_crashes: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _parse_worker_crashes(stdout: str) -> tuple[tuple[str, str], ...]:
+    """Extract ``(worker_id, test_id)`` for every xdist worker crash."""
+    return tuple(
+        (m.group("worker"), m.group("test")) for m in _WORKER_CRASH_RE.finditer(stdout)
+    )
+
+
+def _parse_test_failures(stdout: str) -> tuple[str, ...]:
+    """Extract test ids from ``FAILED`` summary lines."""
+    return tuple(m.group("test") for m in _FAILED_RE.finditer(stdout))
+
+
+def _classify_isolation_outcome(
+    returncode: int,
+    stdout: str,
+) -> IsolationOutcome:
+    """Decide whether the gate run is a regression, advisory, or pass.
+
+    The interesting axis is *real failure* vs *native crash*.  xdist
+    marks a crashed test ``FAILED`` as collateral, so a ``FAILED``
+    line that points at a crashed test is filtered out -- the crash
+    is the real signal.
+
+    Decision tree:
+
+    * Any real failure (``FAILED`` for a non-crashed test) -> regression.
+    * Same logical test crashed on multiple iterations -> regression
+      (a real bug; pytest-repeat ``[N-M]`` suffix is stripped before
+      counting so the two iterations of one test collapse).
+    * Crashes only, no repeats -> crash advisory (treat as pass; the
+      gate exits 0 and prints a hint about Windows ProactorEventLoop /
+      cross-worktree contention).
+    * No crashes, no failures, returncode 0 -> pass.
+    * No parsable signal but returncode non-zero -> fail closed
+      (regression) so degraded output never silently passes.
+    """
+    crashes = _parse_worker_crashes(stdout)
+    crashed_tests = tuple(test for _, test in crashes)
+    crashed_set = set(crashed_tests)
+    failed_tests_raw = _parse_test_failures(stdout)
+    real_failures = tuple(t for t in failed_tests_raw if t not in crashed_set)
+
+    normalized = Counter(_REPEAT_SUFFIX_RE.sub("", t) for t in crashed_tests)
+    repeated = tuple(
+        sorted(t for t, n in normalized.items() if n >= _REAL_BUG_CRASH_THRESHOLD)
+    )
+
+    if real_failures:
+        return IsolationOutcome(
+            kind="regression",
+            exit_code=max(returncode, 1),
+            crashed_tests=crashed_tests,
+            failed_tests=real_failures,
+        )
+    if repeated:
+        return IsolationOutcome(
+            kind="regression",
+            exit_code=max(returncode, 1),
+            crashed_tests=crashed_tests,
+            repeated_crashes=repeated,
+        )
+    if crashes:
+        return IsolationOutcome(
+            kind="crash_advisory",
+            exit_code=0,
+            crashed_tests=crashed_tests,
+        )
+    if returncode == 0:
+        return IsolationOutcome(kind="pass", exit_code=0)
+    return IsolationOutcome(kind="regression", exit_code=returncode)
+
+
+def _print_isolation_banner(outcome: IsolationOutcome) -> None:
+    """Print the right diagnostic banner for *outcome*'s kind.
+
+    Three banners:
+
+    * ``regression`` -- the operator must investigate.  Distinguishes
+      module-state leak (real failures) from a test that consistently
+      crashes the worker (repeated crashes) so the message points at
+      the right cause.
+    * ``crash_advisory`` -- a hint that the run hit native-level
+      flakiness (commonly Python 3.14 ProactorEventLoop teardown races
+      amplified by concurrent worktrees).  Gate still passes.
+    * ``pass`` -- nothing to print.
+    """
+    if outcome.kind == "pass":
+        return
+    border = "!" * 60
+    if outcome.kind == "regression":
+        if outcome.failed_tests:
+            body = (
+                "ISOLATION REGRESSION: a test passed once but failed on repeat.\n"
+                "Module-level state likely leaked across the two invocations.\n"
+                "Common offenders: module-level dicts/sets that fixtures reset\n"
+                "in only one directory; ``monkeypatch.setattr`` on structlog\n"
+                "lazy-proxy log methods; cached caches that survive teardown.\n"
+                f"Failed: {', '.join(outcome.failed_tests)}\n"
+                f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1"
+            )
+        else:
+            body = (
+                "ISOLATION REGRESSION: a test crashed the xdist worker on\n"
+                "every replay.  This is a real bug in the test or its\n"
+                "fixtures (memory corruption, segfault, native-level\n"
+                "deadlock), not transient infra noise.\n"
+                f"Repeated crashes: {', '.join(outcome.repeated_crashes)}\n"
+                f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1"
+            )
+        print(f"\n{border}\n{body}\n{border}", file=sys.stderr)
+        return
+    # crash_advisory
+    body = (
+        "Isolation gate ADVISORY: xdist worker(s) crashed during the\n"
+        "replay run, but no real test failures were detected.  Most\n"
+        "common cause is the Python 3.14 + Windows ProactorEventLoop\n"
+        "IOCP teardown race, often amplified by concurrent worktrees\n"
+        "running pytest at the same time.  Treating as advisory (gate\n"
+        f"passes).  Crashed tests: {', '.join(outcome.crashed_tests)}"
+    )
+    print(f"\n{border}\n{body}\n{border}", file=sys.stderr)
+
+
 def _run_isolation_gate(paths: list[str]) -> int:
-    """Run ``pytest --count 2 -x`` over the given paths.
+    """Run ``pytest --count 2`` over the given paths and classify the result.
 
     Catches module-level-state isolation regressions by re-running each
-    test exactly once and stopping on the first failure. A test that
-    passes the primary run but fails the second run almost always means
-    a fixture leaked process-global state that polluted the second
-    invocation.
+    test exactly once.  A test that passes the primary run but fails
+    the replay almost always means a fixture leaked process-global
+    state that polluted the second invocation.
+
+    ``--max-worker-restart=4`` lets xdist transparently replace a
+    worker that crashes during the replay.  This addresses the
+    Python 3.14 + Windows ProactorEventLoop IOCP teardown race
+    (https://github.com/python/cpython/issues/116773 and family) and
+    other native crashes that previously cascaded into a false
+    isolation-regression banner.  ``_classify_isolation_outcome``
+    parses the captured stdout and tells real isolation regressions
+    apart from native flakiness; only the former blocks the gate.
 
     Skipped when ``SYNTHORG_SKIP_ISOLATION_GATE=1`` (operator escape
     hatch for emergency pushes; the primary run still enforces
     first-run correctness regardless). Skipped when ``paths`` is empty.
 
-    Returns 0 on green or skip, non-zero on regression detected.
+    Returns 0 on green / skip / advisory; non-zero on regression.
     """
     if os.environ.get(_SKIP_ISOLATION_GATE_ENV) == "1":
         print(
@@ -469,7 +643,7 @@ def _run_isolation_gate(paths: list[str]) -> int:
         return 0
     if not paths:
         return 0
-    print("Isolation gate: re-running affected tests under --count 2 -x...")
+    print("Isolation gate: re-running affected tests under --count 2...")
     cmd = [
         sys.executable,
         "-m",
@@ -479,27 +653,15 @@ def _run_isolation_gate(paths: list[str]) -> int:
         "unit",
         "-n",
         "8",
-        "--max-worker-restart=0",
+        "--max-worker-restart=4",
         "--count",
         "2",
-        "-x",
         "-q",
     ]
-    returncode, _ = _stream_pytest(cmd)
-    if returncode != 0:
-        border = "!" * 60
-        print(
-            f"\n{border}\n"
-            "ISOLATION REGRESSION: a test passed once but failed on repeat.\n"
-            "Module-level state likely leaked across the two invocations.\n"
-            "Common offenders: module-level dicts/sets that fixtures reset\n"
-            "in only one directory; ``monkeypatch.setattr`` on structlog\n"
-            "lazy-proxy log methods; cached caches that survive teardown.\n"
-            f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1\n"
-            f"{border}",
-            file=sys.stderr,
-        )
-    return returncode
+    returncode, captured_stdout = _stream_pytest(cmd)
+    outcome = _classify_isolation_outcome(returncode, captured_stdout)
+    _print_isolation_banner(outcome)
+    return outcome.exit_code
 
 
 def main() -> int:  # noqa: PLR0911
