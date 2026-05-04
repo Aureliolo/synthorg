@@ -103,7 +103,7 @@ class SQLiteMcpInstallationRepository:
             installed_at=coerce_row_timestamp(row[2]),
         )
 
-    async def list_all(
+    async def list_items(
         self,
         *,
         limit: int = 100,

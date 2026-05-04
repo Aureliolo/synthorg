@@ -128,13 +128,13 @@ class PostgresMcpInstallationRepository:
             return None
         return _row_to_installation(row)
 
-    async def list_all(
+    async def list_items(
         self,
         *,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all recorded installations in a deterministic order.
+        """List recorded installations in a deterministic order.
 
         Sorted by ``installed_at`` ascending with ``catalog_entry_id``
         as a stable tiebreaker so rows with identical timestamps

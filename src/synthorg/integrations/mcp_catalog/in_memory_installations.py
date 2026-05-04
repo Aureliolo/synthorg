@@ -55,17 +55,21 @@ class InMemoryMcpInstallationRepository:
         """Fetch by catalog entry id."""
         return self._store.get(catalog_entry_id)
 
-    async def list_all(
+    async def list_items(
         self,
         *,
-        limit: int | None = None,
+        limit: int = 100,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all installations ordered by ``installed_at, catalog_entry_id`` ASC.
+        """List installations ordered by ``installed_at, catalog_entry_id`` ASC.
 
         Tiebreaker on ``catalog_entry_id`` matches the durable backends
         so the in-memory shim produces identical pagination windows for
         rows that share an ``installed_at`` instant.
+
+        ``limit`` defaults to the protocol-wide pagination floor;
+        callers needing more must loop with ``offset`` or pass a
+        larger ``limit`` explicitly.
         """
         rows = tuple(
             sorted(
@@ -74,8 +78,6 @@ class InMemoryMcpInstallationRepository:
             ),
         )
         effective_offset = max(0, int(offset))
-        if limit is None:
-            return rows[effective_offset:]
         return rows[effective_offset : effective_offset + max(0, int(limit))]
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:

@@ -91,14 +91,14 @@ class TestMcpInstallationRepository:
         assert fetched is not None
         assert fetched.connection_name is None
 
-    async def test_list_all(self, backend: PersistenceBackend) -> None:
+    async def test_list_items(self, backend: PersistenceBackend) -> None:
         await backend.mcp_installations.save(_installation("cat_a"))
         await backend.mcp_installations.save(_installation("cat_b"))
-        rows = await backend.mcp_installations.list_all()
+        rows = await backend.mcp_installations.list_items()
         ids = {r.catalog_entry_id for r in rows}
         assert {"cat_a", "cat_b"} <= ids
 
-    async def test_list_all_pagination(self, backend: PersistenceBackend) -> None:
+    async def test_list_items_pagination(self, backend: PersistenceBackend) -> None:
         # Insert with monotonically increasing installed_at so the
         # deterministic ORDER BY installed_at, catalog_entry_id places
         # the rows in a known order.
@@ -111,9 +111,9 @@ class TestMcpInstallationRepository:
                 ),
             )
 
-        page_one = await backend.mcp_installations.list_all(limit=2, offset=0)
-        page_two = await backend.mcp_installations.list_all(limit=2, offset=2)
-        page_three = await backend.mcp_installations.list_all(limit=2, offset=4)
+        page_one = await backend.mcp_installations.list_items(limit=2, offset=0)
+        page_two = await backend.mcp_installations.list_items(limit=2, offset=2)
+        page_three = await backend.mcp_installations.list_items(limit=2, offset=4)
 
         assert len(page_one) == 2
         assert len(page_two) == 2

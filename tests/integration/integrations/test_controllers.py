@@ -748,7 +748,7 @@ class TestMCPCatalogController:
             data=InstallEntryRequest(catalog_entry_id="filesystem-mcp"),
         )
         assert second.data == response.data
-        assert len(await repo.list_all()) == 1
+        assert len(await repo.list_items()) == 1
 
     async def test_install_missing_entry_raises_404(self) -> None:
         from synthorg.api.controllers.mcp_catalog import (
