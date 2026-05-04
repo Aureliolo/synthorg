@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.9](https://github.com/Aureliolo/synthorg/compare/v0.7.8...v0.7.9) (2026-05-04)
+
+
+### Features
+
+* **ci:** promote AI Highlights to release body, add commit subject/body to dev releases ([#1743](https://github.com/Aureliolo/synthorg/issues/1743)) ([70bffe9](https://github.com/Aureliolo/synthorg/commit/70bffe90457b1753d7800c4fc9f38cb8f98370b6))
+* **lint:** bootstrap-wiring trace for ghost-wired settings ([#1742](https://github.com/Aureliolo/synthorg/issues/1742)) ([6ddbb86](https://github.com/Aureliolo/synthorg/commit/6ddbb86dd2102cdc782eb402d32a6611cc45bf82)), closes [#1737](https://github.com/Aureliolo/synthorg/issues/1737)
+
+
+### Bug Fixes
+
+* **ci:** retry transient GHCR errors in docker publish + retag ([#1741](https://github.com/Aureliolo/synthorg/issues/1741)) ([18e5349](https://github.com/Aureliolo/synthorg/commit/18e5349b81e1b4ffa1db23959e3c166e697693a3))
+
+
+### Maintenance
+
+* 2026-05-03 Bucket A audit ([#1733](https://github.com/Aureliolo/synthorg/issues/1733)): 21 mechanical fixes ([#1744](https://github.com/Aureliolo/synthorg/issues/1744)) ([334262b](https://github.com/Aureliolo/synthorg/commit/334262be61819f53bc5cf22e2830ee22d13c1c9b))
+* add 5 FP-prevention rules to /codebase-audit agent prompts ([#1734](https://github.com/Aureliolo/synthorg/issues/1734)) ([8f33ad6](https://github.com/Aureliolo/synthorg/commit/8f33ad6ac1e5551b47e9b336774a18bdb8bfa288))
+* improve codebase-audit skill from 2026-05-03 lessons ([#1732](https://github.com/Aureliolo/synthorg/issues/1732)) ([7281cd7](https://github.com/Aureliolo/synthorg/commit/7281cd7600f80318e1740337f745eee7c8ec0636))
+* **web:** tighten async-leak ceiling, bypass jsdom Storage timer dispatch ([#1728](https://github.com/Aureliolo/synthorg/issues/1728)) ([de0a1e1](https://github.com/Aureliolo/synthorg/commit/de0a1e11b1e9d2cb4620a351d3fa2449844cf580))
+
 ## [0.7.8](https://github.com/Aureliolo/synthorg/compare/v0.7.7...v0.7.8) (2026-05-03)
 
 
