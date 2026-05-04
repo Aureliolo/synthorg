@@ -17,10 +17,12 @@ module logger using its own domain event constants.
 import contextlib
 import json
 import re
-from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+# Runtime import (not TYPE_CHECKING) so ``typing.get_type_hints()``
+# can resolve ``Callable`` in the public function annotations under
+# Python 3.14's PEP 649 lazy-evaluation regime.
+from collections.abc import Callable  # noqa: TC003
+from typing import Any
 
 # Captures the body of a fenced block, optional ``json`` language tag,
 # tolerant to leading / trailing newlines around the body. Reused by
@@ -81,13 +83,22 @@ def extract_json_from_llm_response(
         return None
 
     candidate = _strip_markdown_fences(stripped)
+    parsed_ok = False
     try:
         parsed = json.loads(candidate)
+        parsed_ok = True
     except json.JSONDecodeError:
         parsed = None
 
     if isinstance(parsed, dict):
         return parsed
+    # A successful parse with the wrong top-level shape is a hard
+    # failure, not a cue to re-parse via brace-matching: re-running
+    # the substring fallback on ``[{"k": 1}]`` would happily return
+    # the inner dict, which is the opposite of the helper's contract.
+    if parsed_ok:
+        _safe_log(logger_callback, "json_wrong_top_level_type")
+        return None
 
     # Brace-matching fallback for prose-wrapped JSON.
     start = stripped.find("{")
@@ -128,13 +139,18 @@ def extract_json_array_from_llm_response(
         return None
 
     candidate = _strip_markdown_fences(stripped)
+    parsed_ok = False
     try:
         parsed = json.loads(candidate)
+        parsed_ok = True
     except json.JSONDecodeError:
         parsed = None
 
     if isinstance(parsed, list):
         return parsed
+    if parsed_ok:
+        _safe_log(logger_callback, "json_wrong_top_level_type")
+        return None
 
     start = stripped.find("[")
     end = stripped.rfind("]")

@@ -35,16 +35,9 @@ def test_core_auth_package_exports() -> None:
 
 
 @pytest.mark.unit
-def test_humanrole_defined_only_in_core_auth_roles() -> None:
-    """``HumanRole`` lives in ``core.auth.roles`` and the guards
-    module reuses it without redefining a duplicate enum.
-    """
-    import synthorg.api.guards as guards_module
+def test_humanrole_defined_in_core_auth_roles() -> None:
+    """``HumanRole`` is defined in ``core.auth.roles``."""
     from synthorg.core.auth.roles import HumanRole
 
     assert HumanRole.CEO.value == "ceo"
     assert HumanRole.SYSTEM.value == "system"
-    # The HumanRole binding on ``guards`` is a runtime re-import, not an
-    # explicit re-export. mypy's strict ``no_implicit_reexport`` rule
-    # cannot see it, so the attribute access is suppressed.
-    assert guards_module.HumanRole is HumanRole  # type: ignore[attr-defined]

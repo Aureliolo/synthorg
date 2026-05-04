@@ -38,17 +38,22 @@ export function useChannelHandler(
     const detach = (): void => {
       if (detached) return
       detached = true
+      // Drop the abort listener inside detach() so the abort path
+      // also releases the closure, not just the unmount path. Without
+      // this, a long-mounted component whose external signal aborts
+      // mid-life keeps `detach` (which closes over wsStore, channel,
+      // handler) wired to the AbortSignal until unmount.
+      signal?.removeEventListener('abort', detach)
       wsStore.offChannelEvent(channel, handler)
     }
 
     signal?.addEventListener('abort', detach)
     return () => {
-      // Order matters: drop the abort listener BEFORE invoking
-      // detach(). If the listener fired during cleanup it would
-      // hit the same detach() (idempotent via the ``detached``
-      // guard), but removing the listener first keeps the cleanup
-      // paths single-purpose and avoids a redundant scheduled
-      // microtask in the abort propagation path.
+      // The explicit removeEventListener here is redundant after a
+      // prior abort (detach() already removed it) but stays so the
+      // ESLint web-api-no-leaked-event-listener rule can statically
+      // pair the listener with its cleanup. Both calls are
+      // idempotent.
       signal?.removeEventListener('abort', detach)
       detach()
     }

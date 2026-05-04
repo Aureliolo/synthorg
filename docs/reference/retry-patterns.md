@@ -42,7 +42,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 **Sites**:
 
-- `src/synthorg/persistence/postgres/decision_repo.py` `_append_with_retry`: version-race retry for the decision-history append path.
+- `src/synthorg/persistence/postgres/decision_repo.py` `_execute_insert`: version-race retry for the decision-history append path.
 
 ### C/Sync -- Bootstrap-tier sync logging-thread retry
 
@@ -52,7 +52,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 **Sites**:
 
-- `src/synthorg/observability/http_handler.py` `HttpBatchHandler._post_batch`: HTTP collector POST from inside the stdlib logging-handler thread.
+- `src/synthorg/observability/http_handler.py` `HttpBatchHandler._send_with_retries`: HTTP collector POST from inside the stdlib logging-handler thread.
 
 ## Decision tree
 

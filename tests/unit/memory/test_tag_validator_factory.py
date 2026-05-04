@@ -1,11 +1,9 @@
-"""Tests for ``dedupe_tags_in_place``."""
-
-from typing import Self
+"""Tests for ``deduplicate_tags`` and the field-validator pattern that wraps it."""
 
 import pytest
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
-from synthorg.memory.utils import dedupe_tags_in_place
+from synthorg.memory.utils import deduplicate_tags
 
 
 class _DedupOnly(BaseModel):
@@ -13,10 +11,10 @@ class _DedupOnly(BaseModel):
 
     tags: tuple[str, ...] = ()
 
-    @model_validator(mode="after")
-    def _dedup(self) -> Self:
-        dedupe_tags_in_place(self)
-        return self
+    @field_validator("tags", mode="after")
+    @classmethod
+    def _dedup(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return deduplicate_tags(value)
 
 
 class _DedupAndTruncate(BaseModel):
@@ -24,14 +22,14 @@ class _DedupAndTruncate(BaseModel):
 
     tags: tuple[str, ...] = ()
 
-    @model_validator(mode="after")
-    def _dedup(self) -> Self:
-        dedupe_tags_in_place(self, max_items=3)
-        return self
+    @field_validator("tags", mode="after")
+    @classmethod
+    def _dedup(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return deduplicate_tags(value)[:3]
 
 
 @pytest.mark.unit
-class TestDedupeTagsInPlace:
+class TestDeduplicateTagsFieldValidator:
     def test_dedupes_input(self) -> None:
         m = _DedupOnly(tags=("a", "b", "a", "c", "b"))
         assert m.tags == ("a", "b", "c")
@@ -51,3 +49,8 @@ class TestDedupeTagsInPlace:
     def test_no_truncate_when_under_limit(self) -> None:
         m = _DedupAndTruncate(tags=("a", "a", "b"))
         assert m.tags == ("a", "b")
+
+    def test_helper_returns_tuple(self) -> None:
+        """Helper preserves order and yields a tuple of unique entries."""
+        assert deduplicate_tags(("a", "b", "a", "c")) == ("a", "b", "c")
+        assert deduplicate_tags(()) == ()

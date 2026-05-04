@@ -516,6 +516,27 @@ class SQLiteMessageRepository:
         # standalone test construction.
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
+    async def _safe_rollback(self, msg_id: str) -> None:
+        """Best-effort rollback on the shared aiosqlite connection.
+
+        A secondary rollback failure must not mask the original write
+        error, but we DO log it because a tainted shared connection is
+        worth a trail in observability. Without this rollback, a failed
+        write inside the shared transaction poisons it for every sibling
+        repo holding the same ``aiosqlite.Connection``. Mirrors the
+        pattern used by the 37 sibling repos in this package.
+        """
+        try:
+            await self._db.rollback()
+        except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+            logger.warning(
+                PERSISTENCE_MESSAGE_SAVE_FAILED,
+                message_id=msg_id,
+                error_type=type(rollback_exc).__name__,
+                error=safe_error_description(rollback_exc),
+                rollback_failed=True,
+            )
+
     async def save(self, message: Message) -> None:
         """Persist a message."""
         data = message.model_dump(mode="json")
@@ -547,6 +568,7 @@ INSERT INTO messages (
                 )
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
+                await self._safe_rollback(msg_id)
                 if is_unique_constraint_error(exc):
                     err_msg = f"Message {msg_id} already exists"
                     logger.warning(PERSISTENCE_MESSAGE_DUPLICATE, message_id=msg_id)
@@ -561,6 +583,7 @@ INSERT INTO messages (
                 )
                 raise QueryError(msg) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback(msg_id)
                 msg = f"Failed to save message {msg_id!r}"
                 logger.warning(
                     PERSISTENCE_MESSAGE_SAVE_FAILED,

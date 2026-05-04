@@ -31,6 +31,22 @@ class TestObjectExtractor:
         """The dict variant returns None when the response is a JSON array."""
         assert extract_json_from_llm_response('["a", "b"]') is None
 
+    def test_array_with_inner_object_does_not_extract_inner(self) -> None:
+        """A list of dicts is a wrong-shape parse, not a brace-fallback cue.
+
+        The naive brace-substring fallback would happily return the
+        inner ``{"k": 1}`` from ``[{"k": 1}]`` and silently send the
+        caller down the wrong code path. The extractor must stop at
+        the wrong-top-level-type result and return None.
+        """
+        assert extract_json_from_llm_response('[{"k": 1}]') is None
+
+    def test_wrong_type_logs_distinct_event(self) -> None:
+        """Wrong-top-level shape and decode errors get distinct labels."""
+        seen: list[str] = []
+        extract_json_from_llm_response("[1, 2]", logger_callback=seen.append)
+        assert seen == ["json_wrong_top_level_type"]
+
     def test_logger_callback_invoked_on_failure(self) -> None:
         seen: list[str] = []
 
@@ -69,6 +85,10 @@ class TestArrayExtractor:
     def test_object_input_rejected(self) -> None:
         """The array variant returns None when the response is a JSON object."""
         assert extract_json_array_from_llm_response('{"k": "v"}') is None
+
+    def test_object_with_inner_array_does_not_extract_inner(self) -> None:
+        """``{"items": [1, 2]}`` must not be unwrapped to ``[1, 2]``."""
+        assert extract_json_array_from_llm_response('{"items": [1, 2]}') is None
 
     def test_empty_returns_none(self) -> None:
         assert extract_json_array_from_llm_response("") is None
