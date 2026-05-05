@@ -578,6 +578,23 @@ def test_normalise_path(raw: str, expected: str) -> None:
     assert normalise_path(raw) == expected
 
 
+def test_find_template_end_handles_escaped_backtick() -> None:
+    """Backslash-escaped backticks inside a nested template literal in
+    a ``${...}`` substitution don't prematurely exit the in_backtick
+    state. Without escape handling, ``\\\\``` would unset the in_backtick
+    flag, then the next ``}`` could be mistaken for the substitution's
+    closing brace.
+    """
+    from scripts._dead_api_endpoints_frontend import _find_template_end
+
+    # ``${`a\`b` + 1}`` -- a nested template literal containing one
+    # escaped backtick, followed by ``+ 1`` and the closing ``}``.
+    body = "`a\\`b` + 1}"
+    end = _find_template_end(body, 0)
+    assert body[end] == "}"
+    assert end == len(body) - 1
+
+
 # ── regression: silent-failure surfacing ────────────────────
 
 

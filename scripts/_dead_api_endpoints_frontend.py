@@ -167,7 +167,14 @@ def _line_col_at(text: str, offset: int) -> tuple[int, int]:
     return line, col
 
 
-def _iter_top_level_positions(  # noqa: C901, PLR0912 -- bracket / quote / template state machine
+# State machine for nested parens / strings / templates. The
+# bracket-depth tracker has to be threaded through string-literal
+# context ('', "", ``), template-substitution depth (``${...}``), and
+# backslash escape sequences in a single forward pass. Splitting any
+# of these branches into helpers would fragment the per-character
+# flow and make the parser harder to reason about, so the function
+# keeps its C901 / PLR0912 suppressions rather than being broken up.
+def _iter_top_level_positions(  # noqa: C901, PLR0912
     text: str,
     paren_idx: int,
 ) -> Iterator[tuple[str, int]]:
@@ -335,6 +342,9 @@ def _find_template_end(body: str, start: int) -> int:  # noqa: C901, PLR0912 -- 
         elif in_backtick:
             if ch == "`":
                 in_backtick = False
+            elif ch == "\\":
+                i += 2
+                continue
         elif ch == "{":
             depth += 1
         elif ch == "}":
