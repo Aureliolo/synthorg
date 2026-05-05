@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
 import type { WsEvent } from '@/api/types/websocket'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
@@ -25,6 +26,7 @@ export default function FineTuningPage() {
     preflight,
     checkpoints,
     runs,
+    error,
     fetchStatus,
     fetchCheckpoints,
     fetchRuns,
@@ -34,6 +36,7 @@ export default function FineTuningPage() {
     preflight: s.preflight,
     checkpoints: s.checkpoints,
     runs: s.runs,
+    error: s.error,
     fetchStatus: s.fetchStatus,
     fetchCheckpoints: s.fetchCheckpoints,
     fetchRuns: s.fetchRuns,
@@ -97,8 +100,16 @@ export default function FineTuningPage() {
     bootstrapComplete && !isActive && checkpoints.length === 0 && runs.length === 0
 
   return (
-    <div className="flex flex-col gap-section-gap">
+    <div className="space-y-section-gap">
       <ListHeader title="Embedding Fine-Tuning" />
+
+      {error && (
+        <ErrorBanner
+          severity="error"
+          title="Could not load fine-tuning data"
+          description={error}
+        />
+      )}
 
       {hasDependencyFailure && <DependencyMissingBanner />}
 
