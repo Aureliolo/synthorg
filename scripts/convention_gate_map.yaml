@@ -1,0 +1,215 @@
+# Inventory of every MANDATORY paragraph in the canonical doc set.
+#
+# Canonical files: CLAUDE.md, web/CLAUDE.md, cli/CLAUDE.md,
+# docs/reference/*.md, docs/design/*.md.
+#
+# Per rule: ONE of `gate` (relative path to enforcement file) or
+# `exempt: { reason }` (non-empty justification). Exempt entries are
+# technical debt; the convention-rollout policy aims to drive the
+# exempt list toward zero by promoting each into a real script.
+#
+# Enforced by scripts/check_convention_gate_inventory.py (pre-push +
+# CI). See docs/reference/conventions.md '17. Registering a new
+# MANDATORY rule' for the procedure.
+
+mandatory_rules:
+  # ---------------------------------------------------------------
+  # CLAUDE.md (root)
+  # ---------------------------------------------------------------
+  - id: claude-md::design-spec
+    file: CLAUDE.md
+    header: Design Spec
+    exempt:
+      reason: |
+        Process rule: requires user approval before deviating from
+        docs/design/. Not script-enforceable. Enforced by
+        /pre-pr-review skill phases and code review.
+
+  - id: claude-md::planning
+    file: CLAUDE.md
+    header: Planning
+    exempt:
+      reason: |
+        Process rule: every implementation plan needs user accept/deny
+        before coding. Not script-enforceable. Enforced by
+        /pre-pr-review skill phases.
+
+  - id: claude-md::web-dashboard-design-system
+    file: CLAUDE.md
+    header: Web Dashboard Design System
+    gate: scripts/check_web_design_system.py
+
+  - id: claude-md::regional-defaults
+    file: CLAUDE.md
+    header: Regional Defaults
+    gate: scripts/check_backend_regional_defaults.py
+
+  - id: claude-md::persistence-boundary
+    file: CLAUDE.md
+    header: Persistence Boundary
+    gate: scripts/check_persistence_boundary.py
+
+  - id: claude-md::convention-rollout
+    file: CLAUDE.md
+    header: Convention Rollout
+    gate: scripts/check_convention_gate_inventory.py
+
+  - id: claude-md::configuration-precedence
+    file: CLAUDE.md
+    header: Configuration Precedence
+    gate: scripts/check_setting_to_startup_trace.py
+
+  - id: claude-md::no-hardcoded-values
+    file: CLAUDE.md
+    header: No Hardcoded Values
+    gate: scripts/check_no_magic_numbers.py
+
+  - id: claude-md::test-regression
+    file: CLAUDE.md
+    header: Test Regression
+    gate: scripts/check_no_edit_baseline.sh
+
+  - id: claude-md::post-implementation-pre-pr-review
+    file: CLAUDE.md
+    header: Post-Implementation + Pre-PR Review
+    exempt:
+      reason: |
+        Workflow rule enforced by hookify (block-pr-create) and the
+        /pre-pr-review + /aurelio-review-pr skills. The dev-time
+        prevention lives in .claude/hookify.block-pr-create.md
+        rather than scripts/.
+
+  # ---------------------------------------------------------------
+  # web/CLAUDE.md
+  # ---------------------------------------------------------------
+  - id: web-claude-md::zustand-store-error-handling
+    file: web/CLAUDE.md
+    header: Zustand Store Error Handling
+    exempt:
+      reason: |
+        Code-pattern contract enforced by peer review. Stores wrap
+        try/catch internally; callers must not. No AST/lint signal
+        catches "caller wraps store mutation in try/catch" without
+        a custom ESLint rule, which is not yet written.
+
+  - id: web-claude-md::cursor-pagination
+    file: web/CLAUDE.md
+    header: Cursor pagination
+    exempt:
+      reason: |
+        API-contract rule: list endpoints expose PaginationMeta;
+        stores read nextCursor + hasMore. Enforced by the typed
+        envelope in src/synthorg/api (no `total` field) and by the
+        store-shape types. No standalone gate script.
+
+  - id: web-claude-md::health-readiness-endpoints
+    file: web/CLAUDE.md
+    header: Health / readiness endpoints
+    exempt:
+      reason: |
+        Two-state contract (200 ok / 503 unavailable) enforced at
+        type level by the endpoint return signatures and at runtime
+        by the API tests. No standalone gate script.
+
+  - id: web-claude-md::msw-handlers
+    file: web/CLAUDE.md
+    header: MSW handlers
+    gate: web/src/test-setup.tsx
+
+  - id: web-claude-md::test-teardown
+    file: web/CLAUDE.md
+    header: Test teardown
+    gate: web/src/test-setup.tsx
+
+  - id: web-claude-md::async-leak-ceiling
+    file: web/CLAUDE.md
+    header: Async-leak ceiling
+    gate: .github/ci/web-async-leaks.max
+
+  - id: web-claude-md::ws-wire-protocol
+    file: web/CLAUDE.md
+    header: WS wire protocol
+    exempt:
+      reason: |
+        Cross-side contract: web/src/utils/constants.ts must stay in
+        lockstep with src/synthorg/api/ws_models.py. Enforced by
+        integration tests and code review; no AST gate cross-checks
+        the two files yet.
+
+  - id: web-claude-md::design-system
+    file: web/CLAUDE.md
+    header: Design System
+    gate: scripts/check_web_design_system.py
+
+  - id: web-claude-md::eslint
+    file: web/CLAUDE.md
+    header: ESLint
+    gate: web/eslint.config.js
+
+  # ---------------------------------------------------------------
+  # docs/reference/web-zustand-stores.md
+  #
+  # Each MANDATORY here is a detailed expansion of the parent rule
+  # in web/CLAUDE.md. The parent rule's gate / exemption applies;
+  # this file is documentation, not an independent enforcement
+  # surface.
+  # ---------------------------------------------------------------
+  - id: docs-reference-web-zustand-stores-md::mutation-action-pattern
+    file: docs/reference/web-zustand-stores.md
+    header: Mutation Action Pattern
+    exempt:
+      reason: |
+        Detailed expansion of web/CLAUDE.md "Zustand Store Error
+        Handling (MANDATORY)". Same enforcement chain (peer review).
+
+  - id: docs-reference-web-zustand-stores-md::cursor-pagination
+    file: docs/reference/web-zustand-stores.md
+    header: Cursor Pagination
+    exempt:
+      reason: |
+        Detailed expansion of web/CLAUDE.md "Cursor pagination
+        (MANDATORY)". Same enforcement chain (typed envelope).
+
+  - id: docs-reference-web-zustand-stores-md::health-readiness-endpoints
+    file: docs/reference/web-zustand-stores.md
+    header: Health / Readiness Endpoints
+    exempt:
+      reason: |
+        Detailed expansion of web/CLAUDE.md "Health / readiness
+        endpoints (MANDATORY)". Same enforcement chain (type
+        system + API tests).
+
+  - id: docs-reference-web-zustand-stores-md::msw-handlers
+    file: docs/reference/web-zustand-stores.md
+    header: MSW Handlers
+    exempt:
+      reason: |
+        Detailed expansion of web/CLAUDE.md "MSW handlers
+        (MANDATORY)". Same enforcement (web/src/test-setup.tsx
+        runtime guard).
+
+  - id: docs-reference-web-zustand-stores-md::test-teardown
+    file: docs/reference/web-zustand-stores.md
+    header: Test Teardown
+    exempt:
+      reason: |
+        Detailed expansion of web/CLAUDE.md "Test teardown
+        (MANDATORY)". Same enforcement (web/src/test-setup.tsx
+        global afterEach).
+
+  - id: docs-reference-web-zustand-stores-md::async-leak-ceiling
+    file: docs/reference/web-zustand-stores.md
+    header: Async-Leak Ceiling
+    exempt:
+      reason: |
+        Detailed expansion of web/CLAUDE.md "Async-leak ceiling
+        (MANDATORY)". Same enforcement (.github/ci/web-async-leaks.max
+        + vitest --detect-async-leaks).
+
+  - id: docs-reference-web-zustand-stores-md::ws-wire-protocol
+    file: docs/reference/web-zustand-stores.md
+    header: WS Wire Protocol
+    exempt:
+      reason: |
+        Detailed expansion of web/CLAUDE.md "WS wire protocol
+        (MANDATORY)". Same enforcement chain.

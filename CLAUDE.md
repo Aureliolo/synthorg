@@ -113,6 +113,14 @@ Wire each new gate into `.pre-commit-config.yaml` (pre-commit or
 pre-push stage as fits) so it runs locally and in CI; per-line opt-outs
 use a stable `# lint-allow: <gate-name> -- <reason>` comment.
 
+The machine-readable inventory of every MANDATORY paragraph in the
+canonical doc set lives in `scripts/convention_gate_map.yaml`. The
+meta-gate `scripts/check_convention_gate_inventory.py` enforces that
+every MANDATORY paragraph has either a registered gate or an explicit
+`exempt: { reason }` entry; adding a new MANDATORY without updating the
+YAML fails pre-push. See [conventions.md §17](docs/reference/conventions.md)
+for the registration procedure.
+
 ## Configuration Precedence (MANDATORY)
 
 For every mutable setting: **DB > env (`SYNTHORG_<NS>_<KEY>`) > YAML > code default**, resolved through `SettingsService` / `ConfigResolver`. First cold read emits one INFO `settings.value.resolved`; subsequent reads stay DEBUG. Sanctioned exceptions: init-time only (env-only, no registry entry) and read-only post-init (`read_only_post_init=True`; `set()` raises `SettingReadOnlyError`). Direct `os.environ.get(...)` outside startup is forbidden. Register new settings in `src/synthorg/settings/definitions/<namespace>.py`. Ghost-wired settings (consuming service never instantiated at boot) are flagged by `scripts/check_setting_to_startup_trace.py`; per-setting opt-out via `# lint-allow: bootstrap-wiring -- <reason>`. See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md).

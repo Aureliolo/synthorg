@@ -429,6 +429,66 @@ file, not 200+ handler methods.
 * The naming consistency lets `glob`-based test discovery and
   contributor onboarding find the right files without grepping.
 
+## 17. Registering a new MANDATORY rule
+
+Every paragraph marked `(MANDATORY)` in the canonical doc set
+(`CLAUDE.md`, `web/CLAUDE.md`, `cli/CLAUDE.md`, `docs/reference/*.md`,
+`docs/design/*.md`) must be registered in
+`scripts/convention_gate_map.yaml` in the same PR that introduces it.
+The meta-gate `scripts/check_convention_gate_inventory.py` runs at
+pre-push and fails the build if a paragraph is unregistered, an entry
+is stale, or a referenced gate path is missing on disk.
+
+Each registration takes one of two shapes:
+
+* **Gate-backed** (the default; the goal for every new rule):
+
+  ```yaml
+  - id: <file-slug>::<header-slug>
+    file: <repo-relative path>
+    header: <exact header text without the "(MANDATORY)" suffix>
+    gate: scripts/check_<your-rule>.py
+  ```
+
+  The gate path can point at any file whose presence and correctness
+  enforce the rule (a `scripts/check_*.py` AST gate, an ESLint config,
+  a CI ceiling file). The path is verified to exist on disk; broken
+  references fail the gate.
+
+* **Exempt** (reserved for rules that are genuinely not script-
+  enforceable -- process rules requiring user approval, workflow rules
+  enforced by hookify or skills):
+
+  ```yaml
+  - id: <file-slug>::<header-slug>
+    file: <repo-relative path>
+    header: <exact header text>
+    exempt:
+      reason: |
+        <one or more sentences explaining why no script can enforce
+        this rule and what does (peer review, /pre-pr-review skill,
+        runtime test guard, etc.)>
+  ```
+
+  Exempt entries are technical debt. The convention-rollout policy
+  aims to drive the exempt list toward zero by promoting each
+  exemption into a real gate as enforcement options become tractable.
+
+### Generating the rule id
+
+The id is `<file-slug>::<header-slug>`, both halves lowercase ASCII
+slugs (alphanumeric runs separated by `-`, with the file path's `/`
+treated as whitespace). Examples:
+
+| File              | Header                      | id                                          |
+| ----------------- | --------------------------- | ------------------------------------------- |
+| `CLAUDE.md`       | `Persistence Boundary`      | `claude-md::persistence-boundary`           |
+| `web/CLAUDE.md`   | `MSW handlers`              | `web-claude-md::msw-handlers`               |
+| `docs/reference/foo.md` | `Async-Leak Ceiling`  | `docs-reference-foo-md::async-leak-ceiling` |
+
+If you rename a header, update both `header:` and `id:` in the same
+edit. The gate's stale-entry check surfaces orphans automatically.
+
 ## See also
 
 * [persistence-boundary.md](persistence-boundary.md): repository /
