@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.budget.cost_record import CostRecord
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COST_FAILED,
     EXECUTION_ENGINE_COST_RECORDED,
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def resolve_tracker_currency(tracker: CostTracker | None) -> str:
+def resolve_tracker_currency(tracker: CostTracker | None) -> CurrencyCode:
     """Resolve the currency code from a CostTracker's BudgetConfig.
 
     Falls back to ``DEFAULT_CURRENCY`` when no tracker is wired or its
@@ -38,7 +38,7 @@ def resolve_tracker_currency(tracker: CostTracker | None) -> str:
     budget_config = getattr(tracker, "budget_config", None)
     if budget_config is None:
         return DEFAULT_CURRENCY
-    currency: str = budget_config.currency
+    currency: CurrencyCode = budget_config.currency
     return currency
 
 
@@ -119,7 +119,8 @@ async def record_execution_costs(  # noqa: PLR0913
                 agent_id=agent_id,
                 task_id=task_id,
                 turn_number=turn.turn_number,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 reason="cost_record_construction_failed",
                 cost=turn.cost,
                 input_tokens=turn.input_tokens,
@@ -205,7 +206,8 @@ async def _submit_cost_record(
             EXECUTION_ENGINE_COST_FAILED,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"{type(exc).__name__}: {exc}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             cost=turn.cost,
             input_tokens=turn.input_tokens,
             output_tokens=turn.output_tokens,

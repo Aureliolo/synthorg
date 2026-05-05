@@ -148,3 +148,22 @@ class TestProjectDailySpendCurrency:
         forecast = project_daily_spend((), horizon_days=7, now=_NOW)
         assert forecast.avg_daily_spend == 0.0
         assert forecast.confidence == 0.0
+
+
+class TestComputeDailySpendDirectGuard:
+    """`_compute_daily_spend` enforces the same-currency invariant directly.
+
+    `project_daily_spend` already exercises the full code path, but the
+    private helper is also reachable from future call sites; this class
+    pins the guard at the helper boundary.
+    """
+
+    def test_mixed_currency_raises(self) -> None:
+        from synthorg.budget.trends import _compute_daily_spend
+
+        records = (
+            _record(_PRIMARY_CURRENCY, 1.00, _NOW - timedelta(days=1)),
+            _record(_ALTERNATE_CURRENCY, 2.00, _NOW),
+        )
+        with pytest.raises(MixedCurrencyAggregationError):
+            _compute_daily_spend(records)

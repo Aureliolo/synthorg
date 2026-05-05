@@ -154,3 +154,73 @@ class TestParallelExecutionResultTotalCostCurrency:
             total_duration_seconds=0.0,
         )
         assert result.total_cost == 0.0
+
+    def test_empty_outcomes_currency_is_none(self) -> None:
+        """``currency`` is None when no outcome carries a result."""
+        result = ParallelExecutionResult(
+            group_id="group-1",
+            outcomes=(),
+            total_duration_seconds=0.0,
+        )
+        assert result.currency is None
+
+    def test_total_cost_idempotent_across_repeated_access(self) -> None:
+        """Repeated ``.total_cost`` access is stable (no side-effect drift)."""
+        result = ParallelExecutionResult(
+            group_id="group-1",
+            outcomes=(_make_outcome("alpha", currency="USD"),),
+            total_duration_seconds=1.0,
+        )
+        first = result.total_cost
+        second = result.total_cost
+        third = result.total_cost
+        assert first == second == third
+
+
+class TestCrossWaveCurrencyAggregation:
+    """The coordinator aggregates costs across waves; per-wave currencies must agree.
+
+    Mirrors the inline aggregation pattern in
+    :func:`synthorg.engine.coordination.service.MultiAgentCoordinator.coordinate`
+    so a wave with results in a different currency than its peers raises
+    before producing a meaningless cross-wave total.
+    """
+
+    def test_mixed_currency_across_waves_raises(self) -> None:
+        from synthorg.budget.currency import assert_currencies_match
+
+        wave_a = ParallelExecutionResult(
+            group_id="wave-a",
+            outcomes=(_make_outcome("alpha", currency="USD"),),
+            total_duration_seconds=1.0,
+        )
+        wave_b = ParallelExecutionResult(
+            group_id="wave-b",
+            outcomes=(_make_outcome("beta", currency="EUR"),),
+            total_duration_seconds=1.0,
+        )
+        with pytest.raises(MixedCurrencyAggregationError) as exc:
+            assert_currencies_match(
+                er.currency for er in (wave_a, wave_b) if er.currency is not None
+            )
+        assert exc.value.currencies == frozenset({"USD", "EUR"})
+
+    def test_single_currency_across_waves_aggregates(self) -> None:
+        from synthorg.budget.currency import assert_currencies_match
+
+        wave_a = ParallelExecutionResult(
+            group_id="wave-a",
+            outcomes=(_make_outcome("alpha", currency="USD"),),
+            total_duration_seconds=1.0,
+        )
+        wave_b = ParallelExecutionResult(
+            group_id="wave-b",
+            outcomes=(_make_outcome("beta", currency="USD"),),
+            total_duration_seconds=1.0,
+        )
+        assert (
+            assert_currencies_match(
+                er.currency for er in (wave_a, wave_b) if er.currency is not None
+            )
+            == "USD"
+        )

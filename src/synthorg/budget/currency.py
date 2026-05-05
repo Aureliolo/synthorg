@@ -226,7 +226,7 @@ def assert_currencies_match(
     agent_id: NotBlankStr | None = None,
     task_id: NotBlankStr | None = None,
     project_id: NotBlankStr | None = None,
-) -> str | None:
+) -> CurrencyCode | None:
     """Verify every currency code in *currencies* is identical.
 
     The same-currency invariant for cost aggregation: callers pass an

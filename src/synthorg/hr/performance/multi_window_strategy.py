@@ -139,7 +139,10 @@ class MultiWindowStrategy:
         if has_enough:
             scored = [r.quality_score for r in records if r.quality_score is not None]
             avg_quality = sum(scored) / len(scored) if scored else None
-            window_currency = assert_currencies_match(r.currency for r in records)
+            window_currency = assert_currencies_match(
+                (r.currency for r in records),
+                project_id=NotBlankStr(window_label),
+            )
             # Monetary accumulation goes through ``math.fsum`` so it
             # matches the canonical aggregator at
             # ``synthorg.budget._aggregation.sum_cost`` and stays exact

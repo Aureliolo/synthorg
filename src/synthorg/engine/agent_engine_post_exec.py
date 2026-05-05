@@ -22,7 +22,7 @@ from synthorg.engine.task_sync import (
     apply_post_execution_transitions,
     sync_to_task_engine,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_TASK_TRANSITION,
@@ -138,7 +138,9 @@ class AgentEnginePostExecMixin:
                     EXECUTION_ENGINE_ERROR,
                     agent_id=agent_id,
                     task_id=task_id,
-                    error=f"classification failed: {type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    reason="classification_failed",
                     exc_info=True,
                 )
         await self._try_procedural_memory(
@@ -298,7 +300,9 @@ class AgentEnginePostExecMixin:
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"coordination metrics failed: {type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="coordination_metrics_failed",
                 exc_info=True,
             )
 

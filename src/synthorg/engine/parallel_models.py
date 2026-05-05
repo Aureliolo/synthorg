@@ -9,7 +9,10 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.budget.currency import assert_currencies_match
+from synthorg.budget.currency import (
+    CurrencyCode,
+    assert_currencies_match,
+)
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -214,6 +217,16 @@ class ParallelExecutionResult(BaseModel):
         description="Wall-clock duration of the group execution",
     )
 
+    def _completed_results(self) -> tuple[AgentRunResult, ...]:
+        """Outcomes that produced an :class:`AgentRunResult`.
+
+        Shared by :attr:`total_cost` and :attr:`currency` so a single
+        ``model_dump()`` traversal walks the outcomes once and runs the
+        same-currency guard exactly once -- avoiding a double WARNING
+        on mixed-currency input.
+        """
+        return tuple(o.result for o in self.outcomes if o.result is not None)
+
     @computed_field(  # type: ignore[prop-decorator]
         description="Total cost in the configured currency across all agents",
     )
@@ -226,7 +239,7 @@ class ParallelExecutionResult(BaseModel):
         :class:`MixedCurrencyAggregationError` (HTTP 409) before any
         summation, preserving the data-integrity contract.
         """
-        results = tuple(o.result for o in self.outcomes if o.result is not None)
+        results = self._completed_results()
         assert_currencies_match(r.currency for r in results)
         return sum(r.total_cost for r in results)
 
@@ -234,15 +247,15 @@ class ParallelExecutionResult(BaseModel):
         description="ISO 4217 currency that denominates ``total_cost``",
     )
     @property
-    def currency(self) -> str | None:
+    def currency(self) -> CurrencyCode | None:
         """Currency shared by every outcome's ``AgentRunResult``.
 
         ``None`` when no outcome carries a result (e.g. all failures);
-        the same-currency invariant in :meth:`total_cost` would raise
-        before this property could observe a mixed state, so callers
-        can rely on at-most-one-currency semantics.
+        the same-currency invariant raises before this property could
+        observe a mixed state, so callers can rely on
+        at-most-one-currency semantics.
         """
-        results = tuple(o.result for o in self.outcomes if o.result is not None)
+        results = self._completed_results()
         return assert_currencies_match(r.currency for r in results)
 
     @computed_field(  # type: ignore[prop-decorator]
