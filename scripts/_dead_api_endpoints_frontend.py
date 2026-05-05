@@ -49,7 +49,10 @@ recognised "base"-style heads (``${BASE}`` const, ``${baseUrl}``).
 import re
 import sys
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -164,24 +167,26 @@ def _line_col_at(text: str, offset: int) -> tuple[int, int]:
     return line, col
 
 
-def _extract_url_expression(  # noqa: C901, PLR0912 -- bracket / quote / template state machine
+def _iter_top_level_positions(  # noqa: C901, PLR0912 -- bracket / quote / template state machine
     text: str,
-    start: int,
-) -> tuple[str, int] | None:
-    """Read the first argument of a function call starting at *start*.
+    paren_idx: int,
+) -> Iterator[tuple[str, int]]:
+    r"""Walk *text* from ``paren_idx + 1`` and yield top-level events.
 
-    *start* points at the opening ``(``. We scan forward, tracking
-    matching brackets / parens / braces and string-literal context,
-    and return ``(expression_text, end_offset)`` for the first
-    top-level argument (the one before the first top-level comma).
-    Returns ``None`` if the parens close before any non-whitespace
-    argument appears.
+    ``paren_idx`` points at the opening ``(``. We track matching
+    parens / brackets / braces, single / double / backtick string
+    literals, ``${...}`` template substitutions, and ``\`` escapes,
+    then yield events at each position the call site cares about:
+
+    - ``("comma", i)`` when ``,`` appears at ``depth == 1``.
+    - ``("close", i)`` when the closing ``)`` / ``]`` / ``}`` brings
+      the depth back to zero. The generator stops after yielding
+      ``"close"``.
+
+    Yields nothing if EOS is reached before the parens balance.
     """
-    if start >= len(text) or text[start] != "(":
-        return None
     depth = 1
-    i = start + 1
-    arg_start = i
+    i = paren_idx + 1
     in_single = in_double = in_backtick = False
     template_depth = 0
     escape = False
@@ -221,12 +226,30 @@ def _extract_url_expression(  # noqa: C901, PLR0912 -- bracket / quote / templat
         elif ch in ")]}":
             depth -= 1
             if depth == 0:
-                expr = text[arg_start:i].strip()
-                return expr, i
+                yield ("close", i)
+                return
         elif ch == "," and depth == 1:
-            expr = text[arg_start:i].strip()
-            return expr, i
+            yield ("comma", i)
         i += 1
+
+
+def _extract_url_expression(
+    text: str,
+    start: int,
+) -> tuple[str, int] | None:
+    """Read the first argument of a function call starting at *start*.
+
+    *start* points at the opening ``(``. Returns
+    ``(expression_text, end_offset)`` for the first top-level argument
+    (the slice up to the first top-level ``,`` or matching ``)``), or
+    ``None`` if the parens close before any non-whitespace argument
+    appears.
+    """
+    if start >= len(text) or text[start] != "(":
+        return None
+    arg_start = start + 1
+    for _kind, end in _iter_top_level_positions(text, start):
+        return text[arg_start:end].strip(), end
     return None
 
 
@@ -452,58 +475,18 @@ def _emit_record(  # noqa: PLR0913 -- helper takes pre-computed scan state
     )
 
 
-def _extract_fetch_method(text: str, paren_idx: int) -> str | None:  # noqa: C901, PLR0912 -- bracket / quote / template scanner
+def _extract_fetch_method(text: str, paren_idx: int) -> str | None:
     """Look ahead from a ``fetch(`` call for ``method: 'POST'``.
 
     Reads up to the first matching ``)`` and searches the slice for
     a ``method:`` literal; returns the uppercased method or ``None``
     if no method is declared (caller defaults to GET).
     """
-    depth = 1
-    i = paren_idx + 1
-    in_single = in_double = in_backtick = False
-    template_depth = 0
-    escape = False
-    while i < len(text):
-        ch = text[i]
-        if escape:
-            escape = False
-            i += 1
-            continue
-        if ch == "\\" and (in_single or in_double or in_backtick):
-            escape = True
-            i += 1
-            continue
-        if in_single:
-            if ch == "'":
-                in_single = False
-        elif in_double:
-            if ch == '"':
-                in_double = False
-        elif in_backtick:
-            if ch == "`" and template_depth == 0:
-                in_backtick = False
-            elif ch == "$" and i + 1 < len(text) and text[i + 1] == "{":
-                template_depth += 1
-                i += 2
-                continue
-            elif ch == "}" and template_depth > 0:
-                template_depth -= 1
-        elif ch == "'":
-            in_single = True
-        elif ch == '"':
-            in_double = True
-        elif ch == "`":
-            in_backtick = True
-        elif ch in "([{":
-            depth += 1
-        elif ch in ")]}":
-            depth -= 1
-            if depth == 0:
-                body = text[paren_idx + 1 : i]
-                m = _METHOD_KW_RE.search(body)
-                return m.group("m").upper() if m else None
-        i += 1
+    for kind, end in _iter_top_level_positions(text, paren_idx):
+        if kind == "close":
+            body = text[paren_idx + 1 : end]
+            m = _METHOD_KW_RE.search(body)
+            return m.group("m").upper() if m else None
     return None
 
 
