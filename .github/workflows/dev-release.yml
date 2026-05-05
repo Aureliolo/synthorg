@@ -23,15 +23,24 @@ concurrency:
 jobs:
   dev-release:
     name: Create Dev Pre-Release
-    # Skip Release Please version-bump merges and tag pushes (handled by
-    # the stable release pipeline). Also skip if a v* tag already points
-    # at this commit (the stable release just landed). Skip in forks;
-    # the release-bot App token isn't available off the upstream release
-    # environment.
+    # Skip Release Please version-bump merges and our own auto-rollover
+    # PR merges (those carry the trailer that produces the next release;
+    # they are rapidly superseded by the actual `chore(main): release`
+    # commit). Skip if a v* tag already points at this commit (the
+    # stable release just landed). Skip in forks; the release-bot App
+    # token isn't available off the upstream release environment. The
+    # subject-prefix matches are anchored to avoid the false-positive
+    # where any unrelated PR's body that mentions `Release-As:` in
+    # prose / code blocks would silently leave a gap in the per-commit
+    # dev-tag sequence. Feature PRs that carry an explicit
+    # `Release-As:` trailer in the body still mint a dev tag for their
+    # commit -- the cosmetic cost (one extra dev tag) is preferable to
+    # the prior false-positive that swallowed every dev-tag for any PR
+    # mentioning the trailer in prose.
     if: >-
       !github.event.repository.fork
       && !startsWith(github.event.head_commit.message, 'chore(main): release')
-      && !contains(github.event.head_commit.message, 'Release-As:')
+      && !startsWith(github.event.head_commit.message, 'chore: auto-rollover')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: release

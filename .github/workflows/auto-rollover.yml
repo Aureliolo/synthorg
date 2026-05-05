@@ -19,13 +19,20 @@ concurrency:
 jobs:
   rollover:
     name: Check Rollover
-    # Skip on Release Please release commits and on commits that already
-    # carry a Release-As trailer (including our own rollover commits).
+    # Skip Release Please release-PR merges and our own auto-rollover
+    # PR merges. The subject-prefix matches are anchored to avoid the
+    # false-positive where any unrelated PR's body that mentions
+    # `Release-As:` in prose / code blocks would silently disable
+    # rollover for that push. Manual `Release-As:` trailers on feature
+    # PRs are still detected by the in-step grep below
+    # ("Release-As trailer already queued in unreleased commits") which
+    # matches the real anchored trailer (`^Release-As:`) rather than
+    # any substring.
     # Skip in forks -- needs the upstream-only release-bot App token.
     if: >-
       !github.event.repository.fork
       && !startsWith(github.event.head_commit.message, 'chore(main): release')
-      && !contains(github.event.head_commit.message, 'Release-As:')
+      && !startsWith(github.event.head_commit.message, 'chore: auto-rollover')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: release
