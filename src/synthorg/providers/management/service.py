@@ -37,6 +37,7 @@ from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderError,
+    ProviderModelNotFoundError,
     ProviderNotFoundError,
     ProviderValidationError,
 )
@@ -895,8 +896,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
-            ProviderValidationError: If config is unsupported or
-                the model is not found.
+            ProviderModelNotFoundError: If the model does not exist on
+                the provider.
+            ProviderValidationError: If config is unsupported.
         """
         await self._resolve_local_manager(name, capability="config")
         async with self._lock:
@@ -922,7 +924,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                     model=model_id,
                     error=msg,
                 )
-                raise ProviderValidationError(msg)
+                raise ProviderModelNotFoundError(msg)
             updated_model = config.models[model_idx].model_copy(
                 update={"local_params": local_params},
             )

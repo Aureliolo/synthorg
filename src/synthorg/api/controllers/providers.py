@@ -87,6 +87,7 @@ from synthorg.observability.events.provider import (
 from synthorg.providers.capabilities import ModelCapabilities  # noqa: TC001
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
+    ProviderModelNotFoundError,
     ProviderNotFoundError,
     ProviderValidationError,
     RateLimitError,
@@ -892,6 +893,10 @@ class ProviderController(Controller):
 
         Returns:
             Updated model response.
+
+        Raises:
+            NotFoundError: If the provider or model does not exist.
+            ValidationError: If the launch parameters are unsupported.
         """
         app_state: AppState = state.app_state
         try:
@@ -908,28 +913,24 @@ class ProviderController(Controller):
                 name=name,
             )
             raise NotFoundError(msg) from exc
+        except ProviderModelNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="model",
+                name=model_id,
+                provider=name,
+            )
+            raise NotFoundError(safe_error_description(exc)) from exc
         except ProviderValidationError as exc:
-            safe_msg = safe_error_description(exc)
-            # Backend message wording is unstable across driver
-            # versions; lower-case before substring-matching to
-            # absorb any future "Not Found" / "NOT FOUND" capitalisation.
-            if "not found" in str(exc).lower():
-                logger.warning(
-                    API_RESOURCE_NOT_FOUND,
-                    resource="model",
-                    name=model_id,
-                    provider=name,
-                )
-                raise NotFoundError(safe_msg) from exc
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
                 name=name,
                 model=model_id,
                 error_type=type(exc).__name__,
-                error=safe_msg,
+                error=safe_error_description(exc),
             )
-            raise ValidationError(safe_msg) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         model = next(
             (m for m in updated.models if m.id == model_id),
             None,

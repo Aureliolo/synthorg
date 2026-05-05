@@ -696,16 +696,25 @@ class TestProviderControllerErrorSanitization:
             )
         assert str(info.value) == self._safe(boom)
 
-    async def test_update_model_config_not_found_uses_sanitized_text(
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "Model 'missing' not found in provider 'test-provider'",
+            "model 'missing' not found",
+            "Internal model registry mismatch: id 'missing' absent",
+        ],
+    )
+    async def test_update_model_config_model_missing_uses_sanitized_text(
         self,
+        message: str,
     ) -> None:
         from synthorg.config.provider_schema import LocalModelParams
         from synthorg.core.domain_errors import NotFoundError
-        from synthorg.providers.errors import ProviderValidationError
+        from synthorg.providers.errors import ProviderModelNotFoundError
         from synthorg.providers.management.dtos import UpdateModelConfigRequest
 
         state, mgmt = _make_provider_state_and_mgmt()
-        boom = ProviderValidationError("model 'missing' not found in provider")
+        boom = ProviderModelNotFoundError(message)
         mgmt.update_model_config.side_effect = boom
 
         ctrl = _provider_controller()

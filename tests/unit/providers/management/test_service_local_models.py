@@ -142,10 +142,11 @@ class TestLocalModelManagement:
     ) -> None:
         """Updating config for a nonexistent model raises."""
         from synthorg.config.schema import LocalModelParams
+        from synthorg.providers.errors import ProviderModelNotFoundError
 
         await self._create_ollama_provider(service)
 
-        with pytest.raises(ProviderValidationError, match="not found"):
+        with pytest.raises(ProviderModelNotFoundError, match="not found"):
             await service.update_model_config(
                 "my-ollama",
                 "nonexistent-model",
