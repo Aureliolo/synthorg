@@ -533,7 +533,7 @@ def test_load_inventory_raises_schema_error_on_unreadable_yaml(
 
 
 def test_gate_path_symlink_escape_treated_as_missing(
-    fake_repo: Path, tmp_path: Path
+    fake_repo: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """A gate path that is a symlink resolving outside repo_root is rejected.
 
@@ -542,7 +542,11 @@ def test_gate_path_symlink_escape_treated_as_missing(
     check, defeating the safe-relative-path guarantee that the YAML loader
     enforces statically.
     """
-    outside_target = tmp_path / "outside_target.py"
+    # ``fake_repo`` IS the test's ``tmp_path``, so its sibling-tempdir from
+    # ``tmp_path_factory`` is the only way to put the symlink target on a
+    # path that genuinely escapes the repo root.
+    outside_dir = tmp_path_factory.mktemp("outside_repo")
+    outside_target = outside_dir / "outside_target.py"
     outside_target.write_text("# outside repo\n", encoding="utf-8")
 
     gate_link = fake_repo / "scripts" / "check_escape.py"

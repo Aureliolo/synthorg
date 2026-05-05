@@ -381,7 +381,7 @@ def _gate_resolves_inside_repo(gate: str, repo_root: Path) -> bool:
     try:
         resolved = candidate.resolve(strict=True)
         resolved.relative_to(repo_root.resolve())
-    except FileNotFoundError, OSError, ValueError:
+    except OSError, ValueError:
         return False
     return resolved.is_file()
 
