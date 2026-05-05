@@ -196,7 +196,12 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   },
 
   batchDeleteProjects: async (ids: readonly string[]) => {
-    const idSet = new Set(ids)
+    // Deduplicate before issuing requests so a caller passing the same id
+    // twice does not race two delete-API calls (one of which would return
+    // 404 and trip the rollback path, restoring an actually-deleted row)
+    // or inflate succeeded / failed counts in the toast.
+    const uniqueIds = Array.from(new Set(ids))
+    const idSet = new Set(uniqueIds)
     const previous = useProjectsStore.getState()
     const removed = previous.projects.filter((p) => idSet.has(p.id))
     set((state) => {
@@ -212,7 +217,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       }
     })
     const results = await Promise.allSettled(
-      ids.map(async (id) => {
+      uniqueIds.map(async (id) => {
         await deleteProjectApi(id)
         return id
       }),
@@ -222,7 +227,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     const failedReasons: string[] = []
     const failedDetails: { id: string; reason: string }[] = []
     results.forEach((result, index) => {
-      const id = ids[index] ?? '<unknown>'
+      const id = uniqueIds[index] ?? '<unknown>'
       if (result.status === 'fulfilled') {
         succeededIds.push(result.value)
       } else {
@@ -265,7 +270,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     } else if (succeededIds.length > 0 && failedIds.length > 0) {
       useToastStore.getState().add({
         variant: 'warning',
-        title: `Deleted ${succeededIds.length} of ${ids.length} projects`,
+        title: `Deleted ${succeededIds.length} of ${uniqueIds.length} projects`,
         description: groupedDescription,
       })
     } else if (failedIds.length > 0) {

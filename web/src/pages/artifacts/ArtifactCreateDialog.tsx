@@ -62,7 +62,8 @@ export function ArtifactCreateDialog({ open, onOpenChange, onCreate }: ArtifactC
     setErrors((prev) => ({ ...prev, [key]: undefined }))
   }
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
+    e?.preventDefault()
     const next: Partial<Record<keyof FormState, string>> = {}
     if (!form.path.trim()) next.path = 'Path is required'
     if (!form.task_id.trim()) next.task_id = 'Task id is required'
@@ -120,7 +121,7 @@ export function ArtifactCreateDialog({ open, onOpenChange, onCreate }: ArtifactC
             />
           </div>
 
-          <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <SelectField
               label="Type"
               options={TYPE_OPTIONS}
@@ -180,15 +181,15 @@ export function ArtifactCreateDialog({ open, onOpenChange, onCreate }: ArtifactC
             <div className="flex justify-end gap-3 pt-2">
               <Dialog.Close
                 render={
-                  <Button variant="outline" disabled={submitting}>Cancel</Button>
+                  <Button variant="outline" disabled={submitting} type="button">Cancel</Button>
                 }
               />
-              <Button disabled={submitting} onClick={handleSubmit}>
+              <Button type="submit" disabled={submitting}>
                 {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create artifact
               </Button>
             </div>
-          </div>
+          </form>
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>

@@ -910,7 +910,10 @@ class ProviderController(Controller):
             raise NotFoundError(msg) from exc
         except ProviderValidationError as exc:
             safe_msg = safe_error_description(exc)
-            if "not found" in str(exc):
+            # Backend message wording is unstable across driver
+            # versions; lower-case before substring-matching to
+            # absorb any future "Not Found" / "NOT FOUND" capitalisation.
+            if "not found" in str(exc).lower():
                 logger.warning(
                     API_RESOURCE_NOT_FOUND,
                     resource="model",

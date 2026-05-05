@@ -562,18 +562,12 @@ class TestProviderControllerErrorSanitization:
         from synthorg.core.domain_errors import ConflictError
         from synthorg.providers.errors import ProviderAlreadyExistsError
         from synthorg.providers.management.dtos import CreateProviderRequest
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderAlreadyExistsError(
             "Provider 'test-provider' already exists at /etc/secrets/api.key",
         )
-        mgmt.create_provider = AsyncMock(
-            spec=ProviderManagementService.create_provider,
-            side_effect=boom,
-        )
+        mgmt.create_provider.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(ConflictError) as info:
@@ -588,18 +582,12 @@ class TestProviderControllerErrorSanitization:
         from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import CreateProviderRequest
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError(
             "base_url 'http://10.0.0.1/secrets' rejected by guard",
         )
-        mgmt.create_provider = AsyncMock(
-            spec=ProviderManagementService.create_provider,
-            side_effect=boom,
-        )
+        mgmt.create_provider.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(ValidationError) as info:
@@ -614,16 +602,10 @@ class TestProviderControllerErrorSanitization:
         from synthorg.core.domain_errors import ConflictError
         from synthorg.providers.errors import ProviderAlreadyExistsError
         from synthorg.providers.management.dtos import CreateFromPresetRequest
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderAlreadyExistsError("already configured")
-        mgmt.create_from_preset = AsyncMock(
-            spec=ProviderManagementService.create_from_preset,
-            side_effect=boom,
-        )
+        mgmt.create_from_preset.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(ConflictError) as info:
@@ -643,16 +625,10 @@ class TestProviderControllerErrorSanitization:
         from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import CreateFromPresetRequest
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError("preset 'ollama' missing capability")
-        mgmt.create_from_preset = AsyncMock(
-            spec=ProviderManagementService.create_from_preset,
-            side_effect=boom,
-        )
+        mgmt.create_from_preset.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(ValidationError) as info:
@@ -670,16 +646,10 @@ class TestProviderControllerErrorSanitization:
         from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import UpdateProviderRequest
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError("oauth_token_url rejected")
-        mgmt.update_provider = AsyncMock(
-            spec=ProviderManagementService.update_provider,
-            side_effect=boom,
-        )
+        mgmt.update_provider.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(ValidationError) as info:
@@ -694,16 +664,10 @@ class TestProviderControllerErrorSanitization:
     async def test_delete_model_validation_uses_sanitized_text(self) -> None:
         from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError("model still in use")
-        mgmt.delete_model = AsyncMock(
-            spec=ProviderManagementService.delete_model,
-            side_effect=boom,
-        )
+        mgmt.delete_model.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(ValidationError) as info:
@@ -717,16 +681,10 @@ class TestProviderControllerErrorSanitization:
 
     async def test_delete_model_runtime_uses_sanitized_text(self) -> None:
         from synthorg.core.domain_errors import DomainError
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = RuntimeError("internal driver state /var/run/.cache/0xdeadbeef")
-        mgmt.delete_model = AsyncMock(
-            spec=ProviderManagementService.delete_model,
-            side_effect=boom,
-        )
+        mgmt.delete_model.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(DomainError) as info:
@@ -745,16 +703,10 @@ class TestProviderControllerErrorSanitization:
         from synthorg.core.domain_errors import NotFoundError
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import UpdateModelConfigRequest
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError("model 'missing' not found in provider")
-        mgmt.update_model_config = AsyncMock(
-            spec=ProviderManagementService.update_model_config,
-            side_effect=boom,
-        )
+        mgmt.update_model_config.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(NotFoundError) as info:
@@ -774,16 +726,10 @@ class TestProviderControllerErrorSanitization:
         from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import UpdateModelConfigRequest
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError("num_ctx must be positive")
-        mgmt.update_model_config = AsyncMock(
-            spec=ProviderManagementService.update_model_config,
-            side_effect=boom,
-        )
+        mgmt.update_model_config.side_effect = boom
 
         ctrl = _provider_controller()
         with pytest.raises(ValidationError) as info:
@@ -810,16 +756,10 @@ class TestProviderControllerErrorSanitization:
         from synthorg.providers.management.capability_dtos import (
             _ApiKeyRotation,
         )
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError("auth_type mismatch")
-        mgmt.rotate_credentials = AsyncMock(
-            spec=ProviderManagementService.rotate_credentials,
-            side_effect=boom,
-        )
+        mgmt.rotate_credentials.side_effect = boom
 
         ctrl = _provider_controller()
         request = MagicMock(spec=Request)
@@ -854,16 +794,10 @@ class TestProviderControllerErrorSanitization:
         from synthorg.providers.management.capability_dtos import (
             RateLimitsUpdateRequest,
         )
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError("requests_per_minute too low")
-        mgmt.update_rate_limits = AsyncMock(
-            spec=ProviderManagementService.update_rate_limits,
-            side_effect=boom,
-        )
+        mgmt.update_rate_limits.side_effect = boom
 
         ctrl = _provider_controller()
         request = MagicMock(spec=Request)
@@ -893,16 +827,10 @@ class TestProviderControllerErrorSanitization:
         from synthorg.providers.management.capability_dtos import (
             SyncModelsRequest,
         )
-        from synthorg.providers.management.service import (
-            ProviderManagementService,
-        )
 
         state, mgmt = _make_provider_state_and_mgmt()
         boom = ProviderValidationError("base_url is required")
-        mgmt.sync_models = AsyncMock(
-            spec=ProviderManagementService.sync_models,
-            side_effect=boom,
-        )
+        mgmt.sync_models.side_effect = boom
 
         ctrl = _provider_controller()
         request = MagicMock(spec=Request)
