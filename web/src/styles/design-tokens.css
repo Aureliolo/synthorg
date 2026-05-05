@@ -146,24 +146,38 @@
   --so-density-card-padding: var(--so-space-3-5);
   --so-density-section-gap: var(--so-space-3-5);
   --so-density-grid-gap: var(--so-space-3-5);
+  /*
+   * Viewport-responsive companions used by dialogs. Pages compose them
+   * as `p-card-tight sm:p-card md:p-card-roomy` so dialog padding shrinks
+   * on phones and grows on wider viewports while still honouring the
+   * density axis (each density tier sets all three).
+   */
+  --so-density-card-tight: var(--so-space-3);
+  --so-density-card-roomy: var(--so-space-5);
 }
 
 .density-dense {
   --so-density-card-padding: var(--so-space-3);
   --so-density-section-gap: var(--so-space-3);
   --so-density-grid-gap: var(--so-space-3);
+  --so-density-card-tight: var(--so-space-2);
+  --so-density-card-roomy: var(--so-space-4);
 }
 
 .density-medium {
   --so-density-card-padding: var(--so-space-4);
   --so-density-section-gap: var(--so-space-4);
   --so-density-grid-gap: var(--so-space-4);
+  --so-density-card-tight: var(--so-space-3);
+  --so-density-card-roomy: var(--so-space-6);
 }
 
 .density-sparse {
   --so-density-card-padding: var(--so-space-5);
   --so-density-section-gap: var(--so-space-6);
   --so-density-grid-gap: var(--so-space-6);
+  --so-density-card-tight: var(--so-space-4);
+  --so-density-card-roomy: var(--so-space-8);
 }
 
 /* ---------------------------------------------------------------------------

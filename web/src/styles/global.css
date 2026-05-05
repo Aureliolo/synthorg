@@ -49,6 +49,8 @@
 
   /* ---- Density-derived spacing ---- */
   --spacing-card: var(--so-density-card-padding);
+  --spacing-card-tight: var(--so-density-card-tight);
+  --spacing-card-roomy: var(--so-density-card-roomy);
   --spacing-section-gap: var(--so-density-section-gap);
   --spacing-grid-gap: var(--so-density-grid-gap);
 
