@@ -13,7 +13,6 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from pydantic import ConfigDict, Field
 
-from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
 from synthorg.api.controllers._approval_review_gate import (
     preflight_review_gate,
@@ -40,6 +39,7 @@ from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
     ConflictError,
     UnauthorizedError,

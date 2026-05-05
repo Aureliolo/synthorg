@@ -46,7 +46,9 @@ ConfigProvider = Callable[[], "RootConfig"]
 """Zero-arg callable returning the current ``RootConfig`` snapshot."""
 
 
-class _PathResolutionError(ValueError):
+class _PathResolutionError(
+    ValueError,
+):  # lint-allow: domain-error-hierarchy -- internal config-path precondition
     """Raised when a dotted path does not resolve on the given model."""
 
 

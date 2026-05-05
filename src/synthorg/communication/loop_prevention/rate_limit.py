@@ -14,7 +14,7 @@ from synthorg.observability.events.delegation import (
 logger = get_logger(__name__)
 
 _MECHANISM = "rate_limit"
-_DEFAULT_WINDOW_SECONDS = 60.0
+_DEFAULT_WINDOW_SECONDS = 60.0  # lint-allow: magic-numbers -- bootstrap
 
 
 class DelegationRateLimiter:

@@ -1634,3 +1634,160 @@ class TestBareResponseFixes:
                 error_category=ErrorCategory.NOT_FOUND,
                 retryable=False,
             )
+
+
+class TestDomainErrorFamilyClassVarHttpMapping:
+    """End-to-end ClassVar -> HTTP mapping for DomainError-rooted families.
+
+    Catches typos in ``status_code`` / ``error_code`` / ``error_category``
+    on any class in the domain-error tree. Without these, a refactor
+    that flips ``status_code = 404`` to ``500`` on (for example)
+    ``AgentNotFoundError`` would silently ship: the AST gate only
+    checks that the class roots in ``DomainError``, not that its HTTP
+    metadata is sensible.
+    """
+
+    @pytest.mark.parametrize(
+        ("import_path", "exc_name", "status_code", "error_code", "error_category"),
+        [
+            (
+                "synthorg.hr.errors",
+                "AgentNotFoundError",
+                404,
+                ErrorCode.RESOURCE_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+            ),
+            (
+                "synthorg.hr.errors",
+                "AgentAlreadyRegisteredError",
+                409,
+                ErrorCode.RESOURCE_CONFLICT,
+                ErrorCategory.CONFLICT,
+            ),
+            (
+                "synthorg.hr.errors",
+                "InvalidCandidateError",
+                422,
+                ErrorCode.VALIDATION_ERROR,
+                ErrorCategory.VALIDATION,
+            ),
+            (
+                "synthorg.hr.errors",
+                "PromotionCooldownError",
+                409,
+                ErrorCode.RESOURCE_CONFLICT,
+                ErrorCategory.CONFLICT,
+            ),
+            (
+                "synthorg.hr.errors",
+                "HRError",
+                500,
+                ErrorCode.INTERNAL_ERROR,
+                ErrorCategory.INTERNAL,
+            ),
+            (
+                "synthorg.hr.scaling.errors",
+                "ScalingCooldownActiveError",
+                409,
+                ErrorCode.RESOURCE_CONFLICT,
+                ErrorCategory.CONFLICT,
+            ),
+            (
+                "synthorg.hr.scaling.errors",
+                "ScalingError",
+                500,
+                ErrorCode.INTERNAL_ERROR,
+                ErrorCategory.INTERNAL,
+            ),
+            (
+                "synthorg.security.trust.errors",
+                "TrustError",
+                500,
+                ErrorCode.INTERNAL_ERROR,
+                ErrorCategory.INTERNAL,
+            ),
+            (
+                "synthorg.settings.errors",
+                "SettingNotFoundError",
+                404,
+                ErrorCode.RESOURCE_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+            ),
+            (
+                "synthorg.settings.errors",
+                "SettingValidationError",
+                422,
+                ErrorCode.VALIDATION_ERROR,
+                ErrorCategory.VALIDATION,
+            ),
+            (
+                "synthorg.settings.errors",
+                "SettingsError",
+                500,
+                ErrorCode.INTERNAL_ERROR,
+                ErrorCategory.INTERNAL,
+            ),
+            (
+                "synthorg.config.errors",
+                "ConfigError",
+                500,
+                ErrorCode.INTERNAL_ERROR,
+                ErrorCategory.INTERNAL,
+            ),
+            (
+                "synthorg.core.registry.errors",
+                "StrategyFactoryNotFoundError",
+                404,
+                ErrorCode.RESOURCE_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+            ),
+            (
+                "synthorg.core.registry.errors",
+                "StrategyFactoryError",
+                500,
+                ErrorCode.INTERNAL_ERROR,
+                ErrorCategory.INTERNAL,
+            ),
+        ],
+    )
+    def test_migrated_class_classvars_drive_response(
+        self,
+        import_path: str,
+        exc_name: str,
+        status_code: int,
+        error_code: int,
+        error_category: ErrorCategory,
+    ) -> None:
+        """Each class's ClassVars produce the right HTTP envelope."""
+        import importlib
+
+        module = importlib.import_module(import_path)
+        exc_cls: type[Exception] = getattr(module, exc_name)
+
+        # Most DomainError subclasses accept ``()`` because the base
+        # ``__init__`` defaults ``message=None``; the fallback path
+        # below keeps the metadata-routing assertion alive even if a
+        # class ever requires a positional message argument.
+        @get("/test")
+        async def handler() -> None:
+            try:
+                raise exc_cls
+            except TypeError:
+                # Class needs an arg; pass an empty marker so the test
+                # still verifies metadata routing.
+                msg = ""
+                raise exc_cls(msg)  # noqa: B904 -- intentional re-raise
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == status_code, (
+                f"{exc_name}: expected {status_code}, got {resp.status_code}"
+            )
+            body = resp.json()
+            assert body["success"] is False
+            _assert_error_detail(
+                body,
+                error_code=error_code,
+                error_category=error_category,
+                retryable=False,
+            )

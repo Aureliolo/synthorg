@@ -1,5 +1,6 @@
 """Tests for AuthController endpoints."""
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -7,7 +8,7 @@ import jwt
 import pytest
 from litestar.testing import TestClient
 
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.roles import HumanRole
 from tests.unit.api.conftest import _TEST_JWT_SECRET, make_auth_headers
 
 
@@ -67,9 +68,9 @@ class TestSetup:
         import uuid
         from datetime import UTC, datetime
 
-        from synthorg.api.auth.models import User
         from synthorg.api.auth.service import AuthService
-        from synthorg.api.guards import HumanRole
+        from synthorg.core.auth.models import User
+        from synthorg.core.auth.roles import HumanRole
 
         app_state = bare_client.app.state["app_state"]
         svc: AuthService = app_state.auth_service
@@ -77,7 +78,7 @@ class TestSetup:
         user = User(
             id=str(uuid.uuid4()),
             username="existing",
-            password_hash=svc.hash_password("test-password-12chars"),
+            password_hash=asyncio.run(svc.hash_password_async("test-password-12chars")),
             role=HumanRole.CEO,
             must_change_password=False,
             created_at=now,
@@ -267,7 +268,7 @@ class TestRequirePasswordChanged:
         from litestar.exceptions import PermissionDeniedException
 
         from synthorg.api.auth.controller_helpers import require_password_changed
-        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
         user = AuthenticatedUser(
             user_id="u1",
@@ -288,7 +289,7 @@ class TestRequirePasswordChanged:
         from unittest.mock import MagicMock
 
         from synthorg.api.auth.controller_helpers import require_password_changed
-        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
         user = AuthenticatedUser(
             user_id="u1",
@@ -332,7 +333,7 @@ class TestRequirePasswordChanged:
         from unittest.mock import MagicMock
 
         from synthorg.api.auth.controller_helpers import require_password_changed
-        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
         user = AuthenticatedUser(
             user_id="u1",
@@ -427,11 +428,11 @@ class TestSystemUserBlocking:
         """System user login returns 401 (same as invalid credentials)."""
         from datetime import UTC, datetime
 
-        from synthorg.api.auth.models import User
         from synthorg.api.auth.system_user import (
             SYSTEM_USER_ID,
             SYSTEM_USERNAME,
         )
+        from synthorg.core.auth.models import User
 
         # Seed a system user via the public save() API
         app_state = bare_client.app.state["app_state"]
@@ -440,7 +441,9 @@ class TestSystemUserBlocking:
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
-            password_hash=svc.hash_password("irrelevant-password-12"),
+            password_hash=asyncio.run(
+                svc.hash_password_async("irrelevant-password-12")
+            ),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -467,11 +470,11 @@ class TestSystemUserBlocking:
 
         import jwt as pyjwt
 
-        from synthorg.api.auth.models import User
         from synthorg.api.auth.system_user import (
             SYSTEM_USER_ID,
             SYSTEM_USERNAME,
         )
+        from synthorg.core.auth.models import User
 
         # Explicitly seed the system user so the test is self-contained
         app_state = bare_client.app.state["app_state"]
@@ -480,7 +483,9 @@ class TestSystemUserBlocking:
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
-            password_hash=svc.hash_password("irrelevant-password-12"),
+            password_hash=asyncio.run(
+                svc.hash_password_async("irrelevant-password-12")
+            ),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -519,11 +524,11 @@ class TestSystemUserBlocking:
         """Setup endpoint returns 201 when only the system user exists."""
         from datetime import UTC, datetime
 
-        from synthorg.api.auth.models import User
         from synthorg.api.auth.system_user import (
             SYSTEM_USER_ID,
             SYSTEM_USERNAME,
         )
+        from synthorg.core.auth.models import User
 
         app_state = bare_client.app.state["app_state"]
         # Clear all users, then add only the system user
@@ -573,7 +578,7 @@ class TestSystemUserBlocking:
         """Setup succeeds when only non-CEO human users exist."""
         from datetime import UTC, datetime
 
-        from synthorg.api.auth.models import User
+        from synthorg.core.auth.models import User
 
         app_state = bare_client.app.state["app_state"]
         app_state.persistence._users._users.clear()

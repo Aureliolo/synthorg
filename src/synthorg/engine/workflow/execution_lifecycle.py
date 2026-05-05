@@ -13,7 +13,10 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.core.persistence_errors import VersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    RecordNotFoundError,
+)
 from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
@@ -282,6 +285,89 @@ async def fail_execution(
 # -- Task-event handling ---------------------------------------------------
 
 
+def _retry_event_for(event: TaskStateChanged) -> str:
+    """Return the WORKFLOW_EXEC_NODE_TASK_* event for a retry log line."""
+    if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+        return WORKFLOW_EXEC_NODE_TASK_FAILED
+    return WORKFLOW_EXEC_NODE_TASK_COMPLETED
+
+
+async def _dispatch_task_handler(
+    repo: WorkflowExecutionRepository,
+    execution: WorkflowExecution,
+    event: TaskStateChanged,
+) -> None:
+    """Route a terminal task event to the matching lifecycle handler."""
+    if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+        await _handle_task_failed(repo, execution, event)
+    else:
+        await _handle_task_completed(repo, execution, event)
+
+
+def _expected_terminal_node_status(
+    event: TaskStateChanged,
+) -> WorkflowNodeExecutionStatus:
+    """Return the node status the lifecycle handler would set for ``event``."""
+    if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+        return WorkflowNodeExecutionStatus.TASK_FAILED
+    return WorkflowNodeExecutionStatus.TASK_COMPLETED
+
+
+async def _retry_after_version_conflict(
+    repo: WorkflowExecutionRepository,
+    execution: WorkflowExecution,
+    event: TaskStateChanged,
+) -> None:
+    """Refresh the execution after a conflict and re-dispatch idempotently."""
+    retry_event = _retry_event_for(event)
+    logger.warning(
+        retry_event,
+        execution_id=execution.id,
+        task_id=event.task_id,
+        error="Concurrent modification; re-fetching execution",
+    )
+    refreshed = await repo.get(execution.id)
+    if refreshed is None:
+        logger.warning(
+            retry_event,
+            execution_id=execution.id,
+            task_id=event.task_id,
+            error="Execution not found after version conflict",
+        )
+        return
+    if refreshed.status in {
+        WorkflowExecutionStatus.COMPLETED,
+        WorkflowExecutionStatus.FAILED,
+        WorkflowExecutionStatus.CANCELLED,
+    }:
+        return
+    # Idempotency: if the winning writer already applied the same
+    # node transition this event would set, re-dispatching would
+    # bump version + emit a bogus same-status hop.
+    if _node_status_for_task(refreshed, event.task_id) is (
+        _expected_terminal_node_status(event)
+    ):
+        return
+    try:
+        await _dispatch_task_handler(repo, refreshed, event)
+    except MemoryError, RecursionError:
+        raise
+    except RecordNotFoundError:
+        logger.warning(
+            retry_event,
+            execution_id=execution.id,
+            task_id=event.task_id,
+            error="Execution deleted during retry",
+        )
+    except PersistenceVersionConflictError:
+        logger.warning(
+            retry_event,
+            execution_id=execution.id,
+            task_id=event.task_id,
+            error="Concurrent modification during retry",
+        )
+
+
 async def handle_task_state_changed(
     repo: WorkflowExecutionRepository,
     event: TaskStateChanged,
@@ -302,52 +388,18 @@ async def handle_task_state_changed(
         return
 
     try:
-        if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
-            await _handle_task_failed(repo, execution, event)
-        else:
-            await _handle_task_completed(repo, execution, event)
-    except VersionConflictError:
-        retry_event = (
-            WORKFLOW_EXEC_NODE_TASK_FAILED
-            if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}
-            else WORKFLOW_EXEC_NODE_TASK_COMPLETED
-        )
+        await _dispatch_task_handler(repo, execution, event)
+    except RecordNotFoundError:
+        # Execution row was deleted between read and update; retry
+        # would only fail the same way, so log and drop.
         logger.warning(
-            retry_event,
+            _retry_event_for(event),
             execution_id=execution.id,
             task_id=event.task_id,
-            error="Concurrent modification; re-fetching execution",
+            error="Execution deleted before lifecycle update could persist",
         )
-        refreshed = await repo.get(execution.id)
-        if refreshed is None:
-            logger.warning(
-                retry_event,
-                execution_id=execution.id,
-                task_id=event.task_id,
-                error="Execution not found after version conflict",
-            )
-            return
-        if refreshed.status in {
-            WorkflowExecutionStatus.COMPLETED,
-            WorkflowExecutionStatus.FAILED,
-            WorkflowExecutionStatus.CANCELLED,
-        }:
-            return
-        try:
-            if event.new_status in {
-                TaskStatus.FAILED,
-                TaskStatus.CANCELLED,
-            }:
-                await _handle_task_failed(repo, refreshed, event)
-            else:
-                await _handle_task_completed(repo, refreshed, event)
-        except Exception:
-            logger.exception(
-                retry_event,
-                execution_id=execution.id,
-                task_id=event.task_id,
-                error="Retry after version conflict also failed",
-            )
+    except PersistenceVersionConflictError:
+        await _retry_after_version_conflict(repo, execution, event)
 
 
 # -- Private helpers -------------------------------------------------------

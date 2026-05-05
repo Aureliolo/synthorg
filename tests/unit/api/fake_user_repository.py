@@ -6,9 +6,9 @@ unique username, at most one CEO, at least one CEO, at least one owner.
 
 import copy
 
-from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import OrgRole, User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.constraint_tokens import (

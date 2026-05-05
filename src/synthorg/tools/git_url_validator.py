@@ -39,6 +39,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.git import (
@@ -128,7 +129,7 @@ class GitCloneNetworkPolicy(BaseModel):
     @model_validator(mode="after")
     def _normalize_allowlist(self) -> Self:
         """Lowercase and deduplicate allowlist entries."""
-        normalized = tuple(dict.fromkeys(h.lower() for h in self.hostname_allowlist))
+        normalized = dedupe_preserving_order(h.lower() for h in self.hostname_allowlist)
         if normalized != self.hostname_allowlist:
             object.__setattr__(self, "hostname_allowlist", normalized)
         return self

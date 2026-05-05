@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from synthorg.api.auth.models import OrgRole, User
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import OrgRole, User
+from synthorg.core.auth.roles import HumanRole
 from tests.unit.api.fakes import FakePersistenceBackend
 
 

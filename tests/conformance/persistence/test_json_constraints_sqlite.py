@@ -27,7 +27,7 @@ class TestSqliteJsonValidConstraints:
     async def test_provider_audit_payload_rejects_non_json(
         self,
         backend: PersistenceBackend,
-    ) -> None:
+    ) -> None:  # lint-allow: dual-backend-parity -- exercises SQLite CHECK json_valid()
         """``provider_audit_events.payload`` rejects malformed JSON."""
         if backend.backend_name != "sqlite":
             pytest.skip("SQLite-only constraint")
@@ -60,7 +60,7 @@ class TestSqliteJsonValidConstraints:
         self,
         backend: PersistenceBackend,
         column_name: str,
-    ) -> None:
+    ) -> None:  # lint-allow: dual-backend-parity -- exercises SQLite CHECK json_valid()
         """Each nullable JSON override column rejects malformed JSON.
 
         The migration installs a separate ``CHECK (col IS NULL OR
@@ -98,7 +98,7 @@ class TestSqliteJsonValidConstraints:
     async def test_preset_overrides_nullable_columns_accept_null(
         self,
         backend: PersistenceBackend,
-    ) -> None:
+    ) -> None:  # lint-allow: dual-backend-parity -- exercises SQLite CHECK json_valid()
         """The ``IS NULL OR json_valid()`` form admits NULL for the nullable
         JSON columns so existing rows that omit overrides keep working."""
         if backend.backend_name != "sqlite":

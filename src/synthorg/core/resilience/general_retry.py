@@ -1,5 +1,11 @@
 """General-purpose async retry handler for non-provider resilience.
 
+See ``docs/reference/retry-patterns.md`` for the four-cell decision
+tree spanning all retry families in the codebase. This helper
+implements **Pattern A** (transient I/O with exponential backoff);
+Patterns B and C live as inline loops at their callsites because
+their semantics do not fit the temporal-backoff model.
+
 The :class:`synthorg.providers.resilience.RetryHandler` lives at the
 provider boundary and is coupled to ``ProviderError.is_retryable``
 semantics.  This module provides the equivalent primitive for code

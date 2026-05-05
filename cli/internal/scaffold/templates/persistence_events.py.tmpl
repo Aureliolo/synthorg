@@ -1,0 +1,15 @@
+"""{{title .ModuleDocSlug}} domain event constants.
+
+Imported by the SQLite + Postgres repositories under
+``synthorg.persistence.{sqlite,postgres}.{{.Domain}}_repo``.
+Never reference these event strings as bare literals from a logger
+call (the project's ``Agent 02: missing-event-constants`` audit will
+flag it).
+"""
+
+from typing import Final
+
+# Repository operations
+{{shout .Domain}}_REPO_FAILED: Final[str] = "{{.Domain}}.repo.failed"
+{{shout .Domain}}_REPO_FETCHED: Final[str] = "{{.Domain}}.repo.fetched"
+{{shout .Domain}}_REPO_LISTED: Final[str] = "{{.Domain}}.repo.listed"

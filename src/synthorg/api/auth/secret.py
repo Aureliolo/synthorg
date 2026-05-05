@@ -2,7 +2,7 @@
 
 import os
 
-from synthorg.api.auth.config import MIN_SECRET_LENGTH
+from synthorg.core.auth.config import MIN_SECRET_LENGTH
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 

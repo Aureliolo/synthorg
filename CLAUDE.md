@@ -58,6 +58,10 @@ CLI: see `cli/CLAUDE.md`. Use `go -C cli` (never `cd cli`).
 - [docs/reference/errors.md](docs/reference/errors.md): RFC 9457 codes + HTTP exception handler registration
 - [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md): currency / locale / timezone resolution chain
 - [docs/reference/typed-boundaries.md](docs/reference/typed-boundaries.md): per-boundary `parse_typed()` inventory + recipe
+- [docs/reference/retry-patterns.md](docs/reference/retry-patterns.md): retry-pattern decision tree (transient I/O, semantic self-correction, contention/sync) and the 5 inline-site map
+- [docs/reference/scaffolding.md](docs/reference/scaffolding.md): `synthorg new <kind> <domain>` CLI scaffolder usage + per-kind file inventory + shape contract
+- [docs/reference/audit-category-gate-coverage.md](docs/reference/audit-category-gate-coverage.md): audit category resolution paths (standing gate / pre-PR mini-pass / architecture / reviewer-enforced)
+- [docs/reference/dead-api-endpoints.md](docs/reference/dead-api-endpoints.md): frontend ↔ backend route parity gate, opt-out marker, baseline mechanics
 
 ## Web Dashboard Design System (MANDATORY)
 
@@ -71,9 +75,51 @@ No default may privilege a region, currency, or locale. Resolution: user/company
 
 `src/synthorg/persistence/` is the only place that may import `aiosqlite` / `sqlite3` / `psycopg` / `psycopg_pool` or emit raw SQL DDL/DML. Every durable feature defines a Protocol in `persistence/<domain>_protocol.py` + concrete impls under `persistence/{sqlite,postgres}/` exposed on `PersistenceBackend`. Controllers and API endpoints access persistence through domain-scoped service layers (e.g. `ArtifactService`, `WorkflowService`, `MemoryService`); services centralize audit logging; repositories must not log mutations themselves. Adding a migration: read `docs/guides/persistence-migrations.md`; never hand-edit SQL or `atlas.sum`. Per-line opt-out: `# lint-allow: persistence-boundary -- <reason>`. Enforced by `scripts/check_persistence_boundary.py`. See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md).
 
+## Convention Rollout (MANDATORY)
+
+Any PR that establishes or expands a project-wide convention (error
+hierarchies, persistence boundary, mock-spec, regional defaults, typed
+boundary, settings-to-startup wiring, secret-log redaction, request-DTO
+`extra="forbid"`, no-magic-numbers, no-em-dashes, etc.) MUST include the
+AST/script gate that prevents regression. PRs proposing a convention
+without enforcement are rejected. The gate's job is to catch the SECOND
+occurrence of the category; the audit's job is finding the FIRST.
+
+Existing gate inventory (all under `scripts/`):
+
+- `check_backend_regional_defaults.py`
+- `check_boundary_typed.py`
+- `check_dead_api_endpoints.py`
+- `check_doc_drift_counts.py`
+- `check_domain_error_hierarchy.py`
+- `check_dual_backend_test_parity.py`
+- `check_forbidden_literals.py`
+- `check_list_pagination.py`
+- `check_logger_exception_str_exc.py`
+- `check_mock_spec.py`
+- `check_no_bulk_edit.py`
+- `check_no_em_dashes.py`
+- `check_no_redundant_timeout.py`
+- `check_openapi_liveness.py`
+- `check_orphan_fixtures.py`
+- `check_persistence_boundary.py`
+- `check_provider_complete_chokepoint.py`
+- `check_request_dto_forbid_extra.py`
+- `check_schema_drift.py`
+- `check_setting_to_startup_trace.py`
+- `check_web_design_system.py`
+
+Wire each new gate into `.pre-commit-config.yaml` (pre-commit or
+pre-push stage as fits) so it runs locally and in CI; per-line opt-outs
+use a stable `# lint-allow: <gate-name> -- <reason>` comment.
+
 ## Configuration Precedence (MANDATORY)
 
 For every mutable setting: **DB > env (`SYNTHORG_<NS>_<KEY>`) > YAML > code default**, resolved through `SettingsService` / `ConfigResolver`. First cold read emits one INFO `settings.value.resolved`; subsequent reads stay DEBUG. Sanctioned exceptions: init-time only (env-only, no registry entry) and read-only post-init (`read_only_post_init=True`; `set()` raises `SettingReadOnlyError`). Direct `os.environ.get(...)` outside startup is forbidden. Register new settings in `src/synthorg/settings/definitions/<namespace>.py`. Ghost-wired settings (consuming service never instantiated at boot) are flagged by `scripts/check_setting_to_startup_trace.py`; per-setting opt-out via `# lint-allow: bootstrap-wiring -- <reason>`. See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md).
+
+## No Hardcoded Values (MANDATORY)
+
+Every numeric threshold / weight / limit / timeout / scoring policy in business logic lives in `src/synthorg/settings/definitions/<namespace>.py`, not as a bare numeric literal. Sync hot-path consumers read the resolved value from a frozen Pydantic bridge config (e.g. `EngineBridgeConfig`) populated by `ConfigResolver.get_<ns>_bridge_config()` at startup. Bare module-level `_FOO = 1024` constants and bare numeric defaults (`def f(timeout=30)`) are forbidden. Allowlisted: `0`, `1`, `-1` (sentinel/off-by-one), HTTP status codes 100-599 in `status_code=` defaults, hex bit-masks (`0xff`, `0x80`), powers-of-2 in `buffering=` / `chunk_size=` / `buffer_size=` defaults, anything inside `settings/definitions/`, `persistence/migrations/`, `observability/events/`. Per-line opt-out: `# lint-allow: magic-numbers -- <reason>` (mandatory non-empty justification). Enforced by `scripts/check_no_magic_numbers.py` with site-by-site monotonic-shrink baseline at `scripts/no_magic_numbers_baseline.txt`. See [docs/reference/scoring-hyperparameters.md](docs/reference/scoring-hyperparameters.md) for the inventory of migrated settings + rationale.
 
 ## Shell Usage
 
@@ -99,7 +145,7 @@ For every mutable setting: **DB > env (`SYNTHORG_<NS>_<KEY>`) > YAML > code defa
 - **HTML parsing (SEC-1)**: never call `lxml.html.fromstring` on attacker input; use `HTMLParseGuard`. See [sec-prompt-safety.md](docs/reference/sec-prompt-safety.md).
 - **Pluggable subsystems**: protocol + strategy + factory + config discriminator with safe defaults. Services (which wrap repositories) are a distinct pattern. See [pluggable-subsystems.md](docs/reference/pluggable-subsystems.md).
 - **Sizes**: line length 88 (ruff); functions <50 lines; files <800 lines.
-- **Errors**: handle explicitly, never swallow. Domain error families register a base-class entry in `EXCEPTION_HANDLERS` (`src/synthorg/api/exception_handlers.py`). Use `<Domain><Condition>Error` inheriting from `DomainError`; bare `Exception` / `RuntimeError` at domain boundaries is forbidden. See [errors.md](docs/reference/errors.md) + `src/synthorg/core/domain_errors.py`.
+- **Errors**: handle explicitly, never swallow. Domain error families register a base-class entry in `EXCEPTION_HANDLERS` (`src/synthorg/api/exception_handlers.py`). Use `<Domain><Condition>Error` inheriting from `DomainError`; any of `Exception` / `RuntimeError` / `LookupError` / `PermissionError` / `ValueError` / `TypeError` / `KeyError` / `IndexError` / `AttributeError` / `OSError` / `IOError` as a direct base in `src/synthorg/` is forbidden. Enforced by `scripts/check_domain_error_hierarchy.py` (pre-push); per-line opt-out: `# lint-allow: domain-error-hierarchy -- <reason>`. See [errors.md](docs/reference/errors.md) + `src/synthorg/core/domain_errors.py`.
 - **Repository CRUD**: `save(entity) -> None` (idempotent), `get(id) -> Entity | None`, `delete(id) -> bool`, `list_items(...) -> tuple[Entity, ...]`, `query(...) -> tuple[Entity, ...]`. Query methods always return tuples. See [conventions.md](docs/reference/conventions.md) §14.
 - **Validate** at system boundaries (user input, external APIs, config files).
 - **Datetime in persistence**: `parse_iso_utc` / `format_iso_utc` from `synthorg.persistence._shared` (both reject naive); `normalize_utc` for relaxed coercion on already-typed `datetime`.
@@ -145,9 +191,11 @@ When tests fail due to timeout / slowness / xdist contention: NEVER delete, skip
 - **Async**: `asyncio_mode = "auto"`; no manual `@pytest.mark.asyncio`.
 - **Timeout**: 30s per test (global in `pyproject.toml`); don't add per-file `timeout(30)` markers; non-default like `timeout(60)` is allowed.
 - **Parallelism**: `pytest-xdist -n 8 --dist=loadfile` (always). `loadfile` prevents the cumulative resource leak `worksteal` triggers on Python 3.14 + Windows ProactorEventLoop.
-- **Isolation regression gate**: `scripts/run_affected_tests.py` re-runs the affected subset twice via `pytest-repeat --count 2 -x` after the green pass. Opt out via `SYNTHORG_SKIP_ISOLATION_GATE=1`.
+- **Event loop on Windows**: unit tests run under `WindowsSelectorEventLoopPolicy` (set by `tests/unit/conftest.py`) to avoid a Python 3.14 IOCP teardown race ([CPython #116773](https://github.com/python/cpython/issues/116773) and family) that crashes xdist workers under repeated event-loop creation. Tool tests that drive real `asyncio.create_subprocess_exec` (git, sandbox) override back to the default policy in `tests/unit/tools/conftest.py`.
+- **Isolation regression gate**: `scripts/run_affected_tests.py` re-runs the affected subset under `pytest-repeat --count 2 --max-worker-restart=4` after the green pass and classifies the outcome: real test failures or the same test crashing on multiple iterations block the gate; native worker crashes scattered across unrelated tests are advisory (gate still passes). Opt out via `SYNTHORG_SKIP_ISOLATION_GATE=1`.
 - **Logger spying antipattern**: never `monkeypatch.setattr(module.logger, "info", spy)`; the `BoundLoggerLazyProxy` caches the stale bound method via `__dict__`. Use `try/finally del proxy.<level>` instead; see `_logger_info_spy` in `tests/unit/settings/test_service.py`.
 - **Parametrize**: prefer `@pytest.mark.parametrize` for similar cases.
+- **Dual-backend conformance**: persistence repositories ship parametrised conformance tests under `tests/conformance/persistence/test_<domain>_repository.py` that consume the `backend` fixture from `tests/conformance/persistence/conftest.py`; the fixture runs each test against both SQLite and Postgres. All `test_*` signatures must accept `backend` (no concrete `aiosqlite.Connection` / `psycopg` typing) and must avoid `if backend.backend_name == "..."` body conditionals. Enforced by `scripts/check_dual_backend_test_parity.py`; per-line opt-out `# lint-allow: dual-backend-parity -- <reason>`.
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code/tests/comments/docstrings/configs. Use `example-provider`, `example-{large,medium,small}-001`. Allowed in: `.claude/` files, third-party import paths, `src/synthorg/providers/presets.py` (user-facing runtime data), `web/public/provider-logos/*.svg`. Tests use `test-provider`, `test-small-001`.
 - **Property-based**: Hypothesis (Python), fast-check (React), `testing.F` (Go). CI runs 10 deterministic examples (`derandomize=True`). Hypothesis failures are real bugs: fix the bug and add an `@example(...)` decorator. See [claude-reference.md](docs/reference/claude-reference.md).
 - **Flaky tests**: NEVER skip/xfail/dismiss; fix fundamentally. FakeClock-first when the class accepts `clock=`. For "block until cancelled", use `asyncio.Event().wait()` not `asyncio.sleep(large)`.

@@ -1,0 +1,170 @@
+"""SQLite repository for {{.ModuleDocSlug}} items."""
+
+import asyncio
+import sqlite3
+
+import aiosqlite
+from aiosqlite import Row
+
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.{{.Domain}}_repo import (
+    {{shout .Domain}}_REPO_FAILED,
+    {{shout .Domain}}_REPO_FETCHED,
+    {{shout .Domain}}_REPO_LISTED,
+)
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.{{.Domain}}.models import {{.ClassName}}Item
+
+logger = get_logger(__name__)
+
+_MAX_PAGE_LIMIT = 1000
+
+_UPSERT_SQL = """
+    INSERT INTO {{.Domain}}_items (id, payload, created_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+        payload = excluded.payload,
+        created_at = excluded.created_at
+"""
+
+_SELECT_BY_ID_SQL = (
+    "SELECT id, payload, created_at FROM {{.Domain}}_items WHERE id = ?"
+)
+
+_LIST_SQL = (
+    "SELECT id, payload, created_at FROM {{.Domain}}_items "
+    "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+)
+
+_DELETE_SQL = "DELETE FROM {{.Domain}}_items WHERE id = ?"
+
+
+def _row_to_item(row: Row) -> {{.ClassName}}Item:
+    return {{.ClassName}}Item(
+        id=str(row["id"]),
+        payload=str(row["payload"]),
+        created_at=coerce_row_timestamp(row["created_at"]),
+    )
+
+
+class SQLite{{.ClassName}}Repository:
+    """SQLite-backed {{.ModuleDocSlug}} item repository.
+
+    The constructor sets ``db.row_factory = aiosqlite.Row`` so ``_row_to_item``
+    can index columns by name. Because ``row_factory`` is a per-connection
+    attribute, this mutates the caller-owned :class:`aiosqlite.Connection`
+    -- pass a connection dedicated to this repository, or one whose other
+    consumers also expect :class:`aiosqlite.Row` rows.
+
+    Args:
+        db: An open ``aiosqlite.Connection`` whose ``row_factory`` this
+            repository owns.
+        write_lock: Optional shared write lock; falls back to a private
+            lock for standalone test construction.
+    """
+
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_lock: asyncio.Lock | None = None,
+    ) -> None:
+        self._db = db
+        self._db.row_factory = aiosqlite.Row
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
+
+    async def save(self, item: {{.ClassName}}Item) -> None:
+        """Upsert a {{.ModuleDocSlug}} item."""
+        params = (item.id, item.payload, format_iso_utc(item.created_at))
+        async with self._write_lock:
+            try:
+                await self._db.execute(_UPSERT_SQL, params)
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await self._db.rollback()
+                msg = f"Constraint violation saving {{.Domain}} {item.id!r}"
+                logger.warning(
+                    {{shout .Domain}}_REPO_FAILED,
+                    item_id=item.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._db.rollback()
+                msg = f"Failed to save {{.Domain}} {item.id!r}"
+                logger.warning(
+                    {{shout .Domain}}_REPO_FAILED,
+                    item_id=item.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+
+    async def get(self, item_id: NotBlankStr) -> {{.ClassName}}Item | None:
+        """Fetch a single item by ID."""
+        try:
+            async with self._db.execute(_SELECT_BY_ID_SQL, (item_id,)) as cursor:
+                row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to fetch {{.Domain}} {item_id!r}"
+            logger.warning(
+                {{shout .Domain}}_REPO_FAILED,
+                item_id=item_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        logger.debug({{shout .Domain}}_REPO_FETCHED, item_id=item_id)
+        return _row_to_item(row)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[{{.ClassName}}Item, ...]:
+        """List items with newest-first ordering."""
+        if limit < 1 or offset < 0:
+            msg = (
+                f"Invalid pagination: limit={limit} (must be >= 1), "
+                f"offset={offset} (must be >= 0)"
+            )
+            raise QueryError(msg)
+        capped = min(limit, _MAX_PAGE_LIMIT)
+        try:
+            async with self._db.execute(_LIST_SQL, (capped, offset)) as cursor:
+                rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list {{.Domain}} items"
+            logger.warning(
+                {{shout .Domain}}_REPO_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug({{shout .Domain}}_REPO_LISTED, count=len(rows))
+        return tuple(_row_to_item(row) for row in rows)
+
+    async def delete(self, item_id: NotBlankStr) -> bool:
+        """Delete an item by ID; returns ``True`` if a row was removed."""
+        async with self._write_lock:
+            try:
+                cursor = await self._db.execute(_DELETE_SQL, (item_id,))
+                await self._db.commit()
+                deleted = (cursor.rowcount or 0) > 0
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._db.rollback()
+                msg = f"Failed to delete {{.Domain}} {item_id!r}"
+                logger.warning(
+                    {{shout .Domain}}_REPO_FAILED,
+                    item_id=item_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return deleted

@@ -439,7 +439,7 @@ class TestGitHubExceptions:
 
     def test_github_api_error_attributes(self) -> None:
         err = GitHubAPIError(status_code=500, action="push", body="oops")
-        assert err.status_code == 500
+        assert err.github_status_code == 500
         assert err.action == "push"
         assert err.body == "oops"
         assert "500" in str(err)

@@ -6,8 +6,6 @@ proposal.  Follows the ``AbstractiveSummarizer`` error-handling
 pattern from ``memory.consolidation.abstractive``.
 """
 
-import json
-import re
 from typing import Any
 
 from pydantic import ValidationError
@@ -20,6 +18,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
 # globals.
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -64,39 +63,18 @@ _SYSTEM_PROMPT = (
     + untrusted_content_directive((TAG_TASK_DATA, TAG_TOOL_RESULT))
 )
 
-_JSON_FENCE_PATTERN = re.compile(
-    r"```(?:json)?\s*\n?(.*?)\n?\s*```",
-    re.DOTALL,
-)
-
 
 def _extract_json(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from LLM response text.
+    """Extract a JSON object from LLM response text via the shared helper."""
 
-    Handles plain JSON and markdown-fenced JSON blocks.
-    Returns ``None`` on parse failure.
-    """
-    stripped = text.strip()
-    if not stripped:
-        return None
-
-    # Try stripping markdown fences first.
-    match = _JSON_FENCE_PATTERN.search(stripped)
-    candidate = match.group(1).strip() if match else stripped
-
-    try:
-        parsed = json.loads(candidate)
-    except json.JSONDecodeError as exc:
+    def _log_parse_failure(detail: str) -> None:
         logger.debug(
             PROCEDURAL_MEMORY_SKIPPED,
             reason="json_parse_error",
-            detail=str(exc),
+            detail=detail,
         )
-        return None
 
-    if not isinstance(parsed, dict):
-        return None
-    return parsed
+    return extract_json_from_llm_response(text, logger_callback=_log_parse_failure)
 
 
 def _build_user_message(payload: FailureAnalysisPayload) -> str:

@@ -6,9 +6,9 @@ management.  Repository protocols provide entity-level access.
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.auth.config import AuthConfig  # noqa: TC001
 from synthorg.core.company import Company  # noqa: TC001
 from synthorg.core.role import Role  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001

@@ -30,6 +30,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.decision_protocol import DecisionRole  # noqa: TC001
+from synthorg.persistence.sqlite._shared import is_unique_constraint_error
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -113,19 +114,6 @@ def _unfreeze_for_json(value: object) -> object:
     if isinstance(value, frozenset | set):
         return [_unfreeze_for_json(item) for item in value]
     return value
-
-
-def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
-    """Return True when the exception is a UNIQUE/PRIMARY KEY violation.
-
-    Uses ``sqlite_errorname`` (Python 3.11+) as the authoritative signal
-    rather than brittle substring matching on the error message.  The
-    project targets Python 3.14+, so the attribute is always present.
-    """
-    return exc.sqlite_errorname in {
-        "SQLITE_CONSTRAINT_UNIQUE",
-        "SQLITE_CONSTRAINT_PRIMARYKEY",
-    }
 
 
 def _is_structural_constraint_error(exc: sqlite3.IntegrityError) -> bool:
@@ -361,7 +349,7 @@ class SQLiteDecisionRepository:
             row = await cursor.fetchone()
         except sqlite3.IntegrityError as exc:
             await self._rollback_quietly()
-            if _is_unique_constraint_error(exc):
+            if is_unique_constraint_error(exc):
                 msg = f"Duplicate decision record {record_id!r}"
                 logger.warning(
                     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,

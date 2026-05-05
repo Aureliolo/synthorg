@@ -8,6 +8,7 @@ silently falls through to a no-op default.
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 from synthorg.client.adapters import (
     DirectAdapter,
@@ -31,6 +32,8 @@ from synthorg.client.report.detailed import DetailedReport
 from synthorg.client.report.json_export import JsonExportReport
 from synthorg.client.report.metrics_only import MetricsOnlyReport
 from synthorg.client.report.summary import SummaryReport
+from synthorg.core.domain_errors import ValidationError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
@@ -78,8 +81,13 @@ _ENTRY_POINT_STRATEGIES: frozenset[str] = frozenset(
 )
 
 
-class UnknownStrategyError(ValueError):
+class UnknownStrategyError(ValidationError):
     """Raised when a config discriminator does not map to any strategy."""
+
+    default_message: ClassVar[str] = "Unknown strategy discriminator"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
 
 
 def _require_non_blank(

@@ -247,7 +247,9 @@ class TestAuditRepositoryConformance:
         assert len(rows) == 1
         assert rows[0].matched_rules == rules
 
-    async def test_jsonb_query_postgres_only(self, backend: PersistenceBackend) -> None:
+    async def test_jsonb_query_postgres_only(
+        self, backend: PersistenceBackend
+    ) -> None:  # lint-allow: dual-backend-parity -- JSONB @> is Postgres-only
         # Postgres-only: GIN-backed @> containment.  SQLite has no
         # equivalent; skip on that arm so the contract is documented in
         # the conformance file rather than in a separate Postgres suite.

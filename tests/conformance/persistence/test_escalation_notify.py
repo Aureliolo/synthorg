@@ -20,7 +20,7 @@ pytestmark = pytest.mark.integration
 class TestEscalationNotifyConformance:
     async def test_postgres_emits_and_receives(
         self, backend: PersistenceBackend
-    ) -> None:
+    ) -> None:  # lint-allow: dual-backend-parity -- LISTEN/NOTIFY is Postgres-only
         """Postgres LISTEN/NOTIFY delivers payloads to the subscriber."""
         if backend.backend_name != "postgres":
             pytest.skip("Postgres-only: exercises LISTEN/NOTIFY semantics")
@@ -59,7 +59,7 @@ class TestEscalationNotifyConformance:
 
     async def test_postgres_publishes_one_payload_per_id_on_batch(
         self, backend: PersistenceBackend
-    ) -> None:
+    ) -> None:  # lint-allow: dual-backend-parity -- LISTEN/NOTIFY is Postgres-only
         """``_publish_notifies`` over N ids emits N distinct payloads.
 
         Verifies the post-#1597 batching collapse preserves the
@@ -106,7 +106,7 @@ class TestEscalationNotifyConformance:
 
     async def test_sqlite_subscription_is_noop(
         self, backend: PersistenceBackend
-    ) -> None:
+    ) -> None:  # lint-allow: dual-backend-parity -- single-process noop subscription
         """SQLite (single-process) yields an iterator that never emits."""
         if backend.backend_name != "sqlite":
             pytest.skip("SQLite-only: single-process noop subscription")

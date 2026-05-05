@@ -1,0 +1,71 @@
+"""Repository protocol for {{.ModuleDocSlug}} item persistence.
+
+Concrete implementations live in
+``synthorg.persistence.sqlite.{{.Domain}}_repo`` and
+``synthorg.persistence.postgres.{{.Domain}}_repo``. Expose this
+protocol on ``PersistenceBackend`` (see {{.Domain}}_WIRING.md) so
+service-layer callers depend on the protocol, never on a backend impl.
+"""
+
+from typing import Protocol, runtime_checkable
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.{{.Domain}}.models import {{.ClassName}}Item  # noqa: TC001
+
+
+@runtime_checkable
+class {{.ClassName}}Repository(Protocol):
+    """CRUD interface for durable {{.ModuleDocSlug}} storage.
+
+    All methods are async; non-recoverable errors (``MemoryError``,
+    ``RecursionError``) propagate to callers. Constraint violations
+    raise ``ConstraintViolationError``; other DB errors raise
+    ``QueryError`` (both from
+    :mod:`synthorg.core.persistence_errors`).
+    """
+
+    async def save(self, item: {{.ClassName}}Item) -> None:
+        """Upsert a {{.ModuleDocSlug}} item.
+
+        Raises:
+            ConstraintViolationError: On constraint violations.
+            QueryError: On other database errors.
+        """
+        ...
+
+    async def get(self, item_id: NotBlankStr) -> {{.ClassName}}Item | None:
+        """Get a {{.ModuleDocSlug}} item by ID, or ``None`` if absent.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        ...
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[{{.ClassName}}Item, ...]:
+        """List {{.ModuleDocSlug}} items, ordered ``created_at DESC, id DESC``.
+
+        Args:
+            limit: Maximum rows to return (must be >= 1).
+            offset: Rows to skip (must be >= 0).
+
+        Raises:
+            QueryError: If the database query fails or
+                ``limit < 1`` / ``offset < 0``.
+        """
+        ...
+
+    async def delete(self, item_id: NotBlankStr) -> bool:
+        """Delete a {{.ModuleDocSlug}} item by ID.
+
+        Returns:
+            ``True`` if a row was deleted, ``False`` if no match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        ...

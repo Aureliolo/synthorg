@@ -1,5 +1,7 @@
 """Shared fixtures for API unit tests."""
 
+import asyncio
+import threading
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -14,12 +16,9 @@ import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import User
 from synthorg.api.auth.service import AuthService
 from synthorg.api.config import ApiConfig, RateLimitConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
-from synthorg.api.guards import HumanRole
 from synthorg.api.state import AppState
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
@@ -30,6 +29,9 @@ from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
@@ -164,11 +166,44 @@ def _get_test_password_hash(
     caches the result so that ``make_auth_headers`` and
     ``_seed_test_users`` produce tokens with matching ``pwd_sig``
     claims.
+
+    Callable from both sync and async contexts: when invoked from
+    inside a running event loop (e.g. an ``async`` fixture body),
+    ``asyncio.run`` would raise ``RuntimeError: cannot be called
+    from a running event loop``.  Detect that case and run the
+    coroutine in a worker thread with its own loop instead.
     """
-    if role not in _TEST_PASSWORD_HASHES:
-        _TEST_PASSWORD_HASHES[role] = auth_service.hash_password(
-            "test-password-12chars",
+    if role in _TEST_PASSWORD_HASHES:
+        return _TEST_PASSWORD_HASHES[role]
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop -- safe to use asyncio.run directly.
+        _TEST_PASSWORD_HASHES[role] = asyncio.run(
+            auth_service.hash_password_async("test-password-12chars"),
         )
+    else:
+        # Already inside a loop; run the hashing in a worker thread
+        # so we do not nest event loops on the same thread.
+        result: list[str] = []
+        errors: list[BaseException] = []
+
+        def _hash_in_thread() -> None:
+            try:
+                result.append(
+                    asyncio.run(
+                        auth_service.hash_password_async("test-password-12chars"),
+                    ),
+                )
+            except BaseException as exc:
+                errors.append(exc)
+
+        thread = threading.Thread(target=_hash_in_thread)
+        thread.start()
+        thread.join()
+        if errors:
+            raise errors[0]
+        _TEST_PASSWORD_HASHES[role] = result[0]
     return _TEST_PASSWORD_HASHES[role]
 
 
@@ -650,7 +685,7 @@ def _promote_first_owner(backend: FakePersistenceBackend) -> None:
     one user has ``OrgRole.OWNER``, matching the production
     startup behavior.
     """
-    from synthorg.api.auth.models import OrgRole
+    from synthorg.core.auth.models import OrgRole
 
     users = backend._users._users
     if not users:

@@ -30,7 +30,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
 

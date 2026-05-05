@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.roles import HumanRole
 
 _DEFAULT_MIN_PW = AuthConfig.model_fields["min_password_length"].default
 

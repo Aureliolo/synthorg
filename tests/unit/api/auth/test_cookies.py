@@ -2,7 +2,6 @@
 
 import pytest
 
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.cookies import (
     generate_csrf_token,
     make_clear_csrf_cookie,
@@ -12,6 +11,7 @@ from synthorg.api.auth.cookies import (
     make_refresh_cookie,
     make_session_cookie,
 )
+from synthorg.core.auth.config import AuthConfig
 
 
 @pytest.mark.unit

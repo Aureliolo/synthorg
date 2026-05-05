@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.web import (
@@ -109,7 +110,7 @@ class NetworkPolicy(BaseModel):
         raw = data["hostname_allowlist"]
         if not isinstance(raw, tuple | list):
             return data
-        normalized = tuple(dict.fromkeys(h.lower() for h in raw))
+        normalized = dedupe_preserving_order(h.lower() for h in raw)
         return {**data, "hostname_allowlist": normalized}
 
 

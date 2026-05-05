@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Any
 
-from synthorg.api.auth.models import AuthenticatedUser
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_AUTH_USER_FALLBACK
 

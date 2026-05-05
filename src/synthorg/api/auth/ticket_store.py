@@ -24,12 +24,15 @@ cap or observe a half-mutated dict.
 import math
 import secrets
 import threading
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.domain_errors import PerOperationRateLimitError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_WS_TICKET_CLEANUP,
@@ -43,8 +46,13 @@ from synthorg.observability.events.api import (
 logger = get_logger(__name__)
 
 
-class TicketLimitExceededError(Exception):
+class TicketLimitExceededError(PerOperationRateLimitError):
     """Raised when a user exceeds the per-user pending ticket cap."""
+
+    default_message: ClassVar[str] = "WebSocket ticket cap exceeded"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.RATE_LIMIT
+    error_code: ClassVar[ErrorCode] = ErrorCode.PER_OPERATION_RATE_LIMITED
+    status_code: ClassVar[int] = 429
 
 
 # Internal constant by design: boot-time snapshot of
@@ -162,8 +170,11 @@ class WsTicketStore:
                     pending=user_pending,
                     cap=self._max_pending,
                 )
-                msg = f"Ticket limit exceeded for user {user.user_id}"
-                raise TicketLimitExceededError(msg)
+                # Empty message lets the centralised handler fall back to
+                # the class default ("WebSocket ticket cap exceeded") so
+                # the 429 response carries no caller-identifying detail
+                # (the user_id is logged server-side just above).
+                raise TicketLimitExceededError
 
             ticket = secrets.token_urlsafe(get_auth_token_bytes())
             entry = _TicketEntry(

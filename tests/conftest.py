@@ -1,5 +1,6 @@
 """Root test configuration and shared fixtures."""
 
+import faulthandler
 import logging
 import os
 import shutil
@@ -32,6 +33,15 @@ from hypothesis.database import (
 )
 
 from synthorg.persistence import atlas
+
+# Diagnostic instrumentation: dump native + Python tracebacks on every
+# fatal signal (SIGSEGV, SIGFPE, SIGABRT etc.) and on every thread.
+# Enabled at module import so xdist worker subprocesses pick it up at
+# their own conftest load.  Investigation aid for issue #1755 -- the
+# "worker crashed" signal currently has no stack trace, so we don't
+# know whether crashes are ProactorEventLoop IOCP races, native sqlite
+# faults, antivirus-process termination, or something else entirely.
+faulthandler.enable(file=sys.stderr, all_threads=True)
 
 # ── Windows console-flash suppression ──────────────────────────────
 #

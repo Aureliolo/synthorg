@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from psycopg import Error as PsycopgError
 
-from synthorg.api.auth.refresh_record import (
+from synthorg.core.auth.refresh_record import (
     RefreshConsumeOutcome,
     RefreshRecord,
     RefreshRejectReason,
@@ -44,7 +44,9 @@ def _import_dict_row() -> Any:
 logger = get_logger(__name__)
 
 
-class _SessionRevokedError(Exception):
+class _SessionRevokedError(
+    Exception,
+):  # lint-allow: domain-error-hierarchy -- internal txn-rollback sentinel
     """Internal sentinel: rollback the consume() transaction.
 
     Raised inside the ``conn.transaction()`` context when the

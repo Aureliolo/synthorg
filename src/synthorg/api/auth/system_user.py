@@ -10,8 +10,8 @@ import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
-from synthorg.api.auth.models import User
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_AUTH_SYSTEM_USER_ENSURED
 

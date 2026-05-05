@@ -1,0 +1,183 @@
+# Frozen baseline of intentional SQLite <-> Postgres schema drift.
+# Each non-comment line is `<kind>:<key fields>:<reason>` where the
+# trailing reason field is required and must be non-empty.
+#
+# scripts/check_schema_drift.py reads this file to suppress
+# findings at these exact entries. New findings NOT in this list
+# fail the pre-push hook.
+#
+# Regenerate (rare; requires explicit user approval) with:
+#   uv run python scripts/check_schema_drift.py --update-baseline
+#
+# Per #1750 / audit cluster #8.
+column:agent_identity_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:agent_identity_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:agent_states:last_activity_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:agent_states:started_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:api_keys:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:api_keys:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:api_keys:revoked:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:approvals:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:approvals:decided_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:approvals:evidence_package:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:approvals:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:approvals:metadata:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:artifacts:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:audit_entries:matched_rules:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:audit_entries:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:budget_config_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:budget_config_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:checkpoints:context_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:checkpoints:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:collaboration_metrics:delegation_success:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:collaboration_metrics:loop_triggered:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:collaboration_metrics:recorded_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:company_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:company_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:conflict_escalations:conflict_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:conflict_escalations:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:conflict_escalations:decided_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:conflict_escalations:decision_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:conflict_escalations:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:connection_secrets:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:connection_secrets:rotated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:connections:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:connections:last_health_check_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:connections:metadata_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:connections:secret_refs_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:connections:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:cost_records:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:custom_presets:config_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:custom_presets:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:custom_presets:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:custom_rules:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:custom_rules:enabled:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:custom_rules:target_altitudes:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:custom_rules:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:decision_records:criteria_snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:decision_records:metadata:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:decision_records:recorded_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:drift_reports:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:entity_definition_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:entity_definition_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:entity_definitions:constraints:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:entity_definitions:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:entity_definitions:fields:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:entity_definitions:relationships:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:entity_definitions:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:evaluation_config_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:evaluation_config_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:fine_tune_checkpoints:backup_config_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:fine_tune_checkpoints:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:fine_tune_checkpoints:eval_metrics_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:fine_tune_runs:completed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:fine_tune_runs:config_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:fine_tune_runs:stages_completed:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:fine_tune_runs:started_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:fine_tune_runs:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:heartbeats:last_heartbeat_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:idempotency_keys:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:idempotency_keys:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:lifecycle_events:metadata:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:lifecycle_events:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:login_attempts:attempted_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:mcp_installations:installed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:messages:attachments:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:messages:metadata:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:messages:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:oauth_states:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:oauth_states:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:org_facts_operation_log:author_is_human:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:org_facts_operation_log:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:org_facts_snapshot:author_is_human:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:org_facts_snapshot:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:org_facts_snapshot:retracted_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:parked_contexts:context_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:parked_contexts:metadata:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:parked_contexts:parked_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:preset_overrides:candidate_urls:TEXT:JSONB:Audit cluster #8: SQLite has no JSONB; column stores TEXT + json_valid CHECK
+column:preset_overrides:default_models:TEXT:JSONB:Audit cluster #8: SQLite has no JSONB; column stores TEXT + json_valid CHECK
+column:preset_overrides:supported_auth_types:TEXT:JSONB:Audit cluster #8: SQLite has no JSONB; column stores TEXT + json_valid CHECK
+column:preset_overrides:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:project_cost_aggregates:last_updated:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:projects:deadline:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:projects:task_ids:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:projects:team:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:provider_audit_events:occurred_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:provider_audit_events:payload:TEXT:JSONB:Audit cluster #8: SQLite has no JSONB; column stores TEXT + json_valid CHECK
+column:refresh_tokens:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:refresh_tokens:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:risk_overrides:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:risk_overrides:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:risk_overrides:revoked_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:role_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:role_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:sessions:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:sessions:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:sessions:last_active_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:sessions:revoked:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:settings:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:ssrf_violations:resolved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:ssrf_violations:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:subworkflows:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:subworkflows:edges:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:subworkflows:inputs:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:subworkflows:nodes:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:subworkflows:outputs:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:subworkflows:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:task_metrics:completed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:task_metrics:is_success:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:tasks:acceptance_criteria:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:tasks:artifacts_expected:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:tasks:deadline:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:tasks:delegation_chain:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:tasks:dependencies:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:tasks:reviewers:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:tasks:task_structure:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_plans:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:training_plans:enabled_content_types:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_plans:executed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:training_plans:override_sources:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_plans:require_review:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:training_plans:skip_training:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:training_plans:volume_caps:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_results:completed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:training_results:errors:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_results:items_after_curation:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_results:items_after_guards:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_results:items_extracted:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_results:items_stored:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_results:pending_approvals:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_results:review_pending:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:training_results:source_agents_used:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:training_results:started_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:users:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:users:must_change_password:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
+column:users:org_roles:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:users:scoped_departments:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:users:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:webhook_receipts:payload_json:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:webhook_receipts:processed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:webhook_receipts:received_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:workflow_definition_versions:saved_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:workflow_definition_versions:snapshot:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:workflow_definitions:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:workflow_definitions:edges:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:workflow_definitions:inputs:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:workflow_definitions:nodes:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:workflow_definitions:outputs:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:workflow_definitions:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:workflow_executions:completed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:workflow_executions:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:workflow_executions:node_executions:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT carrying json.dumps(...) (see schema header column inventory)
+column:workflow_executions:updated_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+index:idx_ae_matched_rules_gin:postgres_only:GIN over JSONB matched_rules; SQLite has no JSONB or GIN index (query_jsonb_contains capability is Postgres-only)
+index:idx_dr_metadata_gin:postgres_only:GIN over JSONB metadata; SQLite has no JSONB or GIN index
+index:idx_le_metadata_gin:postgres_only:GIN over JSONB metadata; SQLite has no JSONB or GIN index
+index:idx_messages_metadata_gin:postgres_only:GIN over JSONB metadata; SQLite has no JSONB or GIN index
+index_attr:idx_ftc_single_active:where:is_active = 1:is_active = TRUE:Partial-unique-index predicate uses the dialect-native boolean literal; semantically identical (sqlite stores BOOLEAN as INTEGER 0/1)
+nullable:cost_records:rowid:N:Y:SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT (NOT NULL); Postgres uses BIGINT GENERATED ALWAYS AS IDENTITY which can be NULL until insert assigns the sequence value (composite PK with timestamp enforces non-null at write time)
+pk:audit_entries:id:id,timestamp:Postgres composite PK includes the timestamp partitioning column for TimescaleDB hypertable conversion; SQLite has no hypertable concept and uses the simpler PK on id alone (see schema header)
+pk:cost_records:rowid:rowid,timestamp:Postgres composite PK includes the timestamp partitioning column for TimescaleDB hypertable conversion; SQLite has no hypertable concept (see schema header)
+migration:add_idx_wfe_definition_revision:postgres_only:Postgres-only migration that backfilled the index; SQLite picked up the same index in a different revision (audit cluster #8 listed this as PG-only-index drift; the index itself is now present on both backends)
+migration:json_check_constraints:sqlite_only:SQLite-only migration tightening json_valid CHECK constraints; Postgres enforces JSON validity natively via the JSONB type

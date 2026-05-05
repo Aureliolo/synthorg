@@ -12,7 +12,9 @@ ci:
   #     too slow / toolchain-heavy for the cloud runner.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
-  #     orphan-fixtures / boundary-typed / setting-to-startup-trace:
+  #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
+  #     domain-error-hierarchy / list-pagination / dead-api-endpoints /
+  #     dual-backend-test-parity / schema-drift / no-magic-numbers:
   #     scoped gates that need ``uv`` + repo source -- redundant given
   #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
   #   - check-push-rebased / check-single-migration-per-pr /
@@ -24,7 +26,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -162,6 +164,14 @@ repos:
         language: system
         files: ^src/synthorg/.*\.py$
 
+      - id: no-loop-bound-init
+        name: block new asyncio primitives in __init__ of lifecycle-managed classes
+        entry: uv
+        args: [run, python, scripts/check_no_loop_bound_init.py]
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_no_loop_bound_init\.py|scripts/loop_bound_init_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+
       - id: no-new-bare-mock
         name: block new bare Mock()/AsyncMock()/MagicMock() in tests/
         entry: uv
@@ -262,6 +272,22 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: list-pagination
+        name: list_*/query repository pagination gate
+        entry: uv run python scripts/check_list_pagination.py --scan-all
+        language: system
+        files: ^(src/synthorg/persistence/.*\.py|scripts/check_list_pagination\.py|scripts/list_pagination_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      - id: no-magic-numbers
+        name: no bare numeric literals in business logic (#1739)
+        entry: uv run python scripts/check_no_magic_numbers.py
+        language: system
+        files: ^(src/synthorg|scripts/check_no_magic_numbers\.py|scripts/no_magic_numbers_baseline\.txt|\.pre-commit-config\.yaml)/?.*$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: setting-to-startup-trace
         name: settings → startup wiring trace (ghost-wired settings gate)
         entry: uv run python scripts/check_setting_to_startup_trace.py
@@ -271,6 +297,44 @@ repos:
         # that adds a ghost-wired setting (or weakens the gate by editing
         # the script / baseline) cannot bypass the check.
         files: ^(src/synthorg/settings/definitions/.*\.py|src/synthorg/api/(app|lifecycle|lifecycle_builder|lifecycle_helpers|auto_wire)\.py|scripts/check_setting_to_startup_trace\.py|scripts/setting_to_startup_trace_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: domain-error-hierarchy
+        name: domain-error-hierarchy gate (DomainError-rooted exception classes)
+        entry: uv run python scripts/check_domain_error_hierarchy.py
+        language: system
+        # Trigger on any change to src/synthorg Python files, the gate
+        # script itself, or its baseline so a PR that introduces a new
+        # plain-Exception class (or weakens the gate by editing the
+        # script / baseline) cannot bypass the check.
+        files: ^(src/synthorg/.*\.py|scripts/check_domain_error_hierarchy\.py|scripts/domain_error_hierarchy_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      - id: dead-api-endpoints
+        name: dead-API-endpoint gate (frontend ↔ backend route parity)
+        entry: uv run python scripts/check_dead_api_endpoints.py
+        language: system
+        # Trigger on any change to controller registration, controller
+        # files, the WS handler, A2A controllers, every TS/TSX source
+        # under web/src/, the gate scripts themselves, or the baseline
+        # so a PR cannot land a frontend caller pointing at a dead
+        # endpoint without the gate running.
+        files: ^(src/synthorg/api/(app|controllers/.*)\.py|src/synthorg/a2a/.*\.py|web/src/.*\.(ts|tsx)|scripts/(check_dead_api_endpoints|_dead_api_endpoints_.*)\.py|scripts/dead_api_endpoints_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: dual-backend-test-parity
+        name: dual-backend test parity gate (conformance + protocols)
+        entry: uv run python scripts/check_dual_backend_test_parity.py
+        language: system
+        # Trigger on any change to a persistence protocol, a
+        # conformance test, the gate script, or its baseline so a PR
+        # that adds a missing-coverage gap or a signature regression
+        # (or weakens the gate by editing the script / baseline)
+        # cannot bypass the check.
+        files: ^(src/synthorg/persistence/[^/]+\.py|tests/conformance/persistence/.*\.py|scripts/check_dual_backend_test_parity\.py|scripts/_dual_backend_parity_lib\.py|scripts/dual_backend_parity_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 
@@ -311,5 +375,16 @@ repos:
         # changing the trigger pattern) cannot bypass the check by
         # not touching ``src/synthorg/`` Python files.
         files: ^(src/synthorg/.*\.py|scripts/check_provider_complete_chokepoint\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: schema-drift
+        name: schema-drift gate (SQLite vs Postgres parity)
+        entry: uv run python scripts/check_schema_drift.py
+        language: system
+        # Trigger on schema files, revision files, the script itself,
+        # the baseline, or this config so a PR that weakens the gate
+        # cannot bypass the check by not touching schema.sql.
+        files: ^(src/synthorg/persistence/(sqlite|postgres)/(schema\.sql|revisions/.*\.sql)|scripts/check_schema_drift\.py|scripts/_schema_drift_.*\.py|scripts/schema_drift_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]

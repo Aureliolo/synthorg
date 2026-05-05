@@ -158,6 +158,10 @@ class HttpBatchHandler(logging.Handler):
     ) -> Exception | None:
         """Attempt to send *request*, returning the last error or None."""
         last_error: Exception | None = None
+        # See docs/reference/retry-patterns.md: Pattern C/Sync -- this
+        # method runs inside a stdlib logging-handler thread using
+        # synchronous urllib.request, so the async GeneralRetryHandler
+        # cannot be awaited from here.
         for attempt in range(1 + self._max_retries):
             try:
                 with urllib.request.urlopen(  # noqa: S310

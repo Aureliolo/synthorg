@@ -1,0 +1,26 @@
+"""Domain errors for the {{.ModuleDocSlug}} subsystem.
+
+Both classes inherit from generics in
+``synthorg.core.domain_errors`` so they reuse the existing
+``EXCEPTION_HANDLERS`` mappings without registering a new
+``ErrorCode`` enum value. When the subsystem grows distinct
+client-facing semantics (e.g. a 422 unique to this domain), promote the
+class to its own ``error_code`` -- see
+``docs/reference/errors.md`` for the registration recipe.
+"""
+
+from typing import ClassVar
+
+from synthorg.core.domain_errors import DomainError, NotFoundError
+
+
+class {{.ClassName}}Error(DomainError):
+    """Base class for {{.ModuleDocSlug}} subsystem failures."""
+
+    default_message: ClassVar[str] = "{{.ClassName}} subsystem error"
+
+
+class {{.ClassName}}NotFoundError(NotFoundError):
+    """Raised when a {{.ModuleDocSlug}} entity is not found."""
+
+    default_message: ClassVar[str] = "{{.ClassName}} not found"

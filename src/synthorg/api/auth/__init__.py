@@ -1,19 +1,9 @@
-"""Authentication and authorization for the API layer."""
+"""HTTP-coupled authentication layer.
 
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import ApiKey, AuthenticatedUser, AuthMethod, User
-from synthorg.api.auth.service import AuthService
-from synthorg.api.auth.session import Session
-from synthorg.api.auth.ticket_store import TicketLimitExceededError, WsTicketStore
-
-__all__ = [
-    "ApiKey",
-    "AuthConfig",
-    "AuthMethod",
-    "AuthService",
-    "AuthenticatedUser",
-    "Session",
-    "TicketLimitExceededError",
-    "User",
-    "WsTicketStore",
-]
+Domain types (``AuthConfig``, ``HumanRole``, ``User``,
+``AuthenticatedUser``, ``Session``, ``RefreshRecord``, etc.) live in
+``synthorg.core.auth``. This package keeps only the components that
+bind to Litestar / JWT issuer-audience constants:
+``AuthService``, ``WsTicketStore``, the controllers, and the
+authentication / CSRF middleware.
+"""

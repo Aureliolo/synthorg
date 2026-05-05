@@ -1,15 +1,16 @@
 """Tests for AuthService."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
 
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import User
 from synthorg.api.auth.service import AuthService, SecretNotConfiguredError
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import User
+from synthorg.core.auth.roles import HumanRole
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 
 
@@ -27,7 +28,7 @@ def _make_user(
     return User(
         id="user-001",
         username="admin",
-        password_hash=svc.hash_password("test-password-12chars"),
+        password_hash=asyncio.run(svc.hash_password_async("test-password-12chars")),
         role=role,
         must_change_password=must_change_password,
         created_at=now,
@@ -37,42 +38,50 @@ def _make_user(
 
 @pytest.mark.unit
 class TestPasswordHashing:
-    def test_hash_and_verify(self) -> None:
+    async def test_hash_and_verify(self) -> None:
         svc = _make_service()
-        hashed = svc.hash_password("my-secret-password")
-        assert svc.verify_password("my-secret-password", hashed)
+        hashed = await svc.hash_password_async("my-secret-password")
+        assert await svc.verify_password_async("my-secret-password", hashed)
 
-    def test_wrong_password_fails(self) -> None:
+    async def test_wrong_password_fails(self) -> None:
         svc = _make_service()
-        hashed = svc.hash_password("correct-password")
-        assert not svc.verify_password("wrong-password", hashed)
+        hashed = await svc.hash_password_async("correct-password")
+        assert not await svc.verify_password_async("wrong-password", hashed)
 
-    def test_hash_is_not_plaintext(self) -> None:
+    async def test_hash_is_not_plaintext(self) -> None:
         svc = _make_service()
-        hashed = svc.hash_password("my-secret-password")
+        hashed = await svc.hash_password_async("my-secret-password")
         assert hashed != "my-secret-password"
         assert "$argon2" in hashed
 
-    def test_different_hashes_for_same_password(self) -> None:
+    async def test_different_hashes_for_same_password(self) -> None:
         svc = _make_service()
-        h1 = svc.hash_password("same-password")
-        h2 = svc.hash_password("same-password")
+        h1 = await svc.hash_password_async("same-password")
+        h2 = await svc.hash_password_async("same-password")
         # Different salts produce different hashes
         assert h1 != h2
 
-    def test_verify_password_with_corrupted_hash_raises(self) -> None:
+    async def test_verify_password_with_corrupted_hash_raises(self) -> None:
         import argon2.exceptions
 
         svc = _make_service()
         with pytest.raises(argon2.exceptions.InvalidHashError):
-            svc.verify_password("my-password", "not-a-valid-argon2-hash")
+            await svc.verify_password_async("my-password", "not-a-valid-argon2-hash")
 
-    def test_verify_password_with_empty_hash_raises(self) -> None:
+    async def test_verify_password_with_empty_hash_raises(self) -> None:
         import argon2.exceptions
 
         svc = _make_service()
         with pytest.raises(argon2.exceptions.InvalidHashError):
-            svc.verify_password("my-password", "")
+            await svc.verify_password_async("my-password", "")
+
+    def test_sync_hash_password_is_removed(self) -> None:
+        """``AuthService`` exposes only the async hashing surface."""
+        assert not hasattr(AuthService, "hash_password")
+
+    def test_sync_verify_password_is_removed(self) -> None:
+        """``AuthService`` exposes only the async verification surface."""
+        assert not hasattr(AuthService, "verify_password")
 
 
 @pytest.mark.unit

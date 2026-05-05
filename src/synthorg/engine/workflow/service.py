@@ -7,10 +7,16 @@ the cascade from definition deletion to its version snapshots in one
 place so the audit trail stays consistent.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    VersionConflictError,
+)
 from synthorg.core.enums import WorkflowType  # noqa: TC001
-from synthorg.core.persistence_errors import VersionConflictError
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import WorkflowDefinition  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -39,16 +45,31 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class WorkflowDefinitionExistsError(Exception):
+class WorkflowDefinitionExistsError(ConflictError):
     """Raised when ``create_definition`` targets an id that already exists."""
 
+    default_message: ClassVar[str] = "Workflow definition already exists"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    status_code: ClassVar[int] = 409
 
-class WorkflowDefinitionNotFoundError(Exception):
+
+class WorkflowDefinitionNotFoundError(NotFoundError):
     """Raised when ``fetch_for_update`` / update targets a missing id."""
 
+    default_message: ClassVar[str] = "Workflow definition not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    status_code: ClassVar[int] = 404
 
-class WorkflowDefinitionRevisionMismatchError(Exception):
+
+class WorkflowDefinitionRevisionMismatchError(VersionConflictError):
     """Raised when an optimistic-concurrency revision check fails.
+
+    Inherits the HTTP 409 / ``VERSION_CONFLICT`` ClassVar mapping from
+    :class:`VersionConflictError`; the centralised RFC 9457 dispatch
+    therefore produces a 409 response without any controller-side
+    translation.
 
     ``actual`` is ``None`` when the persistence layer surfaces a
     conflict without a usable stored-revision read (e.g. the follow-up
@@ -68,7 +89,7 @@ class WorkflowDefinitionRevisionMismatchError(Exception):
 
         Args:
             message: Human-readable description (passed to
-                ``Exception.__init__``).
+                ``DomainError.__init__``).
             definition_id: Workflow definition identifier that hit the
                 conflict.
             expected: Stored revision the caller was asserting against
@@ -273,8 +294,8 @@ class WorkflowService:
                 its stored ``revision`` does not match
                 ``definition.revision - 1`` (optimistic-concurrency
                 failure). Translated from the persistence layer's
-                ``VersionConflictError`` so callers of this service
-                never depend on a persistence-level exception type.
+                ``PersistenceVersionConflictError`` so callers of this
+                service never depend on a persistence-level exception type.
             MemoryError: Propagated from either the stored-revision
                 lookup probe or the best-effort snapshot; never
                 swallowed.
@@ -284,7 +305,7 @@ class WorkflowService:
         """
         try:
             updated = await self._definitions.update_if_exists(definition)
-        except VersionConflictError as exc:
+        except PersistenceVersionConflictError as exc:
             # ``update_if_exists`` applies the UPDATE only when the
             # stored row's ``revision`` equals ``definition.revision - 1``,
             # so the "expected stored revision" the caller is asserting

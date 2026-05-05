@@ -37,10 +37,10 @@ def _create_meeting_test_app(
 ) -> Any:
     """Build a Litestar test app with the given meeting services."""
     from synthorg.api.approval_store import ApprovalStore
-    from synthorg.api.auth.config import AuthConfig
     from synthorg.api.auth.service import AuthService
     from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import RootConfig
+    from synthorg.core.auth.config import AuthConfig
 
     persistence = FakePersistenceBackend()
     bus = FakeMessageBus()
@@ -752,10 +752,10 @@ class TestResolveMaxContextKeysFallback:
 def _create_app_without_explicit_meetings() -> Any:
     """Create app without explicit meeting services (auto-wired)."""
     from synthorg.api.approval_store import ApprovalStore
-    from synthorg.api.auth.config import AuthConfig
     from synthorg.api.auth.service import AuthService
     from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import RootConfig
+    from synthorg.core.auth.config import AuthConfig
 
     persistence = FakePersistenceBackend()
     bus = FakeMessageBus()

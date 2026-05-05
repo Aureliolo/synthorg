@@ -49,7 +49,7 @@ so it is deliberately omitted.
 Values are matched case-insensitively against ``TaskStatus.value``.
 """
 
-_PUBLISH_MAX_ATTEMPTS: Final[int] = 3
+_PUBLISH_MAX_ATTEMPTS: Final[int] = 3  # lint-allow: magic-numbers -- bootstrap
 """Max publish attempts per claim before giving up.
 
 A transient NATS hiccup (reconnect, brief server unavailability)
@@ -64,10 +64,10 @@ eventually be picked up again the next time the engine replays
 observer events (e.g., on engine restart).
 """
 
-_PUBLISH_BACKOFF_BASE_SECONDS: Final[float] = 0.1
+_PUBLISH_BACKOFF_BASE_SECONDS: Final[float] = 0.1  # lint-allow: magic-numbers -- boot
 """Base delay for exponential backoff between publish retries."""
 
-_PUBLISH_BACKOFF_CAP_SECONDS: Final[float] = 1.0
+_PUBLISH_BACKOFF_CAP_SECONDS: Final[float] = 1.0  # lint-allow: magic-numbers -- boot
 """Upper bound on a single inter-attempt delay.
 
 With ``base=0.1`` and ``max_attempts=3`` the unbounded delays are
@@ -94,9 +94,11 @@ class DistributedDispatcher:
         clock: Clock | None = None,
     ) -> None:
         self._task_queue = task_queue
-        # Forward the clock so tests can inject ``FakeClock`` and drive
-        # retry backoff deterministically; ``GeneralRetryHandler``
-        # defaults to ``SystemClock`` when omitted.
+        # See docs/reference/retry-patterns.md: Pattern A -- transient
+        # I/O retry for the NATS publish hot path. Forwards the clock so
+        # tests can inject ``FakeClock`` and drive retry backoff
+        # deterministically; ``GeneralRetryHandler`` defaults to
+        # ``SystemClock`` when omitted.
         self._retry = GeneralRetryHandler(
             retryable=lambda _exc: True,
             max_attempts=_PUBLISH_MAX_ATTEMPTS,

@@ -7,7 +7,7 @@ according to the requirement's priority axis.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -53,6 +53,7 @@ class ModelMatch(BaseModel):
 def match_model(
     requirement: ModelRequirement,
     available: tuple[ProviderModelConfig, ...],
+    matcher_config: ModelMatcherConfig | None = None,
 ) -> tuple[ProviderModelConfig | None, float]:
     """Select the best model for a requirement from available models.
 
@@ -63,12 +64,16 @@ def match_model(
     Args:
         requirement: Structured model requirement.
         available: Tuple of available models from a single provider.
+        matcher_config: Operator-tunable score weights. ``None`` falls
+            back to the default ``ModelMatcherConfig`` whose values
+            mirror the historical hardcoded constants.
 
     Returns:
         Tuple of (best matching model or None, score 0-1).
     """
     if not available:
         return None, 0.0
+    cfg = matcher_config if matcher_config is not None else _DEFAULT_MATCHER_CONFIG
 
     # Filter by minimum context window.
     candidates = [m for m in available if m.max_context >= requirement.min_context]
@@ -91,7 +96,7 @@ def match_model(
 
     # Rank within tier by priority axis.
     best = _rank_by_priority(tier_candidates, requirement.priority)
-    score = _compute_score(best, requirement, tier_candidates)
+    score = _compute_score(best, requirement, tier_candidates, cfg)
     return best, score
 
 
@@ -147,6 +152,7 @@ def _resolve_agent_requirement(
 def match_all_agents(
     agents: list[dict[str, Any]],
     providers: Mapping[str, Any],
+    matcher_config: ModelMatcherConfig | None = None,
 ) -> list[ModelMatch]:
     """Batch-match template agents to provider models.
 
@@ -171,6 +177,10 @@ def match_all_agents(
         providers: Provider name -> provider config mapping.  Each
             provider config must have a ``models`` attribute returning
             a tuple of ``ProviderModelConfig``.
+        matcher_config: Operator-tunable score weights propagated to
+            every per-provider :func:`match_model` call.  ``None`` falls
+            back to the default :class:`ModelMatcherConfig` whose values
+            mirror the historical hardcoded constants.
 
     Returns:
         List of ``ModelMatch`` results.  Agents may be omitted from
@@ -210,7 +220,7 @@ def match_all_agents(
 
         # Try each provider.
         for pname, pcfg in providers.items():
-            model, score = match_model(req, pcfg.models)
+            model, score = match_model(req, pcfg.models, matcher_config)
             if model is not None and score > best_score:
                 best_provider = pname
                 best_model = model
@@ -358,50 +368,116 @@ def _rank_by_priority(
     return min(models, key=lambda m: abs(m.cost_per_1k_input - mid))
 
 
-# Three score components, each contributing up to ``_TIER_BASE_SCORE`` /
-# ``_HEADROOM_MAX_BONUS`` / ``_PRIORITY_MAX_BONUS``. Sum is capped at
-# 1.0 by ``_compute_score``. ``_HEADROOM_RATIO_CAP`` clamps the
-# headroom curve so a model with 10x the requested context does not
-# displace a tighter fit on the priority axis.
-_TIER_BASE_SCORE = 0.5
-_HEADROOM_MAX_BONUS = 0.25
-_PRIORITY_MAX_BONUS = 0.25
-_HEADROOM_RATIO_CAP = 2.0
-_BALANCED_PARTIAL_CREDIT = 0.125
+class _ModelMatcherBridge(Protocol):
+    """Structural type for the EngineBridgeConfig matcher_* fields.
+
+    Declared locally to keep ``model_matcher`` free of a top-level
+    import of ``settings.bridge_configs``; the fields are exposed as
+    ``@property`` so this Protocol matches frozen Pydantic models
+    (whose attributes are read-only). Mypy validates the attribute
+    mapping in ``from_bridge_config`` against this Protocol.
+    """
+
+    @property
+    def matcher_tier_base_score(self) -> float: ...
+    @property
+    def matcher_headroom_max_bonus(self) -> float: ...
+    @property
+    def matcher_priority_max_bonus(self) -> float: ...
+    @property
+    def matcher_headroom_ratio_cap(self) -> float: ...
+    @property
+    def matcher_balanced_partial_credit(self) -> float: ...
+
+
+class ModelMatcherConfig(BaseModel):
+    """Operator-tunable score weights for the model matcher.
+
+    Three score components contribute up to ``tier_base_score`` /
+    ``headroom_max_bonus`` / ``priority_max_bonus``. Sum is capped at
+    1.0 by :func:`_compute_score`. ``headroom_ratio_cap`` clamps the
+    headroom curve so a model with 10x the requested context does not
+    displace a tighter fit on the priority axis;
+    ``balanced_partial_credit`` is the bonus awarded to balanced
+    priority when no other ranking applies.
+
+    Field defaults mirror the registered defaults in
+    :mod:`synthorg.settings.definitions.engine` for direct
+    construction (e.g. tests). Runtime callers that pass
+    ``matcher_config=None`` fall back to ``_DEFAULT_MATCHER_CONFIG``,
+    which is projected from a default ``EngineBridgeConfig()`` so the
+    canonical settings/definitions registration is the single source
+    of truth on the no-config path.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    tier_base_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    headroom_max_bonus: float = Field(default=0.25, ge=0.0, le=1.0)
+    priority_max_bonus: float = Field(default=0.25, ge=0.0, le=1.0)
+    headroom_ratio_cap: float = Field(default=2.0, ge=1.0, le=100.0)
+    balanced_partial_credit: float = Field(default=0.125, ge=0.0, le=1.0)
+
+    @classmethod
+    def from_bridge_config(cls, bridge: _ModelMatcherBridge) -> ModelMatcherConfig:
+        """Project the matcher subset out of an ``EngineBridgeConfig``."""
+        return cls(
+            tier_base_score=bridge.matcher_tier_base_score,
+            headroom_max_bonus=bridge.matcher_headroom_max_bonus,
+            priority_max_bonus=bridge.matcher_priority_max_bonus,
+            headroom_ratio_cap=bridge.matcher_headroom_ratio_cap,
+            balanced_partial_credit=bridge.matcher_balanced_partial_credit,
+        )
+
+
+def _build_default_matcher_config() -> ModelMatcherConfig:
+    """Project the matcher defaults out of a default ``EngineBridgeConfig``.
+
+    Deferred import keeps ``model_matcher`` free of a top-level
+    dependency on ``settings.bridge_configs`` (which already imports
+    several engine types); calling this once at module import is
+    cheap and ensures the no-config path always tracks the registered
+    defaults rather than relying on the matcher's own ``Field``
+    defaults drifting with ``settings/definitions/engine.py``.
+    """
+    from synthorg.settings.bridge_configs import EngineBridgeConfig  # noqa: PLC0415
+
+    return ModelMatcherConfig.from_bridge_config(EngineBridgeConfig())
+
+
+_DEFAULT_MATCHER_CONFIG = _build_default_matcher_config()
 
 
 def _compute_score(
     model: ProviderModelConfig,
     requirement: ModelRequirement,
     tier_candidates: list[ProviderModelConfig],
+    matcher_config: ModelMatcherConfig,
 ) -> float:
-    """Compute a 0-1 quality score for a match.
-
-    Factors: base score (_TIER_BASE_SCORE), context headroom
-    (_HEADROOM_MAX_BONUS), priority alignment (_PRIORITY_MAX_BONUS).
-    """
-    score = _TIER_BASE_SCORE
+    """Compute a 0-1 quality score for a match."""
+    score = matcher_config.tier_base_score
 
     # Context headroom bonus.
     if requirement.min_context > 0:
         headroom = model.max_context / requirement.min_context
         score += min(
-            _HEADROOM_MAX_BONUS,
-            _HEADROOM_MAX_BONUS
-            * min(headroom, _HEADROOM_RATIO_CAP)
-            / _HEADROOM_RATIO_CAP,
+            matcher_config.headroom_max_bonus,
+            matcher_config.headroom_max_bonus
+            * min(headroom, matcher_config.headroom_ratio_cap)
+            / matcher_config.headroom_ratio_cap,
         )
     else:
-        score += _HEADROOM_MAX_BONUS
+        score += matcher_config.headroom_max_bonus
 
     # Priority alignment bonus.
     if len(tier_candidates) <= 1:
-        score += _PRIORITY_MAX_BONUS
+        score += matcher_config.priority_max_bonus
     else:
         score += _priority_alignment_bonus(
             model,
             requirement.priority,
             tier_candidates,
+            matcher_config,
         )
 
     return min(1.0, score)
@@ -411,16 +487,18 @@ def _priority_alignment_bonus(
     model: ProviderModelConfig,
     priority: str,
     tier_candidates: list[ProviderModelConfig],
+    matcher_config: ModelMatcherConfig,
 ) -> float:
-    """Return 0-0.25 bonus based on priority alignment.
+    """Return a 0-``priority_max_bonus`` bonus based on priority alignment.
 
     Args:
         model: The matched model.
         priority: The requirement priority axis.
         tier_candidates: All models in the matched tier (len >= 2).
+        matcher_config: Operator-tunable score weights.
 
     Returns:
-        Bonus score in the range [0, 0.25].
+        Bonus score in the range [0, ``matcher_config.priority_max_bonus``].
     """
     ranked = sorted(
         tier_candidates,
@@ -431,9 +509,9 @@ def _priority_alignment_bonus(
     max_rank = len(ranked) - 1
 
     if priority == "quality":
-        return _PRIORITY_MAX_BONUS * (model_rank / max_rank)
+        return matcher_config.priority_max_bonus * (model_rank / max_rank)
     if priority == "cost":
-        return _PRIORITY_MAX_BONUS * (1 - model_rank / max_rank)
+        return matcher_config.priority_max_bonus * (1 - model_rank / max_rank)
     if priority == "speed":
         # Rank by latency: lowest latency gets full bonus.
         latency_ranked = sorted(
@@ -446,6 +524,10 @@ def _priority_alignment_bonus(
         )
         latency_map = {id(m): r for r, m in enumerate(latency_ranked)}
         latency_rank = latency_map.get(id(model), 0)
-        return _PRIORITY_MAX_BONUS * (1 - latency_rank / max_rank)
-    # "balanced" -- partial credit.
-    return _BALANCED_PARTIAL_CREDIT
+        return matcher_config.priority_max_bonus * (1 - latency_rank / max_rank)
+    # "balanced" -- partial credit, clamped so the bonus never
+    # exceeds the documented priority cap.
+    return min(
+        matcher_config.balanced_partial_credit,
+        matcher_config.priority_max_bonus,
+    )

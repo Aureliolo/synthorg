@@ -10,7 +10,7 @@ from synthorg.core.enums import (
     WorkflowNodeType,
     WorkflowType,
 )
-from synthorg.core.persistence_errors import VersionConflictError
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -181,7 +181,7 @@ class TestSQLiteWorkflowDefinitionRepository:
             name="Skipped revision",
             revision=3,
         )
-        with pytest.raises(VersionConflictError, match="Version conflict"):
+        with pytest.raises(PersistenceVersionConflictError, match="Version conflict"):
             await repo.save(defn_v3)
 
         # Original revision 1 should still be stored
@@ -194,7 +194,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         self,
         repo: SQLiteWorkflowDefinitionRepository,
     ) -> None:
-        """Saving revision=1 twice must raise VersionConflictError.
+        """Saving revision=1 twice must raise PersistenceVersionConflictError.
 
         Regression test: previously the ``definition.revision > 1``
         guard silently treated this as success.
@@ -207,7 +207,7 @@ class TestSQLiteWorkflowDefinitionRepository:
             name="Duplicate",
             revision=1,
         )
-        with pytest.raises(VersionConflictError, match="Version conflict"):
+        with pytest.raises(PersistenceVersionConflictError, match="Version conflict"):
             await repo.save(defn_v1_again)
 
         # Original should be unchanged

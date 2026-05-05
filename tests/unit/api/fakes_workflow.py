@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING
 from packaging.version import InvalidVersion, Version
 
 from synthorg.core.enums import WorkflowExecutionStatus, WorkflowNodeType
-from synthorg.core.persistence_errors import DuplicateRecordError, VersionConflictError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    PersistenceVersionConflictError,
+)
 from synthorg.persistence.subworkflow_repo import (
     ParentReference,
     SubworkflowSummary,
@@ -73,7 +76,7 @@ class FakeWorkflowExecutionRepository:
                     f"Cannot insert execution {execution.id!r}"
                     f" with version {execution.version}"
                 )
-                raise VersionConflictError(msg)
+                raise PersistenceVersionConflictError(msg)
         else:
             if execution.version == 1:
                 msg = f"Execution {execution.id!r} already exists"
@@ -83,7 +86,7 @@ class FakeWorkflowExecutionRepository:
                     f"Version conflict: expected {stored.version + 1},"
                     f" got {execution.version}"
                 )
-                raise VersionConflictError(msg)
+                raise PersistenceVersionConflictError(msg)
         self._executions[execution.id] = copy.deepcopy(execution)
 
     async def get(self, execution_id: str) -> WorkflowExecution | None:

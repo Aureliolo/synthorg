@@ -6,8 +6,8 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
-from synthorg.api.auth.models import ApiKey, User
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import ApiKey, User
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,

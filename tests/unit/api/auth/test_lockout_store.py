@@ -6,7 +6,7 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
-from synthorg.api.auth.config import AuthConfig
+from synthorg.core.auth.config import AuthConfig
 from synthorg.persistence.sqlite.lockout_repo import (
     SQLiteLockoutRepository as LockoutStore,
 )

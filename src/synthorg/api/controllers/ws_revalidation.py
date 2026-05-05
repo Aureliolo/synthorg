@@ -18,9 +18,9 @@ from typing import Any
 
 from litestar import WebSocket  # noqa: TC002
 
-from synthorg.api.auth.config import WS_REVALIDATE_INTERVAL_SECONDS
-from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.guards import _READ_ROLES
+from synthorg.core.auth.config import WS_REVALIDATE_INTERVAL_SECONDS
+from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (

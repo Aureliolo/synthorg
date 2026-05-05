@@ -14,11 +14,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import User
-from synthorg.api.auth.refresh_record import RefreshRejectReason
-from synthorg.api.auth.session import Session
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import User
+from synthorg.core.auth.refresh_record import RefreshRejectReason
+from synthorg.core.auth.roles import HumanRole
+from synthorg.core.auth.session import Session
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 

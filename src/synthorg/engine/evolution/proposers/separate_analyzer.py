@@ -5,8 +5,6 @@ and generate adaptation proposals. Follows the EvoSkill principle:
 the agent being evolved does NOT propose its own changes.
 """
 
-import json
-import re
 from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
@@ -17,6 +15,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # public annotation, so it must resolve at runtime when downstream
 # tooling evaluates type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationProposal,
@@ -69,59 +68,18 @@ _SYSTEM_PROMPT = (
     + untrusted_content_directive(_UNTRUSTED_TAGS)
 )
 
-_JSON_FENCE_PATTERN = re.compile(
-    r"```(?:json)?\s*\n?(.*?)\n?\s*```",
-    re.DOTALL,
-)
-
-
-def _extract_json_block(text: str) -> str | None:
-    """Extract JSON content from markdown fence or plain text.
-
-    Tries to strip markdown fences; falls back to plain text.
-
-    Args:
-        text: Response text from LLM.
-
-    Returns:
-        Candidate JSON string or None if empty.
-    """
-    stripped = text.strip()
-    if not stripped:
-        return None
-    match = _JSON_FENCE_PATTERN.search(stripped)
-    return match.group(1).strip() if match else stripped
-
 
 def _extract_json(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from LLM response text.
+    """Extract a JSON object from LLM response text via the shared helper."""
 
-    Handles plain JSON and markdown-fenced JSON blocks.
-    Returns None on parse failure.
-
-    Args:
-        text: Response text from LLM.
-
-    Returns:
-        Parsed dict or None if extraction fails.
-    """
-    candidate = _extract_json_block(text)
-    if candidate is None:
-        return None
-
-    try:
-        parsed = json.loads(candidate)
-    except json.JSONDecodeError as exc:
+    def _log_parse_failure(detail: str) -> None:
         logger.debug(
             EVOLUTION_PROPOSER_PARSE_ERROR,
             reason="json_decode_error",
-            detail=str(exc),
+            detail=detail,
         )
-        return None
 
-    if not isinstance(parsed, dict):
-        return None
-    return parsed
+    return extract_json_from_llm_response(text, logger_callback=_log_parse_failure)
 
 
 def _validate_proposals_list(

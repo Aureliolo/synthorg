@@ -1078,6 +1078,7 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
     error) in the logs so operators can tell "peer file disappeared"
     from "peer wrote garbage".
     """
+    # See docs/reference/retry-patterns.md: Pattern A -- transient I/O.
     for attempt in range(_PEER_READ_RETRY_ATTEMPTS):
         try:
             with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123

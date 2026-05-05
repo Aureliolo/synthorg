@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.api.controllers.ws_revalidation import (
     _periodic_revalidate,
     _revocation_reason,
 )
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
+from synthorg.core.auth.roles import HumanRole
 
 pytestmark = pytest.mark.unit
 

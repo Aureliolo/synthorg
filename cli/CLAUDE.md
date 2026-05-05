@@ -117,6 +117,7 @@ See [docs/reference/cli-config-subcommands.md](../docs/reference/cli-config-subc
 | `completion` | `[bash \| zsh \| fish \| powershell]`: emit shell autocompletion script (Cobra built-in) |
 | `completion-install` | `[bash \| zsh \| fish \| powershell]`: write the autocompletion script into your shell startup (`~/.bashrc`, `~/.zshrc`, etc.) |
 | `worker start` | `--workers` (int, default 4), `--nats-url`, `--stream-prefix`, `--container` (flag default `""`; falls back to `synthorg-backend` when unset): runs the distributed task-queue worker pool |
+| `new <kind> <domain>` | `--dry-run`, `--overwrite`: scaffolds a conventions-clean Python file set under `src/synthorg/` for a new feature. `<kind>` is one of `service` / `persistence` / `tool` / `controller`. See [docs/reference/scaffolding.md](../docs/reference/scaffolding.md). |
 | `wipe` | `--dry-run`, `--no-backup`, `--keep-images` |
 | `doctor` | `--checks`, `--fix` |
 | `version` | `--short` |

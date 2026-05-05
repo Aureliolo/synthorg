@@ -1,0 +1,44 @@
+# Loop-bound asyncio primitives in __init__ of lifecycle-managed
+# classes -- baseline of pre-existing sites tolerated by
+# scripts/check_no_loop_bound_init.py.  Each entry is
+# `path:line:class:attr:primitive`.  When fixing one of these
+# sites, regenerate this file via:
+#   uv run python scripts/check_no_loop_bound_init.py --update-baseline
+
+src/synthorg/api/bus_bridge.py:102:MessageBusBridge:_lifecycle_lock:Lock
+src/synthorg/backup/service.py:74:BackupService:_backup_lock:Lock
+src/synthorg/budget/quota_poller.py:64:QuotaPoller:_lifecycle_lock:Lock
+src/synthorg/client/continuous.py:65:ContinuousMode:_stop_event:Event
+src/synthorg/client/continuous.py:71:ContinuousMode:_lifecycle_lock:Lock
+src/synthorg/communication/bus/memory.py:110:InMemoryMessageBus:_lock:Lock
+src/synthorg/communication/bus/memory.py:125:InMemoryMessageBus:_shutdown_event:Event
+src/synthorg/communication/conflict_resolution/escalation/notify.py:152:PostgresEscalationNotifySubscriber:_stop_event:Event
+src/synthorg/communication/conflict_resolution/escalation/notify.py:153:PostgresEscalationNotifySubscriber:_lifecycle_lock:Lock
+src/synthorg/engine/task_engine.py:104:TaskEngine:_lifecycle_lock:Lock
+src/synthorg/engine/task_engine.py:112:TaskEngine:_admission_lock:Lock
+src/synthorg/engine/task_engine.py:114:TaskEngine:_observer_queue:Queue
+src/synthorg/engine/task_engine.py:96:TaskEngine:_queue:Queue
+src/synthorg/engine/workflow/webhook_bridge.py:63:WebhookEventBridge:_lifecycle_lock:Lock
+src/synthorg/hr/pruning/service.py:103:PruningService:_lifecycle_lock:Lock
+src/synthorg/hr/pruning/service.py:129:PruningService:_processing_lock:Lock
+src/synthorg/hr/pruning/service.py:97:PruningService:_wake_event:Event
+src/synthorg/hr/pruning/service.py:98:PruningService:_stop_event:Event
+src/synthorg/integrations/health/prober.py:131:HealthProberService:_failure_lock:Lock
+src/synthorg/integrations/health/prober.py:133:HealthProberService:_lifecycle_lock:Lock
+src/synthorg/integrations/oauth/token_manager.py:70:OAuthTokenManager:_lifecycle_lock:Lock
+src/synthorg/integrations/rate_limiting/shared_state.py:71:SharedRateLimitCoordinator:_window_lock:Lock
+src/synthorg/integrations/rate_limiting/shared_state.py:80:SharedRateLimitCoordinator:_lifecycle_lock:Lock
+src/synthorg/integrations/tunnel/ngrok_adapter.py:76:NgrokAdapter:_lifecycle_lock:Lock
+src/synthorg/memory/embedding/fine_tune_orchestrator.py:97:FineTuneOrchestrator:_op_lock:Lock
+src/synthorg/meta/chief_of_staff/monitor.py:82:OrgInflectionMonitor:_stop_event:Event
+src/synthorg/meta/chief_of_staff/monitor.py:83:OrgInflectionMonitor:_lifecycle_lock:Lock
+src/synthorg/notifications/adapters/ntfy.py:116:NtfyNotificationSink:_lifecycle_lock:Lock
+src/synthorg/notifications/adapters/slack.py:104:SlackNotificationSink:_lifecycle_lock:Lock
+src/synthorg/notifications/dispatcher.py:76:NotificationDispatcher:_lifecycle_lock:Lock
+src/synthorg/notifications/dispatcher.py:87:NotificationDispatcher:_dispatch_idle:Event
+src/synthorg/providers/health_prober.py:182:ProviderHealthProber:_stop_event:Event
+src/synthorg/providers/health_prober.py:188:ProviderHealthProber:_lifecycle_lock:Lock
+src/synthorg/settings/dispatcher.py:103:SettingsChangeDispatcher:_lifecycle_lock:Lock
+src/synthorg/telemetry/collector.py:321:TelemetryCollector:_lifecycle_lock:Lock
+src/synthorg/workers/worker.py:83:Worker:_stop_event:Event
+src/synthorg/workers/worker.py:92:Worker:_lifecycle_lock:Lock

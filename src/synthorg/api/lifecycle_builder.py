@@ -21,6 +21,7 @@ from synthorg.api.lifecycle_helpers import (
     _build_settings_dispatcher,
     _maybe_bootstrap_agents,
     _maybe_promote_first_owner,
+    _resolve_event_stream_janitor_settings,
     _ticket_cleanup_loop,
 )
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
@@ -618,6 +619,28 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     error="Escalation notify subscriber startup failed (non-fatal)",
                     exc_info=True,
                 )
+        # EventStreamHub inactivity-TTL janitor. Without this, an SSE
+        # client that disconnects without unsubscribe (browser-tab kill,
+        # network partition) leaks its queue + per-session dedup window
+        # for the lifetime of the process.
+        if app_state.event_stream_hub is not None:
+            try:
+                (
+                    idle_ttl,
+                    janitor_interval,
+                ) = await _resolve_event_stream_janitor_settings(app_state)
+                await app_state.event_stream_hub.start(
+                    idle_ttl_seconds=idle_ttl,
+                    janitor_interval_seconds=janitor_interval,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Event stream hub startup failed (non-fatal)",
+                    exc_info=True,
+                )
 
     async def on_shutdown() -> None:  # noqa: C901, PLR0912, PLR0915
         nonlocal _ticket_cleanup_task, _audit_retention_task
@@ -662,6 +685,14 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             with contextlib.suppress(asyncio.CancelledError):
                 await _webhook_cleanup_task
             _webhook_cleanup_task = None
+        # Stop the EventStreamHub janitor before logging shutdown so
+        # the event-loop shutdown sequence does not race the cancel.
+        if app_state.event_stream_hub is not None:
+            await _try_stop(
+                app_state.event_stream_hub.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop event stream hub",
+            )
         logger.info(API_APP_SHUTDOWN, version=__version__)
         if _health_prober is not None:
             await _try_stop(

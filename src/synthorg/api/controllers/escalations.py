@@ -15,7 +15,6 @@ from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import require_approval_roles, require_read_access
@@ -28,6 +27,7 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationDecision,
     EscalationStatus,
 )
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,

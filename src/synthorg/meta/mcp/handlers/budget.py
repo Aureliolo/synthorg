@@ -72,7 +72,9 @@ def _versions_service(app_state: Any) -> BudgetConfigVersionsService:
     )
 
 
-class _NotFoundError(LookupError):
+class _NotFoundError(
+    LookupError
+):  # lint-allow: domain-error-hierarchy -- MCP handler-local; no HTTP layer
     """Handler-local not-found signal (budget config version missing)."""
 
     domain_code = "not_found"

@@ -15,6 +15,13 @@ const log = createLogger('browser-notifications')
 
 const MAX_NOTIFICATIONS = 3
 const WINDOW_MS = 10_000
+// Hard cap on the in-memory ring so the array cannot grow unbounded
+// even if a future caller invokes ``recordNotification`` without
+// going through ``isRateLimited`` first (the only current path
+// already prunes per call). 2x the per-window quota leaves ample
+// headroom for the prune-on-call pattern while bounding worst-case
+// memory at a handful of entries.
+const MAX_TIMESTAMPS_BUFFER = MAX_NOTIFICATIONS * 2
 const recentTimestamps: number[] = []
 
 function isRateLimited(): boolean {
@@ -28,6 +35,9 @@ function isRateLimited(): boolean {
 
 function recordNotification(): void {
   recentTimestamps.push(Date.now())
+  while (recentTimestamps.length > MAX_TIMESTAMPS_BUFFER) {
+    recentTimestamps.shift()
+  }
 }
 
 // ---------------------------------------------------------------------------

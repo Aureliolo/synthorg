@@ -35,7 +35,9 @@ if TYPE_CHECKING:
     from synthorg.settings.bridge_configs import (
         A2ABridgeConfig,
         ApiBridgeConfig,
+        ClientBridgeConfig,
         CommunicationBridgeConfig,
+        CoordinationBridgeConfig,
         EngineBridgeConfig,
         IntegrationsBridgeConfig,
         MemoryBridgeConfig,
@@ -44,6 +46,7 @@ if TYPE_CHECKING:
         ObservabilityBridgeConfig,
         SettingsDispatcherBridgeConfig,
         ToolsBridgeConfig,
+        WorkersBridgeConfig,
     )
     from synthorg.settings.service import SettingsService
 
@@ -823,9 +826,52 @@ class ConfigResolver:
                 ("max_audit_records_per_query", "int"),
                 ("max_metrics_per_query", "int"),
                 ("max_meeting_context_keys", "int"),
+                ("rate_limit_gc_every_n_acquires", "int"),
+                ("rate_limit_gc_min_horizon_seconds", "int"),
+                ("rate_limit_inflight_gc_every_n_acquires", "int"),
+                ("rate_limit_inflight_min_retry_after_seconds", "int"),
+                ("lifecycle_task_engine_shutdown_seconds", "float"),
+                ("lifecycle_meeting_scheduler_shutdown_seconds", "float"),
+                ("lifecycle_performance_tracker_shutdown_seconds", "float"),
+                ("lifecycle_backup_shutdown_seconds", "float"),
+                ("lifecycle_settings_dispatcher_shutdown_seconds", "float"),
+                ("lifecycle_bridge_shutdown_seconds", "float"),
+                ("lifecycle_distributed_queue_shutdown_seconds", "float"),
+                ("lifecycle_message_bus_shutdown_seconds", "float"),
+                ("lifecycle_persistence_shutdown_seconds", "float"),
+                ("lifecycle_approval_timeout_shutdown_seconds", "float"),
+                ("lifecycle_drain_timeout_seconds", "float"),
             ),
         )
         return ApiBridgeConfig(**values)
+
+    async def get_coordination_bridge_config(self) -> CoordinationBridgeConfig:
+        """Assemble ``CoordinationBridgeConfig`` from bridged coordination settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            CoordinationBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "coordination",
+            (("cas_max_attempts", "int"),),
+        )
+        return CoordinationBridgeConfig(**values)
+
+    async def get_workers_bridge_config(self) -> WorkersBridgeConfig:
+        """Assemble ``WorkersBridgeConfig`` from bridged workers settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            WorkersBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "workers",
+            (
+                ("dispatcher_publish_max_attempts", "int"),
+                ("dispatcher_publish_backoff_base_seconds", "float"),
+                ("dispatcher_publish_backoff_cap_seconds", "float"),
+            ),
+        )
+        return WorkersBridgeConfig(**values)
 
     async def get_communication_bridge_config(self) -> CommunicationBridgeConfig:
         """Assemble ``CommunicationBridgeConfig`` from bridged settings."""
@@ -871,9 +917,39 @@ class ConfigResolver:
             (
                 ("approval_interrupt_timeout_seconds", "float"),
                 ("health_quality_degradation_threshold", "int"),
+                ("routing_weight_primary_skill", "float"),
+                ("routing_weight_secondary_skill", "float"),
+                ("routing_weight_tag_match_bonus", "float"),
+                ("routing_weight_role_match_bonus", "float"),
+                ("routing_weight_seniority_alignment_bonus", "float"),
+                ("routing_min_score", "float"),
+                ("matcher_tier_base_score", "float"),
+                ("matcher_headroom_max_bonus", "float"),
+                ("matcher_priority_max_bonus", "float"),
+                ("matcher_headroom_ratio_cap", "float"),
+                ("matcher_balanced_partial_credit", "float"),
+                ("quality_heuristic_pass_threshold", "float"),
+                ("quality_heuristic_pass_grade", "float"),
+                ("quality_heuristic_fail_grade", "float"),
+                ("quality_heuristic_confidence_ceiling", "float"),
+                ("quality_heuristic_confidence_bias", "float"),
             ),
         )
         return EngineBridgeConfig(**values)
+
+    async def get_client_bridge_config(self) -> ClientBridgeConfig:
+        """Assemble ``ClientBridgeConfig`` from bridged client settings."""
+        from synthorg.settings.bridge_configs import ClientBridgeConfig  # noqa: PLC0415
+
+        values = await self._resolve_bridge_fields(
+            "client",
+            (
+                ("scored_feedback_passing_score", "float"),
+                ("scored_feedback_strictness_multiplier", "float"),
+                ("scored_feedback_strictness_floor", "float"),
+            ),
+        )
+        return ClientBridgeConfig(**values)
 
     async def get_memory_bridge_config(self) -> MemoryBridgeConfig:
         """Assemble ``MemoryBridgeConfig`` from bridged memory settings."""
@@ -881,8 +957,49 @@ class ConfigResolver:
 
         values = await self._resolve_bridge_fields(
             "memory",
-            (("consolidation_enforce_batch_size", "int"),),
+            (
+                ("consolidation_enforce_batch_size", "int"),
+                ("fine_tune_chunk_size", "int"),
+            ),
         )
+        # ``get_json`` parses the value and emits the structured
+        # ``SETTINGS_VALIDATION_FAILED`` warning on JSON-decode errors,
+        # keeping this setting on the same observability path as every
+        # other JSON-typed setting in the resolver.
+        parsed = await self.get_json("memory", "fine_tune_vram_batch_table")
+        if not isinstance(parsed, list) or any(
+            not isinstance(row, list | tuple) or len(row) != 2  # noqa: PLR2004 -- pair shape
+            for row in parsed
+        ):
+            msg = (
+                "memory.fine_tune_vram_batch_table must be a JSON array of "
+                f"[vram_gb, batch_size] pairs; got {parsed!r}"
+            )
+            raise ValueError(msg)
+        try:
+            table = tuple(
+                (_coerce_vram_gb(vram_gb), _coerce_batch_size(batch_size))
+                for vram_gb, batch_size in parsed
+            )
+        except (TypeError, ValueError) as exc:
+            msg = (
+                "memory.fine_tune_vram_batch_table must contain numeric "
+                f"[vram_gb, batch_size] pairs; got {parsed!r}"
+            )
+            raise ValueError(msg) from exc
+        if any(vram_gb <= 0.0 or batch_size < 1 for vram_gb, batch_size in table):
+            msg = (
+                "memory.fine_tune_vram_batch_table requires vram_gb > 0 and "
+                f"batch_size >= 1; got {table!r}"
+            )
+            raise ValueError(msg)
+        if any(table[i][0] <= table[i + 1][0] for i in range(len(table) - 1)):
+            msg = (
+                "memory.fine_tune_vram_batch_table must be strictly descending "
+                f"by vram_gb so threshold selection is unambiguous; got {table!r}"
+            )
+            raise ValueError(msg)
+        values["fine_tune_vram_batch_table"] = table
         return MemoryBridgeConfig(**values)
 
     async def get_integrations_bridge_config(self) -> IntegrationsBridgeConfig:
@@ -997,6 +1114,48 @@ class ConfigResolver:
             error_backoff_seconds=values["dispatcher_error_backoff_seconds"],
             max_consecutive_errors=values["dispatcher_max_consecutive_errors"],
         )
+
+
+def _coerce_vram_gb(value: object) -> float:
+    """Coerce a parsed JSON value to a numeric VRAM threshold.
+
+    Plain ``float(value)`` would accept ``True`` / ``False`` (because
+    ``bool`` is an ``int`` subclass and ``int`` is float-coercible), so
+    a payload like ``[true, 64]`` would silently become ``(1.0, 64)``
+    and pass the remaining shape checks. Reject booleans and
+    non-numeric types at the boundary so invalid stored settings fail
+    deterministically.
+    """
+    if isinstance(value, bool):
+        msg = f"vram_gb must be numeric, got bool {value!r}"
+        raise TypeError(msg)
+    if not isinstance(value, int | float):
+        msg = f"vram_gb must be numeric, got {type(value).__name__} {value!r}"
+        raise TypeError(msg)
+    return float(value)
+
+
+def _coerce_batch_size(value: object) -> int:
+    """Coerce a parsed JSON value to an ``int`` batch size, rejecting bad shapes.
+
+    Plain ``int(value)`` would silently truncate ``64.9`` to ``64`` and
+    accept ``True`` / ``False`` (which are ``int`` subclasses), so a
+    typo in ``memory.fine_tune_vram_batch_table`` would apply with a
+    different value than the operator configured. Reject those at the
+    boundary so invalid stored settings fail deterministically.
+    """
+    if isinstance(value, bool):
+        msg = f"batch_size must be an integer, got bool {value!r}"
+        raise TypeError(msg)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not value.is_integer():
+            msg = f"batch_size must be an integer, got fractional float {value!r}"
+            raise ValueError(msg)
+        return int(value)
+    msg = f"batch_size must be an integer, got {type(value).__name__} {value!r}"
+    raise TypeError(msg)
 
 
 def _build_budget_alerts(warn: int, crit: int, stop: int) -> BudgetAlertConfig:

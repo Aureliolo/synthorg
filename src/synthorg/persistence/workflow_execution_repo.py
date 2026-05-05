@@ -26,7 +26,10 @@ class WorkflowExecutionRepository(Protocol):
 
         Raises:
             DuplicateRecordError: If inserting a duplicate ID.
-            VersionConflictError: If optimistic concurrency check fails.
+            PersistenceVersionConflictError: If the row exists but its
+                stored version differs from ``execution.version - 1``.
+            RecordNotFoundError: If updating a row that no longer
+                exists (delete race between read and update).
             PersistenceError: If the operation fails.
         """
         ...

@@ -15,7 +15,6 @@ from litestar.middleware import (
 from pydantic import ValidationError
 
 from synthorg.api.auth.claims import JwtClaims  # noqa: TC001 -- runtime annotation
-from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.service import SecretNotConfiguredError
 from synthorg.api.auth.system_user import (
     SYSTEM_AUDIENCE,
@@ -23,7 +22,8 @@ from synthorg.api.auth.system_user import (
     USER_AUDIENCE,
     USER_ISSUER,
 )
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_COOKIE_NAME_FALLBACK,
@@ -37,10 +37,10 @@ from synthorg.observability.events.security import (
 if TYPE_CHECKING:
     from litestar.connection import ASGIConnection
 
-    from synthorg.api.auth.config import AuthConfig
-    from synthorg.api.auth.models import ApiKey
     from synthorg.api.auth.service import AuthService
     from synthorg.api.state import AppState
+    from synthorg.core.auth.config import AuthConfig
+    from synthorg.core.auth.models import ApiKey
 
 logger = get_logger(__name__)
 

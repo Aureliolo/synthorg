@@ -15,9 +15,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.ticket_store import TicketLimitExceededError, WsTicketStore
-from synthorg.api.guards import HumanRole
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.core.auth.roles import HumanRole
 
 
 def _make_user(user_id: str = "user-1") -> AuthenticatedUser:

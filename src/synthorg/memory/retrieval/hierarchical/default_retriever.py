@@ -8,6 +8,7 @@ import builtins
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.memory.retrieval.models import (
     FinalRetrievalResult,
     RetrievalCandidate,
@@ -92,7 +93,7 @@ class DefaultHierarchicalRetriever:
         # Phase 1: Route
         routing = await self._supervisor.route(query)
         selected = list(
-            dict.fromkeys(
+            dedupe_preserving_order(
                 name for name in routing.selected_workers if name in self._workers
             )
         )

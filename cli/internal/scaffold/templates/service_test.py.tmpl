@@ -1,0 +1,41 @@
+"""Unit tests for :class:`synthorg.{{.Domain}}.service.{{.ClassName}}Service`."""
+
+import asyncio
+
+import pytest
+
+from synthorg.{{.Domain}}.service import {{.ClassName}}Service
+from tests._shared.fake_clock import FakeClock
+
+pytestmark = pytest.mark.unit
+
+
+class Test{{.ClassName}}ServiceLifecycle:
+    """Lifecycle invariants required of every SynthOrg async service."""
+
+    async def test_run_then_stop_completes(self) -> None:
+        clock = FakeClock()
+        service = {{.ClassName}}Service(clock=clock)
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(service.run())
+            await asyncio.sleep(0)
+            assert service.is_running is True
+            await service.stop()
+
+        assert service.is_running is False
+
+    async def test_double_run_raises(self) -> None:
+        service = {{.ClassName}}Service(clock=FakeClock())
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(service.run())
+            await asyncio.sleep(0)
+            with pytest.raises(RuntimeError, match="already running"):
+                await service.run()
+            await service.stop()
+
+    async def test_stop_before_run_is_idempotent(self) -> None:
+        service = {{.ClassName}}Service(clock=FakeClock())
+        await service.stop()
+        assert service.is_running is False

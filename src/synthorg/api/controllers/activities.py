@@ -14,7 +14,6 @@ from litestar import Controller, Request, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
-from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import has_write_role, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
@@ -22,6 +21,8 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.communication.delegation.models import DelegationRecord  # noqa: TC001
+from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -321,7 +322,7 @@ async def _build_timeline(
         delegation_records_received=received,
         currency=currency,
     )
-    return timeline, list(dict.fromkeys(degraded))
+    return timeline, list(dedupe_preserving_order(degraded))
 
 
 class ActivityController(Controller):
