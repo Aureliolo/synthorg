@@ -9,9 +9,9 @@ depend on engine-domain types instead of reaching into the persistence
 package.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -70,6 +70,36 @@ class ParentReference(BaseModel):
         default=None,
         description="Parent's semver when parent_type is subworkflow",
     )
+
+    @model_validator(mode="after")
+    def _validate_parent_version_consistency(self) -> Self:
+        """Reject inconsistent parent_type / parent_version combinations.
+
+        ``parent_version`` carries the parent subworkflow's own semver
+        and is meaningful only when the parent is itself a subworkflow.
+        Top-level workflow definitions are mutable and have no
+        immutable version coordinate, so ``parent_version`` MUST be
+        ``None`` for ``parent_type == "workflow_definition"`` and MUST
+        be set for ``parent_type == "subworkflow"``. Constructing the
+        DTO with one but not the other handed callers an ambiguous
+        shape the registry never produces.
+        """
+        is_subworkflow = self.parent_type == "subworkflow"
+        has_version = self.parent_version is not None
+
+        if is_subworkflow and not has_version:
+            msg = (
+                "parent_version is required when parent_type == 'subworkflow' "
+                "(parent subworkflows have an immutable semver coordinate)"
+            )
+            raise ValueError(msg)
+        if not is_subworkflow and has_version:
+            msg = (
+                "parent_version must be None when parent_type == "
+                "'workflow_definition' (top-level workflows have no semver)"
+            )
+            raise ValueError(msg)
+        return self
 
 
 __all__ = ["ParentReference", "SubworkflowSummary"]

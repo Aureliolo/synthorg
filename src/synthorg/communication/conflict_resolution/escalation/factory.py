@@ -226,10 +226,36 @@ def build_escalation_notify_subscriber(
 
     # Capability check via the structural Protocol marker rather than
     # an ``isinstance(store, PostgresEscalationRepository)`` reach into
-    # ``persistence/postgres/``. Stores that lack the
-    # ``supports_cross_instance_notify`` attribute fall through to the
-    # no-op subscriber automatically.
+    # ``persistence/postgres/``. A store can land here only when the
+    # config discriminator says ``backend == "postgres"``; reaching
+    # this branch with a store that lacks the capability marker means
+    # the operator hand-injected an unexpected store. ``mode == "on"``
+    # (not ``"auto"``) is explicit operator intent for cross-instance
+    # delivery, so silent degradation to a no-op subscriber would hide
+    # the misconfiguration -- raise instead. ``mode == "auto"`` is the
+    # opportunistic mode and may safely fall through to the no-op.
     if not isinstance(store, CrossInstanceNotifyCapableStore):
+        msg = (
+            "cross_instance_notify enabled but the configured store does not "
+            "implement CrossInstanceNotifyCapableStore (no "
+            "supports_cross_instance_notify attribute). Either inject a "
+            "Postgres-backed store or set cross_instance_notify='off'."
+        )
+        if mode == "on":
+            logger.warning(
+                API_APP_STARTUP,
+                component="escalation_factory",
+                note=msg,
+                config_backend=config.backend,
+                store_type=type(store).__name__,
+            )
+            raise ValueError(msg)
+        logger.debug(
+            API_APP_STARTUP,
+            component="escalation_factory",
+            note="store lacks cross-instance-notify capability; using no-op",
+            store_type=type(store).__name__,
+        )
         return NoopEscalationNotifySubscriber()
     return PostgresEscalationNotifySubscriber(
         store,

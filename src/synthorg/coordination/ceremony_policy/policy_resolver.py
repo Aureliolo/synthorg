@@ -11,9 +11,10 @@ audit flagged as a layer reach).
 """
 
 import asyncio
+import enum
 import json
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -30,6 +31,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_SERVICE_UNAVAILABLE,
 )
+from synthorg.settings.errors import SettingNotFoundError, SettingsError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -362,23 +364,36 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
         logger.warning(
             API_SERVICE_UNAVAILABLE,
             service="settings",
-            error=f"Malformed ceremony policy settings: {exc}",
+            note="malformed ceremony policy settings",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = "Malformed ceremony policy settings"
         raise ServiceUnavailableError(msg) from exc
 
 
-class _SettingsNotFound:
-    """Sentinel indicating no settings-based override was found."""
+class _SettingsLookup(enum.Enum):
+    """Disjoint outcomes for a department settings-override lookup.
+
+    The lookup function returns one of three logical states:
+    a parsed :class:`CeremonyPolicyConfig`, ``None`` (the operator
+    explicitly cleared the override), or :data:`_SETTINGS_NOT_FOUND`
+    (no settings-based override is configured at all). Encoding the
+    third state as an enum member instead of a custom sentinel class
+    keeps the discriminated union obvious to mypy and survives
+    pickling / repr round-trips cleanly.
+    """
+
+    NOT_FOUND = enum.auto()
 
 
-_SETTINGS_NOT_FOUND = _SettingsNotFound()
+_SETTINGS_NOT_FOUND: Final[_SettingsLookup] = _SettingsLookup.NOT_FOUND
 
 
-async def _lookup_dept_override_from_settings(
+async def _lookup_dept_override_from_settings(  # noqa: PLR0911
     app_state: AppState,
     department_name: NotBlankStr,
-) -> CeremonyPolicyConfig | None | _SettingsNotFound:
+) -> CeremonyPolicyConfig | None | _SettingsLookup:
     """Try to find a department override in the settings service."""
     if not app_state.has_settings_service:
         return _SETTINGS_NOT_FOUND
@@ -387,9 +402,17 @@ async def _lookup_dept_override_from_settings(
             "coordination",
             "dept_ceremony_policies",
         )
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
+    except SettingNotFoundError:
+        # The setting key is genuinely absent. Fall back to the
+        # config-resolver path silently; a missing override is the
+        # default state for departments that have not customised
+        # ceremony policy.
+        return _SETTINGS_NOT_FOUND
+    except SettingsError as exc:
+        # Domain-level settings failure (validation, encryption, etc.).
+        # Log + fall back so a corrupt single key does not kill the
+        # whole ceremony-policy read; the operator sees the structured
+        # event in the audit log.
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="ceremony_policy.fetch_dept",
@@ -406,7 +429,9 @@ async def _lookup_dept_override_from_settings(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="ceremony_policy.fetch_dept",
-            error=f"Corrupt dept_ceremony_policies value: {exc}",
+            note="corrupt dept_ceremony_policies value",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = "Malformed ceremony policies data"
         raise ServiceUnavailableError(msg) from exc
@@ -438,7 +463,10 @@ async def _fetch_department_policy(
         app_state,
         department_name,
     )
-    if not isinstance(result, _SettingsNotFound):
+    # ``_SettingsLookup.NOT_FOUND`` means "no settings-based override
+    # configured at all"; everything else (a parsed config or an
+    # explicit ``None`` clear) is the override the caller asked for.
+    if not isinstance(result, _SettingsLookup):
         return result
 
     if not app_state.has_config_resolver:

@@ -33,7 +33,6 @@ Usage:
 import argparse
 import ast
 import io
-import os
 import sys
 import tokenize
 from pathlib import Path
@@ -306,6 +305,3 @@ __all__ = [
     "_scan_backend",
     "main",
 ]
-
-
-_ = os  # keep ``os`` reachable for consistency with the boundary script

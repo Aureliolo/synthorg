@@ -133,10 +133,10 @@ class TestNotifySubscriberCapabilityCheck:
     subscriber; everything else falls through to the no-op.
     """
 
-    def test_in_memory_store_returns_noop_subscriber(self) -> None:
-        # InMemory has no capability marker; the factory must short-
-        # circuit to the no-op even when ``cross_instance_notify`` is
-        # forced on (which would normally drive the Postgres path).
+    def test_in_memory_store_with_auto_returns_noop_subscriber(self) -> None:
+        # InMemory has no capability marker; in ``auto`` mode the
+        # factory must short-circuit to the no-op rather than raise,
+        # so opportunistic notify configurations degrade gracefully.
         config = EscalationQueueConfig(
             backend="postgres",
             cross_instance_notify="auto",
@@ -144,6 +144,48 @@ class TestNotifySubscriberCapabilityCheck:
         )
         store = InMemoryEscalationStore()
         assert not isinstance(store, CrossInstanceNotifyCapableStore)
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, NoopEscalationNotifySubscriber)
+
+    def test_in_memory_store_with_on_raises(self) -> None:
+        # ``cross_instance_notify="on"`` is explicit operator intent;
+        # silent degradation to a no-op subscriber would hide the
+        # misconfiguration. The factory must raise ValueError so
+        # startup fails fast with an actionable error.
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="on",
+            notify_channel="escalations",
+        )
+        store = InMemoryEscalationStore()
+        registry = PendingFuturesRegistry()
+        with pytest.raises(
+            ValueError,
+            match="CrossInstanceNotifyCapableStore",
+        ):
+            build_escalation_notify_subscriber(
+                config,
+                store,
+                registry,
+                reconnect_delay_seconds=1.0,
+            )
+
+    def test_non_postgres_backend_with_auto_returns_noop(self) -> None:
+        # ``cross_instance_notify="auto"`` plus a non-Postgres backend
+        # must return the no-op subscriber without consulting the
+        # store's capability surface. Closes the boundary the original
+        # capability check was added to enforce.
+        config = EscalationQueueConfig(
+            backend="sqlite",
+            cross_instance_notify="auto",
+        )
+        store = InMemoryEscalationStore()
         registry = PendingFuturesRegistry()
         subscriber = build_escalation_notify_subscriber(
             config,

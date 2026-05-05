@@ -107,3 +107,28 @@ class TestParentReference:
                 node_id=NotBlankStr("node-7"),
                 parent_type="meeting",  # type: ignore[arg-type]
             )
+
+    def test_workflow_definition_parent_with_version_is_rejected(self) -> None:
+        # Top-level workflow definitions have no immutable semver
+        # coordinate; carrying parent_version alongside
+        # parent_type="workflow_definition" was the ambiguous shape
+        # the cross-field validator was added to reject.
+        with pytest.raises(ValidationError, match="parent_version"):
+            ParentReference(
+                parent_id=NotBlankStr("wf-parent"),
+                parent_name=NotBlankStr("Parent"),
+                pinned_version=NotBlankStr("1.0.0"),
+                node_id=NotBlankStr("node-1"),
+                parent_type="workflow_definition",
+                parent_version=NotBlankStr("0.5.0"),
+            )
+
+    def test_subworkflow_parent_without_version_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="parent_version"):
+            ParentReference(
+                parent_id=NotBlankStr("sub-parent"),
+                parent_name=NotBlankStr("Parent Sub"),
+                pinned_version=NotBlankStr("1.0.0"),
+                node_id=NotBlankStr("node-1"),
+                parent_type="subworkflow",
+            )

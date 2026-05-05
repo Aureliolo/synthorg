@@ -14,7 +14,7 @@ Cover the three behaviours that matter:
    suppresses, but only with a non-empty justification.
 
 Plus an integration test that runs ``_scan_all`` against the real
-codebase to lock in the cleaned tree (Phase 6) and prevent any future
+codebase to lock in the cleaned tree and prevent any future
 regression.
 
 Tests load the script via ``importlib`` (mirroring
@@ -276,7 +276,7 @@ class TestPerLineOptOut:
 
 
 class TestLiveCodebase:
-    """Anchor test: the real tree must pass after Phase 6."""
+    """Anchor test: the real tree must pass with zero violations."""
 
     def test_real_codebase_is_clean(self) -> None:
         # ``_scan_all`` prints to stdout; we only care about the count.

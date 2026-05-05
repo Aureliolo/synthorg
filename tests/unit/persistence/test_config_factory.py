@@ -116,6 +116,41 @@ class TestBuildPostgresPersistenceConfigFromUrl:
         with pytest.raises(ValueError, match=reason_substring):
             build_postgres_persistence_config_from_url(bad_url)
 
+    def test_ipv6_literal_host_round_trips(self) -> None:
+        # urlparse strips the brackets from the hostname; the helper
+        # must preserve the literal host string for psycopg.
+        cfg = build_postgres_persistence_config_from_url(
+            "postgresql://u:p@[::1]:5432/db",
+        )
+        assert cfg.postgres is not None
+        assert cfg.postgres.host == "::1"
+        assert cfg.postgres.port == 5432
+
+    def test_url_encoded_at_in_password_does_not_split_userinfo(self) -> None:
+        # ``%40`` is URL-encoded ``@``; if the parser were splitting on
+        # the literal ``@`` instead of the userinfo segment, the
+        # password would silently truncate at ``p``. Lock the
+        # round-trip explicitly.
+        cfg = build_postgres_persistence_config_from_url(
+            "postgresql://u:p%40@h/db",
+        )
+        assert cfg.postgres is not None
+        assert cfg.postgres.username == "u"
+        assert cfg.postgres.password.get_secret_value() == "p@"
+
+    def test_uppercase_scheme_is_rejected(self) -> None:
+        # urlparse lowercases the scheme by default, so the strict
+        # ``in {"postgres", "postgresql"}`` check accepts ``POSTGRESQL``
+        # silently. That is fine for now (RFC 3986 declares the scheme
+        # case-insensitive); locking the behaviour here so a future
+        # tightening of the allowed-scheme set surfaces in this test
+        # rather than in production.
+        cfg = build_postgres_persistence_config_from_url(
+            "POSTGRESQL://u:p@h/db",
+        )
+        assert cfg.postgres is not None
+        assert cfg.postgres.host == "h"
+
 
 class TestBuildFilesystemArtifactStorage:
     def test_returns_protocol_implementation(self, tmp_path: Path) -> None:

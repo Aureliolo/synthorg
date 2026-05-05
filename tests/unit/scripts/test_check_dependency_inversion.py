@@ -10,7 +10,7 @@ Cover:
 4. ``persistence/`` itself is exempt (the gate only scans the three
    high-level prefixes).
 5. Live-codebase anchor: ``_scan_all`` against the real tree returns
-   zero violations after Phase 1-6.
+   zero violations.
 
 The synthetic-tree tests deliberately do NOT initialise a git repo;
 the gate's ``_git_tracked_python_files`` helper falls back to a
@@ -194,7 +194,7 @@ class TestPerLineOptOut:
 
 
 class TestLiveCodebase:
-    """Anchor test: the real tree must pass after Phase 1-6."""
+    """Anchor test: the real tree must pass with zero violations."""
 
     def test_real_codebase_is_clean(self) -> None:
         violations = _MODULE._scan_all(

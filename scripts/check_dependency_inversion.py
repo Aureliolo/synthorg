@@ -157,11 +157,21 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
 
 
 def _resolve_root(root: Path, project_root: Path) -> Path | None:
-    """Resolve *root* to an absolute path strictly under *project_root*."""
+    """Resolve *root* to an absolute path strictly under *project_root*.
+
+    Uses ``strict=True`` so symlinks pointing outside the project root
+    are rejected at resolve time rather than slipping past the
+    ``commonpath`` containment check (a symlink target is followed
+    silently with ``strict=False``). The ``commonpath`` check stays as
+    defence-in-depth in case ``strict=True`` is ever relaxed.
+    """
     candidate = root if root.is_absolute() else project_root / root
     try:
-        resolved = candidate.resolve(strict=False)
-    except OSError:
+        resolved = candidate.resolve(strict=True)
+    except OSError, RuntimeError:
+        # ``RuntimeError`` is what ``Path.resolve(strict=True)`` raises
+        # on a symlink loop; ``OSError`` covers missing paths and
+        # permission errors.
         return None
     project_root_str = os.fspath(project_root.resolve(strict=False))
     resolved_str = os.fspath(resolved)
