@@ -962,15 +962,11 @@ class ConfigResolver:
                 ("fine_tune_chunk_size", "int"),
             ),
         )
-        raw_table = await self.get_str("memory", "fine_tune_vram_batch_table")
-        try:
-            parsed = json.loads(raw_table)
-        except json.JSONDecodeError as exc:
-            msg = (
-                "memory.fine_tune_vram_batch_table is not valid JSON; "
-                f"got {raw_table!r}"
-            )
-            raise ValueError(msg) from exc
+        # ``get_json`` parses the value and emits the structured
+        # ``SETTINGS_VALIDATION_FAILED`` warning on JSON-decode errors,
+        # keeping this setting on the same observability path as every
+        # other JSON-typed setting in the resolver.
+        parsed = await self.get_json("memory", "fine_tune_vram_batch_table")
         if not isinstance(parsed, list) or any(
             not isinstance(row, list | tuple) or len(row) != 2  # noqa: PLR2004 -- pair shape
             for row in parsed
