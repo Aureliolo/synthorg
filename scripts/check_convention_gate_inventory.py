@@ -25,7 +25,7 @@ import dataclasses
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import yaml
 
@@ -67,7 +67,7 @@ class MandatoryEntry:
     file: str
     line: int
     header: str
-    kind: str  # "header" or "inline"
+    kind: Literal["header", "inline"]
 
     @property
     def rule_id(self) -> str:
@@ -79,8 +79,11 @@ class MandatoryEntry:
 class InventoryEntry:
     """One registered rule from ``scripts/convention_gate_map.yaml``.
 
-    Exactly one of ``gate`` / ``exempt_reason`` is set. The schema
-    loader enforces that invariant before constructing the dataclass.
+    Exactly one of ``gate`` / ``exempt_reason`` is set. The XOR
+    invariant is enforced both at YAML load time (via
+    ``_validate_gate_or_exempt``) and at construction (via
+    ``__post_init__``) so direct instantiation outside the loader
+    cannot produce an invalid instance.
     """
 
     rule_id: str
@@ -88,6 +91,15 @@ class InventoryEntry:
     header: str
     gate: str | None
     exempt_reason: str | None
+
+    def __post_init__(self) -> None:
+        """Enforce the XOR invariant: exactly one of gate or exempt_reason."""
+        if (self.gate is None) == (self.exempt_reason is None):
+            msg = (
+                f"InventoryEntry {self.rule_id!r} must have exactly one of"
+                " gate or exempt_reason"
+            )
+            raise InventorySchemaError(msg)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -117,9 +129,19 @@ def slugify(text: str) -> str:
 
 
 def make_id(file: str, header: str) -> str:
-    """Build the stable ``<file-slug>::<header-slug>`` rule id."""
+    """Build the stable ``<file-slug>::<header-slug>`` rule id.
+
+    Raises:
+        InventorySchemaError: If either ``file`` or ``header`` slugifies
+            to the empty string. A degenerate id like ``"::"`` would
+            silently mismatch every inventory entry; failing loud lets
+            callers surface the underlying input bug instead.
+    """
     file_slug = slugify(file.replace("/", " "))
     header_slug = slugify(header)
+    if not file_slug or not header_slug:
+        msg = f"Cannot build rule id from empty slug: file={file!r} header={header!r}"
+        raise InventorySchemaError(msg)
     return f"{file_slug}::{header_slug}"
 
 
@@ -174,7 +196,19 @@ def collect_doc_files(repo_root: Path) -> list[Path]:
 
 
 def _relative_posix(path: Path, repo_root: Path) -> str:
-    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    """Return ``path`` relative to ``repo_root`` as a POSIX string.
+
+    Raises:
+        InventorySchemaError: If ``path`` resolves outside ``repo_root``
+            (e.g. via a symlink that escapes the repo). Surfacing this
+            as the typed schema error lets ``main`` exit cleanly with
+            code 2 instead of crashing on an uncaught ``ValueError``.
+    """
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError as exc:
+        msg = f"Doc file path escapes repo root: {path}"
+        raise InventorySchemaError(msg) from exc
 
 
 def scan_repo(repo_root: Path) -> list[MandatoryEntry]:
@@ -184,11 +218,29 @@ def scan_repo(repo_root: Path) -> list[MandatoryEntry]:
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
-            msg = f"Could not read {path}: {type(exc).__name__}: {exc.strerror or exc}"
+            msg = f"Could not read {path}: {type(exc).__name__}: {exc!s}"
             raise InventorySchemaError(msg) from exc
         rel = _relative_posix(path, repo_root)
         entries.extend(extract_mandatory_entries(text, rel))
     return entries
+
+
+def _yaml_error_summary(exc: yaml.YAMLError) -> str:
+    """Build a one-line summary of a YAML parse error with position info.
+
+    PyYAML's ``MarkedYAMLError`` subclasses (Scanner / Parser / Constructor
+    errors) carry ``problem``, ``problem_mark``, and ``context`` attributes
+    that point at the syntax error's location. The default ``str(exc)``
+    is multi-line and ugly; this helper produces a single line suitable
+    for the gate's stderr output.
+    """
+    problem = getattr(exc, "problem", None)
+    mark = getattr(exc, "problem_mark", None)
+    if problem and mark is not None:
+        line = mark.line + 1
+        column = mark.column + 1
+        return f"{type(exc).__name__} at line {line}, column {column}: {problem}"
+    return f"{type(exc).__name__}: {exc!s}"
 
 
 def load_inventory(yaml_path: Path) -> tuple[InventoryEntry, ...]:
@@ -207,7 +259,7 @@ def load_inventory(yaml_path: Path) -> tuple[InventoryEntry, ...]:
     try:
         raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
-        msg = f"Inventory YAML parse error: {type(exc).__name__}"
+        msg = f"Inventory YAML parse error: {_yaml_error_summary(exc)}"
         raise InventorySchemaError(msg) from exc
     if not isinstance(raw, dict) or "mandatory_rules" not in raw:
         msg = "Inventory missing top-level 'mandatory_rules' list"
@@ -231,7 +283,23 @@ def load_inventory(yaml_path: Path) -> tuple[InventoryEntry, ...]:
 def _require_non_empty_str(value: object, label: str) -> str:
     """Return ``value`` if it's a non-empty string, otherwise raise."""
     if not isinstance(value, str) or not value.strip():
-        msg = f"{label} must be a non-empty string"
+        msg = f"{label} must be a non-empty string (got {type(value).__name__})"
+        raise InventorySchemaError(msg)
+    return value
+
+
+def _require_safe_relative_path(value: str, label: str) -> str:
+    """Reject absolute paths and parent-directory escapes in YAML gate refs.
+
+    Defence-in-depth for committed YAML: a ``gate`` entry pointing at an
+    absolute path or one containing ``..`` segments could match a file
+    outside the repo root and silently satisfy the existence check.
+    """
+    if Path(value).is_absolute():
+        msg = f"{label} must be a relative path (got absolute: {value!r})"
+        raise InventorySchemaError(msg)
+    if any(part == ".." for part in Path(value).parts):
+        msg = f"{label} must not contain '..' segments (got: {value!r})"
         raise InventorySchemaError(msg)
     return value
 
@@ -246,29 +314,23 @@ def _validate_gate_or_exempt(
     ``_validate_inventory_item`` keeps each function under the
     cyclomatic-complexity ceiling (C901, max 10).
     """
+    entry_label = f"mandatory_rules[{index}] ({rule_id!r})"
     has_gate = "gate" in item
     has_exempt = "exempt" in item
     if has_gate == has_exempt:
-        msg = (
-            f"mandatory_rules[{index}] ({rule_id!r}) must have exactly one of"
-            " 'gate' or 'exempt'"
-        )
+        msg = f"{entry_label} must have exactly one of 'gate' or 'exempt'"
         raise InventorySchemaError(msg)
     if has_gate:
-        gate_value = _require_non_empty_str(
-            item["gate"], f"mandatory_rules[{index}] ({rule_id!r}).gate"
-        )
+        gate_label = f"{entry_label}.gate"
+        gate_value = _require_non_empty_str(item["gate"], gate_label)
+        gate_value = _require_safe_relative_path(gate_value, gate_label)
         return gate_value, None
     exempt_raw = item["exempt"]
     if not isinstance(exempt_raw, dict) or "reason" not in exempt_raw:
-        msg = (
-            f"mandatory_rules[{index}] ({rule_id!r}).exempt must be a mapping"
-            " with a 'reason' field"
-        )
+        msg = f"{entry_label}.exempt must be a mapping with a 'reason' field"
         raise InventorySchemaError(msg)
     reason = _require_non_empty_str(
-        exempt_raw["reason"],
-        f"mandatory_rules[{index}] ({rule_id!r}).exempt.reason",
+        exempt_raw["reason"], f"{entry_label}.exempt.reason"
     )
     return None, reason
 
@@ -294,6 +356,64 @@ def _validate_inventory_item(item: object, index: int) -> InventoryEntry:
     )
 
 
+def _check_extracted_against_inventory(
+    extracted: Iterable[MandatoryEntry],
+    inventory_by_id: dict[str, InventoryEntry],
+    repo_root: Path,
+) -> tuple[list[Violation], set[str]]:
+    """Per-entry check: registration coverage + gate-path liveness.
+
+    Returns the violations list and the set of extracted rule ids
+    (used by the caller to detect stale inventory entries).
+    """
+    violations: list[Violation] = []
+    extracted_ids: set[str] = set()
+    for entry in extracted:
+        extracted_ids.add(entry.rule_id)
+        registered = inventory_by_id.get(entry.rule_id)
+        if registered is None:
+            violations.append(
+                Violation(
+                    location=f"{entry.file}:{entry.line}",
+                    message=(
+                        "MANDATORY rule not registered in"
+                        f" {_INVENTORY_RELATIVE.as_posix()}: id={entry.rule_id!r}"
+                        f" header={entry.header!r}"
+                    ),
+                )
+            )
+            continue
+        if registered.gate is not None and not (repo_root / registered.gate).is_file():
+            violations.append(
+                Violation(
+                    location=f"{entry.file}:{entry.line}",
+                    message=(
+                        f"gate script missing on disk: {registered.gate}"
+                        f" (rule id={entry.rule_id!r})"
+                    ),
+                )
+            )
+    return violations, extracted_ids
+
+
+def _check_stale_inventory(
+    inventory_by_id: dict[str, InventoryEntry],
+    extracted_ids: set[str],
+) -> list[Violation]:
+    """Per-inventory check: every YAML rule must match an extracted entry."""
+    return [
+        Violation(
+            location=_INVENTORY_RELATIVE.as_posix(),
+            message=(
+                f"stale entry: id={inventory_entry.rule_id!r} has no matching"
+                " MANDATORY paragraph in the canonical doc set"
+            ),
+        )
+        for inventory_entry in inventory_by_id.values()
+        if inventory_entry.rule_id not in extracted_ids
+    ]
+
+
 def reconcile(
     extracted: Iterable[MandatoryEntry],
     inventory: Iterable[InventoryEntry],
@@ -312,58 +432,34 @@ def reconcile(
     inventory_by_id: dict[str, InventoryEntry] = {
         entry.rule_id: entry for entry in inventory
     }
-    extracted_ids: set[str] = set()
-    violations: list[Violation] = []
-    for entry in extracted:
-        extracted_ids.add(entry.rule_id)
-        registered = inventory_by_id.get(entry.rule_id)
-        if registered is None:
-            violations.append(
-                Violation(
-                    location=f"{entry.file}:{entry.line}",
-                    message=(
-                        "MANDATORY rule not registered in"
-                        f" {_INVENTORY_RELATIVE.as_posix()}: id={entry.rule_id!r}"
-                        f" header={entry.header!r}"
-                    ),
-                )
-            )
-            continue
-        if registered.gate is not None:
-            gate_path = repo_root / registered.gate
-            if not gate_path.is_file():
-                violations.append(
-                    Violation(
-                        location=f"{entry.file}:{entry.line}",
-                        message=(
-                            f"gate script missing on disk: {registered.gate}"
-                            f" (rule id={entry.rule_id!r})"
-                        ),
-                    )
-                )
-    violations.extend(
-        Violation(
-            location=_INVENTORY_RELATIVE.as_posix(),
-            message=(
-                f"stale entry: id={inventory_entry.rule_id!r} has no matching"
-                " MANDATORY paragraph in the canonical doc set"
-            ),
-        )
-        for inventory_entry in inventory_by_id.values()
-        if inventory_entry.rule_id not in extracted_ids
+    violations, extracted_ids = _check_extracted_against_inventory(
+        extracted, inventory_by_id, repo_root
     )
+    violations.extend(_check_stale_inventory(inventory_by_id, extracted_ids))
     return violations
 
 
-def check(repo_root: Path) -> list[Violation]:
+def check(repo_root: Path, *, verbose: bool = False) -> list[Violation]:
     """Run the full gate against ``repo_root`` and return all violations.
 
     Schema errors propagate as ``InventorySchemaError`` and should be
     handled by ``main`` (exit code 2). Reconciliation violations
     return as a list (exit code 1 if non-empty).
+
+    Args:
+        repo_root: Resolved path to the repo root.
+        verbose: If True, print extracted/inventory counts to stderr so a
+            "passes silently due to broken glob" failure is distinguishable
+            from a correctly-empty repo.
     """
     extracted = scan_repo(repo_root)
     inventory = load_inventory(repo_root / _INVENTORY_RELATIVE)
+    if verbose:
+        print(
+            f"convention-gate: extracted {len(extracted)} MANDATORY entries,"
+            f" inventory has {len(inventory)} registered rules",
+            file=sys.stderr,
+        )
     return reconcile(extracted, inventory, repo_root)
 
 
@@ -389,17 +485,25 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Override the repo root (default: scripts/.. relative to this file)",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print extracted/inventory counts to stderr (debugging aid)",
+    )
     args = parser.parse_args(argv)
     try:
         repo_root = _resolve_repo_root(args.repo_root)
-    except (FileNotFoundError, OSError) as exc:
+    except FileNotFoundError as exc:
+        print(f"Error: --repo-root does not exist: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
         print(
-            f"Error: --repo-root does not exist: {exc}",
+            f"Error: cannot access --repo-root: {type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
         return 2
     try:
-        violations = check(repo_root)
+        violations = check(repo_root, verbose=args.verbose)
     except InventorySchemaError as exc:
         print(f"Inventory schema error: {exc}", file=sys.stderr)
         return 2

@@ -3,8 +3,9 @@
 # Canonical files: CLAUDE.md, web/CLAUDE.md, cli/CLAUDE.md,
 # docs/reference/*.md, docs/design/*.md.
 #
-# Per rule: ONE of `gate` (relative path to enforcement file) or
-# `exempt: { reason }` (non-empty justification). Exempt entries are
+# Per rule: ONE of `gate` (relative path to enforcement file -- must
+# stay inside the repo, no '..' segments, no absolute paths) or
+# `exempt: { reason: <non-empty justification> }`. Exempt entries are
 # technical debt; the convention-rollout policy aims to drive the
 # exempt list toward zero by promoting each into a real script.
 #

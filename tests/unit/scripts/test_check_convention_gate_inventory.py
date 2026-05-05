@@ -53,6 +53,14 @@ class _CheckConventionGateModule(Protocol):
 
 
 def _load_module() -> _CheckConventionGateModule:
+    """Load the gate script as a Python module via importlib.
+
+    Direct module import (rather than subprocess invocation) lets the
+    tests drive private helpers and synthesise repos in ``tmp_path``
+    without touching the real working tree. The ``cast`` to the local
+    Protocol gives mypy strict the surface it needs without a sea of
+    ``# type: ignore`` markers at every call site.
+    """
     repo_root = Path(__file__).resolve().parents[3]
     script_path = repo_root / "scripts" / "check_convention_gate_inventory.py"
     spec = importlib.util.spec_from_file_location(
@@ -160,10 +168,9 @@ def test_load_inventory_happy_path(fake_repo: Path) -> None:
     assert entries[1].exempt_reason  # type: ignore[attr-defined]
 
 
-def test_load_inventory_rejects_empty_reason(fake_repo: Path) -> None:
-    inventory = fake_repo / "scripts" / "convention_gate_map.yaml"
-    _write(
-        inventory,
+_SCHEMA_REJECTION_CASES: tuple[tuple[str, str], ...] = (
+    (
+        "empty-reason",
         """
         mandatory_rules:
           - id: claude-md::planning
@@ -172,15 +179,9 @@ def test_load_inventory_rejects_empty_reason(fake_repo: Path) -> None:
             exempt:
               reason: ""
         """,
-    )
-    with pytest.raises(_MODULE.InventorySchemaError):
-        _MODULE.load_inventory(inventory)
-
-
-def test_load_inventory_rejects_duplicate_ids(fake_repo: Path) -> None:
-    inventory = fake_repo / "scripts" / "convention_gate_map.yaml"
-    _write(
-        inventory,
+    ),
+    (
+        "duplicate-ids",
         """
         mandatory_rules:
           - id: claude-md::persistence-boundary
@@ -193,15 +194,9 @@ def test_load_inventory_rejects_duplicate_ids(fake_repo: Path) -> None:
             exempt:
               reason: oops second copy
         """,
-    )
-    with pytest.raises(_MODULE.InventorySchemaError):
-        _MODULE.load_inventory(inventory)
-
-
-def test_load_inventory_rejects_both_gate_and_exempt(fake_repo: Path) -> None:
-    inventory = fake_repo / "scripts" / "convention_gate_map.yaml"
-    _write(
-        inventory,
+    ),
+    (
+        "both-gate-and-exempt",
         """
         mandatory_rules:
           - id: claude-md::foo
@@ -211,28 +206,43 @@ def test_load_inventory_rejects_both_gate_and_exempt(fake_repo: Path) -> None:
             exempt:
               reason: cannot have both
         """,
-    )
-    with pytest.raises(_MODULE.InventorySchemaError):
-        _MODULE.load_inventory(inventory)
-
-
-def test_load_inventory_rejects_neither_gate_nor_exempt(fake_repo: Path) -> None:
-    inventory = fake_repo / "scripts" / "convention_gate_map.yaml"
-    _write(
-        inventory,
+    ),
+    (
+        "neither-gate-nor-exempt",
         """
         mandatory_rules:
           - id: claude-md::foo
             file: CLAUDE.md
             header: Foo
         """,
-    )
+    ),
+    (
+        "mandatory-rules-null",
+        "mandatory_rules: null\n",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "yaml_body",
+    [case[1] for case in _SCHEMA_REJECTION_CASES],
+    ids=[case[0] for case in _SCHEMA_REJECTION_CASES],
+)
+def test_load_inventory_rejects_invalid_schema(fake_repo: Path, yaml_body: str) -> None:
+    inventory = fake_repo / "scripts" / "convention_gate_map.yaml"
+    _write(inventory, yaml_body)
     with pytest.raises(_MODULE.InventorySchemaError):
         _MODULE.load_inventory(inventory)
 
 
 def _seed_one_rule(repo: Path, *, registered: bool) -> None:
-    """Write CLAUDE.md with one MANDATORY paragraph; YAML matches iff ``registered``."""
+    """Seed a fake repo with one MANDATORY paragraph and matching YAML.
+
+    When ``registered=True``, also creates the gate script's path on
+    disk so the gate's existence check passes; the schema validator
+    requires every ``gate:`` entry to resolve to a real file. The
+    rule id is always ``claude-md::persistence-boundary``.
+    """
     _write(
         repo / "CLAUDE.md",
         """
@@ -415,3 +425,77 @@ def test_real_repo_passes() -> None:
     violations = _MODULE.check(repo_root)
     rendered = "\n".join(v.render() for v in violations)  # type: ignore[attr-defined]
     assert violations == [], f"Real-tree violations:\n{rendered}"
+
+
+def test_scan_repo_raises_schema_error_on_unreadable_file(
+    fake_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OSError on a doc file read surfaces as InventorySchemaError, not a crash."""
+    _write(fake_repo / "CLAUDE.md", "## Foo (MANDATORY)\nbody\n")
+
+    real_read_text = Path.read_text
+
+    def _broken_read(self: Path, *args: object, **kwargs: object) -> str:
+        del args, kwargs
+        if self.name == "CLAUDE.md":
+            msg = "synthetic permission error"
+            raise PermissionError(msg)
+        return real_read_text(self, encoding="utf-8")
+
+    monkeypatch.setattr(Path, "read_text", _broken_read)
+    with pytest.raises(_MODULE.InventorySchemaError):
+        _MODULE.scan_repo(fake_repo)
+
+
+def test_extract_two_inline_bold_on_same_line() -> None:
+    """A line with two ``**Foo (MANDATORY)**`` matches must yield both entries."""
+    text = "**Foo (MANDATORY)** and also **Bar (MANDATORY)** in one sentence."
+    entries = _MODULE.extract_mandatory_entries(text, "web/CLAUDE.md")
+    assert len(entries) == 2
+    headers = sorted(e.header for e in entries)  # type: ignore[attr-defined]
+    assert headers == ["Bar", "Foo"]
+
+
+def test_extract_header_at_line_one() -> None:
+    """A MANDATORY header on line 1 (no leading newline) extracts at line=1."""
+    text = "## Persistence Boundary (MANDATORY)\nBody.\n"
+    entries = _MODULE.extract_mandatory_entries(text, "CLAUDE.md")
+    assert len(entries) == 1
+    assert entries[0].line == 1  # type: ignore[attr-defined]
+
+
+def test_check_with_empty_doc_set_only_surfaces_stale(fake_repo: Path) -> None:
+    """If no canonical doc files exist but YAML lists rules, every rule is stale."""
+    _write(fake_repo / "scripts" / "check_phantom.py", "# stub\n")
+    _write(
+        fake_repo / "scripts" / "convention_gate_map.yaml",
+        """
+        mandatory_rules:
+          - id: claude-md::phantom
+            file: CLAUDE.md
+            header: Phantom
+            gate: scripts/check_phantom.py
+        """,
+    )
+    violations = _MODULE.check(fake_repo)
+    assert len(violations) == 1
+    assert "stale entry" in violations[0].render()  # type: ignore[attr-defined]
+
+
+def test_main_exit_two_on_bad_repo_root(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Passing --repo-root to a path that does not exist exits 2 with a clear msg."""
+    missing = tmp_path / "nonexistent-subdir"
+    assert _MODULE.main(["--repo-root", str(missing)]) == 2
+    err = capsys.readouterr().err
+    assert "does not exist" in err
+
+
+def test_extract_handles_crlf_line_endings() -> None:
+    """Markdown files with CRLF line endings (Windows default) extract cleanly."""
+    text = "## Persistence Boundary (MANDATORY)\r\nBody.\r\n"
+    entries = _MODULE.extract_mandatory_entries(text, "CLAUDE.md")
+    assert len(entries) == 1
+    # Header text must not carry a trailing \r left over from the split.
+    assert entries[0].header == "Persistence Boundary"  # type: ignore[attr-defined]
