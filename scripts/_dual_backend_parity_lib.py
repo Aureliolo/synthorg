@@ -155,10 +155,18 @@ class _TestViolation:
 
 @dataclass(frozen=True)
 class _CoverageViolation:
-    """Repository whose ``backend.<accessor>`` is never used in tests."""
+    """Repository whose ``backend.<accessor>`` is never used in tests.
+
+    *accessors* lists every accessor on ``PersistenceBackend`` whose
+    return type resolves to ``repo_class``.  Generic protocols
+    (``VersionRepository[T]``) bind to N attributes -- ``workflow_versions``,
+    ``identity_versions``, etc. -- and any one of them counts as
+    coverage.  Storing the full tuple keeps the violation message
+    accurate when none of the accessors are exercised.
+    """
 
     repo_class: str
-    accessor: str
+    accessors: tuple[str, ...]
 
     def baseline_key(self) -> str:
         """Return ``missing-test-coverage:<repo_class>``."""
@@ -166,11 +174,15 @@ class _CoverageViolation:
 
     def message(self) -> str:
         """Return the stderr violation line."""
+        if len(self.accessors) == 1:
+            target = f"backend.{self.accessors[0]}"
+        else:
+            target = "any of " + ", ".join(f"backend.{a}" for a in self.accessors)
         return (
             f"missing-test-coverage: no test under tests/conformance/persistence/"
-            f" exercises backend.{self.accessor} (returns {self.repo_class}). "
+            f" exercises {target} (returns {self.repo_class}). "
             "Add a Test class that consumes the parametrised `backend` fixture "
-            "and calls into this accessor at least once."
+            "and calls into one of these accessors at least once."
         )
 
 
@@ -301,7 +313,8 @@ def _check_signature(
 ) -> list[_TestViolation]:
     """Return signature-pass violations for one test function."""
     violations: list[_TestViolation] = []
-    args = [a for a in func.args.args if a.arg not in {"self", "cls"}]
+    positional = [*func.args.posonlyargs, *func.args.args]
+    args = [a for a in positional if a.arg not in {"self", "cls"}]
     args.extend(func.args.kwonlyargs)
     if func.args.vararg is not None:
         args.append(func.args.vararg)
@@ -356,36 +369,41 @@ def _check_body_backend_name_conditional(
 ) -> list[_TestViolation]:
     """Flag ``backend.backend_name == "X"`` style comparisons in *func*'s body.
 
-    Per issue #1751: this conditional pattern silently turns a test
-    into a one-arm skip (only sqlite OR only postgres exercises the
-    code path), which the parametrisation seam is designed to prevent.
-    Legitimate exceptions (e.g. backend-specific feature tests) carry
-    the suppression marker on the test signature.
+    Catches both the ``ast.Compare`` form (``if backend.backend_name == "x"``)
+    and the ``ast.Match`` form (``match backend.backend_name:``), since both
+    silently turn a test into a one-arm skip (only sqlite OR only postgres
+    exercises the code path), which the parametrisation seam is designed to
+    prevent. Legitimate exceptions (e.g. backend-specific feature tests)
+    carry the suppression marker on the test signature.
     """
     violations: list[_TestViolation] = []
+    detail = (
+        "test body branches on `backend.backend_name`, which silently turns "
+        "dual-backend conformance into a one-arm test; either remove the "
+        "conditional, split the test into two, or add the suppression marker "
+        "on the signature with a rationale"
+    )
     for stmt in func.body:
         for node in ast.walk(stmt):
-            if not isinstance(node, ast.Compare):
+            if isinstance(node, ast.Compare):
+                operands = [node.left, *node.comparators]
+                if not any(_is_backend_name_attr(op) for op in operands):
+                    continue
+            elif isinstance(node, ast.Match):
+                if not _is_backend_name_attr(node.subject):
+                    continue
+            else:
                 continue
-            operands = [node.left, *node.comparators]
-            if any(_is_backend_name_attr(op) for op in operands):
-                violations.append(
-                    _TestViolation(
-                        kind="backend-name-conditional",
-                        rel_path=rel_path,
-                        lineno=node.lineno,
-                        func_name=func.name,
-                        detail=(
-                            "test body compares `backend.backend_name` against "
-                            "a literal, which silently turns dual-backend "
-                            "conformance into a one-arm test; either remove "
-                            "the conditional, split the test into two, or add "
-                            "the suppression marker on the signature with a "
-                            "rationale"
-                        ),
-                    )
+            violations.append(
+                _TestViolation(
+                    kind="backend-name-conditional",
+                    rel_path=rel_path,
+                    lineno=node.lineno,
+                    func_name=func.name,
+                    detail=detail,
                 )
-                break
+            )
+            break
     return violations
 
 
@@ -478,8 +496,11 @@ def _class_has_protocol_base(cls: ast.ClassDef) -> bool:
     return False
 
 
+_PROTOCOL_DIR_SKIP: Final[frozenset[str]] = frozenset({"__init__.py", "conftest.py"})
+
+
 def _discover_repo_classes(protocol_dir: Path) -> set[str]:
-    """Walk ``*_protocol.py`` files in *protocol_dir*; return repo class names.
+    """Walk ``*.py`` files in *protocol_dir*; return repo class names.
 
     Two collection paths:
 
@@ -489,12 +510,22 @@ def _discover_repo_classes(protocol_dir: Path) -> set[str]:
       ``as Y``) where the name matches the repo regex; covers
       ``escalation_protocol.py`` which re-exports from another subsystem.
 
+    Scans every top-level ``.py`` (skipping ``__init__.py`` /
+    ``conftest.py``) so protocols defined in ``*_repo.py`` /
+    ``*_repository.py`` (e.g. ``version_repo.py``,
+    ``preset_repository.py``, ``training_repos.py``) are covered the
+    same way as ``*_protocol.py`` files.  ``Path.glob`` is non-recursive,
+    so concrete ``Sqlite*`` / ``Postgres*`` classes living under the
+    backend subdirectories never enter this scan.
+
     Filters strictly by name regex (:data:`_REPO_NAME_RE`).  Read /
     parse failures raise ``ValueError`` -- a corrupt protocol file
     that gets silently skipped would let the gate miss a coverage gap.
     """
     found: set[str] = set()
-    for path in sorted(protocol_dir.glob("*_protocol.py")):
+    for path in sorted(protocol_dir.glob("*.py")):
+        if path.name in _PROTOCOL_DIR_SKIP:
+            continue
         rel = f"src/synthorg/persistence/{path.name}"
         _, tree = _read_and_parse(path, rel)
         for node in tree.body:
@@ -540,8 +571,8 @@ def _extract_return_type_name(  # noqa: PLR0911 -- one branch per AST node shape
     return None
 
 
-def _discover_backend_accessors(backend_protocol_path: Path) -> dict[str, str]:
-    """Return ``{repo_class_name: accessor_name}`` from ``PersistenceBackend``.
+def _discover_backend_accessors(backend_protocol_path: Path) -> dict[str, list[str]]:
+    """Return ``{repo_class_name: [accessor_name, ...]}`` from ``PersistenceBackend``.
 
     Reads the ``PersistenceBackend`` class from
     ``src/synthorg/persistence/protocol.py``.  Each method whose return
@@ -550,14 +581,17 @@ def _discover_backend_accessors(backend_protocol_path: Path) -> dict[str, str]:
     - ``@property`` methods (``users -> UserRepository``).
     - Plain methods (``build_escalations -> EscalationQueueRepository``).
 
-    Top-of-class wins on duplicate return types.  Read / parse failure
-    raises ``ValueError`` -- the protocol file is the central registry;
-    silently returning an empty map would disable the entire coverage
-    pass.
+    Generic protocols (``VersionRepository[T]``) typically bind to
+    several accessors (``workflow_versions``, ``identity_versions``,
+    ``role_versions``, ...); each accessor is appended in declaration
+    order so the coverage pass treats any one of them as evidence the
+    protocol is exercised.  Read / parse failure raises ``ValueError``
+    -- the protocol file is the central registry; silently returning an
+    empty map would disable the entire coverage pass.
     """
     rel = "src/synthorg/persistence/protocol.py"
     _, tree = _read_and_parse(backend_protocol_path, rel)
-    accessor_for: dict[str, str] = {}
+    accessor_for: dict[str, list[str]] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef) or node.name != "PersistenceBackend":
             continue
@@ -567,7 +601,7 @@ def _discover_backend_accessors(backend_protocol_path: Path) -> dict[str, str]:
             return_name = _extract_return_type_name(member.returns)
             if return_name is None or not _REPO_NAME_RE.match(return_name):
                 continue
-            accessor_for.setdefault(return_name, member.name)
+            accessor_for.setdefault(return_name, []).append(member.name)
     return accessor_for
 
 
@@ -603,7 +637,7 @@ def _collect_backend_accessor_usage(conformance_dir: Path) -> set[str]:
 
 def _collect_coverage_violations(
     repo_classes: set[str],
-    accessor_for: dict[str, str],
+    accessor_for: dict[str, list[str]],
     used_accessors: set[str],
 ) -> list[str]:
     """Return formatted coverage-violation messages."""
@@ -615,17 +649,28 @@ def _collect_coverage_violations(
 
 def _build_coverage_violations(
     repo_classes: set[str],
-    accessor_for: dict[str, str],
+    accessor_for: dict[str, list[str]],
     used_accessors: set[str],
 ) -> list[_CoverageViolation]:
-    """Return structured coverage violations (test-facing helper)."""
+    """Return structured coverage violations (test-facing helper).
+
+    A repo class is covered when *any* of its accessors appears in
+    ``used_accessors``.  Generic protocols bound to multiple attributes
+    on ``PersistenceBackend`` therefore pass coverage as soon as one
+    accessor is exercised.
+    """
     out: list[_CoverageViolation] = []
     for repo_class in sorted(repo_classes):
-        accessor = accessor_for.get(repo_class)
-        if accessor is None:
+        accessors = accessor_for.get(repo_class)
+        if not accessors:
             continue
-        if accessor not in used_accessors:
-            out.append(_CoverageViolation(repo_class=repo_class, accessor=accessor))
+        if not any(accessor in used_accessors for accessor in accessors):
+            out.append(
+                _CoverageViolation(
+                    repo_class=repo_class,
+                    accessors=tuple(accessors),
+                )
+            )
     return out
 
 

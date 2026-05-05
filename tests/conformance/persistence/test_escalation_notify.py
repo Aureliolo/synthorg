@@ -105,10 +105,8 @@ class TestEscalationNotifyConformance:
                 await listener
 
     async def test_sqlite_subscription_is_noop(
-        self,
-        # lint-allow: dual-backend-parity -- single-process noop subscription
-        backend: PersistenceBackend,
-    ) -> None:
+        self, backend: PersistenceBackend
+    ) -> None:  # lint-allow: dual-backend-parity -- single-process noop subscription
         """SQLite (single-process) yields an iterator that never emits."""
         if backend.backend_name != "sqlite":
             pytest.skip("SQLite-only: single-process noop subscription")

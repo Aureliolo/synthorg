@@ -201,6 +201,41 @@ def test_optional_backend_typing_flagged(tmp_path: Path) -> None:
     assert any("direct-backend-typing" in msg for msg in issues)
 
 
+def test_signature_with_positional_only_backend_passes(tmp_path: Path) -> None:
+    """PEP 570 ``async def test_x(backend, /)`` is not flagged.
+
+    Positional-only parameters live on ``func.args.posonlyargs`` rather
+    than ``func.args.args``; a check that ignored ``posonlyargs`` would
+    falsely emit ``missing-backend-param`` here.
+    """
+    target = _make_conformance_file(
+        tmp_path,
+        "test_posonly.py",
+        "from synthorg.persistence.protocol import PersistenceBackend\n"
+        "async def test_x(backend: PersistenceBackend, /) -> None:\n"
+        "    pass\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_posonly.py"
+    )
+    assert issues == []
+
+
+def test_signature_with_positional_only_forbidden_typing_flagged(
+    tmp_path: Path,
+) -> None:
+    """Positional-only ``backend: aiosqlite.Connection, /`` is still flagged."""
+    target = _make_conformance_file(
+        tmp_path,
+        "test_posonly_typed.py",
+        "async def test_x(backend: aiosqlite.Connection, /) -> None:\n    pass\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_posonly_typed.py"
+    )
+    assert any("direct-backend-typing" in msg for msg in issues)
+
+
 def test_unrelated_typing_passes(tmp_path: Path) -> None:
     """``Connection`` from an unrelated module is not flagged.
 
@@ -328,6 +363,56 @@ def test_repo_class_discovery_handles_re_exports(tmp_path: Path) -> None:
     assert "EscalationQueueRepository" in found
 
 
+def test_repo_class_discovery_includes_repo_suffix_files(tmp_path: Path) -> None:
+    """Protocols defined in ``*_repo.py`` / ``*_repository.py`` are included."""
+    _make_protocol_file(
+        tmp_path,
+        "version_repo.py",
+        "from typing import Protocol\nclass VersionRepository(Protocol):\n    pass\n",
+    )
+    _make_protocol_file(
+        tmp_path,
+        "preset_repository.py",
+        "from typing import Protocol\n"
+        "class PersonalityPresetRepository(Protocol):\n"
+        "    pass\n",
+    )
+    _make_protocol_file(
+        tmp_path,
+        "training_repos.py",
+        "from typing import Protocol\n"
+        "class TrainingPlanRepository(Protocol):\n"
+        "    pass\n",
+    )
+    found = _MODULE._discover_repo_classes(tmp_path / "protocols")  # type: ignore[attr-defined]
+    assert {
+        "VersionRepository",
+        "PersonalityPresetRepository",
+        "TrainingPlanRepository",
+    } <= found
+
+
+def test_repo_class_discovery_skips_init_and_conftest(tmp_path: Path) -> None:
+    """``__init__.py`` and ``conftest.py`` are excluded from the scan."""
+    _make_protocol_file(
+        tmp_path,
+        "__init__.py",
+        "from typing import Protocol\n"
+        "class ShouldBeIgnoredRepository(Protocol):\n"
+        "    pass\n",
+    )
+    _make_protocol_file(
+        tmp_path,
+        "conftest.py",
+        "from typing import Protocol\n"
+        "class AlsoIgnoredRepository(Protocol):\n"
+        "    pass\n",
+    )
+    found = _MODULE._discover_repo_classes(tmp_path / "protocols")  # type: ignore[attr-defined]
+    assert "ShouldBeIgnoredRepository" not in found
+    assert "AlsoIgnoredRepository" not in found
+
+
 def test_repo_class_discovery_skips_non_protocol_classes(tmp_path: Path) -> None:
     """``class XxxRepository(SomethingElse):`` is skipped (not a protocol)."""
     target = _make_protocol_file(
@@ -358,8 +443,8 @@ def test_accessor_map_includes_property_returns(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     accessor_for = _MODULE._discover_backend_accessors(backend_path)  # type: ignore[attr-defined]
-    assert accessor_for["UserRepository"] == "users"
-    assert accessor_for["ConnectionRepository"] == "connections"
+    assert accessor_for["UserRepository"] == ["users"]
+    assert accessor_for["ConnectionRepository"] == ["connections"]
 
 
 def test_accessor_map_includes_method_returns(tmp_path: Path) -> None:
@@ -373,7 +458,32 @@ def test_accessor_map_includes_method_returns(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     accessor_for = _MODULE._discover_backend_accessors(backend_path)  # type: ignore[attr-defined]
-    assert accessor_for["EscalationQueueRepository"] == "build_escalations"
+    assert accessor_for["EscalationQueueRepository"] == ["build_escalations"]
+
+
+def test_accessor_map_collects_multiple_accessors_per_repo(tmp_path: Path) -> None:
+    """Generic protocols bound to N attributes return all accessors in order."""
+    backend_path = tmp_path / "protocol.py"
+    backend_path.write_text(
+        "from typing import Protocol\n"
+        "class PersistenceBackend(Protocol):\n"
+        "    @property\n"
+        "    def workflow_versions(self) -> 'VersionRepository':\n"
+        "        ...\n"
+        "    @property\n"
+        "    def identity_versions(self) -> 'VersionRepository':\n"
+        "        ...\n"
+        "    @property\n"
+        "    def role_versions(self) -> 'VersionRepository':\n"
+        "        ...\n",
+        encoding="utf-8",
+    )
+    accessor_for = _MODULE._discover_backend_accessors(backend_path)  # type: ignore[attr-defined]
+    assert accessor_for["VersionRepository"] == [
+        "workflow_versions",
+        "identity_versions",
+        "role_versions",
+    ]
 
 
 def test_accessor_map_skips_non_repo_returns(tmp_path: Path) -> None:
@@ -435,7 +545,7 @@ def test_accessor_usage_collects_all_files(tmp_path: Path) -> None:
 def test_coverage_pass_no_violation_when_repo_used() -> None:
     """Repo with a matching ``backend.<accessor>`` use is covered."""
     repo_classes = {"FooRepository"}
-    accessor_for = {"FooRepository": "foos"}
+    accessor_for = {"FooRepository": ["foos"]}
     used_accessors = {"foos"}
     issues = _MODULE._collect_coverage_violations(  # type: ignore[attr-defined]
         repo_classes, accessor_for, used_accessors
@@ -446,7 +556,7 @@ def test_coverage_pass_no_violation_when_repo_used() -> None:
 def test_coverage_pass_violation_when_repo_unused() -> None:
     """Repo whose accessor never appears in tests is a violation."""
     repo_classes = {"FooRepository"}
-    accessor_for = {"FooRepository": "foos"}
+    accessor_for = {"FooRepository": ["foos"]}
     used_accessors: set[str] = set()
     issues = _MODULE._collect_coverage_violations(  # type: ignore[attr-defined]
         repo_classes, accessor_for, used_accessors
@@ -458,12 +568,48 @@ def test_coverage_pass_violation_when_repo_unused() -> None:
 def test_coverage_pass_skips_repos_without_backend_accessor() -> None:
     """Repo not exposed on PersistenceBackend is silently out of scope."""
     repo_classes = {"OrphanRepository"}
-    accessor_for: dict[str, str] = {}
+    accessor_for: dict[str, list[str]] = {}
     used_accessors: set[str] = set()
     issues = _MODULE._collect_coverage_violations(  # type: ignore[attr-defined]
         repo_classes, accessor_for, used_accessors
     )
     assert issues == []
+
+
+def test_coverage_pass_passes_when_any_of_n_accessors_used() -> None:
+    """A repo bound to multiple accessors is covered if any one is used."""
+    repo_classes = {"VersionRepository"}
+    accessor_for = {
+        "VersionRepository": [
+            "workflow_versions",
+            "identity_versions",
+            "role_versions",
+        ]
+    }
+    used_accessors = {"identity_versions"}
+    issues = _MODULE._collect_coverage_violations(  # type: ignore[attr-defined]
+        repo_classes, accessor_for, used_accessors
+    )
+    assert issues == []
+
+
+def test_coverage_pass_message_lists_all_accessors_when_none_used() -> None:
+    """Multi-accessor violation cites every accessor in the message."""
+    repo_classes = {"VersionRepository"}
+    accessor_for = {
+        "VersionRepository": [
+            "workflow_versions",
+            "identity_versions",
+            "role_versions",
+        ]
+    }
+    issues = _MODULE._collect_coverage_violations(  # type: ignore[attr-defined]
+        repo_classes, accessor_for, set()
+    )
+    assert len(issues) == 1
+    assert "backend.workflow_versions" in issues[0]
+    assert "backend.identity_versions" in issues[0]
+    assert "backend.role_versions" in issues[0]
 
 
 # ── baseline mechanism ──────────────────────────────────────────
@@ -623,6 +769,27 @@ def test_body_marker_on_signature_suppresses_body_check(tmp_path: Path) -> None:
     assert issues == []
 
 
+def test_body_match_statement_on_backend_name_flagged(tmp_path: Path) -> None:
+    """``match backend.backend_name:`` is flagged the same as ``if ==``."""
+    target = _make_conformance_file(
+        tmp_path,
+        "test_match.py",
+        "from synthorg.persistence.protocol import PersistenceBackend\n"
+        "class TestX:\n"
+        "    async def test_y(self, backend: PersistenceBackend) -> None:\n"
+        "        match backend.backend_name:\n"
+        "            case 'sqlite':\n"
+        "                return\n"
+        "            case _:\n"
+        "                return\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_match.py"
+    )
+    assert any("backend-name-conditional" in msg for msg in issues)
+    assert any("test_y" in msg for msg in issues)
+
+
 def test_collect_body_violations_helper_independent(tmp_path: Path) -> None:
     """``_collect_body_violations`` returns body-only findings."""
     target = _make_conformance_file(
@@ -693,7 +860,7 @@ def test_extract_return_type_handles_repo_on_right_side(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     accessor_for = _MODULE._discover_backend_accessors(backend_path)  # type: ignore[attr-defined]
-    assert accessor_for.get("UserRepository") == "users"
+    assert accessor_for.get("UserRepository") == ["users"]
 
 
 def test_extract_return_type_non_repo_union_returns_left(tmp_path: Path) -> None:

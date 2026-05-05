@@ -187,8 +187,8 @@ def _resolve_project_root(repo_root: Path | None) -> Path:
     return resolved
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 -- distinct exit codes
-    """CLI entry point."""
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    """Build the argparse spec and return the parsed arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--repo-root",
@@ -217,52 +217,34 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 -- distinct exi
             "(commit the diff after manual review)."
         ),
     )
-    args = parser.parse_args(argv)
+    return parser.parse_args(argv)
 
+
+def _handle_update_baseline(baseline_path: Path, current_keys: set[str]) -> int:
+    """Persist *current_keys* to *baseline_path*; return CLI exit code."""
     try:
-        project_root = _resolve_project_root(args.repo_root)
-    except ProjectRootError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-
-    baseline_path = args.baseline or (
-        project_root / "scripts" / "dual_backend_parity_baseline.txt"
-    )
-
-    try:
-        pairs = _scan_repo(project_root)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    current_keys = {key for key, _ in pairs}
-    message_for = dict(pairs)
-
-    if args.update_baseline:
-        try:
-            _write_baseline(baseline_path, current_keys)
-        except OSError as exc:
-            print(
-                f"Cannot write baseline {baseline_path.as_posix()}: {exc}",
-                file=sys.stderr,
-            )
-            return 2
+        _write_baseline(baseline_path, current_keys)
+    except OSError as exc:
         print(
-            f"Wrote {len(current_keys)} entries to {baseline_path.as_posix()}.",
+            f"Cannot write baseline {baseline_path.as_posix()}: {exc}",
             file=sys.stderr,
         )
-        return 0
-
-    try:
-        baseline = _load_baseline(baseline_path)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
         return 2
+    print(
+        f"Wrote {len(current_keys)} entries to {baseline_path.as_posix()}.",
+        file=sys.stderr,
+    )
+    return 0
 
-    new, stale = _apply_baseline(current_keys, baseline)
 
+def _report_violations(
+    new: list[str],
+    stale: list[str],
+    message_for: dict[str, str],
+) -> int:
+    """Emit per-violation messages + footer; return CLI exit code."""
     for key in new:
         print(message_for[key], file=sys.stderr)
-
     if stale:
         print(
             f"\nWarning: {len(stale)} stale baseline entries (no longer violated):",
@@ -275,7 +257,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 -- distinct exi
             "--update-baseline' once the fix has merged.",
             file=sys.stderr,
         )
-
     if new:
         print(
             f"\n{len(new)} new dual-backend parity violation(s). Either fix the "
@@ -288,6 +269,34 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 -- distinct exi
         )
         return 1
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point."""
+    args = _parse_args(argv)
+    try:
+        project_root = _resolve_project_root(args.repo_root)
+    except ProjectRootError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    baseline_path = args.baseline or (
+        project_root / "scripts" / "dual_backend_parity_baseline.txt"
+    )
+    try:
+        pairs = _scan_repo(project_root)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    current_keys = {key for key, _ in pairs}
+    if args.update_baseline:
+        return _handle_update_baseline(baseline_path, current_keys)
+    try:
+        baseline = _load_baseline(baseline_path)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    new, stale = _apply_baseline(current_keys, baseline)
+    return _report_violations(new, stale, dict(pairs))
 
 
 if __name__ == "__main__":
