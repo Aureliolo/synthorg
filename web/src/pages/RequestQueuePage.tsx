@@ -223,7 +223,10 @@ export default function RequestQueuePage() {
           {grouped.map(({ status, entries }) => (
             <SectionCard key={status} title={STATUS_LABELS[status]} icon={Inbox}>
               {entries.length === 0 ? (
-                <p className="text-sm text-text-secondary">No entries.</p>
+                <EmptyState
+                  title="No entries"
+                  description={`Nothing in ${STATUS_LABELS[status].toLowerCase()} yet.`}
+                />
               ) : (
                 <ul className="space-y-2">
                   {entries.map((request) => (

@@ -137,6 +137,18 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(new Error(longMsg))).toBe(longMsg)
   })
 
+  it('truncates Error.message past ~1000 chars with an ellipsis', () => {
+    // Without a ceiling a multi-kilobyte backend description (e.g. a
+    // bulk-import validator naming every invalid row) would blow up
+    // toast / banner layouts. The cap keeps the message recognisably
+    // incomplete so users know to consult support for the full detail.
+    const overLong = 'a'.repeat(2000)
+    const result = getErrorMessage(new Error(overLong))
+    expect(result).toHaveLength(1001)
+    expect(result.endsWith('…')).toBe(true)
+    expect(result.startsWith('aaaa')).toBe(true)
+  })
+
   it('returns generic message for Error starting with {', () => {
     expect(getErrorMessage(new Error('{"internal":"data"}'))).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
   })

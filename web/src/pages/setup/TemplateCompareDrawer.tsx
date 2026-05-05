@@ -119,7 +119,7 @@ export function TemplateCompareDrawer({
         {/* Column headers */}
         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }}>
           {templates.map((t) => (
-            <div key={t.name} className="space-y-2 rounded-md border border-border p-3">
+            <div key={t.name} className="space-y-2 rounded-md border border-border p-card">
               <h3 className="text-sm font-semibold text-foreground">{t.display_name}</h3>
               <p className="text-xs text-muted-foreground line-clamp-3">{t.description}</p>
             </div>

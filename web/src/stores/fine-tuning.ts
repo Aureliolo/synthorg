@@ -96,17 +96,20 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
     }
   },
 
-  // Mutations follow the canonical store pattern: log + error toast on
-  // failure (success path is silent; the resulting state change is its
-  // own confirmation here).
+  // Mutations follow the canonical store pattern (web/CLAUDE.md "Zustand
+  // Store Error Handling"): log + error toast on failure. The store
+  // ``error`` field is reserved for fetch failures so the page-level
+  // ErrorBanner shows fetch errors only; mutation toasts are the sole
+  // user-facing surface for mutation errors. Success paths stay silent;
+  // the resulting state change is its own confirmation here.
   startRun: async (request) => {
-    set({ loading: true, error: null })
+    set({ loading: true })
     try {
       const status = await startFineTune(request)
       set({ status, loading: false })
     } catch (err) {
       log.error('Failed to start fine-tune run', err)
-      set({ loading: false, error: getErrorMessage(err) })
+      set({ loading: false })
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to start fine-tune run'),
@@ -118,10 +121,9 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
   cancelRun: async () => {
     try {
       const status = await cancelFineTune()
-      set({ status, error: null })
+      set({ status })
     } catch (err) {
       log.error('Failed to cancel fine-tune run', err)
-      set({ error: getErrorMessage(err) })
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to cancel fine-tune run'),
@@ -131,13 +133,13 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
   },
 
   runPreflightCheck: async (request) => {
-    set({ loading: true, preflight: null, error: null })
+    set({ loading: true, preflight: null })
     try {
       const result = await runPreflight(request)
-      set({ preflight: result, loading: false, error: null })
+      set({ preflight: result, loading: false })
     } catch (err) {
       log.error('Failed to run preflight', err)
-      set({ loading: false, error: getErrorMessage(err) })
+      set({ loading: false })
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Preflight check failed'),
@@ -152,7 +154,6 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await get().fetchCheckpoints()
     } catch (err) {
       log.error('Failed to deploy checkpoint', err)
-      set({ error: getErrorMessage(err) })
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to deploy checkpoint'),
@@ -167,7 +168,6 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await get().fetchCheckpoints()
     } catch (err) {
       log.error('Failed to rollback checkpoint', err)
-      set({ error: getErrorMessage(err) })
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to rollback checkpoint'),
@@ -182,7 +182,6 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await get().fetchCheckpoints()
     } catch (err) {
       log.error('Failed to delete checkpoint', err)
-      set({ error: getErrorMessage(err) })
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to delete checkpoint'),

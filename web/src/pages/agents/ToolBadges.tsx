@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Wrench } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { formatLabel } from '@/utils/format'
@@ -22,7 +23,7 @@ function ToolBadge({ tool }: { tool: string }) {
   )
 }
 
-export function ToolBadges({ tools, className }: ToolBadgesProps) {
+function ToolBadgesImpl({ tools, className }: ToolBadgesProps) {
   if (tools.length === 0) return null
 
   return (
@@ -36,3 +37,5 @@ export function ToolBadges({ tools, className }: ToolBadgesProps) {
     </SectionCard>
   )
 }
+
+export const ToolBadges = memo(ToolBadgesImpl)

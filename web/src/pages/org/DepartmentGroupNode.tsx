@@ -68,7 +68,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
      */
     <div
       className={cn(
-        'relative flex h-full w-full flex-col rounded-xl border p-3 transition-colors duration-200',
+        'relative flex h-full w-full flex-col rounded-xl border p-card transition-colors duration-200',
         'min-w-[220px]',
         // NO min-h here -- let the layout math in layout.ts drive
         // the rendered size exactly.  Earlier versions had

@@ -138,6 +138,67 @@ describe('useArtifactsStore', () => {
     })
   })
 
+  describe('createArtifact', () => {
+    it('prepends new artifact and emits success toast', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
+      const existing = makeArtifact('artifact-existing')
+      useArtifactsStore.setState({ artifacts: [existing], totalArtifacts: 1 })
+      const created = makeArtifact('artifact-new', { path: 'src/new.py' })
+      server.use(
+        http.post('/api/v1/artifacts', () =>
+          HttpResponse.json(apiSuccess(created)),
+        ),
+      )
+
+      const result = await useArtifactsStore.getState().createArtifact({
+        type: 'code',
+        path: 'src/new.py',
+        task_id: 'task-1',
+        created_by: 'alice',
+      })
+
+      expect(result).toEqual(created)
+      const state = useArtifactsStore.getState()
+      expect(state.artifacts).toEqual([created, existing])
+      expect(state.totalArtifacts).toBe(2)
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('success')
+      expect(toasts[0]!.title).toBe('Artifact created')
+    })
+
+    it('returns null sentinel + emits error toast on failure', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
+      const existing = makeArtifact('artifact-existing')
+      useArtifactsStore.setState({ artifacts: [existing], totalArtifacts: 1 })
+      server.use(
+        http.post('/api/v1/artifacts', () =>
+          HttpResponse.json(apiError('Quota exceeded'), { status: 422 }),
+        ),
+      )
+
+      const result = await useArtifactsStore.getState().createArtifact({
+        type: 'code',
+        path: 'src/new.py',
+        task_id: 'task-1',
+        created_by: 'alice',
+      })
+
+      expect(result).toBeNull()
+      const state = useArtifactsStore.getState()
+      // List unchanged on failure -- no optimistic insert to roll back.
+      expect(state.artifacts).toEqual([existing])
+      expect(state.totalArtifacts).toBe(1)
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toBe('Failed to create artifact')
+      expect(toasts[0]!.description).toContain('Quota exceeded')
+    })
+  })
+
   describe('deleteArtifact', () => {
     it('removes artifact from list', async () => {
       const a1 = makeArtifact('artifact-001')

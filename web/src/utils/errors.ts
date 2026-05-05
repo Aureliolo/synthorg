@@ -7,6 +7,16 @@ import type { ErrorCode, ErrorDetail } from '@/api/types/errors'
 const log = createLogger('errors')
 
 /**
+ * Cap on prose error messages reaching the user surface. Backend validators
+ * can emit very long descriptions (e.g. enumerating every invalid field on
+ * a bulk import); without a ceiling a multi-kilobyte string would blow up
+ * toast and banner layouts. The truncation marker keeps the message
+ * recognisably incomplete so users know to ask for the full detail in
+ * support.
+ */
+const MAX_ERROR_MESSAGE_LEN = 1000
+
+/**
  * Duck-typed check for ``ApiRequestError`` instances without importing
  * the class. Importing ``@/api/client`` here would pull ``axios.create()``
  * into utility modules that test code mocks ``axios`` for, breaking
@@ -63,10 +73,12 @@ export function getErrorMessage(error: unknown): string {
         // was a duplicate or version skew.
         return 'The resource state changed. Refresh the page and try again.'
       case 422: {
-        // Surface the structured validation detail when the legacy
-        // ``data.error`` field is absent: the backend's ``error_detail.detail``
-        // names the specific field / rule that failed and is far more
-        // useful than a generic "check your input" line.
+        // Two response shapes the backend may emit: the plain
+        // ``data.error`` string (handled above for every 4xx) and the
+        // structured ``data.error_detail`` envelope (RFC 9457). When the
+        // plain string is absent, surface ``error_detail.detail`` so the
+        // user sees the specific field or rule that failed instead of a
+        // generic "check your input" line.
         const structuredDetail = data?.error_detail?.detail
         if (typeof structuredDetail === 'string' && structuredDetail.trim() !== '') {
           return structuredDetail
@@ -105,11 +117,16 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     // JSON-shaped messages are suppressed because they typically carry a
     // backend stack trace or structured envelope leaked through to the
-    // client. Plain prose passes through regardless of length so genuine
-    // long validation messages reach the user.
+    // client. Plain prose passes through up to ``MAX_ERROR_MESSAGE_LEN``
+    // characters so genuine long validation messages reach the user
+    // without breaking toast / banner layouts when an upstream emits a
+    // multi-kilobyte description.
     const msg = error.message
     if (msg && !/^\{/.test(msg)) {
-      return msg
+      if (msg.length <= MAX_ERROR_MESSAGE_LEN) {
+        return msg
+      }
+      return `${msg.slice(0, MAX_ERROR_MESSAGE_LEN)}…`
     }
     log.warn('Error message suppressed (JSON-shaped):', msg?.slice(0, 300))
     return 'An unexpected error occurred. Please refresh the page or contact support if this persists.'
