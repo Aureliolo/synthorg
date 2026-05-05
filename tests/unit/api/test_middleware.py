@@ -201,15 +201,23 @@ class TestDocsCspOriginsOverride:
         set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
 
     def test_default_csp_lists_all_default_origins(self) -> None:
+        # Tokenise the CSP header so the assertion is a complete-token
+        # match. A bare ``origin in _DOCS_CSP`` would be a substring
+        # check that CodeQL flags as ``py/incomplete-url-substring-sanitization``.
+        tokens = set(_DOCS_CSP.replace(";", " ").split())
         for origin in _DOCS_CSP_DEFAULT_ORIGINS:
-            assert origin in _DOCS_CSP
+            assert origin in tokens
 
     def test_override_replaces_default_origins(self) -> None:
         from synthorg.api import middleware
 
         set_docs_csp_origins(["https://internal-cdn.example.com"])
-        assert "https://internal-cdn.example.com" in middleware._DOCS_CSP
-        assert "https://cdn.jsdelivr.net" not in middleware._DOCS_CSP
+        # Token-boundary check (see test above); avoids the
+        # substring-sanitisation pattern even though both sides are
+        # operator-controlled.
+        tokens = set(middleware._DOCS_CSP.replace(";", " ").split())
+        assert "https://internal-cdn.example.com" in tokens
+        assert "https://cdn.jsdelivr.net" not in tokens
 
     def test_build_docs_csp_applies_origins_uniformly(self) -> None:
         # Parses the CSP into a directive map and asserts the origin
@@ -249,8 +257,24 @@ class TestApiBridgeConfigSecurity:
             "not a url",
             "ftp://example.com",
             "",
+            "https://cdn.example.com/path",
+            "https://cdn.example.com/",
+            "https://cdn.example.com?q=1",
+            "https://cdn.example.com#frag",
+            "https://user:pw@cdn.example.com",
         ],
-        ids=["javascript_scheme", "data_scheme", "not_a_url", "ftp_scheme", "empty"],
+        ids=[
+            "javascript_scheme",
+            "data_scheme",
+            "not_a_url",
+            "ftp_scheme",
+            "empty",
+            "with_path",
+            "trailing_slash",
+            "with_query",
+            "with_fragment",
+            "with_userinfo",
+        ],
     )
     def test_csp_origins_validator_rejects_bad_schemes(self, bad_origin: str) -> None:
         from pydantic import ValidationError
@@ -261,6 +285,31 @@ class TestApiBridgeConfigSecurity:
             ApiBridgeConfig(
                 csp_docs_external_origins=("https://cdn.example.com", bad_origin),
             )
+
+    def test_csp_origins_validator_rejects_empty_tuple(self) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        with pytest.raises(ValidationError, match="at least one trusted origin"):
+            ApiBridgeConfig(csp_docs_external_origins=())
+
+    @pytest.mark.parametrize(
+        "good_origin",
+        [
+            "https://cdn.example.com",
+            "http://internal.example",
+            "https://cdn.example.com:8443",
+        ],
+        ids=["https_host", "http_host", "https_with_port"],
+    )
+    def test_csp_origins_validator_accepts_canonical_origins(
+        self, good_origin: str
+    ) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        cfg = ApiBridgeConfig(csp_docs_external_origins=(good_origin,))
+        assert cfg.csp_docs_external_origins == (good_origin,)
 
     @pytest.mark.parametrize(
         "bad_url",

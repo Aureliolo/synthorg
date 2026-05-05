@@ -12,16 +12,19 @@ tests without an active settings service.
 
 import re
 from typing import Final
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
 
-# Pattern shared by ``csp_docs_external_origins`` element validation and
-# any future URL-list field. Restrictive enough to reject ``javascript:``,
-# ``data:``, and other schemes that would degrade /docs CSP to no
-# protection if they leaked into the directive.
-_CSP_ORIGIN_RE: Final[re.Pattern[str]] = re.compile(r"^https?://[\w.\-:/]+$")
+# Canonical origin pattern: scheme + host (+ optional port) only -- no
+# path, query, fragment, or userinfo. The CSP spec treats anything past
+# the host as a source expression, so a permissive regex would let
+# operators leak whole URLs into the directive and silently degrade
+# /docs CSP. ``urlsplit`` handles the structural check; the regex
+# rejects whitespace and embedded slashes up front.
+_CSP_ORIGIN_RE: Final[re.Pattern[str]] = re.compile(r"^https?://[^\s/]+$")
 
 # WebSocket first-message auth handshake timeout bounds. Exposed as
 # module constants so the ``set_ws_auth_timeout_seconds`` setter on
@@ -241,12 +244,35 @@ class ApiBridgeConfig(BaseModel):
         cls,
         value: tuple[str, ...],
     ) -> tuple[str, ...]:
+        if not value:
+            msg = (
+                "csp_docs_external_origins must contain at least one"
+                " trusted origin; an empty tuple would yield a malformed"
+                " /docs CSP with trailing whitespace before each ``;``"
+            )
+            raise ValueError(msg)
         for origin in value:
             if not _CSP_ORIGIN_RE.fullmatch(origin):
                 msg = (
                     f"csp_docs_external_origins entry {origin!r} does not"
                     " match http(s)://host pattern; refusing to apply to"
                     " avoid CSP downgrade"
+                )
+                raise ValueError(msg)
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+            ):
+                msg = (
+                    f"csp_docs_external_origins entry {origin!r} must be"
+                    " a canonical origin (scheme + host + optional port,"
+                    " no path, query, fragment, or userinfo)"
                 )
                 raise ValueError(msg)
         return value
