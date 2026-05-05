@@ -204,10 +204,15 @@ class TestDocsCspOriginsOverride:
         set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
 
     def test_default_csp_lists_all_default_origins(self) -> None:
-        # Tokenise the CSP header and compare via set operations so the
-        # assertion is a complete-token match rather than a substring
-        # check (which CodeQL flags as ``py/incomplete-url-substring-sanitization``).
-        tokens = set(_DOCS_CSP.replace(";", " ").split())
+        from synthorg.api import middleware
+
+        # Read the live module attribute (not the file-level imported
+        # snapshot) so the fixture's pre-yield reset is observed even if
+        # an earlier file on the same xdist worker mutated the global
+        # before this module was imported.
+        # Tokenise so the assertion is a complete-token match, avoiding
+        # CodeQL's ``py/incomplete-url-substring-sanitization`` rule.
+        tokens = set(middleware._DOCS_CSP.replace(";", " ").split())
         assert tokens.issuperset(_DOCS_CSP_DEFAULT_ORIGINS)
 
     def test_override_replaces_default_origins(self) -> None:

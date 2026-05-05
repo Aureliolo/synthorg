@@ -447,3 +447,55 @@ async def test_get_tools_bridge_config_rejects_bad_memory_literal(
     )
     with pytest.raises(ValidationError):
         await resolver.get_tools_bridge_config()
+
+
+# ── slack_default_webhook_url canonical-URL validation ──────────
+
+
+class TestSlackDefaultWebhookUrlValidator:
+    """``slack_default_webhook_url`` must accept only empty or canonical
+    Slack incoming-webhook URLs. The pattern alone is too permissive;
+    the field validator forces scheme/host/path/no-userinfo/no-query
+    discipline so malformed config never reaches the dispatcher."""
+
+    @pytest.mark.parametrize(
+        "good_url",
+        [
+            "",
+            "https://hooks.slack.com/services/T/B/X",
+            "https://hooks.slack.com/services/T000/B000/abc-123",
+        ],
+        ids=["empty", "minimal", "with_alphanum_path"],
+    )
+    def test_accepts_canonical_url(self, good_url: str) -> None:
+        cfg = NotificationsBridgeConfig(slack_default_webhook_url=good_url)
+        assert cfg.slack_default_webhook_url == good_url
+
+    @pytest.mark.parametrize(
+        "bad_url",
+        [
+            "http://hooks.slack.com/services/T/B/X",
+            "https://evil.example.com/services/T/B/X",
+            "https://hooks.slack.com/services/T/B/X?debug=1",
+            "https://hooks.slack.com/services/T/B/X#frag",
+            "https://user:pw@hooks.slack.com/services/T/B/X",
+            "https://hooks.slack.com/foo/T/B/X",
+            " https://hooks.slack.com/services/T/B/X",
+            "https://hooks.slack.com/services/T/B/X ",
+            "https://hooks.slack.com:99999/services/T/B/X",
+        ],
+        ids=[
+            "http_insecure",
+            "wrong_host",
+            "with_query",
+            "with_fragment",
+            "with_userinfo",
+            "wrong_path_prefix",
+            "leading_whitespace",
+            "trailing_whitespace",
+            "port_out_of_range",
+        ],
+    )
+    def test_rejects_non_canonical_url(self, bad_url: str) -> None:
+        with pytest.raises(ValidationError):
+            NotificationsBridgeConfig(slack_default_webhook_url=bad_url)

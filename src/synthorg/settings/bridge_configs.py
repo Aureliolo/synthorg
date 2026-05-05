@@ -107,6 +107,47 @@ class NotificationsBridgeConfig(BaseModel):
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
 
+    @field_validator("slack_default_webhook_url")
+    @classmethod
+    def _validate_slack_default_webhook_url(cls, value: str) -> str:
+        if value == "":
+            return value
+        if value != value.strip():
+            msg = (
+                "slack_default_webhook_url must not have leading or trailing whitespace"
+            )
+            raise ValueError(msg)
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            msg = (
+                "slack_default_webhook_url must use a numeric port in"
+                " 1..65535 when one is supplied"
+            )
+            raise ValueError(msg) from exc
+        if port == 0:
+            msg = (
+                "slack_default_webhook_url must use a port in 1..65535 (0 is reserved)"
+            )
+            raise ValueError(msg)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "hooks.slack.com"
+            or parsed.username is not None
+            or parsed.password is not None
+            or not parsed.path.startswith("/services/")
+            or parsed.query
+            or parsed.fragment
+        ):
+            msg = (
+                "slack_default_webhook_url must be a canonical Slack"
+                " webhook URL: https://hooks.slack.com/services/<path>"
+                " with no userinfo, query, or fragment"
+            )
+            raise ValueError(msg)
+        return value
+
 
 class ToolsBridgeConfig(BaseModel):
     """Operator-tunable timeouts and resource limits for tool execution.
