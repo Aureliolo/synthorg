@@ -7,6 +7,7 @@ sources:
   - "https://arxiv.org/abs/2604.02460"
   - "https://arxiv.org/abs/2512.08296"
 date: 2026-04-11
+last_reviewed: 2026-05-05
 ---
 
 # S1: Multi-Agent Architecture Decision

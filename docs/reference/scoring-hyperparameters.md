@@ -123,7 +123,7 @@ marker pointing at the canonical setting.
 | `workers.dispatcher.publish_max_attempts` | 3 | Task-claim publish retry budget. |
 | `workers.dispatcher.publish_backoff_base_seconds` | 0.1 | Dispatcher exponential-backoff base. |
 | `workers.dispatcher.publish_backoff_cap_seconds` | 1.0 | Dispatcher backoff per-attempt ceiling. |
-| `memory.fine_tune.vram_batch_table` | `[[40,128],[16,64],[8,32]]` | VRAM-to-batch-size mapping for embedding fine-tune preflight. |
+| `memory.fine_tune.vram_batch_table` | `[[40.0, 128], [16.0, 64], [8.0, 32]]` | VRAM-to-batch-size mapping for embedding fine-tune preflight. Each row is `[min_vram_gb, batch_size]`; the VRAM threshold is a float (GB) and the batch size an integer. |
 | `memory.fine_tune.chunk_size` | 512 | Word-chunk size for synthetic-data generation. |
 | `communication.loop_prevention_window_seconds` | 60.0 | Per-pair delegation rate-limit window. |
 | `api.lifecycle.task_engine_shutdown_seconds` | 8.0 | Lifecycle stop step deadline (task engine). |

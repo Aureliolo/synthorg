@@ -69,9 +69,9 @@ choice. `mode="before"` is reserved for normalizing inputs the caller
 might pass in non-canonical shape (lists vs tuples, dirty strings,
 missing aliases). When using `mode="before"`, **never** mutate the
 input dict in place; return a new dict via `{**data, key: value}`.
-The four sites flagged by the 2026-04-25 audit have been converted;
-the new immutability tests in `tests/unit/{api,tools}/...` lock
-in the pattern.
+All `mode="before"` validators in the codebase return new dicts; the
+immutability tests under `tests/unit/{api,tools}/...` lock in the
+pattern.
 
 ## 5. Event constant module imports
 

@@ -1,11 +1,11 @@
 ---
 title: Settings Reference
-description: How SynthOrg settings resolve, the 17 runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
+description: How SynthOrg settings resolve, the 21 runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
 ---
 
 # Settings Reference
 
-SynthOrg has ~100 individually-resolved settings across 17 namespaces. Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
+SynthOrg has ~100 individually-resolved settings across 21 namespaces. Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
 
 ---
 
@@ -63,6 +63,11 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `notifications` | Sink registry, dispatcher timeout, severity threshold |
 | `tools` | Sandbox backends, tool access levels, progressive disclosure thresholds |
 | `settings` | Dispatcher polling interval, change-notification channel |
+| `client` | Human-response timeout, scored-feedback passing score / strictness multiplier / floor for synthesised AIClients |
+| `hr` | Training-pipeline kill switch, evaluation metric toggles (quality, cost, latency, task count) |
+| `simulations` | Per-run timeouts for synthetic-client task and code-review simulations |
+| `telemetry` | Anonymous product telemetry opt-in (off by default; token embedded at build) |
+| `workers` | Uvicorn worker count, distributed dispatcher publish retry budget and backoff |
 
 ## REST API
 

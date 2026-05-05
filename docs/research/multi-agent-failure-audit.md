@@ -6,6 +6,7 @@ sources:
   - "https://medium.com/@the_atomic_architect/multi-agent-systems-recreating-microservices-hell-1f727fafa487"
   - "https://arxiv.org/abs/2512.08296"
 date: 2026-04-07
+last_reviewed: 2026-05-05
 ---
 
 # Multi-Agent Failure Pattern Audit
