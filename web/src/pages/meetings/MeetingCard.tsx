@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link } from 'react-router'
 import { Clock, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -18,7 +19,7 @@ interface MeetingCardProps {
   className?: string
 }
 
-export function MeetingCard({ meeting, className }: MeetingCardProps) {
+function MeetingCardImpl({ meeting, className }: MeetingCardProps) {
   const statusColor = getMeetingStatusColor(meeting.status)
   const badgeClass = STATUS_BADGE_CLASSES[statusColor]
   const participantCount = meeting.minutes?.participant_ids.length ?? 0
@@ -100,3 +101,5 @@ export function MeetingCard({ meeting, className }: MeetingCardProps) {
     </Link>
   )
 }
+
+export const MeetingCard = memo(MeetingCardImpl)
