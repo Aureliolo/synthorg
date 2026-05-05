@@ -509,3 +509,68 @@ def test_extract_handles_crlf_line_endings() -> None:
     assert len(entries) == 1
     # Header text must not carry a trailing \r left over from the split.
     assert entries[0].header == "Persistence Boundary"  # type: ignore[attr-defined]
+
+
+def test_load_inventory_raises_schema_error_on_unreadable_yaml(
+    fake_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OSError on the inventory read surfaces as InventorySchemaError (exit 2)."""
+    inventory = fake_repo / "scripts" / "convention_gate_map.yaml"
+    _write(inventory, "mandatory_rules: []\n")
+
+    real_read_text = Path.read_text
+
+    def _broken_read(self: Path, *args: object, **kwargs: object) -> str:
+        del args, kwargs
+        if self.name == "convention_gate_map.yaml":
+            msg = "synthetic permission error"
+            raise PermissionError(msg)
+        return real_read_text(self, encoding="utf-8")
+
+    monkeypatch.setattr(Path, "read_text", _broken_read)
+    with pytest.raises(_MODULE.InventorySchemaError):
+        _MODULE.load_inventory(inventory)
+
+
+def test_gate_path_symlink_escape_treated_as_missing(
+    fake_repo: Path, tmp_path: Path
+) -> None:
+    """A gate path that is a symlink resolving outside repo_root is rejected.
+
+    Without containment, a malicious or mistaken symlink inside the repo
+    could point at any file on disk and silently satisfy the gate-existence
+    check, defeating the safe-relative-path guarantee that the YAML loader
+    enforces statically.
+    """
+    outside_target = tmp_path / "outside_target.py"
+    outside_target.write_text("# outside repo\n", encoding="utf-8")
+
+    gate_link = fake_repo / "scripts" / "check_escape.py"
+    try:
+        gate_link.symlink_to(outside_target)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation unsupported on this platform: {exc}")
+
+    _write(
+        fake_repo / "CLAUDE.md",
+        """
+        ## Persistence Boundary (MANDATORY)
+
+        Body.
+        """,
+    )
+    _write(
+        fake_repo / "scripts" / "convention_gate_map.yaml",
+        """
+        mandatory_rules:
+          - id: claude-md::persistence-boundary
+            file: CLAUDE.md
+            header: Persistence Boundary
+            gate: scripts/check_escape.py
+        """,
+    )
+    violations = _MODULE.check(fake_repo)
+    assert len(violations) == 1
+    rendered = violations[0].render()  # type: ignore[attr-defined]
+    assert "gate script missing" in rendered
+    assert "scripts/check_escape.py" in rendered

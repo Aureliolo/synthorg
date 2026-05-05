@@ -257,7 +257,14 @@ def load_inventory(yaml_path: Path) -> tuple[InventoryEntry, ...]:
         msg = f"Inventory file missing: {yaml_path}"
         raise InventorySchemaError(msg)
     try:
-        raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        raw_text = yaml_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        msg = (
+            f"Could not read inventory file {yaml_path}: {type(exc).__name__}: {exc!s}"
+        )
+        raise InventorySchemaError(msg) from exc
+    try:
+        raw = yaml.safe_load(raw_text)
     except yaml.YAMLError as exc:
         msg = f"Inventory YAML parse error: {_yaml_error_summary(exc)}"
         raise InventorySchemaError(msg) from exc
@@ -363,6 +370,22 @@ def _validate_inventory_item(item: object, index: int) -> InventoryEntry:
     )
 
 
+def _gate_resolves_inside_repo(gate: str, repo_root: Path) -> bool:
+    """Return True iff ``gate`` resolves to a regular file inside ``repo_root``.
+
+    Resolution is strict (missing files return False) and the resolved
+    path must remain under ``repo_root.resolve()`` so a symlink that
+    escapes the repo cannot satisfy the gate-existence check.
+    """
+    candidate = repo_root / gate
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(repo_root.resolve())
+    except FileNotFoundError, OSError, ValueError:
+        return False
+    return resolved.is_file()
+
+
 def _check_extracted_against_inventory(
     extracted: Iterable[MandatoryEntry],
     inventory_by_id: dict[str, InventoryEntry],
@@ -390,7 +413,9 @@ def _check_extracted_against_inventory(
                 )
             )
             continue
-        if registered.gate is not None and not (repo_root / registered.gate).is_file():
+        if registered.gate is not None and not _gate_resolves_inside_repo(
+            registered.gate, repo_root
+        ):
             violations.append(
                 Violation(
                     location=f"{entry.file}:{entry.line}",
