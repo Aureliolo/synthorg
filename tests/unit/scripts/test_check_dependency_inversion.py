@@ -11,10 +11,17 @@ Cover:
    high-level prefixes).
 5. Live-codebase anchor: ``_scan_all`` against the real tree returns
    zero violations after Phase 1-6.
+
+The synthetic-tree tests deliberately do NOT initialise a git repo;
+the gate's ``_git_tracked_python_files`` helper falls back to a
+filesystem ``rglob`` when ``git ls-files`` fails, and that fallback
+is the path exercised here. Keeping ``subprocess`` out of the test
+seam avoids xdist-under-load races that show up only on the
+isolation-replay gate (Windows + many parallel workers + ``git init``
+running in nested git trees).
 """
 
 import importlib.util
-import subprocess
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -48,37 +55,10 @@ def _write(path: Path, source: str) -> None:
     path.write_text(textwrap.dedent(source).lstrip(), encoding="utf-8")
 
 
-def _init_repo(project_root: Path) -> None:
-    """Initialise *project_root* as a git repo so ``git ls-files`` finds files.
-
-    The gate uses ``git ls-files`` to enumerate tracked Python files;
-    falling back to the unfilesystem walk would still work but the test
-    runs the canonical path so a future change to the enumeration
-    strategy is exercised.
-    """
-    subprocess.run(["git", "init", "-q"], cwd=project_root, check=True)  # noqa: S607
-    subprocess.run(["git", "add", "-A"], cwd=project_root, check=True)  # noqa: S607
-    subprocess.run(
-        [  # noqa: S607
-            "git",
-            "-c",
-            "user.email=t@t",
-            "-c",
-            "user.name=t",
-            "commit",
-            "-qm",
-            "init",
-        ],
-        cwd=project_root,
-        check=True,
-    )
-
-
 def _make_project(tmp_path: Path, *, files: dict[str, str]) -> Path:
     project_root = tmp_path / "project"
     for rel, source in files.items():
         _write(project_root / rel, source)
-    _init_repo(project_root)
     return project_root
 
 
