@@ -1,10 +1,11 @@
 """Unit tests for :class:`CeremonyPolicyService`.
 
 The service's ``get_policy`` / ``get_resolved_policy`` paths re-use
-the controller helpers, so we patch those in-place rather than
-re-mocking every transitive dep (settings + config resolver + ...).
-The ``get_active_strategy`` path hits the ceremony scheduler
-directly -- easier to test with a minimal stub.
+the resolver helpers, so we patch those at their bound location
+inside the service module rather than re-mocking every transitive
+dep (settings + config resolver + ...). The
+``get_active_strategy`` path hits the ceremony scheduler directly --
+easier to test with a minimal stub.
 """
 
 from dataclasses import dataclass
@@ -12,6 +13,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from synthorg.coordination.ceremony_policy.policy_resolver import (
+    PolicyFieldOrigin,
+    ResolvedCeremonyPolicyResponse,
+    ResolvedPolicyField,
+)
 from synthorg.coordination.ceremony_policy.service import (
     ActiveCeremonyStrategy,
     CeremonyPolicyService,
@@ -23,9 +29,6 @@ from synthorg.engine.workflow.ceremony_policy import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.controllers.ceremony_policy import (
-        ResolvedCeremonyPolicyResponse,
-    )
     from synthorg.api.state import AppState
 
 pytestmark = pytest.mark.unit
@@ -69,7 +72,7 @@ class _FakeAppState:
 
 
 class TestGetPolicy:
-    async def test_delegates_to_controller_helper(
+    async def test_delegates_to_resolver(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -81,7 +84,7 @@ class TestGetPolicy:
             return expected
 
         monkeypatch.setattr(
-            "synthorg.api.controllers.ceremony_policy._fetch_project_policy",
+            "synthorg.coordination.ceremony_policy.service._fetch_project_policy",
             _fake_fetch,
         )
         service = CeremonyPolicyService(
@@ -95,12 +98,6 @@ class TestGetPolicy:
 
 class TestGetResolvedPolicy:
     async def test_no_department(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from synthorg.api.controllers.ceremony_policy import (
-            PolicyFieldOrigin,
-            ResolvedCeremonyPolicyResponse,
-            ResolvedPolicyField,
-        )
-
         project = CeremonyPolicyConfig(
             strategy=CeremonyStrategyType.HYBRID,
         )
@@ -139,11 +136,11 @@ class TestGetResolvedPolicy:
             return response
 
         monkeypatch.setattr(
-            "synthorg.api.controllers.ceremony_policy._fetch_project_policy",
+            "synthorg.coordination.ceremony_policy.service._fetch_project_policy",
             _fake_fetch,
         )
         monkeypatch.setattr(
-            "synthorg.api.controllers.ceremony_policy._build_resolved_response",
+            "synthorg.coordination.ceremony_policy.service._build_resolved_response",
             _fake_build,
         )
         service = CeremonyPolicyService(
@@ -158,12 +155,6 @@ class TestGetResolvedPolicy:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from synthorg.api.controllers.ceremony_policy import (
-            PolicyFieldOrigin,
-            ResolvedCeremonyPolicyResponse,
-            ResolvedPolicyField,
-        )
-
         project = CeremonyPolicyConfig(
             strategy=CeremonyStrategyType.TASK_DRIVEN,
         )
@@ -213,15 +204,15 @@ class TestGetResolvedPolicy:
             return response
 
         monkeypatch.setattr(
-            "synthorg.api.controllers.ceremony_policy._fetch_project_policy",
+            "synthorg.coordination.ceremony_policy.service._fetch_project_policy",
             _fake_project,
         )
         monkeypatch.setattr(
-            "synthorg.api.controllers.ceremony_policy._fetch_department_policy",
+            "synthorg.coordination.ceremony_policy.service._fetch_department_policy",
             _fake_dept,
         )
         monkeypatch.setattr(
-            "synthorg.api.controllers.ceremony_policy._build_resolved_response",
+            "synthorg.coordination.ceremony_policy.service._build_resolved_response",
             _fake_build,
         )
         service = CeremonyPolicyService(
@@ -269,11 +260,11 @@ class TestGetResolvedPolicyDepartmentNotFound:
             raise NotFoundError(msg)
 
         monkeypatch.setattr(
-            "synthorg.api.controllers.ceremony_policy._fetch_project_policy",
+            "synthorg.coordination.ceremony_policy.service._fetch_project_policy",
             _fake_project,
         )
         monkeypatch.setattr(
-            "synthorg.api.controllers.ceremony_policy._fetch_department_policy",
+            "synthorg.coordination.ceremony_policy.service._fetch_department_policy",
             _fake_dept,
         )
         service = CeremonyPolicyService(
