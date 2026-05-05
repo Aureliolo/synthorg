@@ -183,6 +183,12 @@ def set_error_docs_base_url(value: str) -> None:
     Called once at app startup with the resolved
     ``api.error_docs_base_url`` setting. Reset to
     :data:`_ERROR_DOCS_BASE_DEFAULT` for test isolation.
+
+    Calling this outside startup creates a brief eventual-consistency
+    window for in-flight error responses, since :func:`category_type_uri`
+    reads the global at call time. The ``api.error_docs_base_url``
+    setting is ``restart_required=True`` precisely to keep this
+    single-writer.
     """
     global _ERROR_DOCS_BASE  # noqa: PLW0603 -- single-writer startup hook; tests reset via the same setter
     _ERROR_DOCS_BASE = value

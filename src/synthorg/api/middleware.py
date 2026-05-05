@@ -35,6 +35,7 @@ from synthorg.observability.events.api import (
     API_REQUEST_STARTED,
 )
 from synthorg.observability.events.metrics import METRICS_RECORD_FAILED
+from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
 
 _UNMATCHED_ROUTE: Final[str] = "__unmatched__"
 
@@ -74,15 +75,30 @@ def build_docs_csp(origins: Sequence[str]) -> str:
     swap the public Scalar hosts for an internally-mirrored CDN with
     a single configuration change.
 
+    An empty *origins* list raises ``ValueError`` rather than emit a
+    malformed CSP with trailing whitespace before each ``;``. CSP
+    parsers tolerate the trailing space but operators reading the
+    header back would see an obviously broken policy; the
+    ``ApiBridgeConfig`` validator is the right place to enforce
+    non-empty (currently only validates pattern), so callers pass
+    through the bridge-config-validated tuple.
+
     Args:
         origins: Origin URLs that Scalar UI assets and proxy requests
-            may target. Each entry must already be a valid origin
-            (scheme + host); the function does not validate.
+            may target. Must be non-empty. Each entry must already be
+            a valid origin (scheme + host); ``ApiBridgeConfig``
+            performs the per-entry validation.
 
     Returns:
         A CSP header value safe to assign to
         ``Content-Security-Policy`` for ``/docs/`` responses.
+
+    Raises:
+        ValueError: If *origins* is empty.
     """
+    if not origins:
+        msg = "build_docs_csp requires at least one trusted origin"
+        raise ValueError(msg)
     joined = " ".join(origins)
     return (
         f"default-src 'self'; "
@@ -107,9 +123,21 @@ def set_docs_csp_origins(origins: Sequence[str]) -> None:
     ``api.csp_docs_external_origins`` through the settings service.
     Reset to the default list with ``_DOCS_CSP_DEFAULT_ORIGINS`` for
     test isolation.
+
+    Calling this outside startup creates a brief eventual-consistency
+    window for in-flight HTTP responses, since the docs ``before_send``
+    hook reads the global at request time. The
+    ``api.csp_docs_external_origins`` setting is marked
+    ``restart_required=True`` precisely to keep this single-writer.
     """
     global _DOCS_CSP  # noqa: PLW0603 -- single-writer startup hook; tests reset via the same setter
     _DOCS_CSP = build_docs_csp(origins)
+    logger.info(
+        SETTINGS_VALUE_RESOLVED,
+        namespace="api",
+        key="csp_docs_external_origins",
+        origins_count=len(origins),
+    )
 
 
 # Cache-Control for API data endpoints (named constant for test

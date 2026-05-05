@@ -212,19 +212,82 @@ class TestDocsCspOriginsOverride:
         assert "https://cdn.jsdelivr.net" not in middleware._DOCS_CSP
 
     def test_build_docs_csp_applies_origins_uniformly(self) -> None:
-        result = build_docs_csp(["https://only.example.com"])
-        directives = (
-            "script-src",
-            "style-src",
-            "img-src",
-            "font-src",
-            "connect-src",
+        # Parses the CSP into a directive map and asserts the origin
+        # appears in every directive that is supposed to carry it.
+        # Resilient to directive reordering or whitespace tweaks.
+        origin = "https://only.example.com"
+        result = build_docs_csp([origin])
+        directives = {
+            tokens[0]: tokens[1:]
+            for raw in result.split(";")
+            if (tokens := raw.strip().split()) and len(tokens) > 1
+        }
+        for name in ("script-src", "style-src", "img-src", "font-src", "connect-src"):
+            assert origin in directives[name], (
+                f"{name} missing {origin!r} in {directives[name]}"
+            )
+
+    def test_build_docs_csp_rejects_empty_origins(self) -> None:
+        # Avoids producing a malformed CSP like
+        # "script-src 'self' 'unsafe-inline' ;" with trailing whitespace
+        # before the semicolon. The bridge config validator never lets
+        # an empty tuple through, but the function fails fast as a
+        # belt-and-braces check.
+        with pytest.raises(ValueError, match="at least one trusted origin"):
+            build_docs_csp([])
+
+
+class TestApiBridgeConfigSecurity:
+    """``ApiBridgeConfig`` rejects CSP origins that would degrade
+    /docs CSP, and rejects non-HTTPS error-docs URLs."""
+
+    @pytest.mark.parametrize(
+        "bad_origin",
+        [
+            "javascript:alert(1)",
+            "data:text/html,<img src=x>",
+            "not a url",
+            "ftp://example.com",
+            "",
+        ],
+        ids=["javascript_scheme", "data_scheme", "not_a_url", "ftp_scheme", "empty"],
+    )
+    def test_csp_origins_validator_rejects_bad_schemes(self, bad_origin: str) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        with pytest.raises(ValidationError):
+            ApiBridgeConfig(
+                csp_docs_external_origins=("https://cdn.example.com", bad_origin),
+            )
+
+    @pytest.mark.parametrize(
+        "bad_url",
+        [
+            "http://docs.example.com/errors",
+            "javascript:alert(1)",
+            "ftp://docs.example.com",
+        ],
+        ids=["http_insecure", "javascript_scheme", "ftp_scheme"],
+    )
+    def test_error_docs_base_url_validator_rejects_non_https(
+        self, bad_url: str
+    ) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        with pytest.raises(ValidationError):
+            ApiBridgeConfig(error_docs_base_url=bad_url)
+
+    def test_error_docs_base_url_accepts_https_override(self) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        cfg = ApiBridgeConfig(
+            error_docs_base_url="https://docs.example.com/errors",
         )
-        for directive in directives:
-            assert f"{directive}" in result
-            section_start = result.index(directive)
-            section_end = result.index(";", section_start)
-            assert "https://only.example.com" in result[section_start:section_end]
+        assert cfg.error_docs_base_url == "https://docs.example.com/errors"
 
 
 # ── Cache-Control path selection ──────────────────────────────

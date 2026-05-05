@@ -123,6 +123,10 @@ _HAPPY_CASES: tuple[
             ("api", "lifecycle_persistence_shutdown_seconds"): "5.0",
             ("api", "lifecycle_approval_timeout_shutdown_seconds"): "1.0",
             ("api", "lifecycle_drain_timeout_seconds"): "25.0",
+            ("api", "csp_docs_external_origins"): (
+                '["https://cdn.example.com", "https://fonts.example.com"]'
+            ),
+            ("api", "error_docs_base_url"): "https://docs.example.com/errors",
         },
         {
             "ticket_cleanup_interval_seconds": 60.0,
@@ -140,6 +144,11 @@ _HAPPY_CASES: tuple[
             "rate_limit_gc_every_n_acquires": 1024,
             "lifecycle_drain_timeout_seconds": 25.0,
             "max_meeting_context_keys": 20,
+            "csp_docs_external_origins": (
+                "https://cdn.example.com",
+                "https://fonts.example.com",
+            ),
+            "error_docs_base_url": "https://docs.example.com/errors",
         },
     ),
     (
@@ -410,6 +419,8 @@ async def test_get_api_bridge_config_rejects_out_of_range(
             ("api", "lifecycle_persistence_shutdown_seconds"): "5.0",
             ("api", "lifecycle_approval_timeout_shutdown_seconds"): "1.0",
             ("api", "lifecycle_drain_timeout_seconds"): "25.0",
+            ("api", "csp_docs_external_origins"): ('["https://cdn.example.com"]'),
+            ("api", "error_docs_base_url"): "https://docs.example.com/errors",
         }
     )
     with pytest.raises(ValidationError):

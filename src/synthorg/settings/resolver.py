@@ -778,13 +778,13 @@ class ConfigResolver:
         return {key: task.result() for key, task in tasks.items()}
 
     async def _resolve_typed(self, namespace: str, key: str, kind: str) -> Any:
-        """Dispatch to the scalar accessor matching ``kind``.
+        """Dispatch to the accessor matching ``kind``.
 
         Args:
             namespace: Setting namespace (e.g. ``"api"``, ``"tools"``).
             key: Setting key within the namespace.
-            kind: Type discriminator; must be one of ``"int"``,
-                ``"float"``, or ``"str"``. Any other value raises
+            kind: Type discriminator; one of ``"int"``, ``"float"``,
+                ``"str"``, or ``"json"``. Any other value raises
                 ``ValueError`` so misuse fails loudly rather than
                 silently resolving the wrong accessor.
 
@@ -792,7 +792,7 @@ class ConfigResolver:
             The resolved value coerced to the requested type.
 
         Raises:
-            ValueError: If *kind* is not one of the three supported
+            ValueError: If *kind* is not one of the four supported
                 discriminators.
             SettingNotFoundError: If the registry does not contain
                 *key* in *namespace*.
@@ -803,6 +803,8 @@ class ConfigResolver:
             return await self.get_float(namespace, key)
         if kind == "str":
             return await self.get_str(namespace, key)
+        if kind == "json":
+            return await self.get_json(namespace, key)
         msg = f"Unsupported typed-resolve kind: {kind!r}"
         raise ValueError(msg)
 
@@ -841,6 +843,8 @@ class ConfigResolver:
                 ("lifecycle_persistence_shutdown_seconds", "float"),
                 ("lifecycle_approval_timeout_shutdown_seconds", "float"),
                 ("lifecycle_drain_timeout_seconds", "float"),
+                ("csp_docs_external_origins", "json"),
+                ("error_docs_base_url", "str"),
             ),
         )
         return ApiBridgeConfig(**values)

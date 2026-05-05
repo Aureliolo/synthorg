@@ -10,11 +10,18 @@ historical hardcoded value so a consumer can construct one from defaults for
 tests without an active settings service.
 """
 
+import re
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
+
+# Pattern shared by ``csp_docs_external_origins`` element validation and
+# any future URL-list field. Restrictive enough to reject ``javascript:``,
+# ``data:``, and other schemes that would degrade /docs CSP to no
+# protection if they leaked into the directive.
+_CSP_ORIGIN_RE: Final[re.Pattern[str]] = re.compile(r"^https?://[\w.\-:/]+$")
 
 # WebSocket first-message auth handshake timeout bounds. Exposed as
 # module constants so the ``set_ws_auth_timeout_seconds`` setter on
@@ -216,6 +223,33 @@ class ApiBridgeConfig(BaseModel):
         default=1.0, ge=0.5, le=60.0
     )
     lifecycle_drain_timeout_seconds: float = Field(default=40.0, ge=5.0, le=300.0)
+    csp_docs_external_origins: tuple[NotBlankStr, ...] = Field(
+        default=(
+            NotBlankStr("https://cdn.jsdelivr.net"),
+            NotBlankStr("https://fonts.scalar.com"),
+            NotBlankStr("https://proxy.scalar.com"),
+        ),
+    )
+    error_docs_base_url: NotBlankStr = Field(
+        default=NotBlankStr("https://synthorg.io/docs/errors"),
+        pattern=r"^https://[\w.\-:/]+$",
+    )
+
+    @field_validator("csp_docs_external_origins")
+    @classmethod
+    def _validate_csp_origins(
+        cls,
+        value: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        for origin in value:
+            if not _CSP_ORIGIN_RE.fullmatch(origin):
+                msg = (
+                    f"csp_docs_external_origins entry {origin!r} does not"
+                    " match http(s)://host pattern; refusing to apply to"
+                    " avoid CSP downgrade"
+                )
+                raise ValueError(msg)
+        return value
 
 
 class EngineBridgeConfig(BaseModel):

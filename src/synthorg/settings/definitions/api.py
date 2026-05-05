@@ -212,12 +212,14 @@ _r.register(
             "Base URL used to build the RFC 9457 ``type`` field on every"
             " API error response. Each error category appends a fragment"
             " anchor (for example ``#auth``). Override when the docs"
-            " site is hosted at a non-default origin."
+            " site is hosted at a non-default origin. HTTPS-only: the"
+            " URL appears in every error response and must not downgrade"
+            " operator deployments to plaintext."
         ),
         group="Errors",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
-        validator_pattern=r"^https?://[\w.\-:/]+$",
+        restart_required=True,
+        validator_pattern=r"^https://[\w.\-:/]+$",
         yaml_path="api.error_docs_base_url",
     )
 )

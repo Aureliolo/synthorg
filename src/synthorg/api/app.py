@@ -17,6 +17,7 @@ from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import ScalarRenderPlugin
+from pydantic import ValidationError
 
 from synthorg import __version__
 from synthorg.api.app_builders import (
@@ -92,11 +93,13 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.notifications.factory import build_notification_dispatcher
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
+    API_BRIDGE_CONFIG_RESOLVE_FAILED,
     API_SERVICE_AUTO_WIRED,
 )
+from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
 )
@@ -116,6 +119,10 @@ from synthorg.security.timeout.policies import WaitForeverPolicy
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.security.timeout.timeout_checker import TimeoutChecker
 from synthorg.security.trust.service import TrustService  # noqa: TC001
+from synthorg.settings.errors import (
+    SettingNotFoundError,
+    SettingsEncryptionError,
+)
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -928,14 +935,38 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     async def _resolve_runtime_security_settings() -> None:
         if not app_state.has_config_resolver:
+            logger.warning(
+                API_BRIDGE_CONFIG_RESOLVE_FAILED,
+                bridge="api",
+                reason="config_resolver_unavailable",
+                fallback="module_defaults",
+            )
             return
         resolver = app_state.config_resolver
-        origins = await resolver.get_json("api", "csp_docs_external_origins")
-        if isinstance(origins, list) and all(isinstance(o, str) for o in origins):
-            set_docs_csp_origins(origins)
-        base_url = await resolver.get_str("api", "error_docs_base_url")
-        if base_url:
-            set_error_docs_base_url(base_url)
+        try:
+            bridge = await resolver.get_api_bridge_config()
+        except (
+            SettingNotFoundError,
+            SettingsEncryptionError,
+            ValueError,
+            ValidationError,
+        ) as exc:
+            logger.warning(
+                API_BRIDGE_CONFIG_RESOLVE_FAILED,
+                bridge="api",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback="module_defaults",
+            )
+            return
+        set_docs_csp_origins(bridge.csp_docs_external_origins)
+        set_error_docs_base_url(bridge.error_docs_base_url)
+        logger.info(
+            SETTINGS_VALUE_RESOLVED,
+            namespace="api",
+            key="error_docs_base_url",
+            value=bridge.error_docs_base_url,
+        )
 
     startup = [*startup, _resolve_runtime_security_settings]
 

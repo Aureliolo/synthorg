@@ -14,7 +14,7 @@ from synthorg.notifications.config import (
     NotificationSinkType,
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_CONFIG_INVALID,
     NOTIFICATION_SINK_DEFAULT_FALLBACK,
@@ -187,21 +187,31 @@ def _create_slack_sink(
     """Create a Slack webhook notification sink.
 
     Args:
-        params: Adapter-specific parameters.
+        params: Adapter-specific parameters. Reads
+            ``webhook_url``; falls back to
+            ``bridge_config.slack_default_webhook_url`` when the
+            per-sink value is missing or blank.
         bridge_config: Optional operator-tuned notification bridge
             config. When provided, threads
-            ``slack_webhook_timeout_seconds`` into the adapter.
+            ``slack_webhook_timeout_seconds`` into the adapter and
+            supplies the namespace-level ``slack_default_webhook_url``
+            fallback.
 
     Returns:
-        Configured Slack sink or ``None`` if webhook URL is missing.
+        Configured Slack sink, or ``None`` when neither *params* nor
+        the bridge default supplies a webhook URL, or when the
+        resolved URL fails outbound-target validation
+        (loopback / private IP / non-HTTP scheme).
     """
     from synthorg.notifications.adapters.slack import (  # noqa: PLC0415
         SlackNotificationSink,
     )
 
     webhook_url = params.get("webhook_url", "")
+    used_bridge_default = False
     if not webhook_url and bridge_config is not None:
         webhook_url = bridge_config.slack_default_webhook_url
+        used_bridge_default = bool(webhook_url)
     if not webhook_url:
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,
@@ -209,12 +219,29 @@ def _create_slack_sink(
             error="webhook_url is required",
         )
         return None
-    if bridge_config is None:
-        return SlackNotificationSink(webhook_url=webhook_url)
-    return SlackNotificationSink(
-        webhook_url=webhook_url,
-        webhook_timeout_seconds=bridge_config.slack_webhook_timeout_seconds,
-    )
+    if used_bridge_default:
+        logger.info(
+            NOTIFICATION_SINK_DEFAULT_FALLBACK,
+            sink_type="slack",
+            source="bridge_config.slack_default_webhook_url",
+        )
+    try:
+        if bridge_config is None:
+            return SlackNotificationSink(webhook_url=webhook_url)
+        return SlackNotificationSink(
+            webhook_url=webhook_url,
+            webhook_timeout_seconds=bridge_config.slack_webhook_timeout_seconds,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except ValueError as exc:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="slack",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
 
 
 def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation guard

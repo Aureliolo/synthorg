@@ -134,11 +134,14 @@ dev = [
 # Build-time: the Dockerfile picks the extra via the FINE_TUNE_EXTRA build-arg.
 # Runtime: the CLI init flow prompts GPU vs CPU when fine-tuning is enabled.
 [tool.uv]
-# Lower bound covers two important fixes: GHSA-pjjw-68hj-v9mw (wheel RECORD
-# path-traversal on uninstall, fixed in 0.11.6) and the Windows trampoline
-# PYTHONHOME leak (fixed in 0.11.9) that destabilised pytest-xdist workers
-# on Python 3.14 / Windows. Bump only when a newer minimum is needed.
-required-version = ">=0.11.9"
+# Lower bound is the security floor: 0.11.8 ships the wheel RECORD
+# path-traversal fix (GHSA-pjjw-68hj-v9mw, originally landed in 0.11.6)
+# and is the binary bundled by pre-commit-uv 4.2.1. The Docker images
+# pull 0.11.9 because that release adds a Windows trampoline fix that
+# stabilises pytest-xdist workers on Python 3.14 / Windows; the project
+# floor stays one minor behind so contributors using pre-commit-uv can
+# sync without waiting on its next release.
+required-version = ">=0.11.8"
 conflicts = [
     [
         { extra = "fine-tune-gpu" },

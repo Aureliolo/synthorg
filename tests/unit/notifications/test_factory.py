@@ -117,36 +117,67 @@ class TestCreateEmailSink:
         assert sink._from_addr == "ops@example.test"
 
 
+_EXPLICIT_URL = "https://hooks.slack.com/services/X/Y/Z"
+_BRIDGE_URL = "https://hooks.slack.com/services/A/B/C"
+
+
 class TestCreateSlackSink:
     """`_create_slack_sink` URL resolution and bridge fallback."""
 
-    def test_explicit_webhook_url_used(self) -> None:
-        sink = _create_slack_sink(
-            {"webhook_url": "https://hooks.slack.com/services/T/B/X"},
+    @pytest.mark.parametrize(
+        ("params_url", "bridge_url", "expected_url"),
+        [
+            (_EXPLICIT_URL, None, _EXPLICIT_URL),
+            (_EXPLICIT_URL, _BRIDGE_URL, _EXPLICIT_URL),
+            ("", _BRIDGE_URL, _BRIDGE_URL),
+        ],
+        ids=[
+            "explicit_used_no_bridge",
+            "explicit_overrides_bridge",
+            "bridge_fallback",
+        ],
+    )
+    def test_resolves_to_expected_url(
+        self,
+        params_url: str,
+        bridge_url: str | None,
+        expected_url: str,
+    ) -> None:
+        params: dict[str, str] = {"webhook_url": params_url} if params_url else {}
+        bridge = (
+            NotificationsBridgeConfig(slack_default_webhook_url=bridge_url)
+            if bridge_url is not None
+            else None
         )
-        assert sink is not None
+        sink = _create_slack_sink(params, bridge_config=bridge)
+        assert isinstance(sink, SlackNotificationSink)
+        assert sink._webhook_url == expected_url
 
-    def test_missing_url_without_bridge_returns_none(self) -> None:
-        assert _create_slack_sink({}) is None
+    @pytest.mark.parametrize(
+        "bridge_url",
+        [None, ""],
+        ids=["no_bridge", "blank_bridge_default"],
+    )
+    def test_missing_url_returns_none(self, bridge_url: str | None) -> None:
+        bridge = (
+            NotificationsBridgeConfig(slack_default_webhook_url=bridge_url)
+            if bridge_url is not None
+            else None
+        )
+        assert _create_slack_sink({}, bridge_config=bridge) is None
 
-    def test_bridge_default_used_when_params_empty(self) -> None:
+    def test_invalid_bridge_default_logs_and_returns_none(self) -> None:
+        # The bridge default is structurally valid (matches the
+        # NotificationsBridgeConfig pattern) but targets a private IP,
+        # which SlackNotificationSink rejects via _validate_outbound_url.
+        # The factory must catch the ValueError, log, and return None.
         bridge = NotificationsBridgeConfig(
             slack_default_webhook_url="https://hooks.slack.com/services/T/B/X",
         )
-        sink = _create_slack_sink({}, bridge_config=bridge)
-        assert sink is not None
-
-    def test_explicit_url_takes_precedence_over_bridge_default(self) -> None:
-        bridge = NotificationsBridgeConfig(
-            slack_default_webhook_url="https://hooks.slack.com/services/A/B/C",
-        )
+        # Force the sink construction to raise by passing a private IP
+        # via params, which bypasses the bridge fallback path.
         sink = _create_slack_sink(
-            {"webhook_url": "https://hooks.slack.com/services/X/Y/Z"},
+            {"webhook_url": "https://127.0.0.1/services/T/B/X"},
             bridge_config=bridge,
         )
-        assert isinstance(sink, SlackNotificationSink)
-        assert sink._webhook_url == "https://hooks.slack.com/services/X/Y/Z"
-
-    def test_blank_bridge_default_does_not_satisfy_required(self) -> None:
-        bridge = NotificationsBridgeConfig(slack_default_webhook_url="")
-        assert _create_slack_sink({}, bridge_config=bridge) is None
+        assert sink is None

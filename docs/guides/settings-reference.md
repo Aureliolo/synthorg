@@ -69,6 +69,18 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `telemetry` | Anonymous product telemetry opt-in (off by default; token embedded at build) |
 | `workers` | Uvicorn worker count, distributed dispatcher publish retry budget and backoff |
 
+### Security headers and error documentation
+
+The `api` namespace also carries operator-tunable settings that govern the response surface of `/docs/` and RFC 9457 error payloads, and the `notifications` namespace has a Slack default URL fallback:
+
+| Setting | Type | Default | Purpose |
+|---------|------|---------|---------|
+| `api.csp_docs_external_origins` | JSON list | `["https://cdn.jsdelivr.net", "https://fonts.scalar.com", "https://proxy.scalar.com"]` | Trusted external origins used to build the relaxed Content-Security-Policy on `/docs/` paths. Override with internally-mirrored hosts when the backend is not allowed to reach the public Scalar CDN. Each origin must match `^https?://[\w.\-:/]+$`; a malformed entry rejects the bridge config and the runtime falls back to defaults with a `WARNING` log. |
+| `api.error_docs_base_url` | STRING | `https://synthorg.io/docs/errors` | Base URL appended with `#<category>` for the RFC 9457 `type` field on every error response. HTTPS-only (`^https://[\w.\-:/]+$`) so error details never traverse plaintext. |
+| `notifications.slack_default_webhook_url` | STRING (sensitive) | `""` | Optional fallback Slack incoming webhook applied when a Slack sink is configured without its own `webhook_url`. Empty default keeps every sink explicit; setting a value lets operators centralise the URL. Encrypted at rest. |
+
+All three are `restart_required=True`: the CSP and error-docs URL are baked into module-level state during startup; the Slack default is read at sink construction and is not hot-reloaded.
+
 ## REST API
 
 All namespaces expose the same endpoint pattern:
