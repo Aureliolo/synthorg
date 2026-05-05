@@ -199,3 +199,16 @@ class NormalizedIndex:
 def yn(*, nullable: bool) -> str:
     """Return ``Y`` for nullable, ``N`` for NOT NULL."""
     return "Y" if nullable else "N"
+
+
+def bool_yn(*, value: bool) -> str:
+    """Return ``Y`` for True, ``N`` for False.
+
+    Generic boolean formatter for finding-key fields that encode
+    arbitrary booleans (e.g. an index's ``unique`` flag). Distinct
+    from :func:`yn`, which is keyword-only on ``nullable`` and
+    documents the nullability semantics in its name. Keyword-only on
+    ``value`` to keep call sites self-documenting and to comply with
+    ruff FBT001 (no boolean-typed positional arguments).
+    """
+    return "Y" if value else "N"

@@ -363,6 +363,6 @@ repos:
         # Trigger on schema files, revision files, the script itself,
         # the baseline, or this config so a PR that weakens the gate
         # cannot bypass the check by not touching schema.sql.
-        files: ^(src/synthorg/persistence/(sqlite|postgres)/(schema\.sql|revisions/.*\.sql)|scripts/check_schema_drift\.py|scripts/schema_drift_baseline\.txt|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/persistence/(sqlite|postgres)/(schema\.sql|revisions/.*\.sql)|scripts/check_schema_drift\.py|scripts/_schema_drift_.*\.py|scripts/schema_drift_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]

@@ -76,6 +76,7 @@ the 800-line per-file ceiling (CLAUDE.md):
 import argparse
 import sys
 from pathlib import Path
+from typing import Final
 
 from sqlglot.errors import ParseError, TokenError
 
@@ -87,6 +88,7 @@ if __package__ in {None, ""}:  # standalone invocation
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _schema_drift_baseline import (  # type: ignore[import-not-found]
         load_baseline,
+        load_baseline_with_reasons,
         write_baseline,
     )
     from _schema_drift_compare import (  # type: ignore[import-not-found]
@@ -106,7 +108,11 @@ if __package__ in {None, ""}:  # standalone invocation
     )
     from _schema_drift_parser import parse_schema  # type: ignore[import-not-found]
 else:  # package-style invocation (e.g. ``import scripts.check_schema_drift``).
-    from scripts._schema_drift_baseline import load_baseline, write_baseline
+    from scripts._schema_drift_baseline import (
+        load_baseline,
+        load_baseline_with_reasons,
+        write_baseline,
+    )
     from scripts._schema_drift_compare import diff_migrations, diff_schemas
     from scripts._schema_drift_models import (
         DEFAULT_BASELINE,
@@ -243,6 +249,16 @@ def _parse_both(
     return sqlite_tables, sqlite_indexes, postgres_tables, postgres_indexes
 
 
+_NEW_DRIFT_REMEDIATION: Final[str] = (
+    "Either fix the schema (preferred) or regenerate the baseline with "
+    "--update-baseline + a per-entry justification "
+    "(requires explicit user approval)."
+)
+_PLACEHOLDER_BASELINE_REASON: Final[str] = (
+    "auto-generated; replace with audit-cited justification before commit"
+)
+
+
 def _report_findings(new_drift: list[str], stale_baseline: list[str]) -> int:
     """Print stale + new drift; return exit code (0 ok / 1 new drift)."""
     for key in stale_baseline:
@@ -252,25 +268,32 @@ def _report_findings(new_drift: list[str], stale_baseline: list[str]) -> int:
         )
     for key in new_drift:
         print(f"DRIFT: {key}", file=sys.stderr)
-    if new_drift:
-        print(
-            f"\n{len(new_drift)} new schema-drift finding(s). "
-            "Either fix the schema (preferred) or "
-            "regenerate the baseline with --update-baseline + a per-entry "
-            "justification (requires explicit user approval).",
-            file=sys.stderr,
-        )
-        return 1
-    return 0
+    if not new_drift:
+        return 0
+    print(
+        f"\n{len(new_drift)} new schema-drift finding(s). {_NEW_DRIFT_REMEDIATION}",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def _do_update_baseline(baseline_path: Path, findings_set: set[str]) -> int:
-    """Persist the baseline file; return exit code."""
+    """Persist the baseline file; return exit code.
+
+    Existing reasons are preserved across regeneration: keys still in
+    ``findings_set`` keep whatever reason the operator already wrote;
+    new keys get the placeholder reason and need editing before commit.
+    """
+    try:
+        existing_reasons = load_baseline_with_reasons(baseline_path)
+    except ValueError, OSError:
+        existing_reasons = {}
     try:
         write_baseline(
             baseline_path,
             sorted(findings_set),
-            reason="auto-generated; replace with audit-cited justification before commit",
+            default_reason=_PLACEHOLDER_BASELINE_REASON,
+            reasons=existing_reasons,
         )
     except OSError as exc:
         print(

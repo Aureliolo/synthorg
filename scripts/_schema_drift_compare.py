@@ -19,6 +19,7 @@ if __package__ in {None, ""}:
         TYPE_FAMILIES,
         NormalizedIndex,
         NormalizedTable,
+        bool_yn,
         yn,
     )
 else:
@@ -30,6 +31,7 @@ else:
         TYPE_FAMILIES,
         NormalizedIndex,
         NormalizedTable,
+        bool_yn,
         yn,
     )
 
@@ -175,7 +177,7 @@ def _diff_index_attrs(
     if s_idx.unique != p_idx.unique:
         findings.append(
             f"index_attr:{s_idx.name}:unique:"
-            f"{yn(nullable=s_idx.unique)}:{yn(nullable=p_idx.unique)}"
+            f"{bool_yn(value=s_idx.unique)}:{bool_yn(value=p_idx.unique)}"
         )
     if (s_idx.where or "") != (p_idx.where or ""):
         findings.append(
