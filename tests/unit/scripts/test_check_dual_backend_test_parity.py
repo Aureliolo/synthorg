@@ -183,6 +183,57 @@ def test_direct_typing_on_secondary_param_flagged(tmp_path: Path) -> None:
     assert any("direct-backend-typing" in msg for msg in issues)
 
 
+def test_quoted_dotted_forward_ref_flagged(tmp_path: Path) -> None:
+    """``backend: "psycopg.AsyncConnection"`` (string forward ref) is flagged.
+
+    Quoted dotted annotations reach the AST as one ``ast.Constant``
+    string; without forward-ref parsing the dotted-form filter never
+    sees the ``(module, attr)`` pair and the gate misses the bypass.
+    """
+    target = _make_conformance_file(
+        tmp_path,
+        "test_forward_ref.py",
+        "class TestX:\n"
+        '    async def test_y(self, backend: "psycopg.AsyncConnection") -> None:\n'
+        "        pass\n",
+    )
+    issues = _MODULE._scan_signature_file(  # type: ignore[attr-defined]
+        target, "tests/conformance/persistence/test_forward_ref.py"
+    )
+    assert any("direct-backend-typing" in msg for msg in issues)
+    assert any("psycopg.AsyncConnection" in msg for msg in issues)
+
+
+def test_two_forbidden_params_produce_two_baseline_keys(tmp_path: Path) -> None:
+    """Each forbidden parameter on one function gets its own baseline key.
+
+    Without per-parameter ``subject`` disambiguation, both entries
+    would collapse to the same ``<kind>:<path>:<lineno>:<func>`` key
+    and one of them would silently slip past the baseline ratchet.
+    """
+    target = _make_conformance_file(
+        tmp_path,
+        "test_two_forbidden.py",
+        "class TestX:\n"
+        "    async def test_y(\n"
+        "        self,\n"
+        "        first: aiosqlite.Connection,\n"
+        "        second: psycopg.AsyncConnection,\n"
+        "    ) -> None:\n"
+        "        pass\n",
+    )
+    rel_path = "tests/conformance/persistence/test_two_forbidden.py"
+    from scripts._dual_backend_parity_lib import _collect_signature_violations
+
+    structured = _collect_signature_violations(target, rel_path)
+    direct = [v for v in structured if v.kind == "direct-backend-typing"]
+    assert len(direct) == 2
+    keys = {v.baseline_key() for v in direct}
+    assert len(keys) == 2
+    assert any(key.endswith(":first") for key in keys)
+    assert any(key.endswith(":second") for key in keys)
+
+
 def test_optional_backend_typing_flagged(tmp_path: Path) -> None:
     """``backend: PostgresPersistenceBackend | None`` is still a bypass."""
     target = _make_conformance_file(
@@ -519,6 +570,35 @@ def test_accessor_usage_detected_in_test_body(tmp_path: Path) -> None:
     )
     used = _MODULE._collect_backend_accessor_usage(target.parent)  # type: ignore[attr-defined]
     assert "users" in used
+
+
+def test_accessor_usage_excludes_conftest_and_init(tmp_path: Path) -> None:
+    """``conftest.py`` / ``__init__.py`` references do not satisfy coverage.
+
+    A fixture-only ``backend.<accessor>`` mention in ``conftest.py``
+    only exists to construct the fixture itself; counting it would
+    let a fixture-only mention satisfy coverage when no real
+    conformance test ever touches that repo.
+    """
+    _make_conformance_file(
+        tmp_path,
+        "conftest.py",
+        "async def fixture(backend) -> None:\n    backend.fixture_only_repo.save(x)\n",
+    )
+    _make_conformance_file(
+        tmp_path,
+        "__init__.py",
+        "async def helper(backend) -> None:\n    backend.init_only_repo.save(x)\n",
+    )
+    _make_conformance_file(
+        tmp_path,
+        "test_real.py",
+        "async def test_x(backend) -> None:\n    backend.real_repo.save(x)\n",
+    )
+    used = _MODULE._collect_backend_accessor_usage(tmp_path / "conformance")  # type: ignore[attr-defined]
+    assert "real_repo" in used
+    assert "fixture_only_repo" not in used
+    assert "init_only_repo" not in used
 
 
 def test_accessor_usage_collects_all_files(tmp_path: Path) -> None:

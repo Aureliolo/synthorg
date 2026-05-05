@@ -326,7 +326,7 @@ repos:
         # that adds a missing-coverage gap or a signature regression
         # (or weakens the gate by editing the script / baseline)
         # cannot bypass the check.
-        files: ^(src/synthorg/persistence/.*_protocol\.py|src/synthorg/persistence/.*_repo\.py|src/synthorg/persistence/.*_repository\.py|src/synthorg/persistence/.*_repos\.py|src/synthorg/persistence/protocol\.py|tests/conformance/persistence/.*\.py|scripts/check_dual_backend_test_parity\.py|scripts/_dual_backend_parity_lib\.py|scripts/dual_backend_parity_baseline\.txt|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/persistence/[^/]+\.py|tests/conformance/persistence/.*\.py|scripts/check_dual_backend_test_parity\.py|scripts/_dual_backend_parity_lib\.py|scripts/dual_backend_parity_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

@@ -113,7 +113,7 @@ _BASELINE_ENTRY_RE: Final[re.Pattern[str]] = re.compile(
     r"^(?:"
     r"missing-test-coverage:[A-Za-z0-9_]+"
     r"|(?:missing-backend-param|direct-backend-typing|backend-name-conditional):"
-    r"[^:]+:\d+:[A-Za-z0-9_]+"
+    r"[^:]+:\d+:[A-Za-z0-9_]+(?::[A-Za-z0-9_]+)?"
     r")$"
 )
 
@@ -122,8 +122,11 @@ _BASELINE_HEADER: Final[str] = (
     "# Each line is one of:\n"
     "#   missing-test-coverage:<RepositoryClassName>\n"
     "#   missing-backend-param:<rel_posix_path>:<lineno>:<func_name>\n"
-    "#   direct-backend-typing:<rel_posix_path>:<lineno>:<func_name>\n"
+    "#   direct-backend-typing:<rel_posix_path>:<lineno>:<func_name>:<param_name>\n"
     "#   backend-name-conditional:<rel_posix_path>:<lineno>:<func_name>\n"
+    "# (direct-backend-typing carries the offending parameter name so\n"
+    "#  multiple forbidden annotations on one function each baseline\n"
+    "#  separately.)\n"
     "# Regenerate with --update-baseline (commit diff after review).\n"
 )
 
@@ -133,17 +136,29 @@ _BASELINE_HEADER: Final[str] = (
 
 @dataclass(frozen=True)
 class _TestViolation:
-    """Per-test signature- or body-pass violation."""
+    """Per-test signature- or body-pass violation.
+
+    *subject* names the offending element when one violation kind can
+    fire multiple times against the same function -- specifically
+    ``direct-backend-typing``, where each forbidden parameter
+    annotation produces its own entry.  Without it, two forbidden
+    params on one ``def`` would collapse to one baseline key and one
+    of them would silently slip past reporting and ratcheting.
+    ``None`` keeps the legacy key shape for kinds that fire at most
+    once per function.
+    """
 
     kind: ViolationKind
     rel_path: str
     lineno: int
     func_name: str
     detail: str
+    subject: str | None = None
 
     def baseline_key(self) -> str:
-        """Return ``<kind>:<rel_path>:<lineno>:<func_name>``."""
-        return f"{self.kind}:{self.rel_path}:{self.lineno}:{self.func_name}"
+        """Return ``<kind>:<rel_path>:<lineno>:<func_name>[:<subject>]``."""
+        suffix = f":{self.subject}" if self.subject is not None else ""
+        return f"{self.kind}:{self.rel_path}:{self.lineno}:{self.func_name}{suffix}"
 
     def message(self) -> str:
         """Return the stderr violation line."""
@@ -225,7 +240,9 @@ def _annotation_terminal_names(  # noqa: PLR0911, C901 -- one branch per AST nod
 
     - ``Name(id='X')``         -> ``(None, 'X')``
     - ``Attribute(value=Name('m'), attr='X')`` -> ``('m', 'X')``
-    - ``Constant(value='X')``  -> ``(None, 'X')`` (string forward ref)
+    - ``Constant(value='X')``  -> parse as ``ast.parse(value, mode="eval")``
+      and recurse so quoted dotted forward refs like
+      ``"psycopg.AsyncConnection"`` reach the dotted-form filter.
     - ``Call(func=...)``       -> recurse into ``func`` and ``args``
     """
     if node is None:
@@ -237,7 +254,12 @@ def _annotation_terminal_names(  # noqa: PLR0911, C901 -- one branch per AST nod
         yield node.value.id, node.attr
         return
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        yield None, node.value
+        try:
+            parsed = ast.parse(node.value, mode="eval")
+        except SyntaxError:
+            yield None, node.value
+        else:
+            yield from _annotation_terminal_names(parsed.body)
         return
     if isinstance(node, ast.Subscript):
         yield from _annotation_terminal_names(node.value)
@@ -348,6 +370,7 @@ def _check_signature(
                         "which bypasses the parametrised conformance fixture; "
                         "use `backend: PersistenceBackend` instead"
                     ),
+                    subject=arg.arg,
                 )
             )
     return violations
@@ -608,18 +631,27 @@ def _discover_backend_accessors(backend_protocol_path: Path) -> dict[str, list[s
 def _collect_backend_accessor_usage(conformance_dir: Path) -> set[str]:
     """Return every direct ``backend.<attr>`` accessor name used in tests.
 
-    Walks every ``.py`` file under *conformance_dir* and records the
-    *attr* of every AST ``Attribute`` whose ``value`` is exactly
+    Walks every ``.py`` file under *conformance_dir* (excluding
+    ``conftest.py`` and ``__init__.py``) and records the *attr* of
+    every AST ``Attribute`` whose ``value`` is exactly
     ``Name(id="backend")``.  Multi-level chains like
     ``backend.users.api_keys.save(x)`` register only the first hop
     (``users``); the inner ``Attribute(value=Attribute(...), attr="api_keys")``
-    has a non-Name value and is ignored.  Read / parse failures
-    raise so a broken test file surfaces at CI time.
+    has a non-Name value and is ignored.  Read / parse failures raise
+    so a broken test file surfaces at CI time.
+
+    Skipping fixture / package files keeps the coverage check honest:
+    a ``backend.<accessor>`` reference inside ``conftest.py`` exists
+    only to construct the fixture itself, not to exercise the
+    repository.  Counting it would let a fixture-only mention satisfy
+    coverage when no real conformance test ever touches that repo.
     """
     used: set[str] = set()
     if not conformance_dir.is_dir():
         return used
     for path in sorted(conformance_dir.rglob("*.py")):
+        if path.name in _PROTOCOL_DIR_SKIP:
+            continue
         try:
             rel = path.relative_to(conformance_dir.parent.parent.parent).as_posix()
         except ValueError:
