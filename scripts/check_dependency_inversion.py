@@ -138,14 +138,24 @@ def _collect_module_aliases(
     tree: ast.Module,
     lines: list[str],
 ) -> dict[str, str]:
-    """Return ``{local_binding: dotted_module}`` for forbidden module imports.
+    """Return ``{access_path: forbidden_module}`` for forbidden module imports.
 
-    Captures both ``import synthorg.persistence.config`` (binds
-    ``synthorg`` locally) and ``import synthorg.persistence.config as cfg``
-    (binds ``cfg``) so the attribute-access pass can resolve usages back
-    to the owning module. Suppression markers on the import line skip
-    the alias entirely so callers don't get a violation against an
-    explicitly-allowed import.
+    Two import shapes need coverage so the attribute-access pass can
+    resolve both:
+
+    - ``import synthorg.persistence.config as cfg`` -- usage is
+      ``cfg.SQLiteConfig``; the access base is the bare alias ``cfg``,
+      so the key is ``"cfg"``.
+    - ``import synthorg.persistence.config`` -- usage is
+      ``synthorg.persistence.config.SQLiteConfig``; the access base
+      walks the full dotted module path, so the key is the full module
+      string (NOT just the root binding ``synthorg``: that wouldn't
+      match the resolved attribute chain and would also collide with
+      unrelated ``synthorg.X`` imports). The map value is the
+      forbidden module the access reaches in either shape.
+
+    Suppression markers on the import line skip the alias entirely so
+    callers don't get a violation against an explicitly-allowed import.
     """
     aliases_to_module: dict[str, str] = {}
     for node in ast.walk(tree):
@@ -159,8 +169,8 @@ def _collect_module_aliases(
             line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
             if _line_has_trailing_marker(line):
                 continue
-            local_name = alias.asname or module_name.split(".", 1)[0]
-            aliases_to_module[local_name] = module_name
+            access_key = alias.asname or module_name
+            aliases_to_module[access_key] = module_name
     return aliases_to_module
 
 

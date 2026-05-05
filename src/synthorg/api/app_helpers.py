@@ -10,7 +10,17 @@ import os
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+# ``ChannelsPlugin`` appears in the public signatures of the helpers
+# below. Under PEP 649 lazy annotations, ``inspect.get_type_hints()``
+# resolves names against module globals at introspection time, so the
+# import must be runtime-resolvable; keeping it under TYPE_CHECKING
+# would raise ``NameError`` for any caller that introspects the
+# annotation surface (Litestar's plugin loader, test harnesses, etc.).
+from litestar.channels import (
+    ChannelsPlugin,  # noqa: TC002 -- runtime-resolvable annotation for PEP 649
+)
 
 from synthorg.api.channels import (
     CHANNEL_AGENTS,
@@ -32,9 +42,6 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.prompt import (
     PROMPT_PERSONALITY_NOTIFY_FAILED,
 )
-
-if TYPE_CHECKING:
-    from litestar.channels import ChannelsPlugin
 
 logger = get_logger(__name__)
 

@@ -50,7 +50,125 @@ def build_sqlite_persistence_config(*, path: str) -> PersistenceConfig:
     )
 
 
-def build_postgres_persistence_config_from_url(  # noqa: C901
+def _fail_url(
+    msg: str,
+    reason: str,
+    cause: Exception | None = None,
+) -> NoReturn:
+    """Log and raise for a Postgres-URL configuration failure."""
+    logger.warning(API_APP_STARTUP, error=msg, reason=reason)
+    raise ValueError(msg) from cause
+
+
+def _validate_postgres_url(db_url: str) -> tuple[str, int, str, str, str]:
+    """Parse and validate *db_url*; return ``(host, port, db, user, pass)``.
+
+    Each component is URL-decoded before return so credentials with
+    reserved characters survive the round-trip. The port is resolved
+    via :func:`_resolve_postgres_port` so an explicit ``:0`` is rejected
+    rather than silently rewritten to ``5432``.
+
+    Raises:
+        ValueError (via :func:`_fail_url`) on any structural problem
+        (parse failure, query parameters, wrong scheme, missing
+        host/credentials/database, port 0).
+    """
+    try:
+        parsed = urlparse(db_url)
+    except ValueError as exc:
+        _fail_url(
+            f"SYNTHORG_DATABASE_URL could not be parsed: {exc}",
+            "url_parse_failed",
+            exc,
+        )
+    if parsed.query:
+        _fail_url(
+            "SYNTHORG_DATABASE_URL must not include query parameters; use "
+            "SYNTHORG_POSTGRES_SSL_MODE for ssl_mode overrides",
+            "unsupported_query_params",
+        )
+    if parsed.scheme not in {"postgres", "postgresql"}:
+        _fail_url(
+            f"SYNTHORG_DATABASE_URL scheme {parsed.scheme!r} is not "
+            f"supported; expected 'postgresql://...'",
+            "invalid_scheme",
+        )
+    try:
+        hostname = parsed.hostname
+        parsed_port = parsed.port
+    except ValueError as exc:
+        _fail_url(
+            f"SYNTHORG_DATABASE_URL has an invalid host/port: {exc}",
+            "invalid_host_port",
+            exc,
+        )
+    if not hostname:
+        _fail_url("SYNTHORG_DATABASE_URL is missing a host component", "missing_host")
+    if not parsed.username or not parsed.password:
+        _fail_url(
+            "SYNTHORG_DATABASE_URL must include a username and password "
+            "(postgresql://user:pass@host:port/db)",
+            "missing_credentials",
+        )
+    database = parsed.path.lstrip("/")
+    if not database:
+        _fail_url(
+            "SYNTHORG_DATABASE_URL must include a database name in the "
+            "path (postgresql://user:pass@host:port/db)",
+            "missing_database",
+        )
+    port = _resolve_postgres_port(parsed_port)
+    return (
+        unquote(hostname),
+        port,
+        unquote(database),
+        unquote(parsed.username),
+        unquote(parsed.password),
+    )
+
+
+def _resolve_postgres_port(parsed_port: int | None) -> int:
+    """Return the effective Postgres port, rejecting an explicit ``:0``.
+
+    ``urllib.parse`` returns ``None`` when the URL has no port and ``0``
+    when the URL contains an explicit ``:0``. The previous
+    ``parsed_port or 5432`` fallback collapsed both into ``5432`` and
+    silently masked an operator misconfiguration, sending startup at
+    the default port instead of failing fast. Distinguishing the two
+    cases keeps the default-port convenience for ``...@host/db`` while
+    surfacing ``...@host:0/db`` as a configuration error.
+    """
+    if parsed_port is None:
+        return 5432
+    if parsed_port == 0:
+        _fail_url(
+            "SYNTHORG_DATABASE_URL has port 0; use a positive port or "
+            "omit the port to default to 5432",
+            "invalid_port_zero",
+        )
+    return parsed_port
+
+
+def _normalize_ssl_mode_kwargs(ssl_mode_override: str | None) -> dict[str, Any]:
+    """Validate ``ssl_mode_override`` and return ``PostgresConfig`` kwargs.
+
+    Empty / ``None`` overrides return an empty dict so the caller's
+    ``**ssl_kwargs`` spread leaves the :class:`PostgresConfig` default
+    (``"require"``) in place.
+    """
+    if not ssl_mode_override:
+        return {}
+    valid_modes = set(get_args(PostgresSslMode))
+    if ssl_mode_override not in valid_modes:
+        _fail_url(
+            f"SYNTHORG_POSTGRES_SSL_MODE={ssl_mode_override!r} is invalid; "
+            f"must be one of: {sorted(valid_modes)}",
+            "invalid_ssl_mode",
+        )
+    return {"ssl_mode": ssl_mode_override}
+
+
+def build_postgres_persistence_config_from_url(
     db_url: str,
     *,
     ssl_mode_override: str | None = None,
@@ -68,73 +186,14 @@ def build_postgres_persistence_config_from_url(  # noqa: C901
     callers can pass ``ssl_mode_override`` (typically sourced from
     ``SYNTHORG_POSTGRES_SSL_MODE``).
     """
-
-    def _fail(msg: str, reason: str, cause: Exception | None = None) -> NoReturn:
-        logger.warning(API_APP_STARTUP, error=msg, reason=reason)
-        raise ValueError(msg) from cause
-
-    try:
-        parsed = urlparse(db_url)
-    except ValueError as exc:
-        _fail(
-            f"SYNTHORG_DATABASE_URL could not be parsed: {exc}",
-            "url_parse_failed",
-            exc,
-        )
-    if parsed.query:
-        _fail(
-            "SYNTHORG_DATABASE_URL must not include query parameters; use "
-            "SYNTHORG_POSTGRES_SSL_MODE for ssl_mode overrides",
-            "unsupported_query_params",
-        )
-    if parsed.scheme not in {"postgres", "postgresql"}:
-        _fail(
-            f"SYNTHORG_DATABASE_URL scheme {parsed.scheme!r} is not "
-            f"supported; expected 'postgresql://...'",
-            "invalid_scheme",
-        )
-    try:
-        hostname = parsed.hostname
-        parsed_port = parsed.port
-    except ValueError as exc:
-        _fail(
-            f"SYNTHORG_DATABASE_URL has an invalid host/port: {exc}",
-            "invalid_host_port",
-            exc,
-        )
-    if not hostname:
-        _fail("SYNTHORG_DATABASE_URL is missing a host component", "missing_host")
-    if not parsed.username or not parsed.password:
-        _fail(
-            "SYNTHORG_DATABASE_URL must include a username and password "
-            "(postgresql://user:pass@host:port/db)",
-            "missing_credentials",
-        )
-    database = parsed.path.lstrip("/")
-    if not database:
-        _fail(
-            "SYNTHORG_DATABASE_URL must include a database name in the "
-            "path (postgresql://user:pass@host:port/db)",
-            "missing_database",
-        )
-
-    ssl_kwargs: dict[str, Any] = {}
-    if ssl_mode_override:
-        valid_modes = set(get_args(PostgresSslMode))
-        if ssl_mode_override not in valid_modes:
-            _fail(
-                f"SYNTHORG_POSTGRES_SSL_MODE={ssl_mode_override!r} is invalid; "
-                f"must be one of: {sorted(valid_modes)}",
-                "invalid_ssl_mode",
-            )
-        ssl_kwargs["ssl_mode"] = ssl_mode_override
-
+    host, port, database, username, password = _validate_postgres_url(db_url)
+    ssl_kwargs = _normalize_ssl_mode_kwargs(ssl_mode_override)
     pg_config = PostgresConfig(
-        host=unquote(hostname),
-        port=parsed_port or 5432,
-        database=unquote(database),
-        username=unquote(parsed.username),
-        password=SecretStr(unquote(parsed.password)),
+        host=host,
+        port=port,
+        database=database,
+        username=username,
+        password=SecretStr(password),
         **ssl_kwargs,
     )
     return PersistenceConfig(backend="postgres", postgres=pg_config)

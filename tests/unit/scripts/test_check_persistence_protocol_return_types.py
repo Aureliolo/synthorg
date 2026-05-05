@@ -263,8 +263,8 @@ class TestPerLineOptOut:
         project_root = _make_synthetic_tree(
             tmp_path, sqlite_body=sqlite_body, postgres_body=postgres_body
         )
-        # Only one backend has the marker line; the matching one has its own
-        # marker too.
+        # Both backends carry the marker (postgres_body inherits it from
+        # sqlite_body via replace()), so neither violation is reported.
         assert _scan(project_root) == 0
 
     def test_marker_without_justification_still_reports(
