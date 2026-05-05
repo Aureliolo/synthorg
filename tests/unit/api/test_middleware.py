@@ -14,9 +14,12 @@ from synthorg.api.middleware import (
     _API_CSP,
     _DOCS_CACHE_CONTROL,
     _DOCS_CSP,
+    _DOCS_CSP_DEFAULT_ORIGINS,
     _SECURITY_HEADERS,
     RequestLoggingMiddleware,
+    build_docs_csp,
     security_headers_hook,
+    set_docs_csp_origins,
 )
 
 pytestmark = pytest.mark.unit
@@ -182,6 +185,46 @@ class TestCSPPathSelection:
         """API paths keep COOP same-origin."""
         response = test_client.get("/api/v1/healthz")
         assert response.headers.get("cross-origin-opener-policy") == "same-origin"
+
+
+class TestDocsCspOriginsOverride:
+    """``set_docs_csp_origins`` lets operators retarget Scalar UI origins."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_docs_csp(self) -> Any:
+        """Restore the default origins after each test in this class.
+
+        Mutating the module-level CSP would leak across tests in the
+        same xdist worker; this fixture is the boundary.
+        """
+        yield
+        set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
+
+    def test_default_csp_lists_all_default_origins(self) -> None:
+        for origin in _DOCS_CSP_DEFAULT_ORIGINS:
+            assert origin in _DOCS_CSP
+
+    def test_override_replaces_default_origins(self) -> None:
+        from synthorg.api import middleware
+
+        set_docs_csp_origins(["https://internal-cdn.example.com"])
+        assert "https://internal-cdn.example.com" in middleware._DOCS_CSP
+        assert "https://cdn.jsdelivr.net" not in middleware._DOCS_CSP
+
+    def test_build_docs_csp_applies_origins_uniformly(self) -> None:
+        result = build_docs_csp(["https://only.example.com"])
+        directives = (
+            "script-src",
+            "style-src",
+            "img-src",
+            "font-src",
+            "connect-src",
+        )
+        for directive in directives:
+            assert f"{directive}" in result
+            section_start = result.index(directive)
+            section_end = result.index(";", section_start)
+            assert "https://only.example.com" in result[section_start:section_end]
 
 
 # ── Cache-Control path selection ──────────────────────────────

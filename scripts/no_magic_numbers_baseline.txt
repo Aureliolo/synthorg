@@ -24,7 +24,7 @@ src/synthorg/a2a/models.py:134:28
 src/synthorg/a2a/models.py:135:24
 src/synthorg/a2a/models.py:136:29
 src/synthorg/a2a/push_verifier.py:22:30
-src/synthorg/api/app.py:138:42
+src/synthorg/api/app.py:139:42
 src/synthorg/api/auth/middleware.py:47:16
 src/synthorg/api/auth/ticket_store.py:64:29
 src/synthorg/api/auth/ticket_store.py:111:29

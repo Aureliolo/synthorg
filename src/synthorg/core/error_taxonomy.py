@@ -168,7 +168,24 @@ CATEGORY_TITLES: MappingProxyType[ErrorCategory, str] = MappingProxyType(
     }
 )
 
-_ERROR_DOCS_BASE: Final[str] = "https://synthorg.io/docs/errors"
+_ERROR_DOCS_BASE_DEFAULT: Final[str] = "https://synthorg.io/docs/errors"
+
+# Active base URL for RFC 9457 ``type`` fragment links. Operators can
+# override at startup via the ``api.error_docs_base_url`` setting; the
+# fallback default keeps this module dependency-free for the CLI and
+# tests that import it without a settings service.
+_ERROR_DOCS_BASE: str = _ERROR_DOCS_BASE_DEFAULT
+
+
+def set_error_docs_base_url(value: str) -> None:
+    """Replace the active RFC 9457 ``type`` base URL.
+
+    Called once at app startup with the resolved
+    ``api.error_docs_base_url`` setting. Reset to
+    :data:`_ERROR_DOCS_BASE_DEFAULT` for test isolation.
+    """
+    global _ERROR_DOCS_BASE  # noqa: PLW0603 -- single-writer startup hook; tests reset via the same setter
+    _ERROR_DOCS_BASE = value
 
 
 def category_title(cat: ErrorCategory) -> str:

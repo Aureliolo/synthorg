@@ -200,6 +200,8 @@ def _create_slack_sink(
     )
 
     webhook_url = params.get("webhook_url", "")
+    if not webhook_url and bridge_config is not None:
+        webhook_url = bridge_config.slack_default_webhook_url
     if not webhook_url:
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,

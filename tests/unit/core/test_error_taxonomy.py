@@ -1,8 +1,11 @@
 """Tests for ``synthorg.core.error_taxonomy``."""
 
+from collections.abc import Generator
+
 import pytest
 
 from synthorg.core.error_taxonomy import (
+    _ERROR_DOCS_BASE_DEFAULT,
     CATEGORY_TITLES,
     CODE_CATEGORY_PREFIX,
     NOT_FOUND_BAND,
@@ -10,6 +13,7 @@ from synthorg.core.error_taxonomy import (
     ErrorCode,
     category_title,
     category_type_uri,
+    set_error_docs_base_url,
 )
 
 
@@ -78,3 +82,22 @@ class TestPrefixTable:
     def test_prefix_table_values_are_distinct(self) -> None:
         values = list(CODE_CATEGORY_PREFIX.values())
         assert len(values) == len(set(values))
+
+
+@pytest.mark.unit
+class TestDocsBaseUrlOverride:
+    """``set_error_docs_base_url`` retargets RFC 9457 ``type`` URIs."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_base_url(self) -> Generator[None]:
+        yield
+        set_error_docs_base_url(_ERROR_DOCS_BASE_DEFAULT)
+
+    def test_default_base_url_appears_in_uri(self) -> None:
+        uri = category_type_uri(ErrorCategory.AUTH)
+        assert uri.startswith(_ERROR_DOCS_BASE_DEFAULT)
+
+    def test_override_changes_uri_prefix(self) -> None:
+        set_error_docs_base_url("https://docs.example.com/errors")
+        uri = category_type_uri(ErrorCategory.VALIDATION)
+        assert uri == "https://docs.example.com/errors#validation"

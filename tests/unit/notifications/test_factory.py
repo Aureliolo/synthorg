@@ -8,7 +8,9 @@ transitively via the integration paths that wire it into the engine.
 import pytest
 
 from synthorg.notifications.adapters.email import EmailNotificationSink
-from synthorg.notifications.factory import _create_email_sink
+from synthorg.notifications.adapters.slack import SlackNotificationSink
+from synthorg.notifications.factory import _create_email_sink, _create_slack_sink
+from synthorg.settings.bridge_configs import NotificationsBridgeConfig
 
 pytestmark = pytest.mark.unit
 
@@ -113,3 +115,38 @@ class TestCreateEmailSink:
         # ``_from_addr`` is the internal attribute on ``EmailNotificationSink``;
         # this assertion catches regressions where trimming is removed.
         assert sink._from_addr == "ops@example.test"
+
+
+class TestCreateSlackSink:
+    """`_create_slack_sink` URL resolution and bridge fallback."""
+
+    def test_explicit_webhook_url_used(self) -> None:
+        sink = _create_slack_sink(
+            {"webhook_url": "https://hooks.slack.com/services/T/B/X"},
+        )
+        assert sink is not None
+
+    def test_missing_url_without_bridge_returns_none(self) -> None:
+        assert _create_slack_sink({}) is None
+
+    def test_bridge_default_used_when_params_empty(self) -> None:
+        bridge = NotificationsBridgeConfig(
+            slack_default_webhook_url="https://hooks.slack.com/services/T/B/X",
+        )
+        sink = _create_slack_sink({}, bridge_config=bridge)
+        assert sink is not None
+
+    def test_explicit_url_takes_precedence_over_bridge_default(self) -> None:
+        bridge = NotificationsBridgeConfig(
+            slack_default_webhook_url="https://hooks.slack.com/services/A/B/C",
+        )
+        sink = _create_slack_sink(
+            {"webhook_url": "https://hooks.slack.com/services/X/Y/Z"},
+            bridge_config=bridge,
+        )
+        assert isinstance(sink, SlackNotificationSink)
+        assert sink._webhook_url == "https://hooks.slack.com/services/X/Y/Z"
+
+    def test_blank_bridge_default_does_not_satisfy_required(self) -> None:
+        bridge = NotificationsBridgeConfig(slack_default_webhook_url="")
+        assert _create_slack_sink({}, bridge_config=bridge) is None

@@ -264,11 +264,16 @@ _HAPPY_CASES: tuple[
             ("notifications", "slack_webhook_timeout_seconds"): "15.0",
             ("notifications", "ntfy_webhook_timeout_seconds"): "10.0",
             ("notifications", "email_smtp_timeout_seconds"): "30.0",
+            (
+                "notifications",
+                "slack_default_webhook_url",
+            ): "https://hooks.slack.com/services/T/B/X",
             ("notifications", "ntfy_default_url"): "https://ntfy.example.com",
         },
         {
             "slack_webhook_timeout_seconds": 15.0,
             "email_smtp_timeout_seconds": 30.0,
+            "slack_default_webhook_url": "https://hooks.slack.com/services/T/B/X",
             "ntfy_default_url": "https://ntfy.example.com",
         },
     ),

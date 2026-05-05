@@ -50,7 +50,7 @@ from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle_builder import _build_lifecycle
 from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
-from synthorg.api.middleware import security_headers_hook
+from synthorg.api.middleware import security_headers_hook, set_docs_csp_origins
 from synthorg.api.middleware_factory import _build_middleware
 from synthorg.api.rate_limits import (
     build_inflight_store,
@@ -84,6 +84,7 @@ from synthorg.communication.meeting.orchestrator import (
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig
+from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
@@ -924,6 +925,19 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # notifications can fire during service teardown before sink
     # close() runs.
     startup = [*startup, notification_dispatcher.start]
+
+    async def _resolve_runtime_security_settings() -> None:
+        if not app_state.has_config_resolver:
+            return
+        resolver = app_state.config_resolver
+        origins = await resolver.get_json("api", "csp_docs_external_origins")
+        if isinstance(origins, list) and all(isinstance(o, str) for o in origins):
+            set_docs_csp_origins(origins)
+        base_url = await resolver.get_str("api", "error_docs_base_url")
+        if base_url:
+            set_error_docs_base_url(base_url)
+
+    startup = [*startup, _resolve_runtime_security_settings]
 
     if _skip_lifecycle_shutdown:
         shutdown = []

@@ -167,6 +167,61 @@ _r.register(
     )
 )
 
+# ── Documentation CSP origins ───────────────────────────────────
+# Trusted external origins permitted by the relaxed Content-Security-
+# Policy on /docs/ paths (Scalar UI loads JS, fonts, and an API proxy
+# from these). Operators who mirror Scalar UI assets to an internal
+# CDN override this list; the resolved value is applied uniformly to
+# script-src, style-src, img-src, font-src, and connect-src.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="csp_docs_external_origins",
+        type=SettingType.JSON,
+        default=(
+            '["https://cdn.jsdelivr.net","https://fonts.scalar.com",'
+            '"https://proxy.scalar.com"]'
+        ),
+        description=(
+            "External origins trusted by the relaxed Content-Security-"
+            "Policy on /docs/ paths. Defaults to the Scalar UI public"
+            " CDN, fonts, and proxy hosts. Override (for example, to an"
+            " internally-mirrored CDN) when operators do not allow the"
+            " backend to reach the public Scalar infrastructure."
+        ),
+        group="Security Headers",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        yaml_path="api.csp.docs_external_origins",
+    )
+)
+
+# ── Error documentation base URL ────────────────────────────────
+# RFC 9457 problem-detail responses build their ``type`` URI from this
+# base. Operators who fork or mirror the public docs site override
+# this so deep links resolve into their copy.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="error_docs_base_url",
+        type=SettingType.STRING,
+        default="https://synthorg.io/docs/errors",
+        description=(
+            "Base URL used to build the RFC 9457 ``type`` field on every"
+            " API error response. Each error category appends a fragment"
+            " anchor (for example ``#auth``). Override when the docs"
+            " site is hosted at a non-default origin."
+        ),
+        group="Errors",
+        level=SettingLevel.ADVANCED,
+        restart_required=False,
+        validator_pattern=r"^https?://[\w.\-:/]+$",
+        yaml_path="api.error_docs_base_url",
+    )
+)
+
 # ── CORS (bootstrap-only) ────────────────────────────────────────
 
 _r.register(

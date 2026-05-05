@@ -88,6 +88,10 @@ class NotificationsBridgeConfig(BaseModel):
     slack_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     ntfy_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     email_smtp_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    slack_default_webhook_url: str = Field(
+        default="",
+        pattern=r"^(|https://hooks\.slack\.com/services/.+)$",
+    )
     ntfy_default_url: NotBlankStr = Field(
         default=NotBlankStr("https://ntfy.sh"),
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
