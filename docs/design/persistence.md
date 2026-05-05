@@ -44,6 +44,15 @@ by a caller that reached past the abstraction.
 - Per-line opt-out: append `# lint-allow: persistence-boundary -- <required justification>` as a trailing comment. The justification after the `--` separator must be non-empty.
 - Enforced by `scripts/check_persistence_boundary.py`, wired into the pre-push
   hook and the CI Lint job; both fail loudly on violations.
+- A complementary gate, `scripts/check_schema_drift.py` (also pre-push + CI
+  Lint), validates structural parity between
+  `persistence/sqlite/schema.sql` and `persistence/postgres/schema.sql` and
+  between the two `revisions/` directories. Currently-tolerated drift
+  (TEXT-vs-JSONB, TEXT-vs-TIMESTAMPTZ, GIN-only-on-Postgres indexes, the
+  TimescaleDB composite-PK pattern) is frozen in
+  `scripts/schema_drift_baseline.txt` with a one-line per-entry
+  justification; the migration guide explains the baseline-update
+  workflow.
 
 The same rule is restated verbatim in [`CLAUDE.md`](../../CLAUDE.md)
 (`## Persistence Boundary`) so Claude and human developers see the same contract

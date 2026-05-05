@@ -110,6 +110,7 @@ dev = [
     "pip-audit==2.10.0",
     "pre-commit-uv==4.2.1",
     "ruff==0.15.12",
+    "sqlglot==30.7.0",
     "types-pyyaml==6.0.12.20260408",
     "types-defusedxml==0.7.0.20260408",
     "bandit==1.9.4",
