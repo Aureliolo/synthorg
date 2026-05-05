@@ -27,7 +27,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -282,6 +282,29 @@ repos:
         # cost aggregation (or weakens the gate by editing the script)
         # cannot bypass the check.
         files: ^(src/synthorg/.*\.py|scripts/check_currency_aggregation_invariant\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: persistence-protocol-uniformity
+        name: persistence-backend property return-type uniformity (#1773)
+        entry: uv run python scripts/check_persistence_protocol_return_types.py
+        language: system
+        # Trigger on changes to the protocol module, either backend, the
+        # gate script itself, or this config so a PR cannot weaken the
+        # check by editing the script without touching the backends.
+        files: ^(src/synthorg/persistence/(protocol|sqlite/backend|postgres/backend)\.py|scripts/check_persistence_protocol_return_types\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: dependency-inversion
+        name: dependency-inversion gate (high-level packages depend on protocols)
+        entry: uv run python scripts/check_dependency_inversion.py
+        language: system
+        # Trigger on any change to the scanned tree, the gate script
+        # itself, or this config so a PR that introduces a new concrete
+        # import (or weakens the gate via the script / allowlist) cannot
+        # bypass the check.
+        files: ^(src/synthorg/(api|engine|communication|persistence)/.*\.py|scripts/check_dependency_inversion\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 
