@@ -7,7 +7,7 @@ module under the size limit.
 import math
 from collections import defaultdict
 from collections.abc import Sequence  # noqa: TC003 -- runtime type
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import OrchestrationAlertLevel
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 
     from synthorg.budget.config import BudgetConfig
     from synthorg.budget.cost_record import CostRecord
+    from synthorg.core.clock import Clock
 
 _COST_WINDOW_HOURS = 24 * 30
 
@@ -55,6 +56,7 @@ class CostTrackerSummaryMixin:
 
     _budget_config: BudgetConfig | None
     _department_resolver: Callable[[str], str | None] | None
+    _clock: Clock
 
     async def _snapshot(self, *, now: datetime | None = None) -> tuple[CostRecord, ...]:
         """Return an immutable snapshot of records.
@@ -146,8 +148,13 @@ class CostTrackerSummaryMixin:
         return summary
 
     def _log_retention_window(self, start: datetime) -> None:
-        """Emit a warning if *start* predates the rolling retention cutoff."""
-        retention_cutoff = datetime.now(UTC) - timedelta(
+        """Emit a warning if *start* predates the rolling retention cutoff.
+
+        Reads ``now`` through the injected :class:`Clock` so tests can
+        pin the cutoff with ``FakeClock`` and the warning's emission
+        timing stays deterministic.
+        """
+        retention_cutoff = self._clock.now() - timedelta(
             hours=_COST_WINDOW_HOURS,
         )
         if start < retention_cutoff:

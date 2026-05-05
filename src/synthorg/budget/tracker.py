@@ -28,6 +28,7 @@ from synthorg.budget.spending_summary import (
     DepartmentSpending,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
@@ -111,7 +112,7 @@ class CostTracker(CostTrackerSummaryMixin):
         ValueError: If *auto_prune_threshold* < 1.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- composable construction surface; all kwargs optional
         self,
         *,
         budget_config: BudgetConfig | None = None,
@@ -119,6 +120,7 @@ class CostTracker(CostTrackerSummaryMixin):
         auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
         project_cost_repo: ProjectCostAggregateRepository | None = None,
         claim_lru_capacity: int = _DEFAULT_CLAIM_LRU_CAPACITY,
+        clock: Clock | None = None,
     ) -> None:
         if auto_prune_threshold < 1:
             msg = f"auto_prune_threshold must be >= 1, got {auto_prune_threshold}"
@@ -132,6 +134,7 @@ class CostTracker(CostTrackerSummaryMixin):
         self._department_resolver = department_resolver
         self._auto_prune_threshold = auto_prune_threshold
         self._project_cost_repo = project_cost_repo
+        self._clock: Clock = clock or SystemClock()
         # Strong references to in-flight background recording tasks
         # scheduled by the cost-recording chokepoint. Owned by the
         # tracker (one per :class:`AppState`, fresh per test) so xdist

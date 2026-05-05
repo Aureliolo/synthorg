@@ -25,8 +25,8 @@ must be non-empty -- use it for legitimate single-currency contexts that
 were already partitioned upstream.
 
 Usage:
-    python scripts/check_currency_aggregation_invariant.py
-    python scripts/check_currency_aggregation_invariant.py --paths src/synthorg
+    uv run python scripts/check_currency_aggregation_invariant.py
+    uv run python scripts/check_currency_aggregation_invariant.py --paths src/synthorg
 
 Exit codes:
     0 -- no violations.
