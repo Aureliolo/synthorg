@@ -457,6 +457,22 @@ def test_scan_repo_raises_schema_error_on_unreadable_file(
         _MODULE.scan_repo(fake_repo)
 
 
+def test_scan_repo_raises_schema_error_on_invalid_utf8_doc(fake_repo: Path) -> None:
+    """Invalid UTF-8 in a doc file maps to InventorySchemaError (exit 2)."""
+    bad_doc = fake_repo / "CLAUDE.md"
+    bad_doc.write_bytes(b"## Foo (MANDATORY)\n\xff\xfe broken bytes\n")
+    with pytest.raises(_MODULE.InventorySchemaError):
+        _MODULE.scan_repo(fake_repo)
+
+
+def test_load_inventory_raises_schema_error_on_invalid_utf8(fake_repo: Path) -> None:
+    """Invalid UTF-8 in the inventory yaml maps to InventorySchemaError (exit 2)."""
+    inventory = fake_repo / "scripts" / "convention_gate_map.yaml"
+    inventory.write_bytes(b"mandatory_rules: []\n\xff\xfe\n")
+    with pytest.raises(_MODULE.InventorySchemaError):
+        _MODULE.load_inventory(inventory)
+
+
 def test_extract_two_inline_bold_on_same_line() -> None:
     """A line with two ``**Foo (MANDATORY)**`` matches must yield both entries."""
     text = "**Foo (MANDATORY)** and also **Bar (MANDATORY)** in one sentence."

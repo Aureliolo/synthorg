@@ -215,12 +215,12 @@ def scan_repo(repo_root: Path) -> list[MandatoryEntry]:
     """Walk the canonical doc set and extract every MANDATORY entry."""
     entries: list[MandatoryEntry] = []
     for path in collect_doc_files(repo_root):
+        rel = _relative_posix(path, repo_root)
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             msg = f"Could not read {path}: {type(exc).__name__}: {exc!s}"
             raise InventorySchemaError(msg) from exc
-        rel = _relative_posix(path, repo_root)
         entries.extend(extract_mandatory_entries(text, rel))
     return entries
 
@@ -258,7 +258,7 @@ def load_inventory(yaml_path: Path) -> tuple[InventoryEntry, ...]:
         raise InventorySchemaError(msg)
     try:
         raw_text = yaml_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         msg = (
             f"Could not read inventory file {yaml_path}: {type(exc).__name__}: {exc!s}"
         )
