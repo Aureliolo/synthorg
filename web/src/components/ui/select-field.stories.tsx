@@ -45,6 +45,16 @@ export const WithError: Story = {
   },
 }
 
+export const WithHint: Story = {
+  args: {
+    label: 'Currency',
+    options: currencies,
+    value: DEFAULT_CURRENCY,
+    onChange: () => {},
+    hint: 'Display only; providers price in their own currency.',
+  },
+}
+
 export const Disabled: Story = {
   args: { label: 'Currency', options: currencies, value: DEFAULT_CURRENCY, onChange: () => {}, disabled: true },
 }
