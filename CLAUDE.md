@@ -104,6 +104,8 @@ Existing gate inventory (all under `scripts/`):
 - `check_openapi_liveness.py`
 - `check_orphan_fixtures.py`
 - `check_dead_api_endpoints.py`
+- `check_list_pagination.py`
+- `check_domain_error_hierarchy.py`
 
 Wire each new gate into `.pre-commit-config.yaml` (pre-commit or
 pre-push stage as fits) so it runs locally and in CI; per-line opt-outs

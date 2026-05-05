@@ -1,6 +1,7 @@
 """Tests for the domain-error-hierarchy AST gate."""
 
 import importlib.util
+import subprocess
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -444,6 +445,62 @@ def test_clean_tree_returns_zero(
     monkeypatch.chdir(tmp_path.parent)
     rc = _MODULE.main(["--repo-root", str(project_root), "--no-baseline"])
     assert rc == 0
+
+
+_INHERITED_GIT_VARS: tuple[tuple[str, str], ...] = (
+    ("GIT_DIR", "/outer/repo/.git"),
+    ("GIT_WORK_TREE", "/outer/repo"),
+    ("GIT_INDEX_FILE", "/outer/repo/.git/index"),
+    ("GIT_OBJECT_DIRECTORY", "/outer/repo/.git/objects"),
+    ("GIT_COMMON_DIR", "/outer/repo/.git"),
+)
+
+
+def _spy_subprocess_run(
+    monkeypatch: pytest.MonkeyPatch, captured_env: dict[str, str]
+) -> None:
+    """Patch ``subprocess.run`` on the gate to record env and force fallback."""
+
+    def _fake_run(*args: object, **kwargs: object) -> object:
+        del args
+        env = kwargs.get("env")
+        if isinstance(env, dict):
+            captured_env.update(env)
+        raise subprocess.CalledProcessError(returncode=1, cmd=["git", "ls-files"])
+
+    module_subprocess = getattr(_MODULE, "subprocess")  # noqa: B009
+    monkeypatch.setattr(module_subprocess, "run", _fake_run)
+
+
+def test_scan_tree_ignores_inherited_git_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pre-push-inherited GIT_* env vars must be scrubbed before git ls-files."""
+    project_root, _ = _make_project(
+        tmp_path,
+        {
+            "src/synthorg/foo/errors.py": (
+                "from synthorg.core.domain_errors import DomainError\n"
+                "\n"
+                "class FooError(DomainError):\n"
+                "    pass\n"
+            ),
+        },
+    )
+    for name, value in _INHERITED_GIT_VARS:
+        monkeypatch.setenv(name, value)
+
+    captured_env: dict[str, str] = {}
+    _spy_subprocess_run(monkeypatch, captured_env)
+
+    issues = _MODULE._scan_tree(project_root, project_root / "src" / "synthorg")
+    assert issues == []
+    assert captured_env, "subprocess.run was not invoked"
+    for leaked, _ in _INHERITED_GIT_VARS:
+        assert leaked not in captured_env, (
+            f"{leaked} leaked into git ls-files env: scrubbing regressed"
+        )
 
 
 def test_update_baseline_writes_sorted(

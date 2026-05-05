@@ -323,31 +323,45 @@ def _format_baseline_entry(rel: str, lineno: int, class_name: str) -> str:
     return f"{rel}:{lineno}:{class_name}"
 
 
+_GIT_INHERITED_ENV_VARS: Final[tuple[str, ...]] = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
+)
+
+
+def _subprocess_env_without_inherited_git() -> dict[str, str]:
+    """Return ``os.environ`` minus inherited Git overrides.
+
+    When this script runs from a Git pre-push hook, ``GIT_DIR`` /
+    ``GIT_WORK_TREE`` / friends are set in the environment by Git. Those
+    propagate to ``git ls-files`` even when we pass an explicit ``cwd=``
+    -- ``GIT_DIR`` wins over ``cwd``. The gate (and any test that
+    invokes it on a synthetic tree) needs ``cwd`` to decide which repo
+    we're querying, so strip the inherited Git pointers before each
+    invocation.
+    """
+    env = os.environ.copy()
+    for name in _GIT_INHERITED_ENV_VARS:
+        env.pop(name, None)
+    return env
+
+
 def _git_tracked_python_files(
     abs_root: Path,
     project_root: Path,
 ) -> list[tuple[Path, str]]:
-    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``.
-
-    The subprocess inherits ``os.environ`` minus the git-locating
-    variables (``GIT_DIR``, ``GIT_WORK_TREE``, ``GIT_INDEX_FILE``,
-    ``GIT_COMMON_DIR``); those are scrubbed so a parent process that
-    exported them (notably the pre-commit framework, which sets
-    ``GIT_DIR`` to the enclosing repo) cannot make ``git ls-files``
-    look outside *project_root* when *project_root* is itself not a
-    git repo. Without this scrub, tests that materialise a synthetic
-    tree under ``tmp_path`` and call into this helper see every
-    ``*.py`` from the parent repo instead of the synthetic subset.
-    """
+    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``."""
     rel_root = abs_root.relative_to(project_root).as_posix() or "."
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         result = subprocess.run(
             ["git", "ls-files", "-z", "--", f"{rel_root}/*.py"],
             check=True,
             capture_output=True,
             cwd=project_root,
-            env=env,
+            env=_subprocess_env_without_inherited_git(),
         )
     except subprocess.CalledProcessError, FileNotFoundError:
         return [
