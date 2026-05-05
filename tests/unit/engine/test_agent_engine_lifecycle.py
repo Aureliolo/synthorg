@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
@@ -450,7 +451,8 @@ class TestAgentEngineTimeoutEdgeCases:
             msg = "Should not reach here"
             raise AssertionError(msg)
 
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=CostTracker)
+        mock_tracker.budget_config = None
         mock_tracker.record = AsyncMock()
 
         mock_loop = MagicMock()

@@ -273,6 +273,18 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: currency-aggregation-invariant
+        name: currency-aggregation-invariant gate (src/synthorg)
+        entry: uv run python scripts/check_currency_aggregation_invariant.py
+        language: system
+        # Trigger on any change to src/synthorg Python files, the gate
+        # script itself, or this config so a PR that adds an unguarded
+        # cost aggregation (or weakens the gate by editing the script)
+        # cannot bypass the check.
+        files: ^(src/synthorg/.*\.py|scripts/check_currency_aggregation_invariant\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: list-pagination
         name: list_*/query repository pagination gate
         entry: uv run python scripts/check_list_pagination.py --scan-all

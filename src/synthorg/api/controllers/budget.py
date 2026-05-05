@@ -20,7 +20,7 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -217,24 +217,23 @@ def _build_summaries(
             currency=currency,
         )
 
-    record_currencies = {r.currency for r in records}
-    if len(record_currencies) > 1 or next(iter(record_currencies)) != currency:
-        sorted_record_currencies = sorted(record_currencies)
+    record_currency = assert_currencies_match(r.currency for r in records)
+    if record_currency is not None and record_currency != currency:
         logger.warning(
             API_VALIDATION_FAILED,
             reason="mixed_currency_aggregation",
             scope="budget_summary",
             requested_currency=currency,
-            record_currencies=sorted_record_currencies,
+            record_currencies=[record_currency],
             record_count=len(records),
         )
         msg = (
-            f"Cost records span currencies {sorted_record_currencies}; "
+            f"Cost records denominated in {record_currency!r}; "
             f"summary requested in {currency!r}"
         )
         raise MixedCurrencyAggregationError(
             msg,
-            currencies=frozenset(record_currencies | {currency}),
+            currencies=frozenset({record_currency, currency}),
         )
 
     by_day: dict[str, list[CostRecord]] = defaultdict(list)

@@ -89,6 +89,7 @@ Existing gate inventory (all under `scripts/`):
 
 - `check_backend_regional_defaults.py`
 - `check_boundary_typed.py`
+- `check_currency_aggregation_invariant.py`
 - `check_dead_api_endpoints.py`
 - `check_doc_drift_counts.py`
 - `check_domain_error_hierarchy.py`

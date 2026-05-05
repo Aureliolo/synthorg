@@ -3,7 +3,7 @@
 Both ``bucket_cost_records`` and ``project_daily_spend`` aggregate
 ``record.cost`` across cost records.  Mixing currencies in the input
 silently produces a meaningless monetary aggregate, so both call
-``_assert_single_currency`` at the boundary and raise
+``assert_currencies_match`` at the boundary and raise
 ``MixedCurrencyAggregationError`` (HTTP 409) instead.
 """
 
@@ -94,7 +94,7 @@ class TestBucketCostRecordsCurrency:
     def test_out_of_window_mixed_currency_no_error(self) -> None:
         """Mixed currencies entirely outside ``[start, end)`` must not raise.
 
-        The ``_assert_single_currency`` guard runs on the post-filter
+        The ``assert_currencies_match`` guard runs on the post-filter
         slice, so out-of-range rows do not contribute to the
         aggregation and do not need to be currency-uniform. Without
         this regression, a partial-range query against a long-lived

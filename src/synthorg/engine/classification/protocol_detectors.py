@@ -426,6 +426,7 @@ class AuthorityBreachDetector:
             limit = identity.authority.budget_limit
         else:
             return []
+        # lint-allow: currency-aggregation -- TurnRecord carries no currency
         total_cost = sum(t.cost for t in execution_result.turns)
         if total_cost <= limit:
             return []

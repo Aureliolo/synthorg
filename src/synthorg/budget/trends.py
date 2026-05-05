@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.budget._tracker_helpers import _assert_single_currency
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 
 if TYPE_CHECKING:
@@ -251,7 +251,7 @@ def bucket_cost_records(
     in_window_records = tuple(
         record for record in records if start <= record.timestamp < end
     )
-    _assert_single_currency(in_window_records)
+    assert_currencies_match(r.currency for r in in_window_records)
     sums: dict[datetime, list[float]] = defaultdict(list)
 
     for record in in_window_records:
@@ -379,6 +379,7 @@ def _compute_daily_spend(
         (timestamps[-1].date() - timestamps[0].date()).days + 1,
         1,
     )
+    assert_currencies_match(r.currency for r in records)
     total_cost = round(
         math.fsum(r.cost for r in records),
         BUDGET_ROUNDING_PRECISION,
@@ -466,7 +467,7 @@ def project_daily_spend(
             avg_daily_spend=0.0,
         )
 
-    _assert_single_currency(records)
+    assert_currencies_match(r.currency for r in records)
     avg_daily, confidence, _ = _compute_daily_spend(records)
     projections = _build_projections(avg_daily, horizon_days, today)
     projected_total = round(

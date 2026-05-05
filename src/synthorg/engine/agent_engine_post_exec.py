@@ -10,7 +10,10 @@ from synthorg.engine.checkpoint.resume import (
     make_loop_with_callback,
 )
 from synthorg.engine.classification.pipeline import classify_execution_errors
-from synthorg.engine.cost_recording import record_execution_costs
+from synthorg.engine.cost_recording import (
+    record_execution_costs,
+    resolve_tracker_currency,
+)
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
 from synthorg.engine.run_result import AgentRunResult
@@ -337,6 +340,7 @@ class AgentEnginePostExecMixin:
             duration_seconds=duration,
             agent_id=agent_id,
             task_id=task_id,
+            currency=resolve_tracker_currency(self._cost_tracker),
         )
         try:
             self._log_completion(result, agent_id, task_id, duration)

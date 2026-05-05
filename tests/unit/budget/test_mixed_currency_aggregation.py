@@ -12,8 +12,9 @@ import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
-from synthorg.budget._tracker_helpers import _aggregate, _assert_single_currency
+from synthorg.budget._tracker_helpers import _aggregate
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.spending_summary import (
     AgentSpending,
@@ -42,34 +43,51 @@ def _rec(currency: str, *, cost: float = 0.10, agent: str = "alice") -> CostReco
     )
 
 
-class TestAssertSingleCurrency:
-    """``_assert_single_currency`` raises on mixed input, returns code otherwise."""
+class TestAssertCurrenciesMatch:
+    """``assert_currencies_match`` raises on mixed input, returns code otherwise."""
 
     def test_empty_returns_none(self) -> None:
-        assert _assert_single_currency(()) is None
+        assert assert_currencies_match(()) is None
 
     def test_single_currency_returns_code(self) -> None:
-        assert _assert_single_currency((_rec("EUR"), _rec("EUR"))) == "EUR"
+        assert assert_currencies_match(("EUR", "EUR")) == "EUR"
+
+    def test_iterator_input_supported(self) -> None:
+        """Generator inputs are exhausted exactly once."""
+        assert assert_currencies_match(c for c in ("USD", "USD", "USD")) == "USD"
 
     def test_mixed_currency_raises(self) -> None:
         with pytest.raises(MixedCurrencyAggregationError) as exc:
-            _assert_single_currency((_rec("EUR"), _rec("USD")))
+            assert_currencies_match(("EUR", "USD"))
         assert exc.value.currencies == frozenset({"EUR", "USD"})
 
     def test_three_currencies_all_reported(self) -> None:
         with pytest.raises(MixedCurrencyAggregationError) as exc:
-            _assert_single_currency(
-                (_rec("EUR"), _rec("USD"), _rec("JPY")),
-            )
+            assert_currencies_match(("EUR", "USD", "JPY"))
         assert exc.value.currencies == frozenset({"EUR", "USD", "JPY"})
 
     def test_agent_context_propagated(self) -> None:
         with pytest.raises(MixedCurrencyAggregationError) as exc:
-            _assert_single_currency(
-                (_rec("EUR"), _rec("JPY")),
+            assert_currencies_match(
+                ("EUR", "JPY"),
                 agent_id="agent-9",
             )
         assert exc.value.agent_id == "agent-9"
+
+    def test_task_and_project_context_propagated(self) -> None:
+        with pytest.raises(MixedCurrencyAggregationError) as exc:
+            assert_currencies_match(
+                ("EUR", "USD"),
+                task_id="task-1",
+                project_id="proj-7",
+            )
+        assert exc.value.task_id == "task-1"
+        assert exc.value.project_id == "proj-7"
+
+    def test_record_currency_extraction_supported(self) -> None:
+        """Idiom: ``assert_currencies_match(r.currency for r in records)``."""
+        records = (_rec("EUR"), _rec("EUR"), _rec("EUR"))
+        assert assert_currencies_match(r.currency for r in records) == "EUR"
 
 
 class TestAggregateHelper:

@@ -21,10 +21,18 @@ surface in a report.
 """
 
 import math
+from collections.abc import Iterable  # noqa: TC003 -- runtime type
 from types import MappingProxyType
 from typing import Annotated, Final
 
 from pydantic import AfterValidator, StringConstraints
+
+from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.budget import BUDGET_MIXED_CURRENCY_REJECTED
+
+logger = get_logger(__name__)
 
 DEFAULT_CURRENCY: Final[str] = "USD"
 """Default ISO 4217 currency code.
@@ -210,3 +218,61 @@ requires the code to be present in ``_KNOWN_ISO4217`` so typos
 (``EURR``) and well-formed but unsupported codes (``ZZZ``) are rejected
 together.
 """
+
+
+def assert_currencies_match(
+    currencies: Iterable[str],
+    *,
+    agent_id: NotBlankStr | None = None,
+    task_id: NotBlankStr | None = None,
+    project_id: NotBlankStr | None = None,
+) -> str | None:
+    """Verify every currency code in *currencies* is identical.
+
+    The same-currency invariant for cost aggregation: callers pass an
+    iterable of ISO 4217 codes pulled from the items they are about to
+    sum / mean / otherwise reduce.  Empty input returns ``None`` (no
+    aggregation, no currency).  Mixed input logs at WARNING and raises
+    :class:`~synthorg.budget.errors.MixedCurrencyAggregationError`
+    (HTTP 409) **before** any reduction runs, so the caller cannot
+    silently produce a meaningless total.
+
+    The contextual ``agent_id`` / ``task_id`` / ``project_id`` keyword
+    arguments are propagated to both the warning log and the raised
+    exception so structured-log consumers can trace the rejected
+    aggregation back to its scope.
+
+    Args:
+        currencies: Iterable of ISO 4217 codes (e.g. ``r.currency for r
+            in records``).  Single-pass iterables (generators) are
+            supported; the iterable is consumed exactly once.
+        agent_id: Optional agent identifier the aggregation targeted.
+        task_id: Optional task identifier the aggregation targeted.
+        project_id: Optional project identifier the aggregation
+            targeted.
+
+    Returns:
+        The single shared currency code, or ``None`` for empty input.
+
+    Raises:
+        MixedCurrencyAggregationError: If two or more distinct codes
+            are observed.
+    """
+    codes = set(currencies)
+    if not codes:
+        return None
+    if len(codes) > 1:
+        logger.warning(
+            BUDGET_MIXED_CURRENCY_REJECTED,
+            currencies=sorted(codes),
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+        )
+        raise MixedCurrencyAggregationError(
+            currencies=frozenset(codes),
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+        )
+    return next(iter(codes))

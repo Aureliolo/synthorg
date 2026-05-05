@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.budget._aggregation import sum_tokens
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.spending_summary import SpendingSummary  # noqa: TC001
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -292,6 +293,7 @@ class ReportGenerator:
         )
 
         # Derive total_cost from records for consistent percentages
+        assert_currencies_match(r.currency for r in records)
         total_cost = round(
             math.fsum(r.cost for r in records),
             BUDGET_ROUNDING_PRECISION,
@@ -373,6 +375,10 @@ def _build_task_spendings(
     spendings: list[TaskSpending] = []
     for task_id in sorted(by_task):
         task_records = by_task[task_id]
+        assert_currencies_match(
+            (r.currency for r in task_records),
+            task_id=task_id,
+        )
         total_cost = round(
             math.fsum(r.cost for r in task_records),
             BUDGET_ROUNDING_PRECISION,
@@ -401,6 +407,7 @@ def _build_provider_distribution(
     distributions: list[ProviderDistribution] = []
     for provider in sorted(by_provider):
         provider_records = by_provider[provider]
+        assert_currencies_match(r.currency for r in provider_records)
         provider_cost = round(
             math.fsum(r.cost for r in provider_records),
             BUDGET_ROUNDING_PRECISION,
@@ -433,6 +440,7 @@ def _build_model_distribution(
     distributions: list[ModelDistribution] = []
     for model, provider in sorted(by_model):
         model_records = by_model[(model, provider)]
+        assert_currencies_match(r.currency for r in model_records)
         model_cost = round(
             math.fsum(r.cost for r in model_records),
             BUDGET_ROUNDING_PRECISION,

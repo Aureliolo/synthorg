@@ -12,6 +12,7 @@ from collections.abc import (
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.enums import CoordinationTopology, TaskStatus
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
@@ -343,11 +344,15 @@ class MultiAgentCoordinator:
             await self._phase_update_parent(context, rollup, phases)
 
             total_duration = time.monotonic() - pipeline_start
-            total_cost = sum(
-                w.execution_result.total_cost
+            wave_results = tuple(
+                w.execution_result
                 for w in dispatch_result.waves
                 if w.execution_result is not None
             )
+            assert_currencies_match(
+                er.currency for er in wave_results if er.currency is not None
+            )
+            total_cost = sum(er.total_cost for er in wave_results)
 
             result = CoordinationResult(
                 parent_task_id=task.id,

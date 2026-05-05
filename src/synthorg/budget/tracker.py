@@ -20,6 +20,7 @@ from synthorg.budget._tracker_helpers import (
     _filter_records,
     _validate_time_range,
 )
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.spending_summary import (
@@ -760,17 +761,9 @@ class CostTracker(CostTrackerSummaryMixin):
 
         results: list[DepartmentSpending] = []
         for dname, spends in sorted(dept_map.items()):
-            currencies = {s.currency for s in spends if s.currency is not None}
-            if len(currencies) > 1:
-                msg = (
-                    f"Department {dname!r} has agent spendings in "
-                    f"different currencies: {sorted(currencies)}"
-                )
-                raise MixedCurrencyAggregationError(
-                    msg,
-                    currencies=frozenset(currencies),
-                )
-            dept_currency = next(iter(currencies)) if currencies else None
+            dept_currency = assert_currencies_match(
+                s.currency for s in spends if s.currency is not None
+            )
             results.append(
                 DepartmentSpending(
                     department_name=dname,

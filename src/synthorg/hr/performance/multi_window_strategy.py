@@ -9,7 +9,7 @@ import re
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TaskMetricRecord, WindowMetrics
 from synthorg.observability import get_logger
@@ -139,17 +139,7 @@ class MultiWindowStrategy:
         if has_enough:
             scored = [r.quality_score for r in records if r.quality_score is not None]
             avg_quality = sum(scored) / len(scored) if scored else None
-            currencies = {r.currency for r in records}
-            if len(currencies) > 1:
-                msg = (
-                    f"Window {window_label!r} contains TaskMetricRecords "
-                    f"with mixed currencies: {sorted(currencies)}"
-                )
-                raise MixedCurrencyAggregationError(
-                    msg,
-                    currencies=frozenset(currencies),
-                )
-            window_currency = next(iter(currencies))
+            window_currency = assert_currencies_match(r.currency for r in records)
             # Monetary accumulation goes through ``math.fsum`` so it
             # matches the canonical aggregator at
             # ``synthorg.budget._aggregation.sum_cost`` and stays exact

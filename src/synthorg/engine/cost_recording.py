@@ -27,6 +27,21 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def resolve_tracker_currency(tracker: CostTracker | None) -> str:
+    """Resolve the currency code from a CostTracker's BudgetConfig.
+
+    Falls back to ``DEFAULT_CURRENCY`` when no tracker is wired or its
+    budget config is unset.  Used by every site that constructs an
+    ``AgentRunResult`` so the result carries the same currency as the
+    cost rows the tracker emits.
+    """
+    budget_config = getattr(tracker, "budget_config", None)
+    if budget_config is None:
+        return DEFAULT_CURRENCY
+    currency: str = budget_config.currency
+    return currency
+
+
 async def record_execution_costs(  # noqa: PLR0913
     result: ExecutionResult,
     identity: AgentIdentity,
@@ -55,8 +70,7 @@ async def record_execution_costs(  # noqa: PLR0913
         )
         return
 
-    budget_config = getattr(tracker, "budget_config", None)
-    currency = budget_config.currency if budget_config is not None else DEFAULT_CURRENCY
+    currency = resolve_tracker_currency(tracker)
 
     for turn in result.turns:
         # Skip only when provably nothing happened (zero cost and
