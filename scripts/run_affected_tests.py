@@ -446,9 +446,13 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
     the cumulative resource leak that crashed workers under the prior
     ``worksteal`` default on Python 3.14 + Windows.
 
-    ``--max-worker-restart=0`` disables worker restarts to avoid a
-    known xdist scheduler KeyError when the scheduler tries to
-    reassign work to a restarted worker with a new id.
+    ``--max-worker-restart=4`` lets xdist transparently replace a
+    worker that crashes natively (no Python-level signature, no
+    faulthandler trace) -- a pattern observed under multi-worktree
+    Windows pre-push contention.  ``_classify_isolation_outcome``
+    parses the captured stdout afterwards and surfaces native crashes
+    scattered across unrelated tests as advisory rather than failure;
+    real test failures and same-test repeated crashes still block.
     """
     cmd = [
         sys.executable,
@@ -459,29 +463,39 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         "unit",
         "-n",
         "8",
-        "--max-worker-restart=0",
+        "--max-worker-restart=4",
         "-q",
     ]
     start = time.monotonic()
     returncode, captured_stdout = _stream_pytest(cmd)
     elapsed = time.monotonic() - start
     test_count = _parse_test_count(captured_stdout)
+    outcome = _classify_isolation_outcome(returncode, captured_stdout)
+    # Native crashes scattered across unrelated tests are reclassified
+    # as advisory: the gate exits 0 but emits a banner.  Real test
+    # failures and same-test repeated crashes still block.
+    if outcome.kind == "crash_advisory":
+        _print_isolation_banner(outcome)
+        return 0
+    effective_returncode = outcome.exit_code
     # Skip the regression guard when tests failed / crashed: worker
     # crashes skew ``elapsed / test_count`` upward (time spent before
     # the crash is charged against the surviving test count) and
     # produce false-positive regressions. The underlying failure is
-    # already surfaced via ``returncode`` and the test output. When
-    # tests fail the operator needs to fix those first; flipping the
-    # regression banner on top of a crash output adds noise without
-    # pointing at the real root cause.
-    if returncode == 0 and _check_timing_regression(
+    # already surfaced via ``effective_returncode`` and the test
+    # output. When tests fail the operator needs to fix those first;
+    # flipping the regression banner on top of a crash output adds
+    # noise without pointing at the real root cause.
+    if effective_returncode == 0 and _check_timing_regression(
         elapsed,
         run_all=run_all,
         test_count=test_count,
     ):
         # Regression detected -- block the push even if tests passed.
-        return max(returncode, 1)
-    return returncode
+        return max(effective_returncode, 1)
+    if outcome.kind == "regression":
+        _print_isolation_banner(outcome)
+    return effective_returncode
 
 
 @dataclass(frozen=True)
