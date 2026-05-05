@@ -254,14 +254,45 @@ def _scan_roots(roots: tuple[Path, ...]) -> list[str]:
     return findings
 
 
+class BaselineMalformedError(ValueError):
+    """Raised when the baseline file contains an entry with the wrong shape."""
+
+
+def _validate_baseline_entry(entry: str) -> None:
+    """Raise ``BaselineMalformedError`` if *entry* is not ``a:b:c:d:e`` shape.
+
+    A baseline entry is ``<path>:<lineno>:<class>:<attr>:<primitive>`` -- five
+    colon-separated fields, with ``<lineno>`` parseable as a positive integer.
+    Hand-edits or merge artefacts that produce malformed entries should fail
+    loudly so the gate is not silently weakened.
+    """
+    parts = entry.split(":")
+    expected_parts = 5
+    if len(parts) != expected_parts or any(not part for part in parts):
+        msg = f"baseline entry must be 'path:line:class:attr:primitive', got {entry!r}"
+        raise BaselineMalformedError(msg)
+    try:
+        lineno = int(parts[1])
+    except ValueError as exc:
+        msg = f"baseline entry has non-integer lineno: {entry!r}"
+        raise BaselineMalformedError(msg) from exc
+    if lineno <= 0:
+        msg = f"baseline entry has non-positive lineno: {entry!r}"
+        raise BaselineMalformedError(msg)
+
+
 def _load_baseline(path: Path) -> set[str]:
+    """Return the set of baseline entries; raise on a malformed file."""
     if not path.exists():
         return set()
-    return {
+    entries = {
         line.strip()
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.strip().startswith("#")
     }
+    for entry in entries:
+        _validate_baseline_entry(entry)
+    return entries
 
 
 def _write_baseline(path: Path, entries: list[str]) -> None:
@@ -299,7 +330,11 @@ def main() -> int:
         )
         return 0
 
-    baseline = _load_baseline(_BASELINE_PATH)
+    try:
+        baseline = _load_baseline(_BASELINE_PATH)
+    except BaselineMalformedError as exc:
+        print(f"baseline malformed: {exc}", file=sys.stderr)
+        return 2
     new = sorted(set(findings) - baseline)
     if new:
         print(

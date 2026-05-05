@@ -273,6 +273,27 @@ def test_flags_each_violating_attr_separately(tmp_path: Path) -> None:
     assert any(":_wake:Event" in f for f in findings)
 
 
+@pytest.mark.parametrize(
+    "malformed_entry",
+    [
+        "src/foo.py:42:Service:_lock",  # only 4 fields
+        "src/foo.py:not_an_int:Service:_lock:Lock",  # non-integer lineno
+        "src/foo.py:0:Service:_lock:Lock",  # non-positive lineno
+        "src/foo.py:-3:Service:_lock:Lock",  # negative lineno
+        "src/foo.py::Service:_lock:Lock",  # empty lineno
+    ],
+)
+def test_baseline_malformed_entry_raises(
+    tmp_path: Path,
+    malformed_entry: str,
+) -> None:
+    """A baseline file with a malformed entry raises ``BaselineMalformedError``."""
+    baseline_path = tmp_path / "baseline.txt"
+    baseline_path.write_text(malformed_entry + "\n", encoding="utf-8")
+    with pytest.raises(_MODULE.BaselineMalformedError):  # type: ignore[attr-defined]
+        _MODULE._load_baseline(baseline_path)  # type: ignore[attr-defined]
+
+
 def test_baseline_grandfathers_existing_sites(tmp_path: Path) -> None:
     """Entries listed in the baseline file are not reported as new."""
     source_file = tmp_path / "sample.py"
