@@ -1,6 +1,7 @@
 """Shared fixtures for API unit tests."""
 
 import asyncio
+import threading
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -165,11 +166,38 @@ def _get_test_password_hash(
     caches the result so that ``make_auth_headers`` and
     ``_seed_test_users`` produce tokens with matching ``pwd_sig``
     claims.
+
+    Callable from both sync and async contexts: when invoked from
+    inside a running event loop (e.g. an ``async`` fixture body),
+    ``asyncio.run`` would raise ``RuntimeError: cannot be called
+    from a running event loop``.  Detect that case and run the
+    coroutine in a worker thread with its own loop instead.
     """
-    if role not in _TEST_PASSWORD_HASHES:
+    if role in _TEST_PASSWORD_HASHES:
+        return _TEST_PASSWORD_HASHES[role]
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop -- safe to use asyncio.run directly.
         _TEST_PASSWORD_HASHES[role] = asyncio.run(
             auth_service.hash_password_async("test-password-12chars"),
         )
+    else:
+        # Already inside a loop; run the hashing in a worker thread
+        # so we do not nest event loops on the same thread.
+        result: list[str] = []
+
+        def _hash_in_thread() -> None:
+            result.append(
+                asyncio.run(
+                    auth_service.hash_password_async("test-password-12chars"),
+                ),
+            )
+
+        thread = threading.Thread(target=_hash_in_thread)
+        thread.start()
+        thread.join()
+        _TEST_PASSWORD_HASHES[role] = result[0]
     return _TEST_PASSWORD_HASHES[role]
 
 
