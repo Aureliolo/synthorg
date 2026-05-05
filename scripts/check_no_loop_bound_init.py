@@ -65,9 +65,16 @@ _OPT_OUT_MARKER = "lint-allow: loop-bound-init"
 
 
 def _absorb_import(node: ast.Import, module_aliases: set[str]) -> None:
-    """Record ``import asyncio as <alias>`` aliases for the module."""
+    """Record aliases for ``import asyncio`` and ``import asyncio.<sub> as ...``.
+
+    ``import asyncio.locks as locks`` exposes ``locks.Lock()`` against the
+    same loop-bound primitive set, so its alias must enter the matcher
+    or the gate has an easy bypass.
+    """
     for alias in node.names:
-        if alias.name == "asyncio" and alias.asname:
+        if alias.asname is None:
+            continue
+        if alias.name == "asyncio" or alias.name.startswith("asyncio."):
             module_aliases.add(alias.asname)
 
 
@@ -141,6 +148,32 @@ def _asyncio_primitive_name(
     return None
 
 
+_NESTED_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def _iter_init_descendants(func: ast.FunctionDef) -> list[ast.AST]:
+    """Return AST nodes inside *func*, never crossing a nested-scope boundary.
+
+    ``ast.walk(func)`` happily descends into nested ``def`` / ``async def`` /
+    ``class`` bodies declared inside ``__init__``.  Those nested scopes execute
+    later, on whichever loop the caller invokes them under, so a
+    ``self._lock = asyncio.Lock()`` in a closure is NOT eager loop binding and
+    must not be flagged.
+    """
+    descendants: list[ast.AST] = []
+    stack: list[ast.AST] = [
+        stmt for stmt in func.body if not isinstance(stmt, _NESTED_SCOPE_NODES)
+    ]
+    while stack:
+        node = stack.pop()
+        descendants.append(node)
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, _NESTED_SCOPE_NODES):
+                continue
+            stack.append(child)
+    return descendants
+
+
 def _self_attr_assignments(
     func: ast.FunctionDef,
     asyncio_aliases: frozenset[str],
@@ -148,7 +181,7 @@ def _self_attr_assignments(
 ) -> list[tuple[int, str, str]]:
     """Yield ``(lineno, attr_name, primitive_name)`` for ``self.X = asyncio.Y()``."""
     findings: list[tuple[int, str, str]] = []
-    for stmt in ast.walk(func):
+    for stmt in _iter_init_descendants(func):
         if isinstance(stmt, ast.Assign):
             primitive = _asyncio_primitive_name(
                 stmt.value,

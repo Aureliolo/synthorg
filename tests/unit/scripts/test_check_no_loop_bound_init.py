@@ -120,6 +120,21 @@ def test_flags_aliased_module(tmp_path: Path) -> None:
     assert ":Service:_lock:Lock" in findings[0]
 
 
+def test_flags_aliased_submodule(tmp_path: Path) -> None:
+    """``import asyncio.locks as locks; self._lock = locks.Lock()`` is flagged."""
+    source = (
+        "import asyncio.locks as locks\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._lock = locks.Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert len(findings) == 1
+    assert ":Service:_lock:Lock" in findings[0]
+
+
 def test_flags_from_asyncio_locks_submodule(tmp_path: Path) -> None:
     """``from asyncio import locks; self._lock = locks.Lock()`` is flagged."""
     source = (
@@ -210,6 +225,75 @@ def test_does_not_flag_class_without_lifecycle_method(tmp_path: Path) -> None:
     )
     findings = _scan_source(source, tmp_path)
     assert findings == []
+
+
+def test_does_not_flag_primitive_in_nested_function(tmp_path: Path) -> None:
+    """A primitive constructed inside a closure declared in __init__ is not flagged.
+
+    The closure runs whenever the caller invokes it later, on whichever
+    event loop is current at that time -- so it is not eager loop binding
+    and must not trip the gate.
+    """
+    source = (
+        "import asyncio\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        def _later() -> None:\n"
+        "            self._lock = asyncio.Lock()\n"
+        "        self._later = _later\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert findings == []
+
+
+def test_does_not_flag_primitive_in_nested_async_function(tmp_path: Path) -> None:
+    """A primitive in a nested ``async def`` declared in __init__ is not flagged."""
+    source = (
+        "import asyncio\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        async def _later() -> None:\n"
+        "            self._lock = asyncio.Lock()\n"
+        "        self._later = _later\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert findings == []
+
+
+def test_does_not_flag_primitive_in_nested_class(tmp_path: Path) -> None:
+    """A primitive on a nested class declared in __init__ is not flagged."""
+    source = (
+        "import asyncio\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        class _Inner:\n"
+        "            def __init__(self) -> None:\n"
+        "                self._lock = asyncio.Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert findings == []
+
+
+def test_flags_primitive_in_branch_of_init(tmp_path: Path) -> None:
+    """A primitive in a conditional branch directly inside __init__ is still flagged."""
+    source = (
+        "import asyncio\n"
+        "class Service:\n"
+        "    def __init__(self, *, eager: bool = True) -> None:\n"
+        "        if eager:\n"
+        "            self._lock = asyncio.Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert len(findings) == 1
+    assert ":Service:_lock:Lock" in findings[0]
 
 
 def test_does_not_flag_primitive_outside_init(tmp_path: Path) -> None:
