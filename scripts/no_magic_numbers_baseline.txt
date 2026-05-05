@@ -24,7 +24,7 @@ src/synthorg/a2a/models.py:134:28
 src/synthorg/a2a/models.py:135:24
 src/synthorg/a2a/models.py:136:29
 src/synthorg/a2a/push_verifier.py:22:30
-src/synthorg/api/app.py:139:42
+src/synthorg/api/app.py:146:42
 src/synthorg/api/auth/middleware.py:47:16
 src/synthorg/api/auth/ticket_store.py:64:29
 src/synthorg/api/auth/ticket_store.py:111:29
@@ -812,7 +812,7 @@ src/synthorg/security/timeout/policies.py:30:22
 src/synthorg/security/trust/config.py:18:39
 src/synthorg/security/trust/milestone_strategy.py:34:39
 src/synthorg/security/trust/weighted_strategy.py:27:40
-src/synthorg/settings/bridge_configs.py:24:44
+src/synthorg/settings/bridge_configs.py:31:44
 src/synthorg/settings/dispatcher.py:38:48
 src/synthorg/settings/dispatcher.py:41:44
 src/synthorg/settings/subscribers/per_op_rate_limit_subscriber.py:50:33
