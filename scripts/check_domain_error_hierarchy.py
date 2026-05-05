@@ -327,14 +327,27 @@ def _git_tracked_python_files(
     abs_root: Path,
     project_root: Path,
 ) -> list[tuple[Path, str]]:
-    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``."""
+    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``.
+
+    The subprocess inherits ``os.environ`` minus the git-locating
+    variables (``GIT_DIR``, ``GIT_WORK_TREE``, ``GIT_INDEX_FILE``,
+    ``GIT_COMMON_DIR``); those are scrubbed so a parent process that
+    exported them (notably the pre-commit framework, which sets
+    ``GIT_DIR`` to the enclosing repo) cannot make ``git ls-files``
+    look outside *project_root* when *project_root* is itself not a
+    git repo. Without this scrub, tests that materialise a synthetic
+    tree under ``tmp_path`` and call into this helper see every
+    ``*.py`` from the parent repo instead of the synthetic subset.
+    """
     rel_root = abs_root.relative_to(project_root).as_posix() or "."
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         result = subprocess.run(
             ["git", "ls-files", "-z", "--", f"{rel_root}/*.py"],
             check=True,
             capture_output=True,
             cwd=project_root,
+            env=env,
         )
     except subprocess.CalledProcessError, FileNotFoundError:
         return [
