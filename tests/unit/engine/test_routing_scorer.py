@@ -500,7 +500,8 @@ class TestRoutingScorerConfigInjection:
     @pytest.mark.unit
     def test_weight_sum_validator_warns_on_excessive_weights(self) -> None:
         """Sum above the documented ceiling logs a warning but does not raise."""
-        # All weights at 0.4 -> sum = 2.0, exceeds the 1.3 hard ceiling.
+        # All weights at 0.4 -> sum = 2.0, well above both the
+        # documented envelope (1.1) and the hard ceiling (1.3).
         with capture_logs() as logs:
             config = RoutingScorerConfig(
                 primary_skill_weight=0.4,
@@ -521,3 +522,34 @@ class TestRoutingScorerConfigInjection:
             f"got {len(warns)} (logs={logs})"
         )
         assert warns[0]["weight_sum"] == pytest.approx(2.0)
+
+    @pytest.mark.unit
+    def test_weight_sum_validator_warns_in_envelope_to_ceiling_band(self) -> None:
+        """Sum in (documented_max, hard_ceiling] still triggers a warning.
+
+        Pins the widened-warning behaviour so a future regression that
+        narrows the condition back to "only above the hard ceiling"
+        gets caught here. ``0.4 + 0.3 + 0.1 + 0.2 + 0.2 = 1.2`` sits
+        in the ``(1.1, 1.3]`` band that the previous condition
+        silently let through.
+        """
+        with capture_logs() as logs:
+            config = RoutingScorerConfig(
+                primary_skill_weight=0.4,
+                secondary_skill_weight=0.3,
+                tag_match_bonus=0.1,
+                role_match_bonus=0.2,
+                seniority_alignment_bonus=0.2,
+            )
+        assert config.primary_skill_weight == pytest.approx(0.4)
+        warns = [
+            entry
+            for entry in logs
+            if entry.get("event") == TASK_ROUTING_SCORER_INVALID_CONFIG
+            and entry.get("log_level") == "warning"
+        ]
+        assert len(warns) == 1, (
+            "expected exactly one TASK_ROUTING_SCORER_INVALID_CONFIG warning "
+            f"for sum 1.2, got {len(warns)} (logs={logs})"
+        )
+        assert warns[0]["weight_sum"] == pytest.approx(1.2)

@@ -944,8 +944,7 @@ _r.register(
         type=SettingType.FLOAT,
         default="3.0",
         description=(
-            "Lifecycle shutdown: soft deadline for the JetStream"
-            " distributed queue stop step."
+            "Lifecycle shutdown: soft deadline for the distributed queue stop step."
         ),
         group="Lifecycle Shutdown",
         level=SettingLevel.ADVANCED,
