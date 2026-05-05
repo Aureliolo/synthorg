@@ -33,12 +33,12 @@ The four resolution paths are:
 | Logger calls using string literals instead of event constants | Pre-PR mini-pass | `mini-pass-missing-event-constants` (audit agent 02) |
 | State / status mutations without an INFO log near the write | Pre-PR mini-pass | `mini-pass-missing-state-transition-log` (audit agent 04) |
 | Race conditions / TOCTOU / shared-mutable-state without locks | Pre-PR mini-pass | `mini-pass-race-conditions` (audit agent 39) |
-| Bare `Exception` / `RuntimeError` raises in domain code | Reviewer-enforced (gate planned) | Tracked in #1738; worktree skill flags it in the Do-not-introduce block |
-| Magic numbers in scoring / threshold / timeout / retry contexts | Reviewer-enforced (gate planned) | Tracked in #1739; worktree skill flags it |
+| Bare `Exception` / `RuntimeError` raises in domain code | Standing gate | `scripts/check_domain_error_hierarchy.py` |
+| Magic numbers in scoring / threshold / timeout / retry contexts | Standing gate | `scripts/check_no_magic_numbers.py` |
 | Frontend-backend API contract drift (dead endpoints) | Standing gate | `scripts/check_dead_api_endpoints.py` |
 | SQLite vs Postgres schema drift | Standing gate | `scripts/check_schema_drift.py` |
 | Dual-backend test parity gaps in `tests/conformance/persistence/` | Standing gate | `scripts/check_dual_backend_test_parity.py` (signature + body + coverage passes) |
-| Missing pagination on `list_*` repository methods | Reviewer-enforced (gate planned) | Tracked in #1752 |
+| Missing pagination on `list_*` repository methods | Standing gate | `scripts/check_list_pagination.py` |
 | Lifecycle `_lifecycle_lock` missing on async services | Architecture + reviewer-enforced | New code uses the `synthorg new service` scaffold which emits the lock; surrounding services are reviewer-enforced |
 | `Clock` seam missing on time-reading classes | Architecture + reviewer-enforced | New code uses the scaffold; surrounding code is reviewer-enforced |
 | `cd` prefix in Bash commands | Standing gate | hookify rule `no-cd-prefix` + `scripts/check_git_c_cwd.sh` |
@@ -46,7 +46,7 @@ The four resolution paths are:
 
 ## Out of scope here
 
-- The full walk-all-31-waves audit-the-audit retrofit (Lever 5 of #1740 in its broadest reading) is deliberately deferred: this document captures the gate inventory as it stands AND the three remaining newly-filed tracking issues (#1750-1752). New gate additions land in their own PRs and update this document at the same time, per the Convention Rollout rule in `CLAUDE.md`.
+- The full walk-all-31-waves audit-the-audit retrofit (Lever 5 of #1740 in its broadest reading) is deliberately deferred: this document captures the gate inventory as it stands. New gate additions land in their own PRs and update this document at the same time, per the Convention Rollout rule in `CLAUDE.md`.
 - Categories that are pure-judgment (e.g. "code is hard to read") are intentionally absent: there is no useful automation for them and the four resolution paths above are exhaustive for everything that has a mechanical signature.
 
 ## Maintenance
