@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.8.0](https://github.com/Aureliolo/synthorg/compare/v0.7.9...v0.8.0) (2026-05-05)
+
+
+### Features
+
+* add dual-backend test parity gate ([#1760](https://github.com/Aureliolo/synthorg/issues/1760)) ([62901cd](https://github.com/Aureliolo/synthorg/commit/62901cd5fa1bc0480b8aa9f8407e5c3323e49c5e))
+* **lint+settings:** no-magic-numbers AST gate + 36 setting migrations ([#1739](https://github.com/Aureliolo/synthorg/issues/1739)) ([#1754](https://github.com/Aureliolo/synthorg/issues/1754)) ([03470cb](https://github.com/Aureliolo/synthorg/commit/03470cb55b3303d7b7cf373f25ec16b3435e2234))
+* meta-process prevention systems (5 levers, [#1740](https://github.com/Aureliolo/synthorg/issues/1740)) ([#1753](https://github.com/Aureliolo/synthorg/issues/1753)) ([d093cb9](https://github.com/Aureliolo/synthorg/commit/d093cb9ba0559bc459b6e8c623a205c825067cf1))
+* **persistence:** schema-drift gate (SQLite vs Postgres parity) ([#1750](https://github.com/Aureliolo/synthorg/issues/1750)) ([#1761](https://github.com/Aureliolo/synthorg/issues/1761)) ([ae3200f](https://github.com/Aureliolo/synthorg/commit/ae3200f59207c68af4c57e570ab3e9929ec4bf62))
+* **scripts:** AST gate for dead API endpoints ([#1758](https://github.com/Aureliolo/synthorg/issues/1758)) ([dbbd98d](https://github.com/Aureliolo/synthorg/commit/dbbd98d7f666a31b9225ca75ca2114fc71a2ab37))
+* tooling gate flagging missing pagination on list_*/query repository methods ([#1757](https://github.com/Aureliolo/synthorg/issues/1757)) ([dcaf0b6](https://github.com/Aureliolo/synthorg/commit/dcaf0b6ac952b8f01b1f96524ff764f5ab1d5657))
+
+
+### Bug Fixes
+
+* **ci:** anchor auto-rollover + dev-release skip-conditions on subject prefix ([#1764](https://github.com/Aureliolo/synthorg/issues/1764)) ([8c408fb](https://github.com/Aureliolo/synthorg/commit/8c408fb0309678e8ddb2b2faab4050fffa6ba7c6))
+* **ci:** auto-rollover via PR + add failure trackers to release workflows ([#1763](https://github.com/Aureliolo/synthorg/issues/1763)) ([850eaf2](https://github.com/Aureliolo/synthorg/commit/850eaf24905093bbda9e9c59d3c9662ba2085463))
+* pre-push isolation gate flakes from cross-loop asyncio primitives ([#1759](https://github.com/Aureliolo/synthorg/issues/1759)) ([1afce97](https://github.com/Aureliolo/synthorg/commit/1afce97870587213efe66f9468ef471f65217d9b))
+
+
+### Documentation
+
+* mark domain-error / no-magic-numbers / list-pagination gates as shipped ([#1762](https://github.com/Aureliolo/synthorg/issues/1762)) ([d9bdd73](https://github.com/Aureliolo/synthorg/commit/d9bdd7301c033e52e9df43b235fe96f1905392a1))
+* shrink root CLAUDE.md from 252 to 172 lines ([#1745](https://github.com/Aureliolo/synthorg/issues/1745)) ([734f6b0](https://github.com/Aureliolo/synthorg/commit/734f6b00b8c309a9ec695e8ff1a562ce6cba0c54))
+
+
+### CI/CD
+
+* update apko lockfiles ([#1747](https://github.com/Aureliolo/synthorg/issues/1747)) ([bd6602b](https://github.com/Aureliolo/synthorg/commit/bd6602bda55f4c79ae20cbd199e5056bf6677d46))
+
+
+### Maintenance
+
+* audit 2026-05-03 follow-up A — 5 locked-decision implementations ([#1736](https://github.com/Aureliolo/synthorg/issues/1736)) ([#1748](https://github.com/Aureliolo/synthorg/issues/1748)) ([0a46e19](https://github.com/Aureliolo/synthorg/commit/0a46e19f1cc77d1702a389b75783c444ec019229))
+* auto-rollover to v0.8.0 ([#1765](https://github.com/Aureliolo/synthorg/issues/1765)) ([260c81d](https://github.com/Aureliolo/synthorg/commit/260c81d88dcfffc817c7aa9842ec5243f1a33eed))
+
 ## [0.7.9](https://github.com/Aureliolo/synthorg/compare/v0.7.8...v0.7.9) (2026-05-04)
 
 
