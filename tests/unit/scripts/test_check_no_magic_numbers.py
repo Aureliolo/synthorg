@@ -401,10 +401,16 @@ def test_main_scan_passes_when_baseline_covers_all(
     target = src_root / "policy.py"
     target.write_text("_FOO = 99\n", encoding="utf-8")
 
-    baseline = tmp_path / "scripts" / "no_magic_numbers_baseline.txt"
-    baseline.parent.mkdir()
+    # ``--update`` writes to ``<project_root>/scripts/no_magic_numbers_baseline.txt``;
+    # pre-create the parent so the write does not fail.
+    (tmp_path / "scripts").mkdir()
 
-    monkeypatch.setattr(_MODULE, "_BASELINE_PATH", baseline, raising=False)
+    # ``_REPO_ROOT`` is the script's git-tracked-files cwd fallback,
+    # which still needs to point at the temp tree. ``_BASELINE_PATH``
+    # is intentionally NOT patched so the test exercises the real
+    # ``--repo-root`` baseline-resolution path -- if that path
+    # regresses to the checkout-local lookup, the assertion below
+    # will fail.
     monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path, raising=False)
 
     rc_update = _MODULE.main(
@@ -426,10 +432,11 @@ def test_main_scan_fails_when_new_violation_added(
     target = src_root / "policy.py"
     target.write_text("_FOO = 99\n", encoding="utf-8")
 
-    baseline = tmp_path / "scripts" / "no_magic_numbers_baseline.txt"
-    baseline.parent.mkdir()
-
-    monkeypatch.setattr(_MODULE, "_BASELINE_PATH", baseline, raising=False)
+    # See sibling test for why ``_BASELINE_PATH`` is NOT patched here:
+    # the goal is to drive ``main()`` through the real ``--repo-root``
+    # baseline-resolution path so a future regression to checkout-local
+    # lookup is caught.
+    (tmp_path / "scripts").mkdir()
     monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path, raising=False)
 
     rc_update = _MODULE.main(

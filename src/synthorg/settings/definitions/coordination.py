@@ -198,19 +198,19 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
-        key="cas_max_retries",
+        key="cas_max_attempts",
         type=SettingType.INTEGER,
         default="2",
         description=(
-            "Compare-and-set retry budget for optimistic concurrency"
+            "Compare-and-set attempt budget for optimistic concurrency"
             " on shared mutation surfaces (departments, approval"
-            " transitions). Total attempts including the first call;"
-            " ``2`` means one retry."
+            " transitions). Counts the total number of attempts"
+            " (including the first call); ``2`` means one retry."
         ),
         group="Concurrency",
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10,
-        yaml_path="coordination.cas.max_retries",
+        yaml_path="coordination.cas.max_attempts",
     )
 )

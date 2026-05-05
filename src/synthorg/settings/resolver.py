@@ -853,7 +853,7 @@ class ConfigResolver:
 
         values = await self._resolve_bridge_fields(
             "coordination",
-            (("cas_max_retries", "int"),),
+            (("cas_max_attempts", "int"),),
         )
         return CoordinationBridgeConfig(**values)
 
@@ -982,7 +982,7 @@ class ConfigResolver:
             raise ValueError(msg)
         try:
             table = tuple(
-                (float(vram_gb), _coerce_batch_size(batch_size))
+                (_coerce_vram_gb(vram_gb), _coerce_batch_size(batch_size))
                 for vram_gb, batch_size in parsed
             )
         except (TypeError, ValueError) as exc:
@@ -1118,6 +1118,25 @@ class ConfigResolver:
             error_backoff_seconds=values["dispatcher_error_backoff_seconds"],
             max_consecutive_errors=values["dispatcher_max_consecutive_errors"],
         )
+
+
+def _coerce_vram_gb(value: object) -> float:
+    """Coerce a parsed JSON value to a numeric VRAM threshold.
+
+    Plain ``float(value)`` would accept ``True`` / ``False`` (because
+    ``bool`` is an ``int`` subclass and ``int`` is float-coercible), so
+    a payload like ``[true, 64]`` would silently become ``(1.0, 64)``
+    and pass the remaining shape checks. Reject booleans and
+    non-numeric types at the boundary so invalid stored settings fail
+    deterministically.
+    """
+    if isinstance(value, bool):
+        msg = f"vram_gb must be numeric, got bool {value!r}"
+        raise TypeError(msg)
+    if not isinstance(value, int | float):
+        msg = f"vram_gb must be numeric, got {type(value).__name__} {value!r}"
+        raise TypeError(msg)
+    return float(value)
 
 
 def _coerce_batch_size(value: object) -> int:

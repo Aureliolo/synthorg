@@ -117,7 +117,7 @@ marker pointing at the canonical setting.
 | `api.rate_limit.gc_min_horizon_seconds` | 60 | Sliding-window limiter: floor on the cold-bucket eviction horizon. |
 | `api.rate_limit.inflight_gc_every_n_acquires` | 1024 | Inflight (per-op concurrency) limiter: acquires between GC sweeps. |
 | `api.rate_limit.inflight_min_retry_after_seconds` | 1 | Inflight limiter: minimum `Retry-After` value emitted on 429. |
-| `coordination.cas.max_retries` | 2 | CAS retry budget for optimistic-concurrency mutations. |
+| `coordination.cas.max_attempts` | 2 | CAS attempt budget for optimistic-concurrency mutations (counts the first call). |
 | `communication.bus_bridge.max_consecutive_errors` | 30 | Bus bridge poll-loop error budget before back-off escalates. |
 | `communication.bus_bridge.drain_timeout_seconds` | 10.0 | Bus bridge `stop()` drain hard deadline. |
 | `workers.dispatcher.publish_max_attempts` | 3 | Task-claim publish retry budget. |
@@ -141,7 +141,7 @@ marker pointing at the canonical setting.
 **Rationale.** Audit-set placeholders. Rate-limiter GC at 1024
 acquires balances bookkeeping latency against stale-bucket retention
 under typical request volumes; the 60s horizon matches the common
-sliding-window default. CAS retry of 2 (one retry) keeps mutation
+sliding-window default. CAS attempt budget of 2 (one retry) keeps mutation
 contention bounded without amplifying load on a hot row. Dispatcher
 3 attempts with 0.1s base / 1.0s cap absorbs a transient NATS
 reconnect without pushing publish latency into the multi-second
