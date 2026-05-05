@@ -7,7 +7,7 @@ from pydantic import Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     PaginationFields,
     _ArgsBase,
 )
@@ -34,7 +34,7 @@ class MessagesSendArgs(_ArgsBase):
     sender: NotBlankStr | None = Field(default=None, description="Sender name")
 
 
-class MessagesDeleteArgs(DestructiveGuardrailFields):
+class MessagesDeleteArgs(AdminGuardrailFields):
     """Args for ``messages.delete`` (destructive)."""
 
     message_id: NotBlankStr = Field(description="Message UUID")
@@ -67,7 +67,7 @@ class MeetingsUpdateArgs(_ArgsBase):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class MeetingsDeleteArgs(DestructiveGuardrailFields):
+class MeetingsDeleteArgs(AdminGuardrailFields):
     """Args for ``meetings.delete`` (destructive)."""
 
     meeting_id: NotBlankStr = Field(description="Meeting UUID")
@@ -94,7 +94,7 @@ class ConnectionsCreateArgs(_ArgsBase):
     )
 
 
-class ConnectionsDeleteArgs(DestructiveGuardrailFields):
+class ConnectionsDeleteArgs(AdminGuardrailFields):
     """Args for ``connections.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a
@@ -137,7 +137,7 @@ class WebhooksUpdateArgs(_ArgsBase):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class WebhooksDeleteArgs(DestructiveGuardrailFields):
+class WebhooksDeleteArgs(AdminGuardrailFields):
     """Args for ``webhooks.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a

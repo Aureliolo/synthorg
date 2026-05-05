@@ -26,7 +26,7 @@ from synthorg.meta.mcp.domains._agents_args import (
     TrainingStartSessionArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
-    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -82,7 +82,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "agents",
         "delete",
         "Remove an agent from the organization (destructive; requires confirm).",
-        {**_AGENT_NAME, **DESTRUCTIVE_GUARDRAIL_PROPERTIES},
+        {**_AGENT_NAME, **ADMIN_GUARDRAIL_PROPERTIES},
         required=("agent_name", "reason", "confirm"),
         args_model=AgentsDeleteArgs,
     ),

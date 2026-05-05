@@ -35,7 +35,7 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
     paginate_sequence,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
@@ -50,7 +50,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
@@ -249,22 +249,19 @@ async def _tasks_delete(
 ) -> str:
     tool = "synthorg_tasks_delete"
     try:
+        reason, _ = require_admin_guardrails(arguments, actor)
         task_id = require_non_blank(arguments, _ARG_TASK_ID)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        reason, _ = require_destructive_guardrails(arguments, actor)
-    except GuardrailViolationError as exc:
-        log_handler_guardrail_violated(tool, exc)
-        return err(exc)
-
-    requested_by = actor_id(actor) or "system"
-    try:
+        requested_by = actor_id(actor) or "system"
         await app_state.task_engine.delete_task(
             task_id,
             requested_by=requested_by,
         )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     except TaskNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
@@ -277,7 +274,7 @@ async def _tasks_delete(
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=requested_by,
         reason=reason,
@@ -333,23 +330,20 @@ async def _tasks_cancel(
 ) -> str:
     tool = "synthorg_tasks_cancel"
     try:
+        reason, _ = require_admin_guardrails(arguments, actor)
         task_id = require_non_blank(arguments, _ARG_TASK_ID)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        reason, _ = require_destructive_guardrails(arguments, actor)
-    except GuardrailViolationError as exc:
-        log_handler_guardrail_violated(tool, exc)
-        return err(exc)
-
-    requested_by = actor_id(actor) or "system"
-    try:
+        requested_by = actor_id(actor) or "system"
         task, _prior_status = await app_state.task_engine.cancel_task(
             task_id,
             requested_by=requested_by,
             reason=reason,
         )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     except TaskNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
@@ -367,7 +361,7 @@ async def _tasks_cancel(
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=requested_by,
         reason=reason,

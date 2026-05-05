@@ -605,14 +605,14 @@ class TestErrorPaths:
 
 
 class TestDestructiveAuditEvents:
-    """Destructive ops emit MCP_DESTRUCTIVE_OP_EXECUTED on success."""
+    """Destructive ops emit MCP_ADMIN_OP_EXECUTED on success."""
 
     async def test_subworkflows_delete_emits_audit(
         self,
         app_state: SimpleNamespace,
         actor: AgentIdentity,
     ) -> None:
-        from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
+        from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
         app_state.subworkflow_service.delete.return_value = None
         handlers = build_handler_map()
@@ -630,8 +630,8 @@ class TestDestructiveAuditEvents:
                 )
             )
         assert body["status"] == "ok"
-        events = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
-        assert events, "expected MCP_DESTRUCTIVE_OP_EXECUTED audit event"
+        events = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert events, "expected MCP_ADMIN_OP_EXECUTED audit event"
         assert events[0]["target_id"] == "sw-1@1.0.0"
 
     async def test_workflow_executions_cancel_emits_audit(
@@ -639,7 +639,7 @@ class TestDestructiveAuditEvents:
         app_state: SimpleNamespace,
         actor: AgentIdentity,
     ) -> None:
-        from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
+        from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
         handlers = build_handler_map()
         with structlog.testing.capture_logs() as logs:
@@ -655,8 +655,8 @@ class TestDestructiveAuditEvents:
                 )
             )
         assert body["status"] == "ok"
-        events = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
-        assert events, "expected MCP_DESTRUCTIVE_OP_EXECUTED audit event"
+        events = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert events, "expected MCP_ADMIN_OP_EXECUTED audit event"
         assert events[0]["target_id"] == "wfexec-1"
 
 

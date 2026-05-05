@@ -150,7 +150,7 @@ _HANDLER_MAP = build_handler_map()
 def actor() -> AgentIdentity:
     """Real :class:`AgentIdentity` so every handler sees a valid actor.
 
-    Handlers that route through ``require_destructive_guardrails``
+    Handlers that route through ``require_admin_guardrails``
     accept this actor (it has both ``.id`` and ``.name``); the
     centralized ``log_handler_*`` helpers also exercise their
     ``actor_id``/``actor_label`` paths against a real identity.

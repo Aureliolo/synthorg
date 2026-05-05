@@ -457,10 +457,10 @@ def actor_label(
     Use this helper **only** when an attribution string is needed for
     logging, audit emit, or non-destructive service writes where a
     fallback identifier ("mcp-anonymous") is acceptable in place of a
-    real actor. For paths that require a real actor (destructive ops
-    are already covered by ``require_destructive_guardrails`` from
-    ``common``, but non-destructive writes that must not run
-    anonymously) prefer :func:`require_actor_id`, which raises
+    real actor. For paths that require a real actor (admin ops are
+    already covered by ``require_admin_guardrails`` from ``common``,
+    but non-admin writes that must not run anonymously) prefer
+    :func:`require_actor_id`, which raises
     ``ArgumentValidationError`` when the actor cannot be identified.
 
     Subsumes the six per-domain ``_actor_name`` duplicates, including

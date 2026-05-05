@@ -306,8 +306,8 @@ placeholder factories:
   (`domain_code="not_supported"`) but emits the dedicated
   `MCP_HANDLER_CAPABILITY_GAP` INFO event so ops telemetry distinguishes
   "primitive missing method" from "handler unwired".
-- `require_destructive_guardrails(arguments, actor)`: single source of
-  truth for the destructive-op precondition triple: non-`None` `actor`,
+- `require_admin_guardrails(arguments, actor)`: single source of
+  truth for the admin-op precondition triple: non-`None` `actor`,
   literal `confirm=True`, non-blank `reason`. Raises
   `GuardrailViolationError` with a typed `violation` code
   (`"missing_actor"` / `"missing_confirm"` / `"missing_reason"`).

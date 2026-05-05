@@ -19,7 +19,7 @@ from synthorg.meta.mcp.domains._simple_args import (
     RiskLevel,
 )
 from synthorg.meta.mcp.tool_builder import (
-    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -115,7 +115,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
         "Reject a pending approval item (destructive; requires confirm).",
         {
             "approval_id": {"type": "string", "description": "Approval UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("approval_id", "reason", "confirm"),
         args_model=ApprovalsRejectArgs,

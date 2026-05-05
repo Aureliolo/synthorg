@@ -10,7 +10,7 @@ from pydantic import Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     PaginationFields,
     _ArgsBase,
 )
@@ -46,7 +46,7 @@ class AgentsUpdateArgs(_AgentNameArgs):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class AgentsDeleteArgs(_AgentNameArgs, DestructiveGuardrailFields):
+class AgentsDeleteArgs(_AgentNameArgs, AdminGuardrailFields):
     """Args for ``agents.delete`` (destructive)."""
 
 

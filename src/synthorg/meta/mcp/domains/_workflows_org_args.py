@@ -9,7 +9,7 @@ from pydantic import Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     PaginationFields,
     _ArgsBase,
 )
@@ -43,7 +43,7 @@ class WorkflowsUpdateArgs(_ArgsBase):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class WorkflowsDeleteArgs(DestructiveGuardrailFields):
+class WorkflowsDeleteArgs(AdminGuardrailFields):
     """Args for ``workflows.delete`` (destructive)."""
 
     workflow_id: NotBlankStr = Field(description="Workflow UUID")
@@ -81,7 +81,7 @@ class SubworkflowsCreateArgs(_ArgsBase):
     )
 
 
-class SubworkflowsDeleteArgs(DestructiveGuardrailFields):
+class SubworkflowsDeleteArgs(AdminGuardrailFields):
     """Args for ``subworkflows.delete`` (destructive)."""
 
     subworkflow_id: NotBlankStr = Field(description="Subworkflow UUID")
@@ -119,7 +119,7 @@ class WorkflowExecutionsStartArgs(_ArgsBase):
     )
 
 
-class WorkflowExecutionsCancelArgs(DestructiveGuardrailFields):
+class WorkflowExecutionsCancelArgs(AdminGuardrailFields):
     """Args for ``workflow_executions.cancel`` (destructive)."""
 
     execution_id: NotBlankStr = Field(description="Execution UUID")
@@ -254,7 +254,7 @@ class TeamsDeleteArgs(_ArgsBase):
     via ``write_tool`` (not ``admin_tool``) in ``organization.py`` to
     preserve the legacy wire contract that did not require destructive
     guardrails on team deletion.  Promoting it to ``admin_tool`` with
-    ``DestructiveGuardrailFields`` would be a wire-breaking change and
+    ``AdminGuardrailFields`` would be a wire-breaking change and
     is tracked separately.
     """
 

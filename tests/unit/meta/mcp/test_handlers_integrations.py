@@ -19,7 +19,7 @@ from synthorg.integrations.mcp_services import (
     OAuthFacadeService,
 )
 from synthorg.meta.mcp.handlers.integrations import INTEGRATION_HANDLERS
-from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
+from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -251,7 +251,7 @@ class TestDestructiveHappyPaths:
     """Happy-path coverage for the destructive integration handlers.
 
     Verifies the returned envelope shape and that
-    ``MCP_DESTRUCTIVE_OP_EXECUTED`` is emitted so a regression in the
+    ``MCP_ADMIN_OP_EXECUTED`` is emitted so a regression in the
     audit path is caught.
     """
 
@@ -281,9 +281,7 @@ class TestDestructiveHappyPaths:
                 actor=make_test_actor(),
             )
         assert json.loads(response)["status"] == "ok"
-        exec_events = [
-            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
-        ]
+        exec_events = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(exec_events) == 1
         assert exec_events[0]["tool_name"] == "synthorg_mcp_catalog_uninstall"
 
@@ -317,9 +315,7 @@ class TestDestructiveHappyPaths:
         body = json.loads(response)
         assert body["status"] == "ok"
         assert body["data"] == {"removed": True}
-        exec_events = [
-            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
-        ]
+        exec_events = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(exec_events) == 1
         assert exec_events[0]["tool_name"] == "synthorg_oauth_remove_provider"
 
@@ -350,9 +346,7 @@ class TestDestructiveHappyPaths:
         body = json.loads(response)
         assert body["status"] == "ok"
         assert body["data"] == {"deactivated": True}
-        exec_events = [
-            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
-        ]
+        exec_events = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(exec_events) == 1
         assert exec_events[0]["tool_name"] == "synthorg_clients_deactivate"
 
@@ -388,9 +382,7 @@ class TestDestructiveHappyPaths:
         body = json.loads(response)
         assert body["status"] == "ok"
         assert body["data"] == {"removed": True}
-        exec_events = [
-            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
-        ]
+        exec_events = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(exec_events) == 1
         assert exec_events[0]["tool_name"] == "synthorg_artifacts_delete"
 

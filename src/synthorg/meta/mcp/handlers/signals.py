@@ -9,7 +9,7 @@ All handlers shim through :class:`SignalsService` exposed on
 ``AppState``; per-window reads thread ``since`` / ``until`` from the
 MCP arguments, and the write path
 (``synthorg_signals_submit_proposal``) is destructive and passes
-through :func:`require_destructive_guardrails`.
+through :func:`require_admin_guardrails`.
 """
 
 from types import MappingProxyType
@@ -31,7 +31,7 @@ from synthorg.meta.mcp.handlers.common import (
     dump_many,
     err,
     ok,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
@@ -45,7 +45,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.meta.models import ImprovementProposal
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
+from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -166,7 +166,7 @@ async def _submit_proposal(
 ) -> str:
     tool_name = "synthorg_signals_submit_proposal"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         proposal = _parse_proposal(arguments)
         item = await app_state.signals_service.submit_proposal(
             proposal=proposal,
@@ -174,7 +174,7 @@ async def _submit_proposal(
             reason=reason,
         )
         logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
+            MCP_ADMIN_OP_EXECUTED,
             tool_name=tool_name,
             actor_agent_id=actor_id(resolved_actor),
             reason=reason,

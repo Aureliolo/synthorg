@@ -7,7 +7,7 @@ from pydantic import Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     PaginationFields,
     _ArgsBase,
 )
@@ -114,7 +114,7 @@ class ArtifactsCreateArgs(_ArgsBase):
     task_id: NotBlankStr | None = Field(default=None, description="Associated task")
 
 
-class ArtifactsDeleteArgs(DestructiveGuardrailFields):
+class ArtifactsDeleteArgs(AdminGuardrailFields):
     """Args for ``artifacts.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a

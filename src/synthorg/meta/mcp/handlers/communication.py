@@ -11,8 +11,8 @@ on ``AppState``:
 * ``tunnel.*`` -> :class:`TunnelService`
 
 Destructive ops (``*_delete``) run through
-:func:`require_destructive_guardrails` and emit
-``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
+:func:`require_admin_guardrails` and emit
+``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
 from types import MappingProxyType
@@ -39,7 +39,7 @@ from synthorg.meta.mcp.handlers.common import (
     dump_many,
     err,
     ok,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     coerce_pagination,
@@ -55,7 +55,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_CAPABILITY_GAP,
 )
 
@@ -226,7 +226,7 @@ async def _messages_delete(
     """
     tool = "synthorg_messages_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         message_id = _require_str(arguments, _ARG_MESSAGE_ID)
         try:
             removed = await app_state.message_service.delete_message(
@@ -238,7 +238,7 @@ async def _messages_delete(
             return _map_capability_not_supported(tool, exc)
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
                 actor=require_actor_id(resolved_actor),
                 reason=reason,
@@ -367,7 +367,7 @@ async def _meetings_delete(
     """Delete a single meeting record by id."""
     tool = "synthorg_meetings_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         meeting_id = _require_str(arguments, _ARG_MEETING_ID)
         try:
             removed = await app_state.meeting_service.delete_meeting(
@@ -379,7 +379,7 @@ async def _meetings_delete(
             return _map_capability_not_supported(tool, exc)
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
                 actor=require_actor_id(resolved_actor),
                 reason=reason,
@@ -460,6 +460,7 @@ async def _connections_create(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
+    # lint-allow: mcp-admin-guardrail -- connection create non-destructive; #1770a
 ) -> str:
     """Create a new external connection (non-destructive write)."""
     try:
@@ -496,7 +497,7 @@ async def _connections_delete(
     """Delete a connection (destructive; enforces guardrails)."""
     tool = "synthorg_connections_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         name = _require_str(arguments, _ARG_NAME)
         await app_state.connection_service.delete_connection(
             name=name,
@@ -504,7 +505,7 @@ async def _connections_delete(
             reason=reason,
         )
         logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
+            MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
             actor=require_actor_id(resolved_actor),
             reason=reason,
@@ -618,6 +619,7 @@ async def _webhooks_create(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
+    # lint-allow: mcp-admin-guardrail -- webhook create non-destructive; #1770a
 ) -> str:
     """Register a new webhook definition (non-destructive write)."""
     try:
@@ -646,6 +648,7 @@ async def _webhooks_update(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
+    # lint-allow: mcp-admin-guardrail -- webhook patch update; #1770a
 ) -> str:
     """Update an existing webhook definition by ID."""
     try:
@@ -683,7 +686,7 @@ async def _webhooks_delete(
     """Delete a webhook definition (destructive; enforces guardrails)."""
     tool = "synthorg_webhooks_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
         removed = await app_state.webhook_service.delete_webhook(
             definition_id=webhook_id,
@@ -696,7 +699,7 @@ async def _webhooks_delete(
                 domain_code="not_found",
             )
         logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
+            MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
             actor=require_actor_id(resolved_actor),
             reason=reason,
@@ -737,7 +740,7 @@ async def _tunnel_connect(
     *,
     app_state: Any,
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- tunnel reconnect parameterless; #1770a
 ) -> str:
     """Trigger a tunnel reconnect attempt."""
     try:

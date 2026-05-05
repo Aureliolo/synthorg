@@ -31,7 +31,7 @@ from synthorg.hr.performance.models import (
 )
 from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
 )
 from tests.unit.meta.mcp.conftest import make_test_actor
@@ -183,7 +183,7 @@ class TestAgentsDelete:
                 ),
             )
         assert body["status"] == "ok"
-        audit = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
+        audit = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(audit) == 1
 
     async def test_missing_confirm_blocked(
@@ -204,7 +204,7 @@ class TestAgentsDelete:
         assert body["domain_code"] == "guardrail_violated"
         events = {e.get("event") for e in logs}
         assert MCP_HANDLER_GUARDRAIL_VIOLATED in events
-        assert MCP_DESTRUCTIVE_OP_EXECUTED not in events
+        assert MCP_ADMIN_OP_EXECUTED not in events
 
     async def test_missing_actor_blocked(
         self,

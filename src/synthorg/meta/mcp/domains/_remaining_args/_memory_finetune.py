@@ -9,7 +9,7 @@ from pydantic import Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     PaginationFields,
     _ArgsBase,
 )
@@ -128,7 +128,7 @@ class MemoryGetFineTuneStatusArgs(_ArgsBase):
     """Args for ``memory.get_fine_tune_status``: no fields."""
 
 
-class MemoryCancelFineTuneArgs(DestructiveGuardrailFields):
+class MemoryCancelFineTuneArgs(AdminGuardrailFields):
     """Args for ``memory.cancel_fine_tune`` (destructive)."""
 
 
@@ -150,11 +150,11 @@ class MemoryDeployCheckpointArgs(_CheckpointIdArgs):
     """Args for ``memory.deploy_checkpoint``."""
 
 
-class MemoryRollbackCheckpointArgs(_CheckpointIdArgs, DestructiveGuardrailFields):
+class MemoryRollbackCheckpointArgs(_CheckpointIdArgs, AdminGuardrailFields):
     """Args for ``memory.rollback_checkpoint`` (destructive)."""
 
 
-class MemoryDeleteCheckpointArgs(_CheckpointIdArgs, DestructiveGuardrailFields):
+class MemoryDeleteCheckpointArgs(_CheckpointIdArgs, AdminGuardrailFields):
     """Args for ``memory.delete_checkpoint`` (destructive)."""
 
 
@@ -166,7 +166,7 @@ class MemoryGetActiveEmbedderArgs(_ArgsBase):
     """Args for ``memory.get_active_embedder``: no fields."""
 
 
-class MemoryDeleteEntryArgs(DestructiveGuardrailFields):
+class MemoryDeleteEntryArgs(AdminGuardrailFields):
     """Args for ``memory.delete_entry`` (destructive)."""
 
     agent_id: NotBlankStr = Field(description="Owning agent identifier")

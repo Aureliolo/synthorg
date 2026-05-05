@@ -5,7 +5,7 @@ Houses the cross-cutting shapes the existing
 
 * ``PaginationFields`` -- the ``offset`` / ``limit`` pair every
   ``read_tool`` paginated list shares.
-* ``DestructiveGuardrailFields`` -- the ``confirm: Literal[True]`` /
+* ``AdminGuardrailFields`` -- the ``confirm: Literal[True]`` /
   ``reason: NotBlankStr`` pair every ``admin_tool`` destructive op
   requires.
 
@@ -117,10 +117,10 @@ class PaginationFields(_ArgsBase):
     limit: int = Field(default=50, gt=0, le=500, description="Page size")
 
 
-class DestructiveGuardrailFields(_ArgsBase):
-    """Destructive-op guardrails mixin.
+class AdminGuardrailFields(_ArgsBase):
+    """Admin-op guardrails mixin.
 
-    Promotes the runtime ``require_destructive_guardrails`` check to
+    Promotes the runtime ``require_admin_guardrails`` check to
     validation: ``confirm`` must be the literal ``True`` (truthy
     non-bool values are rejected by the Literal[True] validator), and
     ``reason`` must be a non-blank string with at least one
@@ -128,7 +128,7 @@ class DestructiveGuardrailFields(_ArgsBase):
     """
 
     confirm: Literal[True] = Field(
-        description="Must be True to confirm the destructive operation",
+        description="Must be True to confirm the admin operation",
     )
     reason: NotBlankStr = Field(
         description="Operator-supplied reason for audit trail",
@@ -141,8 +141,8 @@ class DestructiveGuardrailFields(_ArgsBase):
 
         Pydantic's ``Literal[True]`` validator coerces any truthy
         value (``1``, ``"true"``, ``"yes"``) to ``True``; the
-        legacy ``require_destructive_guardrails`` helper rejected
-        those, and we preserve that semantics.
+        ``require_admin_guardrails`` helper rejects those, and the
+        mixin preserves that semantics.
         """
         if not isinstance(value, bool):
             # ruff noqa: TRY004 -- ValueError is what Pydantic converts
@@ -154,7 +154,7 @@ class DestructiveGuardrailFields(_ArgsBase):
 
 
 __all__ = [
-    "DestructiveGuardrailFields",
+    "AdminGuardrailFields",
     "IsoDatetimeStr",
     "PaginationFields",
     "_ArgsBase",

@@ -36,7 +36,7 @@ Tools without an `args_model` (legacy / dynamically-shaped tools such as `MCPBri
 
 Three sibling modules under `src/synthorg/meta/mcp/handlers/` carry the handler infrastructure; pick the right module when importing helpers:
 
-- **`common.py`**: response envelopes (`ok`, `err`, `not_supported`, `capability_gap`, `service_fallback`), pagination output (`PaginationMeta`, `paginate_sequence`, `dump_many`), guardrails (`require_destructive_guardrails`), placeholder factories (`make_placeholder_handler`, `make_handlers_for_tools`).
+- **`common.py`**: response envelopes (`ok`, `err`, `not_supported`, `capability_gap`, `service_fallback`), pagination output (`PaginationMeta`, `paginate_sequence`, `dump_many`), guardrails (`require_admin_guardrails`), placeholder factories (`make_placeholder_handler`, `make_handlers_for_tools`).
 - **`common_args.py`**: every argument validator/extractor: `require_arg`, `require_non_blank`, `coerce_pagination`, `actor_id`, `require_actor_id`, `actor_label`, `get_optional_str`, `require_dict`, `parse_time_window`, `parse_str_sequence`.
 - **`common_logging.py`**: structured-logging helpers for the three handler-layer log paths: `log_handler_argument_invalid`, `log_handler_invoke_failed` (accepts `**context` kwargs for correlation ids), `log_handler_guardrail_violated`. Owns a module-scoped logger keyed at `synthorg.meta.mcp.handlers` so test assertions see a single stable event source regardless of which domain emitted the event.
 
@@ -77,13 +77,13 @@ All three route exception messages through `safe_error_description` (SEC-1) so s
 
 ## Destructive ops
 
-Call `require_destructive_guardrails(arguments, actor)` first. It enforces:
+Call `require_admin_guardrails(arguments, actor)` first. It enforces:
 
 - non-`None` `actor`
 - literal `confirm=True`
 - non-blank `reason`
 
-and raises `GuardrailViolationError` with a typed `violation: Literal["missing_actor", "missing_confirm", "missing_reason"]`. Emit `MCP_DESTRUCTIVE_OP_EXECUTED` exactly once per successful destructive call for the audit trail. Schema-level reject whitespace reasons with `"minLength": 1, "pattern": r".*\S.*"`.
+and raises `GuardrailViolationError` with a typed `violation: Literal["missing_actor", "missing_confirm", "missing_reason"]`. Emit `MCP_ADMIN_OP_EXECUTED` exactly once per successful admin call for the audit trail. Schema-level reject whitespace reasons with `"minLength": 1, "pattern": r".*\S.*"`.
 
 ## Registries
 

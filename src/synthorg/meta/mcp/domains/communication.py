@@ -29,7 +29,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     WebhooksUpdateArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
-    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -84,7 +84,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
                 "description": "Message UUID",
                 "minLength": 1,
             },
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("message_id", "reason", "confirm"),
         args_model=MessagesDeleteArgs,
@@ -143,7 +143,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
                 "description": "Meeting UUID",
                 "minLength": 1,
             },
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("meeting_id", "reason", "confirm"),
         args_model=MeetingsDeleteArgs,
@@ -183,7 +183,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete an external connection (destructive; requires confirm).",
         {
             "name": {"type": "string", "description": "Connection name"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("name", "reason", "confirm"),
         args_model=ConnectionsDeleteArgs,
@@ -248,7 +248,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a webhook (destructive; requires confirm).",
         {
             "webhook_id": {"type": "string", "description": "Webhook UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("webhook_id", "reason", "confirm"),
         args_model=WebhooksDeleteArgs,

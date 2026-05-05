@@ -24,7 +24,7 @@ from synthorg.meta.mcp.domains._workflows_org_args import (
     WorkflowVersionsListArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
-    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -81,7 +81,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a workflow definition (destructive; requires confirm).",
         {
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("workflow_id", "reason", "confirm"),
         args_model=WorkflowsDeleteArgs,
@@ -136,7 +136,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a subworkflow (destructive; requires confirm).",
         {
             "subworkflow_id": {"type": "string", "description": "Subworkflow UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("subworkflow_id", "reason", "confirm"),
         args_model=SubworkflowsDeleteArgs,
@@ -180,7 +180,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Cancel a running workflow execution (destructive; requires confirm).",
         {
             "execution_id": {"type": "string", "description": "Execution UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("execution_id", "reason", "confirm"),
         args_model=WorkflowExecutionsCancelArgs,

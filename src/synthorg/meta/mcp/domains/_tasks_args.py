@@ -10,7 +10,7 @@ from pydantic import Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     PaginationFields,
     _ArgsBase,
 )
@@ -54,7 +54,7 @@ class TasksUpdateArgs(_ArgsBase):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class TasksDeleteArgs(DestructiveGuardrailFields):
+class TasksDeleteArgs(AdminGuardrailFields):
     """Args for ``tasks.delete`` (destructive)."""
 
     task_id: NotBlankStr = Field(description="Task UUID")
@@ -67,7 +67,7 @@ class TasksTransitionArgs(_ArgsBase):
     target_status: NotBlankStr = Field(description="Target status")
 
 
-class TasksCancelArgs(DestructiveGuardrailFields):
+class TasksCancelArgs(AdminGuardrailFields):
     """Args for ``tasks.cancel`` (destructive)."""
 
     task_id: NotBlankStr = Field(description="Task UUID")

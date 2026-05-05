@@ -25,7 +25,7 @@ from pydantic import Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     IsoDatetimeStr,
     PaginationFields,
     _ArgsBase,
@@ -413,7 +413,7 @@ class ApprovalsApproveArgs(_ArgsBase):
     comment: str = Field(default="", description="Approval comment")
 
 
-class ApprovalsRejectArgs(DestructiveGuardrailFields):
+class ApprovalsRejectArgs(AdminGuardrailFields):
     """Args for ``approvals.reject`` (destructive)."""
 
     approval_id: NotBlankStr = Field(description="Approval UUID")

@@ -10,7 +10,7 @@ identifying the missing facade.
 Destructive ops -- ``workflows_delete``, ``subworkflows_delete``, and
 ``workflow_executions_cancel`` -- enforce the full guardrail
 (``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor``) and
-emit ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
+emit ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
@@ -52,7 +52,7 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
     paginate_sequence,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
@@ -79,7 +79,7 @@ from synthorg.meta.mcp.handlers.workflow_executions import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
@@ -330,18 +330,15 @@ async def _workflows_delete(
 ) -> str:
     tool = "synthorg_workflows_delete"
     try:
+        reason, _ = require_admin_guardrails(arguments, actor)
         def_id = require_non_blank(arguments, _ARG_DEF_ID)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        reason, _ = require_destructive_guardrails(arguments, actor)
+        deleted = await _service(app_state).delete_definition(def_id)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
-
-    try:
-        deleted = await _service(app_state).delete_definition(def_id)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -356,7 +353,7 @@ async def _workflows_delete(
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=actor_id(actor),
         reason=reason,
@@ -525,7 +522,7 @@ async def _subworkflows_delete(  # noqa: PLR0911 -- error mapping fans out
     # ``version``) sees the guardrail violation before any field
     # validation.  Field-level validation runs after the guardrail.
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -559,7 +556,7 @@ async def _subworkflows_delete(  # noqa: PLR0911 -- error mapping fans out
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=deleted_by,
         reason=reason,

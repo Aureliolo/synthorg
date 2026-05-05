@@ -20,7 +20,7 @@ from synthorg.infrastructure.services import (
     TemplatePackFacadeService,
 )
 from synthorg.meta.mcp.handlers.infrastructure import INFRASTRUCTURE_HANDLERS
-from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
+from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -197,7 +197,12 @@ class TestSettings:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_settings_update"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"key": "k", "value": "v"},
+            arguments={
+                "key": "k",
+                "value": "v",
+                "confirm": True,
+                "reason": "test",
+            },
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
@@ -238,7 +243,12 @@ class TestProviders:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_providers_test_connection"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"provider_id": "p1"},
+            arguments={
+                "provider_id": "p1",
+                "confirm": True,
+                "reason": "test",
+            },
+            actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
 
@@ -274,9 +284,7 @@ class TestBackup:
                 actor=make_test_actor(),
             )
         assert json.loads(response)["status"] == "ok"
-        exec_events = [
-            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
-        ]
+        exec_events = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(exec_events) == 1
         assert exec_events[0]["tool_name"] == "synthorg_backup_delete"
 
@@ -289,9 +297,7 @@ class TestBackup:
                 actor=make_test_actor(),
             )
         assert json.loads(response)["status"] == "ok"
-        exec_events = [
-            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
-        ]
+        exec_events = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(exec_events) == 1
         assert exec_events[0]["tool_name"] == "synthorg_backup_restore"
 
@@ -314,7 +320,11 @@ class TestUsers:
         fake_app_state: SimpleNamespace,
     ) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_users_create"]
-        response = await handler(app_state=fake_app_state, arguments={})
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"confirm": True, "reason": "test"},
+            actor=make_test_actor(),
+        )
         assert json.loads(response)["domain_code"] == "not_supported"
 
 
@@ -377,7 +387,11 @@ class TestSetup:
         fake_app_state: SimpleNamespace,
     ) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_setup_initialize"]
-        response = await handler(app_state=fake_app_state, arguments={})
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"confirm": True, "reason": "test"},
+            actor=make_test_actor(),
+        )
         assert json.loads(response)["domain_code"] == "not_supported"
 
 
@@ -401,7 +415,12 @@ class TestTemplatePacks:
         install = INFRASTRUCTURE_HANDLERS["synthorg_template_packs_install"]
         response = await install(
             app_state=fake_app_state,
-            arguments={"name": "p", "version": "1.0"},
+            arguments={
+                "name": "p",
+                "version": "1.0",
+                "confirm": True,
+                "reason": "test",
+            },
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"

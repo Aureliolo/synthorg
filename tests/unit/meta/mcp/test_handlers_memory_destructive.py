@@ -2,7 +2,7 @@
 
 Covers the success-path audit trail for ``cancel_fine_tune``,
 ``rollback_checkpoint``, and ``delete_checkpoint``: each must emit
-:data:`MCP_DESTRUCTIVE_OP_EXECUTED` exactly once with the **resolved**
+:data:`MCP_ADMIN_OP_EXECUTED` exactly once with the **resolved**
 actor (not the caller-provided one, which may be ``None`` before
 guardrail enrichment) and the supplied ``reason`` / ``target_id``.
 
@@ -24,7 +24,7 @@ import structlog.testing
 from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.handlers.memory import MEMORY_HANDLERS
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 from tests.unit.meta.mcp.conftest import make_test_actor
@@ -41,7 +41,7 @@ def actor() -> AgentIdentity:
 def _fake_state_with_cancel(run_id: str = "run-cancelled") -> SimpleNamespace:
     """Wired state where ``cancel_fine_tune`` cancels an active run.
 
-    The handler now guards ``MCP_DESTRUCTIVE_OP_EXECUTED`` on a
+    The handler now guards ``MCP_ADMIN_OP_EXECUTED`` on a
     non-``None`` ``target_id`` (no false audit entries for cancels
     issued when no run was active). Return a real ``run_id`` here so
     the destructive-op assertion in the happy-path test actually
@@ -80,7 +80,7 @@ def _fake_state_with_delete(checkpoint_id: str) -> SimpleNamespace:
     because the test would quietly take the ``not_supported`` branch.
     Now we always mount a ``memory_service`` stub whose
     ``delete_checkpoint`` succeeds, so the handler must take the
-    ``status == "ok"`` branch and emit ``MCP_DESTRUCTIVE_OP_EXECUTED``.
+    ``status == "ok"`` branch and emit ``MCP_ADMIN_OP_EXECUTED``.
     """
     memory_service = AsyncMock()
     memory_service.delete_checkpoint.return_value = None
@@ -108,11 +108,11 @@ class TestCancelFineTuneDestructiveAudit:
         destructive = [
             e
             for e in events
-            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            if e.get("event") == MCP_ADMIN_OP_EXECUTED
             and e.get("tool_name") == "synthorg_memory_cancel_fine_tune"
         ]
         assert len(destructive) == 1, (
-            "exactly one MCP_DESTRUCTIVE_OP_EXECUTED per successful call"
+            "exactly one MCP_ADMIN_OP_EXECUTED per successful call"
         )
         event = destructive[0]
         assert event["actor_agent_id"] == str(actor.id)
@@ -145,7 +145,7 @@ class TestRollbackCheckpointDestructiveAudit:
         destructive = [
             e
             for e in events
-            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            if e.get("event") == MCP_ADMIN_OP_EXECUTED
             and e.get("tool_name") == "synthorg_memory_rollback_checkpoint"
         ]
         assert len(destructive) == 1
@@ -165,7 +165,7 @@ class TestDeleteCheckpointDestructiveAudit:
         Mirrors the cancel / rollback contracts: the wired
         ``memory_service`` stub returns success, so the handler takes
         the ``status == "ok"`` branch and must emit exactly one
-        ``MCP_DESTRUCTIVE_OP_EXECUTED`` event with the resolved actor,
+        ``MCP_ADMIN_OP_EXECUTED`` event with the resolved actor,
         reason, and target_id. Non-``ok`` responses are a regression
         and fail the test directly -- the previous conditional
         assertion let that regression pass silently.
@@ -191,7 +191,7 @@ class TestDeleteCheckpointDestructiveAudit:
         destructive = [
             e
             for e in events
-            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            if e.get("event") == MCP_ADMIN_OP_EXECUTED
             and e.get("tool_name") == "synthorg_memory_delete_checkpoint"
         ]
         assert len(destructive) == 1
@@ -238,7 +238,7 @@ class TestDeleteMemoryEntryDestructiveAudit:
         destructive = [
             e
             for e in events
-            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            if e.get("event") == MCP_ADMIN_OP_EXECUTED
             and e.get("tool_name") == "synthorg_memory_delete_entry"
         ]
         assert len(destructive) == 1
@@ -263,7 +263,7 @@ class TestDeleteMemoryEntryDestructiveAudit:
         """When the backend returns False, the handler emits a not_found envelope.
 
         Also asserts the audit log stays clean (no
-        ``MCP_DESTRUCTIVE_OP_EXECUTED`` for a delete that never
+        ``MCP_ADMIN_OP_EXECUTED`` for a delete that never
         actually happened) and that the service call ordering matches
         the production contract (agent_id, memory_id).
         """
@@ -286,7 +286,7 @@ class TestDeleteMemoryEntryDestructiveAudit:
         assert not [
             e
             for e in events
-            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            if e.get("event") == MCP_ADMIN_OP_EXECUTED
             and e.get("tool_name") == "synthorg_memory_delete_entry"
         ]
         state.memory_service.delete_memory_entry.assert_awaited_once_with(

@@ -302,7 +302,7 @@ class TestCancelFineTune:
         :data:`MEMORY_FINE_TUNE_CANCELLED`), so the service no longer
         double-emits it. Instead, the service's contract is to return
         the cancelled run id so MCP handlers can attribute the
-        ``MCP_DESTRUCTIVE_OP_EXECUTED`` audit event to the right run.
+        ``MCP_ADMIN_OP_EXECUTED`` audit event to the right run.
         """
         orch = _FakeOrchestrator()
         run = _run(run_id="run-42")

@@ -12,7 +12,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.handlers.tasks import TASK_HANDLERS
 from synthorg.meta.mcp.handlers.workflows import WORKFLOW_HANDLERS
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
 )
 from tests.unit.meta.mcp.conftest import make_test_actor
@@ -105,7 +105,7 @@ class TestTasksCancel:
                 ),
             )
         assert body["status"] == "ok"
-        assert any(e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED for e in logs)
+        assert any(e.get("event") == MCP_ADMIN_OP_EXECUTED for e in logs)
 
     async def test_missing_reason(
         self,
@@ -139,7 +139,7 @@ class TestTasksDelete:
                 ),
             )
         assert body["status"] == "ok"
-        assert any(e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED for e in logs)
+        assert any(e.get("event") == MCP_ADMIN_OP_EXECUTED for e in logs)
 
     async def test_missing_confirm(
         self,
@@ -268,7 +268,7 @@ class TestWorkflowsDelete:
                 ),
             )
         assert body["status"] == "ok"
-        assert any(e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED for e in logs)
+        assert any(e.get("event") == MCP_ADMIN_OP_EXECUTED for e in logs)
 
 
 # --- quality --------------------------------------------------------------

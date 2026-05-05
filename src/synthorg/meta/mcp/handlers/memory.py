@@ -23,7 +23,7 @@ exception and forwards it -- without exception -- to
 
 Destructive ops. ``cancel_fine_tune``, ``rollback_checkpoint``, and
 ``delete_checkpoint`` enforce the guardrail triple at the handler
-boundary and emit :data:`MCP_DESTRUCTIVE_OP_EXECUTED` on success.
+boundary and emit :data:`MCP_ADMIN_OP_EXECUTED` on success.
 """
 
 import copy
@@ -60,7 +60,7 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     not_supported,
     ok,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
@@ -74,7 +74,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
@@ -231,7 +231,7 @@ async def _memory_start_fine_tune(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- non-std FineTunePlan args; #1770a follow-up
 ) -> str:
     tool = "synthorg_memory_start_fine_tune"
     try:
@@ -264,7 +264,7 @@ async def _memory_resume_fine_tune(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- non-std fine-tune args; #1770a follow-up
 ) -> str:
     tool = "synthorg_memory_resume_fine_tune"
     try:
@@ -339,7 +339,7 @@ async def _memory_cancel_fine_tune(
 ) -> str:
     tool = "synthorg_memory_cancel_fine_tune"
     try:
-        reason, resolved_actor = require_destructive_guardrails(
+        reason, resolved_actor = require_admin_guardrails(
             arguments,
             actor,
         )
@@ -357,15 +357,15 @@ async def _memory_cancel_fine_tune(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    # Only emit the destructive-op audit when something was actually
+    # Only emit the admin-op audit when something was actually
     # cancelled. A ``None`` target means the orchestrator had no active
-    # run, and emitting ``MCP_DESTRUCTIVE_OP_EXECUTED`` with
+    # run, and emitting ``MCP_ADMIN_OP_EXECUTED`` with
     # ``target_id=None`` would plant a false no-op entry in the audit
     # trail. Operators investigating a cancellation should never see a
     # record for a cancel that did not happen.
     if target_id is not None:
         logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
+            MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
             actor_agent_id=actor_id(resolved_actor),
             reason=reason,
@@ -378,7 +378,7 @@ async def _memory_run_preflight(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- non-std preflight args; #1770a follow-up
 ) -> str:
     tool = "synthorg_memory_run_preflight"
     try:
@@ -435,7 +435,7 @@ async def _memory_deploy_checkpoint(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- non-std deploy reason routing; #1770a follow-up
 ) -> str:
     tool = "synthorg_memory_deploy_checkpoint"
     try:
@@ -475,24 +475,18 @@ async def _memory_rollback_checkpoint(  # noqa: PLR0911
 ) -> str:
     tool = "synthorg_memory_rollback_checkpoint"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        reason, resolved_actor = require_destructive_guardrails(
-            arguments,
-            actor,
-        )
+        service = _service(app_state)
+        cp = await service.rollback_checkpoint(checkpoint_id)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
-    try:
-        service = _service(app_state)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    try:
-        cp = await service.rollback_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
@@ -509,7 +503,7 @@ async def _memory_rollback_checkpoint(  # noqa: PLR0911
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=actor_id(resolved_actor),
         reason=reason,
@@ -526,25 +520,18 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
 ) -> str:
     tool = "synthorg_memory_delete_checkpoint"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        reason, resolved_actor = require_destructive_guardrails(
-            arguments,
-            actor,
-        )
+        service = _service(app_state)
+        await service.delete_checkpoint(checkpoint_id)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
-
-    try:
-        service = _service(app_state)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    try:
-        await service.delete_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
@@ -561,7 +548,7 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=actor_id(resolved_actor),
         reason=reason,
@@ -583,22 +570,22 @@ async def _memory_delete_entry(
     ``reason``, identifiable actor).
     """
     tool = "synthorg_memory_delete_entry"
+    agent_id = ""
+    memory_id = ""
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
         memory_id = require_non_blank(arguments, _ARG_MEMORY_ID)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
-    except GuardrailViolationError as exc:
-        log_handler_guardrail_violated(tool, exc)
-        return err(exc)
-    try:
         deleted = await _delete_entry_service(app_state).delete_memory_entry(
             agent_id,
             memory_id,
         )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except MemoryError, RecursionError:
@@ -617,7 +604,7 @@ async def _memory_delete_entry(
         return err(not_found_exc, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=actor_id(resolved_actor),
         reason=reason,

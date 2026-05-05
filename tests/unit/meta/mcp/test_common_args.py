@@ -13,7 +13,7 @@ helper:
 
 ``test_common_envelope.py`` continues to cover the envelope helpers
 that stayed in ``common.py`` (``ok``, ``err``, ``paginate_sequence``,
-``require_destructive_guardrails``, etc.).
+``require_admin_guardrails``, etc.).
 """
 
 from datetime import UTC, datetime, timedelta

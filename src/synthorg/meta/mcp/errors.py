@@ -1,6 +1,6 @@
 """MCP handler-side error types.
 
-Raised by handler helpers (``require_arg``, ``require_destructive_guardrails``)
+Raised by handler helpers (``require_arg``, ``require_admin_guardrails``)
 when caller input is malformed or a guardrail has not been satisfied.  The
 handler is expected to catch these and return an ``err(...)`` envelope to
 the invoker; they are intentionally *not* system errors.

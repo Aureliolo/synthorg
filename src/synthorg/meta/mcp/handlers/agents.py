@@ -15,7 +15,7 @@ Destructive ops
 ---------------
 ``synthorg_agents_delete`` enforces the full
 ``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor`` guardrail
-and emits ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
+and emits ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
 import copy
@@ -62,7 +62,7 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
     paginate_sequence,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
@@ -77,7 +77,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
@@ -250,23 +250,20 @@ async def _agents_delete(
 ) -> str:
     tool = "synthorg_agents_delete"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
-    except GuardrailViolationError as exc:
-        log_handler_guardrail_violated(tool, exc)
-        return err(exc)
-
-    try:
         identity = await app_state.agent_registry.get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
             log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
         removed = await app_state.agent_registry.unregister(str(identity.id))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     except AgentNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
@@ -278,7 +275,7 @@ async def _agents_delete(
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=actor_id(resolved_actor),
         reason=reason,

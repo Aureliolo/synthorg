@@ -16,7 +16,7 @@ from synthorg.meta.mcp.domains._tasks_args import (
     TasksUpdateArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
-    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -83,7 +83,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a task (destructive; requires confirm).",
         {
             "task_id": {"type": "string", "description": "Task UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("task_id", "reason", "confirm"),
         args_model=TasksDeleteArgs,
@@ -105,7 +105,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "Cancel a task (destructive; requires confirm).",
         {
             "task_id": {"type": "string", "description": "Task UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
         required=("task_id", "reason", "confirm"),
         args_model=TasksCancelArgs,

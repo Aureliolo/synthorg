@@ -2218,8 +2218,8 @@ docs/reference/mcp-handler-contract.md. Every handler must:
 - Return responses via envelope helpers (ok / err / capability_gap /
   not_supported) from common.py, not raw dicts
 - Validate args via require_arg
-- Call require_destructive_guardrails(arguments, actor) on every handler
-  registered with admin_tool=True
+- Call require_admin_guardrails(arguments, actor) on every handler
+  registered with admin_tool
 - Route through service-layer facades (ArtifactService, WorkflowService,
   MemoryService, CustomRulesService, UserService) -- never reach into
   app_state.persistence.* directly
