@@ -863,7 +863,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise DomainError(str(exc)) from exc
+            raise DomainError(safe_error_description(exc)) from exc
 
     @put(
         "/{name:str}/models/{model_id:path}/config",
