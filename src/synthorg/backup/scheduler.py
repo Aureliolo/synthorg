@@ -100,11 +100,26 @@ class BackupScheduler:
         deadline (the orphan task may still own the backup lock).
 
         When a previous ``start()`` ran on a different (now-closed)
-        loop, the stale task and its loop-bound primitives are
-        discarded and fresh ones are spawned on the current loop.
+        loop AND that task has finished, the stale task and its
+        loop-bound primitives are discarded and fresh ones are spawned
+        on the current loop.  If the foreign-loop task is still alive,
+        ``start()`` refuses rather than silently abandoning a running
+        scheduler and spawning a duplicate.
         """
         # Detect cross-loop reuse before touching any lifecycle primitive.
         if self._task is not None and not self._task_is_on_current_loop():
+            if not self._task.done():
+                msg = (
+                    "BackupScheduler.start() called from a different event "
+                    "loop while a prior scheduler task is still running; "
+                    "stop() on the original loop before restarting"
+                )
+                logger.warning(
+                    BACKUP_FAILED,
+                    error=msg,
+                    note="cross_loop_running_task",
+                )
+                raise BackupUnrestartableError(msg)
             self._drop_stale_loop_state()
         if self._lifecycle_lock is None:
             self._lifecycle_lock = asyncio.Lock()

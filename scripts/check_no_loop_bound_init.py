@@ -104,10 +104,16 @@ def _collect_asyncio_aliases(
     Handles every common ``asyncio`` import shape so the gate cannot be
     bypassed by rewriting ``asyncio.Lock()`` as ``Lock()`` or by
     aliasing ``asyncio`` itself.
+
+    Only module-level imports are considered.  A ``from asyncio import
+    Lock`` inside a method body shadows that name in its own scope and
+    must not poison the alias dict for the whole file -- otherwise a
+    ``threading.Lock()`` assignment elsewhere in ``__init__`` would be
+    flagged as if it were the asyncio primitive.
     """
     module_aliases: set[str] = {"asyncio"}
     direct_primitives: dict[str, str] = {}
-    for node in ast.walk(tree):
+    for node in tree.body:
         if isinstance(node, ast.Import):
             _absorb_import(node, module_aliases)
         elif isinstance(node, ast.ImportFrom):

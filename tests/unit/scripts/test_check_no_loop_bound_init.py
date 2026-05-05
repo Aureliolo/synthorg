@@ -179,6 +179,28 @@ def test_does_not_flag_unrelated_callable_named_lock(tmp_path: Path) -> None:
     assert findings == []
 
 
+def test_function_local_asyncio_import_does_not_poison_aliases(
+    tmp_path: Path,
+) -> None:
+    """Imports nested inside method bodies do not contaminate alias discovery.
+
+    A ``from asyncio import Lock`` declared only inside ``start()`` is
+    scoped to that method.  It must not promote a module-level
+    ``threading.Lock()`` in ``__init__`` into the asyncio-primitive set.
+    """
+    source = (
+        "from threading import Lock\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._lock = Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        from asyncio import Lock as _AsyncLock  # method-local\n"
+        "        _ = _AsyncLock\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert findings == []
+
+
 # ── full file scan ───────────────────────────────────────────────
 
 

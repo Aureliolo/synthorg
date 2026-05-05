@@ -69,6 +69,31 @@ class TestBackupSchedulerLifecycleLock:
         assert scheduler.is_running
         await scheduler.stop()
 
+    async def test_start_refuses_when_foreign_loop_task_still_running(
+        self,
+    ) -> None:
+        """A live task on another loop is preserved, not silently abandoned.
+
+        Without this guard, ``start()`` on a fresh loop would drop the
+        running task and spawn a duplicate scheduler -- two backup loops
+        racing for the same lock and double-firing scheduled backups.
+        """
+        scheduler = _make_scheduler()
+        fake_task = MagicMock(spec=asyncio.Task)
+        fake_task.done.return_value = False
+        scheduler._task = fake_task
+        with (
+            patch.object(
+                BackupScheduler,
+                "_task_is_on_current_loop",
+                return_value=False,
+            ),
+            pytest.raises(BackupUnrestartableError, match="still running"),
+        ):
+            await scheduler.start()
+        # Foreign task is preserved, not silently dropped.
+        assert scheduler._task is fake_task
+
     async def test_unrestartable_after_drain_timeout(self) -> None:
         scheduler = _make_scheduler()
         scheduler._stop_drain_timeout_seconds = 0.05

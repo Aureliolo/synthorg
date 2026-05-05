@@ -1,7 +1,7 @@
 """Unit tests for ApprovalTimeoutScheduler."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -511,6 +511,12 @@ class TestApprovalTimeoutScheduler:
         Verified after ``start()`` because the loop-bound wake event is
         deferred until then; calling reschedule on an unstarted scheduler
         is still legal but only updates the interval (no event to wake).
+
+        ``_run_loop`` is stubbed so the spawned task exits immediately
+        and never consumes the wake event; the assertion below is
+        otherwise vulnerable to a race where the live scheduler task
+        clears the event between ``reschedule()`` setting it and the
+        ``is_set()`` check.
         """
         store = _make_mock_store()
         checker = _make_mock_checker()
@@ -519,15 +525,20 @@ class TestApprovalTimeoutScheduler:
             timeout_checker=checker,
             interval_seconds=60.0,
         )
-        await scheduler.start()
-        try:
-            assert scheduler._wake_event is not None
-            scheduler._wake_event.clear()
-            scheduler.reschedule(120.0)
-            assert scheduler._wake_event.is_set()
-            assert scheduler._interval == 120.0
-        finally:
-            await scheduler.stop()
+
+        async def _noop_loop(_self: ApprovalTimeoutScheduler) -> None:
+            return
+
+        with patch.object(ApprovalTimeoutScheduler, "_run_loop", _noop_loop):
+            await scheduler.start()
+            try:
+                assert scheduler._wake_event is not None
+                scheduler._wake_event.clear()
+                scheduler.reschedule(120.0)
+                assert scheduler._wake_event.is_set()
+                assert scheduler._interval == 120.0
+            finally:
+                await scheduler.stop()
 
     def test_reschedule_before_start_updates_interval(self) -> None:
         """reschedule() before start() updates the interval but skips waking.
