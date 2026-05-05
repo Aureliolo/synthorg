@@ -5,6 +5,7 @@ import pytest
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.templates.model_matcher import (
     ModelMatch,
+    ModelMatcherConfig,
     _classify_tiers,
     _rank_by_priority,
     match_all_agents,
@@ -436,3 +437,56 @@ class TestMatchAllAgents:
         assert len(results) == 1
         # visionary_leader affinity sets priority=quality -> expensive.
         assert results[0].model_id == "expensive"
+
+
+class TestModelMatcherConfigInjection:
+    """Verify operator-tunable matcher weights flow through ``match_model``."""
+
+    @pytest.mark.unit
+    def test_default_config_matches_historical_values(self) -> None:
+        config = ModelMatcherConfig()
+        assert config.tier_base_score == pytest.approx(0.5)
+        assert config.headroom_max_bonus == pytest.approx(0.25)
+        assert config.priority_max_bonus == pytest.approx(0.25)
+        assert config.headroom_ratio_cap == pytest.approx(2.0)
+        assert config.balanced_partial_credit == pytest.approx(0.125)
+
+    @pytest.mark.unit
+    def test_custom_tier_base_score_changes_score(self) -> None:
+        """Lowering tier_base_score lowers the score floor for tier matches."""
+        models = (_make_model("only", cost_input=0.01),)
+        requirement = ModelRequirement(tier="medium", priority="quality")
+        # Single candidate -> headroom + priority bonuses are full.
+        # Default config: 0.5 + 0.25 + 0.25 = 1.0.
+        # With tier_base_score=0.1: 0.1 + 0.25 + 0.25 = 0.6.
+        config = ModelMatcherConfig(tier_base_score=0.1)
+        _, score = match_model(requirement, models, config)
+        assert score == pytest.approx(0.6)
+
+    @pytest.mark.unit
+    def test_default_arg_uses_default_config(self) -> None:
+        """Calling without ``matcher_config`` reproduces legacy behaviour."""
+        models = (_make_model("only"),)
+        requirement = ModelRequirement(tier="medium")
+        _, score_default = match_model(requirement, models)
+        _, score_explicit = match_model(requirement, models, ModelMatcherConfig())
+        assert score_default == pytest.approx(score_explicit)
+
+    @pytest.mark.unit
+    def test_from_bridge_config_extracts_matcher_subset(self) -> None:
+        """Bridge-config projection wires every matcher field."""
+        from synthorg.settings.bridge_configs import EngineBridgeConfig
+
+        bridge = EngineBridgeConfig(
+            matcher_tier_base_score=0.6,
+            matcher_headroom_max_bonus=0.2,
+            matcher_priority_max_bonus=0.2,
+            matcher_headroom_ratio_cap=3.0,
+            matcher_balanced_partial_credit=0.1,
+        )
+        config = ModelMatcherConfig.from_bridge_config(bridge)
+        assert config.tier_base_score == pytest.approx(0.6)
+        assert config.headroom_max_bonus == pytest.approx(0.2)
+        assert config.priority_max_bonus == pytest.approx(0.2)
+        assert config.headroom_ratio_cap == pytest.approx(3.0)
+        assert config.balanced_partial_credit == pytest.approx(0.1)

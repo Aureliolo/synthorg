@@ -32,6 +32,7 @@ if TYPE_CHECKING:
         UpdateAgentModelRequest,
     )
     from synthorg.settings.service import SettingsService
+    from synthorg.templates.model_matcher import ModelMatcherConfig
     from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
 
 logger = get_logger(__name__)
@@ -139,6 +140,7 @@ def expand_template_agents(
 def match_and_assign_models(
     agents: list[dict[str, Any]],
     providers: Mapping[str, Any],
+    matcher_config: ModelMatcherConfig | None = None,
 ) -> list[dict[str, Any]]:
     """Auto-assign models to template agents using the matching engine.
 
@@ -149,13 +151,17 @@ def match_and_assign_models(
     Args:
         agents: Expanded agent config dicts from ``expand_template_agents``.
         providers: Provider name -> config mapping.
+        matcher_config: Optional :class:`ModelMatcherConfig` carrying
+            operator-tunable score weights resolved from
+            ``EngineBridgeConfig``. ``None`` falls back to the matcher
+            defaults that mirror the historical hardcoded values.
 
     Returns:
         New list of agent dicts with model assignments applied.
     """
     from synthorg.templates.model_matcher import match_all_agents  # noqa: PLC0415
 
-    matches = match_all_agents(agents, providers)
+    matches = match_all_agents(agents, providers, matcher_config)
     match_map = {
         m.agent_index: {
             "provider": m.provider_name,

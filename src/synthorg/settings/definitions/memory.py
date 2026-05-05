@@ -127,3 +127,48 @@ _r.register(
         yaml_path="memory.consolidation.enabled",
     )
 )
+
+# ── Fine-tune VRAM-to-batch-size mapping ────────────────────────
+# Operator-tunable preflight table used by the memory controller
+# to size embedding fine-tune batches. Each tuple is
+# ``(min_vram_gb, batch_size)``; the largest matching threshold
+# wins. Fallback module constant in api/controllers/memory.py
+# mirrors the default so the preflight check still produces a
+# sensible suggestion when the resolver is unavailable.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_vram_batch_table",
+        type=SettingType.JSON,
+        default="[[40.0, 128], [16.0, 64], [8.0, 32]]",
+        description=(
+            "VRAM-to-batch-size table for embedding fine-tune"
+            " preflight. JSON array of ``[min_vram_gb, batch_size]``"
+            " pairs sorted descending by VRAM threshold. Operators"
+            " add rows for new GPU profiles."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        yaml_path="memory.fine_tune.vram_batch_table",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_chunk_size",
+        type=SettingType.INTEGER,
+        default="512",
+        description=(
+            "Word-boundary chunk size for synthetic data generation"
+            " during embedding fine-tune. Chunks of exactly this many"
+            " words are produced (last chunk may be shorter)."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=64,
+        max_value=4096,
+        yaml_path="memory.fine_tune.chunk_size",
+    )
+)

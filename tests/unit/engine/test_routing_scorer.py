@@ -4,12 +4,16 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
 from synthorg.core.role import Skill
 from synthorg.engine.decomposition.models import SubtaskDefinition
-from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
+from synthorg.observability.events.task_routing import (
+    TASK_ROUTING_SCORER_INVALID_CONFIG,
+)
 
 
 def _as_skills(
@@ -420,3 +424,132 @@ class TestAgentTaskScorer:
         # primary (1.0/2 * 0.4 = 0.2) + secondary (1.0/2 * 0.2 = 0.1)
         # + tag bonus (0.1) = 0.4
         assert candidate.score == pytest.approx(0.4)
+
+
+class TestRoutingScorerConfigInjection:
+    """Verify operator-tunable weights flow through the scorer."""
+
+    @pytest.mark.unit
+    def test_custom_primary_skill_weight_changes_score(self) -> None:
+        """Doubling primary_skill_weight roughly doubles the primary contribution."""
+        config = RoutingScorerConfig(primary_skill_weight=0.8)
+        scorer = AgentTaskScorer(config=config)
+        agent = _make_agent(primary=("python",))
+        # EPIC complexity does NOT align with MID seniority -> no bonus.
+        subtask = _make_subtask(required_skills=("python",), complexity=Complexity.EPIC)
+        candidate = scorer.score(agent, subtask)
+        # primary (1.0/1 * 0.8 = 0.8); no role/seniority match.
+        assert candidate.score == pytest.approx(0.8)
+
+    @pytest.mark.unit
+    def test_custom_role_match_bonus(self) -> None:
+        config = RoutingScorerConfig(role_match_bonus=0.5)
+        scorer = AgentTaskScorer(config=config)
+        agent = _make_agent(role="qa-engineer")
+        # EPIC does not align with MID -> isolate the role bonus contribution.
+        subtask = _make_subtask(required_role="qa-engineer", complexity=Complexity.EPIC)
+        candidate = scorer.score(agent, subtask)
+        # role match (0.5); no skill / seniority bonuses on top.
+        assert candidate.score == pytest.approx(0.5)
+
+    @pytest.mark.unit
+    def test_custom_min_score_overrides_default(self) -> None:
+        config = RoutingScorerConfig(min_score=0.5)
+        scorer = AgentTaskScorer(config=config)
+        assert scorer.min_score == pytest.approx(0.5)
+
+    @pytest.mark.unit
+    def test_explicit_min_score_kwarg_overrides_config(self) -> None:
+        """``min_score`` kwarg wins over ``config.min_score``."""
+        config = RoutingScorerConfig(min_score=0.5)
+        scorer = AgentTaskScorer(min_score=0.3, config=config)
+        assert scorer.min_score == pytest.approx(0.3)
+
+    @pytest.mark.unit
+    def test_default_config_matches_historical_values(self) -> None:
+        """Default ``RoutingScorerConfig`` reproduces legacy weights."""
+        config = RoutingScorerConfig()
+        assert config.primary_skill_weight == pytest.approx(0.4)
+        assert config.secondary_skill_weight == pytest.approx(0.2)
+        assert config.tag_match_bonus == pytest.approx(0.1)
+        assert config.role_match_bonus == pytest.approx(0.2)
+        assert config.seniority_alignment_bonus == pytest.approx(0.2)
+        assert config.min_score == pytest.approx(0.1)
+
+    @pytest.mark.unit
+    def test_from_bridge_config_extracts_routing_subset(self) -> None:
+        """Bridge-config projection wires every routing field."""
+        from synthorg.settings.bridge_configs import EngineBridgeConfig
+
+        bridge = EngineBridgeConfig(
+            routing_weight_primary_skill=0.55,
+            routing_weight_secondary_skill=0.15,
+            routing_weight_tag_match_bonus=0.05,
+            routing_weight_role_match_bonus=0.25,
+            routing_weight_seniority_alignment_bonus=0.30,
+            routing_min_score=0.2,
+        )
+        config = RoutingScorerConfig.from_bridge_config(bridge)
+        assert config.primary_skill_weight == pytest.approx(0.55)
+        assert config.secondary_skill_weight == pytest.approx(0.15)
+        assert config.tag_match_bonus == pytest.approx(0.05)
+        assert config.role_match_bonus == pytest.approx(0.25)
+        assert config.seniority_alignment_bonus == pytest.approx(0.30)
+        assert config.min_score == pytest.approx(0.2)
+
+    @pytest.mark.unit
+    def test_weight_sum_validator_warns_on_excessive_weights(self) -> None:
+        """Sum above the documented ceiling logs a warning but does not raise."""
+        # All weights at 0.4 -> sum = 2.0, well above both the
+        # documented envelope (1.1) and the hard ceiling (1.3).
+        with capture_logs() as logs:
+            config = RoutingScorerConfig(
+                primary_skill_weight=0.4,
+                secondary_skill_weight=0.4,
+                tag_match_bonus=0.4,
+                role_match_bonus=0.4,
+                seniority_alignment_bonus=0.4,
+            )
+        assert config.primary_skill_weight == pytest.approx(0.4)
+        warns = [
+            entry
+            for entry in logs
+            if entry.get("event") == TASK_ROUTING_SCORER_INVALID_CONFIG
+            and entry.get("log_level") == "warning"
+        ]
+        assert len(warns) == 1, (
+            "expected exactly one TASK_ROUTING_SCORER_INVALID_CONFIG warning, "
+            f"got {len(warns)} (logs={logs})"
+        )
+        assert warns[0]["weight_sum"] == pytest.approx(2.0)
+
+    @pytest.mark.unit
+    def test_weight_sum_validator_warns_in_envelope_to_ceiling_band(self) -> None:
+        """Sum in (documented_max, hard_ceiling] still triggers a warning.
+
+        Pins the widened-warning behaviour so a future regression that
+        narrows the condition back to "only above the hard ceiling"
+        gets caught here. ``0.4 + 0.3 + 0.1 + 0.2 + 0.2 = 1.2`` sits
+        in the ``(1.1, 1.3]`` band that the previous condition
+        silently let through.
+        """
+        with capture_logs() as logs:
+            config = RoutingScorerConfig(
+                primary_skill_weight=0.4,
+                secondary_skill_weight=0.3,
+                tag_match_bonus=0.1,
+                role_match_bonus=0.2,
+                seniority_alignment_bonus=0.2,
+            )
+        assert config.primary_skill_weight == pytest.approx(0.4)
+        warns = [
+            entry
+            for entry in logs
+            if entry.get("event") == TASK_ROUTING_SCORER_INVALID_CONFIG
+            and entry.get("log_level") == "warning"
+        ]
+        assert len(warns) == 1, (
+            "expected exactly one TASK_ROUTING_SCORER_INVALID_CONFIG warning "
+            f"for sum 1.2, got {len(warns)} (logs={logs})"
+        )
+        assert warns[0]["weight_sum"] == pytest.approx(1.2)

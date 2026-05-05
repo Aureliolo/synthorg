@@ -443,9 +443,35 @@ async def auto_create_template_agents(
     settings_svc: SettingsService,
 ) -> tuple[SetupAgentSummary, ...]:
     """Expand template agents, match models, persist, and return summaries."""
+    from synthorg.templates.model_matcher import ModelMatcherConfig  # noqa: PLC0415
     from synthorg.templates.preset_service import (  # noqa: PLC0415
         fetch_custom_presets_map,
     )
+
+    async def _resolve_matcher_config() -> ModelMatcherConfig | None:
+        """Resolve matcher config; degrade to None on resolution failure.
+
+        Bridge-config resolution failures (missing setting, validation
+        error, persistence flake) AND projection failures
+        (``from_bridge_config`` raising on a tampered field) must both
+        keep the template bootstrap alive. Mirrors the fail-open
+        pattern used by ``post_setup_reinit``.
+        """
+        if not app_state.has_config_resolver:
+            return None
+        try:
+            bridge_cfg = await app_state.config_resolver.get_engine_bridge_config()
+            return ModelMatcherConfig.from_bridge_config(bridge_cfg)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SETUP_STATUS_SETTINGS_UNAVAILABLE,
+                context="matcher_config",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
 
     async with asyncio.TaskGroup() as tg:
         loc_task = tg.create_task(read_name_locales(settings_svc))
@@ -455,6 +481,7 @@ async def auto_create_template_agents(
         prov_task = tg.create_task(
             app_state.provider_management.list_providers(),
         )
+        matcher_task = tg.create_task(_resolve_matcher_config())
     locales = loc_task.result()
     custom_presets = preset_task.result()
     agents = expand_template_agents(
@@ -464,7 +491,8 @@ async def auto_create_template_agents(
     )
     providers = prov_task.result()
     _validate_tier_coverage(providers)
-    agents = match_and_assign_models(agents, providers)
+    matcher_config = matcher_task.result()
+    agents = match_and_assign_models(agents, providers, matcher_config)
 
     async with AGENT_LOCK:
         await settings_svc.set(

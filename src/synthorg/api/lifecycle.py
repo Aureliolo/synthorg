@@ -63,17 +63,17 @@ logger = get_logger(__name__)
 # SIGKILL mid-teardown; not exposed to the settings registry because
 # the shape of the contract -- not its operator-tunability -- is what
 # the orchestrator depends on.
-_TASK_ENGINE_SHUTDOWN_SECONDS: float = 8.0
-_MEETING_SCHEDULER_SHUTDOWN_SECONDS: float = 2.0
-_PERFORMANCE_TRACKER_SHUTDOWN_SECONDS: float = 2.0
-_BACKUP_SHUTDOWN_SECONDS: float = 5.0
-_SETTINGS_DISPATCHER_SHUTDOWN_SECONDS: float = 2.0
-_BRIDGE_SHUTDOWN_SECONDS: float = 2.0
-_DISTRIBUTED_QUEUE_SHUTDOWN_SECONDS: float = 3.0
-_MESSAGE_BUS_SHUTDOWN_SECONDS: float = 3.0
-_PERSISTENCE_SHUTDOWN_SECONDS: float = 5.0
-_APPROVAL_TIMEOUT_SHUTDOWN_SECONDS: float = 1.0
-_DRAIN_TIMEOUT_SECONDS: float = 25.0
+_TASK_ENGINE_SHUTDOWN_SECONDS: float = 8.0  # lint-allow: magic-numbers -- bootstrap
+_MEETING_SCHEDULER_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- boot
+_PERFORMANCE_TRACKER_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- boot
+_BACKUP_SHUTDOWN_SECONDS: float = 5.0  # lint-allow: magic-numbers -- boot
+_SETTINGS_DISPATCHER_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- boot
+_BRIDGE_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- boot
+_DISTRIBUTED_QUEUE_SHUTDOWN_SECONDS: float = 3.0  # lint-allow: magic-numbers -- boot
+_MESSAGE_BUS_SHUTDOWN_SECONDS: float = 3.0  # lint-allow: magic-numbers -- boot
+_PERSISTENCE_SHUTDOWN_SECONDS: float = 5.0  # lint-allow: magic-numbers -- boot
+_APPROVAL_TIMEOUT_SHUTDOWN_SECONDS: float = 1.0  # lint-allow: magic-numbers -- boot
+_DRAIN_TIMEOUT_SECONDS: float = 25.0  # lint-allow: magic-numbers -- bootstrap
 """Default budget for :class:`RequestDrainMiddleware`.
 
 Maximum time the on_shutdown drain hook waits for in-flight HTTP

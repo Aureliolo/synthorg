@@ -136,7 +136,10 @@ def _ensure_dir(path: str) -> Path:
 # -- Stage 1: Synthetic data generation -------------------------------
 
 
-def _chunk_text(text: str, chunk_size: int = 512) -> list[str]:
+def _chunk_text(
+    text: str,
+    chunk_size: int = 512,  # lint-allow: magic-numbers -- bootstrap
+) -> list[str]:
     """Split text into word-boundary chunks.
 
     Produces chunks of exactly *chunk_size* words

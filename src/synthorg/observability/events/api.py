@@ -230,6 +230,10 @@ API_CURSOR_INVALID: Final[str] = "api.cursor.invalid"
 
 # Bridge-config validation
 API_BRIDGE_CONFIG_REJECTED: Final[str] = "api.bridge_config.rejected"
+# Bridge-config resolver-side failure -- caller fell back to defaults so
+# the dependent endpoint stays available during transient settings
+# outages or bad stored values.
+API_BRIDGE_CONFIG_RESOLVE_FAILED: Final[str] = "api.bridge_config.resolve_failed"
 
 # Per-request lifecycle lock registry
 REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD: Final[str] = (

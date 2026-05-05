@@ -20,11 +20,13 @@ from synthorg.client.generators.procedural import ProceduralGenerator
 from synthorg.client.models import ClientProfile
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_BRIDGE_CONFIG_RESOLVE_FAILED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.settings.bridge_configs import ClientBridgeConfig
 
 logger = get_logger(__name__)
 
@@ -125,15 +127,58 @@ def _score_from_feedback(
     return 1.0 if accepted else 0.0
 
 
-def _build_default_client(profile: ClientProfile) -> AIClient:
-    """Construct a default AI client backing for a profile."""
+async def _resolve_client_bridge_config(app_state: AppState) -> ClientBridgeConfig:
+    """Resolve the operator-tunable client bridge config.
+
+    Falls back to ``ClientBridgeConfig()`` defaults in two cases:
+
+    * the resolver is not yet wired (early bootstrap before the
+      settings service comes up); and
+    * the resolver is wired but the call raises (transient settings
+      outage, malformed stored value, etc.).
+
+    The defaults reproduce historical behaviour, so client CRUD stays
+    available rather than 500-ing when only the operator-tunable
+    overrides happen to be unreachable.
+    """
+    if not app_state.has_config_resolver:
+        return ClientBridgeConfig()
+    try:
+        return await app_state.config_resolver.get_client_bridge_config()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_BRIDGE_CONFIG_RESOLVE_FAILED,
+            bridge="client",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ClientBridgeConfig()
+
+
+def _build_default_client(
+    profile: ClientProfile,
+    config: ClientBridgeConfig | None = None,
+) -> AIClient:
+    """Construct a default AI client backing for a profile.
+
+    *config* drives the synthetic feedback profile; ``None`` falls
+    back to ``ClientBridgeConfig()`` whose defaults match the
+    historical hardcoded values (passing_score=0.5,
+    strictness_multiplier=2.0, strictness_floor=0.1).
+    """
+    cfg = config if config is not None else ClientBridgeConfig()
     return AIClient(
         profile=profile,
         generator=ProceduralGenerator(seed=abs(hash(profile.client_id)) & 0xFFFF),
         feedback=ScoredFeedback(
             client_id=profile.client_id,
-            passing_score=0.5,
-            strictness_multiplier=max(0.1, profile.strictness_level * 2),
+            passing_score=cfg.scored_feedback_passing_score,
+            strictness_multiplier=max(
+                cfg.scored_feedback_strictness_floor,
+                profile.strictness_level * cfg.scored_feedback_strictness_multiplier,
+            ),
         ),
     )
 
@@ -244,7 +289,8 @@ class ClientController(Controller):
             expertise_domains=data.expertise_domains,
             strictness_level=data.strictness_level,
         )
-        client = _build_default_client(profile)
+        client_config = await _resolve_client_bridge_config(app_state)
+        client = _build_default_client(profile, client_config)
         await sim_state.pool.add(profile=profile, client=client)
         _publish_client_event(request, WsEventType.CLIENT_CREATED, profile)
         return ApiResponse(data=profile)
@@ -264,6 +310,12 @@ class ClientController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
+        # Fetch the profile first so a missing client surfaces as a
+        # clean 404. Resolving the bridge config inside the same
+        # TaskGroup risked an ExceptionGroup that bypassed the
+        # NotFoundError handler when the resolver simultaneously
+        # failed; the latency cost of serial resolution is dwarfed by
+        # the profile fetch on this endpoint.
         try:
             current = await sim_state.pool.get_profile(client_id)
         except KeyError as exc:
@@ -275,10 +327,11 @@ class ClientController(Controller):
                 reason=msg,
             )
             raise NotFoundError(msg) from exc
+        client_config = await _resolve_client_bridge_config(app_state)
 
         updates = data.model_dump(exclude_none=True)
         updated = current.model_copy(update=updates)
-        new_client = _build_default_client(updated)
+        new_client = _build_default_client(updated, client_config)
         await sim_state.pool.add(profile=updated, client=new_client)
         _publish_client_event(request, WsEventType.CLIENT_UPDATED, updated)
         return ApiResponse(data=updated)

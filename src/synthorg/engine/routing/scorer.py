@@ -1,10 +1,15 @@
 """Agent-task scoring for routing decisions.
 
 Scores how well an agent matches a subtask based on skill overlap,
-role match, and seniority-complexity alignment.
+role match, and seniority-complexity alignment. Operator-tunable
+weights and the minimum candidate score live in :mod:`settings`
+under ``engine.routing.*`` and reach the scorer via
+:class:`RoutingScorerConfig` (resolved at construction time).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Protocol
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
 from synthorg.engine.routing.models import RoutingCandidate
@@ -20,15 +25,113 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Score-component weights. Tuned empirically; sum to 1.1 with the tag
-# bonus, capped at 1.0 by the caller. Extracted to module-level
-# constants so the same value drives both the docstring and the
-# arithmetic in one place.
-_PRIMARY_SKILL_WEIGHT = 0.4
-_SECONDARY_SKILL_WEIGHT = 0.2
-_TAG_MATCH_BONUS = 0.1
-_ROLE_MATCH_BONUS = 0.2
-_SENIORITY_ALIGNMENT_BONUS = 0.2
+# Soft validator ceilings on the documented routing-weight envelope.
+# The per-field bounds (Field ge/le) prevent invalid individual
+# weights; these constants only drive the aggregate sanity warning
+# emitted by ``_check_weight_sum``. Hardcoded here rather than read
+# from settings because the validator runs at Pydantic construction
+# time -- before any resolver is available -- and the values describe
+# a documented design envelope, not an operator-tunable knob.
+_DOC_WEIGHT_SUM_MAX: Final[float] = 1.1  # lint-allow: magic-numbers -- envelope
+_WEIGHT_SUM_WARN_CEILING: Final[float] = 1.3  # lint-allow: magic-numbers -- ceiling
+
+
+class _RoutingScorerBridge(Protocol):
+    """Structural type for the EngineBridgeConfig fields the scorer reads.
+
+    Declared locally to break the import cycle that would otherwise
+    pull ``settings.bridge_configs`` into the engine routing module.
+    The fields are exposed as ``@property`` so this Protocol matches
+    frozen Pydantic models (whose attributes are read-only). Mypy
+    validates the attribute mapping in ``from_bridge_config`` against
+    this Protocol; any caller passing an object missing one of the
+    fields gets a static type error rather than a runtime
+    ``AttributeError``.
+    """
+
+    @property
+    def routing_weight_primary_skill(self) -> float: ...
+    @property
+    def routing_weight_secondary_skill(self) -> float: ...
+    @property
+    def routing_weight_tag_match_bonus(self) -> float: ...
+    @property
+    def routing_weight_role_match_bonus(self) -> float: ...
+    @property
+    def routing_weight_seniority_alignment_bonus(self) -> float: ...
+    @property
+    def routing_min_score(self) -> float: ...
+
+
+class RoutingScorerConfig(BaseModel):
+    """Operator-tunable configuration for :class:`AgentTaskScorer`.
+
+    Field defaults mirror the historical hardcoded values so a default
+    construction reproduces legacy behaviour. Production wiring
+    populates the fields from :func:`ConfigResolver.get_engine_bridge_config`
+    via :meth:`from_bridge_config` so operators can tune via ``/settings``
+    without code changes. Sum of skill-weights + bonuses is 1.1 (tag
+    bonus pushes the maximum above 1.0); the caller caps the final
+    score at 1.0.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    primary_skill_weight: float = Field(default=0.4, ge=0.0, le=1.0)
+    secondary_skill_weight: float = Field(default=0.2, ge=0.0, le=1.0)
+    tag_match_bonus: float = Field(default=0.1, ge=0.0, le=1.0)
+    role_match_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
+    seniority_alignment_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
+    min_score: float = Field(default=0.1, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _check_weight_sum(self) -> RoutingScorerConfig:
+        """Warn (do not reject) when weights leave the documented envelope.
+
+        The scorer caps the final score at 1.0, so weight sums above
+        the documented ceiling produce surprising-but-bounded
+        behaviour. A logged warning surfaces operator-tunable
+        misconfiguration without breaking the resolver hot path
+        (Pydantic ``ValidationError`` would block bridge resolution
+        and crash bootstrap).
+        """
+        weight_sum = (
+            self.primary_skill_weight
+            + self.secondary_skill_weight
+            + self.tag_match_bonus
+            + self.role_match_bonus
+            + self.seniority_alignment_bonus
+        )
+        if weight_sum > _DOC_WEIGHT_SUM_MAX:
+            logger.warning(
+                TASK_ROUTING_SCORER_INVALID_CONFIG,
+                weight_sum=weight_sum,
+                error=(
+                    f"routing weights sum to {weight_sum:.3f} "
+                    f"(documented max ~{_DOC_WEIGHT_SUM_MAX}, hard ceiling "
+                    f"{_WEIGHT_SUM_WARN_CEILING}); final score is still capped at 1.0"
+                ),
+            )
+        return self
+
+    @classmethod
+    def from_bridge_config(cls, bridge: _RoutingScorerBridge) -> RoutingScorerConfig:
+        """Project the routing-scorer subset out of an ``EngineBridgeConfig``.
+
+        Typed via the local ``_RoutingScorerBridge`` Protocol so mypy
+        validates the attribute mapping without forcing a runtime
+        import of ``settings.bridge_configs`` (which would create a
+        cycle through the engine namespace).
+        """
+        return cls(
+            primary_skill_weight=bridge.routing_weight_primary_skill,
+            secondary_skill_weight=bridge.routing_weight_secondary_skill,
+            tag_match_bonus=bridge.routing_weight_tag_match_bonus,
+            role_match_bonus=bridge.routing_weight_role_match_bonus,
+            seniority_alignment_bonus=bridge.routing_weight_seniority_alignment_bonus,
+            min_score=bridge.routing_min_score,
+        )
+
 
 # Seniority-to-complexity alignment mapping
 _SENIORITY_COMPLEXITY: dict[SeniorityLevel, tuple[Complexity, ...]] = {
@@ -49,44 +152,59 @@ class AgentTaskScorer:
     Scoring heuristics (skill tiers are proficiency-weighted: the
     per-skill contribution equals the agent's proficiency for that
     skill; default proficiency ``1.0`` reproduces legacy boolean-match
-    behaviour):
+    behaviour). All weights and the minimum-candidate-score threshold
+    are read from ``config`` so operators tune via ``/settings``:
 
     - Primary skill overlap: sum(proficiency for matched primary)
-      / max(required, 1) * 0.4
+      / max(required, 1) * ``config.primary_skill_weight``
     - Secondary skill overlap: sum(proficiency for matched secondary)
-      / max(required, 1) * 0.2 (skills already matched by primary are
-      excluded)
+      / max(required, 1) * ``config.secondary_skill_weight``
+      (skills already matched by primary are excluded)
     - Tag match (when ``required_tags`` is set and every required tag
-      is covered by the union of tags on matched skills): +0.1
-    - Role match (if required_role set): +0.2
-    - Seniority-complexity alignment: +0.2
+      is covered by the union of tags on matched skills):
+      + ``config.tag_match_bonus``
+    - Role match (if required_role set): + ``config.role_match_bonus``
+    - Seniority-complexity alignment:
+      + ``config.seniority_alignment_bonus``
     - Score capped at 1.0
     - Agent must be ACTIVE status
 
     When the subtask has no ``required_skills``, skill-overlap and
-    tag-match components (0.7 total weight) are skipped, and the
-    maximum score is 0.4 (role 0.2 + seniority 0.2). If
-    ``required_role`` is also not set, the maximum score is 0.2
-    (seniority only).
+    tag-match components are skipped; the remaining score ceiling is
+    ``role_match_bonus + seniority_alignment_bonus``. If
+    ``required_role`` is also not set, the ceiling collapses to
+    ``seniority_alignment_bonus``.
     """
 
-    __slots__ = ("_min_score",)
+    __slots__ = ("_config", "_min_score")
 
-    def __init__(self, min_score: float = 0.1) -> None:
-        if not 0.0 <= min_score <= 1.0:
-            msg = f"min_score must be between 0.0 and 1.0, got {min_score}"
+    def __init__(
+        self,
+        *,
+        min_score: float | None = None,
+        config: RoutingScorerConfig | None = None,
+    ) -> None:
+        self._config = config if config is not None else RoutingScorerConfig()
+        effective_min = min_score if min_score is not None else self._config.min_score
+        if not 0.0 <= effective_min <= 1.0:
+            msg = f"min_score must be between 0.0 and 1.0, got {effective_min}"
             logger.warning(
                 TASK_ROUTING_SCORER_INVALID_CONFIG,
-                min_score=min_score,
+                min_score=effective_min,
                 error=msg,
             )
             raise ValueError(msg)
-        self._min_score = min_score
+        self._min_score = effective_min
 
     @property
     def min_score(self) -> float:
         """Minimum score threshold for a viable candidate."""
         return self._min_score
+
+    @property
+    def config(self) -> RoutingScorerConfig:
+        """Snapshot of the operator-tunable scorer config."""
+        return self._config
 
     def score(
         self,
@@ -111,9 +229,11 @@ class AgentTaskScorer:
             )
 
         reasons: list[str] = []
-        total_score, all_matched = _score_skill_tiers(agent, subtask, reasons)
-        total_score += _score_role(agent, subtask, reasons)
-        total_score += _score_seniority_alignment(agent, subtask, reasons)
+        total_score, all_matched = _score_skill_tiers(
+            agent, subtask, reasons, self._config
+        )
+        total_score += _score_role(agent, subtask, reasons, self._config)
+        total_score += _score_seniority_alignment(agent, subtask, reasons, self._config)
 
         total_score = min(total_score, 1.0)
         reason = "; ".join(reasons) if reasons else "no matching criteria"
@@ -140,6 +260,7 @@ def _score_skill_tiers(
     agent: AgentIdentity,
     subtask: SubtaskDefinition,
     reasons: list[str],
+    config: RoutingScorerConfig,
 ) -> tuple[float, list[str]]:
     """Score primary, secondary, and tag tiers; return (score, matched_ids).
 
@@ -165,7 +286,7 @@ def _score_skill_tiers(
     primary_contrib = (
         sum(primary_by_id[sid].proficiency for sid in primary_matched)
         / len(required)
-        * _PRIMARY_SKILL_WEIGHT
+        * config.primary_skill_weight
     )
     score += primary_contrib
     all_matched.extend(primary_matched)
@@ -175,7 +296,7 @@ def _score_skill_tiers(
     secondary_contrib = (
         sum(secondary_by_id[sid].proficiency for sid in secondary_matched)
         / len(required)
-        * _SECONDARY_SKILL_WEIGHT
+        * config.secondary_skill_weight
     )
     score += secondary_contrib
     all_matched.extend(secondary_matched)
@@ -190,7 +311,7 @@ def _score_skill_tiers(
         for sid in secondary_matched:
             matched_tags.update(secondary_by_id[sid].tags)
         if required_tags <= matched_tags:
-            score += _TAG_MATCH_BONUS
+            score += config.tag_match_bonus
             reasons.append(f"tag match: {sorted(required_tags)}")
 
     return score, all_matched
@@ -200,6 +321,7 @@ def _score_role(
     agent: AgentIdentity,
     subtask: SubtaskDefinition,
     reasons: list[str],
+    config: RoutingScorerConfig,
 ) -> float:
     """Award the role-match bonus when the agent's role matches required_role."""
     if (
@@ -207,7 +329,7 @@ def _score_role(
         and agent.role.casefold() == subtask.required_role.casefold()
     ):
         reasons.append("role match")
-        return _ROLE_MATCH_BONUS
+        return config.role_match_bonus
     return 0.0
 
 
@@ -215,6 +337,7 @@ def _score_seniority_alignment(
     agent: AgentIdentity,
     subtask: SubtaskDefinition,
     reasons: list[str],
+    config: RoutingScorerConfig,
 ) -> float:
     """Award the seniority-alignment bonus when level matches complexity."""
     aligned = _SENIORITY_COMPLEXITY.get(agent.level, ())
@@ -223,5 +346,5 @@ def _score_seniority_alignment(
             f"seniority {agent.level.value} aligns with "
             f"complexity {subtask.estimated_complexity.value}"
         )
-        return _SENIORITY_ALIGNMENT_BONUS
+        return config.seniority_alignment_bonus
     return 0.0
