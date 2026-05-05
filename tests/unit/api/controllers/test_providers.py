@@ -157,11 +157,16 @@ def _make_provider_state_and_mgmt() -> tuple[MagicMock, AsyncMock]:
     Returns:
         Tuple of (mock_state, mock_provider_management).
     """
-    mgmt = AsyncMock()
-    app_state = MagicMock()
+    from litestar.datastructures import State
+
+    from synthorg.api.state import AppState
+    from synthorg.providers.management.service import ProviderManagementService
+
+    mgmt = AsyncMock(spec=ProviderManagementService)
+    app_state = MagicMock(spec=AppState)
     app_state.provider_management = mgmt
 
-    state = MagicMock()
+    state = MagicMock(spec=State)
     state.app_state = app_state
     return state, mgmt
 
