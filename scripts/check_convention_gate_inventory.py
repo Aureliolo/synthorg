@@ -346,6 +346,13 @@ def _validate_inventory_item(item: object, index: int) -> InventoryEntry:
     rule_id = _require_non_empty_str(item["id"], f"mandatory_rules[{index}].id")
     file_value = _require_non_empty_str(item["file"], f"mandatory_rules[{index}].file")
     header = _require_non_empty_str(item["header"], f"mandatory_rules[{index}].header")
+    expected_id = make_id(file_value, header)
+    if rule_id != expected_id:
+        msg = (
+            f"mandatory_rules[{index}] id mismatch: expected {expected_id!r}"
+            f" (derived from file/header), got {rule_id!r}"
+        )
+        raise InventorySchemaError(msg)
     gate_value, exempt_reason = _validate_gate_or_exempt(item, index, rule_id)
     return InventoryEntry(
         rule_id=rule_id,
@@ -469,15 +476,7 @@ def _resolve_repo_root(arg: Path | None) -> Path:
     return arg.resolve(strict=True)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entry point.
-
-    Returns:
-        ``0`` if every MANDATORY entry is registered and every gate
-        path exists; ``1`` if reconciliation surfaces violations;
-        ``2`` if the inventory YAML fails schema validation or the
-        repo root cannot be resolved.
-    """
+def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--repo-root",
@@ -490,9 +489,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print extracted/inventory counts to stderr (debugging aid)",
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def _resolve_repo_root_or_exit(arg: Path | None) -> Path | int:
+    """Resolve ``--repo-root`` or return the exit code to surface to ``main``."""
     try:
-        repo_root = _resolve_repo_root(args.repo_root)
+        return _resolve_repo_root(arg)
     except FileNotFoundError as exc:
         print(f"Error: --repo-root does not exist: {exc}", file=sys.stderr)
         return 2
@@ -502,15 +505,9 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    try:
-        violations = check(repo_root, verbose=args.verbose)
-    except InventorySchemaError as exc:
-        print(f"Inventory schema error: {exc}", file=sys.stderr)
-        return 2
-    if not violations:
-        return 0
-    for violation in violations:
-        print(violation.render())
+
+
+def _print_failure_epilogue() -> None:
     inventory_path = _INVENTORY_RELATIVE.as_posix()
     epilogue = (
         "\nConvention-rollout gate failed. Edit "
@@ -521,6 +518,31 @@ def main(argv: list[str] | None = None) -> int:
         " rule' for the procedure."
     )
     print(epilogue, file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point.
+
+    Returns:
+        ``0`` if every MANDATORY entry is registered and every gate
+        path exists; ``1`` if reconciliation surfaces violations;
+        ``2`` if the inventory YAML fails schema validation or the
+        repo root cannot be resolved.
+    """
+    args = _build_arg_parser().parse_args(argv)
+    resolved = _resolve_repo_root_or_exit(args.repo_root)
+    if isinstance(resolved, int):
+        return resolved
+    try:
+        violations = check(resolved, verbose=args.verbose)
+    except InventorySchemaError as exc:
+        print(f"Inventory schema error: {exc}", file=sys.stderr)
+        return 2
+    if not violations:
+        return 0
+    for violation in violations:
+        print(violation.render())
+    _print_failure_epilogue()
     return 1
 
 

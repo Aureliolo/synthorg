@@ -220,6 +220,16 @@ _SCHEMA_REJECTION_CASES: tuple[tuple[str, str], ...] = (
         "mandatory-rules-null",
         "mandatory_rules: null\n",
     ),
+    (
+        "id-mismatch",
+        """
+        mandatory_rules:
+          - id: claude-md::wrong-slug
+            file: CLAUDE.md
+            header: Persistence Boundary
+            gate: scripts/check_persistence_boundary.py
+        """,
+    ),
 )
 
 
