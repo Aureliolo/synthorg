@@ -167,6 +167,12 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         # input -- adding suppression markers per line would defeat the
         # exact behavior under test.
         "tests/unit/scripts/test_check_persistence_boundary.py",
+        # Schema-drift gate self-test: each scenario feeds synthetic
+        # ``CREATE TABLE`` / ``CREATE INDEX`` strings to ``parse_schema``
+        # to verify the gate's diff behaviour.  The strings ARE the test
+        # input; per-line suppression markers would dwarf the test
+        # assertions.
+        "tests/unit/scripts/test_check_schema_drift.py",
     }
 )
 
