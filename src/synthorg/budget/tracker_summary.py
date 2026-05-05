@@ -6,6 +6,7 @@ module under the size limit.
 
 import math
 from collections import defaultdict
+from collections.abc import Sequence  # noqa: TC003 -- runtime type
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -69,7 +70,36 @@ class CostTrackerSummaryMixin:
         start: datetime,
         end: datetime,
     ) -> SpendingSummary:
-        """Build a spending summary for the given period."""
+        """Build a spending summary for the given period.
+
+        Takes its own records snapshot.  Callers that already hold a
+        snapshot (e.g. :class:`ReportGenerator`, which derives multiple
+        breakdowns from one consistent view) should call
+        :meth:`build_summary_from_records` directly with the pre-fetched
+        records to avoid a second tracker read that could race against
+        a concurrent ``record()``.
+        """
+        self._log_retention_window(start)
+        snapshot = await self._snapshot()
+        return self.build_summary_from_records(
+            snapshot,
+            start=start,
+            end=end,
+        )
+
+    def build_summary_from_records(
+        self,
+        records: Sequence[CostRecord],
+        *,
+        start: datetime,
+        end: datetime,
+    ) -> SpendingSummary:
+        """Build a spending summary from a pre-fetched records snapshot.
+
+        Synchronous and stateless: every aggregation derives from
+        *records* alone, so callers can produce a summary plus
+        breakdowns from the same atomic view of the tracker.
+        """
         from synthorg.budget._tracker_helpers import (  # noqa: PLC0415
             _aggregate,
             _build_agent_spendings,
@@ -78,18 +108,7 @@ class CostTrackerSummaryMixin:
         )
 
         _validate_time_range(start, end)
-        retention_cutoff = datetime.now(UTC) - timedelta(
-            hours=_COST_WINDOW_HOURS,
-        )
-        if start < retention_cutoff:
-            logger.warning(
-                BUDGET_QUERY_EXCEEDS_RETENTION,
-                requested_start=start.isoformat(),
-                retention_cutoff=retention_cutoff.isoformat(),
-                retention_hours=_COST_WINDOW_HOURS,
-            )
-        snapshot = await self._snapshot()
-        filtered = _filter_records(snapshot, start=start, end=end)
+        filtered = _filter_records(records, start=start, end=end)
         totals = _aggregate(filtered)
 
         agent_spendings = _build_agent_spendings(filtered)
@@ -125,6 +144,19 @@ class CostTrackerSummaryMixin:
         )
 
         return summary
+
+    def _log_retention_window(self, start: datetime) -> None:
+        """Emit a warning if *start* predates the rolling retention cutoff."""
+        retention_cutoff = datetime.now(UTC) - timedelta(
+            hours=_COST_WINDOW_HOURS,
+        )
+        if start < retention_cutoff:
+            logger.warning(
+                BUDGET_QUERY_EXCEEDS_RETENTION,
+                requested_start=start.isoformat(),
+                retention_cutoff=retention_cutoff.isoformat(),
+                retention_hours=_COST_WINDOW_HOURS,
+            )
 
     async def get_category_breakdown(
         self,
@@ -208,9 +240,7 @@ class CostTrackerSummaryMixin:
 
         results: list[DepartmentSpending] = []
         for dname, spends in sorted(dept_map.items()):
-            dept_currency = assert_currencies_match(
-                s.currency for s in spends if s.currency is not None
-            )
+            dept_currency = assert_currencies_match(s.currency for s in spends)
             results.append(
                 DepartmentSpending(
                     department_name=dname,

@@ -5,7 +5,7 @@ their outcomes, and execution group metadata.
 """
 
 from collections import Counter
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -22,6 +22,14 @@ from synthorg.providers.models import (
     ChatMessage,  # noqa: TC001
     CompletionConfig,  # noqa: TC001
 )
+
+_CURRENCY_UNSET: Final[object] = object()
+"""Cache sentinel for :meth:`ParallelExecutionResult._resolved_currency`.
+
+A separate object distinguishes "guard not yet run" from "guard ran
+and resolved to ``None``" (no completed outcomes), since both states
+would otherwise look identical.
+"""
 
 
 class AgentAssignment(BaseModel):
@@ -218,14 +226,29 @@ class ParallelExecutionResult(BaseModel):
     )
 
     def _completed_results(self) -> tuple[AgentRunResult, ...]:
-        """Outcomes that produced an :class:`AgentRunResult`.
-
-        Shared by :attr:`total_cost` and :attr:`currency` so a single
-        ``model_dump()`` traversal walks the outcomes once and runs the
-        same-currency guard exactly once -- avoiding a double WARNING
-        on mixed-currency input.
-        """
+        """Outcomes that produced an :class:`AgentRunResult`."""
         return tuple(o.result for o in self.outcomes if o.result is not None)
+
+    def _resolved_currency(self) -> CurrencyCode | None:
+        """Resolve and cache the shared currency across completed outcomes.
+
+        Runs :func:`assert_currencies_match` exactly once per instance
+        and stores the result via ``object.__setattr__`` (frozen models
+        forbid normal assignment).  Both :attr:`total_cost` and
+        :attr:`currency` consult the cache so ``model_dump()`` emits at
+        most one ``BUDGET_MIXED_CURRENCY_REJECTED`` warning even when
+        the underlying outcomes mix currencies.
+        """
+        cached: CurrencyCode | None | object = self.__dict__.get(
+            "_currency_cache",
+            _CURRENCY_UNSET,
+        )
+        if cached is not _CURRENCY_UNSET:
+            return cached  # type: ignore[return-value]
+        results = self._completed_results()
+        resolved = assert_currencies_match(r.currency for r in results)
+        object.__setattr__(self, "_currency_cache", resolved)
+        return resolved
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Total cost in the configured currency across all agents",
@@ -239,9 +262,9 @@ class ParallelExecutionResult(BaseModel):
         :class:`MixedCurrencyAggregationError` (HTTP 409) before any
         summation, preserving the data-integrity contract.
         """
-        results = self._completed_results()
-        assert_currencies_match(r.currency for r in results)
-        return sum(r.total_cost for r in results)
+        self._resolved_currency()
+        # lint-allow: currency-aggregation -- guard ran in _resolved_currency()
+        return sum(r.total_cost for r in self._completed_results())
 
     @computed_field(  # type: ignore[prop-decorator]
         description="ISO 4217 currency that denominates ``total_cost``",
@@ -255,8 +278,7 @@ class ParallelExecutionResult(BaseModel):
         observe a mixed state, so callers can rely on
         at-most-one-currency semantics.
         """
-        results = self._completed_results()
-        return assert_currencies_match(r.currency for r in results)
+        return self._resolved_currency()
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Number of agents that succeeded",

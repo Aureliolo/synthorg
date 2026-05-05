@@ -143,13 +143,18 @@ def _is_target_call(node: ast.Call) -> bool:
 def _comp_aggregates_currency_field(arg: ast.expr) -> bool:
     """``True`` when *arg* is a comprehension over a guarded attribute.
 
-    Matches ``r.cost for r in records``, ``[r.amount for r in xs]``,
-    and ``{r.total_cost for r in ys}``.
+    Walks the comprehension element so wrapped/nested usages such as
+    ``abs(r.cost)``, ``r.cost or 0.0``, or ``x.total_cost * scale``
+    are still caught -- matching only bare attribute elements would let
+    those bypass the gate even though they aggregate currency-bearing
+    data the same way.
     """
     if not isinstance(arg, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
         return False
-    elt = arg.elt
-    return isinstance(elt, ast.Attribute) and elt.attr in _GUARDED_FIELDS
+    return any(
+        isinstance(sub, ast.Attribute) and sub.attr in _GUARDED_FIELDS
+        for sub in ast.walk(arg.elt)
+    )
 
 
 def _is_guard_call(node: ast.Call) -> bool:
@@ -173,6 +178,31 @@ def _enclosing_scope(node: ast.AST, parents: dict[int, ast.AST]) -> ast.AST | No
     return None
 
 
+_NESTED_SCOPES: Final[tuple[type[ast.AST], ...]] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.Lambda,
+)
+
+
+def _walk_current_scope(scope: ast.AST) -> list[ast.AST]:
+    """Yield every node reachable inside *scope* without crossing nested scopes.
+
+    ``ast.walk`` would descend into nested ``def`` / ``async def`` /
+    ``class`` / ``lambda`` bodies; a guard call defined inside a nested
+    helper does NOT actually run before the target call in the outer
+    scope, so allowing it would create false negatives in the gate.
+    """
+    nodes: list[ast.AST] = []
+    for child in ast.iter_child_nodes(scope):
+        if isinstance(child, _NESTED_SCOPES):
+            continue
+        nodes.append(child)
+        nodes.extend(_walk_current_scope(child))
+    return nodes
+
+
 def _scope_has_preceding_guard(
     scope: ast.AST,
     target: ast.Call,
@@ -180,13 +210,12 @@ def _scope_has_preceding_guard(
     """Walk *scope* and return ``True`` if any guard call precedes *target*.
 
     "Preceding" means strictly earlier line, or same line with strictly
-    earlier column.  Walking the entire scope (rather than only direct
-    children) catches guards inside ``if``/``for`` blocks and nested
-    list comprehensions while still being constrained to the same
-    function-or-module unit.
+    earlier column.  The walk stops at nested scope boundaries so a
+    guard inside an inner ``def`` / ``class`` / ``lambda`` cannot
+    satisfy a target call in the enclosing scope.
     """
     target_pos = (target.lineno, target.col_offset)
-    for sub in ast.walk(scope):
+    for sub in _walk_current_scope(scope):
         if not isinstance(sub, ast.Call):
             continue
         if sub is target:
@@ -307,11 +336,17 @@ def _git_tracked_python_files(
     abs_root: Path,
     project_root: Path,
 ) -> list[tuple[Path, str]]:
-    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``."""
+    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``.
+
+    ``git ls-files dir/*.py`` only matches files in the immediate
+    directory (pathspec globs do not recurse).  Pass the directory and
+    filter ``.py`` extensions in Python so nested modules under
+    ``src/synthorg/<subdomain>/`` are picked up.
+    """
     rel_root = abs_root.relative_to(project_root).as_posix() or "."
     try:
         result = subprocess.run(
-            ["git", "ls-files", "-z", "--", f"{rel_root}/*.py"],
+            ["git", "ls-files", "-z", "--", rel_root],
             check=True,
             capture_output=True,
             cwd=project_root,
@@ -321,7 +356,7 @@ def _git_tracked_python_files(
             (p, p.relative_to(project_root).as_posix()) for p in abs_root.rglob("*.py")
         ]
     out = result.stdout.decode("utf-8", errors="replace")
-    paths = [p for p in out.split("\0") if p]
+    paths = [p for p in out.split("\0") if p and p.endswith(".py")]
     return [(project_root / rel_path, rel_path) for rel_path in paths]
 
 

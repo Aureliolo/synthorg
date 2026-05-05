@@ -205,6 +205,17 @@ def _check_iso4217(value: str) -> str:
     return value
 
 
+_MISSING_CURRENCY: Final[str] = "<missing>"
+"""Sentinel surfaced in mixed-currency errors when a row has no code.
+
+The mixed-currency guard accepts ``None`` codes (e.g. an aggregation
+where one row lost its currency due to a partial write) and reports
+them under this label so structured-log consumers and error envelopes
+can distinguish "two real currencies were mixed" from "a row was
+missing its currency entirely".
+"""
+
+
 CurrencyCode = Annotated[
     str,
     StringConstraints(min_length=3, max_length=3, pattern=r"^[A-Z]{3}$"),
@@ -221,7 +232,7 @@ together.
 
 
 def assert_currencies_match(
-    currencies: Iterable[str],
+    currencies: Iterable[str | None],
     *,
     agent_id: NotBlankStr | None = None,
     task_id: NotBlankStr | None = None,
@@ -235,7 +246,10 @@ def assert_currencies_match(
     aggregation, no currency).  Mixed input logs at WARNING and raises
     :class:`~synthorg.budget.errors.MixedCurrencyAggregationError`
     (HTTP 409) **before** any reduction runs, so the caller cannot
-    silently produce a meaningless total.
+    silently produce a meaningless total.  ``None`` codes are treated
+    as a distinct value: an iterable mixing ``None`` with a real code
+    raises just like any other mismatch, so callers cannot silently
+    bypass the guard by passing optional fields without filtering.
 
     The contextual ``agent_id`` / ``task_id`` / ``project_id`` keyword
     arguments are propagated to both the warning log and the raised
@@ -258,21 +272,27 @@ def assert_currencies_match(
         MixedCurrencyAggregationError: If two or more distinct codes
             are observed.
     """
-    codes = set(currencies)
-    if not codes:
+    iterator = iter(currencies)
+    try:
+        first = next(iterator)
+    except StopIteration:
         return None
-    if len(codes) > 1:
-        logger.warning(
-            BUDGET_MIXED_CURRENCY_REJECTED,
-            currencies=sorted(codes),
-            agent_id=agent_id,
-            task_id=task_id,
-            project_id=project_id,
-        )
-        raise MixedCurrencyAggregationError(
-            currencies=frozenset(codes),
-            agent_id=agent_id,
-            task_id=task_id,
-            project_id=project_id,
-        )
-    return next(iter(codes))
+    for code in iterator:
+        if code != first:
+            codes: set[str | None] = {first, code}
+            codes.update(iterator)
+            normalized = frozenset(_MISSING_CURRENCY if c is None else c for c in codes)
+            logger.warning(
+                BUDGET_MIXED_CURRENCY_REJECTED,
+                currencies=sorted(normalized),
+                agent_id=agent_id,
+                task_id=task_id,
+                project_id=project_id,
+            )
+            raise MixedCurrencyAggregationError(
+                currencies=normalized,
+                agent_id=agent_id,
+                task_id=task_id,
+                project_id=project_id,
+            )
+    return first

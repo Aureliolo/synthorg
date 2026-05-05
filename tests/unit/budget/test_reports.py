@@ -43,16 +43,19 @@ class TestTaskSpending:
         ts = TaskSpending(
             task_id="task-001",
             total_cost=5.0,
+            currency="USD",
             total_tokens=10000,
             record_count=10,
         )
         assert ts.task_id == "task-001"
         assert ts.total_cost == 5.0
+        assert ts.currency == "USD"
 
     def test_frozen(self) -> None:
         ts = TaskSpending(
             task_id="task-001",
             total_cost=5.0,
+            currency="USD",
             total_tokens=10000,
             record_count=10,
         )
@@ -118,11 +121,13 @@ class TestProviderDistribution:
         pd = ProviderDistribution(
             provider="test-provider",
             total_cost=50.0,
+            currency="USD",
             record_count=100,
             percentage_of_total=100.0,
         )
         assert pd.provider == "test-provider"
         assert pd.percentage_of_total == 100.0
+        assert pd.currency == "USD"
 
 
 @pytest.mark.unit
@@ -132,10 +137,12 @@ class TestModelDistribution:
             model="test-model-001",
             provider="test-provider",
             total_cost=50.0,
+            currency="USD",
             record_count=100,
             percentage_of_total=50.0,
         )
         assert md.model == "test-model-001"
+        assert md.currency == "USD"
 
 
 @pytest.mark.unit

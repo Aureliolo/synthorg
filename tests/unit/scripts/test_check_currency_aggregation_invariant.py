@@ -64,6 +64,12 @@ def _scan(source: str, tmp_path: Path, rel: str = "src/synthorg/x.py") -> list[s
         # bare-name fsum (e.g. from math import fsum)
         "from math import fsum\n"
         "def f(records):\n    return fsum(r.cost for r in records)\n",
+        # bare-name mean (e.g. from statistics import mean)
+        "from statistics import mean\n"
+        "def f(records):\n    return mean(r.cost for r in records)\n",
+        # bare-name fmean (e.g. from statistics import fmean)
+        "from statistics import fmean\n"
+        "def f(records):\n    return fmean(r.cost for r in records)\n",
         # ListComp instead of GeneratorExp
         "def f(records):\n    return sum([r.cost for r in records])\n",
         # SetComp instead of GeneratorExp
@@ -90,6 +96,45 @@ def test_aggregation_without_guard_is_flagged(
 def test_module_level_aggregation_flagged(tmp_path: Path) -> None:
     """Top-level (non-function) aggregations are flagged too."""
     source = "RECORDS = []\nTOTAL = sum(r.cost for r in RECORDS)\n"
+    issues = _scan(source, tmp_path)
+    assert len(issues) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # abs() wraps the attribute
+        "def f(records):\n    return sum(abs(r.cost) for r in records)\n",
+        # ``or`` short-circuit wraps the attribute
+        "def f(records):\n    return sum(r.cost or 0.0 for r in records)\n",
+        # multiplication wraps the attribute
+        "def f(xs):\n    return sum(x.total_cost * 2 for x in xs)\n",
+    ],
+)
+def test_wrapped_currency_attribute_is_flagged(
+    source: str,
+    tmp_path: Path,
+) -> None:
+    """Comprehension elements wrapping a guarded attribute still aggregate it."""
+    issues = _scan(source, tmp_path)
+    assert len(issues) == 1
+    assert "without a same-currency guard" in issues[0]
+
+
+def test_guard_in_nested_function_does_not_satisfy_outer(tmp_path: Path) -> None:
+    """A guard call inside an inner ``def`` cannot clear an outer aggregation.
+
+    The inner helper's guard never runs in the outer scope, so allowing
+    it would create a false negative -- the outer aggregation could
+    happily sum mixed currencies despite the gate appearing to pass.
+    """
+    source = (
+        "from synthorg.budget.currency import assert_currencies_match\n"
+        "def f(records):\n"
+        "    def helper():\n"
+        "        assert_currencies_match(r.currency for r in records)\n"
+        "    return sum(r.cost for r in records)\n"
+    )
     issues = _scan(source, tmp_path)
     assert len(issues) == 1
 

@@ -376,6 +376,7 @@ class TestProjectIdPropagation:
             **kwargs,  # type: ignore[arg-type]
         )
         assert len(tracker.records) == expected_count
+        assert tuple(r.project_id for r in tracker.records) == expected_ids
 
 
 @pytest.mark.unit

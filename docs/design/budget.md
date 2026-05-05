@@ -68,12 +68,14 @@ per-agent / per-department / per-project rollups, the HR `WindowMetrics` multi-w
 strategy, and the parallel-execution coordinator) enforces a same-currency invariant by
 calling `assert_currencies_match` (from `synthorg.budget.currency`) before any
 reduction. Mixing currencies raises `MixedCurrencyAggregationError` (HTTP 409,
-`MIXED_CURRENCY_AGGREGATION` error code) at the aggregator rather than silently
-producing a meaningless total. Pre-push gate
+error code `4007`, symbolic code `MIXED_CURRENCY_AGGREGATION`) at the aggregator
+rather than silently producing a meaningless total. Pre-push gate
 `scripts/check_currency_aggregation_invariant.py` AST-walks `src/synthorg/` for
-unguarded `sum` / `math.fsum` / `statistics.mean` calls over `.cost` / `.amount` /
-`.total_cost` / `.usd` / `.eur` attributes and fails the push when an aggregation is
-not preceded by a guard call. `CostTracker.record()`
+unguarded `sum` / `math.fsum` / `statistics.mean` / `statistics.fmean` calls
+(including bare-name imports such as `from statistics import mean`) over
+`.cost` / `.amount` / `.total_cost` / `.usd` / `.eur` attributes and fails the
+push when an aggregation is not preceded by a guard call in the same
+function-or-module scope. `CostTracker.record()`
 additionally rejects at the ingestion boundary when the incoming record's currency differs
 from the currently-configured `budget.currency`, so new writes cannot introduce drift
 against the live setting. Historical rows written before a `budget.currency` change still

@@ -16,7 +16,10 @@ from typing import TYPE_CHECKING, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.budget._aggregation import sum_tokens
-from synthorg.budget.currency import assert_currencies_match
+from synthorg.budget.currency import (
+    CurrencyCode,
+    assert_currencies_match,
+)
 from synthorg.budget.spending_summary import SpendingSummary  # noqa: TC001
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -46,6 +49,8 @@ class TaskSpending(BaseModel):
     Attributes:
         task_id: Task identifier.
         total_cost: Total cost for the task.
+        currency: ISO 4217 currency code shared by every contributing
+            record; ``None`` only when ``record_count == 0``.
         total_tokens: Total tokens consumed (input + output).
         record_count: Number of cost records.
     """
@@ -54,8 +59,23 @@ class TaskSpending(BaseModel):
 
     task_id: NotBlankStr = Field(description="Task identifier")
     total_cost: float = Field(ge=0.0, description="Total cost")
+    currency: CurrencyCode | None = Field(
+        default=None,
+        description="Currency shared by every contributing record",
+    )
     total_tokens: int = Field(ge=0, description="Total tokens consumed")
     record_count: int = Field(ge=0, description="Number of cost records")
+
+    @model_validator(mode="after")
+    def _validate_currency_presence(self) -> Self:
+        """Require ``currency`` whenever at least one record aggregated."""
+        if self.record_count > 0 and self.currency is None:
+            msg = (
+                f"currency is required when record_count > 0 "
+                f"(record_count={self.record_count})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ProviderDistribution(BaseModel):
@@ -64,6 +84,8 @@ class ProviderDistribution(BaseModel):
     Attributes:
         provider: Provider name.
         total_cost: Total cost for the provider.
+        currency: ISO 4217 currency code shared by every contributing
+            record; ``None`` only when ``record_count == 0``.
         record_count: Number of cost records.
         percentage_of_total: Percentage of total spending.
     """
@@ -72,12 +94,27 @@ class ProviderDistribution(BaseModel):
 
     provider: NotBlankStr = Field(description="Provider name")
     total_cost: float = Field(ge=0.0, description="Total cost")
+    currency: CurrencyCode | None = Field(
+        default=None,
+        description="Currency shared by every contributing record",
+    )
     record_count: int = Field(ge=0, description="Number of cost records")
     percentage_of_total: float = Field(
         ge=0.0,
         le=100.0,
         description="Percentage of total spending",
     )
+
+    @model_validator(mode="after")
+    def _validate_currency_presence(self) -> Self:
+        """Require ``currency`` whenever at least one record aggregated."""
+        if self.record_count > 0 and self.currency is None:
+            msg = (
+                f"currency is required when record_count > 0 "
+                f"(record_count={self.record_count})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ModelDistribution(BaseModel):
@@ -87,6 +124,8 @@ class ModelDistribution(BaseModel):
         model: Model identifier.
         provider: Provider name.
         total_cost: Total cost for the model.
+        currency: ISO 4217 currency code shared by every contributing
+            record; ``None`` only when ``record_count == 0``.
         record_count: Number of cost records.
         percentage_of_total: Percentage of total spending.
     """
@@ -96,12 +135,27 @@ class ModelDistribution(BaseModel):
     model: NotBlankStr = Field(description="Model identifier")
     provider: NotBlankStr = Field(description="Provider name")
     total_cost: float = Field(ge=0.0, description="Total cost")
+    currency: CurrencyCode | None = Field(
+        default=None,
+        description="Currency shared by every contributing record",
+    )
     record_count: int = Field(ge=0, description="Number of cost records")
     percentage_of_total: float = Field(
         ge=0.0,
         le=100.0,
         description="Percentage of total spending",
     )
+
+    @model_validator(mode="after")
+    def _validate_currency_presence(self) -> Self:
+        """Require ``currency`` whenever at least one record aggregated."""
+        if self.record_count > 0 and self.currency is None:
+            msg = (
+                f"currency is required when record_count > 0 "
+                f"(record_count={self.record_count})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class PeriodComparison(BaseModel):
@@ -287,12 +341,17 @@ class ReportGenerator:
             start=start,
             end=end,
         )
-        summary = await self._cost_tracker.build_summary(
+        self._cost_tracker._log_retention_window(start)  # noqa: SLF001
+        summary = self._cost_tracker.build_summary_from_records(
+            records,
             start=start,
             end=end,
         )
 
-        # Derive total_cost from records for consistent percentages
+        # Derive total_cost from the same snapshot the summary used so
+        # the percentages, period totals, and breakdowns are guaranteed
+        # to agree (a second tracker read here could race a concurrent
+        # ``record()`` and produce inconsistent rollups).
         assert_currencies_match(r.currency for r in records)
         total_cost = round(
             math.fsum(r.cost for r in records),
@@ -375,7 +434,7 @@ def _build_task_spendings(
     spendings: list[TaskSpending] = []
     for task_id in sorted(by_task):
         task_records = by_task[task_id]
-        assert_currencies_match(
+        task_currency = assert_currencies_match(
             (r.currency for r in task_records),
             task_id=task_id,
         )
@@ -388,6 +447,7 @@ def _build_task_spendings(
             TaskSpending(
                 task_id=task_id,
                 total_cost=total_cost,
+                currency=task_currency,
                 total_tokens=total_tokens,
                 record_count=len(task_records),
             ),
@@ -407,7 +467,9 @@ def _build_provider_distribution(
     distributions: list[ProviderDistribution] = []
     for provider in sorted(by_provider):
         provider_records = by_provider[provider]
-        assert_currencies_match(r.currency for r in provider_records)
+        provider_currency = assert_currencies_match(
+            r.currency for r in provider_records
+        )
         provider_cost = round(
             math.fsum(r.cost for r in provider_records),
             BUDGET_ROUNDING_PRECISION,
@@ -421,6 +483,7 @@ def _build_provider_distribution(
             ProviderDistribution(
                 provider=provider,
                 total_cost=provider_cost,
+                currency=provider_currency,
                 record_count=len(provider_records),
                 percentage_of_total=pct,
             ),
@@ -440,7 +503,7 @@ def _build_model_distribution(
     distributions: list[ModelDistribution] = []
     for model, provider in sorted(by_model):
         model_records = by_model[(model, provider)]
-        assert_currencies_match(r.currency for r in model_records)
+        model_currency = assert_currencies_match(r.currency for r in model_records)
         model_cost = round(
             math.fsum(r.cost for r in model_records),
             BUDGET_ROUNDING_PRECISION,
@@ -455,6 +518,7 @@ def _build_model_distribution(
                 model=model,
                 provider=provider,
                 total_cost=model_cost,
+                currency=model_currency,
                 record_count=len(model_records),
                 percentage_of_total=pct,
             ),

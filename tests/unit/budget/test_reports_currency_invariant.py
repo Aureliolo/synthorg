@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.budget.config import BudgetConfig
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.reports import (
     ReportGenerator,
@@ -67,10 +68,13 @@ class TestBuildTaskSpendingsCurrency:
         The invariant is per-task, not global; the gate runs once per
         task bucket.  This is intentional -- the global guard runs in
         :meth:`ReportGenerator.generate_report` before any partitioning.
+        Distinct currencies on the two tasks pin the per-task semantics:
+        if the builder accidentally added a global guard across the full
+        input, this would raise instead of returning two rows.
         """
         records = (
             make_cost_record(task_id="t-1", cost=0.10, currency="USD"),
-            make_cost_record(task_id="t-2", cost=0.20, currency="USD"),
+            make_cost_record(task_id="t-2", cost=0.20, currency="EUR"),
         )
         result = _build_task_spendings(records)
         assert {r.task_id for r in result} == {"t-1", "t-2"}
@@ -152,13 +156,13 @@ class TestGenerateReportPeriodWideCurrency:
     """
 
     async def test_uniform_currency_succeeds(self) -> None:
-        bc = BudgetConfig(total_monthly=100.0)
+        bc = BudgetConfig(total_monthly=100.0, currency=DEFAULT_CURRENCY)
         tracker = CostTracker(budget_config=bc)
         await tracker.record(
-            make_cost_record(cost=0.10, currency="USD", timestamp=_NOW),
+            make_cost_record(cost=0.10, currency=bc.currency, timestamp=_NOW),
         )
         await tracker.record(
-            make_cost_record(cost=0.20, currency="USD", timestamp=_NOW),
+            make_cost_record(cost=0.20, currency=bc.currency, timestamp=_NOW),
         )
         gen = ReportGenerator(cost_tracker=tracker, budget_config=bc)
         report = await gen.generate_report(

@@ -761,9 +761,7 @@ class CostTracker(CostTrackerSummaryMixin):
 
         results: list[DepartmentSpending] = []
         for dname, spends in sorted(dept_map.items()):
-            dept_currency = assert_currencies_match(
-                s.currency for s in spends if s.currency is not None
-            )
+            dept_currency = assert_currencies_match(s.currency for s in spends)
             results.append(
                 DepartmentSpending(
                     department_name=dname,
