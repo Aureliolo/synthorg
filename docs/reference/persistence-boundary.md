@@ -73,3 +73,5 @@ Adding a migration: read `docs/guides/persistence-migrations.md` first. Do not h
 ## Enforcement
 
 `scripts/check_persistence_boundary.py` (pre-push hook + CI Lint job).
+
+`scripts/check_dual_backend_test_parity.py` (pre-push hook + CI Lint job) protects the conformance-test arm of the same boundary: every test under `tests/conformance/persistence/` must consume the parametrised `backend: PersistenceBackend` fixture (no direct `aiosqlite` / `psycopg` typing, no `backend.backend_name == "..."` body conditionals), and every repository protocol exposed on `PersistenceBackend` must be exercised by at least one test.

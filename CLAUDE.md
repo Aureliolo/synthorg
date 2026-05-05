@@ -92,6 +92,7 @@ Existing gate inventory (all under `scripts/`):
 - `check_dead_api_endpoints.py`
 - `check_doc_drift_counts.py`
 - `check_domain_error_hierarchy.py`
+- `check_dual_backend_test_parity.py`
 - `check_forbidden_literals.py`
 - `check_list_pagination.py`
 - `check_logger_exception_str_exc.py`
@@ -190,6 +191,7 @@ When tests fail due to timeout / slowness / xdist contention: NEVER delete, skip
 - **Isolation regression gate**: `scripts/run_affected_tests.py` re-runs the affected subset under `pytest-repeat --count 2 --max-worker-restart=4` after the green pass and classifies the outcome: real test failures or the same test crashing on multiple iterations block the gate; native worker crashes scattered across unrelated tests are advisory (gate still passes). Opt out via `SYNTHORG_SKIP_ISOLATION_GATE=1`.
 - **Logger spying antipattern**: never `monkeypatch.setattr(module.logger, "info", spy)`; the `BoundLoggerLazyProxy` caches the stale bound method via `__dict__`. Use `try/finally del proxy.<level>` instead; see `_logger_info_spy` in `tests/unit/settings/test_service.py`.
 - **Parametrize**: prefer `@pytest.mark.parametrize` for similar cases.
+- **Dual-backend conformance**: persistence repositories ship parametrised conformance tests under `tests/conformance/persistence/test_<domain>_repository.py` that consume the `backend` fixture from `tests/conformance/persistence/conftest.py`; the fixture runs each test against both SQLite and Postgres. All `test_*` signatures must accept `backend` (no concrete `aiosqlite.Connection` / `psycopg` typing) and must avoid `if backend.backend_name == "..."` body conditionals. Enforced by `scripts/check_dual_backend_test_parity.py`; per-line opt-out `# lint-allow: dual-backend-parity -- <reason>`.
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code/tests/comments/docstrings/configs. Use `example-provider`, `example-{large,medium,small}-001`. Allowed in: `.claude/` files, third-party import paths, `src/synthorg/providers/presets.py` (user-facing runtime data), `web/public/provider-logos/*.svg`. Tests use `test-provider`, `test-small-001`.
 - **Property-based**: Hypothesis (Python), fast-check (React), `testing.F` (Go). CI runs 10 deterministic examples (`derandomize=True`). Hypothesis failures are real bugs: fix the bug and add an `@example(...)` decorator. See [claude-reference.md](docs/reference/claude-reference.md).
 - **Flaky tests**: NEVER skip/xfail/dismiss; fix fundamentally. FakeClock-first when the class accepts `clock=`. For "block until cancelled", use `asyncio.Event().wait()` not `asyncio.sleep(large)`.

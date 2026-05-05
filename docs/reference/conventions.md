@@ -412,7 +412,11 @@ file, not 200+ handler methods.
   `src/synthorg/persistence/sqlite/<domain>_repo.py` and
   `src/synthorg/persistence/postgres/<domain>_repo.py`.
 * Both backends MUST conform to the same protocol; dual-backend
-  conformance is enforced via `tests/conformance/persistence/`.
+  conformance is enforced via parametrised tests in
+  `tests/conformance/persistence/` (the shared `backend` fixture in
+  `conftest.py` runs each test against SQLite and Postgres) and
+  policed by `scripts/check_dual_backend_test_parity.py` (signature
+  + body + coverage passes; pre-push hook + CI Lint job).
 * Every new repository MUST be exposed on `PersistenceBackend`
   (`src/synthorg/persistence/protocol.py`) as a property so
   controllers and services can resolve it through the same

@@ -37,7 +37,7 @@ The four resolution paths are:
 | Magic numbers in scoring / threshold / timeout / retry contexts | Reviewer-enforced (gate planned) | Tracked in #1739; worktree skill flags it |
 | Frontend-backend API contract drift (dead endpoints) | Standing gate | `scripts/check_dead_api_endpoints.py` |
 | SQLite vs Postgres schema drift | Standing gate | `scripts/check_schema_drift.py` |
-| Dual-backend test parity gaps in `tests/conformance/persistence/` | Reviewer-enforced (gate planned) | Tracked in #1751 |
+| Dual-backend test parity gaps in `tests/conformance/persistence/` | Standing gate | `scripts/check_dual_backend_test_parity.py` (signature + body + coverage passes) |
 | Missing pagination on `list_*` repository methods | Reviewer-enforced (gate planned) | Tracked in #1752 |
 | Lifecycle `_lifecycle_lock` missing on async services | Architecture + reviewer-enforced | New code uses the `synthorg new service` scaffold which emits the lock; surrounding services are reviewer-enforced |
 | `Clock` seam missing on time-reading classes | Architecture + reviewer-enforced | New code uses the scaffold; surrounding code is reviewer-enforced |
