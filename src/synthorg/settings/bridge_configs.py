@@ -260,6 +260,24 @@ class ApiBridgeConfig(BaseModel):
                 )
                 raise ValueError(msg)
             parsed = urlsplit(origin)
+            # urlsplit defers port parsing until ``.port`` is read, then
+            # raises ValueError for non-numeric or out-of-65535 values.
+            # ``.port == 0`` is accepted by urlsplit but unusable for an
+            # HTTP origin, so reject it alongside the parse failures.
+            try:
+                port = parsed.port
+            except ValueError as exc:
+                msg = (
+                    f"csp_docs_external_origins entry {origin!r} must use"
+                    " a numeric port in 1..65535"
+                )
+                raise ValueError(msg) from exc
+            if port == 0:
+                msg = (
+                    f"csp_docs_external_origins entry {origin!r} must use"
+                    " a port in 1..65535 (0 is reserved)"
+                )
+                raise ValueError(msg)
             if (
                 parsed.scheme not in {"http", "https"}
                 or not parsed.hostname
@@ -275,6 +293,36 @@ class ApiBridgeConfig(BaseModel):
                     " no path, query, fragment, or userinfo)"
                 )
                 raise ValueError(msg)
+        return value
+
+    @field_validator("error_docs_base_url")
+    @classmethod
+    def _validate_error_docs_base_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            msg = (
+                "error_docs_base_url must use a numeric port in 1..65535"
+                " when one is supplied"
+            )
+            raise ValueError(msg) from exc
+        if port == 0:
+            msg = "error_docs_base_url must use a port in 1..65535 (0 is reserved)"
+            raise ValueError(msg)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            msg = (
+                "error_docs_base_url must be a canonical HTTPS URL"
+                " (host required, no userinfo / query / fragment)"
+            )
+            raise ValueError(msg)
         return value
 
 

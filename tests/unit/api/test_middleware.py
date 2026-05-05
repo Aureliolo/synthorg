@@ -192,32 +192,36 @@ class TestDocsCspOriginsOverride:
 
     @pytest.fixture(autouse=True)
     def _reset_docs_csp(self) -> Any:
-        """Restore the default origins after each test in this class.
+        """Reset the docs CSP at setup AND teardown.
 
         Mutating the module-level CSP would leak across tests in the
-        same xdist worker; this fixture is the boundary.
+        same xdist worker; resetting only post-yield lets the first
+        test in this class inherit a mutated value from an earlier file
+        on the same worker. Setup-side reset closes that window.
         """
+        set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
         yield
         set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
 
     def test_default_csp_lists_all_default_origins(self) -> None:
-        # Tokenise the CSP header so the assertion is a complete-token
-        # match. A bare ``origin in _DOCS_CSP`` would be a substring
-        # check that CodeQL flags as ``py/incomplete-url-substring-sanitization``.
+        # Tokenise the CSP header and compare via set operations so the
+        # assertion is a complete-token match rather than a substring
+        # check (which CodeQL flags as ``py/incomplete-url-substring-sanitization``).
         tokens = set(_DOCS_CSP.replace(";", " ").split())
-        for origin in _DOCS_CSP_DEFAULT_ORIGINS:
-            assert origin in tokens
+        assert tokens.issuperset(_DOCS_CSP_DEFAULT_ORIGINS)
 
     def test_override_replaces_default_origins(self) -> None:
         from synthorg.api import middleware
 
-        set_docs_csp_origins(["https://internal-cdn.example.com"])
-        # Token-boundary check (see test above); avoids the
-        # substring-sanitisation pattern even though both sides are
-        # operator-controlled.
+        custom_origin = "https://internal-cdn.example.com"
+        evicted_origin = "https://cdn.jsdelivr.net"
+        set_docs_csp_origins([custom_origin])
         tokens = set(middleware._DOCS_CSP.replace(";", " ").split())
-        assert "https://internal-cdn.example.com" in tokens
-        assert "https://cdn.jsdelivr.net" not in tokens
+        # Set-membership operators avoid the ``literal in str`` shape
+        # that triggers ``py/incomplete-url-substring-sanitization`` on
+        # token-set checks even when both sides are operator-controlled.
+        assert tokens.issuperset({custom_origin})
+        assert tokens.isdisjoint({evicted_origin})
 
     def test_build_docs_csp_applies_origins_uniformly(self) -> None:
         # Parses the CSP into a directive map and asserts the origin
@@ -262,6 +266,8 @@ class TestApiBridgeConfigSecurity:
             "https://cdn.example.com?q=1",
             "https://cdn.example.com#frag",
             "https://user:pw@cdn.example.com",
+            "https://cdn.example.com:99999",
+            "https://cdn.example.com:0",
         ],
         ids=[
             "javascript_scheme",
@@ -274,6 +280,8 @@ class TestApiBridgeConfigSecurity:
             "with_query",
             "with_fragment",
             "with_userinfo",
+            "port_out_of_range",
+            "port_zero",
         ],
     )
     def test_csp_origins_validator_rejects_bad_schemes(self, bad_origin: str) -> None:
@@ -317,8 +325,20 @@ class TestApiBridgeConfigSecurity:
             "http://docs.example.com/errors",
             "javascript:alert(1)",
             "ftp://docs.example.com",
+            "https://user:pw@docs.example.com/errors",
+            "https://docs.example.com/errors?q=1",
+            "https://docs.example.com/errors#frag",
+            "https://docs.example.com:99999/errors",
         ],
-        ids=["http_insecure", "javascript_scheme", "ftp_scheme"],
+        ids=[
+            "http_insecure",
+            "javascript_scheme",
+            "ftp_scheme",
+            "with_userinfo",
+            "with_query",
+            "with_fragment",
+            "port_out_of_range",
+        ],
     )
     def test_error_docs_base_url_validator_rejects_non_https(
         self, bad_url: str
