@@ -538,10 +538,10 @@ class TestErrorPaths:
         app_state: SimpleNamespace,
         actor: AgentIdentity,
     ) -> None:
+        from synthorg.engine.workflow.subworkflow_models import ParentReference
         from synthorg.engine.workflow.subworkflow_service import (
             SubworkflowHasParentsError,
         )
-        from synthorg.persistence.subworkflow_repo import ParentReference
 
         parent = ParentReference(
             parent_id="wf-parent",

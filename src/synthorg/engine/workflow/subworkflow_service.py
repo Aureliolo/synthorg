@@ -32,11 +32,11 @@ from synthorg.observability.events.workflow_definition import (
 
 if TYPE_CHECKING:
     from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
-    from synthorg.persistence.subworkflow_repo import (
+    from synthorg.engine.workflow.subworkflow_models import (
         ParentReference,
         SubworkflowSummary,
     )
+    from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 
 logger = get_logger(__name__)
 

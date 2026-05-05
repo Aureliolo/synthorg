@@ -21,15 +21,15 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.subworkflow_models import (
+    ParentReference,
+    SubworkflowSummary,
+)
 from synthorg.engine.workflow.subworkflow_registry import (
     MAX_WORKFLOW_DEPTH,
     SubworkflowRegistry,
 )
-from synthorg.persistence.subworkflow_repo import (
-    ParentReference,
-    SubworkflowRepository,
-    SubworkflowSummary,
-)
+from synthorg.persistence.subworkflow_repo import SubworkflowRepository
 
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 

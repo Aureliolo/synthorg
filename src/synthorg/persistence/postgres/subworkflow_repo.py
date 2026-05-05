@@ -23,6 +23,10 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.subworkflow_models import (
+    ParentReference,
+    SubworkflowSummary,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
@@ -32,10 +36,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
     PERSISTENCE_SUBWORKFLOW_LISTED,
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-)
-from synthorg.persistence.subworkflow_repo import (
-    ParentReference,
-    SubworkflowSummary,
 )
 
 if TYPE_CHECKING:

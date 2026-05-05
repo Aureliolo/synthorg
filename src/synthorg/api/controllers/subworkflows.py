@@ -40,6 +40,10 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.subworkflow_models import (
+    ParentReference,
+    SubworkflowSummary,
+)
 from synthorg.engine.workflow.subworkflow_registry import (
     SubworkflowRegistry,
     encode_subworkflow_keyset,
@@ -48,10 +52,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_CURSOR_INVALID
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_INVALID_REQUEST,
-)
-from synthorg.persistence.subworkflow_repo import (
-    ParentReference,
-    SubworkflowSummary,
 )
 
 logger = get_logger(__name__)
