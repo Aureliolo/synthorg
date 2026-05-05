@@ -168,12 +168,11 @@ src/synthorg/budget/optimizer.py:76:20
 src/synthorg/budget/optimizer.py:118:28
 src/synthorg/budget/quota_tracker.py:519:19
 src/synthorg/budget/rebalance.py:50:24
-src/synthorg/budget/reports.py:244:21
 src/synthorg/budget/risk_tracker.py:34:21
 src/synthorg/budget/risk_tracker.py:35:24
-src/synthorg/budget/tracker.py:65:21
-src/synthorg/budget/tracker.py:66:24
-src/synthorg/budget/tracker.py:76:30
+src/synthorg/budget/tracker.py:66:21
+src/synthorg/budget/tracker.py:67:24
+src/synthorg/budget/tracker.py:77:30
 src/synthorg/client/feedback/adversarial.py:30:26
 src/synthorg/client/feedback/adversarial.py:31:25
 src/synthorg/client/feedback/scored.py:41:31
