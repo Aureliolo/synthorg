@@ -180,6 +180,16 @@ def _git_tracked_python_files(
 ) -> list[tuple[Path, str]]:
     """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``."""
     rel_root = abs_root.relative_to(project_root).as_posix() or "."
+    # ``git ls-files`` walks UP from cwd to find the enclosing repo. When
+    # ``project_root`` is a synthetic tmp_path (test fixtures, ad-hoc
+    # scans), git would find the wrapping project's repo and return its
+    # tracked files instead of the synthetic ones. Skip the subprocess
+    # whenever ``project_root`` is not itself a git work tree -- the
+    # filesystem ``rglob`` fallback returns the right shape.
+    if not (project_root / ".git").exists():
+        return [
+            (p, p.relative_to(project_root).as_posix()) for p in abs_root.rglob("*.py")
+        ]
     try:
         result = subprocess.run(
             ["git", "ls-files", "-z", "--", f"{rel_root}/*.py"],
