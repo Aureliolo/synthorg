@@ -208,3 +208,59 @@ jobs:
               echo "Deleting old dev release: $tag"
               gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
             done
+
+  report-failure:
+    name: Open / update tracking issue on dev-release failure
+    needs: dev-release
+    # Skip on forks (no App token to report with) and on the workflow's
+    # own skip paths (not failures, just no work). `result == 'failure'`
+    # excludes both `skipped` and `cancelled`.
+    if: >-
+      always()
+      && !github.event.repository.fork
+      && needs.dev-release.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RESULT: ${{ needs.dev-release.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          \`dev-release\` workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\` on $HEAD_SHA.
+
+          Run: ${RUN_URL}
+
+          Likely cause: dev-tag minting failure (App-token signing, tag
+          conflict, or release.yml + dev-release.yml race), draft
+          pre-release create / asset attach failure, or stale-release
+          cleanup failure.
+
+          When this stays red, per-commit dev tags stop appearing on
+          main; downstream Docker / CLI artifacts then have no draft
+          pre-release to attach to and finalize-release can never
+          publish.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'dev-release regression'
+          labels: 'automation:ci-health,type:ci,prio:high'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}

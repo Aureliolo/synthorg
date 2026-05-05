@@ -326,3 +326,54 @@ jobs:
               -f "description=$DESCRIPTION"
             echo "Posted '$context'=success on $HEAD_SHA"
           done
+
+  report-failure:
+    name: Open / update tracking issue on release-please failure
+    needs: release-please
+    if: >-
+      always()
+      && !github.event.repository.fork
+      && needs.release-please.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RESULT: ${{ needs.release-please.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          \`release-please\` workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\` on $HEAD_SHA.
+
+          Run: ${RUN_URL}
+
+          Likely cause: release-please action failure (manifest drift,
+          token mint failure, BSL-date generation, AI Highlights
+          inference quota), or the post-CI-Pass status spoof failed.
+
+          When this stays red, no new release PR is opened on main;
+          dev tags continue to mint via dev-release.yml but no stable
+          release ever lands.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'release-please regression'
+          labels: 'automation:ci-health,type:ci,prio:high'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
