@@ -63,10 +63,11 @@ def _make_project(tmp_path: Path, *, files: dict[str, str]) -> Path:
 
 
 def _scan(project_root: Path, *, paths: list[str] | None = None) -> int:
-    return _MODULE._scan_all(
+    count: int = _MODULE._scan_all(
         [Path(p) for p in (paths or ["src/synthorg"])],
         project_root,
     )
+    return count
 
 
 class TestForbiddenImports:
