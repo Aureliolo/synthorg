@@ -13,7 +13,7 @@ import re
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal
 
 import psycopg
 from psycopg.rows import dict_row
@@ -112,7 +112,7 @@ class PostgresEscalationRepository(EscalationQueueStore):
             :class:`PostgresPersistenceBackend`.
     """
 
-    supports_cross_instance_notify: ClassVar[bool] = True
+    supports_cross_instance_notify: ClassVar[Literal[True]] = True
 
     def __init__(
         self,

@@ -234,7 +234,17 @@ def build_escalation_notify_subscriber(
     # delivery, so silent degradation to a no-op subscriber would hide
     # the misconfiguration -- raise instead. ``mode == "auto"`` is the
     # opportunistic mode and may safely fall through to the no-op.
-    if not isinstance(store, CrossInstanceNotifyCapableStore):
+    #
+    # ``@runtime_checkable`` only verifies attribute presence at
+    # ``isinstance()`` time, not value, so a store that declares
+    # ``supports_cross_instance_notify = False`` would still satisfy
+    # the protocol structurally. The explicit ``is True`` guard
+    # complements the structural check so opt-out values do not get
+    # treated as opt-in.
+    if (
+        not isinstance(store, CrossInstanceNotifyCapableStore)
+        or getattr(store, "supports_cross_instance_notify", False) is not True
+    ):
         msg = (
             "cross_instance_notify enabled but the configured store does not "
             "implement CrossInstanceNotifyCapableStore (no "

@@ -106,7 +106,7 @@ class TestComparison:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        body = """
+        sqlite_body = """
         from typing import TYPE_CHECKING
 
         if TYPE_CHECKING:
@@ -116,15 +116,19 @@ class TestComparison:
             )
 
 
-        class Backend:
+        class SQLitePersistenceBackend:
             @property
             def tasks(self) -> TaskRepository: ...
 
             @property
             def users(self) -> UserRepository: ...
         """
+        postgres_body = sqlite_body.replace(
+            "SQLitePersistenceBackend",
+            "PostgresPersistenceBackend",
+        )
         project_root = _make_synthetic_tree(
-            tmp_path, sqlite_body=body, postgres_body=body
+            tmp_path, sqlite_body=sqlite_body, postgres_body=postgres_body
         )
         assert _scan(project_root) == 0
         assert capsys.readouterr().out == ""
@@ -134,20 +138,24 @@ class TestComparison:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        body = """
+        sqlite_body = """
         class SQLiteTaskRepository: ...
         class UserRepository: ...
 
 
-        class Backend:
+        class SQLitePersistenceBackend:
             @property
             def tasks(self) -> SQLiteTaskRepository: ...
 
             @property
             def users(self) -> UserRepository: ...
         """
+        postgres_body = sqlite_body.replace(
+            "SQLitePersistenceBackend",
+            "PostgresPersistenceBackend",
+        )
         project_root = _make_synthetic_tree(
-            tmp_path, sqlite_body=body, postgres_body=body
+            tmp_path, sqlite_body=sqlite_body, postgres_body=postgres_body
         )
         assert _scan(project_root) == 2
         captured = capsys.readouterr().out
@@ -158,16 +166,20 @@ class TestComparison:
     def test_module_prefix_tolerated(self, tmp_path: Path) -> None:
         # ``persistence.task_protocol.TaskRepository`` should normalise to
         # ``TaskRepository`` and match the protocol declaration.
-        body = """
-        class Backend:
+        sqlite_body = """
+        class SQLitePersistenceBackend:
             @property
             def tasks(self) -> persistence.task_protocol.TaskRepository: ...
 
             @property
             def users(self) -> persistence.user_protocol.UserRepository: ...
         """
+        postgres_body = sqlite_body.replace(
+            "SQLitePersistenceBackend",
+            "PostgresPersistenceBackend",
+        )
         project_root = _make_synthetic_tree(
-            tmp_path, sqlite_body=body, postgres_body=body
+            tmp_path, sqlite_body=sqlite_body, postgres_body=postgres_body
         )
         assert _scan(project_root) == 0
 
@@ -205,7 +217,7 @@ class TestGenericParameter:
             class WorkflowDefinition: ...
             class VersionRepository: ...
 
-            class Backend:
+            class SQLitePersistenceBackend:
                 @property
                 def workflow_versions(
                     self,
@@ -215,7 +227,7 @@ class TestGenericParameter:
             class WorkflowDefinition: ...
             class PostgresVersionRepository: ...
 
-            class Backend:
+            class PostgresPersistenceBackend:
                 @property
                 def workflow_versions(
                     self,
@@ -232,20 +244,24 @@ class TestGenericParameter:
 class TestPerLineOptOut:
     def test_marker_with_justification_suppresses(self, tmp_path: Path) -> None:
         marker = "# lint-allow: persistence-protocol-uniformity -- legacy fixture"
-        body = f"""
+        sqlite_body = f"""
         class SQLiteTaskRepository: ...
         class UserRepository: ...
 
 
-        class Backend:
+        class SQLitePersistenceBackend:
             @property
             def tasks(self) -> SQLiteTaskRepository: ...  {marker}
 
             @property
             def users(self) -> UserRepository: ...
         """
+        postgres_body = sqlite_body.replace(
+            "SQLitePersistenceBackend",
+            "PostgresPersistenceBackend",
+        )
         project_root = _make_synthetic_tree(
-            tmp_path, sqlite_body=body, postgres_body=body
+            tmp_path, sqlite_body=sqlite_body, postgres_body=postgres_body
         )
         # Only one backend has the marker line; the matching one has its own
         # marker too.
@@ -256,20 +272,24 @@ class TestPerLineOptOut:
         tmp_path: Path,
     ) -> None:
         marker_no_reason = "# lint-allow: persistence-protocol-uniformity --"
-        body = f"""
+        sqlite_body = f"""
         class SQLiteTaskRepository: ...
         class UserRepository: ...
 
 
-        class Backend:
+        class SQLitePersistenceBackend:
             @property
             def tasks(self) -> SQLiteTaskRepository: ...  {marker_no_reason}
 
             @property
             def users(self) -> UserRepository: ...
         """
+        postgres_body = sqlite_body.replace(
+            "SQLitePersistenceBackend",
+            "PostgresPersistenceBackend",
+        )
         project_root = _make_synthetic_tree(
-            tmp_path, sqlite_body=body, postgres_body=body
+            tmp_path, sqlite_body=sqlite_body, postgres_body=postgres_body
         )
         # Empty justification fails the check, so both backends still report.
         assert _scan(project_root) == 2

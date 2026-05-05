@@ -1,6 +1,6 @@
 """Protocols for the escalation queue backend and decision processor."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -156,15 +156,19 @@ class CrossInstanceNotifyCapableStore(Protocol):
     cross-worker concern.
 
     Stores opt in by declaring the
-    ``supports_cross_instance_notify`` class attribute (typically as a
-    ``ClassVar[bool] = True``); the escalation factory checks the
-    capability via :func:`isinstance` so it never has to import any
-    concrete repository class to decide whether to wire a real notify
-    subscriber. Stores that lack the attribute fall through to the
-    no-op subscriber automatically.
+    ``supports_cross_instance_notify`` class attribute as
+    ``ClassVar[Literal[True]] = True``. The annotation is ``Literal[True]``
+    rather than ``bool`` so a store declaring ``= False`` is a static
+    type error: the attribute is a true opt-in, not a togglable flag.
+    The factory complements this static guarantee with an explicit
+    runtime ``is True`` check, since ``@runtime_checkable`` only verifies
+    attribute presence, not value, and ``isinstance(store, ...)`` would
+    otherwise return ``True`` for stores that set the attribute to any
+    value (including ``False``). Stores that lack the attribute fall
+    through to the no-op subscriber automatically.
     """
 
-    supports_cross_instance_notify: bool
+    supports_cross_instance_notify: Literal[True]
 
 
 @runtime_checkable

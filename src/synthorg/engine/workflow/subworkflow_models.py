@@ -32,7 +32,7 @@ class SubworkflowSummary(BaseModel):
         version_count: Total number of versions in the registry.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     subworkflow_id: NotBlankStr = Field(description="Stable identifier")
     latest_version: NotBlankStr = Field(description="Latest semver")
@@ -57,7 +57,7 @@ class ParentReference(BaseModel):
             ``"subworkflow"``; ``None`` for top-level workflows.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     parent_id: NotBlankStr = Field(description="Parent workflow ID")
     parent_name: NotBlankStr = Field(description="Parent workflow name")

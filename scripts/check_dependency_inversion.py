@@ -89,6 +89,23 @@ _FORBIDDEN_IMPORTS: Final[dict[str, str]] = {
 
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: dependency-inversion"
 
+# Modules that own the forbidden concretes. ``import synthorg.persistence.config``
+# followed by ``synthorg.persistence.config.SQLiteConfig`` reaches the same
+# concrete dependency the ``from ... import SQLiteConfig`` shape does, so the
+# attribute-access pattern needs the same gate coverage as the from-import.
+_FORBIDDEN_MODULE_PATHS: Final[dict[str, str]] = {
+    "synthorg.persistence.config": (
+        "PersistenceConfig (via persistence.config_factory)"
+    ),
+    "synthorg.persistence.filesystem_artifact_storage": "ArtifactStorageBackend",
+    "synthorg.persistence.sqlite.backend": "PersistenceBackend",
+    "synthorg.persistence.postgres.backend": "PersistenceBackend",
+    "synthorg.persistence.postgres.escalation_repo": (
+        "EscalationQueueStore + CrossInstanceNotifyCapableStore"
+    ),
+    "synthorg.persistence.sqlite.escalation_repo": "EscalationQueueStore",
+}
+
 
 class ProjectRootError(Exception):
     """Raised when ``--repo-root`` cannot be resolved to a usable directory."""
@@ -117,6 +134,96 @@ def _line_has_trailing_marker(line: str) -> bool:
     return False
 
 
+def _collect_module_aliases(
+    tree: ast.Module,
+    lines: list[str],
+) -> dict[str, str]:
+    """Return ``{local_binding: dotted_module}`` for forbidden module imports.
+
+    Captures both ``import synthorg.persistence.config`` (binds
+    ``synthorg`` locally) and ``import synthorg.persistence.config as cfg``
+    (binds ``cfg``) so the attribute-access pass can resolve usages back
+    to the owning module. Suppression markers on the import line skip
+    the alias entirely so callers don't get a violation against an
+    explicitly-allowed import.
+    """
+    aliases_to_module: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Import):
+            continue
+        for alias in node.names:
+            module_name = alias.name
+            if module_name not in _FORBIDDEN_MODULE_PATHS:
+                continue
+            lineno = node.lineno
+            line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
+            if _line_has_trailing_marker(line):
+                continue
+            local_name = alias.asname or module_name.split(".", 1)[0]
+            aliases_to_module[local_name] = module_name
+    return aliases_to_module
+
+
+def _check_import_from(
+    node: ast.ImportFrom,
+    rel: str,
+    lines: list[str],
+) -> list[str]:
+    """Return violations for forbidden ``from ... import <Concrete>`` shapes."""
+    issues: list[str] = []
+    for alias in node.names:
+        name = alias.name
+        if name not in _FORBIDDEN_IMPORTS:
+            continue
+        lineno = node.lineno
+        line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
+        if _line_has_trailing_marker(line):
+            continue
+        issues.append(
+            f"{rel}:{lineno}: imports concrete persistence "
+            f"type {name!r}; depend on "
+            f"{_FORBIDDEN_IMPORTS[name]} instead, or add "
+            f"'# lint-allow: dependency-inversion -- <reason>' "
+            f"on the import line."
+        )
+    return issues
+
+
+def _check_attribute_access(
+    node: ast.Attribute,
+    rel: str,
+    lines: list[str],
+    aliases_to_module: dict[str, str],
+) -> str | None:
+    """Return a violation message for ``aliased_module.<Concrete>`` access.
+
+    Resolves the attribute base back to a previously-imported module via
+    *aliases_to_module*; non-resolvable bases (function calls, subscripts,
+    locals shadowing an alias) yield ``None``.
+    """
+    attr_name = node.attr
+    if attr_name not in _FORBIDDEN_IMPORTS:
+        return None
+    dotted = _resolve_dotted_module(node.value)
+    if dotted is None:
+        return None
+    forbidden_module = aliases_to_module.get(dotted)
+    if forbidden_module is None:
+        return None
+    lineno = node.lineno
+    line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
+    if _line_has_trailing_marker(line):
+        return None
+    return (
+        f"{rel}:{lineno}: references concrete persistence "
+        f"type {attr_name!r} via attribute access on "
+        f"{forbidden_module!r}; depend on "
+        f"{_FORBIDDEN_IMPORTS[attr_name]} instead, or add "
+        f"'# lint-allow: dependency-inversion -- <reason>' "
+        f"on the line."
+    )
+
+
 def _scan_file(file_path: Path, rel: str) -> list[str]:
     """Return violation messages for a single file."""
     try:
@@ -128,32 +235,35 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     except SyntaxError as exc:
         return [f"{rel}:{exc.lineno or 0}: unable to parse file: {exc.msg}"]
     lines = text.splitlines()
+    aliases_to_module = _collect_module_aliases(tree, lines)
     issues: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                name = alias.name
-                if name not in _FORBIDDEN_IMPORTS:
-                    continue
-                lineno = node.lineno
-                line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
-                if _line_has_trailing_marker(line):
-                    continue
-                issues.append(
-                    f"{rel}:{lineno}: imports concrete persistence "
-                    f"type {name!r}; depend on "
-                    f"{_FORBIDDEN_IMPORTS[name]} instead, or add "
-                    f"'# lint-allow: dependency-inversion -- <reason>' "
-                    f"on the import line."
-                )
-        elif isinstance(node, ast.Import):
-            # ``import synthorg.persistence.config`` followed by
-            # ``synthorg.persistence.config.SQLiteConfig`` is far less
-            # common in this codebase; the gate stays focused on the
-            # ``from ... import <Concrete>`` shape that the audit
-            # actually flagged. Documented narrowing.
-            continue
+            issues.extend(_check_import_from(node, rel, lines))
+        elif isinstance(node, ast.Attribute):
+            msg = _check_attribute_access(node, rel, lines, aliases_to_module)
+            if msg is not None:
+                issues.append(msg)
     return issues
+
+
+def _resolve_dotted_module(node: ast.expr) -> str | None:
+    """Return the dotted module path bound to *node*, or ``None``.
+
+    Walks an ``ast.Attribute`` chain back to its ``ast.Name`` root,
+    rebuilding the dotted form (``synthorg.persistence.config``).
+    Returns ``None`` for any expression shape that is not a pure
+    name / attribute access (e.g. function calls, subscripts).
+    """
+    parts: list[str] = []
+    current: ast.expr | None = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.append(current.id)
+    return ".".join(reversed(parts))
 
 
 def _resolve_root(root: Path, project_root: Path) -> Path | None:
@@ -322,6 +432,7 @@ __all__ = [
     "ProjectRootError",
     "_iter_targets",
     "_line_has_trailing_marker",
+    "_resolve_dotted_module",
     "_resolve_project_root",
     "_resolve_root",
     "_scan_all",

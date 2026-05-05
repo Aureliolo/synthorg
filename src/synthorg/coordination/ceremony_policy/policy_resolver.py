@@ -16,12 +16,13 @@ import json
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.core.domain_errors import NotFoundError, ServiceUnavailableError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
+    CeremonyStrategyType,
     resolve_ceremony_policy,
 )
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
@@ -37,7 +38,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.api.state import AppState
-    from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
 
 logger = get_logger(__name__)
 
@@ -139,15 +139,6 @@ class ActiveCeremonyStrategyResponse(BaseModel):
 
 def _parse_strategy(raw: str | None) -> CeremonyStrategyType | None:
     """Parse a ceremony strategy from its raw setting value."""
-    # Local import: ``CeremonyStrategyType`` is exported from
-    # ``engine.workflow.ceremony_policy`` and we already pull other names
-    # from there at module top, but keeping this lazy avoids a circular
-    # import on ``api.controllers.ceremony_policy`` -> resolver -> engine
-    # import chains during early test bootstrap.
-    from synthorg.engine.workflow.ceremony_policy import (  # noqa: PLC0415
-        CeremonyStrategyType,
-    )
-
     if not raw:
         return None
     try:
@@ -390,7 +381,7 @@ class _SettingsLookup(enum.Enum):
 _SETTINGS_NOT_FOUND: Final[_SettingsLookup] = _SettingsLookup.NOT_FOUND
 
 
-async def _lookup_dept_override_from_settings(  # noqa: PLR0911
+async def _lookup_dept_override_from_settings(
     app_state: AppState,
     department_name: NotBlankStr,
 ) -> CeremonyPolicyConfig | None | _SettingsLookup:
@@ -441,9 +432,28 @@ async def _lookup_dept_override_from_settings(  # noqa: PLR0911
     val = policies[department_name]
     if val is None:
         return None
-    if isinstance(val, dict):
+    if not isinstance(val, dict):
+        logger.warning(
+            API_SERVICE_UNAVAILABLE,
+            service="settings",
+            department=department_name,
+            note="malformed dept_ceremony_policies override (non-dict value)",
+        )
+        msg = "Malformed ceremony policies data"
+        raise ServiceUnavailableError(msg)
+    try:
         return CeremonyPolicyConfig.model_validate(val)
-    return _SETTINGS_NOT_FOUND
+    except ValidationError as exc:
+        logger.warning(
+            API_SERVICE_UNAVAILABLE,
+            service="settings",
+            department=department_name,
+            note="invalid dept_ceremony_policies override",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = "Malformed ceremony policies data"
+        raise ServiceUnavailableError(msg) from exc
 
 
 async def _fetch_department_policy(

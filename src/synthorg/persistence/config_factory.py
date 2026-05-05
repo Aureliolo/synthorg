@@ -13,7 +13,8 @@ per init choice; the helpers below cover both shapes.
 """
 
 import os
-from typing import TYPE_CHECKING, Any, NoReturn, get_args
+from pathlib import Path  # noqa: TC003 -- runtime-resolvable annotation for PEP 649
+from typing import Any, NoReturn, get_args
 from urllib.parse import unquote, urlparse
 
 from pydantic import SecretStr
@@ -32,9 +33,6 @@ from synthorg.persistence.config import (
 from synthorg.persistence.filesystem_artifact_storage import (
     FileSystemArtifactStorage,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 

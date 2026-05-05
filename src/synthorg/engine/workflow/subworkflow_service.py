@@ -12,12 +12,25 @@ already depend on its narrow surface; this service is the broader
 "control plane" entry point.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SubworkflowIOError,
     SubworkflowNotFoundError,
+)
+
+# Imports kept at runtime (rather than under TYPE_CHECKING) so PEP 649
+# lazy annotation evaluation can resolve names like ParentReference in
+# ``SubworkflowHasParentsError.__init__`` when callers introspect via
+# ``inspect.get_type_hints`` or ``inspect.get_annotations``.
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,  # noqa: TC001 -- runtime-resolvable annotation
+)
+from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runtime-resolvable annotation
+    ParentReference,
+    SubworkflowSummary,
+)
+from synthorg.engine.workflow.subworkflow_registry import (
+    SubworkflowRegistry,  # noqa: TC001 -- runtime-resolvable annotation
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
@@ -29,14 +42,6 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_PUBLISH_FAILED,
     SUBWORKFLOW_REGISTERED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.engine.workflow.subworkflow_models import (
-        ParentReference,
-        SubworkflowSummary,
-    )
-    from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 
 logger = get_logger(__name__)
 

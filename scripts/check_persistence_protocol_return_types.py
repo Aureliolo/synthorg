@@ -40,9 +40,13 @@ from typing import Final
 
 _PROTOCOL_PATH: Final[str] = "src/synthorg/persistence/protocol.py"
 _PROTOCOL_CLASS_NAME: Final[str] = "PersistenceBackend"
-_BACKEND_PATHS: Final[tuple[str, ...]] = (
-    "src/synthorg/persistence/sqlite/backend.py",
-    "src/synthorg/persistence/postgres/backend.py",
+# (path, expected concrete-class-name): the gate scans ONLY the named
+# class in each backend module so a future helper class with a
+# colliding ``@property`` name cannot silently overwrite the real
+# backend's annotation in the merged-properties view.
+_BACKEND_PATHS: Final[tuple[tuple[str, str], ...]] = (
+    ("src/synthorg/persistence/sqlite/backend.py", "SQLitePersistenceBackend"),
+    ("src/synthorg/persistence/postgres/backend.py", "PostgresPersistenceBackend"),
 )
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: persistence-protocol-uniformity"
 
@@ -130,15 +134,19 @@ def _collect_protocol_properties(tree: ast.Module) -> dict[str, str]:
 
 def _collect_backend_properties(
     tree: ast.Module,
+    backend_class_name: str,
 ) -> dict[str, tuple[str, int]]:
     """Return ``{property_name: (normalised_return, line_number)}``.
 
-    Walks every class in the module and merges; the backend file declares
-    one class so this is effectively that class's property surface.
+    Scans ONLY the class named *backend_class_name*; helper classes
+    declared alongside the concrete backend never contribute to the
+    surface checked against the protocol so a future name collision
+    on a property cannot silently mask a real backend annotation.
+    Returns an empty mapping when the named class is absent.
     """
     properties: dict[str, tuple[str, int]] = {}
     for cls in tree.body:
-        if not isinstance(cls, ast.ClassDef):
+        if not isinstance(cls, ast.ClassDef) or cls.name != backend_class_name:
             continue
         for item in cls.body:
             prop = _as_property(item)
@@ -148,12 +156,14 @@ def _collect_backend_properties(
                 _normalise_annotation(prop.returns),
                 prop.lineno,
             )
+        return properties
     return properties
 
 
 def _scan_backend(
     backend_path: Path,
     rel: str,
+    backend_class_name: str,
     protocol_props: dict[str, str],
 ) -> list[str]:
     """Return violation messages for one backend file."""
@@ -165,7 +175,12 @@ def _scan_backend(
         tree = ast.parse(text, filename=str(backend_path))
     except SyntaxError as exc:
         return [f"{rel}:{exc.lineno or 0}: unable to parse file: {exc.msg}"]
-    backend_props = _collect_backend_properties(tree)
+    backend_props = _collect_backend_properties(tree, backend_class_name)
+    if not backend_props:
+        return [
+            f"{rel}:0: concrete backend class {backend_class_name!r} not found "
+            "in module; the gate has nothing to compare against."
+        ]
     lines = text.splitlines()
     issues: list[str] = []
     for prop_name, expected in protocol_props.items():
@@ -241,7 +256,7 @@ def _scan_all(project_root: Path) -> int:
         return 1
 
     total = 0
-    for rel in _BACKEND_PATHS:
+    for rel, backend_class_name in _BACKEND_PATHS:
         backend_path = project_root / rel
         if not backend_path.is_file():
             print(
@@ -251,7 +266,12 @@ def _scan_all(project_root: Path) -> int:
             )
             total += 1
             continue
-        violations = _scan_backend(backend_path, rel, protocol_props)
+        violations = _scan_backend(
+            backend_path,
+            rel,
+            backend_class_name,
+            protocol_props,
+        )
         for msg in violations:
             print(msg)
         total += len(violations)
