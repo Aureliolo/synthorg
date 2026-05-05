@@ -13,7 +13,7 @@ import re
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 import psycopg
 from psycopg.rows import dict_row
@@ -101,10 +101,18 @@ def _row_to_escalation(row: dict[str, Any]) -> Escalation:
 class PostgresEscalationRepository(EscalationQueueStore):
     """``psycopg``-backed :class:`EscalationQueueStore`.
 
+    Implements the
+    :class:`~synthorg.communication.conflict_resolution.escalation.protocol.CrossInstanceNotifyCapableStore`
+    capability marker so the escalation factory can structurally
+    detect that this store delivers real LISTEN/NOTIFY plumbing
+    without reaching for the concrete class.
+
     Args:
         pool: Open ``psycopg_pool.AsyncConnectionPool`` owned by the
             :class:`PostgresPersistenceBackend`.
     """
+
+    supports_cross_instance_notify: ClassVar[bool] = True
 
     def __init__(
         self,

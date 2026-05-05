@@ -26,6 +26,7 @@ from synthorg.communication.conflict_resolution.escalation.processors import (
     WinnerSelectProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
+    CrossInstanceNotifyCapableStore,
     DecisionProcessor,
     EscalationQueueStore,
 )
@@ -222,14 +223,13 @@ def build_escalation_notify_subscriber(
     from synthorg.communication.conflict_resolution.escalation.notify import (  # noqa: PLC0415
         PostgresEscalationNotifySubscriber,
     )
-    from synthorg.persistence.postgres.escalation_repo import (  # noqa: PLC0415
-        PostgresEscalationRepository,
-    )
 
-    if not isinstance(store, PostgresEscalationRepository):
-        # Defensive: in principle factory-built stores and the backend
-        # discriminator match; a mismatch means someone hand-injected
-        # the store.
+    # Capability check via the structural Protocol marker rather than
+    # an ``isinstance(store, PostgresEscalationRepository)`` reach into
+    # ``persistence/postgres/``. Stores that lack the
+    # ``supports_cross_instance_notify`` attribute fall through to the
+    # no-op subscriber automatically.
+    if not isinstance(store, CrossInstanceNotifyCapableStore):
         return NoopEscalationNotifySubscriber()
     return PostgresEscalationNotifySubscriber(
         store,

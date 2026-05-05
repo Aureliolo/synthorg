@@ -17,17 +17,26 @@ from synthorg.communication.conflict_resolution.escalation.config import (
 )
 from synthorg.communication.conflict_resolution.escalation.factory import (
     build_decision_processor,
+    build_escalation_notify_subscriber,
     build_escalation_queue_store,
 )
 from synthorg.communication.conflict_resolution.escalation.in_memory_store import (
     InMemoryEscalationStore,
+)
+from synthorg.communication.conflict_resolution.escalation.notify import (
+    NoopEscalationNotifySubscriber,
+    PostgresEscalationNotifySubscriber,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
     HybridDecisionProcessor,
     WinnerSelectProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
+    CrossInstanceNotifyCapableStore,
     EscalationQueueStore,
+)
+from synthorg.communication.conflict_resolution.escalation.registry import (
+    PendingFuturesRegistry,
 )
 from synthorg.persistence.protocol import PersistenceBackend
 
@@ -110,6 +119,84 @@ class TestQueueStoreRegistry:
             match=r"config\.backend='postgres'",
         ):
             build_escalation_queue_store(config, backend)
+
+
+class TestNotifySubscriberCapabilityCheck:
+    """``build_escalation_notify_subscriber`` uses the structural Protocol.
+
+    The factory must not import the concrete
+    ``PostgresEscalationRepository`` to decide whether to wire a real
+    notify subscriber; it inspects the
+    :class:`CrossInstanceNotifyCapableStore` capability marker
+    instead. Stores opting in via the
+    ``supports_cross_instance_notify`` attribute receive a real
+    subscriber; everything else falls through to the no-op.
+    """
+
+    def test_in_memory_store_returns_noop_subscriber(self) -> None:
+        # InMemory has no capability marker; the factory must short-
+        # circuit to the no-op even when ``cross_instance_notify`` is
+        # forced on (which would normally drive the Postgres path).
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="auto",
+            notify_channel="escalations",
+        )
+        store = InMemoryEscalationStore()
+        assert not isinstance(store, CrossInstanceNotifyCapableStore)
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, NoopEscalationNotifySubscriber)
+
+    def test_capable_store_returns_real_subscriber(self) -> None:
+        # A duck-typed store that declares the capability attribute
+        # passes the structural check and gets a real subscriber.
+        # No concrete persistence class is imported by the factory or
+        # this test, and the real subscriber's __init__ never invokes
+        # subscribe_notifications, so the fake needs no method body.
+        class _CapableFakeStore:
+            supports_cross_instance_notify = True
+
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="on",
+            notify_channel="escalations",
+        )
+        store = cast(EscalationQueueStore, _CapableFakeStore())
+        assert isinstance(store, CrossInstanceNotifyCapableStore)
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, PostgresEscalationNotifySubscriber)
+
+    def test_off_returns_noop_regardless_of_capability(self) -> None:
+        # Even a capability-marked store must yield the no-op when the
+        # config says cross-instance notify is off.
+        class _CapableFakeStore:
+            supports_cross_instance_notify = True
+
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="off",
+        )
+        store = cast(EscalationQueueStore, _CapableFakeStore())
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, NoopEscalationNotifySubscriber)
 
 
 class TestDecisionProcessorRegistry:

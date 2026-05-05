@@ -146,6 +146,28 @@ class EscalationQueueStore(Protocol):
 
 
 @runtime_checkable
+class CrossInstanceNotifyCapableStore(Protocol):
+    """Capability marker: the store delivers real cross-instance notifications.
+
+    Distinguishes the Postgres queue store (true LISTEN/NOTIFY plumbing)
+    from the SQLite / in-memory stores whose ``subscribe_notifications``
+    returns a stream that blocks on cancellation without yielding -- the
+    correct shape for single-process deployments where there is no
+    cross-worker concern.
+
+    Stores opt in by declaring the
+    ``supports_cross_instance_notify`` class attribute (typically as a
+    ``ClassVar[bool] = True``); the escalation factory checks the
+    capability via :func:`isinstance` so it never has to import any
+    concrete repository class to decide whether to wire a real notify
+    subscriber. Stores that lack the attribute fall through to the
+    no-op subscriber automatically.
+    """
+
+    supports_cross_instance_notify: bool
+
+
+@runtime_checkable
 class DecisionProcessor(Protocol):
     """Converts an operator decision into a :class:`ConflictResolution`.
 
