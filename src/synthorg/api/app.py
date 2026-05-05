@@ -29,7 +29,6 @@ from synthorg.api.app_builders import (
 from synthorg.api.app_helpers import (
     _make_expire_callback,
     _make_meeting_publisher,
-    _postgres_config_from_url,
     _resolve_artifact_dir_env,
 )
 from synthorg.api.approval_store import ApprovalStore
@@ -103,14 +102,13 @@ from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
 )
-from synthorg.persistence.config import (
-    PersistenceConfig,
-    SQLiteConfig,
+from synthorg.persistence.config_factory import (
+    build_filesystem_artifact_storage,
+    build_postgres_persistence_config_from_url,
+    build_sqlite_persistence_config,
+    resolve_postgres_ssl_mode_from_env,
 )
 from synthorg.persistence.factory import create_backend
-from synthorg.persistence.filesystem_artifact_storage import (
-    FileSystemArtifactStorage,
-)
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
@@ -299,10 +297,11 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if persistence is None:
         if db_url:
             try:
-                pg_config = _postgres_config_from_url(db_url)
-                persistence = create_backend(
-                    PersistenceConfig(backend="postgres", postgres=pg_config),
+                pg_persistence_config = build_postgres_persistence_config_from_url(
+                    db_url,
+                    ssl_mode_override=resolve_postgres_ssl_mode_from_env(),
                 )
+                persistence = create_backend(pg_persistence_config)
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -311,18 +310,19 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     error="Postgres persistence creation failed",
                 )
                 raise
+            assert pg_persistence_config.postgres is not None  # noqa: S101
             logger.info(
                 API_APP_STARTUP,
                 note="Auto-wired Postgres persistence from SYNTHORG_DATABASE_URL",
-                host=pg_config.host,
-                database=pg_config.database,
+                host=pg_persistence_config.postgres.host,
+                database=pg_persistence_config.postgres.database,
             )
             # Postgres has no on-disk artifact directory tied to the DB
             # path, so default artifact storage to /data (the standard
             # data volume in the CLI compose template) when not set.
             if artifact_storage is None:
                 artifact_dir_str = _resolve_artifact_dir_env()
-                artifact_storage = FileSystemArtifactStorage(
+                artifact_storage = build_filesystem_artifact_storage(
                     data_dir=Path(artifact_dir_str),
                 )
                 logger.info(
@@ -334,7 +334,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             resolved_db_path = Path(db_path)
             try:
                 persistence = create_backend(
-                    PersistenceConfig(sqlite=SQLiteConfig(path=db_path)),
+                    build_sqlite_persistence_config(path=db_path),
                 )
             except MemoryError, RecursionError:
                 raise
@@ -351,7 +351,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
             # Auto-wire artifact storage from the same data directory.
             if artifact_storage is None:
-                artifact_storage = FileSystemArtifactStorage(
+                artifact_storage = build_filesystem_artifact_storage(
                     data_dir=resolved_db_path.parent,
                 )
                 logger.info(
