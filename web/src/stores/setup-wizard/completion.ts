@@ -3,6 +3,7 @@ import { createLogger } from '@/lib/logger'
 import { useThemeStore } from '@/stores/theme'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { initialStepsCompleted } from './navigation'
 import { DEFAULT_THEME } from './theme'
 import type { CompletionSlice, SliceCreator, ThemeSettings } from './types'
@@ -82,6 +83,7 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) =
   completionError: null,
 
   async completeSetup() {
+    const startedAt = Date.now()
     set({ completing: true, completionError: null })
     try {
       await completeSetup()
@@ -91,8 +93,17 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) =
       // wizard hands off, instead of reverting to the system default.
       persistWizardTheme(get().themeSettings)
       set({ completing: false })
+      log.debug('setup_wizard.completed', {
+        duration_ms: Date.now() - startedAt,
+      })
     } catch (err) {
-      log.error('completeSetup failed:', getErrorMessage(err))
+      // Telemetry-friendly structured event so operators can grep
+      // ``setup_wizard.completion_failed`` and see the duration +
+      // sanitised error description without scanning prose.
+      log.error('setup_wizard.completion_failed', {
+        duration_ms: Date.now() - startedAt,
+        error: sanitizeForLog(getErrorMessage(err)),
+      })
       set({ completionError: getErrorMessage(err), completing: false })
       throw err
     }
