@@ -412,6 +412,17 @@ def test_main_scan_passes_when_baseline_covers_all(
     # regresses to the checkout-local lookup, the assertion below
     # will fail.
     monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path, raising=False)
+    # ``git`` pre-push hooks export ``GIT_DIR`` / ``GIT_WORK_TREE``
+    # that point at the host repo. Those propagate into our subprocess
+    # ``git ls-files`` and make it ignore the ``cwd=tmp_path`` we set,
+    # returning the host repo's tracked files (including
+    # ``src/synthorg/__init__.py``) which the script then tries to
+    # read at ``tmp_path/src/synthorg/__init__.py`` and crashes.
+    # Clearing them forces the script's documented rglob fallback so
+    # the test only sees the files it created.
+    monkeypatch.delenv("GIT_DIR", raising=False)
+    monkeypatch.delenv("GIT_WORK_TREE", raising=False)
+    monkeypatch.delenv("GIT_INDEX_FILE", raising=False)
 
     rc_update = _MODULE.main(
         ["--repo-root", str(tmp_path), "--paths", "src/synthorg", "--update"]
@@ -432,12 +443,13 @@ def test_main_scan_fails_when_new_violation_added(
     target = src_root / "policy.py"
     target.write_text("_FOO = 99\n", encoding="utf-8")
 
-    # See sibling test for why ``_BASELINE_PATH`` is NOT patched here:
-    # the goal is to drive ``main()`` through the real ``--repo-root``
-    # baseline-resolution path so a future regression to checkout-local
-    # lookup is caught.
+    # See sibling test for why ``_BASELINE_PATH`` is NOT patched here
+    # and why the GIT_* env vars must be cleared.
     (tmp_path / "scripts").mkdir()
     monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path, raising=False)
+    monkeypatch.delenv("GIT_DIR", raising=False)
+    monkeypatch.delenv("GIT_WORK_TREE", raising=False)
+    monkeypatch.delenv("GIT_INDEX_FILE", raising=False)
 
     rc_update = _MODULE.main(
         ["--repo-root", str(tmp_path), "--paths", "src/synthorg", "--update"]
