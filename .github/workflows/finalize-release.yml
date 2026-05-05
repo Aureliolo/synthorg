@@ -683,3 +683,55 @@ jobs:
             -f context=finalize-release \
             -f description="$DESC" \
             -f target_url="$RUN_URL"
+
+  report-failure:
+    name: Open / update tracking issue on finalize-release failure
+    needs: publish
+    # Skip when the publish job's gating if-clause fired (PR-triggered
+    # workflow_run, non-tag head, fork) -- those are not failures.
+    if: >-
+      always()
+      && needs.publish.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / pin
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RESULT: ${{ needs.publish.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TRIGGER_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          \`finalize-release\` workflow failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\` for tag \`$TRIGGER_TAG\`.
+
+          Run: ${RUN_URL}
+
+          Likely cause: sibling-workflow status fetch failure, draft
+          release publish failure (already-published race, asset
+          attachment incomplete), or dev-tag cleanup failure.
+
+          When this stays red, draft releases never publish; consumers
+          pulling from \`v*\` tags see no published assets even though
+          dev tags continue to be created.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'finalize-release regression'
+          labels: 'automation:ci-health,type:ci,prio:high'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
