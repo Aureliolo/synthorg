@@ -97,6 +97,7 @@ Existing gate inventory (all under `scripts/`):
 - `check_forbidden_literals.py`
 - `check_list_pagination.py`
 - `check_logger_exception_str_exc.py`
+- `check_mcp_admin_tool_guardrails.py`
 - `check_mock_spec.py`
 - `check_no_bulk_edit.py`
 - `check_no_em_dashes.py`

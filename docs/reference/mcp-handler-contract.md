@@ -75,15 +75,20 @@ Three centralized helpers in `common_logging.py`; handlers must not redeclare th
 
 All three route exception messages through `safe_error_description` (SEC-1) so secret-shaped fragments are scrubbed before reaching logs. Context kwargs on `log_handler_invoke_failed` are forwarded verbatim and are NOT scrubbed; callers must not pass secrets through `**context`.
 
-## Destructive ops
+## Admin Tool Guardrails
 
-Call `require_admin_guardrails(arguments, actor)` first. It enforces:
+Every handler whose tool is registered through
+`synthorg.meta.mcp.tool_builder.admin_tool` calls
+`require_admin_guardrails(arguments, actor)` as the **lexically first
+call** in its body. It enforces:
 
-- non-`None` `actor`
-- literal `confirm=True`
+- non-`None` `actor` carrying an audit-usable identifier (`.id` or non-blank `.name`)
+- literal `confirm=True` (truthy non-bools are rejected)
 - non-blank `reason`
 
 and raises `GuardrailViolationError` with a typed `violation: Literal["missing_actor", "missing_confirm", "missing_reason"]`. Emit `MCP_ADMIN_OP_EXECUTED` exactly once per successful admin call for the audit trail. Schema-level reject whitespace reasons with `"minLength": 1, "pattern": r".*\S.*"`.
+
+Enforced by `scripts/check_mcp_admin_tool_guardrails.py` (pre-push gate). Per-line opt-out in the function header span: `# lint-allow: mcp-admin-guardrail -- <reason>` (mandatory non-empty justification). Handlers whose admin-guardrail broadening is deferred to a follow-up issue carry the marker pointing at that follow-up.
 
 ## Registries
 

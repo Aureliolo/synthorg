@@ -195,17 +195,33 @@ class TestSettings:
 
     async def test_update_ok(self, fake_app_state: SimpleNamespace) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_settings_update"]
+        with structlog.testing.capture_logs() as events:
+            response = await handler(
+                app_state=fake_app_state,
+                arguments={
+                    "key": "k",
+                    "value": "v",
+                    "confirm": True,
+                    "reason": "test",
+                },
+                actor=make_test_actor(),
+            )
+        assert json.loads(response)["status"] == "ok"
+        audit = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert len(audit) == 1
+        assert audit[0]["tool_name"] == "synthorg_settings_update"
+
+    async def test_update_requires_guardrails(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_settings_update"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={
-                "key": "k",
-                "value": "v",
-                "confirm": True,
-                "reason": "test",
-            },
+            arguments={"key": "k", "value": "v"},
             actor=make_test_actor(),
         )
-        assert json.loads(response)["status"] == "ok"
+        assert json.loads(response)["domain_code"] == "guardrail_violated"
 
     async def test_delete_requires_guardrails(
         self,
@@ -241,15 +257,19 @@ class TestProviders:
 
     async def test_test_connection(self, fake_app_state: SimpleNamespace) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_providers_test_connection"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={
-                "provider_id": "p1",
-                "confirm": True,
-                "reason": "test",
-            },
-            actor=make_test_actor(),
-        )
+        with structlog.testing.capture_logs() as events:
+            response = await handler(
+                app_state=fake_app_state,
+                arguments={
+                    "provider_id": "p1",
+                    "confirm": True,
+                    "reason": "test",
+                },
+                actor=make_test_actor(),
+            )
+        audit = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert len(audit) == 1
+        assert audit[0]["tool_name"] == "synthorg_providers_test_connection"
         assert json.loads(response)["status"] == "ok"
 
 
@@ -272,8 +292,24 @@ class TestBackup:
         fake_app_state: SimpleNamespace,
     ) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_backup_create"]
-        response = await handler(app_state=fake_app_state, arguments={})
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"confirm": True, "reason": "test"},
+            actor=make_test_actor(),
+        )
         assert json.loads(response)["status"] == "error"
+
+    async def test_create_requires_guardrails(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_backup_create"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"trigger": "manual"},
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["domain_code"] == "guardrail_violated"
 
     async def test_delete_guardrails(self, fake_app_state: SimpleNamespace) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_backup_delete"]
@@ -326,6 +362,30 @@ class TestUsers:
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "not_supported"
+
+    async def test_create_requires_guardrails(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_users_create"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"username": "u", "role": "admin"},
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["domain_code"] == "guardrail_violated"
+
+    async def test_update_requires_guardrails(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_users_update"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"user_id": str(uuid4()), "updates": {}},
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["domain_code"] == "guardrail_violated"
 
 
 class TestProjects:
@@ -394,6 +454,18 @@ class TestSetup:
         )
         assert json.loads(response)["domain_code"] == "not_supported"
 
+    async def test_initialize_requires_guardrails(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_setup_initialize"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={},
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["domain_code"] == "guardrail_violated"
+
 
 class TestSimulations:
     async def test_list(self, fake_app_state: SimpleNamespace) -> None:
@@ -413,17 +485,21 @@ class TestSimulations:
 class TestTemplatePacks:
     async def test_install_then_list(self, fake_app_state: SimpleNamespace) -> None:
         install = INFRASTRUCTURE_HANDLERS["synthorg_template_packs_install"]
-        response = await install(
-            app_state=fake_app_state,
-            arguments={
-                "name": "p",
-                "version": "1.0",
-                "confirm": True,
-                "reason": "test",
-            },
-            actor=make_test_actor(),
-        )
+        with structlog.testing.capture_logs() as events:
+            response = await install(
+                app_state=fake_app_state,
+                arguments={
+                    "name": "p",
+                    "version": "1.0",
+                    "confirm": True,
+                    "reason": "test",
+                },
+                actor=make_test_actor(),
+            )
         assert json.loads(response)["status"] == "ok"
+        audit = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert len(audit) == 1
+        assert audit[0]["tool_name"] == "synthorg_template_packs_install"
         listed = await INFRASTRUCTURE_HANDLERS["synthorg_template_packs_list"](
             app_state=fake_app_state,
             arguments={},
@@ -433,6 +509,18 @@ class TestTemplatePacks:
         # The pack we just installed should appear in the list.
         names = {item.get("name") for item in list_payload.get("data", [])}
         assert "p" in names
+
+    async def test_install_requires_guardrails(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        install = INFRASTRUCTURE_HANDLERS["synthorg_template_packs_install"]
+        response = await install(
+            app_state=fake_app_state,
+            arguments={"name": "p", "version": "1.0"},
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["domain_code"] == "guardrail_violated"
 
     async def test_uninstall_guardrails(
         self,

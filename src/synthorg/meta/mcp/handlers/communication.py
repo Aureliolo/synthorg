@@ -460,7 +460,7 @@ async def _connections_create(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- connection create non-destructive; #1770a
+    # lint-allow: mcp-admin-guardrail -- connection create no-mutation; #1770a
 ) -> str:
     """Create a new external connection (non-destructive write)."""
     try:
@@ -619,7 +619,7 @@ async def _webhooks_create(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- webhook create non-destructive; #1770a
+    # lint-allow: mcp-admin-guardrail -- webhook create no-mutation; #1770a
 ) -> str:
     """Register a new webhook definition (non-destructive write)."""
     try:

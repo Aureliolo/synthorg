@@ -2237,7 +2237,7 @@ tests/unit/meta/mcp/test_handlers_infrastructure.py:117:14
 tests/unit/meta/mcp/test_handlers_infrastructure.py:118:31
 tests/unit/meta/mcp/test_handlers_infrastructure.py:119:29
 tests/unit/meta/mcp/test_handlers_infrastructure.py:120:32
-tests/unit/meta/mcp/test_handlers_infrastructure.py:311:32
+tests/unit/meta/mcp/test_handlers_infrastructure.py:347:32
 tests/unit/meta/mcp/test_handlers_integrations.py:30:14
 tests/unit/meta/mcp/test_handlers_integrations.py:31:27
 tests/unit/meta/mcp/test_handlers_integrations.py:32:29

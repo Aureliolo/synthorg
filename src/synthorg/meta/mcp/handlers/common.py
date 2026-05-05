@@ -57,9 +57,9 @@ _TY_POS_INT = "positive int"
 _GR_MISSING_ACTOR: Literal["missing_actor"] = "missing_actor"
 _GR_MISSING_CONFIRM: Literal["missing_confirm"] = "missing_confirm"
 _GR_MISSING_REASON: Literal["missing_reason"] = "missing_reason"
-_GR_MSG_ACTOR = "Destructive operation requires an identified actor"
-_GR_MSG_CONFIRM = "Destructive operation requires 'confirm': true"
-_GR_MSG_REASON = "Destructive operation requires a non-blank 'reason'"
+_GR_MSG_ACTOR = "Admin operation requires an identified actor"
+_GR_MSG_CONFIRM = "Admin operation requires 'confirm': true"
+_GR_MSG_REASON = "Admin operation requires a non-blank 'reason'"
 
 _DC_NOT_SUPPORTED = "not_supported"
 

@@ -208,7 +208,7 @@ async def _mcp_catalog_install(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- catalog install non-destructive; #1770a
+    # lint-allow: mcp-admin-guardrail -- catalog install no-mutation; #1770a
 ) -> str:
     """Install an MCP catalog entry (non-destructive create)."""
     tool = "synthorg_mcp_catalog_install"
@@ -424,7 +424,7 @@ async def _clients_create(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- client create non-destructive; #1770a
+    # lint-allow: mcp-admin-guardrail -- client create no-mutation; #1770a
 ) -> str:
     """Create a new client application (non-destructive write)."""
     tool = "synthorg_clients_create"

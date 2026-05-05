@@ -137,12 +137,14 @@ class AdminGuardrailFields(_ArgsBase):
     @field_validator("confirm", mode="before")
     @classmethod
     def _confirm_must_be_python_bool(cls, value: Any) -> Any:
-        """Reject truthy non-bool ``confirm`` values.
+        """Reject non-bool ``confirm`` values.
 
         Pydantic's ``Literal[True]`` validator coerces any truthy
         value (``1``, ``"true"``, ``"yes"``) to ``True``; the
         ``require_admin_guardrails`` helper rejects those, and the
-        mixin preserves that semantics.
+        mixin preserves that semantics. ``False`` is rejected by
+        ``Literal[True]`` itself; this validator covers the truthy-
+        coercion path.
         """
         if not isinstance(value, bool):
             # ruff noqa: TRY004 -- ValueError is what Pydantic converts

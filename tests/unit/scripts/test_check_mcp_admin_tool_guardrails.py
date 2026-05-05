@@ -712,12 +712,9 @@ SETTINGS_HANDLERS = MappingProxyType(
 
 
 def test_main_returns_zero_on_clean_real_tree() -> None:
-    """The real repo tree should be clean once Phase 3 lands.
-
-    Until Phase 3 lands the seven known offenders remain; this test
-    is XFAIL-able by overriding to assert nonzero. After Phase 3 it
-    asserts zero.
+    """The real repo tree must be clean: every admin handler either
+    calls ``require_admin_guardrails(arguments, actor)`` as the
+    lexically first call OR carries an annotated opt-out marker.
     """
     rc = _MODULE.main([])
-    # Pre-Phase-3: 7 violations expected; Post-Phase-3: 0.
-    assert rc in (0, 1)
+    assert rc == 0
