@@ -23,6 +23,7 @@ import type { WsEvent } from '@/api/types/websocket'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 /** All valid fine-tune stage values for runtime validation of WS payloads. */
 const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>([
@@ -71,7 +72,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       const status = await getFineTuneStatus()
       set({ status, error: null })
     } catch (err) {
-      log.error('Failed to fetch fine-tune status', err)
+      log.error('Failed to fetch fine-tune status', sanitizeForLog(err))
       set({ error: getErrorMessage(err) })
     }
   },
@@ -81,7 +82,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       const checkpoints = await listCheckpoints()
       set({ checkpoints, error: null })
     } catch (err) {
-      log.error('Failed to fetch checkpoints', err)
+      log.error('Failed to fetch checkpoints', sanitizeForLog(err))
       set({ error: getErrorMessage(err) })
     }
   },
@@ -91,7 +92,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       const runs = await listRuns()
       set({ runs, error: null })
     } catch (err) {
-      log.error('Failed to fetch runs', err)
+      log.error('Failed to fetch runs', sanitizeForLog(err))
       set({ error: getErrorMessage(err) })
     }
   },
@@ -108,7 +109,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       const status = await startFineTune(request)
       set({ status, loading: false })
     } catch (err) {
-      log.error('Failed to start fine-tune run', err)
+      log.error('Failed to start fine-tune run', sanitizeForLog(err))
       set({ loading: false })
       useToastStore.getState().add({
         variant: 'error',
@@ -123,7 +124,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       const status = await cancelFineTune()
       set({ status })
     } catch (err) {
-      log.error('Failed to cancel fine-tune run', err)
+      log.error('Failed to cancel fine-tune run', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to cancel fine-tune run'),
@@ -138,7 +139,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       const result = await runPreflight(request)
       set({ preflight: result, loading: false })
     } catch (err) {
-      log.error('Failed to run preflight', err)
+      log.error('Failed to run preflight', sanitizeForLog(err))
       set({ loading: false })
       useToastStore.getState().add({
         variant: 'error',
@@ -153,7 +154,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await deployCheckpoint(id)
       await get().fetchCheckpoints()
     } catch (err) {
-      log.error('Failed to deploy checkpoint', err)
+      log.error('Failed to deploy checkpoint', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to deploy checkpoint'),
@@ -167,7 +168,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await rollbackCheckpoint(id)
       await get().fetchCheckpoints()
     } catch (err) {
-      log.error('Failed to rollback checkpoint', err)
+      log.error('Failed to rollback checkpoint', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to rollback checkpoint'),
@@ -181,7 +182,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await deleteCheckpoint(id)
       await get().fetchCheckpoints()
     } catch (err) {
-      log.error('Failed to delete checkpoint', err)
+      log.error('Failed to delete checkpoint', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Failed to delete checkpoint'),

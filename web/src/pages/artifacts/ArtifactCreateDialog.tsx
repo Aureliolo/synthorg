@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -45,12 +45,17 @@ export function ArtifactCreateDialog({ open, onOpenChange, onCreate }: ArtifactC
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitting, setSubmitting] = useState(false)
 
+  // Reset on close runs in an effect rather than during render: calling
+  // setForm/setErrors during render triggers an extra render and trips
+  // Strict Mode invariants on the first opened-then-closed cycle.
   const prevOpenRef = useRef(open)
-  if (!open && prevOpenRef.current) {
-    setForm(INITIAL_FORM)
-    setErrors({})
-  }
-  prevOpenRef.current = open
+  useEffect(() => {
+    if (!open && prevOpenRef.current) {
+      setForm(INITIAL_FORM)
+      setErrors({})
+    }
+    prevOpenRef.current = open
+  }, [open])
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -87,12 +92,12 @@ export function ArtifactCreateDialog({ open, onOpenChange, onCreate }: ArtifactC
   return (
     <Dialog.Root open={open} onOpenChange={(v: boolean) => { if (!submitting) onOpenChange(v) }}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-[var(--so-transition-default)] ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         <Dialog.Popup
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border-bright bg-surface p-card-tight sm:p-card md:p-card-roomy shadow-[var(--so-shadow-card-hover)]',
-            'transition-[opacity,translate,scale] duration-200 ease-out',
+            'transition-[opacity,translate,scale] duration-[var(--so-transition-default)] ease-out',
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
             'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
           )}

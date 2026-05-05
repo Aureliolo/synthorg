@@ -145,10 +145,22 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   createArtifact: async (data: CreateArtifactRequest) => {
     try {
       const created = await createArtifactApi(data)
-      const snapshot = useArtifactsStore.getState()
-      set({
-        artifacts: [created, ...snapshot.artifacts],
-        totalArtifacts: snapshot.totalArtifacts + 1,
+      // Bump the list-token so any in-flight ``listArtifacts`` resolves
+      // as stale and cannot overwrite this optimistic insert with an
+      // older snapshot. Use a functional ``set`` so the dedup check
+      // observes the latest state (e.g. when a WS event for the same id
+      // already arrived during the ``await``), and only increment the
+      // total when we are actually adding a new id.
+      _listRequestToken++
+      set((state) => {
+        const exists = state.artifacts.some((a) => a.id === created.id)
+        const filtered = state.artifacts.filter((a) => a.id !== created.id)
+        return {
+          artifacts: [created, ...filtered],
+          totalArtifacts: exists
+            ? state.totalArtifacts
+            : state.totalArtifacts + 1,
+        }
       })
       useToastStore.getState().add({
         variant: 'success',

@@ -2,6 +2,7 @@
 
 import axios, { type AxiosError } from 'axios'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { ErrorCode, ErrorDetail } from '@/api/types/errors'
 
 const log = createLogger('errors')
@@ -128,7 +129,10 @@ export function getErrorMessage(error: unknown): string {
       }
       return `${msg.slice(0, MAX_ERROR_MESSAGE_LEN)}…`
     }
-    log.warn('Error message suppressed (JSON-shaped):', msg?.slice(0, 300))
+    log.warn(
+      'Error message suppressed (JSON-shaped)',
+      sanitizeForLog({ preview: msg?.slice(0, 300) }),
+    )
     return 'An unexpected error occurred. Please refresh the page or contact support if this persists.'
   }
 
