@@ -96,7 +96,8 @@ def _make_synthetic_tree(
 
 
 def _scan(project_root: Path) -> int:
-    return _MODULE._scan_all(project_root)
+    count: int = _MODULE._scan_all(project_root)
+    return count
 
 
 class TestComparison:
