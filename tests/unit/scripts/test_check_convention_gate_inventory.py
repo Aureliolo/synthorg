@@ -473,6 +473,41 @@ def test_load_inventory_raises_schema_error_on_invalid_utf8(fake_repo: Path) -> 
         _MODULE.load_inventory(inventory)
 
 
+def test_inventory_yaml_symlink_escape_rejected(
+    fake_repo: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """A symlinked inventory yaml resolving outside repo_root is rejected.
+
+    ``check()`` validates containment of the inventory path before loading,
+    same containment guarantee already applied to canonical doc files and
+    gate-script targets.
+    """
+    outside_dir = tmp_path_factory.mktemp("outside_inventory")
+    outside_yaml = outside_dir / "evil.yaml"
+    outside_yaml.write_text("mandatory_rules: []\n", encoding="utf-8")
+
+    inventory_link = fake_repo / "scripts" / "convention_gate_map.yaml"
+    try:
+        inventory_link.symlink_to(outside_yaml)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation unsupported on this platform: {exc}")
+
+    _write(fake_repo / "CLAUDE.md", "# Title\n\nNo MANDATORY paragraphs here.\n")
+    with pytest.raises(_MODULE.InventorySchemaError):
+        _MODULE.check(fake_repo)
+
+
+def test_main_exit_two_on_repo_root_pointing_at_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--repo-root`` pointing at a regular file exits 2 with a clear message."""
+    not_a_dir = tmp_path / "regular_file"
+    not_a_dir.write_text("not a directory\n", encoding="utf-8")
+    assert _MODULE.main(["--repo-root", str(not_a_dir)]) == 2
+    err = capsys.readouterr().err
+    assert "must be a directory" in err
+
+
 def test_extract_two_inline_bold_on_same_line() -> None:
     """A line with two ``**Foo (MANDATORY)**`` matches must yield both entries."""
     text = "**Foo (MANDATORY)** and also **Bar (MANDATORY)** in one sentence."

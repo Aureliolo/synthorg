@@ -485,7 +485,9 @@ def check(repo_root: Path, *, verbose: bool = False) -> list[Violation]:
             from a correctly-empty repo.
     """
     extracted = scan_repo(repo_root)
-    inventory = load_inventory(repo_root / _INVENTORY_RELATIVE)
+    inventory_path = repo_root / _INVENTORY_RELATIVE
+    _relative_posix(inventory_path, repo_root)
+    inventory = load_inventory(inventory_path)
     if verbose:
         print(
             f"convention-gate: extracted {len(extracted)} MANDATORY entries,"
@@ -498,7 +500,11 @@ def check(repo_root: Path, *, verbose: bool = False) -> list[Violation]:
 def _resolve_repo_root(arg: Path | None) -> Path:
     if arg is None:
         return _REPO_ROOT_DEFAULT
-    return arg.resolve(strict=True)
+    resolved = arg.resolve(strict=True)
+    if not resolved.is_dir():
+        msg = f"--repo-root must be a directory: {resolved}"
+        raise NotADirectoryError(msg)
+    return resolved
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -523,6 +529,9 @@ def _resolve_repo_root_or_exit(arg: Path | None) -> Path | int:
         return _resolve_repo_root(arg)
     except FileNotFoundError as exc:
         print(f"Error: --repo-root does not exist: {exc}", file=sys.stderr)
+        return 2
+    except NotADirectoryError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 2
     except OSError as exc:
         print(
