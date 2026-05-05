@@ -127,6 +127,11 @@ jobs:
       - name: Typed-boundary contract gate (RFC #1711)
         run: uv run python scripts/check_boundary_typed.py
 
+      - name: Dead API endpoints gate (frontend ↔ backend route parity)
+        run: >-
+          uv run python scripts/check_dead_api_endpoints.py
+          --repo-root "${{ github.workspace }}"
+
   # ── Docs: Doc-claim drift gate ──
   # Runs on python OR doc_claims so a docs-only PR that bumps a guarded
   # claim (eg "100+ event constant modules") still triggers the gate.

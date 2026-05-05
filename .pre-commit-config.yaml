@@ -13,7 +13,7 @@ ci:
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
-  #     list-pagination:
+  #     list-pagination / dead-api-endpoints:
   #     scoped gates that need ``uv`` + repo source -- redundant given
   #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
   #   - check-push-rebased / check-single-migration-per-pr /
@@ -25,7 +25,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy, dead-api-endpoints]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -294,6 +294,19 @@ repos:
         files: ^(src/synthorg/.*\.py|scripts/check_domain_error_hierarchy\.py|scripts/domain_error_hierarchy_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
+
+      - id: dead-api-endpoints
+        name: dead-API-endpoint gate (frontend ↔ backend route parity)
+        entry: uv run python scripts/check_dead_api_endpoints.py
+        language: system
+        # Trigger on any change to controller registration, controller
+        # files, the WS handler, A2A controllers, every TS/TSX source
+        # under web/src/, the gate scripts themselves, or the baseline
+        # so a PR cannot land a frontend caller pointing at a dead
+        # endpoint without the gate running.
+        files: ^(src/synthorg/api/(app|controllers/.*)\.py|src/synthorg/a2a/.*\.py|web/src/.*\.(ts|tsx)|scripts/(check_dead_api_endpoints|_dead_api_endpoints_.*)\.py|scripts/dead_api_endpoints_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
 
       - id: request-dto-forbid-extra
         name: request-DTO extra="forbid" gate (src/synthorg/api)
