@@ -370,7 +370,7 @@ class ProviderController(Controller):
                 resource="provider",
                 name=data.name,
             )
-            raise ConflictError(str(exc)) from exc
+            raise ConflictError(safe_error_description(exc)) from exc
         except ProviderValidationError as exc:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -378,7 +378,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @post(
@@ -421,7 +421,7 @@ class ProviderController(Controller):
                 resource="provider",
                 name=data.name,
             )
-            raise ConflictError(str(exc)) from exc
+            raise ConflictError(safe_error_description(exc)) from exc
         except ProviderValidationError as exc:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -429,7 +429,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @put(
@@ -998,7 +998,7 @@ class ProviderController(Controller):
                 name=data.model.id,
                 provider=name,
             )
-            raise ConflictError(str(exc)) from exc
+            raise ConflictError(safe_error_description(exc)) from exc
         return ApiResponse(data=to_provider_response(updated))
 
     @post(

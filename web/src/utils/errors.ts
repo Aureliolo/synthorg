@@ -62,8 +62,17 @@ export function getErrorMessage(error: unknown): string {
         // assumed concurrency only, which misled users when the cause
         // was a duplicate or version skew.
         return 'The resource state changed. Refresh the page and try again.'
-      case 422:
+      case 422: {
+        // Surface the structured validation detail when the legacy
+        // ``data.error`` field is absent: the backend's ``error_detail.detail``
+        // names the specific field / rule that failed and is far more
+        // useful than a generic "check your input" line.
+        const structuredDetail = data?.error_detail?.detail
+        if (typeof structuredDetail === 'string' && structuredDetail.trim() !== '') {
+          return structuredDetail
+        }
         return 'Validation error. Please check your input.'
+      }
       case 429:
         return 'Too many requests. Please try again in a moment.'
       case 502:
@@ -94,13 +103,15 @@ export function getErrorMessage(error: unknown): string {
   }
 
   if (error instanceof Error) {
-    // Only surface messages from errors explicitly thrown by our own code.
-    // Errors from unknown sources could contain backend internals.
+    // JSON-shaped messages are suppressed because they typically carry a
+    // backend stack trace or structured envelope leaked through to the
+    // client. Plain prose passes through regardless of length so genuine
+    // long validation messages reach the user.
     const msg = error.message
-    if (msg && msg.length < 200 && !/^\{/.test(msg)) {
+    if (msg && !/^\{/.test(msg)) {
       return msg
     }
-    log.warn('Error message suppressed (too long or JSON-shaped):', msg?.slice(0, 300))
+    log.warn('Error message suppressed (JSON-shaped):', msg?.slice(0, 300))
     return 'An unexpected error occurred. Please refresh the page or contact support if this persists.'
   }
 
@@ -189,4 +200,24 @@ export function getCrudErrorTitle(
     if (status === 429) return { title: 'Rate limit reached' }
   }
   return { title: fallback }
+}
+
+/**
+ * Group an array of per-item failure reasons by identical text so a
+ * batch operation surfaces "5× version mismatch; 2× not found" instead
+ * of repeating the same line for every failed id.
+ *
+ * Ordering is insertion order of the first occurrence, which keeps the
+ * most-recent reason visible at the head when callers feed reasons in
+ * the order results came back.
+ */
+export function formatBatchErrors(reasons: readonly string[]): string {
+  if (reasons.length === 0) return ''
+  const counts = new Map<string, number>()
+  for (const reason of reasons) {
+    counts.set(reason, (counts.get(reason) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .map(([reason, count]) => (count === 1 ? reason : `${count}× ${reason}`))
+    .join('; ')
 }

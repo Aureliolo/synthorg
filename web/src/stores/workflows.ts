@@ -8,7 +8,7 @@ import {
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { formatBatchErrors, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import type {
   BlueprintInfo,
@@ -285,12 +285,15 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
       )
       const succeededIds: string[] = []
       const failedReasons: string[] = []
+      const failedDetails: { id: string; reason: string }[] = []
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           succeededIds.push(result.value)
         } else {
           const id = ids[index] ?? '<unknown>'
-          failedReasons.push(`${id}: ${getErrorMessage(result.reason)}`)
+          const reason = getErrorMessage(result.reason)
+          failedReasons.push(reason)
+          failedDetails.push({ id, reason })
         }
       })
       if (succeededIds.length > 0) {
@@ -307,15 +310,20 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
           }
         })
       }
-      if (failedReasons.length > 0) {
+      if (failedDetails.length > 0) {
         log.error(
           'Batch delete workflows partial failure',
-          sanitizeForLog({ failedCount: failedReasons.length, failedReasons }),
+          sanitizeForLog({ failedCount: failedDetails.length, failedDetails }),
         )
       }
       // Store owns the mutation UX: aggregated toast per outcome so
       // callers do not need to assemble their own summary messaging.
+      // ``formatBatchErrors`` groups identical reasons (e.g. five
+      // workflows that all failed with the same conflict) so a 50-row
+      // failure does not produce a 50-line toast.
       const failed = ids.length - succeededIds.length
+      const groupedDescription =
+        failedReasons.length > 0 ? formatBatchErrors(failedReasons) : undefined
       if (succeededIds.length > 0 && failed === 0) {
         useToastStore.getState().add({
           variant: 'success',
@@ -328,8 +336,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
         useToastStore.getState().add({
           variant: 'warning',
           title: `Deleted ${succeededIds.length} of ${ids.length} workflows`,
-          description: failedReasons.slice(0, 3).join('; ') +
-            (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+          description: groupedDescription,
         })
       } else if (failed > 0) {
         useToastStore.getState().add({
@@ -338,8 +345,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
             failed === 1
               ? 'Failed to delete workflow'
               : `Failed to delete ${failed} workflows`,
-          description: failedReasons.slice(0, 3).join('; ') +
-            (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+          description: groupedDescription,
         })
       }
       // Total-failure case returns the false sentinel per the store
