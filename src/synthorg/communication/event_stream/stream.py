@@ -252,6 +252,19 @@ class EventStreamHub:
             )
             raise ValueError(msg)
         async with self._lifecycle_lock_for_current_loop():
+            # If the hub instance survived a previous loop teardown
+            # (shared-app conftest path: hub lives across TestClients,
+            # each of which gets a fresh loop), the recorded janitor
+            # task is bound to a dead loop. Treat it as gone so this
+            # ``start()`` spawns a fresh janitor on the live loop.
+            current_loop = asyncio.get_running_loop()
+            task = self._janitor_task
+            if task is not None and (
+                task.done() or task.get_loop() is not current_loop
+            ):
+                self._janitor_task = None
+                self._running = False
+
             if self._stop_failed:
                 msg = (
                     "EventStreamHub cannot restart after a timed-out"
@@ -295,6 +308,12 @@ class EventStreamHub:
             task = self._janitor_task
             self._janitor_task = None
             if task is None:
+                logger.info(EVENT_STREAM_HUB_STOPPED)
+                return
+            current_loop = asyncio.get_running_loop()
+            if task.get_loop() is not current_loop:
+                # The recorded janitor was spawned on a now-dead loop;
+                # we cannot cancel or await it from here. Drop it.
                 logger.info(EVENT_STREAM_HUB_STOPPED)
                 return
             task.cancel()

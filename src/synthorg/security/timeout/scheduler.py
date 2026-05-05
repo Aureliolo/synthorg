@@ -230,6 +230,13 @@ class ApprovalTimeoutScheduler:
                 )
                 raise
             self._task = None
+            # Drop loop-bound primitives so a subsequent ``start()`` on
+            # a different event loop reconstructs them. Without this,
+            # ``_task_is_on_current_loop()`` is skipped (``_task`` is
+            # already ``None``) and the next ``start()`` reuses the
+            # wake event / lifecycle lock from the now-dead loop.
+            self._wake_event = None
+            self._lifecycle_lock = None
             logger.info(TIMEOUT_SCHEDULER_STOPPED)
 
     async def _cancel_and_drain(self) -> None:

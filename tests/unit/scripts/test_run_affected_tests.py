@@ -782,6 +782,7 @@ def test_run_isolation_gate_invokes_pytest_with_correct_flags(
 # ── event loop policy fixtures ───────────────────────────────────
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific policy")
 async def test_unit_tier_uses_selector_event_loop_on_windows() -> None:
     """Async tests in the unit tier run under a non-Proactor loop on Windows.
 
@@ -793,8 +794,6 @@ async def test_unit_tier_uses_selector_event_loop_on_windows() -> None:
     ProactorEventLoop -- the exact failure mode the policy guards
     against.
     """
-    if sys.platform != "win32":
-        pytest.skip("Windows-specific policy")
     loop_class_name = type(asyncio.get_running_loop()).__name__
     assert "Proactor" not in loop_class_name, (
         f"unit tier ran under {loop_class_name}; expected a selector-based loop"

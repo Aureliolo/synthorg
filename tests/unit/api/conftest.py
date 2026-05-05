@@ -186,17 +186,23 @@ def _get_test_password_hash(
         # Already inside a loop; run the hashing in a worker thread
         # so we do not nest event loops on the same thread.
         result: list[str] = []
+        errors: list[BaseException] = []
 
         def _hash_in_thread() -> None:
-            result.append(
-                asyncio.run(
-                    auth_service.hash_password_async("test-password-12chars"),
-                ),
-            )
+            try:
+                result.append(
+                    asyncio.run(
+                        auth_service.hash_password_async("test-password-12chars"),
+                    ),
+                )
+            except BaseException as exc:
+                errors.append(exc)
 
         thread = threading.Thread(target=_hash_in_thread)
         thread.start()
         thread.join()
+        if errors:
+            raise errors[0]
         _TEST_PASSWORD_HASHES[role] = result[0]
     return _TEST_PASSWORD_HASHES[role]
 

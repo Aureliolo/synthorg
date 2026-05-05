@@ -168,7 +168,7 @@ repos:
         entry: uv
         args: [run, python, scripts/check_no_loop_bound_init.py]
         language: system
-        files: ^src/synthorg/.*\.py$
+        files: ^(src/synthorg/.*\.py|scripts/check_no_loop_bound_init\.py|scripts/loop_bound_init_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
 
       - id: no-new-bare-mock

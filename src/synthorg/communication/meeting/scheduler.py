@@ -137,14 +137,24 @@ class MeetingScheduler:
         return self._running
 
     def _lifecycle_lock_for_current_loop(self) -> asyncio.Lock:
-        """Return a lifecycle lock bound to the running loop, rebinding if needed."""
+        """Return a lifecycle lock bound to the running loop, rebinding if needed.
+
+        A pre-seeded lock with ``_lifecycle_lock_loop is None`` (e.g. a
+        test double injected before any ``start()`` ran) is preserved
+        unless the recorded loop is concretely different from the
+        current one.  Without this guard, the helper would replace the
+        injected lock on first call and silently weaken race tests.
+        """
         try:
             current = asyncio.get_running_loop()
         except RuntimeError:
             if self._lifecycle_lock is None:
                 self._lifecycle_lock = asyncio.Lock()
             return self._lifecycle_lock
-        if self._lifecycle_lock is None or self._lifecycle_lock_loop is not current:
+        if self._lifecycle_lock is None or (
+            self._lifecycle_lock_loop is not None
+            and self._lifecycle_lock_loop is not current
+        ):
             self._lifecycle_lock = asyncio.Lock()
             self._lifecycle_lock_loop = current
         return self._lifecycle_lock
@@ -183,6 +193,20 @@ class MeetingScheduler:
             SchedulerAlreadyRunningError: If the scheduler is already running.
         """
         async with self._lifecycle_lock_for_current_loop():
+            # If every recorded task is bound to a dead loop or already
+            # done, the scheduler instance survived a loop teardown
+            # (test scenarios where pytest-asyncio creates a fresh loop
+            # per test). Treat the carried-over state as gone so this
+            # ``start()`` rebuilds tasks on the live loop instead of
+            # raising ``SchedulerAlreadyRunningError`` against ghosts.
+            current_loop = asyncio.get_running_loop()
+            if self._tasks and all(
+                task.done() or task.get_loop() is not current_loop
+                for task in self._tasks
+            ):
+                self._tasks = []
+                self._running = False
+
             if self._stop_failed:
                 logger.warning(
                     MEETING_SCHEDULER_ERROR,
@@ -250,6 +274,46 @@ class MeetingScheduler:
                 triggered_count=len(self.get_triggered_types()),
             )
 
+    def _handle_drain_results(
+        self,
+        results: list[BaseException | None],
+    ) -> None:
+        """Surface drain failures from cancelled periodic tasks.
+
+        Cancelled results are expected; ``MemoryError`` and
+        ``RecursionError`` propagate so a system-critical death is not
+        hidden behind a clean-shutdown log line; other exceptions are
+        logged at ERROR with a redacted description.
+        """
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                continue
+            if isinstance(result, MemoryError | RecursionError):
+                raise result
+            if isinstance(result, Exception):
+                logger.error(
+                    MEETING_SCHEDULER_ERROR,
+                    note="periodic task error during shutdown",
+                    error_type=type(result).__name__,
+                    error=safe_error_description(result),
+                )
+
+    def _drop_cross_loop_tasks(self, current_loop: asyncio.AbstractEventLoop) -> bool:
+        """Discard tasks bound to a dead loop. True iff state was reset.
+
+        Returns ``True`` when every recorded task is bound to a loop
+        other than *current_loop* (or ``self._tasks`` is empty), which
+        means a ``stop()`` call has nothing to cancel/drain on this
+        loop and should short-circuit.
+        """
+        if not self._tasks:
+            return False
+        if all(task.get_loop() is not current_loop for task in self._tasks):
+            self._tasks = []
+            self._running = False
+            return True
+        return False
+
     async def stop(self) -> None:
         """Cancel all periodic tasks and wait for completion.
 
@@ -258,6 +322,11 @@ class MeetingScheduler:
         """
         async with self._lifecycle_lock_for_current_loop():
             if not self._running:
+                return
+
+            current_loop = asyncio.get_running_loop()
+            if self._drop_cross_loop_tasks(current_loop):
+                logger.info(MEETING_SCHEDULER_STOPPED)
                 return
 
             for task in self._tasks:
@@ -313,32 +382,7 @@ class MeetingScheduler:
                         pending_tasks=sum(1 for t in self._tasks if not t.done()),
                     )
                     raise
-                for result in results:
-                    if isinstance(result, asyncio.CancelledError):
-                        continue
-                    # Propagate system-critical errors -- a periodic
-                    # task that died with MemoryError / RecursionError
-                    # must surface to the caller, not be hidden behind
-                    # a log line and a reported-clean shutdown.
-                    if isinstance(result, MemoryError | RecursionError):
-                        raise result
-                    if isinstance(result, Exception):
-                        # Log at ERROR with exc_info so the traceback
-                        # reaches operators -- str(result) alone loses
-                        # the call stack, which is exactly what you
-                        # need to diagnose a periodic-task shutdown
-                        # failure that may have leaked a resource
-                        # (connection, lock, file handle).
-                        # ``exc_info=<exception>`` emits the same
-                        # traceback as ``exc_info=True`` and would
-                        # re-leak credential frame-locals that
-                        # ``safe_error_description`` already scrubbed.
-                        logger.error(
-                            MEETING_SCHEDULER_ERROR,
-                            note="periodic task error during shutdown",
-                            error_type=type(result).__name__,
-                            error=safe_error_description(result),
-                        )
+                self._handle_drain_results(results)
             self._tasks = []
             self._running = False
 

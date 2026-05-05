@@ -64,34 +64,97 @@ _LIFECYCLE_METHODS = frozenset({"start", "stop", "_run", "run", "_run_loop"})
 _OPT_OUT_MARKER = "lint-allow: loop-bound-init"
 
 
-def _asyncio_primitive_name(node: ast.expr) -> str | None:
-    """Return the primitive name if *node* is ``asyncio.X()`` for X in the set.
+def _absorb_import(node: ast.Import, module_aliases: set[str]) -> None:
+    """Record ``import asyncio as <alias>`` aliases for the module."""
+    for alias in node.names:
+        if alias.name == "asyncio" and alias.asname:
+            module_aliases.add(alias.asname)
 
-    Recognises both ``asyncio.Lock()`` and ``asyncio.locks.Lock()``.
+
+def _absorb_import_from(
+    node: ast.ImportFrom,
+    module_aliases: set[str],
+    direct_primitives: dict[str, str],
+) -> None:
+    """Record ``from asyncio import ...`` shapes."""
+    if node.module == "asyncio":
+        for alias in node.names:
+            if alias.name in _LOOP_BOUND_PRIMITIVES:
+                direct_primitives[alias.asname or alias.name] = alias.name
+            elif alias.name == "locks":
+                module_aliases.add(alias.asname or alias.name)
+    elif node.module == "asyncio.locks":
+        for alias in node.names:
+            if alias.name in _LOOP_BOUND_PRIMITIVES:
+                direct_primitives[alias.asname or alias.name] = alias.name
+
+
+def _collect_asyncio_aliases(
+    tree: ast.Module,
+) -> tuple[frozenset[str], dict[str, str]]:
+    """Return ``(asyncio module aliases, alias -> primitive name)``.
+
+    Handles every common ``asyncio`` import shape so the gate cannot be
+    bypassed by rewriting ``asyncio.Lock()`` as ``Lock()`` or by
+    aliasing ``asyncio`` itself.
+    """
+    module_aliases: set[str] = {"asyncio"}
+    direct_primitives: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            _absorb_import(node, module_aliases)
+        elif isinstance(node, ast.ImportFrom):
+            _absorb_import_from(node, module_aliases, direct_primitives)
+    return frozenset(module_aliases), direct_primitives
+
+
+_DEFAULT_ASYNCIO_ALIASES: frozenset[str] = frozenset({"asyncio"})
+
+
+def _asyncio_primitive_name(
+    node: ast.expr,
+    asyncio_aliases: frozenset[str] = _DEFAULT_ASYNCIO_ALIASES,
+    direct_primitives: dict[str, str] | None = None,
+) -> str | None:
+    """Return the primitive name if *node* constructs an asyncio primitive.
+
+    Recognises ``asyncio.Lock()``, ``aio.Lock()`` (aliased module),
+    ``asyncio.locks.Lock()`` (chained), ``locks.Lock()``
+    (``from asyncio import locks``), and ``Lock()`` /
+    ``from asyncio import Lock as L; L()`` (direct import).
     """
     if not isinstance(node, ast.Call):
         return None
     func = node.func
-    if not isinstance(func, ast.Attribute):
-        return None
-    if func.attr not in _LOOP_BOUND_PRIMITIVES:
-        return None
-    base = func.value
-    while isinstance(base, ast.Attribute):
-        base = base.value
-    if isinstance(base, ast.Name) and base.id == "asyncio":
-        return func.attr
+    if isinstance(func, ast.Name):
+        if direct_primitives is None:
+            return None
+        return direct_primitives.get(func.id)
+    if isinstance(func, ast.Attribute):
+        if func.attr not in _LOOP_BOUND_PRIMITIVES:
+            return None
+        base = func.value
+        while isinstance(base, ast.Attribute):
+            base = base.value
+        if isinstance(base, ast.Name) and base.id in asyncio_aliases:
+            return func.attr
     return None
 
 
 def _self_attr_assignments(
     func: ast.FunctionDef,
+    asyncio_aliases: frozenset[str],
+    direct_primitives: dict[str, str],
 ) -> list[tuple[int, str, str]]:
     """Yield ``(lineno, attr_name, primitive_name)`` for ``self.X = asyncio.Y()``."""
     findings: list[tuple[int, str, str]] = []
     for stmt in ast.walk(func):
         if isinstance(stmt, ast.Assign):
-            primitive = _asyncio_primitive_name(stmt.value)
+            primitive = _asyncio_primitive_name(
+                stmt.value,
+                asyncio_aliases,
+                direct_primitives,
+            )
             if primitive is None:
                 continue
             findings.extend(
@@ -104,7 +167,15 @@ def _self_attr_assignments(
                 )
             )
         elif isinstance(stmt, ast.AnnAssign):
-            primitive = _asyncio_primitive_name(stmt.value) if stmt.value else None
+            primitive = (
+                _asyncio_primitive_name(
+                    stmt.value,
+                    asyncio_aliases,
+                    direct_primitives,
+                )
+                if stmt.value
+                else None
+            )
             if primitive is None:
                 continue
             target = stmt.target
@@ -154,6 +225,7 @@ def _scan_file(path: Path) -> list[str]:
         # exercising this scanner directly).  Fall back to the basename
         # so test assertions can still match on the class:attr suffix.
         rel = path.name
+    asyncio_aliases, direct_primitives = _collect_asyncio_aliases(tree)
     findings: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
@@ -163,7 +235,11 @@ def _scan_file(path: Path) -> list[str]:
         init = _find_init(node)
         if init is None:
             continue
-        for lineno, attr, primitive in _self_attr_assignments(init):
+        for lineno, attr, primitive in _self_attr_assignments(
+            init,
+            asyncio_aliases,
+            direct_primitives,
+        ):
             if _line_is_opt_out(source_lines, lineno):
                 continue
             findings.append(f"{rel}:{lineno}:{node.name}:{attr}:{primitive}")

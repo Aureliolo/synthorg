@@ -74,6 +74,96 @@ def test_ignores_asyncio_non_loop_bound() -> None:
     assert _MODULE._asyncio_primitive_name(node) is None  # type: ignore[attr-defined]
 
 
+def test_flags_direct_imported_primitive(tmp_path: Path) -> None:
+    """``from asyncio import Lock; self._lock = Lock()`` is flagged."""
+    source = (
+        "from asyncio import Lock\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._lock = Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert len(findings) == 1
+    assert ":Service:_lock:Lock" in findings[0]
+
+
+def test_flags_aliased_direct_imported_primitive(tmp_path: Path) -> None:
+    """``from asyncio import Lock as L; self._lock = L()`` is flagged."""
+    source = (
+        "from asyncio import Lock as L\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._lock = L()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert len(findings) == 1
+    # Output uses the original primitive name, not the alias.
+    assert ":Service:_lock:Lock" in findings[0]
+
+
+def test_flags_aliased_module(tmp_path: Path) -> None:
+    """``import asyncio as aio; self._lock = aio.Lock()`` is flagged."""
+    source = (
+        "import asyncio as aio\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._lock = aio.Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert len(findings) == 1
+    assert ":Service:_lock:Lock" in findings[0]
+
+
+def test_flags_from_asyncio_locks_submodule(tmp_path: Path) -> None:
+    """``from asyncio import locks; self._lock = locks.Lock()`` is flagged."""
+    source = (
+        "from asyncio import locks\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._lock = locks.Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert len(findings) == 1
+    assert ":Service:_lock:Lock" in findings[0]
+
+
+def test_flags_from_asyncio_locks_direct(tmp_path: Path) -> None:
+    """``from asyncio.locks import Lock`` direct import is flagged."""
+    source = (
+        "from asyncio.locks import Lock\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._lock = Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert len(findings) == 1
+    assert ":Service:_lock:Lock" in findings[0]
+
+
+def test_does_not_flag_unrelated_callable_named_lock(tmp_path: Path) -> None:
+    """A ``Lock`` callable not imported from asyncio is left alone."""
+    source = (
+        "from threading import Lock\n"
+        "class Service:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._lock = Lock()\n"
+        "    async def start(self) -> None:\n"
+        "        pass\n"
+    )
+    findings = _scan_source(source, tmp_path)
+    assert findings == []
+
+
 # ── full file scan ───────────────────────────────────────────────
 
 
@@ -202,6 +292,8 @@ def test_baseline_grandfathers_existing_sites(tmp_path: Path) -> None:
     baseline_path.write_text(findings[0] + "\n", encoding="utf-8")
     loaded = _MODULE._load_baseline(baseline_path)  # type: ignore[attr-defined]
     assert findings[0] in loaded
+    new_findings = [f for f in findings if f not in loaded]
+    assert new_findings == []
 
 
 # ── canonical fixed exemplars ───────────────────────────────────
@@ -211,8 +303,11 @@ def test_scheduler_no_longer_flagged() -> None:
     """``ApprovalTimeoutScheduler`` is the canonical fixed exemplar."""
     path = _REPO_ROOT / "src" / "synthorg" / "security" / "timeout" / "scheduler.py"
     findings = _MODULE._scan_file(path)  # type: ignore[attr-defined]
-    # The class once had ``self._wake_event`` and ``self._lifecycle_lock``
-    # in __init__; the fix moved them to None-initialisation.
+    # The class must initialise ``self._wake_event`` and
+    # ``self._lifecycle_lock`` to ``None`` in ``__init__`` so each
+    # ``start()`` rebinds them on the live loop; eager construction
+    # would re-introduce the cross-loop ``RuntimeError`` this gate
+    # exists to prevent.
     assert all("ApprovalTimeoutScheduler" not in f for f in findings)
 
 
