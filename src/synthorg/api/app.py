@@ -106,7 +106,7 @@ from synthorg.persistence.config_factory import (
     build_filesystem_artifact_storage,
     build_postgres_persistence_config_from_url,
     build_sqlite_persistence_config,
-    resolve_postgres_ssl_mode_from_env,
+    normalize_ssl_mode_value,
 )
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
@@ -299,7 +299,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             try:
                 pg_persistence_config = build_postgres_persistence_config_from_url(
                     db_url,
-                    ssl_mode_override=resolve_postgres_ssl_mode_from_env(),
+                    ssl_mode_override=normalize_ssl_mode_value(
+                        os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
+                    ),
                 )
                 persistence = create_backend(pg_persistence_config)
             except MemoryError, RecursionError:

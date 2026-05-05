@@ -70,9 +70,7 @@ _FORBIDDEN_IMPORTS: Final[dict[str, str]] = {
     # Backend configs -- callers should accept PersistenceConfig.
     "SQLiteConfig": "PersistenceConfig (via persistence.config_factory)",
     "PostgresConfig": "PersistenceConfig (via persistence.config_factory)",
-    "PostgresSslMode": (
-        "persistence.config_factory.resolve_postgres_ssl_mode_from_env()"
-    ),
+    "PostgresSslMode": ("persistence.config_factory.normalize_ssl_mode_value()"),
     # Concrete backends -- callers should depend on PersistenceBackend.
     "SQLitePersistenceBackend": "PersistenceBackend",
     "PostgresPersistenceBackend": "PersistenceBackend",
@@ -140,8 +138,8 @@ def _collect_module_aliases(
 ) -> dict[str, str]:
     """Return ``{access_path: forbidden_module}`` for forbidden module imports.
 
-    Two import shapes need coverage so the attribute-access pass can
-    resolve both:
+    Three import shapes need coverage so the attribute-access pass can
+    resolve every form of indirect access to a forbidden module:
 
     - ``import synthorg.persistence.config as cfg`` -- usage is
       ``cfg.SQLiteConfig``; the access base is the bare alias ``cfg``,
@@ -151,25 +149,39 @@ def _collect_module_aliases(
       walks the full dotted module path, so the key is the full module
       string (NOT just the root binding ``synthorg``: that wouldn't
       match the resolved attribute chain and would also collide with
-      unrelated ``synthorg.X`` imports). The map value is the
-      forbidden module the access reaches in either shape.
+      unrelated ``synthorg.X`` imports).
+    - ``from synthorg.persistence import config as cfg`` (or without
+      ``as``) -- usage is ``cfg.SQLiteConfig`` (or ``config.SQLiteConfig``);
+      the access base is the bound submodule name (the alias if given,
+      otherwise the imported leaf name). The full forbidden-module
+      string is reconstructed from ``node.module`` + ``alias.name``.
 
-    Suppression markers on the import line skip the alias entirely so
-    callers don't get a violation against an explicitly-allowed import.
+    The map value is the forbidden module the access reaches in any of
+    the three shapes. Suppression markers on the import line skip the
+    alias entirely so callers don't get a violation against an
+    explicitly-allowed import.
     """
     aliases_to_module: dict[str, str] = {}
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Import):
+        access_pairs: list[tuple[str, str]] = []
+        if isinstance(node, ast.Import):
+            access_pairs = [
+                (alias.asname or alias.name, alias.name) for alias in node.names
+            ]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            access_pairs = [
+                (alias.asname or alias.name, f"{node.module}.{alias.name}")
+                for alias in node.names
+            ]
+        else:
             continue
-        for alias in node.names:
-            module_name = alias.name
+        for access_key, module_name in access_pairs:
             if module_name not in _FORBIDDEN_MODULE_PATHS:
                 continue
             lineno = node.lineno
             line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
             if _line_has_trailing_marker(line):
                 continue
-            access_key = alias.asname or module_name
             aliases_to_module[access_key] = module_name
     return aliases_to_module
 

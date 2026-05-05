@@ -10,7 +10,7 @@ from synthorg.persistence.config_factory import (
     build_filesystem_artifact_storage,
     build_postgres_persistence_config_from_url,
     build_sqlite_persistence_config,
-    resolve_postgres_ssl_mode_from_env,
+    normalize_ssl_mode_value,
 )
 
 pytestmark = pytest.mark.unit
@@ -159,19 +159,18 @@ class TestBuildFilesystemArtifactStorage:
         assert storage.backend_name == "filesystem"
 
 
-class TestResolvePostgresSslModeFromEnv:
-    def test_unset_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("SYNTHORG_POSTGRES_SSL_MODE", raising=False)
-        assert resolve_postgres_ssl_mode_from_env() is None
+class TestNormalizeSslModeValue:
+    def test_none_returns_none(self) -> None:
+        assert normalize_ssl_mode_value(None) is None
 
-    def test_whitespace_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("SYNTHORG_POSTGRES_SSL_MODE", "   ")
-        assert resolve_postgres_ssl_mode_from_env() is None
+    def test_empty_returns_none(self) -> None:
+        assert normalize_ssl_mode_value("") is None
 
-    def test_value_round_trips(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("SYNTHORG_POSTGRES_SSL_MODE", "disable")
-        assert resolve_postgres_ssl_mode_from_env() == "disable"
+    def test_whitespace_returns_none(self) -> None:
+        assert normalize_ssl_mode_value("   ") is None
 
-    def test_value_is_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("SYNTHORG_POSTGRES_SSL_MODE", "  prefer  ")
-        assert resolve_postgres_ssl_mode_from_env() == "prefer"
+    def test_value_round_trips(self) -> None:
+        assert normalize_ssl_mode_value("disable") == "disable"
+
+    def test_value_is_stripped(self) -> None:
+        assert normalize_ssl_mode_value("  prefer  ") == "prefer"

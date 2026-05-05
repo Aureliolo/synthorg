@@ -12,7 +12,6 @@ The CLI compose template emits exactly one of
 per init choice; the helpers below cover both shapes.
 """
 
-import os
 from pathlib import Path  # noqa: TC003 -- runtime-resolvable annotation for PEP 649
 from typing import Any, NoReturn, get_args
 from urllib.parse import unquote, urlparse
@@ -209,19 +208,25 @@ def build_filesystem_artifact_storage(*, data_dir: Path) -> ArtifactStorageBacke
     return FileSystemArtifactStorage(data_dir=data_dir)
 
 
-def resolve_postgres_ssl_mode_from_env() -> str | None:
-    """Return the ``SYNTHORG_POSTGRES_SSL_MODE`` override, or ``None``.
+def normalize_ssl_mode_value(raw: str | None) -> str | None:
+    """Normalise a raw ``SYNTHORG_POSTGRES_SSL_MODE`` value.
 
-    Whitespace-only values become ``None`` so callers receive a clean
-    ``ssl_mode_override`` argument.
+    Trims whitespace and collapses empty / whitespace-only inputs to
+    ``None`` so callers receive a clean ``ssl_mode_override`` argument.
+    The actual environment read happens in ``api/app.py`` startup
+    wiring; this helper stays env-agnostic so the persistence package
+    can be reasoned about without its config decisions hidden behind a
+    process-wide environment side-effect.
     """
-    raw = (os.environ.get("SYNTHORG_POSTGRES_SSL_MODE") or "").strip()
-    return raw or None
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    return stripped or None
 
 
 __all__ = [
     "build_filesystem_artifact_storage",
     "build_postgres_persistence_config_from_url",
     "build_sqlite_persistence_config",
-    "resolve_postgres_ssl_mode_from_env",
+    "normalize_ssl_mode_value",
 ]
