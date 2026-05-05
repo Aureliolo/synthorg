@@ -295,7 +295,7 @@ class ReportGenerator:
         *,
         start: datetime,
         end: datetime,
-        top_n: int = 10,
+        top_n: int = 10,  # lint-allow: magic-numbers -- caller-tunable rank cap
         include_period_comparison: bool = True,
     ) -> SpendingReport:
         """Generate a spending report for the given period.
