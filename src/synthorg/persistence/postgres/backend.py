@@ -164,7 +164,11 @@ if TYPE_CHECKING:
     from synthorg.persistence.agent_state_protocol import AgentStateRepository
     from synthorg.persistence.artifact_protocol import ArtifactRepository
     from synthorg.persistence.audit_protocol import AuditRepository
-    from synthorg.persistence.auth_protocol import LockoutRepository
+    from synthorg.persistence.auth_protocol import (
+        LockoutRepository,
+        RefreshTokenRepository,
+        SessionRepository,
+    )
     from synthorg.persistence.checkpoint_protocol import (
         CheckpointRepository,
         HeartbeatRepository,
@@ -172,20 +176,43 @@ if TYPE_CHECKING:
     from synthorg.persistence.circuit_breaker_repo import (
         CircuitBreakerStateRepository,
     )
+    from synthorg.persistence.connection_protocol import (
+        ConnectionRepository,
+        ConnectionSecretRepository,
+        OAuthStateRepository,
+        WebhookReceiptRepository,
+    )
     from synthorg.persistence.cost_record_protocol import CostRecordRepository
+    from synthorg.persistence.custom_rule_repo import CustomRuleRepository
     from synthorg.persistence.decision_protocol import DecisionRepository
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
+    from synthorg.persistence.idempotency_protocol import IdempotencyRepository
+    from synthorg.persistence.mcp_protocol import McpInstallationRepository
+    from synthorg.persistence.memory_protocol import OrgFactRepository
     from synthorg.persistence.message_protocol import MessageRepository
+    from synthorg.persistence.ontology_protocol import (
+        OntologyDriftReportRepository,
+        OntologyEntityRepository,
+    )
     from synthorg.persistence.parked_context_protocol import (
         ParkedContextRepository,
     )
+    from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
     from synthorg.persistence.preset_repository import PersonalityPresetRepository
+    from synthorg.persistence.project_cost_aggregate_protocol import (
+        ProjectCostAggregateRepository,
+    )
     from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
     from synthorg.persistence.risk_override_repo import RiskOverrideRepository
     from synthorg.persistence.settings_protocol import SettingsRepository
     from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
     from synthorg.persistence.subworkflow_repo import SubworkflowRepository
     from synthorg.persistence.task_protocol import TaskRepository
+    from synthorg.persistence.training_repos import (
+        TrainingPlanRepository,
+        TrainingResultRepository,
+    )
     from synthorg.persistence.user_protocol import (
         ApiKeyRepository,
         UserRepository,
@@ -502,7 +529,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return self._require_connected(self._audit_entries, "audit_entries")
 
     @property
-    def provider_audit_events(self) -> PostgresProviderAuditRepo:
+    def provider_audit_events(self) -> ProviderAuditRepo:
         """Repository for the provider mutation audit log."""
         return self._require_connected(
             self._provider_audit_events,
@@ -510,7 +537,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def preset_overrides(self) -> PostgresPresetOverrideRepo:
+    def preset_overrides(self) -> PresetOverrideRepo:
         """Repository for operator-authored provider preset overrides."""
         return self._require_connected(
             self._preset_overrides,
@@ -638,7 +665,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def project_cost_aggregates(self) -> PostgresProjectCostAggregateRepository:
+    def project_cost_aggregates(self) -> ProjectCostAggregateRepository:
         """Repository for durable project cost aggregates.
 
         Raises:
@@ -663,12 +690,12 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return self._require_connected(self._fine_tune_runs, "fine_tune_runs")
 
     @property
-    def connections(self) -> PostgresConnectionRepository:
+    def connections(self) -> ConnectionRepository:
         """Repository for external service connection persistence."""
         return self._require_connected(self._connections, "connections")
 
     @property
-    def connection_secrets(self) -> PostgresConnectionSecretRepository:
+    def connection_secrets(self) -> ConnectionSecretRepository:
         """Repository for encrypted connection secret persistence."""
         return self._require_connected(
             self._connection_secrets,
@@ -676,12 +703,12 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def oauth_states(self) -> PostgresOAuthStateRepository:
+    def oauth_states(self) -> OAuthStateRepository:
         """Repository for transient OAuth state persistence."""
         return self._require_connected(self._oauth_states, "oauth_states")
 
     @property
-    def webhook_receipts(self) -> PostgresWebhookReceiptRepository:
+    def webhook_receipts(self) -> WebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
         return self._require_connected(
             self._webhook_receipts,
@@ -689,7 +716,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def training_plans(self) -> PostgresTrainingPlanRepository:
+    def training_plans(self) -> TrainingPlanRepository:
         """Repository for training plan persistence."""
         return self._require_connected(
             self._training_plans,
@@ -697,7 +724,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def training_results(self) -> PostgresTrainingResultRepository:
+    def training_results(self) -> TrainingResultRepository:
         """Repository for training result persistence."""
         return self._require_connected(
             self._training_results,
@@ -705,17 +732,17 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def custom_rules(self) -> PostgresCustomRuleRepository:
+    def custom_rules(self) -> CustomRuleRepository:
         """Repository for custom signal rule persistence."""
         return self._require_connected(self._custom_rules, "custom_rules")
 
     @property
-    def sessions(self) -> PostgresSessionRepository:
+    def sessions(self) -> SessionRepository:
         """Repository for hybrid session state (durable + in-memory cache)."""
         return self._require_connected(self._sessions, "sessions")
 
     @property
-    def refresh_tokens(self) -> PostgresRefreshTokenRepository:
+    def refresh_tokens(self) -> RefreshTokenRepository:
         """Repository for single-use refresh-token rotation."""
         return self._require_connected(
             self._refresh_tokens,
@@ -723,7 +750,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def idempotency_keys(self) -> PostgresIdempotencyRepository:
+    def idempotency_keys(self) -> IdempotencyRepository:
         """Repository for persistent idempotency keys."""
         return self._require_connected(
             self._idempotency_keys,
@@ -731,7 +758,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def mcp_installations(self) -> PostgresMcpInstallationRepository:
+    def mcp_installations(self) -> McpInstallationRepository:
         """Repository for MCP catalog installations."""
         return self._require_connected(
             self._mcp_installations,
@@ -739,12 +766,12 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def org_facts(self) -> PostgresOrgFactRepository:
+    def org_facts(self) -> OrgFactRepository:
         """Repository for organizational fact persistence (MVCC)."""
         return self._require_connected(self._org_facts, "org_facts")
 
     @property
-    def ontology_entities(self) -> PostgresOntologyEntityRepository:
+    def ontology_entities(self) -> OntologyEntityRepository:
         """Repository for ontology entity definitions."""
         return self._require_connected(
             self._ontology_entities,
@@ -752,7 +779,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def ontology_drift(self) -> PostgresOntologyDriftReportRepository:
+    def ontology_drift(self) -> OntologyDriftReportRepository:
         """Repository for ontology drift reports."""
         return self._require_connected(
             self._ontology_drift,
