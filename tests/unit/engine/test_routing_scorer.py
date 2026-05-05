@@ -4,7 +4,7 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
-import structlog
+from structlog.testing import capture_logs
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
@@ -501,7 +501,7 @@ class TestRoutingScorerConfigInjection:
     def test_weight_sum_validator_warns_on_excessive_weights(self) -> None:
         """Sum above the documented ceiling logs a warning but does not raise."""
         # All weights at 0.4 -> sum = 2.0, exceeds the 1.3 hard ceiling.
-        with structlog.testing.capture_logs() as logs:
+        with capture_logs() as logs:
             config = RoutingScorerConfig(
                 primary_skill_weight=0.4,
                 secondary_skill_weight=0.4,

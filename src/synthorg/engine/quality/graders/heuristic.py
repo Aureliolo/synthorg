@@ -1,7 +1,7 @@
 """Heuristic rubric grader -- rule-based, deterministic."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +22,28 @@ if TYPE_CHECKING:
     from synthorg.engine.workflow.handoff import HandoffArtifact
 
 logger = get_logger(__name__)
+
+
+class _HeuristicGraderBridge(Protocol):
+    """Structural type for the EngineBridgeConfig quality_heuristic_* fields.
+
+    Local Protocol declaration keeps the grader module free of a
+    runtime import of ``settings.bridge_configs``. The fields are
+    exposed as ``@property`` so this Protocol matches frozen Pydantic
+    models (whose attributes are read-only); mypy validates the
+    attribute mapping in ``from_bridge_config``.
+    """
+
+    @property
+    def quality_heuristic_pass_threshold(self) -> float: ...
+    @property
+    def quality_heuristic_pass_grade(self) -> float: ...
+    @property
+    def quality_heuristic_fail_grade(self) -> float: ...
+    @property
+    def quality_heuristic_confidence_ceiling(self) -> float: ...
+    @property
+    def quality_heuristic_confidence_bias(self) -> float: ...
 
 
 class HeuristicGraderConfig(BaseModel):
@@ -48,19 +70,22 @@ class HeuristicGraderConfig(BaseModel):
     confidence_bias: float = Field(default=0.1, ge=0.0, le=1.0)
 
     @classmethod
-    def from_bridge_config(cls, bridge: object) -> HeuristicGraderConfig:
+    def from_bridge_config(
+        cls, bridge: _HeuristicGraderBridge
+    ) -> HeuristicGraderConfig:
         """Project the heuristic-grader subset out of an ``EngineBridgeConfig``.
 
-        See ``RoutingScorerConfig.from_bridge_config`` (in
-        :mod:`synthorg.engine.routing.scorer`) for the import-cycle
-        rationale behind the ``object``-typed parameter.
+        Typed via the local ``_HeuristicGraderBridge`` Protocol so mypy
+        validates the attribute mapping without a runtime import of
+        ``settings.bridge_configs`` (which would cycle through the
+        engine namespace).
         """
         return cls(
-            pass_threshold=bridge.quality_heuristic_pass_threshold,  # type: ignore[attr-defined]
-            pass_grade=bridge.quality_heuristic_pass_grade,  # type: ignore[attr-defined]
-            fail_grade=bridge.quality_heuristic_fail_grade,  # type: ignore[attr-defined]
-            confidence_ceiling=bridge.quality_heuristic_confidence_ceiling,  # type: ignore[attr-defined]
-            confidence_bias=bridge.quality_heuristic_confidence_bias,  # type: ignore[attr-defined]
+            pass_threshold=bridge.quality_heuristic_pass_threshold,
+            pass_grade=bridge.quality_heuristic_pass_grade,
+            fail_grade=bridge.quality_heuristic_fail_grade,
+            confidence_ceiling=bridge.quality_heuristic_confidence_ceiling,
+            confidence_bias=bridge.quality_heuristic_confidence_bias,
         )
 
 

@@ -7,7 +7,7 @@ according to the requirement's priority axis.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -368,6 +368,28 @@ def _rank_by_priority(
     return min(models, key=lambda m: abs(m.cost_per_1k_input - mid))
 
 
+class _ModelMatcherBridge(Protocol):
+    """Structural type for the EngineBridgeConfig matcher_* fields.
+
+    Declared locally to keep ``model_matcher`` free of a top-level
+    import of ``settings.bridge_configs``; the fields are exposed as
+    ``@property`` so this Protocol matches frozen Pydantic models
+    (whose attributes are read-only). Mypy validates the attribute
+    mapping in ``from_bridge_config`` against this Protocol.
+    """
+
+    @property
+    def matcher_tier_base_score(self) -> float: ...
+    @property
+    def matcher_headroom_max_bonus(self) -> float: ...
+    @property
+    def matcher_priority_max_bonus(self) -> float: ...
+    @property
+    def matcher_headroom_ratio_cap(self) -> float: ...
+    @property
+    def matcher_balanced_partial_credit(self) -> float: ...
+
+
 class ModelMatcherConfig(BaseModel):
     """Operator-tunable score weights for the model matcher.
 
@@ -379,10 +401,13 @@ class ModelMatcherConfig(BaseModel):
     ``balanced_partial_credit`` is the bonus awarded to balanced
     priority when no other ranking applies.
 
-    Defaults match the historical hardcoded values; production wiring
-    populates the fields from
-    :func:`ConfigResolver.get_engine_bridge_config` so operators tune
-    via ``/settings`` without code changes.
+    Field defaults mirror the registered defaults in
+    :mod:`synthorg.settings.definitions.engine` for direct
+    construction (e.g. tests). Runtime callers that pass
+    ``matcher_config=None`` fall back to ``_DEFAULT_MATCHER_CONFIG``,
+    which is projected from a default ``EngineBridgeConfig()`` so the
+    canonical settings/definitions registration is the single source
+    of truth on the no-config path.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -394,24 +419,33 @@ class ModelMatcherConfig(BaseModel):
     balanced_partial_credit: float = Field(default=0.125, ge=0.0, le=1.0)
 
     @classmethod
-    def from_bridge_config(cls, bridge: object) -> ModelMatcherConfig:
-        """Project the matcher subset out of an ``EngineBridgeConfig``.
-
-        See :meth:`RoutingScorerConfig.from_bridge_config` for the
-        rationale behind the ``object``-typed parameter (avoids an
-        engine -> settings import cycle while keeping field access
-        statically type-checked at the call site).
-        """
+    def from_bridge_config(cls, bridge: _ModelMatcherBridge) -> ModelMatcherConfig:
+        """Project the matcher subset out of an ``EngineBridgeConfig``."""
         return cls(
-            tier_base_score=bridge.matcher_tier_base_score,  # type: ignore[attr-defined]
-            headroom_max_bonus=bridge.matcher_headroom_max_bonus,  # type: ignore[attr-defined]
-            priority_max_bonus=bridge.matcher_priority_max_bonus,  # type: ignore[attr-defined]
-            headroom_ratio_cap=bridge.matcher_headroom_ratio_cap,  # type: ignore[attr-defined]
-            balanced_partial_credit=bridge.matcher_balanced_partial_credit,  # type: ignore[attr-defined]
+            tier_base_score=bridge.matcher_tier_base_score,
+            headroom_max_bonus=bridge.matcher_headroom_max_bonus,
+            priority_max_bonus=bridge.matcher_priority_max_bonus,
+            headroom_ratio_cap=bridge.matcher_headroom_ratio_cap,
+            balanced_partial_credit=bridge.matcher_balanced_partial_credit,
         )
 
 
-_DEFAULT_MATCHER_CONFIG = ModelMatcherConfig()
+def _build_default_matcher_config() -> ModelMatcherConfig:
+    """Project the matcher defaults out of a default ``EngineBridgeConfig``.
+
+    Deferred import keeps ``model_matcher`` free of a top-level
+    dependency on ``settings.bridge_configs`` (which already imports
+    several engine types); calling this once at module import is
+    cheap and ensures the no-config path always tracks the registered
+    defaults rather than relying on the matcher's own ``Field``
+    defaults drifting with ``settings/definitions/engine.py``.
+    """
+    from synthorg.settings.bridge_configs import EngineBridgeConfig  # noqa: PLC0415
+
+    return ModelMatcherConfig.from_bridge_config(EngineBridgeConfig())
+
+
+_DEFAULT_MATCHER_CONFIG = _build_default_matcher_config()
 
 
 def _compute_score(

@@ -267,6 +267,12 @@ class CoordinationBridgeConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    # Total attempts including the first call -- ``2`` means one retry
+    # after the initial CAS write. Field name mirrors the registered
+    # setting ``coordination.cas.max_retries`` so the bridge resolver
+    # can populate it from ``_resolve_bridge_fields`` without a name
+    # remap; the documented semantics match
+    # ``CASRetryHandler.max_attempts``.
     cas_max_retries: int = Field(default=2, ge=1, le=10)
 
 

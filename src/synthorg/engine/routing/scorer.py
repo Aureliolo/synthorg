@@ -7,7 +7,7 @@ under ``engine.routing.*`` and reach the scorer via
 :class:`RoutingScorerConfig` (resolved at construction time).
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -34,6 +34,33 @@ logger = get_logger(__name__)
 # a documented design envelope, not an operator-tunable knob.
 _DOC_WEIGHT_SUM_MAX: Final[float] = 1.1  # lint-allow: magic-numbers -- envelope
 _WEIGHT_SUM_WARN_CEILING: Final[float] = 1.3  # lint-allow: magic-numbers -- ceiling
+
+
+class _RoutingScorerBridge(Protocol):
+    """Structural type for the EngineBridgeConfig fields the scorer reads.
+
+    Declared locally to break the import cycle that would otherwise
+    pull ``settings.bridge_configs`` into the engine routing module.
+    The fields are exposed as ``@property`` so this Protocol matches
+    frozen Pydantic models (whose attributes are read-only). Mypy
+    validates the attribute mapping in ``from_bridge_config`` against
+    this Protocol; any caller passing an object missing one of the
+    fields gets a static type error rather than a runtime
+    ``AttributeError``.
+    """
+
+    @property
+    def routing_weight_primary_skill(self) -> float: ...
+    @property
+    def routing_weight_secondary_skill(self) -> float: ...
+    @property
+    def routing_weight_tag_match_bonus(self) -> float: ...
+    @property
+    def routing_weight_role_match_bonus(self) -> float: ...
+    @property
+    def routing_weight_seniority_alignment_bonus(self) -> float: ...
+    @property
+    def routing_min_score(self) -> float: ...
 
 
 class RoutingScorerConfig(BaseModel):
@@ -75,7 +102,7 @@ class RoutingScorerConfig(BaseModel):
             + self.role_match_bonus
             + self.seniority_alignment_bonus
         )
-        if weight_sum > _WEIGHT_SUM_WARN_CEILING:
+        if weight_sum > _DOC_WEIGHT_SUM_MAX:
             logger.warning(
                 TASK_ROUTING_SCORER_INVALID_CONFIG,
                 weight_sum=weight_sum,
@@ -88,22 +115,21 @@ class RoutingScorerConfig(BaseModel):
         return self
 
     @classmethod
-    def from_bridge_config(cls, bridge: object) -> RoutingScorerConfig:
+    def from_bridge_config(cls, bridge: _RoutingScorerBridge) -> RoutingScorerConfig:
         """Project the routing-scorer subset out of an ``EngineBridgeConfig``.
 
-        Accepts ``object`` rather than the concrete bridge type to
-        keep the scorer module free of an import cycle through
-        ``settings.bridge_configs``. Attribute access is statically
-        type-checked at every call site that imports
-        :class:`~synthorg.settings.bridge_configs.EngineBridgeConfig`.
+        Typed via the local ``_RoutingScorerBridge`` Protocol so mypy
+        validates the attribute mapping without forcing a runtime
+        import of ``settings.bridge_configs`` (which would create a
+        cycle through the engine namespace).
         """
         return cls(
-            primary_skill_weight=bridge.routing_weight_primary_skill,  # type: ignore[attr-defined]
-            secondary_skill_weight=bridge.routing_weight_secondary_skill,  # type: ignore[attr-defined]
-            tag_match_bonus=bridge.routing_weight_tag_match_bonus,  # type: ignore[attr-defined]
-            role_match_bonus=bridge.routing_weight_role_match_bonus,  # type: ignore[attr-defined]
-            seniority_alignment_bonus=bridge.routing_weight_seniority_alignment_bonus,  # type: ignore[attr-defined]
-            min_score=bridge.routing_min_score,  # type: ignore[attr-defined]
+            primary_skill_weight=bridge.routing_weight_primary_skill,
+            secondary_skill_weight=bridge.routing_weight_secondary_skill,
+            tag_match_bonus=bridge.routing_weight_tag_match_bonus,
+            role_match_bonus=bridge.routing_weight_role_match_bonus,
+            seniority_alignment_bonus=bridge.routing_weight_seniority_alignment_bonus,
+            min_score=bridge.routing_min_score,
         )
 
 

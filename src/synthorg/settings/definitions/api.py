@@ -1018,9 +1018,10 @@ _r.register(
         description=(
             "Lifecycle shutdown: hard deadline on the cumulative"
             " stop sequence. Acts as the outer ``asyncio.wait_for``"
-            " budget covering every per-stage step. Default 40s sits"
-            " comfortably above the 33s sum of the per-stage soft"
-            " deadlines so the outer budget never pre-empts a stage."
+            " budget covering every per-stage step. Default leaves"
+            " headroom above the current cumulative per-stage soft"
+            " deadlines so the outer budget does not pre-empt a"
+            " normally progressing stage."
         ),
         group="Lifecycle Shutdown",
         level=SettingLevel.ADVANCED,
