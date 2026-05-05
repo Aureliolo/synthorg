@@ -163,6 +163,14 @@ repos:
         language: system
         files: ^src/synthorg/.*\.py$
 
+      - id: no-loop-bound-init
+        name: block new asyncio primitives in __init__ of lifecycle-managed classes
+        entry: uv
+        args: [run, python, scripts/check_no_loop_bound_init.py]
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_no_loop_bound_init\.py|scripts/loop_bound_init_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+
       - id: no-new-bare-mock
         name: block new bare Mock()/AsyncMock()/MagicMock() in tests/
         entry: uv

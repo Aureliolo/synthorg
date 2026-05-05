@@ -160,7 +160,7 @@ async def test_stop_timeout_marks_unrestartable(
         except asyncio.CancelledError:
             return
 
-    async with hub._lifecycle_lock:
+    async with hub._lifecycle_lock_for_current_loop():
         hub._running = True
         hub._janitor_task = asyncio.create_task(
             _benign_loop(),
