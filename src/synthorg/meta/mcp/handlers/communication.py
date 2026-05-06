@@ -228,10 +228,11 @@ async def _messages_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         message_id = _require_str(arguments, _ARG_MESSAGE_ID)
+        actor_id = require_actor_id(resolved_actor)
         try:
             removed = await app_state.message_service.delete_message(
                 message_id=message_id,
-                actor_id=require_actor_id(resolved_actor),
+                actor_id=actor_id,
                 reason=reason,
             )
         except CapabilityNotSupportedError as exc:
@@ -240,7 +241,7 @@ async def _messages_delete(
             logger.info(
                 MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 target_id=message_id,
             )
@@ -369,10 +370,11 @@ async def _meetings_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         meeting_id = _require_str(arguments, _ARG_MEETING_ID)
+        actor_id = require_actor_id(resolved_actor)
         try:
             removed = await app_state.meeting_service.delete_meeting(
                 meeting_id=meeting_id,
-                actor_id=require_actor_id(resolved_actor),
+                actor_id=actor_id,
                 reason=reason,
             )
         except CapabilityNotSupportedError as exc:
@@ -381,7 +383,7 @@ async def _meetings_delete(
             logger.info(
                 MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 target_id=meeting_id,
             )
@@ -460,31 +462,43 @@ async def _connections_create(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- connection create no-mutation; #1770a
 ) -> str:
-    """Create a new external connection (non-destructive write)."""
+    """Create a new external connection (admin op; enforces guardrails)."""
+    tool = "synthorg_connections_create"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         name = _require_str(arguments, _ARG_NAME)
         connection_type = _parse_connection_type(arguments)
         auth_method = _require_str(arguments, _ARG_AUTH_METHOD)
         credentials = require_dict(arguments, _ARG_CREDENTIALS)
         base_url = get_optional_str(arguments, _ARG_BASE_URL)
         metadata = _get_dict(arguments, _ARG_METADATA)
+        actor_id = require_actor_id(resolved_actor)
         connection = await app_state.connection_service.create_connection(
             name=name,
             connection_type=connection_type,
             auth_method=auth_method,
             credentials=credentials,
-            actor_id=require_actor_id(actor),
+            actor_id=actor_id,
             base_url=base_url,
             metadata=metadata,
         )
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=actor_id,
+            reason=reason,
+            connection_name=name,
+        )
         return ok(connection.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_connections_create", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        log_handler_invoke_failed("synthorg_connections_create", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -499,15 +513,16 @@ async def _connections_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         name = _require_str(arguments, _ARG_NAME)
+        actor_id = require_actor_id(resolved_actor)
         await app_state.connection_service.delete_connection(
             name=name,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             connection_name=name,
         )
@@ -619,27 +634,39 @@ async def _webhooks_create(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- webhook create no-mutation; #1770a
 ) -> str:
-    """Register a new webhook definition (non-destructive write)."""
+    """Register a new webhook definition (admin op; enforces guardrails)."""
+    tool = "synthorg_webhooks_create"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         definition = _parse_webhook_definition(arguments, require_id=False)
+        actor_id = require_actor_id(resolved_actor)
         stored = await app_state.webhook_service.create_webhook(
             definition=definition,
-            actor_id=require_actor_id(actor),
+            actor_id=actor_id,
+        )
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=actor_id,
+            reason=reason,
+            webhook_id=stored.id,
         )
         return ok(stored.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_webhooks_create", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except KeyError as exc:
-        log_handler_invoke_failed("synthorg_webhooks_create", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except ValueError as exc:
-        log_handler_invoke_failed("synthorg_webhooks_create", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:
-        log_handler_invoke_failed("synthorg_webhooks_create", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -648,33 +675,62 @@ async def _webhooks_update(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- webhook patch update; #1770a
 ) -> str:
-    """Update an existing webhook definition by ID."""
+    """Update an existing webhook definition (admin op; enforces guardrails)."""
+    tool = "synthorg_webhooks_update"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         definition = _parse_webhook_definition(arguments, require_id=True)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_webhooks_update", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        log_handler_invoke_failed("synthorg_webhooks_update", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    return await _apply_webhook_update(
+        tool=tool,
+        app_state=app_state,
+        definition=definition,
+        reason=reason,
+        actor_id=require_actor_id(resolved_actor),
+    )
+
+
+async def _apply_webhook_update(
+    *,
+    tool: str,
+    app_state: Any,
+    definition: Any,
+    reason: str,
+    actor_id: str,
+) -> str:
+    """Apply a webhook update and emit the admin-op audit record."""
     try:
         stored = await app_state.webhook_service.update_webhook(
             definition=definition,
-            actor_id=require_actor_id(actor),
+            actor_id=actor_id,
         )
-        return ok(stored.model_dump(mode="json"))
     except KeyError as exc:
         missing = LookupError(f"Webhook {definition.id} not found")
-        log_handler_invoke_failed("synthorg_webhooks_update", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(missing, domain_code="not_found")
     except ValueError as exc:
-        log_handler_invoke_failed("synthorg_webhooks_update", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:
-        log_handler_invoke_failed("synthorg_webhooks_update", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id,
+        reason=reason,
+        webhook_id=stored.id,
+    )
+    return ok(stored.model_dump(mode="json"))
 
 
 async def _webhooks_delete(
@@ -688,9 +744,10 @@ async def _webhooks_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.webhook_service.delete_webhook(
             definition_id=webhook_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if not removed:
@@ -701,7 +758,7 @@ async def _webhooks_delete(
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             webhook_id=webhook_id,
             removed=removed,
@@ -739,15 +796,32 @@ async def _tunnel_get_status(
 async def _tunnel_connect(
     *,
     app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- tunnel reconnect parameterless; #1770a
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    """Trigger a tunnel reconnect attempt."""
+    """Trigger a tunnel reconnect attempt (admin op; enforces guardrails)."""
+    tool = "synthorg_tunnel_connect"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        target = _require_str(arguments, "target")
+        actor_id = require_actor_id(resolved_actor)
         status = await app_state.tunnel_service.connect()
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=actor_id,
+            reason=reason,
+            target=target,
+        )
         return ok(status.to_dict())
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
-        log_handler_invoke_failed("synthorg_tunnel_connect", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 

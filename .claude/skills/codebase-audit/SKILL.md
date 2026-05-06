@@ -2219,13 +2219,17 @@ docs/reference/mcp-handler-contract.md. Every handler must:
   not_supported) from common.py, not raw dicts
 - Validate args via require_arg
 - Call require_admin_guardrails(arguments, actor) on every handler
-  registered with admin_tool
+  registered with admin_tool, OR carry a justified
+  `# lint-allow: mcp-admin-guardrail -- <reason>` annotation on the
+  handler signature (sanctioned opt-outs cover approval-queue routing,
+  parameterless reconnects, non-mutating registrations, and partial
+  PATCH semantics where another path enforces the full guardrail)
 - Route through service-layer facades (ArtifactService, WorkflowService,
   MemoryService, CustomRulesService, UserService) -- never reach into
   app_state.persistence.* directly
 
-Flag handlers that build raw dict responses, miss guardrails on admin_tool,
-or bypass services to hit repos.
+Flag handlers that build raw dict responses, miss guardrails on admin_tool
+without the lint-allow annotation, or bypass services to hit repos.
 
 Severity: high.
 

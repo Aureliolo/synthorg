@@ -187,15 +187,16 @@ async def _settings_update(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         key = _require_str(arguments, "key")
         value = arguments.get("value")
+        actor_id = require_actor_id(resolved_actor)
         await app_state.settings_read_service.update_setting(
             key=key,
             value=value,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             key=key,
         )
@@ -224,15 +225,16 @@ async def _settings_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         key = _require_str(arguments, "key")
+        actor_id = require_actor_id(resolved_actor)
         await app_state.settings_read_service.delete_setting(
             key=key,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             key=key,
         )
@@ -338,7 +340,7 @@ async def _providers_test_connection(
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
             provider_id=provider_id,
         )
@@ -443,7 +445,7 @@ async def _backup_create(
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
             trigger=trigger.value,
         )
@@ -472,15 +474,16 @@ async def _backup_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         backup_id = _require_str(arguments, "backup_id")
+        actor_id = require_actor_id(resolved_actor)
         await app_state.backup_facade_service.delete_backup(
             backup_id=backup_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             backup_id=backup_id,
         )
@@ -509,15 +512,16 @@ async def _backup_restore(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         backup_id = _require_str(arguments, "backup_id")
+        actor_id = require_actor_id(resolved_actor)
         result = await app_state.backup_facade_service.restore_backup(
             backup_id=backup_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             backup_id=backup_id,
         )
@@ -655,7 +659,7 @@ async def _users_create(
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
         )
     except CapabilityNotSupportedError as exc:
@@ -686,7 +690,7 @@ async def _users_update(
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
         )
     except CapabilityNotSupportedError as exc:
@@ -714,15 +718,16 @@ async def _users_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         user_id = _require_str(arguments, "user_id")
+        actor_id = require_actor_id(resolved_actor)
         await app_state.user_facade_service.delete_user(
             user_id=user_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             user_id=user_id,
         )
@@ -864,16 +869,17 @@ async def _projects_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         project_id = _require_uuid(arguments, "project_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.project_facade_service.delete_project(
             project_id=project_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 project_id=project_id,
                 removed=removed,
@@ -1003,7 +1009,7 @@ async def _setup_initialize(
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
         )
     except CapabilityNotSupportedError as exc:
@@ -1157,15 +1163,16 @@ async def _template_packs_install(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         name = _require_str(arguments, "name")
         version = _require_str(arguments, "version")
+        actor_id = require_actor_id(resolved_actor)
         pack = await app_state.template_pack_facade_service.install_pack(
             name=name,
             version=version,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             pack_name=name,
             pack_version=version,
@@ -1193,16 +1200,17 @@ async def _template_packs_uninstall(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         pack_id = _require_uuid(arguments, "pack_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.template_pack_facade_service.uninstall_pack(
             pack_id=pack_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 pack_id=pack_id,
                 removed=removed,

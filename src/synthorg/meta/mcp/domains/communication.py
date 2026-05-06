@@ -168,13 +168,14 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "connections",
         "create",
-        "Create a new external connection.",
+        "Create a new external connection (admin; requires confirm).",
         {
             "name": {"type": "string", "description": "Connection name"},
             "connection_type": {"type": "string", "description": "Connection type"},
             "credentials": {"type": "object", "description": "Connection credentials"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("name", "connection_type"),
+        required=("name", "connection_type", "reason", "confirm"),
         args_model=ConnectionsCreateArgs,
     ),
     admin_tool(
@@ -219,7 +220,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "webhooks",
         "create",
-        "Create a new webhook.",
+        "Create a new webhook (admin; requires confirm).",
         {
             "url": {"type": "string", "description": "Webhook URL"},
             "events": {
@@ -227,19 +228,21 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
                 "items": {"type": "string"},
                 "description": "Event types to subscribe",
             },
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("url", "events"),
+        required=("url", "events", "reason", "confirm"),
         args_model=WebhooksCreateArgs,
     ),
     admin_tool(
         "webhooks",
         "update",
-        "Update a webhook configuration.",
+        "Update a webhook configuration (admin; requires confirm).",
         {
             "webhook_id": {"type": "string", "description": "Webhook UUID"},
             "updates": {"type": "object", "description": "Fields to update"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("webhook_id", "updates"),
+        required=("webhook_id", "updates", "reason", "confirm"),
         args_model=WebhooksUpdateArgs,
     ),
     admin_tool(
@@ -263,11 +266,12 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "tunnel",
         "connect",
-        "Establish a tunnel connection.",
+        "Establish a tunnel connection (admin; requires confirm).",
         {
             "target": {"type": "string", "description": "Tunnel target endpoint"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("target",),
+        required=("target", "reason", "confirm"),
         args_model=TunnelConnectArgs,
     ),
 )

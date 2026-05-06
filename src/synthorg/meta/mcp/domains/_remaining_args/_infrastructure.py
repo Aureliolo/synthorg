@@ -269,8 +269,8 @@ class TemplatePacksInstallArgs(_PackIdArgs, AdminGuardrailFields):
     """Args for ``template_packs.install`` (admin op)."""
 
 
-class TemplatePacksUninstallArgs(_PackIdArgs):
-    """Args for ``template_packs.uninstall``."""
+class TemplatePacksUninstallArgs(_PackIdArgs, AdminGuardrailFields):
+    """Args for ``template_packs.uninstall`` (admin op)."""
 
 
 class IntegrationHealthGetAllArgs(_ArgsBase):

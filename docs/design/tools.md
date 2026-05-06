@@ -378,7 +378,7 @@ merges them and raises on duplicate keys.
 **Schema-Level Validation.** Admin-op schemas in
 `src/synthorg/meta/mcp/domains/*.py` enforce the `reason` field as a
 non-whitespace string via `"minLength": 1` + `"pattern": r".*\S.*"`, and the
-`confirm` field as literal `True` via JSON Schema `"enum": [True]`. Handler
+`confirm` field as literal `true` via JSON Schema `"enum": [true]`. Handler
 guardrails run regardless so validation stays uniform once services come
 online.
 

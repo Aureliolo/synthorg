@@ -90,7 +90,7 @@ async def autonomy_update(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- approval-queue pattern; #1770a follow-up
+    # lint-allow: mcp-admin-guardrail -- routes through approval queue, no mutation
 ) -> str:
     """Request an autonomy level change (routes through approval queue)."""
     tool = "synthorg_autonomy_update"

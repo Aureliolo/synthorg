@@ -412,10 +412,32 @@ class TestConnectionsHandlers:
                 "connection_type": "generic_http",
                 "auth_method": "api_key",
                 "credentials": {"key": "v"},
+                "reason": "register integration",
+                "confirm": True,
             },
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
+
+    async def test_create_guardrail_violation_when_confirm_missing(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = COMMUNICATION_HANDLERS["synthorg_connections_create"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "name": "c1",
+                "connection_type": "generic_http",
+                "auth_method": "api_key",
+                "credentials": {"key": "v"},
+                "reason": "register integration",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "error"
+        assert payload["domain_code"] == "guardrail_violated"
 
     async def test_create_invalid_type_rejected(
         self,
@@ -429,6 +451,8 @@ class TestConnectionsHandlers:
                 "connection_type": "not-a-type",
                 "auth_method": "api_key",
                 "credentials": {"key": "v"},
+                "reason": "register integration",
+                "confirm": True,
             },
             actor=make_test_actor(),
         )
@@ -487,10 +511,33 @@ class TestWebhooksHandlers:
         definition.pop("id", None)
         response = await handler(
             app_state=fake_app_state,
-            arguments={"definition": definition},
+            arguments={
+                "definition": definition,
+                "reason": "register webhook",
+                "confirm": True,
+            },
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
+
+    async def test_create_guardrail_violation_when_confirm_missing(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = COMMUNICATION_HANDLERS["synthorg_webhooks_create"]
+        definition = _webhook().model_dump(mode="json")
+        definition.pop("id", None)
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "definition": definition,
+                "reason": "register webhook",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "error"
+        assert payload["domain_code"] == "guardrail_violated"
 
     async def test_create_invalid_rejected(
         self,
@@ -499,7 +546,11 @@ class TestWebhooksHandlers:
         handler = COMMUNICATION_HANDLERS["synthorg_webhooks_create"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"definition": {"incomplete": True}},
+            arguments={
+                "definition": {"incomplete": True},
+                "reason": "register webhook",
+                "confirm": True,
+            },
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "error"
@@ -536,6 +587,31 @@ class TestTunnelHandlers:
 
     async def test_connect(self, fake_app_state: SimpleNamespace) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_tunnel_connect"]
-        response = await handler(app_state=fake_app_state, arguments={})
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "target": "https://example.test",
+                "reason": "operator-initiated reconnect",
+                "confirm": True,
+            },
+            actor=make_test_actor(),
+        )
         payload = json.loads(response)
         assert payload["data"]["url"] == "https://example.test"
+
+    async def test_connect_guardrail_violation_when_confirm_missing(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = COMMUNICATION_HANDLERS["synthorg_tunnel_connect"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "target": "https://example.test",
+                "reason": "operator-initiated reconnect",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "error"
+        assert payload["domain_code"] == "guardrail_violated"

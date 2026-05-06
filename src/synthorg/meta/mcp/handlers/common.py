@@ -158,8 +158,12 @@ def _actor_has_identifier(actor: Any) -> bool:
     object that lacks both is treated as "unattributable" and rejected
     alongside ``actor is None``.
     """
-    if getattr(actor, "id", None) is not None:
-        return True
+    actor_id = getattr(actor, "id", None)
+    if actor_id is not None:
+        if not isinstance(actor_id, str):
+            return True
+        if actor_id.strip():
+            return True
     name = getattr(actor, "name", None)
     return isinstance(name, str) and bool(name.strip())
 

@@ -83,8 +83,12 @@ class ConnectionsGetArgs(_ArgsBase):
     name: NotBlankStr = Field(description="Connection name")
 
 
-class ConnectionsCreateArgs(_ArgsBase):
-    """Args for ``connections.create``."""
+class ConnectionsCreateArgs(AdminGuardrailFields):
+    """Args for ``connections.create`` (admin op).
+
+    Admin op: callers must supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) in addition to the connection metadata.
+    """
 
     name: NotBlankStr = Field(description="Connection name")
     connection_type: NotBlankStr = Field(description="Connection type")
@@ -120,8 +124,12 @@ class WebhooksGetArgs(_ArgsBase):
     webhook_id: NotBlankStr = Field(description="Webhook UUID")
 
 
-class WebhooksCreateArgs(_ArgsBase):
-    """Args for ``webhooks.create``."""
+class WebhooksCreateArgs(AdminGuardrailFields):
+    """Args for ``webhooks.create`` (admin op).
+
+    Admin op: callers must supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) in addition to the URL and events list.
+    """
 
     url: NotBlankStr = Field(description="Webhook URL")
     events: tuple[NotBlankStr, ...] = Field(
@@ -130,8 +138,12 @@ class WebhooksCreateArgs(_ArgsBase):
     )
 
 
-class WebhooksUpdateArgs(_ArgsBase):
-    """Args for ``webhooks.update``."""
+class WebhooksUpdateArgs(AdminGuardrailFields):
+    """Args for ``webhooks.update`` (admin op).
+
+    Admin op: callers must supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) in addition to the webhook UUID and updates.
+    """
 
     webhook_id: NotBlankStr = Field(description="Webhook UUID")
     updates: dict[str, object] = Field(description="Fields to update")
@@ -151,7 +163,11 @@ class TunnelGetStatusArgs(_ArgsBase):
     """Args for ``tunnel.get_status``: no fields."""
 
 
-class TunnelConnectArgs(_ArgsBase):
-    """Args for ``tunnel.connect``."""
+class TunnelConnectArgs(AdminGuardrailFields):
+    """Args for ``tunnel.connect`` (admin op).
+
+    Admin op: callers must supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) in addition to the target endpoint.
+    """
 
     target: NotBlankStr = Field(description="Tunnel target endpoint")

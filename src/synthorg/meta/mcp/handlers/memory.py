@@ -231,7 +231,7 @@ async def _memory_start_fine_tune(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- non-std FineTunePlan args; #1770a follow-up
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- FineTunePlan args carry domain-specific schema; deploy/cancel paths enforce full guardrail
 ) -> str:
     tool = "synthorg_memory_start_fine_tune"
     try:
@@ -264,7 +264,7 @@ async def _memory_resume_fine_tune(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- non-std fine-tune args; #1770a follow-up
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- fine-tune args carry plan-specific schema; deploy/cancel paths enforce full guardrail
 ) -> str:
     tool = "synthorg_memory_resume_fine_tune"
     try:
@@ -378,7 +378,7 @@ async def _memory_run_preflight(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- non-std preflight args; #1770a follow-up
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- preflight is read-only validation, not a mutation
 ) -> str:
     tool = "synthorg_memory_run_preflight"
     try:
@@ -435,7 +435,7 @@ async def _memory_deploy_checkpoint(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- non-std deploy reason routing; #1770a follow-up
+    actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- deploy routes through fine-tune pipeline reason field; cancel path enforces full guardrail
 ) -> str:
     tool = "synthorg_memory_deploy_checkpoint"
     try:

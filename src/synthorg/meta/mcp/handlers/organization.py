@@ -394,16 +394,17 @@ async def _departments_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         department_id = _require_uuid(arguments, "department_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.department_service.delete_department(
             department_id=department_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 department_id=department_id,
                 removed=removed,
@@ -566,16 +567,17 @@ async def _teams_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         team_id = _require_uuid(arguments, "team_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.team_service.delete_team(
             team_id=team_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 team_id=team_id,
                 removed=removed,

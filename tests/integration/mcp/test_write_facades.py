@@ -29,7 +29,10 @@ from synthorg.engine.workflow.validation_types import WorkflowValidationResult
 from synthorg.hr.performance.models import CollaborationCalibration
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.meta.models import ImprovementCycleResult
-from synthorg.observability.events.mcp import MCP_HANDLER_SERVICE_FALLBACK
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_SERVICE_FALLBACK,
+)
 from synthorg.security.autonomy.models import AutonomyUpdateResult
 from tests.unit.meta.mcp.conftest import make_test_actor
 
@@ -612,8 +615,6 @@ class TestDestructiveAuditEvents:
         app_state: SimpleNamespace,
         actor: AgentIdentity,
     ) -> None:
-        from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
-
         app_state.subworkflow_service.delete.return_value = None
         handlers = build_handler_map()
         with structlog.testing.capture_logs() as logs:
@@ -639,8 +640,6 @@ class TestDestructiveAuditEvents:
         app_state: SimpleNamespace,
         actor: AgentIdentity,
     ) -> None:
-        from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
-
         handlers = build_handler_map()
         with structlog.testing.capture_logs() as logs:
             body = _parse(

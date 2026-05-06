@@ -46,13 +46,17 @@ ADMIN_GUARDRAIL_PROPERTIES: dict[str, Any] = {
         "enum": [True],
     },
 }
-"""Shared ``reason`` + ``confirm`` schema for every ``admin_tool``.
+"""Canonical ``reason`` + ``confirm`` schema for guardrailed ``admin_tool``s.
 
-Every admin tool's schema spreads ``**ADMIN_GUARDRAIL_PROPERTIES``
-into its ``properties`` dict and lists ``"reason"`` + ``"confirm"`` in
-``required``, so the wire-level contract (non-whitespace reason, literal
-``True`` confirm) stays uniform across every admin op and matches the
-``require_admin_guardrails()`` handler-side check exactly.
+Guardrailed admin tools spread ``**ADMIN_GUARDRAIL_PROPERTIES`` into
+``properties`` and include ``"reason"`` + ``"confirm"`` in ``required``
+so the wire-level contract (non-whitespace reason, literal ``True``
+confirm) matches the ``require_admin_guardrails()`` handler-side check.
+A small set of admin tools opt out -- e.g. routes that defer to an
+approval queue, parameterless reconnect operations, registrations that
+record without mutating state -- via a justified
+``# lint-allow: mcp-admin-guardrail -- <reason>`` annotation enforced by
+``scripts/check_mcp_admin_tool_guardrails.py``.
 """
 
 

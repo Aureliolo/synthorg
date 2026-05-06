@@ -436,11 +436,12 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "template_packs",
         "uninstall",
-        "Uninstall a template pack.",
+        "Uninstall a template pack (admin; requires confirm).",
         {
             "pack_id": {"type": "string", "description": "Template pack UUID"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("pack_id",),
+        required=("pack_id", "reason", "confirm"),
         args_model=TemplatePacksUninstallArgs,
     ),
     # --- Integration health ---
