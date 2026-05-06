@@ -34,7 +34,7 @@ from synthorg.hr.training.models import (
     TrainingResult,
 )
 from synthorg.hr.training.plan_service import TrainingPlanService
-from synthorg.persistence.training_repos import (
+from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
 )

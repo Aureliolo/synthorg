@@ -24,7 +24,7 @@ from synthorg.observability.events.preset import (
     PRESET_UPDATED,
     PRESET_VALIDATION_FAILED,
 )
-from synthorg.persistence.preset_repository import (
+from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,  # noqa: TC001
 )
 from synthorg.templates.preset_models import PresetSource

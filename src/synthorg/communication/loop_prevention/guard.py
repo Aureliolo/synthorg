@@ -23,7 +23,7 @@ from synthorg.observability.events.delegation import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.persistence.circuit_breaker_repo import (
+    from synthorg.persistence.circuit_breaker_protocol import (
         CircuitBreakerStateRepository,
     )
 

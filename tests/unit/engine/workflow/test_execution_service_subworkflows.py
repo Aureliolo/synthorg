@@ -292,6 +292,7 @@ class TestSubworkflowExecution:
             definition_repo=definition_repo,  # type: ignore[arg-type]
             execution_repo=execution_repo,  # type: ignore[arg-type]
             task_engine=task_engine,  # type: ignore[arg-type]
+            max_subworkflow_depth=16,
             subworkflow_registry=None,
         )
 

@@ -41,8 +41,8 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_VERSION_CONFLICT,
     WORKFLOW_DEF_VERSION_LISTED,
 )
-from synthorg.persistence.version_repo import VersionRepository  # noqa: TC001
-from synthorg.persistence.workflow_definition_repo import (
+from synthorg.persistence.version_protocol import VersionRepository  # noqa: TC001
+from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionRepository,  # noqa: TC001
 )
 from synthorg.versioning import VersionSnapshot

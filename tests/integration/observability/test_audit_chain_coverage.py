@@ -56,7 +56,7 @@ from synthorg.observability.events.security import (
     SECURITY_CUSTOM_RULE_TOGGLED,
     SECURITY_CUSTOM_RULE_UPDATED,
 )
-from synthorg.persistence.custom_rule_repo import CustomRuleRepository
+from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 from synthorg.persistence.protocol import PersistenceBackend
 
 

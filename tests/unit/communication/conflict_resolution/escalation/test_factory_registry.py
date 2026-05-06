@@ -7,6 +7,8 @@ unregistered key raises ValueError with a helpful message listing the
 available options.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -17,17 +19,26 @@ from synthorg.communication.conflict_resolution.escalation.config import (
 )
 from synthorg.communication.conflict_resolution.escalation.factory import (
     build_decision_processor,
+    build_escalation_notify_subscriber,
     build_escalation_queue_store,
 )
 from synthorg.communication.conflict_resolution.escalation.in_memory_store import (
     InMemoryEscalationStore,
+)
+from synthorg.communication.conflict_resolution.escalation.notify import (
+    NoopEscalationNotifySubscriber,
+    PostgresEscalationNotifySubscriber,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
     HybridDecisionProcessor,
     WinnerSelectProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
+    CrossInstanceNotifyCapableStore,
     EscalationQueueStore,
+)
+from synthorg.communication.conflict_resolution.escalation.registry import (
+    PendingFuturesRegistry,
 )
 from synthorg.persistence.protocol import PersistenceBackend
 
@@ -110,6 +121,181 @@ class TestQueueStoreRegistry:
             match=r"config\.backend='postgres'",
         ):
             build_escalation_queue_store(config, backend)
+
+
+class TestNotifySubscriberCapabilityCheck:
+    """``build_escalation_notify_subscriber`` uses the structural Protocol.
+
+    The factory must not import the concrete
+    ``PostgresEscalationRepository`` to decide whether to wire a real
+    notify subscriber; it inspects the
+    :class:`CrossInstanceNotifyCapableStore` capability marker
+    instead. Stores opting in via the
+    ``supports_cross_instance_notify`` attribute receive a real
+    subscriber; everything else falls through to the no-op.
+    """
+
+    def test_in_memory_store_with_auto_returns_noop_subscriber(self) -> None:
+        # InMemory has no capability marker; in ``auto`` mode the
+        # factory must short-circuit to the no-op rather than raise,
+        # so opportunistic notify configurations degrade gracefully.
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="auto",
+            notify_channel="escalations",
+        )
+        store = InMemoryEscalationStore()
+        assert not isinstance(store, CrossInstanceNotifyCapableStore)
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, NoopEscalationNotifySubscriber)
+
+    def test_in_memory_store_with_on_raises(self) -> None:
+        # ``cross_instance_notify="on"`` is explicit operator intent;
+        # silent degradation to a no-op subscriber would hide the
+        # misconfiguration. The factory must raise ValueError so
+        # startup fails fast with an actionable error.
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="on",
+            notify_channel="escalations",
+        )
+        store = InMemoryEscalationStore()
+        registry = PendingFuturesRegistry()
+        with pytest.raises(
+            ValueError,
+            match="CrossInstanceNotifyCapableStore",
+        ):
+            build_escalation_notify_subscriber(
+                config,
+                store,
+                registry,
+                reconnect_delay_seconds=1.0,
+            )
+
+    def test_non_postgres_backend_with_auto_returns_noop(self) -> None:
+        # ``cross_instance_notify="auto"`` plus a non-Postgres backend
+        # must return the no-op subscriber without consulting the
+        # store's capability surface. Closes the boundary the original
+        # capability check was added to enforce.
+        config = EscalationQueueConfig(
+            backend="sqlite",
+            cross_instance_notify="auto",
+        )
+        store = InMemoryEscalationStore()
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, NoopEscalationNotifySubscriber)
+
+    def test_capable_store_returns_real_subscriber(self) -> None:
+        # A duck-typed store that declares the capability attribute
+        # AND exposes a working ``subscribe_notifications`` async
+        # context manager passes the structural + capability + API
+        # gate and gets a real subscriber. The factory's runtime check
+        # rejects fakes that flip the flag but never wire the
+        # LISTEN/NOTIFY surface; see
+        # ``test_capable_store_without_subscribe_method_is_rejected``.
+        # The fake's CM yields no payloads -- the subscriber is
+        # constructed but ``start()`` would observe an immediate
+        # iterator exit, matching the no-cross-instance-traffic shape
+        # operators see when there are no concurrent workers.
+        @asynccontextmanager
+        async def _empty_subscription(
+            channel: str,
+        ) -> AsyncIterator[AsyncIterator[str]]:
+            del channel
+
+            async def _gen() -> AsyncIterator[str]:
+                # Empty subscription -- yields nothing, mirroring the
+                # no-cross-instance-traffic shape. The ``yield`` is
+                # gated by a name lookup so mypy / ruff cannot prune
+                # it as structurally unreachable, and the conditional
+                # always evaluates false at runtime, so the iterator
+                # exits immediately with no payload.
+                emit = False
+                if emit:  # pragma: no cover
+                    yield ""
+
+            yield _gen()
+
+        class _CapableFakeStore:
+            supports_cross_instance_notify = True
+
+            def subscribe_notifications(
+                self,
+                channel: str,
+            ) -> AbstractAsyncContextManager[AsyncIterator[str]]:
+                return _empty_subscription(channel)
+
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="on",
+            notify_channel="escalations",
+        )
+        store = cast(EscalationQueueStore, _CapableFakeStore())
+        assert isinstance(store, CrossInstanceNotifyCapableStore)
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, PostgresEscalationNotifySubscriber)
+
+    def test_capable_store_without_subscribe_method_is_rejected(self) -> None:
+        # A fake that flips the capability marker to ``True`` but does
+        # not wire ``subscribe_notifications`` would otherwise reach the
+        # real subscriber and fail at first iteration. The factory
+        # closes that gap by also requiring the callable, raising at
+        # configuration time on ``mode="on"``.
+        class _MarkerOnlyStore:
+            supports_cross_instance_notify = True
+
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="on",
+            notify_channel="escalations",
+        )
+        store = cast(EscalationQueueStore, _MarkerOnlyStore())
+        registry = PendingFuturesRegistry()
+        with pytest.raises(ValueError, match="subscribe_notifications"):
+            build_escalation_notify_subscriber(
+                config,
+                store,
+                registry,
+                reconnect_delay_seconds=1.0,
+            )
+
+    def test_off_returns_noop_regardless_of_capability(self) -> None:
+        # Even a capability-marked store must yield the no-op when the
+        # config says cross-instance notify is off.
+        class _CapableFakeStore:
+            supports_cross_instance_notify = True
+
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="off",
+        )
+        store = cast(EscalationQueueStore, _CapableFakeStore())
+        registry = PendingFuturesRegistry()
+        subscriber = build_escalation_notify_subscriber(
+            config,
+            store,
+            registry,
+            reconnect_delay_seconds=1.0,
+        )
+        assert isinstance(subscriber, NoopEscalationNotifySubscriber)
 
 
 class TestDecisionProcessorRegistry:

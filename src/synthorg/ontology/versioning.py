@@ -20,6 +20,9 @@ from synthorg.ontology.errors import OntologyError
 from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence.postgres.version_repo import PostgresVersionRepository
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
+from synthorg.persistence.version_protocol import (
+    VersionRepository,  # noqa: TC001 -- documented return type
+)
 from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
@@ -55,8 +58,8 @@ def _safe_deserialize_snapshot_dict(data: object) -> EntityDefinition:
 
 def create_ontology_version_repo(
     db: Any,
-) -> SQLiteVersionRepository[EntityDefinition]:
-    """Create a SQLiteVersionRepository for EntityDefinition.
+) -> VersionRepository[EntityDefinition]:
+    """Create a SQLite-backed VersionRepository for EntityDefinition.
 
     Args:
         db: An open aiosqlite connection produced by the persistence
@@ -95,8 +98,8 @@ def create_ontology_versioning(
 
 def create_postgres_ontology_version_repo(
     pool: Any,
-) -> PostgresVersionRepository[EntityDefinition]:
-    """Create a PostgresVersionRepository for EntityDefinition.
+) -> VersionRepository[EntityDefinition]:
+    """Create a Postgres-backed VersionRepository for EntityDefinition.
 
     Args:
         pool: An open ``psycopg_pool.AsyncConnectionPool`` produced by

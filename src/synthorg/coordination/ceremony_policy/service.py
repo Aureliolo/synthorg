@@ -15,6 +15,12 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.coordination.ceremony_policy.policy_resolver import (
+    ResolvedCeremonyPolicyResponse,
+    _build_resolved_response,
+    _fetch_department_policy,
+    _fetch_project_policy,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,  # noqa: TC001 -- runtime annotation
@@ -28,9 +34,6 @@ from synthorg.observability.events.api import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.controllers.ceremony_policy import (
-        ResolvedCeremonyPolicyResponse,
-    )
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
@@ -108,13 +111,6 @@ class CeremonyPolicyService:
             ServiceUnavailableError: If the settings service is not
                 wired or a setting value is malformed.
         """
-        # Lazy import: ``api.controllers.ceremony_policy`` imports
-        # ``AppState`` which transitively imports this service, so the
-        # import stays function-local to break the cycle.
-        from synthorg.api.controllers.ceremony_policy import (  # noqa: PLC0415
-            _fetch_project_policy,
-        )
-
         policy = await _fetch_project_policy(self._app_state)
         logger.debug(
             API_CEREMONY_POLICY_QUERIED,
@@ -139,13 +135,6 @@ class CeremonyPolicyService:
             NotFoundError: If *department* is given but does not
                 exist.
         """
-        # Lazy import: see ``get_policy`` for the cycle-break rationale.
-        from synthorg.api.controllers.ceremony_policy import (  # noqa: PLC0415
-            _build_resolved_response,
-            _fetch_department_policy,
-            _fetch_project_policy,
-        )
-
         project = await _fetch_project_policy(self._app_state)
         dept_policy: CeremonyPolicyConfig | None = None
         if department is not None:

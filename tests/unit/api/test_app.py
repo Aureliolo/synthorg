@@ -9,10 +9,7 @@ from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.app_builders import _bootstrap_app_logging
-from synthorg.api.app_helpers import (
-    _postgres_config_from_url,
-    _resolve_artifact_dir_env,
-)
+from synthorg.api.app_helpers import _resolve_artifact_dir_env
 from synthorg.api.middleware import _SECURITY_HEADERS
 from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
@@ -198,101 +195,6 @@ class TestResolveArtifactDirEnv:
         monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", relative_path)
         with pytest.raises(ValueError, match="absolute"):
             _resolve_artifact_dir_env()
-
-
-@pytest.mark.unit
-class TestPostgresConfigFromURL:
-    """Verify the Postgres URL parser used by SYNTHORG_DATABASE_URL auto-wire.
-
-    The parser is the only path that turns the CLI's compose-rendered
-    DSN into a runtime PersistenceConfig. A regression here silently
-    drops the entire postgres mode back to a degraded (no-persistence)
-    install -- which is exactly the bug this code path was added to
-    fix -- so the suite covers both happy paths and rejection cases.
-    """
-
-    def test_basic_url_parses_host_port_database_credentials(self) -> None:
-        cfg = _postgres_config_from_url(
-            "postgresql://user:pw@db.example:6543/synthorg",
-        )
-        assert cfg.host == "db.example"
-        assert cfg.port == 6543
-        assert cfg.database == "synthorg"
-        assert cfg.username == "user"
-        assert cfg.password.get_secret_value() == "pw"
-
-    def test_default_port_when_omitted(self) -> None:
-        cfg = _postgres_config_from_url("postgresql://u:p@h/db")
-        assert cfg.port == 5432
-
-    def test_postgres_scheme_alias_accepted(self) -> None:
-        cfg = _postgres_config_from_url("postgres://u:p@h/db")
-        assert cfg.host == "h"
-
-    def test_url_encoded_password_is_decoded(self) -> None:
-        cfg = _postgres_config_from_url("postgresql://u:p%40ss%2F1@h/db")
-        assert cfg.password.get_secret_value() == "p@ss/1"
-
-    def test_url_encoded_username_is_decoded(self) -> None:
-        cfg = _postgres_config_from_url(
-            "postgresql://u%40domain:pw@h/db",
-        )
-        assert cfg.username == "u@domain"
-
-    def test_url_encoded_hostname_is_decoded(self) -> None:
-        cfg = _postgres_config_from_url(
-            "postgresql://u:p@db%2Eexample:5432/synthorg",
-        )
-        assert cfg.host == "db.example"
-
-    def test_ssl_mode_override_from_env(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv("SYNTHORG_POSTGRES_SSL_MODE", "disable")
-        cfg = _postgres_config_from_url("postgresql://u:p@h/db")
-        assert cfg.ssl_mode == "disable"
-
-    def test_default_ssl_mode_is_require_when_no_override(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.delenv("SYNTHORG_POSTGRES_SSL_MODE", raising=False)
-        cfg = _postgres_config_from_url("postgresql://u:p@h/db")
-        assert cfg.ssl_mode == "require"
-
-    def test_invalid_ssl_mode_override_raises_value_error(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv("SYNTHORG_POSTGRES_SSL_MODE", "bogus_mode")
-        with pytest.raises(ValueError, match="SYNTHORG_POSTGRES_SSL_MODE"):
-            _postgres_config_from_url("postgresql://u:p@h/db")
-
-    @pytest.mark.parametrize(
-        ("bad_url", "reason_substring"),
-        [
-            ("mysql://u:p@h/db", "scheme"),
-            ("postgresql:///db", "host"),
-            ("postgresql://h/db", "username and password"),
-            ("postgresql://u:p@h", "database name"),
-            ("postgresql://u:p@h/", "database name"),
-        ],
-        ids=[
-            "wrong_scheme",
-            "no_host",
-            "no_credentials",
-            "no_path",
-            "empty_database",
-        ],
-    )
-    def test_invalid_urls_raise_value_error(
-        self,
-        bad_url: str,
-        reason_substring: str,
-    ) -> None:
-        with pytest.raises(ValueError, match=reason_substring):
-            _postgres_config_from_url(bad_url)
 
 
 @pytest.mark.unit

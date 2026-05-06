@@ -10,7 +10,7 @@ from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
 )
-from synthorg.persistence.subworkflow_repo import (
+from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )

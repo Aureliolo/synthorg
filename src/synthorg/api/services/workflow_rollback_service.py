@@ -34,8 +34,8 @@ from synthorg.observability.events.workflow_version import (
 from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:
-    from synthorg.persistence.version_repo import VersionRepository
-    from synthorg.persistence.workflow_definition_repo import (
+    from synthorg.persistence.version_protocol import VersionRepository
+    from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
 

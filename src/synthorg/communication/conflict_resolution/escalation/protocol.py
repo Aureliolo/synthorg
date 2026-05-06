@@ -1,6 +1,6 @@
 """Protocols for the escalation queue backend and decision processor."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -143,6 +143,32 @@ class EscalationQueueStore(Protocol):
             terminates when the async context exits.
         """
         ...
+
+
+@runtime_checkable
+class CrossInstanceNotifyCapableStore(Protocol):
+    """Capability marker: the store delivers real cross-instance notifications.
+
+    Distinguishes the Postgres queue store (true LISTEN/NOTIFY plumbing)
+    from the SQLite / in-memory stores whose ``subscribe_notifications``
+    returns a stream that blocks on cancellation without yielding -- the
+    correct shape for single-process deployments where there is no
+    cross-worker concern.
+
+    Stores opt in by declaring the
+    ``supports_cross_instance_notify`` class attribute as
+    ``ClassVar[Literal[True]] = True``. The annotation is ``Literal[True]``
+    rather than ``bool`` so a store declaring ``= False`` is a static
+    type error: the attribute is a true opt-in, not a togglable flag.
+    The factory complements this static guarantee with an explicit
+    runtime ``is True`` check, since ``@runtime_checkable`` only verifies
+    attribute presence, not value, and ``isinstance(store, ...)`` would
+    otherwise return ``True`` for stores that set the attribute to any
+    value (including ``False``). Stores that lack the attribute fall
+    through to the no-op subscriber automatically.
+    """
+
+    supports_cross_instance_notify: Literal[True]
 
 
 @runtime_checkable

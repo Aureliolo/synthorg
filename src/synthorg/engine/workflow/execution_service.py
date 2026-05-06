@@ -49,7 +49,6 @@ from synthorg.engine.workflow.subworkflow_binding import (
     project_output_bindings,
     resolve_input_bindings,
 )
-from synthorg.engine.workflow.subworkflow_registry import MAX_WORKFLOW_DEPTH
 from synthorg.engine.workflow.validation import validate_workflow
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
@@ -76,10 +75,10 @@ if TYPE_CHECKING:
     from synthorg.engine.workflow.subworkflow_registry import (
         SubworkflowRegistry,
     )
-    from synthorg.persistence.workflow_definition_repo import (
+    from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
-    from synthorg.persistence.workflow_execution_repo import (
+    from synthorg.persistence.workflow_execution_protocol import (
         WorkflowExecutionRepository,
     )
 
@@ -106,8 +105,8 @@ class WorkflowExecutionService:
         definition_repo: WorkflowDefinitionRepository,
         execution_repo: WorkflowExecutionRepository,
         task_engine: TaskEngine,
+        max_subworkflow_depth: int,
         subworkflow_registry: SubworkflowRegistry | None = None,
-        max_subworkflow_depth: int = MAX_WORKFLOW_DEPTH,
     ) -> None:
         self._definition_repo = definition_repo
         self._execution_repo = execution_repo

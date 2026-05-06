@@ -10,13 +10,16 @@ that:
   live parent workflow,
 - emits observability events for every lifecycle action.
 
-The default runtime depth limit for nested subworkflow calls is defined
-here (``MAX_WORKFLOW_DEPTH``).  ``WorkflowConfig.max_subworkflow_depth``
-overrides it at runtime.
+The runtime nesting-depth limit for subworkflow calls is configured
+through ``engine.max_subworkflow_depth`` (registered in
+``settings/definitions/engine.py`` and surfaced on
+``EngineBridgeConfig.max_subworkflow_depth``); the
+``WorkflowExecutionService`` constructor takes the resolved value as a
+required parameter so the limit follows the standard
+DB > env > YAML > code-default settings resolution path.
 """
 
 import json
-from typing import TYPE_CHECKING
 
 from packaging.version import InvalidVersion, Version
 
@@ -25,27 +28,32 @@ from synthorg.engine.errors import (
     SubworkflowIOError,
     SubworkflowNotFoundError,
 )
+
+# Imports kept at runtime (rather than under TYPE_CHECKING) so PEP 649
+# lazy annotation evaluation can resolve names like SubworkflowSummary
+# in ``encode_subworkflow_keyset()`` and ParentReference in
+# ``SubworkflowRegistry.find_parents()`` when introspectors call
+# ``typing.get_type_hints()`` against module globals.
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,  # noqa: TC001 -- runtime-resolvable annotation
+)
+from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runtime-resolvable annotation
+    ParentReference,
+    SubworkflowSummary,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_DELETED,
     SUBWORKFLOW_REGISTERED,
     SUBWORKFLOW_RESOLVED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.persistence.subworkflow_repo import (
-        ParentReference,
-        SubworkflowRepository,
-        SubworkflowSummary,
-    )
+from synthorg.persistence.subworkflow_protocol import (
+    SubworkflowRepository,  # noqa: TC001 -- runtime-resolvable annotation
+)
 
 logger = get_logger(__name__)
 
-MAX_WORKFLOW_DEPTH = 16
-"""Default maximum runtime subworkflow nesting depth."""
-
-_SUBWORKFLOW_KEYSET_ARITY = 3
+_SUBWORKFLOW_KEYSET_ARITY = 3  # lint-allow: magic-numbers -- composite-key arity
 
 
 def encode_subworkflow_keyset(summary: SubworkflowSummary) -> str:

@@ -189,6 +189,7 @@ _HAPPY_CASES: tuple[
         EngineBridgeConfig,
         {
             ("engine", "approval_interrupt_timeout_seconds"): "600.0",
+            ("engine", "max_subworkflow_depth"): "32",
             ("engine", "health_quality_degradation_threshold"): "5",
             ("engine", "routing_weight_primary_skill"): "0.4",
             ("engine", "routing_weight_secondary_skill"): "0.2",
@@ -209,6 +210,7 @@ _HAPPY_CASES: tuple[
         },
         {
             "approval_interrupt_timeout_seconds": 600.0,
+            "max_subworkflow_depth": 32,
             "health_quality_degradation_threshold": 5,
             "routing_weight_primary_skill": 0.4,
             "matcher_tier_base_score": 0.5,

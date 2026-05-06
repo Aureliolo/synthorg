@@ -7,7 +7,7 @@ resolved policy with field origins, and active strategy.
 import pytest
 from pydantic import ValidationError
 
-from synthorg.api.controllers.ceremony_policy import (
+from synthorg.coordination.ceremony_policy.policy_resolver import (
     PolicyFieldOrigin,
     ResolvedCeremonyPolicyResponse,
     ResolvedPolicyField,

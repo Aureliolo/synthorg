@@ -151,15 +151,84 @@ from synthorg.persistence.sqlite.workflow_execution_repo import (
 
 if TYPE_CHECKING:
     from synthorg.core.auth.config import AuthConfig
+    from synthorg.hr.persistence_protocol import (
+        CollaborationMetricRepository,
+        LifecycleEventRepository,
+        TaskMetricRepository,
+    )
     from synthorg.ontology.models import EntityDefinition
-    from synthorg.persistence.auth_protocol import LockoutRepository
+    from synthorg.persistence.agent_state_protocol import AgentStateRepository
+    from synthorg.persistence.artifact_protocol import ArtifactRepository
+    from synthorg.persistence.audit_protocol import AuditRepository
+    from synthorg.persistence.auth_protocol import (
+        LockoutRepository,
+        RefreshTokenRepository,
+        SessionRepository,
+    )
+    from synthorg.persistence.checkpoint_protocol import (
+        CheckpointRepository,
+        HeartbeatRepository,
+    )
+    from synthorg.persistence.circuit_breaker_protocol import (
+        CircuitBreakerStateRepository,
+    )
     from synthorg.persistence.config import SQLiteConfig
+    from synthorg.persistence.connection_protocol import (
+        ConnectionRepository,
+        ConnectionSecretRepository,
+        OAuthStateRepository,
+        WebhookReceiptRepository,
+    )
+    from synthorg.persistence.cost_record_protocol import CostRecordRepository
+    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
+    from synthorg.persistence.decision_protocol import DecisionRepository
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
     from synthorg.persistence.fine_tune_protocol import (
         FineTuneCheckpointRepository,
         FineTuneRunRepository,
     )
-    from synthorg.persistence.version_repo import VersionRepository
+    from synthorg.persistence.idempotency_protocol import IdempotencyRepository
+    from synthorg.persistence.mcp_protocol import McpInstallationRepository
+    from synthorg.persistence.memory_protocol import OrgFactRepository
+    from synthorg.persistence.message_protocol import MessageRepository
+    from synthorg.persistence.ontology_protocol import (
+        OntologyDriftReportRepository,
+        OntologyEntityRepository,
+    )
+    from synthorg.persistence.parked_context_protocol import (
+        ParkedContextRepository,
+    )
+    from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
+    from synthorg.persistence.preset_protocol import (
+        PersonalityPresetRepository,
+    )
+    from synthorg.persistence.project_cost_aggregate_protocol import (
+        ProjectCostAggregateRepository,
+    )
+    from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
+    from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
+    from synthorg.persistence.settings_protocol import SettingsRepository
+    from synthorg.persistence.ssrf_violation_protocol import (
+        SsrfViolationRepository,
+    )
+    from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
+    from synthorg.persistence.task_protocol import TaskRepository
+    from synthorg.persistence.training_protocol import (
+        TrainingPlanRepository,
+        TrainingResultRepository,
+    )
+    from synthorg.persistence.user_protocol import (
+        ApiKeyRepository,
+        UserRepository,
+    )
+    from synthorg.persistence.version_protocol import VersionRepository
+    from synthorg.persistence.workflow_definition_protocol import (
+        WorkflowDefinitionRepository,
+    )
+    from synthorg.persistence.workflow_execution_protocol import (
+        WorkflowExecutionRepository,
+    )
     from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
@@ -684,49 +753,49 @@ class SQLitePersistenceBackend:
         return repo
 
     @property
-    def tasks(self) -> SQLiteTaskRepository:
+    def tasks(self) -> TaskRepository:
         """Repository for Task persistence."""
         return self._require_connected(self._tasks, "tasks")
 
     @property
-    def cost_records(self) -> SQLiteCostRecordRepository:
+    def cost_records(self) -> CostRecordRepository:
         """Repository for CostRecord persistence."""
         return self._require_connected(self._cost_records, "cost_records")
 
     @property
-    def messages(self) -> SQLiteMessageRepository:
+    def messages(self) -> MessageRepository:
         """Repository for Message persistence."""
         return self._require_connected(self._messages, "messages")
 
     @property
-    def lifecycle_events(self) -> SQLiteLifecycleEventRepository:
+    def lifecycle_events(self) -> LifecycleEventRepository:
         """Repository for AgentLifecycleEvent persistence."""
         return self._require_connected(self._lifecycle_events, "lifecycle_events")
 
     @property
-    def task_metrics(self) -> SQLiteTaskMetricRepository:
+    def task_metrics(self) -> TaskMetricRepository:
         """Repository for TaskMetricRecord persistence."""
         return self._require_connected(self._task_metrics, "task_metrics")
 
     @property
-    def collaboration_metrics(self) -> SQLiteCollaborationMetricRepository:
+    def collaboration_metrics(self) -> CollaborationMetricRepository:
         """Repository for CollaborationMetricRecord persistence."""
         return self._require_connected(
             self._collaboration_metrics, "collaboration_metrics"
         )
 
     @property
-    def parked_contexts(self) -> SQLiteParkedContextRepository:
+    def parked_contexts(self) -> ParkedContextRepository:
         """Repository for ParkedContext persistence."""
         return self._require_connected(self._parked_contexts, "parked_contexts")
 
     @property
-    def audit_entries(self) -> SQLiteAuditRepository:
+    def audit_entries(self) -> AuditRepository:
         """Repository for AuditEntry persistence."""
         return self._require_connected(self._audit_entries, "audit_entries")
 
     @property
-    def provider_audit_events(self) -> SQLiteProviderAuditRepo:
+    def provider_audit_events(self) -> ProviderAuditRepo:
         """Repository for the provider mutation audit log."""
         return self._require_connected(
             self._provider_audit_events,
@@ -734,7 +803,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def preset_overrides(self) -> SQLitePresetOverrideRepo:
+    def preset_overrides(self) -> PresetOverrideRepo:
         """Repository for operator-authored provider preset overrides."""
         return self._require_connected(
             self._preset_overrides,
@@ -742,54 +811,52 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def decision_records(self) -> SQLiteDecisionRepository:
+    def decision_records(self) -> DecisionRepository:
         """Repository for DecisionRecord persistence (decisions drop-box)."""
         return self._require_connected(self._decision_records, "decision_records")
 
     @property
-    def users(self) -> SQLiteUserRepository:
+    def users(self) -> UserRepository:
         """Repository for User persistence."""
         return self._require_connected(self._users, "users")
 
     @property
-    def api_keys(self) -> SQLiteApiKeyRepository:
+    def api_keys(self) -> ApiKeyRepository:
         """Repository for ApiKey persistence."""
         return self._require_connected(self._api_keys, "api_keys")
 
     @property
-    def checkpoints(self) -> SQLiteCheckpointRepository:
+    def checkpoints(self) -> CheckpointRepository:
         """Repository for Checkpoint persistence."""
         return self._require_connected(self._checkpoints, "checkpoints")
 
     @property
-    def heartbeats(self) -> SQLiteHeartbeatRepository:
+    def heartbeats(self) -> HeartbeatRepository:
         """Repository for Heartbeat persistence."""
         return self._require_connected(self._heartbeats, "heartbeats")
 
     @property
-    def agent_states(self) -> SQLiteAgentStateRepository:
+    def agent_states(self) -> AgentStateRepository:
         """Repository for AgentRuntimeState persistence."""
         return self._require_connected(self._agent_states, "agent_states")
 
     @property
-    def settings(self) -> SQLiteSettingsRepository:
+    def settings(self) -> SettingsRepository:
         """Repository for namespaced settings persistence."""
         return self._require_connected(self._settings, "settings")
 
     @property
-    def artifacts(self) -> SQLiteArtifactRepository:
+    def artifacts(self) -> ArtifactRepository:
         """Repository for Artifact persistence."""
         return self._require_connected(self._artifacts, "artifacts")
 
     @property
-    def projects(self) -> SQLiteProjectRepository:
+    def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
         return self._require_connected(self._projects, "projects")
 
     @property
-    def project_cost_aggregates(
-        self,
-    ) -> SQLiteProjectCostAggregateRepository:
+    def project_cost_aggregates(self) -> ProjectCostAggregateRepository:
         """Repository for durable project cost aggregates."""
         return self._require_connected(
             self._project_cost_aggregates,
@@ -813,12 +880,12 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def custom_presets(self) -> SQLitePersonalityPresetRepository:
+    def custom_presets(self) -> PersonalityPresetRepository:
         """Repository for custom personality preset persistence."""
         return self._require_connected(self._custom_presets, "custom_presets")
 
     @property
-    def workflow_definitions(self) -> SQLiteWorkflowDefinitionRepository:
+    def workflow_definitions(self) -> WorkflowDefinitionRepository:
         """Repository for workflow definition persistence."""
         return self._require_connected(
             self._workflow_definitions,
@@ -826,7 +893,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def workflow_executions(self) -> SQLiteWorkflowExecutionRepository:
+    def workflow_executions(self) -> WorkflowExecutionRepository:
         """Repository for workflow execution persistence."""
         return self._require_connected(
             self._workflow_executions,
@@ -834,7 +901,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def subworkflows(self) -> SQLiteSubworkflowRepository:
+    def subworkflows(self) -> SubworkflowRepository:
         """Repository for versioned subworkflow persistence."""
         return self._require_connected(
             self._subworkflows,
@@ -898,7 +965,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def risk_overrides(self) -> SQLiteRiskOverrideRepository:
+    def risk_overrides(self) -> RiskOverrideRepository:
         """Repository for risk tier override persistence."""
         return self._require_connected(
             self._risk_overrides,
@@ -906,7 +973,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def ssrf_violations(self) -> SQLiteSsrfViolationRepository:
+    def ssrf_violations(self) -> SsrfViolationRepository:
         """Repository for SSRF violation record persistence."""
         return self._require_connected(
             self._ssrf_violations,
@@ -914,7 +981,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def circuit_breaker_state(self) -> SQLiteCircuitBreakerStateRepository:
+    def circuit_breaker_state(self) -> CircuitBreakerStateRepository:
         """Repository for circuit breaker state persistence."""
         return self._require_connected(
             self._circuit_breaker_state,
@@ -922,12 +989,12 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def connections(self) -> SQLiteConnectionRepository:
+    def connections(self) -> ConnectionRepository:
         """Repository for external service connection persistence."""
         return self._require_connected(self._connections, "connections")
 
     @property
-    def connection_secrets(self) -> SQLiteConnectionSecretRepository:
+    def connection_secrets(self) -> ConnectionSecretRepository:
         """Repository for encrypted connection secret persistence."""
         return self._require_connected(
             self._connection_secrets,
@@ -935,12 +1002,12 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def oauth_states(self) -> SQLiteOAuthStateRepository:
+    def oauth_states(self) -> OAuthStateRepository:
         """Repository for transient OAuth state persistence."""
         return self._require_connected(self._oauth_states, "oauth_states")
 
     @property
-    def webhook_receipts(self) -> SQLiteWebhookReceiptRepository:
+    def webhook_receipts(self) -> WebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
         return self._require_connected(
             self._webhook_receipts,
@@ -948,7 +1015,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def training_plans(self) -> SQLiteTrainingPlanRepository:
+    def training_plans(self) -> TrainingPlanRepository:
         """Repository for training plan persistence."""
         return self._require_connected(
             self._training_plans,
@@ -956,7 +1023,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def training_results(self) -> SQLiteTrainingResultRepository:
+    def training_results(self) -> TrainingResultRepository:
         """Repository for training result persistence."""
         return self._require_connected(
             self._training_results,
@@ -964,7 +1031,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def custom_rules(self) -> SQLiteCustomRuleRepository:
+    def custom_rules(self) -> CustomRuleRepository:
         """Repository for custom signal rule persistence."""
         return self._require_connected(
             self._custom_rules,
@@ -972,12 +1039,12 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def sessions(self) -> SQLiteSessionRepository:
+    def sessions(self) -> SessionRepository:
         """Repository for hybrid session state (durable + in-memory cache)."""
         return self._require_connected(self._sessions, "sessions")
 
     @property
-    def refresh_tokens(self) -> SQLiteRefreshTokenRepository:
+    def refresh_tokens(self) -> RefreshTokenRepository:
         """Repository for single-use refresh-token rotation."""
         return self._require_connected(
             self._refresh_tokens,
@@ -985,7 +1052,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def idempotency_keys(self) -> SQLiteIdempotencyRepository:
+    def idempotency_keys(self) -> IdempotencyRepository:
         """Repository for persistent idempotency keys."""
         return self._require_connected(
             self._idempotency_keys,
@@ -993,7 +1060,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def mcp_installations(self) -> SQLiteMcpInstallationRepository:
+    def mcp_installations(self) -> McpInstallationRepository:
         """Repository for MCP catalog installations."""
         return self._require_connected(
             self._mcp_installations,
@@ -1001,12 +1068,12 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def org_facts(self) -> SQLiteOrgFactRepository:
+    def org_facts(self) -> OrgFactRepository:
         """Repository for organizational fact persistence (MVCC)."""
         return self._require_connected(self._org_facts, "org_facts")
 
     @property
-    def ontology_entities(self) -> SQLiteOntologyEntityRepository:
+    def ontology_entities(self) -> OntologyEntityRepository:
         """Repository for ontology entity definitions."""
         return self._require_connected(
             self._ontology_entities,
@@ -1014,7 +1081,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def ontology_drift(self) -> SQLiteOntologyDriftReportRepository:
+    def ontology_drift(self) -> OntologyDriftReportRepository:
         """Repository for ontology drift reports."""
         return self._require_connected(
             self._ontology_drift,

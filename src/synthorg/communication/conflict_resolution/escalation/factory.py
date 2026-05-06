@@ -26,6 +26,7 @@ from synthorg.communication.conflict_resolution.escalation.processors import (
     WinnerSelectProcessor,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
+    CrossInstanceNotifyCapableStore,
     DecisionProcessor,
     EscalationQueueStore,
 )
@@ -33,11 +34,22 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
+    # ``PendingFuturesRegistry`` and ``PersistenceBackend`` are kept
+    # under TYPE_CHECKING because a runtime import of either closes a
+    # circular import chain through the ``communication`` package
+    # initialiser (``communication.__init__`` -> ``bus`` ->
+    # ``bus._nats_state`` -> ``communication.config`` -> back into
+    # ``escalation.factory`` via ``conflict_resolution.config`` -> ...)
+    # that the package layout cannot easily restructure. PEP 649 makes
+    # the bare annotations below safe at module-load time --- they are
+    # evaluated lazily only when an introspector calls
+    # ``typing.get_type_hints()``, and that introspector can pass an
+    # explicit ``localns`` mapping (or the equivalent ``include_extras``
+    # / ``globalns``) when it needs the resolved type.
     from synthorg.communication.conflict_resolution.escalation.registry import (
         PendingFuturesRegistry,
     )
     from synthorg.persistence.protocol import PersistenceBackend
-
 
 logger = get_logger(__name__)
 
@@ -222,14 +234,58 @@ def build_escalation_notify_subscriber(
     from synthorg.communication.conflict_resolution.escalation.notify import (  # noqa: PLC0415
         PostgresEscalationNotifySubscriber,
     )
-    from synthorg.persistence.postgres.escalation_repo import (  # noqa: PLC0415
-        PostgresEscalationRepository,
-    )
 
-    if not isinstance(store, PostgresEscalationRepository):
-        # Defensive: in principle factory-built stores and the backend
-        # discriminator match; a mismatch means someone hand-injected
-        # the store.
+    # Capability check via the structural Protocol marker rather than
+    # an ``isinstance(store, PostgresEscalationRepository)`` reach into
+    # ``persistence/postgres/``. A store can land here only when the
+    # config discriminator says ``backend == "postgres"``; reaching
+    # this branch with a store that lacks the capability marker means
+    # the operator hand-injected an unexpected store. ``mode == "on"``
+    # (not ``"auto"``) is explicit operator intent for cross-instance
+    # delivery, so silent degradation to a no-op subscriber would hide
+    # the misconfiguration -- raise instead. ``mode == "auto"`` is the
+    # opportunistic mode and may safely fall through to the no-op.
+    #
+    # ``@runtime_checkable`` only verifies attribute presence at
+    # ``isinstance()`` time, not value, so a store that declares
+    # ``supports_cross_instance_notify = False`` would still satisfy
+    # the protocol structurally. The explicit ``is True`` guard
+    # complements the structural check so opt-out values do not get
+    # treated as opt-in. The third clause -- a callable
+    # ``subscribe_notifications`` -- closes the duck-typing gap a
+    # capability marker alone leaves open: a fake that flips the flag
+    # to ``True`` but never wires the LISTEN/NOTIFY surface
+    # ``PostgresEscalationNotifySubscriber`` calls would otherwise
+    # construct here and fail at the first awaited iteration of the
+    # subscription loop. Failing in the factory keeps the error at the
+    # configuration boundary where the operator can act on it.
+    if (
+        not isinstance(store, CrossInstanceNotifyCapableStore)
+        or getattr(store, "supports_cross_instance_notify", False) is not True
+        or not callable(getattr(store, "subscribe_notifications", None))
+    ):
+        msg = (
+            "cross_instance_notify enabled but the configured store does not "
+            "implement CrossInstanceNotifyCapableStore (missing "
+            "supports_cross_instance_notify=True or callable "
+            "subscribe_notifications). Either inject a Postgres-backed "
+            "store or set cross_instance_notify='off'."
+        )
+        if mode == "on":
+            logger.warning(
+                API_APP_STARTUP,
+                component="escalation_factory",
+                note=msg,
+                config_backend=config.backend,
+                store_type=type(store).__name__,
+            )
+            raise ValueError(msg)
+        logger.debug(
+            API_APP_STARTUP,
+            component="escalation_factory",
+            note="store lacks cross-instance-notify capability; using no-op",
+            store_type=type(store).__name__,
+        )
         return NoopEscalationNotifySubscriber()
     return PostgresEscalationNotifySubscriber(
         store,

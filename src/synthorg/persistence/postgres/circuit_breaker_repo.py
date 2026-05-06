@@ -19,7 +19,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CIRCUIT_BREAKER_LOADED,
     PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED,
 )
-from synthorg.persistence.circuit_breaker_repo import (
+from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
 )
 

@@ -17,13 +17,13 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.subworkflow_models import (
+    ParentReference,
+    SubworkflowSummary,
+)
 from synthorg.engine.workflow.subworkflow_service import (
     SubworkflowHasParentsError,
     SubworkflowService,
-)
-from synthorg.persistence.subworkflow_repo import (
-    ParentReference,
-    SubworkflowSummary,
 )
 
 

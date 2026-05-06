@@ -378,6 +378,7 @@ class EngineBridgeConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     approval_interrupt_timeout_seconds: float = Field(default=300.0, ge=30.0, le=3600.0)
+    max_subworkflow_depth: int = Field(default=16, ge=1, le=64)
     health_quality_degradation_threshold: int = Field(default=3, ge=1, le=10)
     routing_weight_primary_skill: float = Field(default=0.4, ge=0.0, le=1.0)
     routing_weight_secondary_skill: float = Field(default=0.2, ge=0.0, le=1.0)

@@ -27,7 +27,7 @@ from synthorg.observability.events.agent_identity_version import (
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
-    from synthorg.persistence.version_repo import VersionRepository
+    from synthorg.persistence.version_protocol import VersionRepository
     from synthorg.versioning.models import VersionSnapshot
 
 logger = get_logger(__name__)

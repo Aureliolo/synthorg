@@ -24,7 +24,7 @@ src/synthorg/a2a/models.py:134:28
 src/synthorg/a2a/models.py:135:24
 src/synthorg/a2a/models.py:136:29
 src/synthorg/a2a/push_verifier.py:22:30
-src/synthorg/api/app.py:146:42
+src/synthorg/api/app.py:144:42
 src/synthorg/api/auth/middleware.py:47:16
 src/synthorg/api/auth/ticket_store.py:64:29
 src/synthorg/api/auth/ticket_store.py:111:29
@@ -105,7 +105,6 @@ src/synthorg/api/controllers/subworkflows.py:128:29
 src/synthorg/api/controllers/tasks.py:172:29
 src/synthorg/api/controllers/users.py:257:29
 src/synthorg/api/controllers/webhooks.py:57:32
-src/synthorg/api/controllers/workflow_executions.py:176:29
 src/synthorg/api/controllers/workflow_versions.py:197:29
 src/synthorg/api/controllers/workflows.py:108:29
 src/synthorg/api/controllers/ws.py:61:29
@@ -354,8 +353,6 @@ src/synthorg/engine/workflow/strategies/throughput_adaptive.py:81:28
 src/synthorg/engine/workflow/strategies/throughput_adaptive.py:82:24
 src/synthorg/engine/workflow/strategies/throughput_adaptive.py:83:24
 src/synthorg/engine/workflow/strategies/throughput_adaptive.py:85:28
-src/synthorg/engine/workflow/subworkflow_registry.py:45:21
-src/synthorg/engine/workflow/subworkflow_registry.py:48:28
 src/synthorg/engine/workflow/validate_edges.py:18:22
 src/synthorg/engine/workflow/validation_types.py:10:22
 src/synthorg/engine/workflow/version_service.py:43:21
@@ -777,7 +774,7 @@ src/synthorg/persistence/sqlite/workflow_execution_repo.py:50:22
 src/synthorg/persistence/ssrf_violation_protocol.py:49:21
 src/synthorg/persistence/task_protocol.py:45:21
 src/synthorg/persistence/user_protocol.py:189:21
-src/synthorg/persistence/version_repo.py:107:21
+src/synthorg/persistence/version_protocol.py:107:21
 src/synthorg/providers/cost_recording.py:103:45
 src/synthorg/providers/discovery.py:41:43
 src/synthorg/providers/drivers/litellm_driver.py:96:24

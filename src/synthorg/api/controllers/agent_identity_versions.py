@@ -37,7 +37,7 @@ from synthorg.observability.events.agent_identity_version import (
     AGENT_IDENTITY_VERSION_NOT_FOUND,
     AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
 )
-from synthorg.persistence.version_repo import VersionRepository  # noqa: TC001
+from synthorg.persistence.version_protocol import VersionRepository  # noqa: TC001
 from synthorg.versioning import VersionSnapshot
 
 logger = get_logger(__name__)

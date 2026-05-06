@@ -34,7 +34,7 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from synthorg.persistence.preset_repository import PresetListRow, PresetRow
+from synthorg.persistence.preset_protocol import PresetListRow, PresetRow
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
 

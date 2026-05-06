@@ -13,17 +13,19 @@ from synthorg.engine.workflow.definition import (
     WorkflowNode,
 )
 from synthorg.engine.workflow.version_service import WorkflowVersionService
-from synthorg.persistence.version_repo import VersionRepository
+from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.models import VersionSnapshot
 
 
 def _make_repo() -> AsyncMock:
     """Build a typed mock for the VersionRepository protocol.
 
-    Spec'ing against the protocol catches accidental rename / signature
-    drift between the service and its repo dependency.
+    Spec'ing against the SQLite concrete catches accidental rename /
+    signature drift between the service and its repo dependency,
+    while satisfying the mock-spec gate's concrete-class requirement
+    (Protocol classes are insufficient for ``spec=``).
     """
-    return AsyncMock(spec=VersionRepository)
+    return AsyncMock(spec=SQLiteVersionRepository)
 
 
 def _service(repo: AsyncMock | None = None) -> WorkflowVersionService:

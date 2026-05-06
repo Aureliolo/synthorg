@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.circuit_breaker_repo import (
+from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
 )
 from synthorg.persistence.protocol import PersistenceBackend

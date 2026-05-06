@@ -85,8 +85,14 @@ async def _count_refresh_token_rows(
     "row still there but already revoked", so they reach into the
     backend's ``_db`` connection and run a direct ``COUNT(*)``.
     """
-    refresh_repo = on_disk_backend.refresh_tokens
-    cursor = await refresh_repo._db.execute(
+    # Reach the connection via the backend's protocol-level get_db()
+    # rather than the repo's private _db attribute. The repo property
+    # is now Protocol-typed (RefreshTokenRepository) and intentionally
+    # hides backend internals; the SQLite-specific raw COUNT is still
+    # appropriate here because this entire test fixture is SQLite-only
+    # (uses on_disk_backend: SQLitePersistenceBackend).
+    db = on_disk_backend.get_db()
+    cursor = await db.execute(
         "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = ?",
         (user_id,),
     )

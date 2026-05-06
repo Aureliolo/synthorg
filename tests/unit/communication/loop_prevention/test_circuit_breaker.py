@@ -2,7 +2,7 @@
 
 import threading
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -291,13 +291,12 @@ class TestCircuitBreakerDirtyTracking:
         assert ("a", "b") in cb._dirty
 
     async def test_persist_dirty_clears_set(self) -> None:
-        from synthorg.persistence.circuit_breaker_repo import (
-            CircuitBreakerStateRepository,
+        from synthorg.persistence.sqlite.circuit_breaker_repo import (
+            SQLiteCircuitBreakerStateRepository,
         )
 
         config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=10)
-        repo = MagicMock(spec=CircuitBreakerStateRepository)
-        repo.save = AsyncMock()
+        repo = MagicMock(spec=SQLiteCircuitBreakerStateRepository)
         cb = DelegationCircuitBreaker(config, state_repo=repo)
         cb.record_delegation("a", "b")
         assert cb._dirty
@@ -307,9 +306,11 @@ class TestCircuitBreakerDirtyTracking:
         repo.save.assert_awaited_once()
 
     async def test_load_state_restores_pairs(self) -> None:
-        from synthorg.persistence.circuit_breaker_repo import (
+        from synthorg.persistence.circuit_breaker_protocol import (
             CircuitBreakerStateRecord,
-            CircuitBreakerStateRepository,
+        )
+        from synthorg.persistence.sqlite.circuit_breaker_repo import (
+            SQLiteCircuitBreakerStateRepository,
         )
 
         config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
@@ -320,8 +321,8 @@ class TestCircuitBreakerDirtyTracking:
             trip_count=2,
             opened_at=50.0,
         )
-        repo = MagicMock(spec=CircuitBreakerStateRepository)
-        repo.load_all = AsyncMock(return_value=(record,))
+        repo = MagicMock(spec=SQLiteCircuitBreakerStateRepository)
+        repo.load_all.return_value = (record,)
 
         cb = DelegationCircuitBreaker(config, state_repo=repo)
         await cb.load_state()
@@ -345,9 +346,11 @@ class TestCircuitBreakerDirtyTracking:
         completing.  Without this, a hot-path trip recorded at
         startup gets clobbered by the stale persisted snapshot.
         """
-        from synthorg.persistence.circuit_breaker_repo import (
+        from synthorg.persistence.circuit_breaker_protocol import (
             CircuitBreakerStateRecord,
-            CircuitBreakerStateRepository,
+        )
+        from synthorg.persistence.sqlite.circuit_breaker_repo import (
+            SQLiteCircuitBreakerStateRepository,
         )
 
         config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
@@ -358,8 +361,8 @@ class TestCircuitBreakerDirtyTracking:
             trip_count=1,
             opened_at=None,
         )
-        repo = MagicMock(spec=CircuitBreakerStateRepository)
-        repo.load_all = AsyncMock(return_value=(record,))
+        repo = MagicMock(spec=SQLiteCircuitBreakerStateRepository)
+        repo.load_all.return_value = (record,)
 
         cb = DelegationCircuitBreaker(config, state_repo=repo)
         # Pre-populate with a "live" entry that record_delegation
