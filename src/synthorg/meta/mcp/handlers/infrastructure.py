@@ -335,14 +335,14 @@ async def _providers_test_connection(
     tool = "synthorg_providers_test_connection"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        provider_id = _require_str(arguments, "provider_id")
-        result = await app_state.provider_read_service.test_connection(provider_id)
+        provider_name = _require_str(arguments, "provider_name")
+        result = await app_state.provider_read_service.test_connection(provider_name)
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
             actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
-            provider_id=provider_id,
+            provider_name=provider_name,
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -655,12 +655,16 @@ async def _users_create(
     tool = "synthorg_users_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        username = _require_str(arguments, "username")
+        role = _require_str(arguments, "role")
         await app_state.user_facade_service.create_user()
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
             actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
+            username=username,
+            role=role,
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -686,12 +690,16 @@ async def _users_update(
     tool = "synthorg_users_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        user_id = _require_str(arguments, "user_id")
+        updates = require_dict(arguments, "updates")
         await app_state.user_facade_service.update_user()
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
             actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
+            user_id=user_id,
+            update_keys=tuple(sorted(updates.keys())),
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -1005,12 +1013,14 @@ async def _setup_initialize(
     tool = "synthorg_setup_initialize"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        config = require_dict(arguments, "config")
         await app_state.setup_facade_service.initialize()
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
             actor_agent_id=require_actor_id(resolved_actor),
             reason=reason,
+            config_keys=tuple(sorted(config.keys())),
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)

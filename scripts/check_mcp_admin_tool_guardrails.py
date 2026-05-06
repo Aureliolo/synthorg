@@ -185,11 +185,21 @@ def _scan_domains_file(path: Path) -> tuple[set[str], list[_Violation]]:
 
 
 def _discover_admin_keys(domains_root: Path) -> tuple[set[str], list[_Violation]]:
-    """Aggregate admin handler keys across every ``domains/*.py`` file."""
+    """Aggregate admin handler keys across every ``domains/*.py`` file.
+
+    A parse failure on one domains file becomes a fail-closed violation
+    (matching the handlers/*.py side via :func:`_build_module_snapshots`)
+    rather than a raised exception, so the gate continues scanning the
+    remaining files and surfaces every problem in one report.
+    """
     keys: set[str] = set()
     violations: list[_Violation] = []
     for path in _iter_python_files(domains_root):
-        file_keys, file_violations = _scan_domains_file(path)
+        try:
+            file_keys, file_violations = _scan_domains_file(path)
+        except InspectionError as exc:
+            violations.append(_Violation(_rel(path), 0, str(exc)))
+            continue
         keys.update(file_keys)
         violations.extend(file_violations)
     return keys, violations
@@ -261,22 +271,65 @@ def _is_handlers_assignment(
     return target.id, inner
 
 
-def _collect_imports(tree: ast.Module) -> dict[str, tuple[str, str]]:
-    """Return ``local_name -> (module, attr)`` from top-level imports.
+def _collect_imports(
+    tree: ast.Module,
+    current_module: str,
+) -> dict[str, tuple[str, str]]:
+    """Return ``local_name -> (absolute_module, attr)`` from top-level imports.
 
-    Only ``from x import y`` and ``from x import y as z`` are tracked
-    (the shape used by every handlers/*.py cross-module alias today).
+    Tracks both absolute (``from x.y import z``) and relative
+    (``from .y import z``) imports. *current_module* is the dotted path
+    of the file being parsed (e.g. ``synthorg.meta.mcp.handlers.foo``);
+    relative imports are normalised against it so the resolver always
+    sees an absolute module name.
+
+    ``from . import name`` and bare ``import x`` shapes are not tracked
+    (no rebound local symbol the alias resolver would follow).
     """
     imports: dict[str, tuple[str, str]] = {}
     for node in tree.body:
         if not isinstance(node, ast.ImportFrom):
             continue
-        if node.module is None:
+        absolute_module = _resolve_import_module(node, current_module)
+        if absolute_module is None:
             continue
         for alias in node.names:
             local = alias.asname or alias.name
-            imports[local] = (node.module, alias.name)
+            imports[local] = (absolute_module, alias.name)
     return imports
+
+
+def _resolve_import_module(
+    node: ast.ImportFrom,
+    current_module: str,
+) -> str | None:
+    """Return the absolute dotted module for a ``from ... import`` node.
+
+    Handles three cases:
+
+    * Absolute (``node.level == 0``): returns ``node.module`` verbatim,
+      or ``None`` when the source omits a module entirely (an
+      ill-formed import that the AST otherwise tolerates).
+    * Relative within the package (``node.level >= 1``): walks up
+      *current_module* by ``node.level - 1`` segments and appends
+      ``node.module`` if present. ``from . import x`` (level=1, no
+      module) returns the package itself; the caller still skips it
+      because there is no per-name module to resolve into.
+    * Walking past the project root: returns ``None`` so the resolver
+      treats the import as out of scope rather than crashing.
+    """
+    if node.level == 0:
+        return node.module
+    parts = current_module.split(".")
+    if node.level > len(parts):
+        return None
+    package_parts = parts[: len(parts) - node.level]
+    base = ".".join(package_parts)
+    if not node.module:
+        return base or None
+    if not base:
+        return node.module
+    return f"{base}.{node.module}"
 
 
 def _collect_aliases(tree: ast.Module) -> dict[str, str]:
@@ -345,7 +398,7 @@ def _parse_module(path: Path) -> _ModuleSnapshot:
         source_lines=tuple(source.splitlines()),
         funcs=_collect_funcs(tree),
         aliases=_collect_aliases(tree),
-        imports=_collect_imports(tree),
+        imports=_collect_imports(tree, _module_dotted_for_path(path)),
         handler_dicts=_collect_handler_dicts(tree),
     )
 

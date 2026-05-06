@@ -249,9 +249,9 @@ async def _tasks_delete(
 ) -> str:
     tool = "synthorg_tasks_delete"
     try:
-        reason, _ = require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         task_id = require_non_blank(arguments, _ARG_TASK_ID)
-        requested_by = actor_id(actor) or "system"
+        requested_by = actor_id(resolved_actor) or "system"
         await app_state.task_engine.delete_task(
             task_id,
             requested_by=requested_by,
@@ -330,9 +330,9 @@ async def _tasks_cancel(
 ) -> str:
     tool = "synthorg_tasks_cancel"
     try:
-        reason, _ = require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         task_id = require_non_blank(arguments, _ARG_TASK_ID)
-        requested_by = actor_id(actor) or "system"
+        requested_by = actor_id(resolved_actor) or "system"
         task, _prior_status = await app_state.task_engine.cancel_task(
             task_id,
             requested_by=requested_by,

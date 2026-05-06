@@ -153,8 +153,21 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "backup",
         "create",
         "Create a backup (admin; requires confirm).",
-        ADMIN_GUARDRAIL_PROPERTIES,
-        required=ADMIN_GUARDRAIL_REQUIRED,
+        {
+            "trigger": {
+                "type": "string",
+                "description": "What initiated the backup",
+                "enum": [
+                    "scheduled",
+                    "manual",
+                    "shutdown",
+                    "startup",
+                    "pre_migration",
+                ],
+            },
+            **ADMIN_GUARDRAIL_PROPERTIES,
+        },
+        required=("trigger", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=BackupCreateArgs,
     ),
     read_tool("backup", "list", "List available backups.", args_model=BackupListArgs),
@@ -446,10 +459,11 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "install",
         "Install a template pack (admin; requires confirm).",
         {
-            "pack_id": {"type": "string", "description": "Template pack to install"},
+            "name": {"type": "string", "description": "Template pack name"},
+            "version": {"type": "string", "description": "Template pack version"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("pack_id", *ADMIN_GUARDRAIL_REQUIRED),
+        required=("name", "version", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=TemplatePacksInstallArgs,
     ),
     admin_tool(

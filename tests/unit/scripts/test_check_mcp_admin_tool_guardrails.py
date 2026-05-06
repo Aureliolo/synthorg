@@ -600,6 +600,23 @@ def test_unparseable_handlers_file_flagged(tmp_path: Path) -> None:
     assert any("failed to parse" in v.message for v in violations)
 
 
+def test_unparseable_domains_file_flagged(tmp_path: Path) -> None:
+    """A SyntaxError on the domains/ side fails closed, same as handlers/.
+
+    Pairs with ``test_unparseable_handlers_file_flagged``: the
+    ``_discover_admin_keys`` walker must catch ``InspectionError`` and
+    emit a ``failed to parse`` violation rather than letting the
+    exception escape and bypassing every later admin-tool check.
+    """
+    tree = _make_tree(
+        tmp_path,
+        domains_files={"settings.py": "TOOLS = (admin_tool(\n"},
+        handlers_files={"settings.py": _HANDLER_OK},
+    )
+    violations = _run(tree)
+    assert any("failed to parse" in v.message for v in violations)
+
+
 # ── multi-tool / multi-file ──────────────────────────────────────
 
 
@@ -714,6 +731,57 @@ from typing import Any
 from synthorg.meta.mcp.handlers.workflow_executions import (
     workflow_executions_cancel as _cancel_impl,
 )
+
+_workflow_executions_cancel = _cancel_impl
+
+
+WORKFLOW_HANDLERS = MappingProxyType(
+    {
+        "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
+    },
+)
+"""
+    leaf = """\
+from typing import Any
+
+
+async def workflow_executions_cancel(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any | None = None,
+) -> str:
+    require_admin_guardrails(arguments, actor)
+    return ok(None)
+"""
+    tree = _make_tree(
+        tmp_path,
+        domains_files={
+            "workflows.py": _domain_admin("workflow_executions", "cancel"),
+        },
+        handlers_files={
+            "workflows.py": aggregator,
+            "workflow_executions.py": leaf,
+        },
+    )
+    assert _run(tree) == []
+
+
+def test_cross_module_alias_resolves_via_relative_import(tmp_path: Path) -> None:
+    """``from .other import ...`` resolves the same way as the absolute form.
+
+    Pairs with ``test_cross_module_alias_resolves_via_import``: the
+    relative-import grammar is the second canonical shape for the
+    aggregator -> leaf alias chain. _collect_imports normalises
+    ``from .X import y`` against the importing file's dotted path
+    (``synthorg.meta.mcp.handlers.workflows`` here) into the absolute
+    target ``synthorg.meta.mcp.handlers.workflow_executions`` so the
+    resolver follows the alias the same way as the absolute case.
+    """
+    aggregator = """\
+from types import MappingProxyType
+from typing import Any
+from .workflow_executions import workflow_executions_cancel as _cancel_impl
 
 _workflow_executions_cancel = _cancel_impl
 

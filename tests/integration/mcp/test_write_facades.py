@@ -17,7 +17,7 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 import structlog.testing
@@ -49,12 +49,15 @@ from tests.unit.meta.mcp.conftest import make_test_actor
 pytestmark = pytest.mark.integration
 
 
-def _sync_dumped(data: dict[str, Any]) -> MagicMock:
-    mock = MagicMock()
-    mock.model_dump = MagicMock(return_value=data)
-    for k, v in data.items():
-        setattr(mock, k, v)
-    return mock
+def _sync_dumped(data: dict[str, Any]) -> SimpleNamespace:
+    """Build a Pydantic-model double whose ``model_dump`` returns *data*.
+
+    Used by handlers that call ``record.model_dump(mode="json")`` on the
+    returned service value; ``SimpleNamespace`` exposes the supplied
+    keys as real attributes (so the handler can read ``record.id`` etc.)
+    without dragging a bare ``MagicMock`` through the test surface.
+    """
+    return SimpleNamespace(**data, model_dump=lambda mode="json": data)
 
 
 @pytest.fixture
@@ -138,7 +141,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     ns.has_workflow_version_service = True
 
     si_service = AsyncMock(spec=SelfImprovementService)
-    si_service.get_config = MagicMock(return_value={"enabled": False})
+    si_service.get_config.return_value = {"enabled": False}
     started = datetime.now(UTC)
     si_service.trigger_cycle.return_value = ImprovementCycleResult(
         started_at=started,

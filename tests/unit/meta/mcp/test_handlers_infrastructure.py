@@ -261,7 +261,7 @@ class TestProviders:
             response = await handler(
                 app_state=fake_app_state,
                 arguments={
-                    "provider_id": "p1",
+                    "provider_name": "p1",
                     "confirm": True,
                     "reason": "test",
                 },
@@ -358,7 +358,12 @@ class TestUsers:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_users_create"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"confirm": True, "reason": "test"},
+            arguments={
+                "username": "alice",
+                "role": "admin",
+                "confirm": True,
+                "reason": "test",
+            },
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "not_supported"
@@ -449,7 +454,11 @@ class TestSetup:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_setup_initialize"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"confirm": True, "reason": "test"},
+            arguments={
+                "config": {"region": "eu"},
+                "confirm": True,
+                "reason": "test",
+            },
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "not_supported"

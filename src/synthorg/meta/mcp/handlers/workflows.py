@@ -330,7 +330,7 @@ async def _workflows_delete(
 ) -> str:
     tool = "synthorg_workflows_delete"
     try:
-        reason, _ = require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         def_id = require_non_blank(arguments, _ARG_DEF_ID)
         deleted = await _service(app_state).delete_definition(def_id)
     except GuardrailViolationError as exc:
@@ -355,7 +355,7 @@ async def _workflows_delete(
     logger.info(
         MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=actor_id(actor),
+        actor_agent_id=actor_id(resolved_actor),
         reason=reason,
         target_id=def_id,
     )

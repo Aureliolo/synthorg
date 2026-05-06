@@ -72,6 +72,8 @@ class ProvidersTestConnectionArgs(_ProviderNameArgs, AdminGuardrailFields):
 class BackupCreateArgs(AdminGuardrailFields):
     """Args for ``backup.create`` (admin op)."""
 
+    trigger: NotBlankStr = Field(description="What initiated the backup")
+
 
 class BackupListArgs(_ArgsBase):
     """Args for ``backup.list``: no fields."""
@@ -281,8 +283,17 @@ class TemplatePacksGetArgs(_PackIdArgs):
     """Args for ``template_packs.get``."""
 
 
-class TemplatePacksInstallArgs(_PackIdArgs, AdminGuardrailFields):
-    """Args for ``template_packs.install`` (admin op)."""
+class TemplatePacksInstallArgs(AdminGuardrailFields):
+    """Args for ``template_packs.install`` (admin op).
+
+    A new install is keyed by ``name`` + ``version`` (the pack's natural
+    composite key); the persisted ``pack_id`` UUID only exists after a
+    successful install, so ``uninstall`` is the path that takes a
+    ``pack_id``.
+    """
+
+    name: NotBlankStr = Field(description="Template pack name")
+    version: NotBlankStr = Field(description="Template pack version")
 
 
 class TemplatePacksUninstallArgs(_PackIdArgs, AdminGuardrailFields):
