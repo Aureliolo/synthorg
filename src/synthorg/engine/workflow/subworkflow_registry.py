@@ -49,10 +49,13 @@ from synthorg.persistence.subworkflow_repo import (
 
 logger = get_logger(__name__)
 
-MAX_WORKFLOW_DEPTH = 16
-"""Default maximum runtime subworkflow nesting depth."""
+MAX_WORKFLOW_DEPTH = 16  # lint-allow: magic-numbers -- runtime default
+"""Default maximum runtime subworkflow nesting depth.
 
-_SUBWORKFLOW_KEYSET_ARITY = 3
+``WorkflowConfig.max_subworkflow_depth`` overrides this at runtime.
+"""
+
+_SUBWORKFLOW_KEYSET_ARITY = 3  # lint-allow: magic-numbers -- composite-key arity
 
 
 def encode_subworkflow_keyset(summary: SubworkflowSummary) -> str:
