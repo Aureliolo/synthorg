@@ -107,6 +107,16 @@ _FORBIDDEN_MODULE_PATHS: Final[dict[str, str]] = {
     "synthorg.persistence.sqlite.escalation_repo": "EscalationQueueStore",
 }
 
+# Source-prefix the from-import / wildcard checks gate against. Imports
+# from outside this prefix (e.g. ``from other.lib import SQLiteConfig``)
+# are not the gate's concern even when the symbol name happens to
+# collide -- the rule is "don't depend on concrete persistence classes",
+# not "ban this name globally". The persistence parent package itself
+# is included so ``from synthorg.persistence import SQLiteConfig`` (a
+# re-export) is caught alongside the canonical
+# ``from synthorg.persistence.config import SQLiteConfig`` shape.
+_FORBIDDEN_SOURCE_PREFIX: Final[str] = "synthorg.persistence"
+
 
 class ProjectRootError(Exception):
     """Raised when ``--repo-root`` cannot be resolved to a usable directory."""
@@ -135,9 +145,55 @@ def _line_has_trailing_marker(line: str) -> bool:
     return False
 
 
+def _resolve_import_from_module(
+    node: ast.ImportFrom,
+    file_rel_path: str,
+) -> str:
+    """Return the absolute dotted module path that *node* imports from.
+
+    Walks ``node.level`` segments up the file's package to resolve
+    relative imports (``from ..persistence.config import X`` from
+    ``src/synthorg/api/foo.py`` becomes
+    ``"synthorg.persistence.config"``). Absolute imports
+    (``node.level == 0``) are returned verbatim. Returns ``""`` when
+    the file path doesn't sit under ``src/`` or the relative import
+    walks past the package root (malformed input that callers handle
+    by skipping the node).
+    """
+    if node.level == 0:
+        return node.module or ""
+    posix_path = file_rel_path.replace("\\", "/")
+    if not posix_path.startswith("src/") or not posix_path.endswith(".py"):
+        return ""
+    parts = posix_path[len("src/") : -len(".py")].split("/")
+    package_parts = parts[:-1]
+    if node.level > len(package_parts):
+        return ""
+    base_parts = package_parts[: len(package_parts) - (node.level - 1)]
+    if node.module:
+        base_parts = base_parts + node.module.split(".")
+    return ".".join(base_parts)
+
+
+def _is_forbidden_source(module: str) -> bool:
+    """Return True iff *module* is ``synthorg.persistence`` or a submodule.
+
+    Catches both the canonical
+    ``from synthorg.persistence.config import SQLiteConfig`` shape and
+    the parent-re-export shape ``from synthorg.persistence import
+    SQLiteConfig`` -- the persistence package's ``__init__`` re-exports
+    a curated set of names, and a forbidden symbol arriving via that
+    surface is the same layering leak as the deeper-path import.
+    """
+    return module == _FORBIDDEN_SOURCE_PREFIX or module.startswith(
+        _FORBIDDEN_SOURCE_PREFIX + ".",
+    )
+
+
 def _collect_module_aliases(
     tree: ast.Module,
     lines: list[str],
+    rel: str,
 ) -> dict[str, str]:
     """Return ``{access_path: forbidden_module}`` for forbidden module imports.
 
@@ -157,7 +213,9 @@ def _collect_module_aliases(
       ``as``) -- usage is ``cfg.SQLiteConfig`` (or ``config.SQLiteConfig``);
       the access base is the bound submodule name (the alias if given,
       otherwise the imported leaf name). The full forbidden-module
-      string is reconstructed from ``node.module`` + ``alias.name``.
+      string is reconstructed from the resolved module + ``alias.name``;
+      relative imports (``from ..persistence import config``) walk
+      ``node.level`` up the file's package before joining.
 
     The map value is the forbidden module the access reaches in any of
     the three shapes. Suppression markers on the import line skip the
@@ -171,10 +229,14 @@ def _collect_module_aliases(
             access_pairs = [
                 (alias.asname or alias.name, alias.name) for alias in node.names
             ]
-        elif isinstance(node, ast.ImportFrom) and node.module:
+        elif isinstance(node, ast.ImportFrom):
+            resolved_base = _resolve_import_from_module(node, rel)
+            if not resolved_base:
+                continue
             access_pairs = [
-                (alias.asname or alias.name, f"{node.module}.{alias.name}")
+                (alias.asname or alias.name, f"{resolved_base}.{alias.name}")
                 for alias in node.names
+                if alias.name != "*"
             ]
         else:
             continue
@@ -194,19 +256,41 @@ def _check_import_from(
     rel: str,
     lines: list[str],
 ) -> list[str]:
-    """Return violations for forbidden ``from ... import <Concrete>`` shapes."""
+    """Return violations for forbidden ``from ... import <Concrete>`` shapes.
+
+    Cross-checks the source module against
+    :data:`_FORBIDDEN_SOURCE_PREFIX` before flagging individual symbols,
+    so collisions like ``from other.module import SQLiteConfig`` no
+    longer false-positive on a name that just happens to overlap with
+    a persistence-concrete identifier. Wildcard imports
+    (``from synthorg.persistence.config import *``) are flagged
+    immediately because they bind the forbidden surface en bloc and
+    bypass the attribute-access pass entirely.
+    """
     issues: list[str] = []
+    resolved_module = _resolve_import_from_module(node, rel)
+    if not _is_forbidden_source(resolved_module):
+        return issues
+    lineno = node.lineno
+    line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
+    if _line_has_trailing_marker(line):
+        return issues
     for alias in node.names:
         name = alias.name
-        if name not in _FORBIDDEN_IMPORTS:
+        if name == "*":
+            issues.append(
+                f"{rel}:{lineno}: wildcard import from forbidden persistence "
+                f"module {resolved_module!r}; depend on the protocol surface "
+                f"explicitly, or add "
+                f"'# lint-allow: dependency-inversion -- <reason>' "
+                f"on the import line."
+            )
             continue
-        lineno = node.lineno
-        line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
-        if _line_has_trailing_marker(line):
+        if name not in _FORBIDDEN_IMPORTS:
             continue
         issues.append(
             f"{rel}:{lineno}: imports concrete persistence "
-            f"type {name!r}; depend on "
+            f"type {name!r} from {resolved_module!r}; depend on "
             f"{_FORBIDDEN_IMPORTS[name]} instead, or add "
             f"'# lint-allow: dependency-inversion -- <reason>' "
             f"on the import line."
@@ -260,7 +344,7 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     except SyntaxError as exc:
         return [f"{rel}:{exc.lineno or 0}: unable to parse file: {exc.msg}"]
     lines = text.splitlines()
-    aliases_to_module = _collect_module_aliases(tree, lines)
+    aliases_to_module = _collect_module_aliases(tree, lines, rel)
     issues: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -458,6 +542,7 @@ __all__ = [
     "_iter_targets",
     "_line_has_trailing_marker",
     "_resolve_dotted_module",
+    "_resolve_import_from_module",
     "_resolve_project_root",
     "_resolve_root",
     "_scan_all",

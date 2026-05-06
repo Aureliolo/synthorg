@@ -193,6 +193,100 @@ class TestPerLineOptOut:
         assert _scan(project_root) == 1
 
 
+class TestSourceModuleCrossCheck:
+    def test_forbidden_symbol_from_unrelated_module_is_not_flagged(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        # ``SQLiteConfig`` is a forbidden symbol when it comes from
+        # ``synthorg.persistence`` -- but a same-named symbol arriving
+        # from an unrelated module is none of the gate's business.
+        # The previous symbol-only check produced a false positive here.
+        project_root = _make_project(
+            tmp_path,
+            files={
+                "src/synthorg/api/app.py": (
+                    "from other.module import SQLiteConfig\n_ = SQLiteConfig\n"
+                ),
+            },
+        )
+        assert _scan(project_root) == 0
+
+    def test_relative_import_resolves_to_absolute_path(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        # ``from ..persistence.config import SQLiteConfig`` from
+        # ``src/synthorg/api/foo.py`` resolves to
+        # ``synthorg.persistence.config.SQLiteConfig`` and must be
+        # flagged the same as the absolute-import shape.
+        project_root = _make_project(
+            tmp_path,
+            files={
+                "src/synthorg/api/foo.py": (
+                    "from ..persistence.config import SQLiteConfig\n_ = SQLiteConfig\n"
+                ),
+            },
+        )
+        assert _scan(project_root) == 1
+        assert "SQLiteConfig" in capsys.readouterr().out
+
+    def test_parent_package_re_export_is_flagged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        # ``synthorg.persistence`` re-exports ``SQLiteConfig`` from its
+        # ``__init__``; importing through the parent surface is the
+        # same layering leak as the deeper-path import.
+        project_root = _make_project(
+            tmp_path,
+            files={
+                "src/synthorg/api/foo.py": (
+                    "from synthorg.persistence import SQLiteConfig\n_ = SQLiteConfig\n"
+                ),
+            },
+        )
+        assert _scan(project_root) == 1
+        assert "SQLiteConfig" in capsys.readouterr().out
+
+
+class TestWildcardImports:
+    def test_wildcard_from_forbidden_module_is_flagged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        # Wildcard imports bind the forbidden surface en bloc and
+        # bypass the per-symbol check; the gate must flag them as a
+        # standalone violation.
+        project_root = _make_project(
+            tmp_path,
+            files={
+                "src/synthorg/api/app.py": (
+                    "from synthorg.persistence.config import *\n"
+                ),
+            },
+        )
+        assert _scan(project_root) == 1
+        captured = capsys.readouterr().out
+        assert "wildcard" in captured.lower()
+        assert "synthorg.persistence.config" in captured
+
+    def test_wildcard_from_unrelated_module_is_not_flagged(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        project_root = _make_project(
+            tmp_path,
+            files={
+                "src/synthorg/api/app.py": ("from other.module import *\n"),
+            },
+        )
+        assert _scan(project_root) == 0
+
+
 class TestLiveCodebase:
     """Anchor test: the real tree must pass with zero violations."""
 
