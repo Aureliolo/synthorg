@@ -204,7 +204,7 @@ class DriftSummary(BaseModel):
 class EntityListMeta(BaseModel):
     """Enrichment metadata for entity list responses."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_count: int = Field(ge=0)
     core_count: int = Field(ge=0)

@@ -218,6 +218,15 @@ class SetupCompanyResponse(BaseModel):
     department_count: int = Field(ge=0)
     agents: tuple[SetupAgentSummary, ...] = ()
 
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields_on_input(cls, values: object) -> object:
+        if isinstance(values, dict):
+            return {
+                k: v for k, v in values.items() if k not in cls.model_computed_fields
+            }
+        return values
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def agent_count(self) -> int:
@@ -389,6 +398,15 @@ class SetupAgentsListResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agents: tuple[SetupAgentSummary, ...]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields_on_input(cls, values: object) -> object:
+        if isinstance(values, dict):
+            return {
+                k: v for k, v in values.items() if k not in cls.model_computed_fields
+            }
+        return values
 
     @computed_field  # type: ignore[prop-decorator]
     @property

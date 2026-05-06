@@ -50,10 +50,18 @@ from synthorg.api.controllers.budget import (
     PeriodSummary,
 )
 from synthorg.api.controllers.capabilities import CapabilitiesResponse
+from synthorg.api.controllers.clients import (
+    CreateClientRequest,
+    UpdateClientRequest,
+)
 from synthorg.api.controllers.collaboration import (
     CalibrationSummaryResponse,
     OverrideResponse,
     SetOverrideRequest,
+)
+from synthorg.api.controllers.connections import (
+    CreateConnectionRequest,
+    UpdateConnectionRequest,
 )
 from synthorg.api.controllers.custom_rules import (
     CreateCustomRuleRequest,
@@ -73,10 +81,14 @@ from synthorg.api.controllers.health import (
     LivenessStatus,
     ReadinessStatus,
 )
-from synthorg.api.controllers.mcp_catalog import InstallEntryResponse
+from synthorg.api.controllers.mcp_catalog import (
+    InstallEntryRequest,
+    InstallEntryResponse,
+)
 from synthorg.api.controllers.meetings import TriggerMeetingRequest
 from synthorg.api.controllers.memory import ActiveEmbedderResponse
 from synthorg.api.controllers.meta import ChatRequest
+from synthorg.api.controllers.oauth import InitiateOAuthFlowRequest
 from synthorg.api.controllers.quality import (
     QualityOverrideResponse,
     SetQualityOverrideRequest,
@@ -111,20 +123,32 @@ from synthorg.api.controllers.setup_models import (
     AvailableLocalesResponse,
     PersonalityPresetInfoResponse,
     PersonalityPresetsListResponse,
+    SetupAgentRequest,
     SetupAgentResponse,
     SetupAgentsListResponse,
     SetupAgentSummary,
+    SetupCompanyRequest,
     SetupCompanyResponse,
     SetupCompleteResponse,
+    SetupNameLocalesRequest,
     SetupNameLocalesResponse,
     SetupStatusResponse,
     TemplateInfoResponse,
     TemplateVariableResponse,
+    UpdateAgentModelRequest,
+    UpdateAgentNameRequest,
+    UpdateAgentPersonalityRequest,
 )
 from synthorg.api.controllers.simulations import SimulationStatusResponse
 from synthorg.api.controllers.subworkflows import CreateSubworkflowRequest
-from synthorg.api.controllers.teams import TeamResponse
+from synthorg.api.controllers.teams import (
+    CreateTeamRequest,
+    ReorderTeamsRequest,
+    TeamResponse,
+    UpdateTeamRequest,
+)
 from synthorg.api.controllers.template_packs import (
+    ApplyTemplatePackRequest,
     ApplyTemplatePackResponse,
     PackInfoResponse,
 )
@@ -162,10 +186,19 @@ from synthorg.api.dto_ontology import (
     DriftReportResponse,
     DriftSummary,
     EntityFieldResponse,
+    EntityListMeta,
     EntityRelationResponse,
     EntityResponse,
     EntityVersionResponse,
     UpdateEntityRequest,
+)
+from synthorg.api.dto_org import (
+    CreateAgentOrgRequest,
+    CreateDepartmentRequest,
+    ReorderAgentsRequest,
+    ReorderDepartmentsRequest,
+    UpdateAgentOrgRequest,
+    UpdateDepartmentRequest,
 )
 from synthorg.api.dto_personalities import (
     PresetDetailResponse,
@@ -198,15 +231,21 @@ REQUEST_DTOS: tuple[type[BaseModel], ...] = (
     ChangePasswordRequest,
     # controllers/* inline DTOs
     AutonomyLevelRequest,
+    CreateClientRequest,
+    UpdateClientRequest,
     SetOverrideRequest,
+    CreateConnectionRequest,
+    UpdateConnectionRequest,
     CreateCustomRuleRequest,
     UpdateCustomRuleRequest,
     PreviewRuleRequest,
     SubmitDecisionRequest,
     CancelEscalationRequest,
     ResumeInterruptRequest,
+    InstallEntryRequest,
     TriggerMeetingRequest,
     ChatRequest,
+    InitiateOAuthFlowRequest,
     SetQualityOverrideRequest,
     GenerateReportRequest,
     StrategyUpdateRequest,
@@ -214,7 +253,17 @@ REQUEST_DTOS: tuple[type[BaseModel], ...] = (
     UpdateSettingRequest,
     _SinkConfigRequest,
     SecurityConfigImportRequest,
+    SetupCompanyRequest,
+    SetupAgentRequest,
+    UpdateAgentModelRequest,
+    UpdateAgentNameRequest,
+    UpdateAgentPersonalityRequest,
+    SetupNameLocalesRequest,
     CreateSubworkflowRequest,
+    CreateTeamRequest,
+    UpdateTeamRequest,
+    ReorderTeamsRequest,
+    ApplyTemplatePackRequest,
     CreateUserRequest,
     UpdateUserRoleRequest,
     GrantOrgRoleRequest,
@@ -236,6 +285,13 @@ REQUEST_DTOS: tuple[type[BaseModel], ...] = (
     # dto_ontology.py
     CreateEntityRequest,
     UpdateEntityRequest,
+    # dto_org.py
+    CreateDepartmentRequest,
+    UpdateDepartmentRequest,
+    ReorderDepartmentsRequest,
+    CreateAgentOrgRequest,
+    UpdateAgentOrgRequest,
+    ReorderAgentsRequest,
     # dto_training.py
     CreateTrainingPlanRequest,
     UpdateTrainingOverridesRequest,
@@ -337,6 +393,7 @@ RESPONSE_DTOS: tuple[type[BaseModel], ...] = (
     DriftAgentResponse,
     DriftReportResponse,
     DriftSummary,
+    EntityListMeta,
     # dto_personalities.py
     PresetSummaryResponse,
     PresetDetailResponse,
@@ -348,10 +405,22 @@ RESPONSE_DTOS: tuple[type[BaseModel], ...] = (
 )
 
 
+# DTOs with a ``model_validator(mode="before")`` that raises on missing
+# required fields short-circuit before extras are checked. Provide a
+# minimal payload that satisfies the mode="before" validator so the
+# extras assertion still fires.
+_REQUEST_PAYLOAD_OVERRIDES: dict[type[BaseModel], dict[str, Any]] = {
+    UpdateAgentPersonalityRequest: {"personality_preset": "visionary_leader"},
+}
+
+
 @pytest.mark.parametrize("model_cls", REQUEST_DTOS, ids=lambda c: c.__name__)
 def test_request_dto_rejects_unknown_field(model_cls: type[BaseModel]) -> None:
     """Each request DTO surfaces ``extra_forbidden`` for unknown keys."""
-    payload: dict[str, Any] = {"synthorg_unexpected_field": "x"}
+    payload: dict[str, Any] = {
+        **_REQUEST_PAYLOAD_OVERRIDES.get(model_cls, {}),
+        "synthorg_unexpected_field": "x",
+    }
     with pytest.raises(ValidationError) as exc_info:
         model_cls.model_validate(payload)
     error_types = {err["type"] for err in exc_info.value.errors()}
@@ -572,3 +641,82 @@ def test_gate_recognises_generic_subscripted_base(tmp_path: Path) -> None:
     target.write_text(source, encoding="utf-8")
     violations = _GATE._walk(target)
     assert [name for _, _, name in violations] == ["FooEnvelope"]
+
+
+def test_gate_flags_dict_literal_model_config_without_forbid(tmp_path: Path) -> None:
+    """Gate also catches the dict-literal form of ``model_config``."""
+    source = textwrap.dedent(
+        """
+        from pydantic import BaseModel
+
+        class FooResponse(BaseModel):
+            model_config = {"frozen": True}
+            value: int = 0
+        """
+    )
+    target = tmp_path / "sample.py"
+    target.write_text(source, encoding="utf-8")
+    violations = _GATE._walk(target)
+    assert [name for _, _, name in violations] == ["FooResponse"]
+
+
+def test_gate_passes_dict_literal_model_config_with_forbid(tmp_path: Path) -> None:
+    """Dict-literal ``model_config`` with ``extra='forbid'`` is accepted."""
+    source = textwrap.dedent(
+        """
+        from pydantic import BaseModel
+
+        class FooResponse(BaseModel):
+            model_config = {"frozen": True, "extra": "forbid"}
+            value: int = 0
+        """
+    )
+    target = tmp_path / "sample.py"
+    target.write_text(source, encoding="utf-8")
+    assert _GATE._walk(target) == []
+
+
+# ── Envelope round-trip tests ────────────────────────────────────────
+
+
+def test_api_response_round_trip_preserves_payload() -> None:
+    """``ApiResponse[T]`` survives ``model_dump()`` -> ``model_validate()``.
+
+    The envelope emits a ``success`` computed field on dump; Pydantic
+    skips computed fields on input validation, so the round-trip works
+    even with ``extra="forbid"``.
+    """
+    original = ApiResponse[str](data="hello")
+    dumped = original.model_dump()
+    assert dumped["success"] is True
+    restored = ApiResponse[str].model_validate(dumped)
+    assert restored.data == "hello"
+    assert restored.error is None
+    assert restored.success is True
+
+
+def test_paginated_response_round_trip_preserves_payload() -> None:
+    """``PaginatedResponse[T]`` survives ``model_dump()`` -> ``model_validate()``."""
+    from synthorg.api.dto import PaginationMeta
+
+    original = PaginatedResponse[str](
+        data=("a", "b"),
+        pagination=PaginationMeta(limit=50, next_cursor=None, has_more=False),
+    )
+    dumped = original.model_dump()
+    assert dumped["success"] is True
+    restored = PaginatedResponse[str].model_validate(dumped)
+    assert restored.data == ("a", "b")
+    assert restored.pagination.has_more is False
+    assert restored.success is True
+
+
+def test_api_response_rejects_round_trip_with_fabricated_field() -> None:
+    """A dumped envelope augmented with a stray key must be rejected on revalidate."""
+    original = ApiResponse[str](data="ok")
+    dumped = original.model_dump()
+    dumped["fabricated"] = "evil"
+    with pytest.raises(ValidationError) as exc_info:
+        ApiResponse[str].model_validate(dumped)
+    error_types = {err["type"] for err in exc_info.value.errors()}
+    assert "extra_forbidden" in error_types

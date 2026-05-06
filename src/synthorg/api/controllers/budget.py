@@ -127,6 +127,15 @@ class PeriodSummary(BaseModel):
     )
     record_count: int = Field(ge=0, description="Number of records")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields_on_input(cls, values: object) -> object:
+        if isinstance(values, dict):
+            return {
+                k: v for k, v in values.items() if k not in cls.model_computed_fields
+            }
+        return values
+
     @computed_field(description="Average cost per record")  # type: ignore[prop-decorator]
     @property
     def avg_cost(self) -> float:
@@ -178,6 +187,15 @@ class CostRecordListResponse(BaseModel):
             msg = "error must be accompanied by error_detail"
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields_on_input(cls, values: object) -> object:
+        if isinstance(values, dict):
+            return {
+                k: v for k, v in values.items() if k not in cls.model_computed_fields
+            }
+        return values
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -45,16 +45,25 @@ _OPTOUT_RE = re.compile(
 )
 
 
-def _config_forbids_extras(call: ast.Call) -> bool:
-    """Return True iff a ``ConfigDict(...)`` call has ``extra='forbid'``."""
-    for kw in call.keywords:
-        if kw.arg == "extra" and isinstance(kw.value, ast.Constant):
-            return kw.value.value == "forbid"
+def _config_forbids_extras(value: ast.Call | ast.Dict) -> bool:
+    """Return True iff a ``ConfigDict(...)`` or dict literal sets ``extra='forbid'``."""
+    if isinstance(value, ast.Call):
+        for kw in value.keywords:
+            if kw.arg == "extra" and isinstance(kw.value, ast.Constant):
+                return kw.value.value == "forbid"
+        return False
+    for key, val in zip(value.keys, value.values, strict=False):
+        if (
+            isinstance(key, ast.Constant)
+            and key.value == "extra"
+            and isinstance(val, ast.Constant)
+        ):
+            return val.value == "forbid"
     return False
 
 
-def _model_config_call(node: ast.ClassDef) -> ast.Call | None:
-    """Return the ``ConfigDict(...)`` AST node bound to ``model_config``."""
+def _model_config_value(node: ast.ClassDef) -> ast.Call | ast.Dict | None:
+    """Return the ``model_config`` AST value (``ConfigDict(...)`` or ``{...}``)."""
     for stmt in node.body:
         if not isinstance(stmt, ast.Assign):
             continue
@@ -69,6 +78,8 @@ def _model_config_call(node: ast.ClassDef) -> ast.Call | None:
             and isinstance(stmt.value.func, ast.Name)
             and stmt.value.func.id == "ConfigDict"
         ):
+            return stmt.value
+        if isinstance(stmt.value, ast.Dict):
             return stmt.value
     return None
 
@@ -123,11 +134,11 @@ def _walk(path: Path) -> list[tuple[Path, int, str]]:
             continue
         if _line_has_optout(source_lines, node.lineno):
             continue
-        config_call = _model_config_call(node)
-        if config_call is None:
+        config_value = _model_config_value(node)
+        if config_value is None:
             violations.append((path, node.lineno, node.name))
             continue
-        if not _config_forbids_extras(config_call):
+        if not _config_forbids_extras(config_value):
             violations.append((path, node.lineno, node.name))
     return violations
 

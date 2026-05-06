@@ -79,7 +79,7 @@ No default may privilege a region, currency, or locale. Resolution: user/company
 
 Any PR that establishes or expands a project-wide convention (error
 hierarchies, persistence boundary, mock-spec, regional defaults, typed
-boundary, settings-to-startup wiring, secret-log redaction, request-DTO
+boundary, settings-to-startup wiring, secret-log redaction, API-DTO
 `extra="forbid"`, no-magic-numbers, no-em-dashes, etc.) MUST include the
 AST/script gate that prevents regression. PRs proposing a convention
 without enforcement are rejected. The gate's job is to catch the SECOND
@@ -150,7 +150,7 @@ Numeric claims in `README.md` and the public docs (`docs/index.md`, `docs/roadma
 - **Docstrings**: Google style on public classes / functions (ruff D rules).
 - **Immutability**: never mutate; create new objects via `model_copy(update=...)` or `copy.deepcopy()`. Frozen Pydantic for config/identity; `MappingProxyType` for non-Pydantic registries; deepcopy at system boundaries (tool execution, provider serialization, persistence).
 - **Config vs runtime state**: separate frozen config models from mutable-via-copy runtime models; never mix in one model.
-- **Pydantic v2**: `ConfigDict(frozen=True, allow_inf_nan=False)` everywhere; `extra="forbid"` on every model that doesn't round-trip through `model_dump()` (request DTOs always); `@computed_field` for derived values; `NotBlankStr` from `core.types` for identifier / name fields. See [conventions.md](docs/reference/conventions.md) §10.
+- **Pydantic v2**: `ConfigDict(frozen=True, allow_inf_nan=False)` everywhere; `extra="forbid"` on every model that doesn't round-trip through `model_dump()` (every API-boundary DTO with a Request / Response / Snapshot / Result / Envelope / Status / Info / Summary suffix in `src/synthorg/api/` is gate-enforced); `@computed_field` for derived values; `NotBlankStr` from `core.types` for identifier / name fields. See [conventions.md](docs/reference/conventions.md) §10.
 - **Args models at every system boundary** (`BaseTool`, MCP tool, A2A RPC, WebSocket event): typed Pydantic args model validated before dispatch. See [conventions.md](docs/reference/conventions.md) §9 + [mcp-handler-contract.md](docs/reference/mcp-handler-contract.md).
 - **Typed-boundary helper**: every dict ingestion from an external source (MCP args, JWT decode, WebSocket control, audit-chain payload, A2A JSON-RPC, settings security import) calls `parse_typed()` from `synthorg.api.boundary` with a hardcoded `LiteralString` `boundary` label. Enforced by `scripts/check_boundary_typed.py`. See [typed-boundaries.md](docs/reference/typed-boundaries.md).
 - **Async concurrency**: prefer `asyncio.TaskGroup` for fan-out / fan-in; wrap independent task bodies in `async def` helpers that catch `Exception` (re-raise only `MemoryError` / `RecursionError`). See [conventions.md](docs/reference/conventions.md) §11.

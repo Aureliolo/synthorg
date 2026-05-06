@@ -1,6 +1,13 @@
 """Discovery allowlist DTOs for the provider management API."""
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -22,6 +29,15 @@ class DiscoveryPolicyResponse(BaseModel):
 
     host_port_allowlist: tuple[NotBlankStr, ...] = ()
     block_private_ips: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields_on_input(cls, values: object) -> object:
+        if isinstance(values, dict):
+            return {
+                k: v for k, v in values.items() if k not in cls.model_computed_fields
+            }
+        return values
 
     @computed_field  # type: ignore[prop-decorator]
     @property

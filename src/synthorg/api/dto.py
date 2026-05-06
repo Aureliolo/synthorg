@@ -158,6 +158,17 @@ class ApiResponse[T](BaseModel):
     error: str | None = None
     error_detail: ErrorDetail | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields_on_input(cls, values: object) -> object:
+        # model_dump() emits computed-field keys; pop them so a
+        # dump -> validate round-trip survives extra="forbid".
+        if isinstance(values, dict):
+            return {
+                k: v for k, v in values.items() if k not in cls.model_computed_fields
+            }
+        return values
+
     @model_validator(mode="after")
     def _validate_error_detail_consistency(self) -> Self:
         """``error_detail`` must not appear on a successful response."""
@@ -239,6 +250,17 @@ class PaginatedResponse[T](BaseModel):
         default=(),
         description="Data sources that failed gracefully (partial data)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields_on_input(cls, values: object) -> object:
+        # model_dump() emits computed-field keys; pop them so a
+        # dump -> validate round-trip survives extra="forbid".
+        if isinstance(values, dict):
+            return {
+                k: v for k, v in values.items() if k not in cls.model_computed_fields
+            }
+        return values
 
     @model_validator(mode="after")
     def _validate_error_detail_consistency(self) -> Self:
@@ -655,6 +677,15 @@ class CoordinationResultResponse(BaseModel):
     )
     phases: tuple[CoordinationPhaseResponse, ...] = Field(min_length=1)
     wave_count: int = Field(ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields_on_input(cls, values: object) -> object:
+        if isinstance(values, dict):
+            return {
+                k: v for k, v in values.items() if k not in cls.model_computed_fields
+            }
+        return values
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Whether all phases succeeded",
