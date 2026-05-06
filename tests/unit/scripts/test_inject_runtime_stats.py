@@ -222,21 +222,24 @@ class TestMain:
         assert "not_a_real_stat" in err
         assert "issue=not_found" in err
 
-    def test_main_missing_scoped_file_warns_and_continues(
+    def test_main_missing_scoped_file_fails_fast(
         self,
         capsys: pytest.CaptureFixture[str],
         repo_with_stats: Path,
     ) -> None:
         # Only the README exists in the tmp tree; the roadmap is missing.
+        # A scoped doc that does not exist breaks the docs-freshness contract,
+        # so main() must exit non-zero rather than silently skipping the file.
         readme = repo_with_stats / "README.md"
         readme.write_text(
             "Tested with <!--RS:tests-->OLD<!--/RS--> tests.\n",
             encoding="utf-8",
         )
         with patch.object(inj, "_SCOPED_FILES", ("README.md", "docs/roadmap/index.md")):
-            assert inj.main() == 0
+            assert inj.main() == 1
         captured = capsys.readouterr()
         assert "docs/roadmap/index.md" in captured.err
         assert "not found" in captured.err
-        # 1 file rewritten + 1 missing reported in summary
+        assert "error:" in captured.err
+        # 1 file rewritten + 1 missing reported in summary before exit.
         assert "1 missing" in captured.out

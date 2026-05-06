@@ -13,11 +13,12 @@ The rewrite is idempotent: running twice produces identical output.
 Unknown marker names raise :class:`_UnknownStatError` so typos in
 markers fail loudly rather than silently leaving stale text.
 
-A scoped file that does not exist on disk is reported as a stderr
-warning (the marker injection cannot run) but the script continues
-processing the remaining files. The injector does not abort the build
-on a missing scoped doc; the gate is responsible for catching bare
-literals where docs do exist.
+A scoped file that does not exist on disk is an error: the script logs
+the missing path to stderr, continues processing the remaining files so
+every problem surfaces in one run, then exits non-zero. The
+docs-freshness contract requires injection coverage on every entry in
+``_SCOPED_FILES``; silently skipping would let the build publish stale
+markers in any doc that vanished from the checkout.
 
 Run after ``scripts/generate_runtime_stats.py`` and before
 ``zensical build``::
@@ -152,8 +153,8 @@ def main() -> int:
         abs_path = REPO_ROOT / rel
         if not abs_path.is_file():
             print(
-                f"warning: scoped file {rel} not found on disk; "
-                "marker injection skipped",
+                f"error: scoped file {rel} not found on disk; "
+                "update _SCOPED_FILES or restore the file",
                 file=sys.stderr,
             )
             missing_count += 1
@@ -176,6 +177,8 @@ def main() -> int:
         f"done: {changed_count} file(s) rewritten, "
         f"{unchanged} unchanged, {missing_count} missing"
     )
+    if missing_count:
+        return 1
     return 0
 
 
