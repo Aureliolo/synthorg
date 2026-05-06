@@ -95,14 +95,38 @@ class TestRewrite:
 
     def test_unknown_marker_raises(self) -> None:
         original = "Bad <!--RS:not_a_real_stat-->X<!--/RS--> marker."
-        with pytest.raises(inj._UnknownStatError, match="not_a_real_stat"):
+        with pytest.raises(inj._UnknownStatError) as exc_info:
             inj.rewrite_text(original, _STATS_FIXTURE["stats"])
+        assert exc_info.value.marker_name == "not_a_real_stat"
+        assert exc_info.value.issue == inj._UnknownStatError.NOT_FOUND
 
     def test_marker_missing_display_raises(self) -> None:
         bad_stats = {"tests": {"raw": 1}}  # no 'display' key
         original = "Has <!--RS:tests-->OLD<!--/RS--> only."
-        with pytest.raises(inj._UnknownStatError, match="display"):
+        with pytest.raises(inj._UnknownStatError) as exc_info:
             inj.rewrite_text(original, bad_stats)
+        assert exc_info.value.marker_name == "tests"
+        assert exc_info.value.issue == inj._UnknownStatError.MISSING_DISPLAY
+
+    def test_unclosed_marker_left_alone(self) -> None:
+        # No closing <!--/RS--> -- regex finds no match; text unchanged.
+        original = "Tested with <!--RS:tests-->27,000+ tests."
+        assert inj.rewrite_text(original, _STATS_FIXTURE["stats"]) == original
+
+    def test_unopened_marker_left_alone(self) -> None:
+        # No opening <!--RS:NAME--> -- regex finds no match; text unchanged.
+        original = "Tested with 27,000+<!--/RS--> tests."
+        assert inj.rewrite_text(original, _STATS_FIXTURE["stats"]) == original
+
+    def test_unicode_marker_name_not_matched(self) -> None:
+        # _MARKER_RE constrains marker names to [a-z0-9_]+; non-ASCII rejected.
+        original = "Body <!--RS:über-->value<!--/RS--> here."
+        assert inj.rewrite_text(original, _STATS_FIXTURE["stats"]) == original
+
+    def test_uppercase_marker_name_not_matched(self) -> None:
+        # Marker names are snake_case lowercase; uppercase rejected.
+        original = "Body <!--RS:Tests-->value<!--/RS--> here."
+        assert inj.rewrite_text(original, _STATS_FIXTURE["stats"]) == original
 
 
 @pytest.mark.unit
@@ -180,3 +204,39 @@ class TestMain:
             assert inj.main() == 1
         err = capsys.readouterr().err
         assert "runtime_stats.yaml" in err
+
+    def test_main_unknown_marker_exits_one(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        repo_with_stats: Path,
+    ) -> None:
+        readme = repo_with_stats / "README.md"
+        readme.write_text(
+            "Bad <!--RS:not_a_real_stat-->X<!--/RS--> marker.\n",
+            encoding="utf-8",
+        )
+        with patch.object(inj, "_SCOPED_FILES", ("README.md",)):
+            assert inj.main() == 1
+        err = capsys.readouterr().err
+        assert "README.md" in err
+        assert "not_a_real_stat" in err
+        assert "issue=not_found" in err
+
+    def test_main_missing_scoped_file_warns_and_continues(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        repo_with_stats: Path,
+    ) -> None:
+        # Only the README exists in the tmp tree; the roadmap is missing.
+        readme = repo_with_stats / "README.md"
+        readme.write_text(
+            "Tested with <!--RS:tests-->OLD<!--/RS--> tests.\n",
+            encoding="utf-8",
+        )
+        with patch.object(inj, "_SCOPED_FILES", ("README.md", "docs/roadmap/index.md")):
+            assert inj.main() == 0
+        captured = capsys.readouterr()
+        assert "docs/roadmap/index.md" in captured.err
+        assert "not found" in captured.err
+        # 1 file rewritten + 1 missing reported in summary
+        assert "1 missing" in captured.out

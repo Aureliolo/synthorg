@@ -13,6 +13,12 @@ The rewrite is idempotent: running twice produces identical output.
 Unknown marker names raise :class:`_UnknownStatError` so typos in
 markers fail loudly rather than silently leaving stale text.
 
+A scoped file that does not exist on disk is reported as a stderr
+warning (the marker injection cannot run) but the script continues
+processing the remaining files. The injector does not abort the build
+on a missing scoped doc; the gate is responsible for catching bare
+literals where docs do exist.
+
 Run after ``scripts/generate_runtime_stats.py`` and before
 ``zensical build``::
 
@@ -43,7 +49,20 @@ _MARKER_RE: Final[re.Pattern[str]] = re.compile(
 
 
 class _UnknownStatError(Exception):
-    """A marker references a stat name not present in runtime_stats.yaml."""
+    """A marker references a stat name not present in runtime_stats.yaml.
+
+    Carries the offending marker name and a discriminator for the two
+    failure modes so callers (and logs) can route by the specific
+    bug rather than parsing the message string.
+    """
+
+    NOT_FOUND: Final[str] = "not_found"
+    MISSING_DISPLAY: Final[str] = "missing_display"
+
+    def __init__(self, marker_name: str, issue: str, message: str) -> None:
+        self.marker_name = marker_name
+        self.issue = issue
+        super().__init__(message)
 
 
 def _lookup_display(stats: dict[str, Any], name: str) -> str:
@@ -54,14 +73,14 @@ def _lookup_display(stats: dict[str, Any], name: str) -> str:
             f"<!--RS:{name}--> references unknown stat name; add it to "
             "data/runtime_stats.yaml or fix the marker"
         )
-        raise _UnknownStatError(msg)
+        raise _UnknownStatError(name, _UnknownStatError.NOT_FOUND, msg)
     display = entry.get("display")
     if not isinstance(display, str):
         msg = (
             f"<!--RS:{name}--> resolved entry is missing a 'display' field; "
             "regenerate data/runtime_stats.yaml"
         )
-        raise _UnknownStatError(msg)
+        raise _UnknownStatError(name, _UnknownStatError.MISSING_DISPLAY, msg)
     return display
 
 
@@ -82,8 +101,9 @@ def rewrite_text(text: str, stats: dict[str, Any]) -> str:
 def inject_file(path: Path, stats: dict[str, Any]) -> bool:
     """Rewrite *path* in-place; return True iff the file changed.
 
-    Missing files are a no-op (return False) -- the gate, not the
-    injector, owns the file inventory.
+    Missing files are not an error: the gate, not the injector, owns
+    file inventory enforcement. The caller is responsible for warning
+    when a scoped path does not exist on disk.
     """
     if not path.is_file():
         return False
@@ -123,20 +143,34 @@ def main() -> int:
         return 1
 
     changed_count = 0
+    missing_count = 0
     for rel in _SCOPED_FILES:
         abs_path = REPO_ROOT / rel
+        if not abs_path.is_file():
+            print(
+                f"warning: scoped file {rel} not found on disk; "
+                "marker injection skipped",
+                file=sys.stderr,
+            )
+            missing_count += 1
+            continue
         try:
             changed = inject_file(abs_path, stats)
         except _UnknownStatError as exc:
-            print(f"error: {rel}: {exc}", file=sys.stderr)
+            print(
+                f"error: {rel}: marker={exc.marker_name!r} "
+                f"issue={exc.issue} message={exc!s}",
+                file=sys.stderr,
+            )
             return 1
         verb = "rewrote" if changed else "checked"
         print(f"{verb}: {rel}")
         if changed:
             changed_count += 1
+    unchanged = len(_SCOPED_FILES) - changed_count - missing_count
     print(
         f"done: {changed_count} file(s) rewritten, "
-        f"{len(_SCOPED_FILES) - changed_count} unchanged"
+        f"{unchanged} unchanged, {missing_count} missing"
     )
     return 0
 

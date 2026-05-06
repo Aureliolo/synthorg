@@ -169,6 +169,27 @@ class TestScanTextOptOut:
         assert len(violations) == 1
         assert "27,000+" in violations[0]
 
+    def test_opt_out_regex_accepts_full_marker(self) -> None:
+        # Direct regex test: the gate's _OPT_OUT_RE must match the
+        # documented marker shape exactly.
+        line = "27,000+ <!-- lint-allow: doc-numeric-macros -- legacy reason -->"
+        assert gate._OPT_OUT_RE.search(line)
+
+    def test_opt_out_regex_rejects_no_reason(self) -> None:
+        line = "27,000+ <!-- lint-allow: doc-numeric-macros -->"
+        assert not gate._OPT_OUT_RE.search(line)
+
+    def test_opt_out_regex_rejects_different_rule(self) -> None:
+        # The marker is rule-specific; a different lint-allow rule must
+        # not silence this gate.
+        line = "27,000+ <!-- lint-allow: regional-defaults -- some reason -->"
+        assert not gate._OPT_OUT_RE.search(line)
+
+    def test_opt_out_regex_requires_double_dash(self) -> None:
+        # A single dash before the reason is malformed.
+        line = "27,000+ <!-- lint-allow: doc-numeric-macros - single dash -->"
+        assert not gate._OPT_OUT_RE.search(line)
+
 
 @pytest.mark.unit
 class TestScanTextCodeFence:
@@ -199,6 +220,30 @@ class TestScanTextCodeFence:
         violations = gate.scan_text(text, file_label="README.md")
         assert len(violations) == 1
         assert "outside" in text  # sanity
+
+    def test_fence_with_language_tag(self) -> None:
+        # ` ```bash ` is the typical language-tagged fence; the toggle
+        # logic relies on the line *starting* with ``` regardless of
+        # what follows.
+        text = "```bash\nuv run pytest  # 27,000+ tests\n```\nProse.\n"
+        assert gate.scan_text(text, file_label="README.md") == []
+
+    def test_indented_fence(self) -> None:
+        # ` ```yaml ` indented under a list bullet is still a fence.
+        text = "  ```yaml\n  tests: 27,000+ tests\n  ```\nProse.\n"
+        assert gate.scan_text(text, file_label="README.md") == []
+
+    def test_inline_backtick_inside_fence(self) -> None:
+        # A backtick span on a fenced line must not toggle the fence
+        # state -- the fence regex anchors at line start.
+        text = (
+            "```\ncode with `inline span` and 27,000+ tests\n```\n"
+            "Prose 27,000+ tests outside.\n"
+        )
+        violations = gate.scan_text(text, file_label="README.md")
+        # Only the prose line is a violation.
+        assert len(violations) == 1
+        assert "outside" not in violations[0]  # message format check
 
 
 @pytest.mark.unit

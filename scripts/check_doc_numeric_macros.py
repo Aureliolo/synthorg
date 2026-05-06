@@ -111,14 +111,11 @@ def scan_text(text: str, *, file_label: str) -> list[str]:
         if _OPT_OUT_RE.search(raw_line):
             continue
         scanned = _strip_unscanned_regions(raw_line)
-        violations.extend(
-            Violation(file_label=file_label, lineno=lineno, match=match.group(0))
-            for match in _NEAR_NUMBER_RE.finditer(scanned)
-        )
-        violations.extend(
-            Violation(file_label=file_label, lineno=lineno, match=match.group(0))
-            for match in _NEAR_KEYWORD_RE.finditer(scanned)
-        )
+        for pattern in (_NEAR_NUMBER_RE, _NEAR_KEYWORD_RE):
+            violations.extend(
+                Violation(file_label=file_label, lineno=lineno, match=match.group(0))
+                for match in pattern.finditer(scanned)
+            )
     return [v.render() for v in violations]
 
 

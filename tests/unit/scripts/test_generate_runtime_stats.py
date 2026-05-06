@@ -170,9 +170,12 @@ class TestMainSingleFetcherFails:
         }
         out_file.write_text(yaml.safe_dump(seed), encoding="utf-8")
 
+        stat_name = "mem0_stars"
+        source = "gh api repos/mem0ai/mem0"
+        reason = "simulated rate limit"
+
         def _raise() -> dict[str, Any]:
-            msg = "simulated rate limit"
-            raise gen._StatFetchError(msg)
+            raise gen._StatFetchError(stat_name, source, reason)
 
         fetchers = _fake_fetchers({"mem0_stars": _raise})
         with patch.object(gen, "_FETCHERS", fetchers):
@@ -185,7 +188,9 @@ class TestMainSingleFetcherFails:
 
         err = capsys.readouterr().err
         assert "mem0_stars" in err
-        assert "_StatFetchError" in err or "fetch_failed" in err
+        assert "fetch_failed" in err
+        assert "keeping_prior_value=True" in err
+        assert "simulated rate limit" in err
 
 
 @pytest.mark.unit
@@ -210,11 +215,13 @@ class TestMainAllFetchersFail:
         }
         out_file.write_text(yaml.safe_dump(seed), encoding="utf-8")
 
-        def _raise() -> dict[str, Any]:
-            msg = "offline"
-            raise gen._StatFetchError(msg)
+        def _make_raiser(stat_name: str) -> Callable[[], dict[str, Any]]:
+            def _raise() -> dict[str, Any]:
+                raise gen._StatFetchError(stat_name, "any source", "offline")
 
-        all_failing = dict.fromkeys(gen._FETCHERS, _raise)
+            return _raise
+
+        all_failing = {name: _make_raiser(name) for name in gen._FETCHERS}
         with patch.object(gen, "_FETCHERS", all_failing):
             assert gen.main() == 0
 
@@ -339,3 +346,184 @@ class TestFetchTests:
             pytest.raises(gen._StatFetchError),
         ):
             gen._fetch_tests()
+
+
+@pytest.mark.unit
+class TestStatFetchErrorStructured:
+    """`_StatFetchError` carries structured stat_name / source / reason."""
+
+    def test_fields_populated(self) -> None:
+        exc = gen._StatFetchError("tests", "pytest", "timed out")
+        assert exc.stat_name == "tests"
+        assert exc.source == "pytest"
+        assert exc.reason == "timed out"
+        rendered = str(exc)
+        assert "tests" in rendered
+        assert "timed out" in rendered
+
+
+@pytest.mark.unit
+class TestFormatHelpersBoundaries:
+    """Boundary cases on the rounding-aware display formatters."""
+
+    def test_thousands_plus_zero(self) -> None:
+        assert gen._format_thousands_plus(0) == "0+"
+
+    def test_k_plus_zero(self) -> None:
+        assert gen._format_k_plus(0) == "0k+"
+
+    def test_k_plus_below_step_renders_as_zero(self) -> None:
+        # Inputs below `_STARS_ROUND_TO` floor to 0 -- the formatter still
+        # renders sensibly without dividing by zero or producing junk.
+        assert gen._format_k_plus(100) == "0k+"
+
+
+@pytest.mark.unit
+class TestValidateFetcherSourceParity:
+    """`_validate_fetcher_source_parity` catches config drift."""
+
+    def test_clean_config_passes(self) -> None:
+        gen._validate_fetcher_source_parity()  # current module state is consistent
+
+    def test_extra_fetcher_raises(self) -> None:
+        bogus = dict(gen._FETCHERS)
+        bogus["typo_stat"] = lambda: {"raw": 0, "display": "0"}
+        with (
+            patch.object(gen, "_FETCHERS", bogus),
+            pytest.raises(RuntimeError, match="typo_stat"),
+        ):
+            gen._validate_fetcher_source_parity()
+
+    def test_extra_source_raises(self) -> None:
+        bogus = dict(gen._SOURCES)
+        bogus["unwired_stat"] = "noop"
+        with (
+            patch.object(gen, "_SOURCES", bogus),
+            pytest.raises(RuntimeError, match="unwired_stat"),
+        ):
+            gen._validate_fetcher_source_parity()
+
+
+@pytest.mark.unit
+class TestLoadExistingFirstRun:
+    """`_load_existing` returns {} when the YAML does not exist."""
+
+    def test_first_run_returns_empty(self, tmp_path: Path) -> None:
+        target = tmp_path / "not_yet.yaml"
+        with patch.object(gen, "_OUT_FILE", target):
+            assert gen._load_existing() == {}
+
+    def test_main_writes_fresh_yaml_on_first_run(self, out_file: Path) -> None:
+        assert not out_file.exists()
+        with patch.object(gen, "_FETCHERS", _fake_fetchers()):
+            assert gen.main() == 0
+        loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
+        assert loaded["schema_version"] == gen._SCHEMA_VERSION
+        assert "tests" in loaded["stats"]
+
+
+@pytest.mark.unit
+class TestLoadExistingHardFail:
+    """`_load_existing` raises on corrupted YAML; never silently empties."""
+
+    def test_yaml_parse_error_raises(self, out_file: Path) -> None:
+        out_file.write_text("not: valid: yaml: {[", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="not valid YAML"):
+            gen._load_existing()
+
+    def test_root_not_mapping_raises(self, out_file: Path) -> None:
+        out_file.write_text("- just\n- a list\n", encoding="utf-8")
+        with pytest.raises(TypeError, match="not a mapping"):
+            gen._load_existing()
+
+    def test_main_exits_one_on_corrupt_yaml(
+        self, out_file: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        out_file.write_text(": : :\n", encoding="utf-8")
+        assert gen.main() == 1
+        err = capsys.readouterr().err
+        assert "not valid YAML" in err or "not a mapping" in err
+
+
+@pytest.mark.unit
+class TestValidateStatEntry:
+    """`_validate_stat_entry` rejects malformed fetcher results."""
+
+    def test_passes_on_valid_entry(self) -> None:
+        gen._validate_stat_entry("tests", {"raw": 1, "display": "1"})
+
+    def test_missing_display_raises(self) -> None:
+        with pytest.raises(RuntimeError, match="display"):
+            gen._validate_stat_entry("tests", {"raw": 1})
+
+    def test_empty_display_raises(self) -> None:
+        with pytest.raises(RuntimeError, match="display"):
+            gen._validate_stat_entry("tests", {"raw": 1, "display": ""})
+
+    def test_non_string_display_raises(self) -> None:
+        with pytest.raises(RuntimeError, match="display"):
+            gen._validate_stat_entry("tests", {"raw": 1, "display": 17000})
+
+    def test_main_exits_one_on_buggy_fetcher(
+        self, out_file: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # out_file fixture patches _OUT_FILE so main() doesn't touch the
+        # real data/runtime_stats.yaml when it crashes mid-loop.
+        assert not out_file.exists()
+        bad: dict[str, Any] = {"raw": 1}  # no display key
+
+        fetchers = _fake_fetchers({"tests": lambda: bad})
+        with patch.object(gen, "_FETCHERS", fetchers):
+            assert gen.main() == 1
+        err = capsys.readouterr().err
+        assert "tests" in err
+        assert "display" in err
+
+
+@pytest.mark.unit
+class TestGitHead:
+    """`_git_head` returns the short sha or 'unknown' with a stderr warning."""
+
+    def test_success_returns_sha(self) -> None:
+        completed = MagicMock(spec=subprocess.CompletedProcess)
+        completed.stdout = "abc1234\n"
+        completed.returncode = 0
+        with patch("subprocess.run", return_value=completed):
+            assert gen._git_head() == "abc1234"
+
+    def test_called_process_error_warns_and_falls_back(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.CalledProcessError(128, ["git"]),
+        ):
+            assert gen._git_head() == "unknown"
+        assert "exited with code 128" in capsys.readouterr().err
+
+    def test_timeout_warns_and_falls_back(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["git"], 5),
+        ):
+            assert gen._git_head() == "unknown"
+        assert "timed out" in capsys.readouterr().err
+
+    def test_file_not_found_warns_and_falls_back(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            assert gen._git_head() == "unknown"
+        assert "not found on PATH" in capsys.readouterr().err
+
+    def test_empty_stdout_warns_and_falls_back(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        completed = MagicMock(spec=subprocess.CompletedProcess)
+        completed.stdout = "   \n"
+        completed.returncode = 0
+        with patch("subprocess.run", return_value=completed):
+            assert gen._git_head() == "unknown"
+        assert "empty stdout" in capsys.readouterr().err

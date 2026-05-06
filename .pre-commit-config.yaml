@@ -210,11 +210,17 @@ repos:
         entry: uv
         args: [run, python, scripts/check_doc_numeric_macros.py]
         language: system
-        # Run on edits to any in-scope doc, the gate itself, the
-        # YAML source-of-truth, or the injector. Pre-push only --
-        # the substitution is a build-time concern, not a per-commit
-        # one.
-        files: ^(README\.md|docs/(index|roadmap/index|architecture/decisions)\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py)$
+        # Pre-push catches bare numeric literals in scoped docs before
+        # they leave the dev's machine; CI then regenerates and injects
+        # values from data/runtime_stats.yaml at build time. The two
+        # halves are complementary: the gate enforces the contract,
+        # the injector keeps values fresh.
+        #
+        # Files list mirrors `_SCOPED_FILES` in
+        # scripts/check_doc_numeric_macros.py + the YAML source of
+        # truth + the injector/generator/gate themselves. Keep this
+        # list in sync with `_SCOPED_FILES` whenever the scope changes.
+        files: ^(README\.md|docs/index\.md|docs/roadmap/index\.md|docs/architecture/decisions\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py)$
         pass_filenames: false
         stages: [pre-push]
 

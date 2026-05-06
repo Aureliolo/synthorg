@@ -19,10 +19,15 @@ live here as `stats.<name>.display` strings. The injector substitutes
 each marker into rendered docs:
 
 ```
-Source markdown:   <!--RS:tests-->27,000+<!--/RS--> tests
-After inject:      <!--RS:tests-->27,000+<!--/RS--> tests   (idempotent)
-Rendered HTML:     27,000+ tests
+Source markdown:   <!--RS:tests-->OLD<!--/RS--> tests
+After 1st inject:  <!--RS:tests-->27,000+<!--/RS--> tests
+After 2nd inject:  <!--RS:tests-->27,000+<!--/RS--> tests   (idempotent: identical to 1st)
+Rendered HTML:     27,000+ tests   (HTML comments stripped by markdown)
 ```
+
+Idempotency means re-running the injector on the same YAML produces
+identical output. If the generator refreshes the YAML between runs,
+the next inject will pick up the new value cleanly.
 
 The generator is offline-tolerant. When `pytest --collect-only`,
 `gh release list`, `gh api`, or any other source call fails, the
