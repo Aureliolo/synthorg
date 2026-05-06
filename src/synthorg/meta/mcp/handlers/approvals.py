@@ -361,12 +361,12 @@ async def _reject(
     tool = "synthorg_approvals_reject"
 
     try:
-        reason, _ = require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         approval_id = require_non_blank(arguments, "approval_id")
         saved = await _decide(
             app_state=app_state,
             approval_id=approval_id,
-            actor=actor,
+            actor=resolved_actor,
             target=ApprovalStatus.REJECTED,
             reason=reason,
         )
@@ -383,14 +383,11 @@ async def _reject(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
-    # Emit both the handler-success telemetry *and* the destructive-op
-    # audit event so "all handler successes" dashboards still see this
-    # path and the audit trail carries full attribution.
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=actor_id(actor),
+        actor_agent_id=actor_id(resolved_actor),
         reason=reason,
         target_id=approval_id,
     )

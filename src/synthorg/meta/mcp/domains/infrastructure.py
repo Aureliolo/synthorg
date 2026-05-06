@@ -51,6 +51,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
 )
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -95,7 +96,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "value": {"type": "string", "description": "New value"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("key", "value", "reason", "confirm"),
+        required=("key", "value", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=SettingsUpdateArgs,
     ),
     admin_tool(
@@ -106,7 +107,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "key": {"type": "string", "description": "Setting key"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("key", "reason", "confirm"),
+        required=("key", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=SettingsDeleteArgs,
     ),
     # --- Providers ---
@@ -144,7 +145,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "provider_name": {"type": "string", "description": "Provider name"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("provider_name", "reason", "confirm"),
+        required=("provider_name", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=ProvidersTestConnectionArgs,
     ),
     # --- Backup ---
@@ -152,8 +153,8 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "backup",
         "create",
         "Create a backup (admin; requires confirm).",
-        {**ADMIN_GUARDRAIL_PROPERTIES},
-        required=("reason", "confirm"),
+        ADMIN_GUARDRAIL_PROPERTIES,
+        required=ADMIN_GUARDRAIL_REQUIRED,
         args_model=BackupCreateArgs,
     ),
     read_tool("backup", "list", "List available backups.", args_model=BackupListArgs),
@@ -175,7 +176,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "backup_id": {"type": "string", "description": "Backup UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("backup_id", "reason", "confirm"),
+        required=("backup_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=BackupDeleteArgs,
     ),
     admin_tool(
@@ -186,7 +187,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "backup_id": {"type": "string", "description": "Backup UUID to restore"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("backup_id", "reason", "confirm"),
+        required=("backup_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=BackupRestoreArgs,
     ),
     # --- Audit ---
@@ -251,7 +252,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "role": {"type": "string", "description": "User role"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("username", "role", "reason", "confirm"),
+        required=("username", "role", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=UsersCreateArgs,
     ),
     admin_tool(
@@ -260,10 +261,28 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "Update a user (admin; requires confirm).",
         {
             "user_id": {"type": "string", "description": "User UUID"},
-            "updates": {"type": "object", "description": "Fields to update"},
+            "updates": {
+                "type": "object",
+                "description": "Fields to update",
+                "additionalProperties": False,
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "New access-control role for the user",
+                        "minLength": 1,
+                        "pattern": r".*\S.*",
+                    },
+                    "must_change_password": {
+                        "type": "boolean",
+                        "description": (
+                            "Force the user to change password on next login"
+                        ),
+                    },
+                },
+            },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("user_id", "updates", "reason", "confirm"),
+        required=("user_id", "updates", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=UsersUpdateArgs,
     ),
     admin_tool(
@@ -274,7 +293,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "user_id": {"type": "string", "description": "User UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("user_id", "reason", "confirm"),
+        required=("user_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=UsersDeleteArgs,
     ),
     # --- Projects ---
@@ -325,7 +344,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "project_id": {"type": "string", "description": "Project UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("project_id", "reason", "confirm"),
+        required=("project_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=ProjectsDeleteArgs,
     ),
     # --- Requests ---
@@ -372,7 +391,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "config": {"type": "object", "description": "Initial configuration"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("reason", "confirm"),
+        required=("config", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=SetupInitializeArgs,
     ),
     # --- Simulations ---
@@ -430,7 +449,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "pack_id": {"type": "string", "description": "Template pack to install"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("pack_id", "reason", "confirm"),
+        required=("pack_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=TemplatePacksInstallArgs,
     ),
     admin_tool(
@@ -441,7 +460,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "pack_id": {"type": "string", "description": "Template pack UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("pack_id", "reason", "confirm"),
+        required=("pack_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=TemplatePacksUninstallArgs,
     ),
     # --- Integration health ---

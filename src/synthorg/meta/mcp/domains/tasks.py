@@ -17,6 +17,7 @@ from synthorg.meta.mcp.domains._tasks_args import (
 )
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -85,7 +86,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "task_id": {"type": "string", "description": "Task UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("task_id", "reason", "confirm"),
+        required=("task_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=TasksDeleteArgs,
     ),
     write_tool(
@@ -107,7 +108,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
             "task_id": {"type": "string", "description": "Task UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("task_id", "reason", "confirm"),
+        required=("task_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=TasksCancelArgs,
     ),
     # --- Activities ---

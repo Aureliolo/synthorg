@@ -286,6 +286,50 @@ SETTINGS_HANDLERS = MappingProxyType(
 """
 
 
+_HANDLER_OPT_OUT_CLOSING_LINE = """\
+from types import MappingProxyType
+from typing import Any
+
+
+async def _settings_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any | None = None,
+) -> str:  # lint-allow: mcp-admin-guardrail -- header span end-of-line
+    return ok(None)
+
+
+SETTINGS_HANDLERS = MappingProxyType(
+    {
+        "synthorg_settings_update": _settings_update,
+    },
+)
+"""
+
+
+_HANDLER_OPT_OUT_CLOSING_LINE_NO_JUSTIFICATION = """\
+from types import MappingProxyType
+from typing import Any
+
+
+async def _settings_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any | None = None,
+) -> str:  # lint-allow: mcp-admin-guardrail --
+    return ok(None)
+
+
+SETTINGS_HANDLERS = MappingProxyType(
+    {
+        "synthorg_settings_update": _settings_update,
+    },
+)
+"""
+
+
 _HANDLER_NON_ADMIN_MISSING = """\
 from types import MappingProxyType
 from typing import Any
@@ -359,6 +403,22 @@ def test_opt_out_marker_with_justification_passes(tmp_path: Path) -> None:
     assert _run(tree) == []
 
 
+def test_opt_out_marker_on_closing_signature_line_passes(tmp_path: Path) -> None:
+    """Marker on the closing ``) -> ...:`` line of a multi-line header passes.
+
+    The gate scans every physical line of the function header span (from
+    ``async def`` through the line that starts the body), so a marker
+    that ruff-format pushed onto the closing signature line still
+    satisfies the opt-out grammar.
+    """
+    tree = _make_tree(
+        tmp_path,
+        domains_files={"settings.py": _domain_admin("settings", "update")},
+        handlers_files={"settings.py": _HANDLER_OPT_OUT_CLOSING_LINE},
+    )
+    assert _run(tree) == []
+
+
 def test_non_admin_handler_without_call_passes(tmp_path: Path) -> None:
     """The gate scopes only to admin tools; read tools are out of scope."""
     tree = _make_tree(
@@ -428,6 +488,27 @@ def test_opt_out_without_double_dash_flagged(tmp_path: Path) -> None:
         tmp_path,
         domains_files={"settings.py": _domain_admin("settings", "update")},
         handlers_files={"settings.py": _HANDLER_OPT_OUT_NO_DOUBLE_DASH},
+    )
+    violations = _run(tree)
+    assert len(violations) == 1
+
+
+def test_opt_out_marker_on_closing_line_without_justification_flagged(
+    tmp_path: Path,
+) -> None:
+    """Marker on the closing line still requires the full opt-out grammar.
+
+    Pairs with ``test_opt_out_marker_on_closing_signature_line_passes``: the
+    multi-line header span does NOT relax the justification requirement.
+    A marker that lacks a non-empty reason on the closing ``) -> ...:``
+    line is flagged exactly as it would be on the ``async def`` line.
+    """
+    tree = _make_tree(
+        tmp_path,
+        domains_files={"settings.py": _domain_admin("settings", "update")},
+        handlers_files={
+            "settings.py": _HANDLER_OPT_OUT_CLOSING_LINE_NO_JUSTIFICATION,
+        },
     )
     violations = _run(tree)
     assert len(violations) == 1

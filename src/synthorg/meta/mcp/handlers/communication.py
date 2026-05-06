@@ -803,7 +803,6 @@ async def _tunnel_connect(
     tool = "synthorg_tunnel_connect"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        target = _require_str(arguments, "target")
         actor_id = require_actor_id(resolved_actor)
         status = await app_state.tunnel_service.connect()
         logger.info(
@@ -811,7 +810,6 @@ async def _tunnel_connect(
             tool_name=tool,
             actor_agent_id=actor_id,
             reason=reason,
-            target=target,
         )
         return ok(status.to_dict())
     except GuardrailViolationError as exc:

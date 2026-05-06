@@ -27,6 +27,7 @@ from synthorg.meta.mcp.domains._agents_args import (
 )
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -83,7 +84,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "delete",
         "Remove an agent from the organization (destructive; requires confirm).",
         {**_AGENT_NAME, **ADMIN_GUARDRAIL_PROPERTIES},
-        required=("agent_name", "reason", "confirm"),
+        required=("agent_name", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=AgentsDeleteArgs,
     ),
     # --- Agent observability ---

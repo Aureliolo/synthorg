@@ -166,8 +166,7 @@ class TunnelGetStatusArgs(_ArgsBase):
 class TunnelConnectArgs(AdminGuardrailFields):
     """Args for ``tunnel.connect`` (admin op).
 
-    Admin op: callers must supply ``confirm=True`` and a non-blank
-    ``reason`` (mixin) in addition to the target endpoint.
+    Parameterless reconnect: callers supply only the guardrail fields
+    (``confirm=True`` + non-blank ``reason``) since the underlying
+    tunnel service does not accept a target endpoint at this layer.
     """
-
-    target: NotBlankStr = Field(description="Tunnel target endpoint")

@@ -20,6 +20,7 @@ from synthorg.meta.mcp.domains._simple_args import (
 )
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -117,7 +118,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             "approval_id": {"type": "string", "description": "Approval UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("approval_id", "reason", "confirm"),
+        required=("approval_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=ApprovalsRejectArgs,
     ),
 )

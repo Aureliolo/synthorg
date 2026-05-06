@@ -152,10 +152,29 @@ class UsersCreateArgs(AdminGuardrailFields):
     role: NotBlankStr = Field(description="User role")
 
 
+class UsersUpdateFields(_ArgsBase):
+    """Mutable fields exposed on the ``users.update`` patch DTO.
+
+    Every field is optional so partial patches can land; the
+    ``extra="forbid"`` config inherited from ``_ArgsBase`` rejects
+    unknown keys at the boundary instead of letting them through to a
+    later validation stage.
+    """
+
+    role: NotBlankStr | None = Field(
+        default=None,
+        description="New access-control role for the user",
+    )
+    must_change_password: bool | None = Field(
+        default=None,
+        description="Force the user to change password on next login",
+    )
+
+
 class UsersUpdateArgs(_UserIdArgs, AdminGuardrailFields):
     """Args for ``users.update`` (admin op)."""
 
-    updates: dict[str, object] = Field(description="Fields to update")
+    updates: UsersUpdateFields = Field(description="Fields to update")
 
 
 class UsersDeleteArgs(_UserIdArgs, AdminGuardrailFields):
@@ -225,10 +244,7 @@ class SetupGetStatusArgs(_ArgsBase):
 class SetupInitializeArgs(AdminGuardrailFields):
     """Args for ``setup.initialize`` (admin op)."""
 
-    config: dict[str, object] = Field(
-        default_factory=dict,
-        description="Initial configuration",
-    )
+    config: dict[str, object] = Field(description="Initial configuration")
 
 
 class SimulationsListArgs(PaginationFields):

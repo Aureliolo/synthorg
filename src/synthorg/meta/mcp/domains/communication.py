@@ -30,6 +30,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
 )
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -86,7 +87,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("message_id", "reason", "confirm"),
+        required=("message_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MessagesDeleteArgs,
     ),
     # --- Meetings ---
@@ -145,7 +146,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("meeting_id", "reason", "confirm"),
+        required=("meeting_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MeetingsDeleteArgs,
     ),
     # --- Connections ---
@@ -175,7 +176,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "credentials": {"type": "object", "description": "Connection credentials"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("name", "connection_type", "reason", "confirm"),
+        required=("name", "connection_type", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=ConnectionsCreateArgs,
     ),
     admin_tool(
@@ -186,7 +187,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "name": {"type": "string", "description": "Connection name"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("name", "reason", "confirm"),
+        required=("name", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=ConnectionsDeleteArgs,
     ),
     read_tool(
@@ -230,7 +231,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("url", "events", "reason", "confirm"),
+        required=("url", "events", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=WebhooksCreateArgs,
     ),
     admin_tool(
@@ -242,7 +243,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "updates": {"type": "object", "description": "Fields to update"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("webhook_id", "updates", "reason", "confirm"),
+        required=("webhook_id", "updates", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=WebhooksUpdateArgs,
     ),
     admin_tool(
@@ -253,7 +254,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "webhook_id": {"type": "string", "description": "Webhook UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("webhook_id", "reason", "confirm"),
+        required=("webhook_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=WebhooksDeleteArgs,
     ),
     # --- Tunnel ---
@@ -267,11 +268,8 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "tunnel",
         "connect",
         "Establish a tunnel connection (admin; requires confirm).",
-        {
-            "target": {"type": "string", "description": "Tunnel target endpoint"},
-            **ADMIN_GUARDRAIL_PROPERTIES,
-        },
-        required=("target", "reason", "confirm"),
+        ADMIN_GUARDRAIL_PROPERTIES,
+        required=ADMIN_GUARDRAIL_REQUIRED,
         args_model=TunnelConnectArgs,
     ),
 )

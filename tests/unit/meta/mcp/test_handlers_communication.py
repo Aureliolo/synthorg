@@ -590,7 +590,6 @@ class TestTunnelHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={
-                "target": "https://example.test",
                 "reason": "operator-initiated reconnect",
                 "confirm": True,
             },
@@ -607,7 +606,6 @@ class TestTunnelHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={
-                "target": "https://example.test",
                 "reason": "operator-initiated reconnect",
             },
             actor=make_test_actor(),

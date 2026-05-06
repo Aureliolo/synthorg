@@ -2218,18 +2218,25 @@ docs/reference/mcp-handler-contract.md. Every handler must:
 - Return responses via envelope helpers (ok / err / capability_gap /
   not_supported) from common.py, not raw dicts
 - Validate args via require_arg
-- Call require_admin_guardrails(arguments, actor) on every handler
-  registered with admin_tool, OR carry a justified
-  `# lint-allow: mcp-admin-guardrail -- <reason>` annotation on the
-  handler signature (sanctioned opt-outs cover approval-queue routing,
-  parameterless reconnects, non-mutating registrations, and partial
-  PATCH semantics where another path enforces the full guardrail)
+- Call require_admin_guardrails(arguments, actor) as the lexically first
+  call in the handler body (descending into a single outer try: is fine,
+  but no other Call may precede it) on every handler registered with
+  admin_tool, OR carry the full opt-out grammar
+  `# lint-allow: mcp-admin-guardrail -- <non-empty reason>` somewhere on
+  the function-header span (the lines from `async def` through the
+  closing `) -> ...:`). Sanctioned opt-outs cover approval-queue
+  routing, parameterless reconnects, non-mutating registrations, and
+  partial PATCH semantics where another path enforces the full
+  guardrail; any other rationale, an annotation missing the `--`
+  separator, or an empty reason is a violation.
 - Route through service-layer facades (ArtifactService, WorkflowService,
   MemoryService, CustomRulesService, UserService) -- never reach into
   app_state.persistence.* directly
 
-Flag handlers that build raw dict responses, miss guardrails on admin_tool
-without the lint-allow annotation, or bypass services to hit repos.
+Flag handlers that build raw dict responses, miss guardrails on
+admin_tool without the lint-allow annotation in the correct grammar and
+header-span position, place a non-guardrail Call before the guardrail in
+the body, or bypass services to hit repos.
 
 Severity: high.
 
