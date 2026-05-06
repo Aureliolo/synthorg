@@ -44,11 +44,13 @@ class WorkflowExecutionObserver:
         definition_repo: WorkflowDefinitionRepository,
         execution_repo: WorkflowExecutionRepository,
         task_engine: TaskEngine,
+        max_subworkflow_depth: int,
     ) -> None:
         self._service = WorkflowExecutionService(
             definition_repo=definition_repo,
             execution_repo=execution_repo,
             task_engine=task_engine,
+            max_subworkflow_depth=max_subworkflow_depth,
         )
 
     async def __call__(self, event: TaskStateChanged) -> None:

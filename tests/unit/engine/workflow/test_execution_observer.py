@@ -6,9 +6,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.core.enums import TaskStatus
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow.execution_observer import (
     WorkflowExecutionObserver,
+)
+from synthorg.persistence.workflow_definition_repo import (
+    WorkflowDefinitionRepository,
+)
+from synthorg.persistence.workflow_execution_repo import (
+    WorkflowExecutionRepository,
 )
 
 
@@ -37,20 +44,22 @@ class TestWorkflowExecutionObserver:
     @pytest.mark.unit
     def test_constructor_wires_service(self) -> None:
         """Observer creates a WorkflowExecutionService with the given deps."""
-        definition_repo = MagicMock()
-        execution_repo = MagicMock()
-        task_engine = MagicMock()
+        definition_repo = MagicMock(spec=WorkflowDefinitionRepository)
+        execution_repo = MagicMock(spec=WorkflowExecutionRepository)
+        task_engine = MagicMock(spec=TaskEngine)
 
         observer = WorkflowExecutionObserver(
             definition_repo=definition_repo,
             execution_repo=execution_repo,
             task_engine=task_engine,
+            max_subworkflow_depth=16,
         )
 
         service = observer._service
         assert service._definition_repo is definition_repo
         assert service._execution_repo is execution_repo
         assert service._task_engine is task_engine
+        assert service._max_subworkflow_depth == 16
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -63,9 +72,10 @@ class TestWorkflowExecutionObserver:
     ) -> None:
         """__call__ forwards all task events to service."""
         observer = WorkflowExecutionObserver(
-            definition_repo=MagicMock(),
-            execution_repo=MagicMock(),
-            task_engine=MagicMock(),
+            definition_repo=MagicMock(spec=WorkflowDefinitionRepository),
+            execution_repo=MagicMock(spec=WorkflowExecutionRepository),
+            task_engine=MagicMock(spec=TaskEngine),
+            max_subworkflow_depth=16,
         )
 
         event = _make_event(new_status=status)

@@ -10,9 +10,13 @@ that:
   live parent workflow,
 - emits observability events for every lifecycle action.
 
-The default runtime depth limit for nested subworkflow calls is defined
-here (``MAX_WORKFLOW_DEPTH``).  ``WorkflowConfig.max_subworkflow_depth``
-overrides it at runtime.
+The runtime nesting-depth limit for subworkflow calls is configured
+through ``engine.max_subworkflow_depth`` (registered in
+``settings/definitions/engine.py`` and surfaced on
+``EngineBridgeConfig.max_subworkflow_depth``); the
+``WorkflowExecutionService`` constructor takes the resolved value as a
+required parameter so the limit follows the standard
+DB > env > YAML > code-default settings resolution path.
 """
 
 import json
@@ -48,12 +52,6 @@ from synthorg.persistence.subworkflow_repo import (
 )
 
 logger = get_logger(__name__)
-
-MAX_WORKFLOW_DEPTH = 16  # lint-allow: magic-numbers -- runtime default
-"""Default maximum runtime subworkflow nesting depth.
-
-``WorkflowConfig.max_subworkflow_depth`` overrides this at runtime.
-"""
 
 _SUBWORKFLOW_KEYSET_ARITY = 3  # lint-allow: magic-numbers -- composite-key arity
 

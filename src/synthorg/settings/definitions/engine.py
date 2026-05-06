@@ -77,6 +77,26 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="max_subworkflow_depth",
+        type=SettingType.INTEGER,
+        default="16",
+        description=(
+            "Maximum runtime nesting depth for subworkflow calls. The"
+            " ``WorkflowExecutionService`` rejects activation past this"
+            " limit to bound per-workflow stack depth and protect against"
+            " infinite recursion through cyclic subworkflow references."
+        ),
+        group="Workflow Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=64,
+        yaml_path="engine.max_subworkflow_depth",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="health_quality_degradation_threshold",
         type=SettingType.INTEGER,
         default="3",

@@ -198,6 +198,7 @@ def service(
         definition_repo=def_repo,
         execution_repo=exec_repo,
         task_engine=engine,
+        max_subworkflow_depth=16,
     )
 
 

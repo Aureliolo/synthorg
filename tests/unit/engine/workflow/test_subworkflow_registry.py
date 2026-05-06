@@ -25,10 +25,7 @@ from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )
-from synthorg.engine.workflow.subworkflow_registry import (
-    MAX_WORKFLOW_DEPTH,
-    SubworkflowRegistry,
-)
+from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.persistence.subworkflow_repo import SubworkflowRepository
 
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
@@ -324,9 +321,3 @@ class TestSearch:
         results = await registry.search("alpha")
         assert len(results) == 1
         assert results[0].subworkflow_id == "sub-a"
-
-
-class TestMaxWorkflowDepth:
-    @pytest.mark.unit
-    def test_max_depth_default(self) -> None:
-        assert MAX_WORKFLOW_DEPTH == 16

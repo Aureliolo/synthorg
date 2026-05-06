@@ -252,10 +252,21 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 for o in getattr(task_engine, "_observers", ())
             )
             if not _already_registered:
+                # Resolve the subworkflow-depth limit through the engine
+                # bridge config so the operator's ``engine.max_subworkflow_depth``
+                # setting (DB > env > YAML > code default) drives the
+                # observer's underlying ``WorkflowExecutionService``. The
+                # bridge default seeds the same value the legacy module
+                # constant carried, so deployments without an override
+                # see no behaviour change.
+                engine_bridge = (
+                    await app_state.config_resolver.get_engine_bridge_config()
+                )
                 _wf_observer = WorkflowExecutionObserver(
                     definition_repo=persistence.workflow_definitions,
                     execution_repo=persistence.workflow_executions,
                     task_engine=task_engine,
+                    max_subworkflow_depth=engine_bridge.max_subworkflow_depth,
                 )
                 task_engine.register_observer(_wf_observer)
 

@@ -72,13 +72,20 @@ def _extract_username(request: Request[Any, Any, Any]) -> str:
     return "api"
 
 
-def _build_service(state: State) -> WorkflowExecutionService:
-    """Construct a WorkflowExecutionService from app state."""
+async def _build_service(state: State) -> WorkflowExecutionService:
+    """Construct a WorkflowExecutionService from app state.
+
+    Resolves ``engine.max_subworkflow_depth`` through the engine bridge
+    config so the service inherits the operator's settings (DB > env >
+    YAML > code default) on every request.
+    """
     app_state = state.app_state
+    engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
     return WorkflowExecutionService(
         definition_repo=app_state.persistence.workflow_definitions,
         execution_repo=app_state.persistence.workflow_executions,
         task_engine=app_state.task_engine,
+        max_subworkflow_depth=engine_bridge.max_subworkflow_depth,
     )
 
 
@@ -105,7 +112,7 @@ class WorkflowExecutionController(Controller):
     ) -> Response[ApiResponse[WorkflowExecution]]:
         """Activate a workflow definition, creating task instances."""
         activated_by = _extract_username(request)
-        service = _build_service(state)
+        service = await _build_service(state)
         try:
             execution = await service.activate(
                 workflow_id,
@@ -176,7 +183,7 @@ class WorkflowExecutionController(Controller):
         limit: CursorLimit = 50,
     ) -> Response[PaginatedResponse[WorkflowExecution] | ApiResponse[None]]:
         """List executions for a workflow definition with cursor pagination."""
-        service = _build_service(state)
+        service = await _build_service(state)
         try:
             executions = await service.list_executions(workflow_id)
         except PersistenceError as exc:
@@ -216,7 +223,7 @@ class WorkflowExecutionController(Controller):
         execution_id: PathId,
     ) -> Response[ApiResponse[WorkflowExecution]]:
         """Get a specific workflow execution."""
-        service = _build_service(state)
+        service = await _build_service(state)
         try:
             execution = await service.get_execution(execution_id)
         except PersistenceError as exc:
@@ -261,7 +268,7 @@ class WorkflowExecutionController(Controller):
     ) -> Response[ApiResponse[WorkflowExecution]]:
         """Cancel a workflow execution."""
         cancelled_by = _extract_username(request)
-        service = _build_service(state)
+        service = await _build_service(state)
         try:
             execution = await service.cancel_execution(
                 execution_id,

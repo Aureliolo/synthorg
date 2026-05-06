@@ -920,6 +920,7 @@ class ConfigResolver:
             "engine",
             (
                 ("approval_interrupt_timeout_seconds", "float"),
+                ("max_subworkflow_depth", "int"),
                 ("health_quality_degradation_threshold", "int"),
                 ("routing_weight_primary_skill", "float"),
                 ("routing_weight_secondary_skill", "float"),
