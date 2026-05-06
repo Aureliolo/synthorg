@@ -190,7 +190,7 @@ class WorkflowExecutionController(Controller):
         state: State,
         workflow_id: PathId,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = 50,  # lint-allow: magic-numbers -- pagination default
     ) -> Response[PaginatedResponse[WorkflowExecution] | ApiResponse[None]]:
         """List executions for a workflow definition with cursor pagination."""
         service = await _build_service(state)
