@@ -222,9 +222,7 @@ def apply_update(
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](
-                context="Invalid update",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=f"Invalid update: {safe_error_description(exc)}",
             ),
             status_code=422,
         )
