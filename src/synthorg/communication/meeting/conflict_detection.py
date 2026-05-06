@@ -145,7 +145,6 @@ class StructuredComparisonDetector:
             logger.debug(
                 CONFLICT_PARSE_FAILED,
                 detector="StructuredComparisonDetector",
-                exc_info=True,
             )
             return False
 
@@ -252,7 +251,6 @@ class LlmJudgeDetector:
             logger.debug(
                 CONFLICT_PARSE_FAILED,
                 detector="LlmJudgeDetector",
-                exc_info=True,
             )
 
         # Fallback to keyword markers (whitespace-tolerant)

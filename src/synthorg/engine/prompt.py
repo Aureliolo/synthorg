@@ -244,7 +244,6 @@ def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
             logger.warning(
                 PROMPT_POLICY_VALIDATION_FAILED,
                 agent_id=str(agent.id),
-                exc_info=True,
             )
 
     logger.info(
@@ -288,7 +287,6 @@ def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
             agent_id=str(agent.id),
             agent_name=agent.name,
             error="non-recoverable error building prompt",
-            exc_info=True,
         )
         raise
     except Exception as exc:

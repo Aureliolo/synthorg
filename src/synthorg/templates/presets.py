@@ -589,7 +589,6 @@ def generate_auto_name(
             TEMPLATE_NAME_GEN_FAKER_ERROR,
             locales=locale_list[:5],
             seed=seed,
-            exc_info=True,
         )
         # Fall back to a known-safe locale.
         fallback = Faker(["en_US"])

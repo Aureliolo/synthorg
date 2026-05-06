@@ -130,7 +130,6 @@ class OtlpTraceHandler:
             except Exception:
                 logger.warning(
                     "trace.handler.orphan_shutdown_failed",
-                    exc_info=True,
                 )
             raise RuntimeError(msg)
         _HANDLER_INSTANCE = self

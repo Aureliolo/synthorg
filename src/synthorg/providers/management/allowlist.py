@@ -76,7 +76,6 @@ class DiscoveryAllowlistManager:
                 logger.warning(
                     PROVIDER_DISCOVERY_ALLOWLIST_CORRUPTED,
                     raw_length=len(result.value),
-                    exc_info=True,
                 )
 
         # Seed from presets + installed providers.
@@ -136,7 +135,6 @@ class DiscoveryAllowlistManager:
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
                 action="add_failed",
                 host_port=hp,
-                exc_info=True,
             )
 
     async def update_for_delete(
@@ -188,7 +186,6 @@ class DiscoveryAllowlistManager:
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
                 action="remove_failed",
                 host_port=hp,
-                exc_info=True,
             )
 
     async def update_for_update(
@@ -240,7 +237,6 @@ class DiscoveryAllowlistManager:
                 action="update_failed",
                 old_host_port=old_hp,
                 new_host_port=new_hp,
-                exc_info=True,
             )
 
     async def add_entry(

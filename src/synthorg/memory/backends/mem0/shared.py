@@ -158,7 +158,6 @@ async def publish_shared(
             operation="publish",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         raise
     except Exception as exc:
@@ -257,7 +256,6 @@ async def search_shared_memories(
             operation="search_shared",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         raise
     except Exception as exc:
@@ -324,7 +322,6 @@ async def retract_shared(
             operation="retract",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         raise
     except Exception as exc:

@@ -363,7 +363,7 @@ async def _classify_safely(  # noqa: PLR0913
         # traceback frame-locals into the event, leaking any
         # in-scope credential. Log redacted classification context
         # via ``safe_error_description`` and re-raise.
-        logger.error(  # noqa: TRY400
+        logger.error(
             CLASSIFICATION_ERROR,
             agent_id=agent_id,
             task_id=task_id,
@@ -400,7 +400,7 @@ async def _dispatch_to_sinks(
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.exception(
+            logger.warning(
                 CLASSIFICATION_SINK_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -511,7 +511,7 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
             raise
         except Exception:
             detector_names = [type(d).__name__ for d in detectors]
-            logger.exception(
+            logger.warning(
                 CONTEXT_LOADER_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -576,7 +576,7 @@ async def _safe_detect(  # noqa: PLR0913
         )
         return ()
     except Exception:
-        logger.exception(
+        logger.warning(
             DETECTOR_ERROR,
             agent_id=agent_id,
             task_id=task_id,

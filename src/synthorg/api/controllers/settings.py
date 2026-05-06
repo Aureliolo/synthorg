@@ -459,7 +459,7 @@ class SettingsController(Controller):
             msg = "Invalid setting value"
             raise DomainValidationError(msg) from exc
         except SettingsEncryptionError:
-            logger.exception(
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=namespace,
                 key=key,
@@ -598,7 +598,7 @@ class SettingsController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.exception(SETTINGS_OBSERVABILITY_VALIDATION_FAILED)
+            logger.warning(SETTINGS_OBSERVABILITY_VALIDATION_FAILED)
             return ApiResponse(
                 data=TestSinkConfigResponse(
                     valid=False,
@@ -807,7 +807,6 @@ async def _get_setting_or_default(
             namespace=SettingNamespace.OBSERVABILITY.value,
             key=key,
             error="Failed to resolve observability setting",
-            exc_info=True,
         )
         return fallback
     return val.value

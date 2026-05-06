@@ -272,7 +272,7 @@ async def fetch_with_shutdown(
     except asyncio.CancelledError:
         return None
     except Exception:
-        logger.exception(
+        logger.warning(
             COMM_BUS_RECEIVE_ERROR,
             channel=channel_name,
             subscriber=subscriber_id,
@@ -294,7 +294,7 @@ async def try_ack(
     try:
         await msg.ack()
     except Exception:
-        logger.exception(
+        logger.warning(
             COMM_BUS_RECEIVE_ERROR,
             channel=channel_name,
             subscriber=subscriber_id,

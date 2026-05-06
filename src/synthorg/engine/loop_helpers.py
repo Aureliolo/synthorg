@@ -29,7 +29,7 @@ import hashlib
 import json
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_FAILED,
 )
@@ -100,7 +100,7 @@ def check_shutdown(
         raise
     except Exception as exc:
         error_msg = f"Shutdown checker failed: {type(exc).__name__}: {exc}"
-        logger.exception(
+        logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=ctx.turn_count,
@@ -145,7 +145,7 @@ def check_budget(
         raise
     except Exception as exc:
         error_msg = f"Budget checker failed: {type(exc).__name__}: {exc}"
-        logger.exception(
+        logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=ctx.turn_count,
@@ -247,14 +247,13 @@ async def call_provider(  # noqa: PLR0913
                     execution_id=ctx.execution_id,
                     turn=turn_number,
                     reason="span_attribute_write_failed",
-                    exc_info=True,
                 )
             return response
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
         error_msg = f"Provider error on turn {turn_number}: {type(exc).__name__}: {exc}"
-        logger.exception(
+        logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=turn_number,
@@ -555,7 +554,7 @@ async def check_stagnation(  # noqa: PLR0913
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=execution_id,
             turn=ctx.turn_count,
@@ -662,10 +661,11 @@ async def invoke_compaction(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             CONTEXT_BUDGET_COMPACTION_FAILED,
             execution_id=ctx.execution_id,
             turn=turn_number,
-            error=f"{type(exc).__name__}: {exc}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None

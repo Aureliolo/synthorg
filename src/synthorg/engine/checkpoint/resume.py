@@ -207,7 +207,6 @@ async def cleanup_checkpoint_artifacts(
                 CHECKPOINT_DELETE_FAILED,
                 execution_id=execution_id,
                 error="Failed to clean up checkpoints after resume",
-                exc_info=True,
             )
 
     if heartbeat_repo is not None:
@@ -224,5 +223,4 @@ async def cleanup_checkpoint_artifacts(
                 HEARTBEAT_DELETE_FAILED,
                 execution_id=execution_id,
                 error="Failed to clean up heartbeat after resume",
-                exc_info=True,
             )

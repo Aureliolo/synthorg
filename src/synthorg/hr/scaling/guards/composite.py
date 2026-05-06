@@ -61,7 +61,6 @@ class CompositeScalingGuard:
                     guard=str(guard.name),
                     action="guard_error",
                     input_count=before,
-                    exc_info=True,
                 )
                 raise
             logger.debug(

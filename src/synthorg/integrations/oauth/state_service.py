@@ -76,7 +76,6 @@ class OAuthStateService:
                 state_token_prefix=str(bound.state_token)[:8],
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         logger.info(

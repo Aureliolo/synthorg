@@ -560,7 +560,6 @@ async def _safe_fetch(
             preset=preset_name,
             reason="unexpected_error",
             url=safe_url,
-            exc_info=True,
         )
     return None
 

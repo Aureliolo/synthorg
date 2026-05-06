@@ -244,7 +244,6 @@ class TaskEngine(TaskEngineLoopsMixin):
                         TASK_ENGINE_START_REJECTED,
                         reason="startup_rollback",
                         partial_tasks_cancelled=len(partial_tasks),
-                        exc_info=True,
                     )
                     raise
                 # Only publish ``_running = True`` after BOTH tasks are
@@ -339,7 +338,7 @@ class TaskEngine(TaskEngineLoopsMixin):
                 # TASK_ENGINE_STOPPED -- reserving the success event
                 # for the clean-shutdown branch so failed drains are
                 # classified correctly in metrics and alerts.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     TASK_ENGINE_DRAIN_TIMEOUT,
                     note=(
                         "stop exceeded hard deadline; "
@@ -364,7 +363,7 @@ class TaskEngine(TaskEngineLoopsMixin):
                 # TRY400: attaching a CancelledError traceback here
                 # adds no actionable context over the structured
                 # fields below.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     TASK_ENGINE_DRAIN_TIMEOUT,
                     note=(
                         "stop cancelled mid-drain; "
@@ -717,7 +716,7 @@ class TaskEngine(TaskEngineLoopsMixin):
             raise
         except Exception as exc:
             msg = f"Failed to read task: {exc}"
-            logger.exception(
+            logger.warning(
                 TASK_ENGINE_READ_FAILED,
                 error=msg,
                 task_id=task_id,

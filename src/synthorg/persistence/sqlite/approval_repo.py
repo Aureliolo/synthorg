@@ -306,7 +306,7 @@ class SQLiteApprovalRepository:
                     # the rollback failure is a structured event, not
                     # a stack-trace dump. ``rollback_exc`` is captured
                     # in ``error_type`` + ``error`` already.
-                    logger.error(  # noqa: TRY400
+                    logger.error(
                         API_APPROVAL_REPO_FAILED,
                         batch_size=len(ids),
                         phase="rollback",

@@ -515,7 +515,7 @@ def _verify_signature(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             SECURITY_TIMESTAMP_SIGNATURE_INVALID,
             tsa_url=tsa_url,
             error=type(exc).__name__,
@@ -539,7 +539,7 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
         # Log a fingerprint of the rejected PEM so operators can
         # cross-reference the config source without pasting the
         # (potentially large) cert material into logs.
-        logger.exception(
+        logger.warning(
             SECURITY_TIMESTAMP_PROTOCOL_ERROR,
             reason="invalid_trusted_root_pem",
             pem_bytes=len(pem_bytes),

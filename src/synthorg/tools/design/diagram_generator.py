@@ -151,7 +151,6 @@ class DiagramGeneratorTool(BaseDesignTool):
                 DESIGN_DIAGRAM_GENERATION_FAILED,
                 error="internal_error",
                 diagram_type=diagram_type,
-                exc_info=True,
             )
             return ToolExecutionResult(
                 content="Diagram generation failed.",

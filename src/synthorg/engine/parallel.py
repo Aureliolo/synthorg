@@ -26,7 +26,7 @@ from synthorg.engine.parallel_models import (
     ParallelProgress,
 )
 from synthorg.engine.resource_lock import InMemoryResourceLock, ResourceLock
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.parallel import (
     PARALLEL_AGENT_CANCELLED,
     PARALLEL_AGENT_COMPLETE,
@@ -163,7 +163,7 @@ class ParallelExecutor:
                 try:
                     await self._release_all_locks(group, lock)
                 except Exception as exc:
-                    logger.exception(
+                    logger.warning(
                         PARALLEL_LOCK_RELEASE_ERROR,
                         error="Failed to release resource locks",
                         group_id=group.group_id,
@@ -351,7 +351,9 @@ class ParallelExecutor:
                 PARALLEL_AGENT_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"Failed to register with shutdown manager: {exc}",
+                context="Failed to register with shutdown manager",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             outcomes[task_id] = AgentOutcome(
                 task_id=task_id,
@@ -449,7 +451,7 @@ class ParallelExecutor:
     ) -> None:
         """Record a fatal error outcome (MemoryError/RecursionError)."""
         error_msg = f"Fatal: {type(exc).__name__}: {exc}"
-        logger.exception(
+        logger.warning(
             PARALLEL_AGENT_ERROR,
             group_id=group.group_id,
             agent_id=assignment.agent_id,
@@ -584,7 +586,7 @@ class ParallelExecutor:
         try:
             self._progress_callback(snapshot)
         except Exception:
-            logger.exception(
+            logger.warning(
                 PARALLEL_PROGRESS_UPDATE,
                 error="Progress callback raised",
                 group_id=snapshot.group_id,

@@ -263,7 +263,6 @@ def _build_response(  # noqa: PLR0913
             error="Failed to build structured error response",
             detail=detail,
             original_status_code=status_code,
-            exc_info=True,
         )
         # Re-check content negotiation defensively: if ``_wants_problem_json``
         # itself was the original failure, default to the envelope shape

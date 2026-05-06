@@ -263,7 +263,6 @@ class MessageDispatcher:
                 handler_name=registration.name,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:

@@ -98,7 +98,7 @@ class FullSnapshotStrategy:
             )
         except (OSError, ValueError, MemoryArchivalError) as exc:
             msg = f"Failed to retrieve memories for agent {agent_id!r}"
-            logger.error(  # noqa: TRY400
+            logger.error(
                 HR_ARCHIVAL_ENTRY_FAILED,
                 agent_id=agent_id,
                 phase="retrieve",

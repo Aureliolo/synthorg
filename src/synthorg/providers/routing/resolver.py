@@ -210,7 +210,7 @@ class ModelResolver:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ROUTING_SELECTION_FAILED,
                 ref=ref,
                 candidate_count=len(candidates),

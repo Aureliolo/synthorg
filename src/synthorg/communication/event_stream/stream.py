@@ -323,7 +323,7 @@ class EventStreamHub:
                 pass
             except TimeoutError:
                 self._stop_failed = True
-                logger.error(  # noqa: TRY400 -- structlog event constant
+                logger.error(
                     EVENT_STREAM_HUB_STOP_TIMEOUT,
                     stop_timeout_seconds=stop_timeout_seconds,
                 )

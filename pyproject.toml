@@ -233,6 +233,14 @@ ignore = [
     "D104",   # missing docstring in public package
     "D107",   # missing docstring in __init__
     "ISC001", # conflicts with ruff formatter
+    # TRY400: "use logger.exception instead of logger.error" -- conflicts
+    # with the project-wide SEC-1 redaction rule (CLAUDE.md Logging
+    # section). logger.exception attaches a traceback whose frame-locals
+    # leak in-scope credentials; the redacted error= field via
+    # safe_error_description carries the type taxonomy operators need
+    # for triage without the leak. Enforced by
+    # scripts/check_logger_exception_str_exc.py instead.
+    "TRY400",
 ]
 
 [tool.ruff.lint.pydocstyle]

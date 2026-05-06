@@ -72,7 +72,6 @@ def _instantiate_backend(
             SANDBOX_FACTORY_BUILD_FAILED,
             backend=name,
             workspace=str(workspace),
-            exc_info=True,
         )
         raise
 
@@ -231,7 +230,6 @@ async def cleanup_sandbox_backends(
                 SANDBOX_FACTORY_CLEANUP_FAILED,
                 backend=name,
                 error=f"cleanup failed for backend {name!r}",
-                exc_info=True,
             )
 
     # NOTE: intentionally using gather(return_exceptions=True) instead of

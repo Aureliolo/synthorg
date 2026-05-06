@@ -178,7 +178,7 @@ class CodeModificationStrategy:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.exception(
+            logger.warning(
                 META_CODE_GEN_FAILED,
                 rule=rule_match.rule_name,
                 reason="provider_error",

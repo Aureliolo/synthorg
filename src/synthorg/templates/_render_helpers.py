@@ -251,7 +251,7 @@ def validate_as_root_config(
                     key_path=key_path,
                 ),
             )
-        logger.exception(
+        logger.warning(
             TEMPLATE_RENDER_VALIDATION_ERROR,
             source_name=source_name,
             error_count=len(exc.errors()),

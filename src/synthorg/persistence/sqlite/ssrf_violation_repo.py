@@ -55,7 +55,6 @@ class SQLiteSsrfViolationRepository:
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 error="rollback failed",
-                exc_info=True,
             )
 
     async def save(self, violation: SsrfViolation) -> None:

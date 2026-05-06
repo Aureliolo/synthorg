@@ -102,7 +102,6 @@ class BackupSettingsSubscriber:
                 namespace="backup",
                 key="enabled",
                 note="failed to read setting",
-                exc_info=True,
             )
             return
 
@@ -122,7 +121,7 @@ class BackupSettingsSubscriber:
                 # gives the operator the namespace/key plus the
                 # scrubbed error before re-raising so the dispatcher
                 # still records the failure.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     SETTINGS_SUBSCRIBER_NOTIFIED,
                     subscriber=self.subscriber_name,
                     namespace="backup",
@@ -160,7 +159,6 @@ class BackupSettingsSubscriber:
                 namespace="backup",
                 key="schedule_hours",
                 note="failed to read setting",
-                exc_info=True,
             )
             return
 
@@ -168,7 +166,7 @@ class BackupSettingsSubscriber:
         try:
             hours = int(result.value)
         except ValueError, TypeError:
-            logger.exception(
+            logger.warning(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace="backup",

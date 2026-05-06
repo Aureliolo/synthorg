@@ -112,7 +112,7 @@ def list_blueprints() -> tuple[BlueprintInfo, ...]:
                 data = _load_builtin(name)
                 seen[name] = _blueprint_info_from_data(data, "builtin")
             except BlueprintNotFoundError, BlueprintValidationError, OSError:
-                logger.exception(
+                logger.warning(
                     BLUEPRINT_LIST,
                     blueprint_name=name,
                     action="skip_invalid",

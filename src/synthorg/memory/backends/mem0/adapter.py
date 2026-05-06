@@ -170,7 +170,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                     operation="connect",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
-                    exc_info=True,
                 )
                 raise
             except Exception as exc:
@@ -263,7 +262,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="health_check",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -440,7 +438,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="store",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -516,7 +513,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="retrieve",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -613,7 +609,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="get",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -679,7 +674,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="delete",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -763,7 +757,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="count",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:

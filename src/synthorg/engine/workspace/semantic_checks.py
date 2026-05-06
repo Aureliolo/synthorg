@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.models import MergeConflict
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_PARSE_SKIP,
 )
@@ -31,7 +31,9 @@ def _safe_parse(source: str, filename: str) -> ast.Module | None:
             WORKSPACE_SEMANTIC_PARSE_SKIP,
             file=filename,
             reason="syntax_error",
-            error=f"line {exc.lineno}: {exc.msg}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            syntax_lineno=exc.lineno,
         )
         return None
 

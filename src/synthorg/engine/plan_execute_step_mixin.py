@@ -29,7 +29,7 @@ from synthorg.engine.loop_tool_execution import (
 )
 from synthorg.engine.plan_helpers import assess_step_success
 from synthorg.engine.plan_models import ExecutionPlan  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_TURN_COMPLETE,
@@ -190,11 +190,12 @@ class PlanExecuteStepMixin:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_CHECKPOINT_CALLBACK_FAILED,
                 execution_id=ctx.execution_id,
                 turn=turn_number,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @staticmethod

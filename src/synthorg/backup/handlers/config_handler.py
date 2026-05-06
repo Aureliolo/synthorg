@@ -72,7 +72,7 @@ class ConfigComponentHandler:
                 config_dir,
             )
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
@@ -131,7 +131,7 @@ class ConfigComponentHandler:
                 self._config_path,
             )
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,

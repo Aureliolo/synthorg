@@ -352,7 +352,7 @@ class _BaseSemanticDetector:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.exception(
+            logger.warning(
                 DETECTOR_ERROR,
                 detector=detector_name,
                 agent_id=context.agent_id,

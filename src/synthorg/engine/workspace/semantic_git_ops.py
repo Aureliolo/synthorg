@@ -11,7 +11,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
 from synthorg.engine.workspace.semantic_analyzer import filter_files
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
     WORKSPACE_SEMANTIC_CONFLICT,
@@ -360,8 +360,9 @@ async def _do_analysis(  # noqa: PLR0913
         logger.warning(
             WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
             workspace_id=workspace.workspace_id,
-            error=f"Semantic analysis failed: {type(exc).__name__}: {exc}",
-            exc_info=True,
+            context="Semantic analysis failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return ()
 

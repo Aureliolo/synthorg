@@ -71,7 +71,6 @@ class ToolInvokerDiscoveryMixin:
                     TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
                     tool_name=name,
                     note="registry lookup failed during L1 summary",
-                    exc_info=True,
                 )
                 continue
             if (
@@ -88,7 +87,6 @@ class ToolInvokerDiscoveryMixin:
                     TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
                     tool_name=name,
                     note="to_l1_metadata() failed",
-                    exc_info=True,
                 )
         result.sort(key=lambda m: m.name)
         return tuple(result)
@@ -127,7 +125,6 @@ class ToolInvokerDiscoveryMixin:
                     TOOL_INVOKE_NOT_FOUND,
                     tool_name=name,
                     note="unexpected error during loaded definition lookup",
-                    exc_info=True,
                 )
                 continue
             if name not in _DISCOVERY_NAMES and (
@@ -144,7 +141,6 @@ class ToolInvokerDiscoveryMixin:
                     TOOL_INVOKE_NOT_FOUND,
                     tool_name=name,
                     note="to_definition() failed during loaded definition lookup",
-                    exc_info=True,
                 )
         return tuple(included)
 
@@ -174,7 +170,6 @@ class ToolInvokerDiscoveryMixin:
                 TOOL_INVOKE_NOT_FOUND,
                 tool_name=tool_name,
                 note="unexpected error during disclosure lookup",
-                exc_info=True,
             )
             return None
         if (
@@ -196,7 +191,6 @@ class ToolInvokerDiscoveryMixin:
                 TOOL_INVOKE_NOT_FOUND,
                 tool_name=tool_name,
                 note="to_l2_body() failed during disclosure query",
-                exc_info=True,
             )
             return None
 
@@ -233,7 +227,6 @@ class ToolInvokerDiscoveryMixin:
                 tool_name=tool_name,
                 resource_id=resource_id,
                 note="unexpected error during disclosure lookup",
-                exc_info=True,
             )
             return None
         if (
@@ -257,7 +250,6 @@ class ToolInvokerDiscoveryMixin:
                 tool_name=tool_name,
                 resource_id=resource_id,
                 note="get_l3_resources() failed during disclosure query",
-                exc_info=True,
             )
             return None
         return next(

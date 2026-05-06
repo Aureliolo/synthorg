@@ -192,7 +192,6 @@ async def unsubscribe(
                 subscriber=subscriber_id,
                 backend="nats",
                 phase="unsubscribe_consumer_failed",
-                exc_info=True,
             )
 
     logger.info(

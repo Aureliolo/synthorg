@@ -109,7 +109,6 @@ class Mem0AdapterCostMixin:
                 operation=operation,
                 error_type="system",
                 model=model,
-                exc_info=True,
             )
             raise
         except asyncio.CancelledError:

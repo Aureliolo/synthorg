@@ -62,7 +62,7 @@ async def connect(state: _NatsState) -> None:
     except (TimeoutError, NoServersError, OSError) as exc:
         redacted = redact_url(state.nats_config.url)
         msg = f"Failed to connect to NATS at {redacted}: {exc}"
-        logger.exception(COMM_BUS_DISCONNECTED, error=msg, url=redacted)
+        logger.warning(COMM_BUS_DISCONNECTED, error=msg, url=redacted)
         raise BusConnectionError(
             msg,
             context={"url": redacted},
@@ -208,7 +208,6 @@ async def stop(state: _NatsState) -> None:
                 COMM_BUS_DISCONNECTED,
                 phase="stop_unsubscribe",
                 subscription=str(key),
-                exc_info=True,
             )
     state.subscriptions.clear()
 
@@ -221,7 +220,6 @@ async def stop(state: _NatsState) -> None:
             logger.warning(
                 COMM_BUS_DISCONNECTED,
                 phase="stop_drain",
-                exc_info=True,
             )
         state.client = None
         state.js = None

@@ -26,7 +26,7 @@ from synthorg.hr.scaling.models import (
     ScalingContext,
     ScalingDecision,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_SCALING_CYCLE_COMPLETE,
     HR_SCALING_CYCLE_STARTED,
@@ -240,9 +240,9 @@ class ScalingService:
                 logger.warning(
                     HR_SCALING_STRATEGY_EVALUATED,
                     strategy=str(s.name),
-                    error=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     decisions=0,
-                    exc_info=True,
                 )
                 return ()
 
@@ -389,8 +389,8 @@ class ScalingService:
                 HR_SCALING_EXECUTION_FAILED,
                 decision_id=str(decision.id),
                 action="hire",
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ScalingActionRecord(
                 decision_id=decision.id,
@@ -442,8 +442,8 @@ class ScalingService:
                 HR_SCALING_EXECUTION_FAILED,
                 decision_id=str(decision.id),
                 action="prune",
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ScalingActionRecord(
                 decision_id=decision.id,
@@ -483,7 +483,6 @@ class ScalingService:
                         action="guard_record_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
-                        exc_info=True,
                     )
 
     async def _release_guard_reservations(
@@ -501,7 +500,6 @@ class ScalingService:
                         action="guard_release_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
-                        exc_info=True,
                     )
 
     def record_action(self, record: ScalingActionRecord) -> None:

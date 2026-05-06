@@ -563,7 +563,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                         None,
                     )
             msg = f"Failed to create container: {exc}"
-            logger.exception(
+            logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 command=command,
                 error=msg,
@@ -612,7 +612,6 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                         SANDBOX_CONTAINER_LOGS_COLLECTED,
                         sidecar_id=sidecar_id[:12],
                         status="collection_error_in_cleanup",
-                        exc_info=True,
                     )
 
             # Ship collected logs even on execution failure so
@@ -694,7 +693,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             await container_obj.start()
         except Exception as exc:
             msg = f"Failed to start container {container_id[:12]}: {exc}"
-            logger.exception(
+            logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 container_id=container_id[:12],
                 error=msg,

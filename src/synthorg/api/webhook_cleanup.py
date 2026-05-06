@@ -71,7 +71,7 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
         # ``logger.exception`` would attach a traceback that could leak
         # secret-bearing frame state into structured logs (SEC-1); use
         # ``logger.error`` with ``safe_error_description`` instead.
-        logger.error(  # noqa: TRY400
+        logger.error(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
             error=(
                 "Failed to resolve integrations.webhook_receipt_retention_days;"

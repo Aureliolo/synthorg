@@ -356,7 +356,6 @@ async def _resolve_dns(
             GIT_CLONE_DNS_FAILED,
             hostname=hostname,
             reason=f"unexpected: {type(exc).__name__}: {exc}",
-            exc_info=True,
         )
         return f"DNS resolution for {hostname!r} failed: {exc}"
 

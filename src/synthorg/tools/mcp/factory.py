@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CLIENT_DISCONNECT_FAILED,
     MCP_FACTORY_CLEANUP,
@@ -144,7 +144,9 @@ class MCPToolFactory:
                     logger.warning(
                         MCP_CLIENT_DISCONNECT_FAILED,
                         server=client.server_name,
-                        error=f"disconnect failed: {exc}",
+                        context="disconnect failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
         finally:
             self._clients.clear()

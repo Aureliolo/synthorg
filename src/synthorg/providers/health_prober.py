@@ -261,7 +261,7 @@ class ProviderHealthProber:
                 )
             except TimeoutError:
                 self._stop_failed = True
-                logger.error(  # noqa: TRY400
+                logger.error(
                     PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
                     error=("stop exceeded hard deadline; prober marked unrestartable"),
                     timeout_seconds=self._stop_drain_timeout_seconds,
@@ -295,7 +295,7 @@ class ProviderHealthProber:
             except MemoryError, RecursionError:
                 raise
             except Exception:
-                logger.exception(PROVIDER_HEALTH_PROBER_CYCLE_FAILED)
+                logger.warning(PROVIDER_HEALTH_PROBER_CYCLE_FAILED)
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
@@ -379,7 +379,6 @@ class ProviderHealthProber:
                 PROVIDER_HEALTH_PROBE_FAILED,
                 provider=name,
                 error="Unexpected error during probe",
-                exc_info=True,
             )
 
     async def _probe_one(

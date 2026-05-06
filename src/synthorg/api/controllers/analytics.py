@@ -220,7 +220,6 @@ async def _resolve_budget_context(
             API_REQUEST_ERROR,
             endpoint="analytics.budget_context",
             error="period_cost_query_failed",
-            exc_info=True,
         )
         period_cost = fallback_total_cost
 
@@ -303,7 +302,6 @@ async def _resolve_agent_counts(
             API_REQUEST_ERROR,
             endpoint="analytics.resolve_agent_counts",
             error="agent_registry_query_failed",
-            exc_info=True,
         )
         return 0, config_agent_count
 
@@ -553,7 +551,6 @@ class AnalyticsController(Controller):
                 API_REQUEST_ERROR,
                 endpoint="analytics.overview",
                 error_count=len(eg.exceptions),
-                exc_info=True,
             )
             msg = "analytics overview temporarily unavailable"
             raise ServiceUnavailableError(msg) from eg

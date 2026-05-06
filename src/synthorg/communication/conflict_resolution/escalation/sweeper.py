@@ -245,7 +245,7 @@ class EscalationExpirationSweeper:
                 # TRY400: ``logger.exception`` here would append a
                 # ``TimeoutError`` traceback with no actionable
                 # diagnostic information beyond the structured fields.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     CONFLICT_ESCALATION_SWEEPER_FAILED,
                     error=("stop exceeded hard deadline; sweeper marked unrestartable"),
                     timeout_seconds=self._stop_drain_timeout_seconds,

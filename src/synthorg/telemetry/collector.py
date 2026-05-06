@@ -537,7 +537,6 @@ class TelemetryCollector:
                             TELEMETRY_REPORT_FAILED,
                             detail="session_summary_snapshot_failed",
                             error_type=type(exc).__name__,
-                            exc_info=True,
                         )
 
                 try:
@@ -547,7 +546,6 @@ class TelemetryCollector:
                         TELEMETRY_REPORT_FAILED,
                         detail="send_session_summary_failed",
                         error_type=type(exc).__name__,
-                        exc_info=True,
                     )
 
                 try:
@@ -557,7 +555,6 @@ class TelemetryCollector:
                         TELEMETRY_REPORT_FAILED,
                         detail="send_shutdown_event_failed",
                         error_type=type(exc).__name__,
-                        exc_info=True,
                     )
 
             try:
@@ -567,7 +564,6 @@ class TelemetryCollector:
                     TELEMETRY_REPORT_FAILED,
                     detail="reporter_shutdown_failed",
                     error_type=type(exc).__name__,
-                    exc_info=True,
                 )
 
             # Mark the collector terminal AFTER teardown so a stray

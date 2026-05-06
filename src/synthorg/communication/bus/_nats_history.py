@@ -143,7 +143,6 @@ def try_parse_matching(raw: Any, subject: str) -> Message | None:
             subject=subject,
             size=len(raw.data),
             phase="history_scan",
-            exc_info=True,
         )
         return None
 

@@ -15,7 +15,7 @@ from synthorg.core.enums import ApprovalRiskLevel, TaskStatus
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_engine_models import TransitionTaskMutation
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_CREATED,
 )
@@ -100,7 +100,6 @@ async def sync_to_task_engine(  # noqa: PLR0913
                 if isinstance(exc, TaskEngineError)
                 else "Unexpected error syncing to TaskEngine"
             ),
-            exc_info=True,
         )
         return
 
@@ -225,11 +224,13 @@ async def apply_post_execution_transitions(
                 task_engine=task_engine,
             )
         except (ValueError, ExecutionStateError) as exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"Post-execution transition failed: {exc}",
+                context="Post-execution transition failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             break
 
@@ -333,7 +334,6 @@ async def _create_review_approval(
             task_id=task_id,
             agent_id=agent_id,
             error="Failed to create review approval (non-fatal)",
-            exc_info=True,
         )
         return None
 
@@ -365,10 +365,12 @@ async def _transition_to_interrupted(
         )
         return execution_result.model_copy(update={"context": ctx})
     except (ValueError, ExecutionStateError) as exc:
-        logger.exception(
+        logger.warning(
             EXECUTION_ENGINE_ERROR,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"Post-execution INTERRUPTED transition failed: {exc}",
+            context="Post-execution INTERRUPTED transition failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return execution_result

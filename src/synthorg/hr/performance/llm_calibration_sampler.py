@@ -144,7 +144,6 @@ class LlmCalibrationSampler:
                 PERF_LLM_SAMPLE_FAILED,
                 agent_id=record.agent_id,
                 record_id=record.id,
-                exc_info=True,
             )
             return None
 

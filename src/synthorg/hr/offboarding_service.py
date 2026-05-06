@@ -320,7 +320,7 @@ class OffboardingService:
         except (OSError, ValueError) as exc:
             scrubbed = safe_error_description(exc)
             msg = f"Failed to terminate agent {agent_id!r} in registry: {scrubbed}"
-            logger.error(  # noqa: TRY400
+            logger.error(
                 HR_FIRING_COMPLETE,
                 agent_id=agent_id,
                 error_type=type(exc).__name__,

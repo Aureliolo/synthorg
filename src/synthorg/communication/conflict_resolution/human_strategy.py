@@ -158,7 +158,7 @@ class HumanEscalationResolver:
             # ``create`` also surfaces to the caller, but the queue
             # context -- escalation id, conflict id -- is only visible
             # here).
-            logger.exception(
+            logger.warning(
                 CONFLICT_ESCALATION_QUEUED,
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
@@ -319,7 +319,7 @@ class HumanEscalationResolver:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.exception(
+            logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,

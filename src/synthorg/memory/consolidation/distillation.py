@@ -269,7 +269,6 @@ async def capture_distillation(
             agent_id=agent_id,
             task_id=task_id,
             error_type="system",
-            exc_info=True,
         )
         raise
     except asyncio.CancelledError:

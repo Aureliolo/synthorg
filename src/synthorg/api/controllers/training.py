@@ -276,7 +276,6 @@ class TrainingController(Controller):
                 plan_id=str(plan.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
 

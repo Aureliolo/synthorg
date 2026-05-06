@@ -173,13 +173,13 @@ class JetStreamTaskQueue:
             try:
                 await self._sub.unsubscribe()
             except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED)
+                logger.warning(WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED)
             self._sub = None
         if self._client is not None:
             try:
                 await self._client.drain()
             except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_DRAIN_FAILED)
+                logger.warning(WORKERS_TASK_QUEUE_DRAIN_FAILED)
             self._client = None
             self._js = None
 
@@ -189,13 +189,13 @@ class JetStreamTaskQueue:
             try:
                 await self._sub.unsubscribe()
             except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED)
+                logger.warning(WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED)
             self._sub = None
         if self._client is not None:
             try:
                 await self._client.drain()
             except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_DRAIN_FAILED)
+                logger.warning(WORKERS_TASK_QUEUE_DRAIN_FAILED)
             self._client = None
             self._js = None
 
@@ -350,7 +350,7 @@ class JetStreamTaskQueue:
             try:
                 await raw.ack()
             except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED)
+                logger.warning(WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED)
             return None
         try:
             claim = TaskClaim.model_validate_json(raw.data.decode("utf-8"))
@@ -364,7 +364,7 @@ class JetStreamTaskQueue:
             try:
                 await raw.ack()
             except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED)
+                logger.warning(WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED)
             return None
         return claim, raw
 

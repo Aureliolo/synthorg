@@ -133,7 +133,7 @@ async def _periodic_revalidate(
                 # already includes the precipitating exception via the
                 # warning above; an exception() trace here would
                 # duplicate that and bury the structured fields.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     API_WS_REVALIDATION_BUDGET_EXHAUSTED,
                     client=str(socket.client),
                     user_id=user.user_id,

@@ -406,7 +406,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 PROVIDER_CONNECTION_TESTED,
                 provider=name,
                 model=model_id,

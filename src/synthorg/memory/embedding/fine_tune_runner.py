@@ -174,7 +174,6 @@ def _start_health_server() -> http.server.HTTPServer | None:
             FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
             port=port,
             reason="Health server could not bind; continuing without health endpoint",
-            exc_info=True,
         )
         return None
     _HealthHandler._start_time = time.monotonic()  # noqa: SLF001

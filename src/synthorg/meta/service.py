@@ -633,7 +633,7 @@ class SelfImprovementService:
             try:
                 await self._outcome_store.record_outcome(outcome)
             except Exception:
-                logger.exception(
+                logger.warning(
                     COS_OUTCOME_RECORD_FAILED,
                     proposal_id=str(proposal.id),
                 )
@@ -743,7 +743,7 @@ class SelfImprovementService:
                 try:
                     await close()
                 except Exception:
-                    logger.exception(
+                    logger.warning(
                         META_SERVICE_CLOSE_FAILED,
                         reason="applier_close_failed",
                         altitude=str(applier.altitude),
@@ -752,7 +752,7 @@ class SelfImprovementService:
             try:
                 await self._analytics_emitter.aclose()
             except Exception:
-                logger.exception(
+                logger.warning(
                     XDEPLOY_EVENT_EMIT_FAILED,
                     reason="emitter_close_failed",
                 )

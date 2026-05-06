@@ -56,7 +56,7 @@ class RetentionManager:
         try:
             manifests = await asyncio.to_thread(self._load_manifests)
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_RETENTION_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -138,7 +138,7 @@ class RetentionManager:
                         error="Backup not found for deletion",
                     )
             except Exception as exc:
-                logger.error(  # noqa: TRY400
+                logger.error(
                     BACKUP_RETENTION_FAILED,
                     backup_id=manifest.backup_id,
                     error_type=type(exc).__name__,
@@ -290,6 +290,5 @@ class RetentionManager:
                 logger.warning(
                     BACKUP_MANIFEST_INVALID,
                     path=str(manifest_path),
-                    exc_info=True,
                 )
         return False

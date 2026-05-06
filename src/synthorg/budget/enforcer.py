@@ -572,7 +572,6 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         except Exception:
             logger.warning(
                 BUDGET_NOTIFICATION_FAILED,
-                exc_info=True,
             )
 
     async def resolve_model(

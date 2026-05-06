@@ -112,7 +112,6 @@ async def post_setup_reinit(app_state: AppState) -> None:
         logger.warning(
             SETUP_PROVIDER_RELOAD_FAILED,
             error="Provider reload failed after setup (non-fatal)",
-            exc_info=True,
         )
 
     # 2. Bootstrap agents into runtime registry.
@@ -132,7 +131,6 @@ async def post_setup_reinit(app_state: AppState) -> None:
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_FAILED,
                 error="Agent bootstrap failed (non-fatal)",
-                exc_info=True,
             )
 
 
@@ -172,7 +170,6 @@ async def check_needs_setup(
     except Exception:
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            exc_info=True,
         )
         return True
     else:
@@ -218,7 +215,6 @@ async def check_has_company(
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="company_name",
-            exc_info=True,
         )
         if strict:
             raise
@@ -253,7 +249,6 @@ async def check_has_agents(
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="agents",
-            exc_info=True,
         )
         if strict:
             raise
@@ -335,7 +330,6 @@ async def check_has_name_locales(
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="name_locales",
-            exc_info=True,
         )
         return False
     if entry.source != SettingSource.DATABASE or not entry.value:
@@ -382,7 +376,6 @@ async def resolve_min_password_length(
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="min_password_length",
-            exc_info=True,
         )
     return DEFAULT_MIN_PASSWORD_LENGTH
 
@@ -555,7 +548,6 @@ async def read_name_locales(
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="name_locales",
-            exc_info=True,
         )
         return None
     if not entry.value:
@@ -598,7 +590,6 @@ async def is_setup_complete(
     except Exception:
         logger.error(
             SETUP_COMPLETE_CHECK_ERROR,
-            exc_info=True,
         )
         raise
     else:
@@ -793,5 +784,4 @@ async def auto_select_embedder(
         logger.warning(
             MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
             reason="failed to persist embedder settings",
-            exc_info=True,
         )

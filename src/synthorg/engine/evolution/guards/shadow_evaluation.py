@@ -333,7 +333,6 @@ class ShadowEvaluationGuard:
                             error_type=type(exc).__name__,
                             error=safe_error_description(exc),
                             failure_category="infrastructure",
-                            exc_info=True,
                         )
                         raise
                     except Exception as exc:

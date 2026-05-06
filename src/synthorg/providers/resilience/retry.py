@@ -108,7 +108,6 @@ class RetryHandler:
                 logger.warning(
                     PROVIDER_CALL_ERROR,
                     reason="unexpected_non_provider_error",
-                    exc_info=True,
                 )
                 raise
 

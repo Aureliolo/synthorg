@@ -146,7 +146,6 @@ class TrainingPlanService:
                 error="Failed to persist FAILED status",
                 error_type=type(save_exc).__name__,
                 persistence_error=safe_error_description(save_exc),
-                exc_info=True,
             )
             return
         logger.info(

@@ -199,7 +199,7 @@ class AgentEngineErrorsMixin:
                 ),
             )
         except MemoryError, RecursionError:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -207,7 +207,7 @@ class AgentEngineErrorsMixin:
             )
             raise
         except Exception as build_exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -241,7 +241,7 @@ class AgentEngineErrorsMixin:
         raw_msg = str(exc)
         sanitized = sanitize_message(raw_msg)
         error_msg = f"{type(exc).__name__}: {sanitized}"
-        logger.exception(
+        logger.warning(
             EXECUTION_ENGINE_ERROR,
             agent_id=agent_id,
             task_id=task_id,
@@ -301,7 +301,7 @@ class AgentEngineErrorsMixin:
                 ),
             )
         except MemoryError, RecursionError:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -309,7 +309,7 @@ class AgentEngineErrorsMixin:
             )
             raise
         except Exception as build_exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,

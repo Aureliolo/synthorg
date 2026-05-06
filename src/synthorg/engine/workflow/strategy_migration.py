@@ -182,7 +182,6 @@ async def _send_best_effort(
             SPRINT_CEREMONY_NOTIFICATION_FAILED,
             sprint_id=info.sprint_id,
             note=note,
-            exc_info=True,
             **extra_context,
         )
 

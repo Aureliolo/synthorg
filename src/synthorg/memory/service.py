@@ -973,7 +973,7 @@ class MemoryService:
                 stage="rollback",
                 step=step,
             )
-            logger.error(  # noqa: TRY400 -- not an exception-context log; distinct audit event, not a traceback dump
+            logger.error(
                 MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,

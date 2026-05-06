@@ -112,7 +112,6 @@ async def bootstrap_agents(
                 SETUP_AGENT_BOOTSTRAP_SKIPPED,
                 agent_name=config.name,
                 reason="invalid_config",
-                exc_info=True,
             )
             continue
 
@@ -134,7 +133,6 @@ async def bootstrap_agents(
                 agent_name=config.name,
                 agent_id=str(identity.id),
                 reason="registration_failed",
-                exc_info=True,
             )
 
     logger.info(

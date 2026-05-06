@@ -454,7 +454,7 @@ class HttpAnalyticsEmitter:
         try:
             await retry.execute(post_once, event_count=event_count)
         except _TransientPostError as exc:
-            logger.error(  # noqa: TRY400 -- exhaustion is expected; no traceback
+            logger.error(
                 XDEPLOY_BATCH_FLUSH_FAILED,
                 event_count=event_count,
                 retries_exhausted=True,

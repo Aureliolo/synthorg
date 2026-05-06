@@ -79,7 +79,6 @@ class OntologyService:
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
                     entity_name=name,
                     reason="version snapshot failed",
-                    exc_info=True,
                 )
         logger.info(
             ONTOLOGY_BOOTSTRAP_COMPLETED,
@@ -143,7 +142,6 @@ class OntologyService:
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
                     entity_name=entry.name,
                     reason="version snapshot failed",
-                    exc_info=True,
                 )
         logger.info(
             ONTOLOGY_CONFIG_LOADED,

@@ -322,7 +322,7 @@ class MeetingOrchestrator:
             # TRY400: this is an invariant-violation log, not a stack
             # trace use case; the relevant context is the structured
             # fields below, not the ValueError trace.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 MEETING_FAILED,
                 reason="record_mirror_drift",
                 meeting_id=meeting_id,
@@ -556,7 +556,6 @@ class MeetingOrchestrator:
             logger.warning(
                 MEETING_LENS_ASSIGNMENT_FAILED,
                 error="Lens assignment failed, proceeding without lenses",
-                exc_info=True,
             )
             return None
 

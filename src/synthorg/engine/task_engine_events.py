@@ -106,5 +106,4 @@ async def publish_snapshot(
             mutation_type=mutation.mutation_type,
             request_id=mutation.request_id,
             task_id=event.task_id,
-            exc_info=True,
         )

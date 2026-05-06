@@ -156,7 +156,6 @@ class LlmJudgeQualityStrategy:
                 agent_id=agent_id,
                 task_id=task_id,
                 reason="llm_call_failed",
-                exc_info=True,
             )
             return _FALLBACK_RESULT
 

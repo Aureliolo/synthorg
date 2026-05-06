@@ -306,7 +306,7 @@ class FineTuneOrchestrator:
                         "error": "cancelled by user",
                     },
                 )
-                logger.exception(
+                logger.warning(
                     MEMORY_FINE_TUNE_FAILED,
                     run_id=run.id,
                     error="failed to persist cancellation state",
@@ -344,7 +344,7 @@ class FineTuneOrchestrator:
                 # record on this path. ``noqa: TRY400`` because
                 # ``logger.exception`` would auto-attach a traceback
                 # whose frame-locals can carry credentials.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     MEMORY_FINE_TUNE_FAILED,
                     run_id=run.id,
                     stage="persist_failed_state",
@@ -659,7 +659,6 @@ class FineTuneOrchestrator:
                 MEMORY_FINE_TUNE_WS_EMIT_FAILED,
                 event_type=event_type,
                 run_id=run.id,
-                exc_info=True,
             )
 
     @staticmethod

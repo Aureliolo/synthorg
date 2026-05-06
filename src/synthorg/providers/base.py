@@ -151,7 +151,7 @@ class BaseCompletionProvider(ABC):
             # with the structured ``error_type`` + scrubbed ``error``
             # fields instead -- traceback frames never reach any log
             # sink.
-            logger.error(  # noqa: TRY400 -- see rationale above
+            logger.error(
                 PROVIDER_CALL_ERROR,
                 model=model,
                 latency_ms=(time.monotonic() - t_start) * 1000.0,
@@ -262,7 +262,7 @@ class BaseCompletionProvider(ABC):
             # + scrubbed fields instead of ``logger.exception``
             # prevents traceback frame-locals from leaking provider
             # credentials.
-            logger.error(  # noqa: TRY400 -- see rationale above
+            logger.error(
                 PROVIDER_CALL_ERROR,
                 model=model,
                 error_type=type(exc).__name__,
@@ -314,7 +314,7 @@ class BaseCompletionProvider(ABC):
             # ``stream()``. ``record_provider_error`` keeps the
             # provider-error metric in sync with the other call paths
             # so dashboards do not under-count capability failures.
-            logger.error(  # noqa: TRY400 -- see rationale above
+            logger.error(
                 PROVIDER_CALL_ERROR,
                 model=model,
                 phase="get_model_capabilities",

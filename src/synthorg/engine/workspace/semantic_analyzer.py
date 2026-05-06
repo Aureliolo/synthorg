@@ -14,7 +14,7 @@ from synthorg.engine.workspace.semantic_checks import (
     check_removed_references,
     check_signature_changes,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -280,8 +280,8 @@ class CompositeSemanticAnalyzer:
                     workspace_id=workspace.workspace_id,
                     analyzer=type(analyzer).__name__,
                     reason="analyzer_error",
-                    error=f"{type(exc).__name__}: {exc}",
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         async with asyncio.TaskGroup() as tg:

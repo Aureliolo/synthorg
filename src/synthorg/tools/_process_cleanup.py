@@ -40,5 +40,4 @@ def close_subprocess_transport(proc: asyncio.subprocess.Process) -> None:
     except Exception:
         logger.debug(
             TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED,
-            exc_info=True,
         )

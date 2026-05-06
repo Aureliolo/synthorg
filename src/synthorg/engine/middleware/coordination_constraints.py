@@ -23,7 +23,7 @@ from synthorg.engine.middleware.models import (
     TaskLedger,
 )
 from synthorg.engine.prompt_safety import TAG_TASK_FACT, wrap_untrusted
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_EMPTY_PLAN_TEXT,
 )
@@ -305,7 +305,8 @@ class MagenticReplanHook:
                 logger.warning(
                     COORDINATION_REPLAN_BUDGET_BLOCKED,
                     task_id=task.id,
-                    error=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 return False
 

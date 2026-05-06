@@ -169,7 +169,6 @@ class LogfireReporter:
                 TELEMETRY_REPORT_FAILED,
                 detail="flush",
                 error_type=type(exc).__name__,
-                exc_info=True,
             )
 
     async def shutdown(self) -> None:
@@ -182,7 +181,6 @@ class LogfireReporter:
                 TELEMETRY_REPORT_FAILED,
                 detail="shutdown",
                 error_type=type(exc).__name__,
-                exc_info=True,
             )
 
 

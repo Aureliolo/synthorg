@@ -71,7 +71,7 @@ class MemoryComponentHandler:
         try:
             size = await asyncio.to_thread(self._copy_tree, self._data_dir, target)
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
@@ -123,7 +123,7 @@ class MemoryComponentHandler:
         except ComponentBackupError:
             raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,

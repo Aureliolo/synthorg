@@ -155,7 +155,9 @@ class GitHubHealthCheck:
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
-                error=f"credential resolution failed: {exc}",
+                context="credential resolution failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return HealthReport(
                 connection_name=connection.name,

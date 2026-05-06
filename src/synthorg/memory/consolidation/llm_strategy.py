@@ -306,7 +306,6 @@ class LLMConsolidationStrategy:
             reason=reason,
             exception_count=len(eg.exceptions),
             exception_types=[type(e).__name__ for e in eg.exceptions],
-            exc_info=True,
         )
 
     @staticmethod
@@ -361,7 +360,6 @@ class LLMConsolidationStrategy:
                 agent_id=agent_id,
                 reason="system_error_in_trajectory_fetch",
                 error_type="system",
-                exc_info=True,
             )
             raise
         except asyncio.CancelledError:
@@ -482,7 +480,6 @@ class LLMConsolidationStrategy:
                     entry_id=entry.id,
                     reason="system_error_in_delete",
                     error_type="system",
-                    exc_info=True,
                 )
                 raise
             except asyncio.CancelledError:
@@ -671,7 +668,6 @@ class LLMConsolidationStrategy:
                 category=category.value,
                 model=self._model,
                 reason="system_error",
-                exc_info=True,
             )
             raise
         except RetryExhaustedError as exc:

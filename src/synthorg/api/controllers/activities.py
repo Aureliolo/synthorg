@@ -173,7 +173,6 @@ async def _run_async_fetchers(
                 API_REQUEST_ERROR,
                 endpoint="activities",
                 detail="Unable to fetch activity data at this time.",
-                exc_info=True,
             )
             raise fatal.exceptions[0] from eg
         svc = eg.subgroup(ServiceUnavailableError)
@@ -184,7 +183,6 @@ async def _run_async_fetchers(
                 detail=(
                     "Activity data service is currently unavailable. Please try again."
                 ),
-                exc_info=True,
             )
             raise svc.exceptions[0] from eg
         failed_sources = [
@@ -201,7 +199,6 @@ async def _run_async_fetchers(
             endpoint="activities",
             error_count=len(eg.exceptions),
             failed_sources=failed_sources,
-            exc_info=True,
         )
 
     cost_records: tuple[CostRecord, ...] = _extract_task_result(
@@ -256,7 +253,6 @@ async def _resolve_currency(
             endpoint="activities",
             source=_SRC_BUDGET_CONFIG,
             detail="Could not load budget configuration; aborting request.",
-            exc_info=True,
         )
         raise
     except Exception:
@@ -264,7 +260,6 @@ async def _resolve_currency(
             API_REQUEST_ERROR,
             endpoint="activities",
             detail="budget config unavailable, using default currency",
-            exc_info=True,
         )
         degraded.append(_SRC_BUDGET_CONFIG)
         return DEFAULT_CURRENCY
@@ -462,7 +457,6 @@ async def _fetch_task_metrics(
             endpoint="activities",
             source=_SRC_PERFORMANCE_TRACKER,
             detail="fatal error",
-            exc_info=True,
         )
         raise
     except ServiceUnavailableError:
@@ -471,7 +465,6 @@ async def _fetch_task_metrics(
             endpoint="activities",
             source=_SRC_PERFORMANCE_TRACKER,
             detail="service unavailable",
-            exc_info=True,
         )
         raise
     except Exception:
@@ -479,7 +472,6 @@ async def _fetch_task_metrics(
             API_REQUEST_ERROR,
             endpoint="activities",
             error="performance_tracker_unavailable",
-            exc_info=True,
         )
         return (), True
 
@@ -509,7 +501,6 @@ async def _fetch_cost_records(
             endpoint="activities",
             source=_SRC_COST_TRACKER,
             detail="fatal error",
-            exc_info=True,
         )
         raise
     except ServiceUnavailableError:
@@ -518,7 +509,6 @@ async def _fetch_cost_records(
             endpoint="activities",
             source=_SRC_COST_TRACKER,
             detail="service unavailable",
-            exc_info=True,
         )
         raise
     except Exception:
@@ -526,7 +516,6 @@ async def _fetch_cost_records(
             API_REQUEST_ERROR,
             endpoint="activities",
             error="cost_tracker_unavailable",
-            exc_info=True,
         )
         return (), True
 
@@ -556,7 +545,6 @@ async def _fetch_tool_invocations(
             endpoint="activities",
             source=_SRC_TOOL_INVOCATION_TRACKER,
             detail="fatal error",
-            exc_info=True,
         )
         raise
     except ServiceUnavailableError:
@@ -565,7 +553,6 @@ async def _fetch_tool_invocations(
             endpoint="activities",
             source=_SRC_TOOL_INVOCATION_TRACKER,
             detail="service unavailable",
-            exc_info=True,
         )
         raise
     except Exception:
@@ -573,7 +560,6 @@ async def _fetch_tool_invocations(
             API_REQUEST_ERROR,
             endpoint="activities",
             error="tool_invocation_tracker_unavailable",
-            exc_info=True,
         )
         return (), True
 
@@ -595,7 +581,6 @@ async def _safe_delegation_query(
             endpoint="activities",
             source=error_label,
             detail="fatal error",
-            exc_info=True,
         )
         raise
     except ServiceUnavailableError:
@@ -604,7 +589,6 @@ async def _safe_delegation_query(
             endpoint="activities",
             source=error_label,
             detail="service unavailable",
-            exc_info=True,
         )
         raise
     except Exception:
@@ -612,7 +596,6 @@ async def _safe_delegation_query(
             API_REQUEST_ERROR,
             endpoint="activities",
             error=error_label,
-            exc_info=True,
         )
         return (), True
 

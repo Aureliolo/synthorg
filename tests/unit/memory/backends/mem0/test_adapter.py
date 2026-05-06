@@ -296,13 +296,21 @@ class TestSystemErrorLogging:
         [builtins.MemoryError, RecursionError],
         ids=["MemoryError", "RecursionError"],
     )
-    async def test_health_check_logs_error_with_exc_info(
+    async def test_health_check_logs_redacted_system_error(
         self,
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
         exc_type: type[BaseException],
     ) -> None:
-        """health_check on system error logs at ERROR with exc_info=True."""
+        """health_check on system error logs at ERROR with redacted fields.
+
+        Per CLAUDE.md SEC-1: ``exc_info=True`` is forbidden because
+        structlog's exc-info processor would serialise traceback
+        frame-locals (in-scope tokens, connection URIs) into the log
+        sink. The call passes ``error_type`` + ``error=safe_error_description(exc)``
+        instead; the type taxonomy operators need for triage is
+        preserved without the credential leak.
+        """
         mock_client.get_all.side_effect = exc_type("system failure")
         with (
             patch(
@@ -313,10 +321,13 @@ class TestSystemErrorLogging:
             await backend.health_check()
         mock_logger.error.assert_called_once()
         call = mock_logger.error.call_args
-        assert call.kwargs.get("exc_info") is True
+        # SEC-1: exc_info=True must NEVER be passed; the redacted
+        # error= field carries the type taxonomy without leaking
+        # frame-locals via the traceback processor.
+        assert "exc_info" not in call.kwargs
         assert call.kwargs.get("error_type") == exc_type.__name__
         assert "error" in call.kwargs
-        # Crucially: the value must be safe_error_description(exc) output,
+        # The value must be safe_error_description(exc) output,
         # not str(exc); the helper prefixes the type name.
         assert call.kwargs["error"].startswith(f"{exc_type.__name__}:")
         # And logger.exception / logger.warning must NOT be called

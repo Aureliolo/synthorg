@@ -423,7 +423,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 # secret-bearing config). Avoid logger.exception here
                 # so traceback frame-locals never serialize raw
                 # secrets to the log sink.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     API_APP_STARTUP,
                     detail="phase_2_auto_wire_failed",
                     error_type=type(exc).__name__,

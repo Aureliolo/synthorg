@@ -117,7 +117,6 @@ class OntologyAwareMemoryBackend:
             logger.warning(
                 ONTOLOGY_MEMORY_ENRICHMENT_FAILED,
                 agent_id=agent_id,
-                exc_info=True,
             )
             found = ()
 
@@ -175,7 +174,6 @@ class OntologyAwareMemoryBackend:
             logger.warning(
                 ONTOLOGY_MEMORY_MANIFEST_FAILED,
                 agent_id=agent_id,
-                exc_info=True,
             )
             return entries
         if not manifest:

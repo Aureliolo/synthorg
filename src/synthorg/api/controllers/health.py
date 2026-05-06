@@ -248,7 +248,7 @@ class ReadinessController(Controller):
             # sanitized description but never attach frame locals
             # that could serialize connection state from the failing
             # probe.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 API_HEALTH_CHECK,
                 component="readiness",
                 error_type=type(group).__name__,

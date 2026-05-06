@@ -634,7 +634,6 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error=(
                 "Failed to apply ws_ticket_max_pending_per_user; using built-in default"
             ),
-            exc_info=True,
         )
 
     try:
@@ -775,7 +774,6 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                 "Failed to resolve audit_chain_signing_timeout_seconds;"
                 " keeping sink default"
             ),
-            exc_info=True,
         )
     else:
         from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
@@ -799,7 +797,6 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                             " audit_chain_signing_timeout_seconds"
                             " to handler"
                         ),
-                        exc_info=True,
                     )
 
     try:
@@ -813,7 +810,6 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                 "Failed to resolve notifications bridge config;"
                 " keeping dispatcher default timeouts"
             ),
-            exc_info=True,
         )
     else:
         if app_state.has_notification_dispatcher and effective_config is not None:
@@ -834,7 +830,6 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                             "Failed to close pre-startup notification"
                             " dispatcher sinks after rebuild"
                         ),
-                        exc_info=True,
                     )
 
     app_state.mark_bridge_config_applied()

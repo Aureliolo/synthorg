@@ -108,7 +108,6 @@ class WebhookEventBridge:
                         " using fallback (logging suppressed until recovery)"
                     ),
                     poll_timeout=_POLL_TIMEOUT,
-                    exc_info=True,
                 )
                 self._poll_timeout_fallback_logged = True
             return _POLL_TIMEOUT
@@ -141,7 +140,6 @@ class WebhookEventBridge:
                         " using fallback (logging suppressed until recovery)"
                     ),
                     max_errors=_MAX_CONSECUTIVE_ERRORS,
-                    exc_info=True,
                 )
                 self._max_errors_fallback_logged = True
             return _MAX_CONSECUTIVE_ERRORS
@@ -194,7 +192,6 @@ class WebhookEventBridge:
                         "partial-stop state; call stop() again after "
                         "the bus recovers"
                     ),
-                    exc_info=True,
                 )
                 raise
             self._task = None
@@ -253,7 +250,6 @@ class WebhookEventBridge:
                                 "consecutive errors; leaving bridge "
                                 "in partial-stop state"
                             ),
-                            exc_info=True,
                         )
                         return
                     self._task = None
@@ -261,7 +257,6 @@ class WebhookEventBridge:
                 logger.warning(
                     WEBHOOK_BRIDGE_POLL_ERROR,
                     consecutive_errors=consecutive_errors,
-                    exc_info=True,
                 )
                 # Back off for one poll interval before retrying so the
                 # loop does not tight-spin on a hot error path.

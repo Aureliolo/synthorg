@@ -477,7 +477,7 @@ class ConnectionsController(Controller):
             # for a credential-bearing operation can leak backend
             # secret metadata via wrapped causes; the redacted
             # ``safe_error_description`` is the only message emitted.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
                 connection=name,
                 field=field,

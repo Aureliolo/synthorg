@@ -343,5 +343,4 @@ class TaskEngineLoopsMixin:
                     mutation_type=event.mutation_type,
                     request_id=event.request_id,
                     task_id=event.task_id,
-                    exc_info=True,
                 )

@@ -153,7 +153,6 @@ class SettingsChangeDispatcher:
                     SETTINGS_DISPATCHER_START_REJECTED,
                     error="channel ensure/subscribe failed during start()",
                     reason="subscribe_failed",
-                    exc_info=True,
                 )
                 raise
             try:
@@ -188,7 +187,6 @@ class SettingsChangeDispatcher:
                         SETTINGS_DISPATCHER_START_REJECTED,
                         error="rollback unsubscribe failed during start() cleanup",
                         reason="rollback_unsubscribe_failed",
-                        exc_info=True,
                     )
                 raise
             logger.info(
@@ -237,7 +235,7 @@ class SettingsChangeDispatcher:
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable
                     # diagnostic beyond the structured fields below.
-                    logger.error(  # noqa: TRY400
+                    logger.error(
                         SETTINGS_DISPATCHER_STOPPED,
                         error=(
                             "stop exceeded hard deadline; "
@@ -286,7 +284,6 @@ class SettingsChangeDispatcher:
                     error=(
                         "clean-stop unsubscribe failed; dispatcher marked unrestartable"
                     ),
-                    exc_info=True,
                 )
                 raise
 
@@ -355,13 +352,11 @@ class SettingsChangeDispatcher:
                 logger.warning(
                     SETTINGS_DISPATCHER_POLL_ERROR,
                     consecutive_errors=consecutive_errors,
-                    exc_info=True,
                 )
                 await asyncio.sleep(_ERROR_BACKOFF)
             except Exception:
                 logger.error(
                     SETTINGS_DISPATCHER_CHANNEL_DEAD,
-                    exc_info=True,
                 )
                 break
 
@@ -400,7 +395,6 @@ class SettingsChangeDispatcher:
                     subscriber=getattr(subscriber, "subscriber_name", "unknown"),
                     namespace=namespace,
                     key=key,
-                    exc_info=True,
                 )
 
 

@@ -142,7 +142,6 @@ class AutonomousSkillEvolver:
             logger.error(
                 SKILL_EVOLVER_CYCLE_FAILED,
                 cycle_id=cycle_id,
-                exc_info=True,
             )
             raise
 

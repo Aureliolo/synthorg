@@ -709,7 +709,6 @@ class CostTracker(CostTrackerSummaryMixin):
                 BUDGET_PROJECT_COST_AGGREGATION_FAILED,
                 project_id=cost_record.project_id,
                 cost=cost_record.cost,
-                exc_info=True,
             )
 
     async def _snapshot(

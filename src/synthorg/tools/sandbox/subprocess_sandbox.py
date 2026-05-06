@@ -504,7 +504,7 @@ class SubprocessSandbox:
                 timeout=grace,
             )
         except TimeoutError:
-            logger.exception(
+            logger.warning(
                 SANDBOX_KILL_FAILED,
                 command=command,
                 args=_redact_args(args),

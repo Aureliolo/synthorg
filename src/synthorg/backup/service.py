@@ -156,7 +156,7 @@ class BackupService(BackupServiceArchiveMixin):
                 backup_dir=backup_dir,
             )
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_FAILED,
                 backup_id=backup_id,
                 error_type=type(exc).__name__,
@@ -269,7 +269,7 @@ class BackupService(BackupServiceArchiveMixin):
             # Drop exc_info on retention failure so the filesystem
             # path / connection details that ``str(exc)`` would
             # carry don't leak via the traceback frame-locals.
-            logger.error(  # noqa: TRY400 -- fail-loud, no traceback
+            logger.error(
                 BACKUP_RETENTION_FAILED,
                 backup_id=backup_id,
                 reason="retention_pruning_failed",
@@ -331,7 +331,7 @@ class BackupService(BackupServiceArchiveMixin):
                 safety_backup_id=safety_manifest.backup_id,
             )
         except RestoreError as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_RESTORE_FAILED,
                 backup_id=backup_id,
                 error_type=type(exc).__name__,

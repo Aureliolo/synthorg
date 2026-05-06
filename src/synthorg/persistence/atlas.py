@@ -441,7 +441,7 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
             _spawn_and_wait,
         )
     except MigrationError:
-        logger.exception(PERSISTENCE_MIGRATION_FAILED, command=" ".join(safe_cmd))
+        logger.warning(PERSISTENCE_MIGRATION_FAILED, command=" ".join(safe_cmd))
         raise
 
     stdout = stdout_bytes.decode()
@@ -525,7 +525,7 @@ async def migrate_apply(
                 )
     except json.JSONDecodeError as exc:
         msg = f"Atlas returned non-JSON output: {stdout[:200]}"
-        logger.exception(
+        logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             note="Atlas returned non-JSON output",
             output_sample=stdout[:200],
@@ -584,7 +584,7 @@ async def migrate_status(
             pending_count = len(pending) if isinstance(pending, list) else 0
     except json.JSONDecodeError as exc:
         msg = f"Atlas status returned non-JSON output: {stdout[:200]}"
-        logger.exception(
+        logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             note="Atlas status returned non-JSON output",
             output_sample=stdout[:200],

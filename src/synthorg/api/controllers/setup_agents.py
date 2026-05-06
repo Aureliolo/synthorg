@@ -351,7 +351,6 @@ async def get_existing_agents(
         logger.warning(
             SETUP_AGENTS_CORRUPTED,
             reason="invalid_json",
-            exc_info=True,
         )
         msg = "Stored agents list is not valid JSON"
         raise ValidationError(msg) from exc
@@ -428,7 +427,6 @@ def validate_agents_value(raw: str, *, strict: bool) -> bool:
         logger.warning(
             SETUP_AGENTS_CORRUPTED,
             reason="invalid_json",
-            exc_info=True,
         )
         if strict:
             msg = "Stored agents list is not valid JSON"

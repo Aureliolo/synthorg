@@ -138,7 +138,7 @@ async def _try_stop(
         # logger.error rather than logger.exception so TimeoutError
         # frame-locals never serialize the awaited coroutine's state
         # (which may include secret-bearing shutdown objects).
-        logger.error(  # noqa: TRY400
+        logger.error(
             API_APP_SHUTDOWN_TIMEOUT,
             service=service,
             timeout_seconds=timeout,
@@ -146,7 +146,7 @@ async def _try_stop(
         )
         return False
     except Exception:
-        logger.exception(event, error=error_msg)
+        logger.warning(event, error=error_msg)
         return False
     return True
 
@@ -267,7 +267,7 @@ async def _init_persistence(
             )
             app_state.set_auth_service(AuthService(auth_config))
         except Exception:
-            logger.exception(
+            logger.warning(
                 API_APP_STARTUP,
                 error="Failed to resolve JWT secret",
             )
@@ -276,7 +276,7 @@ async def _init_persistence(
     try:
         await persistence.migrate()
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to run persistence migrations",
         )
@@ -290,7 +290,7 @@ async def _init_persistence(
         try:
             app_state.set_mcp_installations_repo(persistence.mcp_installations)
         except Exception:
-            logger.exception(
+            logger.warning(
                 API_APP_STARTUP,
                 error="Failed to wire persistence-backed MCP installations repo",
             )
@@ -371,7 +371,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             try:
                 await persistence.connect()
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to connect persistence",
                 )
@@ -383,7 +383,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             try:
                 await ensure_system_user(persistence, app_state.auth_service)
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to bootstrap system user",
                 )
@@ -424,7 +424,6 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     logger.error(
                         API_APP_STARTUP,
                         note="Lockout store initialization failed",
-                        exc_info=True,
                     )
 
             if not app_state.has_refresh_store:
@@ -442,14 +441,13 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     logger.error(
                         API_APP_STARTUP,
                         note="Refresh-token store initialization failed",
-                        exc_info=True,
                     )
 
         if message_bus is not None:
             try:
                 await message_bus.start()
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to start message bus",
                 )
@@ -459,7 +457,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             try:
                 await distributed_task_queue.start()
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to start distributed task queue",
                 )
@@ -490,7 +488,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             try:
                 await bridge.start()
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to start message bus bridge",
                 )
@@ -508,7 +506,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             try:
                 await settings_dispatcher.start()
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to start settings dispatcher",
                 )
@@ -518,7 +516,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             try:
                 await task_engine.start()
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to start task engine",
                 )
@@ -531,7 +529,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             try:
                 await meeting_scheduler.start()
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to start meeting scheduler",
                 )
@@ -553,7 +551,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     await backup_service.start()
                     started_backup_service = True
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to start backup service",
                 )
@@ -571,7 +569,6 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     logger.warning(
                         API_APP_STARTUP,
                         error="Startup backup failed (non-fatal)",
-                        exc_info=True,
                     )
         if approval_timeout_scheduler is not None:
             try:
@@ -587,7 +584,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 # instance rule applies: log without the stack trace
                 # (the underlying cause was already logged at stop
                 # time) and propagate so startup fails closed.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     API_APP_STARTUP,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -595,7 +592,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             except Exception:
-                logger.exception(
+                logger.warning(
                     API_APP_STARTUP,
                     error="Failed to start approval timeout scheduler",
                 )
@@ -705,7 +702,6 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
                 logger.warning(
                     API_APP_SHUTDOWN,
                     error="Shutdown backup failed (non-fatal)",
-                    exc_info=True,
                 )
         await _try_stop(
             backup_service.stop(),
@@ -812,7 +808,6 @@ async def _maybe_start_health_prober(
         logger.warning(
             API_APP_STARTUP,
             error="Health prober startup failed (non-fatal)",
-            exc_info=True,
         )
         return None
     return prober

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.approval.models import EscalationInfo
 from synthorg.core.enums import ApprovalRiskLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_INTERCEPTOR_ERROR,
     SECURITY_OUTPUT_SCAN_ERROR,
@@ -260,7 +260,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.exception(
+            logger.warning(
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
@@ -345,7 +345,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.exception(
+            logger.warning(
                 SECURITY_OUTPUT_SCAN_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
@@ -591,16 +591,17 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         try:
             return await tool.execute(arguments=safe_args)
         except (MemoryError, RecursionError) as exc:
-            logger.exception(
+            logger.warning(
                 TOOL_INVOKE_NON_RECOVERABLE,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         except Exception as exc:
             error_msg = str(exc) or f"{type(exc).__name__} (no message)"
-            logger.exception(
+            logger.warning(
                 TOOL_INVOKE_EXECUTION_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
@@ -668,7 +669,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 TOOL_INVOKE_EXECUTION_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool.name,

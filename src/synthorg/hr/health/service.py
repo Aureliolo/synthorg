@@ -167,7 +167,7 @@ class AgentHealthService:
             snapshot = await self._performance_tracker.get_snapshot(agent_id)
             report = _report_from_snapshot(agent_id, snapshot)
         except Exception as exc:
-            logger.error(  # noqa: TRY400 -- explicit structured audit event
+            logger.error(
                 HR_AGENT_HEALTH_FAILED,
                 agent_id=agent_id,
                 stage=("snapshot" if "snapshot" not in locals() else "report"),

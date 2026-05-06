@@ -573,7 +573,9 @@ class WorkflowController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowValidationResult](
-                    error=f"Invalid workflow: {exc}",
+                    context="Invalid workflow",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 ),
                 status_code=422,
             )

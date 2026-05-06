@@ -94,7 +94,6 @@ class SharedRateLimitCoordinator:
                     RATE_LIMIT_COORDINATOR_STARTED,
                     connection_name=self._connection_name,
                     error="subscribe failed, falling back to in-process",
-                    exc_info=True,
                 )
                 self._distributed = False
                 self._started = True
@@ -141,7 +140,6 @@ class SharedRateLimitCoordinator:
                         "in partial-stop state; resolve the bus "
                         "issue before calling stop() again"
                     ),
-                    exc_info=True,
                 )
                 raise
             self._started = False
@@ -220,7 +218,6 @@ class SharedRateLimitCoordinator:
                 RATE_LIMIT_ACQUIRE_PUBLISHED,
                 connection_name=self._connection_name,
                 error="bus publish failed, falling back to local-only",
-                exc_info=True,
             )
 
     async def _poll_loop(self) -> None:
@@ -255,7 +252,6 @@ class SharedRateLimitCoordinator:
                         "poll loop error; falling back to local-only "
                         "coordination and exiting poll loop"
                     ),
-                    exc_info=True,
                 )
                 return
 
@@ -308,7 +304,6 @@ async def set_coordinator_factory(
                 RATE_LIMIT_COORDINATOR_STOPPED,
                 connection_name=coordinator._connection_name,  # noqa: SLF001
                 error="stop failed during factory swap",
-                exc_info=True,
             )
     _coordinator_factory = factory
 

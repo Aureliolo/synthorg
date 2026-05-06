@@ -372,7 +372,7 @@ class MeetingScheduler:
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable diagnostic
                     # information beyond the structured fields below.
-                    logger.error(  # noqa: TRY400
+                    logger.error(
                         MEETING_SCHEDULER_ERROR,
                         note=(
                             "stop exceeded hard deadline; "
@@ -668,7 +668,6 @@ class MeetingScheduler:
                 meeting_id=record.meeting_id,
                 meeting_type=record.meeting_type_name,
                 note="event publisher failed",
-                exc_info=True,
             )
 
     def _publish_started_event(self, meeting_type_name: str) -> None:
@@ -693,7 +692,6 @@ class MeetingScheduler:
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type_name,
                 note="started event publish failed",
-                exc_info=True,
             )
 
     @staticmethod

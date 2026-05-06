@@ -133,7 +133,6 @@ class ToolBasedReformulationMixin:
                 limit=limit,
                 error_type="system",
                 reason="system_error_in_initial_retrieve",
-                exc_info=True,
             )
             raise
         for round_idx in range(max_rounds):
@@ -265,7 +264,6 @@ class ToolBasedReformulationMixin:
                 round=round_idx,
                 error_type="system",
                 reason="system_error_in_sufficiency_check",
-                exc_info=True,
             )
             raise
         except asyncio.CancelledError:
@@ -305,7 +303,6 @@ class ToolBasedReformulationMixin:
                 round=round_idx,
                 error_type="system",
                 reason="system_error_in_reformulate",
-                exc_info=True,
             )
             raise
         except asyncio.CancelledError:
@@ -352,7 +349,6 @@ class ToolBasedReformulationMixin:
                 limit=limit,
                 error_type="system",
                 reason="system_error_in_retrieve_round",
-                exc_info=True,
             )
             raise
         except DomainMemoryError as exc:
@@ -368,7 +364,7 @@ class ToolBasedReformulationMixin:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 agent_id=agent_id,
                 round=round_idx + 1,

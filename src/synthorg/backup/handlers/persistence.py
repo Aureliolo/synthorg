@@ -66,7 +66,7 @@ class PersistenceComponentHandler:
                 str(target_file),
             )
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
@@ -113,7 +113,7 @@ class PersistenceComponentHandler:
                 self._atomic_swap, self._db_path, source_file, bak_path
             )
         except ComponentBackupError as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
@@ -121,7 +121,7 @@ class PersistenceComponentHandler:
             )
             raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
@@ -164,7 +164,7 @@ class PersistenceComponentHandler:
             # traceback frame-locals into the event, leaking any
             # in-scope credential. We pass the redacted exception
             # description via ``safe_error_description`` instead.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 phase="integrity_check",

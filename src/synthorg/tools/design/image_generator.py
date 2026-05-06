@@ -248,7 +248,6 @@ class ImageGeneratorTool(BaseDesignTool):
                 error="provider_error",
                 prompt_length=len(prompt),
                 style=style,
-                exc_info=True,
             )
             return ToolExecutionResult(
                 content="Image generation failed.",

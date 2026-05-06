@@ -102,7 +102,6 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
 
             logger.error(
                 SECURITY_POLICY_ENGINE_ERROR,
-                exc_info=True,
             )
             # Fail-open: proceed to tool call on evaluation error.
             # CedarPolicyEngine handles fail_closed internally; this

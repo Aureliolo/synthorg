@@ -149,7 +149,6 @@ class DisclosureMiddleware(BaseAgentMiddleware):
                 TOOL_DISCLOSURE_LOAD_FAILED,
                 note="failed to parse load_tool output as JSON",
                 output_preview=output[:200],
-                exc_info=True,
             )
             return None
         name = data.get("name") if isinstance(data, dict) else None

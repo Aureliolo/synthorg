@@ -96,15 +96,16 @@ class TestPublish:
         [builtins.MemoryError, RecursionError],
         ids=["MemoryError", "RecursionError"],
     )
-    async def test_publish_system_error_logs_error_with_exc_info(
+    async def test_publish_system_error_logs_redacted_fields(
         self,
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
         exc_type: type[BaseException],
     ) -> None:
         """Catastrophic publish errors log via
-        ``logger.error(..., exc_info=True, error=safe_error_description(exc))``
-        and never via ``logger.exception`` or ``logger.warning``.
+        ``logger.error(..., error_type=..., error=safe_error_description(exc))``
+        and never with ``exc_info=True`` (frame-locals leak), nor via
+        ``logger.exception`` / ``logger.warning``.
         """
         mock_client.add.side_effect = exc_type("system failure")
         with (
@@ -116,7 +117,8 @@ class TestPublish:
             await backend.publish("test-agent-001", make_store_request())
         mock_logger.error.assert_called_once()
         call = mock_logger.error.call_args
-        assert call.kwargs.get("exc_info") is True
+        # SEC-1: exc_info=True must NEVER be passed.
+        assert "exc_info" not in call.kwargs
         assert call.kwargs.get("error_type") == exc_type.__name__
         assert "error" in call.kwargs
         assert call.kwargs["error"].startswith(f"{exc_type.__name__}:")

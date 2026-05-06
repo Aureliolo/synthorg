@@ -267,7 +267,6 @@ class CompositeQualityStrategy:
                 agent_id=agent_id,
                 task_id=task_id,
                 note="llm_strategy_failed",
-                exc_info=True,
             )
             return None
 

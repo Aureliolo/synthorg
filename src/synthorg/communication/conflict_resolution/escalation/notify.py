@@ -253,7 +253,7 @@ class PostgresEscalationNotifySubscriber:
                 # TRY400: ``logger.exception`` here would append a
                 # ``TimeoutError`` traceback with no actionable
                 # diagnostic information beyond the structured fields.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                     channel=self._channel,
                     error=(

@@ -192,7 +192,7 @@ class PruningService:
                 # NOT chase the cancellation with a second wait.
                 task.cancel()
                 self._stop_failed = True
-                logger.error(  # noqa: TRY400
+                logger.error(
                     HR_PRUNING_POLICY_ERROR,
                     error=("stop exceeded hard deadline; service marked unrestartable"),
                     timeout_seconds=self._stop_drain_timeout_seconds,

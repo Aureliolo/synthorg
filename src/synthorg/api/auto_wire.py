@@ -180,7 +180,7 @@ def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
     try:
         tracker = CostTracker(budget_config=effective_config.budget)
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to auto-wire cost tracker",
         )
@@ -196,7 +196,7 @@ def _wire_provider_registry(
     try:
         registry = ProviderRegistry.from_config(effective_config.providers)
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to build provider registry from config",
         )
@@ -235,7 +235,7 @@ def _wire_task_engine(
             message_bus=message_bus,
         )
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to auto-wire task engine",
         )
@@ -304,7 +304,7 @@ def _register_distributed_dispatcher(
         dispatcher = DistributedDispatcher(task_queue=task_queue)
         engine.register_observer(dispatcher.on_task_state_changed)
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to register distributed dispatcher",
         )
@@ -347,7 +347,7 @@ def _auto_wire_message_bus(
             )
         bus = build_message_bus(bus_config)
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to auto-wire message bus",
         )
@@ -468,7 +468,7 @@ def auto_wire_meetings(
             meeting_scheduler=meeting_scheduler,
         )
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to auto-wire ceremony scheduler",
         )
@@ -599,7 +599,7 @@ def _wire_meeting_orchestrator(
             agent_caller=agent_caller,
         )
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to auto-wire meeting orchestrator",
         )
@@ -661,7 +661,7 @@ def _wire_meeting_scheduler(
             participant_resolver=resolver,
         )
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to auto-wire meeting scheduler",
         )
@@ -713,7 +713,7 @@ async def auto_wire_settings(  # noqa: PLR0913
             message_bus=message_bus,
         )
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error=(
                 "Failed to create SettingsService -- check encryption key configuration"
@@ -733,7 +733,7 @@ async def auto_wire_settings(  # noqa: PLR0913
             backup_service,
         )
     except Exception:
-        logger.exception(
+        logger.warning(
             API_APP_STARTUP,
             error="Failed to build settings dispatcher",
         )
@@ -743,7 +743,7 @@ async def auto_wire_settings(  # noqa: PLR0913
         try:
             await dispatcher.start()
         except Exception:
-            logger.exception(
+            logger.warning(
                 API_APP_STARTUP,
                 error="Failed to start auto-wired settings dispatcher",
             )

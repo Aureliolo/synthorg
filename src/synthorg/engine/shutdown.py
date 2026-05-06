@@ -24,7 +24,7 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_SHUTDOWN_CLEANUP,
     EXECUTION_SHUTDOWN_CLEANUP_FAILED,
@@ -239,7 +239,9 @@ class CooperativeTimeoutStrategy:
             if exc is not None:
                 logger.warning(
                     EXECUTION_SHUTDOWN_TASK_ERROR,
-                    error=f"Task raised during shutdown: {type(exc).__name__}: {exc}",
+                    context="Task raised during shutdown",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             else:
                 tasks_completed += 1
@@ -287,7 +289,9 @@ def _log_post_cancel_exceptions(tasks: set[asyncio.Task[Any]]) -> None:
             if exc is not None:
                 logger.debug(
                     EXECUTION_SHUTDOWN_TASK_ERROR,
-                    error=(f"Post-cancel task exception: {type(exc).__name__}: {exc}"),
+                    context="post_cancel_task_exception",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     task_name=task.get_name(),
                 )
 
@@ -322,7 +326,7 @@ async def _run_cleanup(
                 raise
             except Exception:
                 all_succeeded = False
-                logger.exception(
+                logger.warning(
                     EXECUTION_SHUTDOWN_CLEANUP_FAILED,
                     callback_index=i,
                     callback_count=len(callbacks),
@@ -398,7 +402,7 @@ class ShutdownManager:
         try:
             self._strategy.request_shutdown()
         except Exception:
-            logger.exception(
+            logger.warning(
                 EXECUTION_SHUTDOWN_SIGNAL,
                 signal=sig.name,
                 error="request_shutdown() raised -- falling back to loop.stop()",
@@ -431,7 +435,7 @@ class ShutdownManager:
                 )
                 self._strategy.request_shutdown()
             except Exception:
-                logger.exception(
+                logger.warning(
                     EXECUTION_SHUTDOWN_SIGNAL,
                     signal=sig_name,
                     error="request_shutdown() raised -- falling back to loop.stop()",

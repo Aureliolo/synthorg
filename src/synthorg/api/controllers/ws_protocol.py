@@ -130,7 +130,6 @@ def parse_event_payload(event_data: bytes) -> dict[str, Any] | None:
             data_type=type(event_data).__name__,
             reason="unexpected_type",
             source="channels_backend",
-            exc_info=True,
         )
         return None
 
@@ -165,7 +164,6 @@ def _parse_ws_message(data: str) -> dict[str, Any] | str:
             API_WS_INVALID_MESSAGE,
             data_type=type(data).__name__,
             reason="unexpected_type",
-            exc_info=True,
         )
         return json.dumps({"error": "Invalid JSON"})
 
