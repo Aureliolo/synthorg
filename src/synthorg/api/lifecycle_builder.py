@@ -255,13 +255,22 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 # Resolve the subworkflow-depth limit through the engine
                 # bridge config so the operator's ``engine.max_subworkflow_depth``
                 # setting (DB > env > YAML > code default) drives the
-                # observer's underlying ``WorkflowExecutionService``. The
-                # bridge default seeds the same value the legacy module
-                # constant carried, so deployments without an override
-                # see no behaviour change.
-                engine_bridge = (
-                    await app_state.config_resolver.get_engine_bridge_config()
+                # observer's underlying ``WorkflowExecutionService``. Test
+                # fixtures and early-startup paths without a wired
+                # ``config_resolver`` fall back to the bridge config's
+                # Pydantic default, matching the seed value the legacy
+                # module constant carried so behaviour does not change
+                # when settings resolution is unavailable.
+                from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+                    EngineBridgeConfig,
                 )
+
+                if app_state.has_config_resolver:
+                    engine_bridge = (
+                        await app_state.config_resolver.get_engine_bridge_config()
+                    )
+                else:
+                    engine_bridge = EngineBridgeConfig()
                 _wf_observer = WorkflowExecutionObserver(
                     definition_repo=persistence.workflow_definitions,
                     execution_repo=persistence.workflow_executions,

@@ -77,10 +77,20 @@ async def _build_service(state: State) -> WorkflowExecutionService:
 
     Resolves ``engine.max_subworkflow_depth`` through the engine bridge
     config so the service inherits the operator's settings (DB > env >
-    YAML > code default) on every request.
+    YAML > code default) on every request. When ``config_resolver`` is
+    unavailable (test fixtures wiring the controller without the full
+    settings stack), falls back to the bridge config's Pydantic
+    default so the service still receives a valid depth limit.
     """
+    from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+        EngineBridgeConfig,
+    )
+
     app_state = state.app_state
-    engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+    if app_state.has_config_resolver:
+        engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+    else:
+        engine_bridge = EngineBridgeConfig()
     return WorkflowExecutionService(
         definition_repo=app_state.persistence.workflow_definitions,
         execution_repo=app_state.persistence.workflow_executions,
