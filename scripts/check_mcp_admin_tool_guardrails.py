@@ -151,6 +151,41 @@ def _admin_tool_key(call: ast.Call) -> str | None:
     return f"{_TOOL_NAME_PREFIX}{domain}_{action}"
 
 
+def _collect_admin_tool_symbols(tree: ast.Module) -> set[str]:
+    """Return every local name that resolves to ``admin_tool``.
+
+    The default name is the module export itself (``admin_tool``); we
+    additionally pick up ``from synthorg.meta.mcp.tool_builder import
+    admin_tool as <alias>`` and ``from .tool_builder import admin_tool as
+    <alias>`` shapes so an aliased import cannot bypass key discovery.
+    """
+    symbols: set[str] = {_ADMIN_BUILDER_NAME}
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        for alias in node.names:
+            if alias.name == _ADMIN_BUILDER_NAME:
+                symbols.add(alias.asname or alias.name)
+    return symbols
+
+
+def _is_admin_tool_call(func: ast.expr, symbols: set[str]) -> bool:
+    """Return True for ``admin_tool(...)`` and aliased / attribute forms.
+
+    Matches:
+
+    * ``ast.Name(id=name)`` where ``name`` is one of the symbols
+      collected by :func:`_collect_admin_tool_symbols` (the default
+      ``admin_tool`` plus every import alias).
+    * ``ast.Attribute(attr="admin_tool")`` for ``builder.admin_tool(...)``
+      / ``module.admin_tool(...)`` shapes; matched on the attribute name
+      because the receiver could be any local rebinding of the module.
+    """
+    if isinstance(func, ast.Name):
+        return func.id in symbols
+    return isinstance(func, ast.Attribute) and func.attr == _ADMIN_BUILDER_NAME
+
+
 def _scan_domains_file(path: Path) -> tuple[set[str], list[_Violation]]:
     """Return ``(handler_keys, violations)`` from a single ``domains/*.py``."""
     rel = _rel(path)
@@ -161,13 +196,13 @@ def _scan_domains_file(path: Path) -> tuple[set[str], list[_Violation]]:
         msg = f"failed to parse {rel}: {type(exc).__name__}: {exc}"
         raise InspectionError(msg) from exc
 
+    admin_symbols = _collect_admin_tool_symbols(tree)
     keys: set[str] = set()
     violations: list[_Violation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        func = node.func
-        if not isinstance(func, ast.Name) or func.id != _ADMIN_BUILDER_NAME:
+        if not _is_admin_tool_call(node.func, admin_symbols):
             continue
         key = _admin_tool_key(node)
         if key is None:
@@ -439,14 +474,22 @@ class _HandlerSite:
 def _find_dict_value_for_key(
     snapshots: dict[str, _ModuleSnapshot],
     key: str,
-) -> tuple[_ModuleSnapshot, ast.expr] | None:
-    """Locate the ``*_HANDLERS`` value bound to *key* across all snapshots."""
+) -> list[tuple[_ModuleSnapshot, ast.expr]]:
+    """Return every ``*_HANDLERS`` value bound to *key* across all snapshots.
+
+    A returned list of length one is the canonical case. Length > 1
+    means the same key is registered in multiple ``*_HANDLERS`` maps,
+    which the resolver can't reason about: a guarded decoy entry can
+    make the gate pass while the real handler for the same key remains
+    unguarded. The caller fails closed when this happens.
+    """
+    matches: list[tuple[_ModuleSnapshot, ast.expr]] = []
     for snapshot in snapshots.values():
         for entries in snapshot.handler_dicts.values():
             value = entries.get(key)
             if value is not None:
-                return snapshot, value
-    return None
+                matches.append((snapshot, value))
+    return matches
 
 
 def _resolve_name_to_func(
@@ -498,14 +541,22 @@ def _resolve_admin_handler(
     function def. Returns a ``_Violation`` if the key has no entry, or
     its value is a factory call / unresolvable cross-module ref.
     """
-    found = _find_dict_value_for_key(snapshots, key)
-    if found is None:
+    matches = _find_dict_value_for_key(snapshots, key)
+    if not matches:
         return _Violation(
             f"src/{_HANDLERS_PACKAGE.replace('.', '/')}",
             0,
             f"admin tool {key!r} has no entry in any *_HANDLERS map.",
         )
-    snapshot, value = found
+    if len(matches) > 1:
+        offending = ", ".join(sorted(match[0].rel_path for match in matches))
+        return _Violation(
+            f"src/{_HANDLERS_PACKAGE.replace('.', '/')}",
+            0,
+            f"admin tool {key!r} is declared in multiple *_HANDLERS maps "
+            f"({offending}); resolution is ambiguous and must be deduplicated.",
+        )
+    snapshot, value = matches[0]
     if not isinstance(value, ast.Name):
         return _Violation(
             snapshot.rel_path,
@@ -552,20 +603,46 @@ def _is_pure_value_expr(node: ast.expr) -> bool:
     return True
 
 
+def _is_simple_name_target(target: ast.expr) -> bool:
+    """Return True for assignment targets that bind a local name only.
+
+    A bare ``ast.Name`` (``a = ...``) and a tuple/list of ``ast.Name``
+    elements (``a, b = ...``) are local rebinds. Anything else --
+    ``ast.Attribute`` (``self.x = ...``), ``ast.Subscript``
+    (``arguments["x"] = ...``), or a starred / nested target -- mutates
+    state outside the function frame and is treated as a real
+    statement, NOT a trivial prelude.
+    """
+    if isinstance(target, ast.Name):
+        return True
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return all(isinstance(elt, ast.Name) for elt in target.elts)
+    return False
+
+
 def _is_trivial_prelude_stmt(stmt: ast.stmt) -> bool:
     """Return True for statements allowed to precede the guardrail call.
 
-    Allowed shapes: bare or annotated assignment whose value is a pure
-    expression (constants, attribute reads), and the docstring Expr.
-    Anything that triggers code execution (Call, Await) is non-trivial.
+    Allowed shapes: assignment to a local name (or tuple/list of names)
+    whose value is a pure expression -- constants, attribute reads, no
+    Call / Await / Yield -- and a docstring ``ast.Expr``. Assignments
+    that mutate external state (``self.x = ...``, ``arguments[...] =
+    ...``) and any statement that triggers code execution are real
+    statements: the guardrail must come first.
     """
-    if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-        value = stmt.value
-        if value is None:
-            return True
-        return _is_pure_value_expr(value)
     if isinstance(stmt, ast.Expr):
         return _is_pure_value_expr(stmt.value)
+    if isinstance(stmt, ast.Assign):
+        targets_ok = all(_is_simple_name_target(target) for target in stmt.targets)
+        return targets_ok and _is_pure_value_expr(stmt.value)
+    if isinstance(stmt, ast.AnnAssign):
+        if not _is_simple_name_target(stmt.target):
+            return False
+        return stmt.value is None or _is_pure_value_expr(stmt.value)
+    if isinstance(stmt, ast.AugAssign):
+        return _is_simple_name_target(stmt.target) and _is_pure_value_expr(
+            stmt.value,
+        )
     return False
 
 

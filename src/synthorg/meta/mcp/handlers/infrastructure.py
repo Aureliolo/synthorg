@@ -657,11 +657,16 @@ async def _users_create(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         username = _require_str(arguments, "username")
         role = _require_str(arguments, "role")
-        await app_state.user_facade_service.create_user()
+        actor_id = require_actor_id(resolved_actor)
+        await app_state.user_facade_service.create_user(
+            username=username,
+            role=role,
+            actor_id=actor_id,
+        )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor_agent_id=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             username=username,
             role=role,
@@ -692,11 +697,16 @@ async def _users_update(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         user_id = _require_str(arguments, "user_id")
         updates = require_dict(arguments, "updates")
-        await app_state.user_facade_service.update_user()
+        actor_id = require_actor_id(resolved_actor)
+        await app_state.user_facade_service.update_user(
+            user_id=user_id,
+            updates=updates,
+            actor_id=actor_id,
+        )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor_agent_id=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             user_id=user_id,
             update_keys=tuple(sorted(updates.keys())),
@@ -1014,7 +1024,7 @@ async def _setup_initialize(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         config = require_dict(arguments, "config")
-        await app_state.setup_facade_service.initialize()
+        await app_state.setup_facade_service.initialize(config=config)
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,

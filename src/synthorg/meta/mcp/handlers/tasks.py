@@ -40,6 +40,7 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
     coerce_pagination,
+    require_actor_id,
     require_arg,
     require_non_blank,
 )
@@ -251,7 +252,7 @@ async def _tasks_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         task_id = require_non_blank(arguments, _ARG_TASK_ID)
-        requested_by = actor_id(resolved_actor) or "system"
+        requested_by = require_actor_id(resolved_actor)
         await app_state.task_engine.delete_task(
             task_id,
             requested_by=requested_by,
@@ -332,7 +333,7 @@ async def _tasks_cancel(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         task_id = require_non_blank(arguments, _ARG_TASK_ID)
-        requested_by = actor_id(resolved_actor) or "system"
+        requested_by = require_actor_id(resolved_actor)
         task, _prior_status = await app_state.task_engine.cancel_task(
             task_id,
             requested_by=requested_by,

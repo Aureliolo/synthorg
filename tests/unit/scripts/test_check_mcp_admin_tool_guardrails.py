@@ -531,6 +531,188 @@ def test_admin_tool_with_variable_domain_is_hard_error(tmp_path: Path) -> None:
     assert any("literal" in v.message for v in violations)
 
 
+def test_admin_tool_imported_via_alias_discovered(tmp_path: Path) -> None:
+    """Aliased ``from ... import admin_tool as <alias>`` still resolves.
+
+    Pass 1 used to match only ``ast.Name(id="admin_tool")``, so an
+    aliased call would slip through and the handler for that key would
+    never be guardrail-checked. The alias collector + extended matcher
+    discovers the same key under any local rebinding.
+    """
+    aliased_domain = (
+        "from synthorg.meta.mcp.tool_builder import admin_tool as at\n"
+        "TOOLS = (\n"
+        "    at('settings', 'update', 'desc'),\n"
+        ")\n"
+    )
+    handlers_missing = """\
+from types import MappingProxyType
+from typing import Any
+
+
+async def _settings_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any | None = None,
+) -> str:
+    return ok(None)
+
+
+SETTINGS_HANDLERS = MappingProxyType(
+    {
+        "synthorg_settings_update": _settings_update,
+    },
+)
+"""
+    tree = _make_tree(
+        tmp_path,
+        domains_files={"settings.py": aliased_domain},
+        handlers_files={"settings.py": handlers_missing},
+    )
+    violations = _run(tree)
+    assert len(violations) == 1
+    assert "_settings_update" in violations[0].message
+    assert "require_admin_guardrails" in violations[0].message
+
+
+def test_attribute_mutation_before_guardrail_flagged(tmp_path: Path) -> None:
+    """``self.x = 1`` / ``arguments[\"y\"] = 1`` before the guardrail flags.
+
+    ``_is_trivial_prelude_stmt`` previously skipped any assignment whose
+    RHS was a constant -- ``app_state.flag = True`` looked trivial even
+    though it mutates external state. The hardened version requires the
+    target to be a bare local name; assignments to attributes /
+    subscripts are real statements and the guardrail must precede them.
+    """
+    handlers_body = """\
+from types import MappingProxyType
+from typing import Any
+
+
+async def _settings_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any | None = None,
+) -> str:
+    app_state.flag = True
+    require_admin_guardrails(arguments, actor)
+    return ok(None)
+
+
+SETTINGS_HANDLERS = MappingProxyType(
+    {
+        "synthorg_settings_update": _settings_update,
+    },
+)
+"""
+    tree = _make_tree(
+        tmp_path,
+        domains_files={"settings.py": _domain_admin("settings", "update")},
+        handlers_files={"settings.py": handlers_body},
+    )
+    violations = _run(tree)
+    assert len(violations) == 1
+    assert "_settings_update" in violations[0].message
+
+
+def test_subscript_mutation_before_guardrail_flagged(tmp_path: Path) -> None:
+    """``arguments[\"x\"] = ...`` before the guardrail also flags."""
+    handlers_body = """\
+from types import MappingProxyType
+from typing import Any
+
+
+async def _settings_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any | None = None,
+) -> str:
+    arguments["confirm"] = True
+    require_admin_guardrails(arguments, actor)
+    return ok(None)
+
+
+SETTINGS_HANDLERS = MappingProxyType(
+    {
+        "synthorg_settings_update": _settings_update,
+    },
+)
+"""
+    tree = _make_tree(
+        tmp_path,
+        domains_files={"settings.py": _domain_admin("settings", "update")},
+        handlers_files={"settings.py": handlers_body},
+    )
+    violations = _run(tree)
+    assert len(violations) == 1
+    assert "_settings_update" in violations[0].message
+
+
+def test_duplicate_handler_key_in_two_maps_flagged(tmp_path: Path) -> None:
+    """The same admin key in two ``*_HANDLERS`` maps fails closed.
+
+    A guarded decoy entry can hide an unguarded real handler for the
+    same key; ``_find_dict_value_for_key`` used to return the first
+    match and stop. The hardened version collects every match and
+    refuses to disambiguate when there are two.
+    """
+    domain = (
+        "from synthorg.meta.mcp.tool_builder import admin_tool\n"
+        "TOOLS = (admin_tool('settings', 'update', 'desc'),)\n"
+    )
+    handlers_a = """\
+from types import MappingProxyType
+from typing import Any
+
+
+async def _settings_update_guarded(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any | None = None,
+) -> str:
+    require_admin_guardrails(arguments, actor)
+    return ok(None)
+
+
+SETTINGS_HANDLERS = MappingProxyType(
+    {
+        "synthorg_settings_update": _settings_update_guarded,
+    },
+)
+"""
+    handlers_b = """\
+from types import MappingProxyType
+from typing import Any
+
+
+async def _settings_update_unguarded(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any | None = None,
+) -> str:
+    return ok(None)
+
+
+OTHER_HANDLERS = MappingProxyType(
+    {
+        "synthorg_settings_update": _settings_update_unguarded,
+    },
+)
+"""
+    tree = _make_tree(
+        tmp_path,
+        domains_files={"settings.py": domain},
+        handlers_files={"a.py": handlers_a, "b.py": handlers_b},
+    )
+    violations = _run(tree)
+    assert any("multiple *_HANDLERS maps" in v.message for v in violations)
+
+
 def test_handlers_dict_with_non_literal_key_unfindable(tmp_path: Path) -> None:
     """A non-literal key hides the handler so the admin key has no entry.
 
