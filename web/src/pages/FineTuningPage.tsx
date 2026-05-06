@@ -10,7 +10,10 @@ import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useChannelHandler } from '@/hooks/useChannelHandler'
-import { useFineTuningStore } from '@/stores/fine-tuning'
+import {
+  selectFineTuningBannerError,
+  useFineTuningStore,
+} from '@/stores/fine-tuning'
 import { useWebSocketStore } from '@/stores/websocket'
 
 import { CheckpointTable } from './fine-tuning/CheckpointTable'
@@ -26,7 +29,7 @@ export default function FineTuningPage() {
     preflight,
     checkpoints,
     runs,
-    error,
+    errors,
     fetchStatus,
     fetchCheckpoints,
     fetchRuns,
@@ -36,7 +39,7 @@ export default function FineTuningPage() {
     preflight: s.preflight,
     checkpoints: s.checkpoints,
     runs: s.runs,
-    error: s.error,
+    errors: s.errors,
     fetchStatus: s.fetchStatus,
     fetchCheckpoints: s.fetchCheckpoints,
     fetchRuns: s.fetchRuns,
@@ -84,6 +87,7 @@ export default function FineTuningPage() {
     }
   }, [subscribe, unsubscribe])
 
+  const bannerError = selectFineTuningBannerError(errors)
   const isActive = status != null && ACTIVE_STAGES.has(status.stage)
   const hasDependencyFailure =
     preflight != null && preflight.checks.some((c) => c.name === 'dependencies' && c.status === 'fail')
@@ -103,11 +107,11 @@ export default function FineTuningPage() {
     <div className="space-y-section-gap">
       <ListHeader title="Embedding Fine-Tuning" />
 
-      {error && (
+      {bannerError !== null && (
         <ErrorBanner
           severity="error"
           title="Could not load fine-tuning data"
-          description={error}
+          description={bannerError}
         />
       )}
 

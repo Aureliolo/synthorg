@@ -33,6 +33,19 @@ const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>([
 
 const log = createLogger('fine-tuning-store')
 
+/** Per-resource error map so a successful fetch never clears another's failure. */
+export interface FineTuningErrors {
+  status: string | null
+  checkpoints: string | null
+  runs: string | null
+}
+
+const NO_ERRORS: FineTuningErrors = {
+  status: null,
+  checkpoints: null,
+  runs: null,
+}
+
 interface FineTuningState {
   // State
   status: FineTuneStatus | null
@@ -40,7 +53,7 @@ interface FineTuningState {
   runs: readonly FineTuneRun[]
   preflight: PreflightResult | null
   loading: boolean
-  error: string | null
+  errors: FineTuningErrors
 
   // Actions
   fetchStatus: () => Promise<void>
@@ -55,45 +68,65 @@ interface FineTuningState {
   handleWsEvent: (event: WsEvent) => void
 }
 
+/**
+ * Pick the first non-null error from the per-resource map for a single
+ * banner string. When several resources fail concurrently the page surfaces
+ * status > checkpoints > runs in priority order; per-resource detail is
+ * still available on ``state.errors`` for finer-grained UI.
+ */
+export function selectFineTuningBannerError(
+  errors: FineTuningErrors,
+): string | null {
+  return errors.status ?? errors.checkpoints ?? errors.runs ?? null
+}
+
 export const useFineTuningStore = create<FineTuningState>((set, get) => ({
   status: null,
   checkpoints: [],
   runs: [],
   preflight: null,
   loading: false,
-  error: null,
+  errors: NO_ERRORS,
 
-  // Fetch actions follow web/CLAUDE.md: set error: string | null on the
-  // store; the FineTuningPage renders an ErrorBanner from this state. We
-  // intentionally do not toast on fetch failures (toasts are reserved for
-  // mutations); the inline banner already covers user awareness.
+  // Fetch actions follow web/CLAUDE.md: track error per resource so a
+  // later successful fetch never clears another's failure (the
+  // FineTuningPage bootstrap fans these out concurrently). The page
+  // surfaces a single banner string via ``selectFineTuningBannerError``.
+  // We intentionally do not toast on fetch failures; the inline banner
+  // already covers user awareness.
   fetchStatus: async () => {
     try {
       const status = await getFineTuneStatus()
-      set({ status, error: null })
+      set((state) => ({ status, errors: { ...state.errors, status: null } }))
     } catch (err) {
       log.error('Failed to fetch fine-tune status', sanitizeForLog(err))
-      set({ error: getErrorMessage(err) })
+      const message = getErrorMessage(err)
+      set((state) => ({ errors: { ...state.errors, status: message } }))
     }
   },
 
   fetchCheckpoints: async () => {
     try {
       const checkpoints = await listCheckpoints()
-      set({ checkpoints, error: null })
+      set((state) => ({
+        checkpoints,
+        errors: { ...state.errors, checkpoints: null },
+      }))
     } catch (err) {
       log.error('Failed to fetch checkpoints', sanitizeForLog(err))
-      set({ error: getErrorMessage(err) })
+      const message = getErrorMessage(err)
+      set((state) => ({ errors: { ...state.errors, checkpoints: message } }))
     }
   },
 
   fetchRuns: async () => {
     try {
       const runs = await listRuns()
-      set({ runs, error: null })
+      set((state) => ({ runs, errors: { ...state.errors, runs: null } }))
     } catch (err) {
       log.error('Failed to fetch runs', sanitizeForLog(err))
-      set({ error: getErrorMessage(err) })
+      const message = getErrorMessage(err)
+      set((state) => ({ errors: { ...state.errors, runs: message } }))
     }
   },
 

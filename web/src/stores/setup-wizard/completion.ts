@@ -97,14 +97,18 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) =
         duration_ms: Date.now() - startedAt,
       })
     } catch (err) {
+      // Resolve the formatted error once: getErrorMessage emits a
+      // suppression warning for JSON-shaped messages, so calling it
+      // twice would log the warning twice for one failure.
+      const message = getErrorMessage(err)
       // Telemetry-friendly structured event so operators can grep
       // ``setup_wizard.completion_failed`` and see the duration +
       // sanitised error description without scanning prose.
       log.error('setup_wizard.completion_failed', {
         duration_ms: Date.now() - startedAt,
-        error: sanitizeForLog(getErrorMessage(err)),
+        error: sanitizeForLog(message),
       })
-      set({ completionError: getErrorMessage(err), completing: false })
+      set({ completionError: message, completing: false })
       throw err
     }
   },

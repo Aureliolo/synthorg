@@ -780,7 +780,7 @@ class ProviderController(Controller):
             except ProviderValidationError as exc:
                 yield {
                     "event": "error",
-                    "data": _json.dumps(sse_error(str(exc))),
+                    "data": _json.dumps(sse_error(safe_error_description(exc))),
                 }
             except asyncio.CancelledError:
                 raise

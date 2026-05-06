@@ -160,6 +160,11 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
           totalArtifacts: exists
             ? state.totalArtifacts
             : state.totalArtifacts + 1,
+          // Bumping the list token strands any in-flight ``fetchArtifacts``
+          // -- it bails on the stale check without ever clearing
+          // ``listLoading``. Reset it here so the page does not stay on
+          // the skeleton when a create lands during the initial load.
+          listLoading: false,
         }
       })
       useToastStore.getState().add({

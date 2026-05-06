@@ -1,5 +1,8 @@
 import { http, HttpResponse } from 'msw'
-import { useFineTuningStore } from '@/stores/fine-tuning'
+import {
+  selectFineTuningBannerError,
+  useFineTuningStore,
+} from '@/stores/fine-tuning'
 import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
@@ -69,7 +72,7 @@ describe('useFineTuningStore', () => {
       runs: [],
       preflight: null,
       loading: false,
-      error: null,
+      errors: { status: null, checkpoints: null, runs: null },
     })
     useToastStore.getState().dismissAll()
   })
@@ -85,7 +88,7 @@ describe('useFineTuningStore', () => {
       await useFineTuningStore.getState().fetchStatus()
 
       expect(useFineTuningStore.getState().status).toEqual(BASE_STATUS)
-      expect(useFineTuningStore.getState().error).toBeNull()
+      expect(useFineTuningStore.getState().errors.status).toBeNull()
     })
 
     it('fetchStatus sets error and emits no toast on failure', async () => {
@@ -97,7 +100,7 @@ describe('useFineTuningStore', () => {
 
       await useFineTuningStore.getState().fetchStatus()
 
-      expect(useFineTuningStore.getState().error).toContain('temporarily unavailable')
+      expect(useFineTuningStore.getState().errors.status).toContain('temporarily unavailable')
       // Fetch failures stay on the page-level ErrorBanner; no toast.
       expect(useToastStore.getState().toasts).toHaveLength(0)
     })
@@ -123,7 +126,42 @@ describe('useFineTuningStore', () => {
 
       await useFineTuningStore.getState().fetchCheckpoints()
 
-      expect(useFineTuningStore.getState().error).not.toBeNull()
+      expect(useFineTuningStore.getState().errors.checkpoints).not.toBeNull()
+      expect(useToastStore.getState().toasts).toHaveLength(0)
+    })
+
+    it('concurrent fetches do not erase each others errors', async () => {
+      // The page bootstraps fetchStatus / fetchCheckpoints / fetchRuns in
+      // parallel. With the previous shared `error` field, a successful
+      // later fetch would clear an earlier failure. The per-resource map
+      // keeps each resource's outcome independent, so the failed status
+      // banner survives a successful checkpoints / runs response.
+      server.use(
+        http.get('/api/v1/admin/memory/fine-tune/status', () =>
+          HttpResponse.json(apiError('Backend offline'), { status: 503 }),
+        ),
+        http.get('/api/v1/admin/memory/fine-tune/checkpoints', () =>
+          HttpResponse.json(apiSuccess([BASE_CHECKPOINT])),
+        ),
+        http.get('/api/v1/admin/memory/fine-tune/runs', () =>
+          HttpResponse.json(apiSuccess([BASE_RUN])),
+        ),
+      )
+
+      const store = useFineTuningStore.getState()
+      await Promise.all([
+        store.fetchStatus(),
+        store.fetchCheckpoints(),
+        store.fetchRuns(),
+      ])
+
+      const after = useFineTuningStore.getState()
+      expect(after.checkpoints).toEqual([BASE_CHECKPOINT])
+      expect(after.runs).toEqual([BASE_RUN])
+      expect(after.errors.status).not.toBeNull()
+      expect(after.errors.checkpoints).toBeNull()
+      expect(after.errors.runs).toBeNull()
+      expect(selectFineTuningBannerError(after.errors)).toBe(after.errors.status)
       expect(useToastStore.getState().toasts).toHaveLength(0)
     })
 
@@ -150,10 +188,12 @@ describe('useFineTuningStore', () => {
 
       await useFineTuningStore.getState().startRun({ source_dir: 'data' })
 
-      // error stays null because mutations toast; the store error is
+      // errors stay null because mutations toast; the store error map is
       // reserved for fetch failures so the page banner shows fetch
       // errors only.
-      expect(useFineTuningStore.getState().error).toBeNull()
+      expect(
+        selectFineTuningBannerError(useFineTuningStore.getState().errors),
+      ).toBeNull()
       expect(useFineTuningStore.getState().loading).toBe(false)
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
@@ -170,7 +210,9 @@ describe('useFineTuningStore', () => {
 
       await useFineTuningStore.getState().cancelRun()
 
-      expect(useFineTuningStore.getState().error).toBeNull()
+      expect(
+        selectFineTuningBannerError(useFineTuningStore.getState().errors),
+      ).toBeNull()
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
@@ -188,7 +230,9 @@ describe('useFineTuningStore', () => {
 
       expect(useFineTuningStore.getState().preflight).toBeNull()
       expect(useFineTuningStore.getState().loading).toBe(false)
-      expect(useFineTuningStore.getState().error).toBeNull()
+      expect(
+        selectFineTuningBannerError(useFineTuningStore.getState().errors),
+      ).toBeNull()
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
@@ -216,7 +260,9 @@ describe('useFineTuningStore', () => {
 
       await useFineTuningStore.getState().deployCheckpointAction('ckpt-1')
 
-      expect(useFineTuningStore.getState().error).toBeNull()
+      expect(
+        selectFineTuningBannerError(useFineTuningStore.getState().errors),
+      ).toBeNull()
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
@@ -232,7 +278,9 @@ describe('useFineTuningStore', () => {
 
       await useFineTuningStore.getState().rollbackCheckpointAction('ckpt-1')
 
-      expect(useFineTuningStore.getState().error).toBeNull()
+      expect(
+        selectFineTuningBannerError(useFineTuningStore.getState().errors),
+      ).toBeNull()
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
@@ -248,7 +296,9 @@ describe('useFineTuningStore', () => {
 
       await useFineTuningStore.getState().deleteCheckpointAction('ckpt-1')
 
-      expect(useFineTuningStore.getState().error).toBeNull()
+      expect(
+        selectFineTuningBannerError(useFineTuningStore.getState().errors),
+      ).toBeNull()
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')

@@ -53,8 +53,17 @@ export function getErrorMessage(error: unknown): string {
       | { error?: string; error_detail?: ErrorDetail; success?: boolean }
       | undefined
 
-    // For 4xx errors, surface the backend's validation message
-    if (data?.error && typeof data.error === 'string' && status !== undefined && status < 500) {
+    // For 4xx errors, surface the backend's validation message.
+    // 422 is excluded so the structured ``error_detail.detail`` branch
+    // below can prefer the field-specific RFC 9457 detail over the
+    // generic ``data.error`` string when both are present.
+    if (
+      data?.error
+      && typeof data.error === 'string'
+      && status !== undefined
+      && status < 500
+      && status !== 422
+    ) {
       return data.error
     }
 
@@ -74,15 +83,16 @@ export function getErrorMessage(error: unknown): string {
         // was a duplicate or version skew.
         return 'The resource state changed. Refresh the page and try again.'
       case 422: {
-        // Two response shapes the backend may emit: the plain
-        // ``data.error`` string (handled above for every 4xx) and the
-        // structured ``data.error_detail`` envelope (RFC 9457). When the
-        // plain string is absent, surface ``error_detail.detail`` so the
-        // user sees the specific field or rule that failed instead of a
-        // generic "check your input" line.
+        // Prefer the structured ``error_detail.detail`` envelope (RFC
+        // 9457) over the plain ``data.error`` string so the user sees
+        // the specific field or rule that failed when the backend
+        // sends both.
         const structuredDetail = data?.error_detail?.detail
         if (typeof structuredDetail === 'string' && structuredDetail.trim() !== '') {
           return structuredDetail
+        }
+        if (typeof data?.error === 'string' && data.error.trim() !== '') {
+          return data.error
         }
         return 'Validation error. Please check your input.'
       }
