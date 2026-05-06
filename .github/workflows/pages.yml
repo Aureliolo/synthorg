@@ -87,6 +87,22 @@ jobs:
       - name: Generate comparison page
         run: uv run python scripts/generate_comparison.py
 
+      - name: Refresh runtime stats
+        # Best-effort refresh of data/runtime_stats.yaml (pytest count,
+        # latest release, Mem0 stars, provider count). The script
+        # preserves committed values when its source calls fail, so
+        # this step never blocks the build on transient gh / network
+        # issues.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python scripts/generate_runtime_stats.py
+
+      - name: Inject runtime stats into docs
+        # Idempotent: rewrites <!--RS:NAME-->...<!--/RS--> markers in
+        # README.md and the in-scope docs from data/runtime_stats.yaml.
+        # Mutates the workspace checkout only; nothing is committed back.
+        run: uv run python scripts/inject_runtime_stats.py
+
       - name: Build docs
         # TODO: Restore --strict once zensical supports it
         # https://github.com/zensical/backlog/issues/72

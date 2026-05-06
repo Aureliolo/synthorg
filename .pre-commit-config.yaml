@@ -205,6 +205,19 @@ repos:
         files: ^(docs/design/observability\.md|docs/design/agent-execution\.md|docs/research/(control-plane-audit|acg-formalism-evaluation)\.md|src/synthorg/observability/events/.*\.py|scripts/check_doc_drift_counts\.py)$
         pass_filenames: false
 
+      - id: doc-numeric-macros
+        name: doc numeric macros (no bare claims in public docs)
+        entry: uv
+        args: [run, python, scripts/check_doc_numeric_macros.py]
+        language: system
+        # Run on edits to any in-scope doc, the gate itself, the
+        # YAML source-of-truth, or the injector. Pre-push only --
+        # the substitution is a build-time concern, not a per-commit
+        # one.
+        files: ^(README\.md|docs/(index|roadmap/index|architecture/decisions)\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: mypy
         name: mypy type-check (affected modules)
         entry: uv run python scripts/run_affected_mypy.py
