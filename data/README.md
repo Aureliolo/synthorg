@@ -18,7 +18,7 @@ release tag, Mem0 star count, provider preset count, subagent count)
 live here as `stats.<name>.display` strings. The injector substitutes
 each marker into rendered docs:
 
-```
+```text
 Source markdown:   <!--RS:tests-->OLD<!--/RS--> tests
 After 1st inject:  <!--RS:tests-->27,000+<!--/RS--> tests
 After 2nd inject:  <!--RS:tests-->27,000+<!--/RS--> tests   (idempotent: identical to 1st)

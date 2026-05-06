@@ -39,15 +39,19 @@ _SCOPED_FILES: Final[tuple[str, ...]] = (
     "docs/architecture/decisions.md",
 )
 
-_NUMBER: Final[str] = r"\d{1,3}(?:[,.]\d{3})*\+?(?:[kKmM]\+?)?"
+_NUMBER: Final[str] = (
+    r"\d{1,3}(?:[,.]\d{3})+\+?(?:[kKmM]\+?)?|\d{4,}\+?(?:[kKmM]\+?)?|\d{1,3}\+?(?:[kKmM]\+?)?"
+)
 _STAT_NOUN: Final[str] = r"(?:tests?|providers?|agents?|stars?|releases?)"
 _KEYWORD: Final[str] = r"(?:Mem0|version|release[ds]?|current|latest)"
 
 _NEAR_NUMBER_RE: Final[re.Pattern[str]] = re.compile(
-    rf"\b({_NUMBER})\s+(?:[A-Za-z-]+\s+){{0,2}}({_STAT_NOUN})\b"
+    rf"\b({_NUMBER})\s+(?:[A-Za-z-]+\s+){{0,4}}({_STAT_NOUN})\b",
+    re.IGNORECASE,
 )
 _NEAR_KEYWORD_RE: Final[re.Pattern[str]] = re.compile(
-    rf"\b({_KEYWORD})\s+(v?\d[\d.,]*\+?[kKmM]?\+?)\b"
+    rf"\b({_KEYWORD})\s+(v?\d[\d.,]*\+?[kKmM]?\+?)\b",
+    re.IGNORECASE,
 )
 _MACRO_RE: Final[re.Pattern[str]] = re.compile(
     r"<!--RS:[a-z0-9_]+-->.*?<!--/RS-->", re.DOTALL

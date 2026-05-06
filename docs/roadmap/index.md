@@ -2,7 +2,7 @@
 
 ## Current Status
 
-SynthOrg is in **active development**. The core subsystems are built, tested (<!--RS:tests-->27,000+<!--/RS--> tests in the latest run on 2026-05-05, 80%+ coverage), and integrated through a REST + WebSocket API, React 19 dashboard, and Go CLI. See the [releases page](https://github.com/Aureliolo/synthorg/releases) for the latest tagged build.
+SynthOrg is in **active development**. The core subsystems are built, tested (<!--RS:tests-->27,000+<!--/RS--> tests in the latest run, 80%+ coverage), and integrated through a REST + WebSocket API, React 19 dashboard, and Go CLI. See the [releases page](https://github.com/Aureliolo/synthorg/releases) for the latest tagged build.
 
 What works today:
 

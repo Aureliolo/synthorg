@@ -123,7 +123,11 @@ def _load_stats() -> dict[str, Any]:
             "run scripts/generate_runtime_stats.py first"
         )
         raise FileNotFoundError(msg)
-    loaded = yaml.safe_load(_STATS_FILE.read_text(encoding="utf-8"))
+    try:
+        loaded = yaml.safe_load(_STATS_FILE.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        msg = f"runtime_stats.yaml at {_STATS_FILE} is not valid YAML: {exc}"
+        raise TypeError(msg) from exc
     if not isinstance(loaded, dict):
         msg = f"runtime_stats.yaml at {_STATS_FILE} is not a mapping"
         raise TypeError(msg)

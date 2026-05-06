@@ -110,14 +110,10 @@ jobs:
         # Mutates the workspace checkout only; nothing is committed back.
         # Re-running across the build's 3-attempt retry loop is safe
         # because the marker substitution is deterministic from the
-        # YAML.
-        #
-        # `continue-on-error: true` keeps the build alive when the
-        # injector fails (missing YAML, malformed marker name): the
-        # docs will render with stale marker content rather than
-        # blocking deploy entirely. The pre-push gate is the canonical
-        # enforcement point; this step is best-effort freshness.
-        continue-on-error: true
+        # YAML. Failures (missing YAML, malformed marker name) block the
+        # deploy: the docs-freshness contract requires that published
+        # HTML always reflects the current YAML, never stale marker
+        # content.
         run: uv run python scripts/inject_runtime_stats.py
 
       - name: Build docs

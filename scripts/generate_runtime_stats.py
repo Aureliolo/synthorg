@@ -60,7 +60,7 @@ _PYTEST_TIMEOUT_SECONDS: Final[int] = 120
 _GIT_TIMEOUT_SECONDS: Final[int] = 5
 
 _PYTEST_SUMMARY_RE: Final[re.Pattern[str]] = re.compile(
-    r"^\s*(\d+)\s+tests?\s+collected", re.MULTILINE
+    r"^\s*(\d+)\s+(?:tests?|items?)\s+collected", re.MULTILINE
 )
 
 _SOURCES: Final[dict[str, str]] = {
@@ -136,6 +136,7 @@ def _run(
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=REPO_ROOT,
         )
     except subprocess.CalledProcessError as exc:
         raise _StatFetchError(
@@ -324,6 +325,13 @@ def _load_existing() -> dict[str, Any]:
         return {}
     if not isinstance(loaded, dict):
         msg = f"existing {_OUT_FILE} root is not a mapping; got {type(loaded).__name__}"
+        raise TypeError(msg)
+    stats_block = loaded.get("stats")
+    if stats_block is not None and not isinstance(stats_block, dict):
+        msg = (
+            f"existing {_OUT_FILE} field 'stats' is not a mapping; "
+            f"got {type(stats_block).__name__}"
+        )
         raise TypeError(msg)
     return loaded
 
