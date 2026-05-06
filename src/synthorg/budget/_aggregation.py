@@ -2,8 +2,13 @@
 
 Consolidates the ``defaultdict(list)`` + ``math.fsum`` + cost-per-1k
 idiom that previously lived in both ``_tracker_helpers`` and
-``_optimizer_helpers``.  Pure functions, no I/O, same-currency
-enforcement delegated to the caller.
+``_optimizer_helpers``.  Pure functions, no I/O.
+
+Same-currency enforcement: :func:`sum_cost` calls
+``assert_currencies_match`` itself so it is safe by construction;
+callers do not need to guard upstream, though doing so still surfaces
+the rejection at a richer scope (with ``agent_id`` / ``task_id`` /
+``project_id`` context).
 """
 
 import math

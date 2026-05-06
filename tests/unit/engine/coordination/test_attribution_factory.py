@@ -94,6 +94,7 @@ def _make_run_result(
         duration_seconds=1.0,
         agent_id=agent_id,
         task_id=task_id,
+        currency="USD",
     )
 
 

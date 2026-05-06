@@ -109,6 +109,7 @@ def _make_run_result(
         duration_seconds=1.0,
         agent_id=str(identity.id),
         task_id=task.id,
+        currency="USD",
     )
 
 

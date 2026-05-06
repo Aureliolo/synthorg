@@ -121,6 +121,34 @@ def test_wrapped_currency_attribute_is_flagged(
     assert "without a same-currency guard" in issues[0]
 
 
+def test_guard_on_different_source_does_not_clear(tmp_path: Path) -> None:
+    """A guard over ``xs`` cannot clear an aggregation over ``ys``.
+
+    Without an iter-source check the gate would happily accept
+    ``assert_currencies_match(x.currency for x in xs)`` as covering a
+    later ``sum(y.cost for y in ys)``, leaving ``ys`` unguarded.
+    """
+    source = (
+        "from synthorg.budget.currency import assert_currencies_match\n"
+        "def f(xs, ys):\n"
+        "    assert_currencies_match(x.currency for x in xs)\n"
+        "    return sum(y.cost for y in ys)\n"
+    )
+    issues = _scan(source, tmp_path)
+    assert len(issues) == 1
+
+
+def test_guard_on_same_source_clears(tmp_path: Path) -> None:
+    """A guard over the same iterable as the aggregation clears the gate."""
+    source = (
+        "from synthorg.budget.currency import assert_currencies_match\n"
+        "def f(records):\n"
+        "    assert_currencies_match(r.currency for r in records)\n"
+        "    return sum(r.cost for r in records)\n"
+    )
+    assert _scan(source, tmp_path) == []
+
+
 def test_guard_in_nested_function_does_not_satisfy_outer(tmp_path: Path) -> None:
     """A guard call inside an inner ``def`` cannot clear an outer aggregation.
 

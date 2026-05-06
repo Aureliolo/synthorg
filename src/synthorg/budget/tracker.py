@@ -12,7 +12,7 @@ persistence integration is planned.
 import asyncio
 import math
 from collections import OrderedDict, defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget._tracker_helpers import (
@@ -306,12 +306,14 @@ class CostTracker(CostTrackerSummaryMixin):
         memory growth.
 
         Args:
-            now: Reference time.  Defaults to current UTC time.
+            now: Reference time.  Defaults to ``self._clock.now()`` so
+                ``FakeClock`` injection deterministically controls the
+                eviction cutoff.
 
         Returns:
             Number of records removed.
         """
-        ref = now or datetime.now(UTC)
+        ref = now or self._clock.now()
         cutoff = ref - timedelta(hours=_COST_WINDOW_HOURS)
         async with self._lock:
             pruned = self._prune_before(cutoff)
@@ -722,11 +724,12 @@ class CostTracker(CostTrackerSummaryMixin):
 
         Args:
             now: Reference time for auto-prune cutoff.  Defaults to
-                current UTC time.
+                ``self._clock.now()`` so ``FakeClock`` injection
+                deterministically controls auto-prune timing.
         """
         async with self._lock:
             if len(self._records) > self._auto_prune_threshold:
-                ref = now or datetime.now(UTC)
+                ref = now or self._clock.now()
                 cutoff = ref - timedelta(hours=_COST_WINDOW_HOURS)
                 pruned = self._prune_before(cutoff)
                 if pruned:
@@ -764,7 +767,10 @@ class CostTracker(CostTrackerSummaryMixin):
 
         results: list[DepartmentSpending] = []
         for dname, spends in sorted(dept_map.items()):
-            dept_currency = assert_currencies_match(s.currency for s in spends)
+            dept_currency = assert_currencies_match(
+                (s.currency for s in spends),
+                project_id=dname,
+            )
             results.append(
                 DepartmentSpending(
                     department_name=dname,

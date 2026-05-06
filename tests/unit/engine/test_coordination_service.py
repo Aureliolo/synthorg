@@ -706,6 +706,7 @@ class TestMultiAgentCoordinator:
             duration_seconds=run_a.duration_seconds,
             agent_id=run_a.agent_id,
             task_id=run_a.task_id,
+            currency=run_a.currency,
         )
 
         run_b = build_run_result("sub-b", agent_id)
@@ -725,6 +726,7 @@ class TestMultiAgentCoordinator:
             duration_seconds=run_b.duration_seconds,
             agent_id=run_b.agent_id,
             task_id=run_b.task_id,
+            currency=run_b.currency,
         )
 
         exec_0 = ParallelExecutionResult(

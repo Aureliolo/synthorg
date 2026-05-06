@@ -49,6 +49,7 @@ class TestBuildTaskSpendingsCurrency:
         result = _build_task_spendings(records)
         assert len(result) == 1
         assert result[0].total_cost == pytest.approx(0.30)
+        assert result[0].currency == "USD"
 
     def test_mixed_currency_per_task_raises(self) -> None:
         """Two rows on the same task in different currencies fail at the
@@ -91,6 +92,7 @@ class TestBuildProviderDistributionCurrency:
         result = _build_provider_distribution(records, total_cost=0.30)
         assert len(result) == 1
         assert result[0].total_cost == pytest.approx(0.30)
+        assert result[0].currency == "USD"
 
     def test_mixed_currency_per_provider_raises(self) -> None:
         records = (
@@ -123,6 +125,7 @@ class TestBuildModelDistributionCurrency:
         result = _build_model_distribution(records, total_cost=0.30)
         assert len(result) == 1
         assert result[0].total_cost == pytest.approx(0.30)
+        assert result[0].currency == "USD"
 
     def test_mixed_currency_per_model_raises(self) -> None:
         records = (

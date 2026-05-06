@@ -240,9 +240,14 @@ def _build_summaries(
     for r in records:
         by_day[r.timestamp.date().isoformat()].append(r)
 
+    # day_records is a by-day partition of records; the upstream guard
+    # above already verified all records share one currency, so each
+    # partition trivially does too -- the per-day fsum below cannot
+    # observe a mixed input.
     daily = tuple(
         DailySummary(
             date=date,
+            # lint-allow: currency-aggregation -- partitioned upstream
             total_cost=math.fsum(r.cost for r in day_records),
             total_input_tokens=sum(r.input_tokens for r in day_records),
             total_output_tokens=sum(r.output_tokens for r in day_records),

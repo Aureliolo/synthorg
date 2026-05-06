@@ -101,6 +101,11 @@ class CostTrackerSummaryMixin:
         Synchronous and stateless: every aggregation derives from
         *records* alone, so callers can produce a summary plus
         breakdowns from the same atomic view of the tracker.
+
+        Freezes ``records`` into a tuple at the boundary so a caller
+        that hands the tracker's live backing list cannot let
+        ``_filter_records`` and the downstream aggregations observe
+        concurrent ``record()`` appends mid-build.
         """
         from synthorg.budget._tracker_helpers import (  # noqa: PLC0415
             _aggregate,
@@ -110,7 +115,8 @@ class CostTrackerSummaryMixin:
         )
 
         _validate_time_range(start, end)
-        filtered = _filter_records(records, start=start, end=end)
+        snapshot = tuple(records)
+        filtered = _filter_records(snapshot, start=start, end=end)
         totals = _aggregate(filtered)
 
         agent_spendings = _build_agent_spendings(filtered)
@@ -247,7 +253,10 @@ class CostTrackerSummaryMixin:
 
         results: list[DepartmentSpending] = []
         for dname, spends in sorted(dept_map.items()):
-            dept_currency = assert_currencies_match(s.currency for s in spends)
+            dept_currency = assert_currencies_match(
+                (s.currency for s in spends),
+                project_id=dname,
+            )
             results.append(
                 DepartmentSpending(
                     department_name=dname,

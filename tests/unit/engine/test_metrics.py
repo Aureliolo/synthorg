@@ -224,6 +224,7 @@ class TestTaskCompletionMetricsFromRunResult:
             duration_seconds=5.0,
             agent_id=str(sample_agent_context.identity.id),
             task_id="task-001",
+            currency="USD",
         )
 
     def test_from_run_result_extracts_values(

@@ -272,27 +272,40 @@ def assert_currencies_match(
         MixedCurrencyAggregationError: If two or more distinct codes
             are observed.
     """
-    iterator = iter(currencies)
-    try:
-        first = next(iterator)
-    except StopIteration:
+    codes: set[str | None] = set(currencies)
+    if not codes:
         return None
-    for code in iterator:
-        if code != first:
-            codes: set[str | None] = {first, code}
-            codes.update(iterator)
-            normalized = frozenset(_MISSING_CURRENCY if c is None else c for c in codes)
-            logger.warning(
-                BUDGET_MIXED_CURRENCY_REJECTED,
-                currencies=sorted(normalized),
-                agent_id=agent_id,
-                task_id=task_id,
-                project_id=project_id,
-            )
-            raise MixedCurrencyAggregationError(
-                currencies=normalized,
-                agent_id=agent_id,
-                task_id=task_id,
-                project_id=project_id,
-            )
-    return first
+    if codes == {None}:
+        # Non-empty iterable of only-missing codes: fail closed instead
+        # of silently returning ``None`` and letting the caller reduce
+        # rows in an undefined unit.
+        normalized = frozenset({_MISSING_CURRENCY})
+        logger.warning(
+            BUDGET_MIXED_CURRENCY_REJECTED,
+            currencies=sorted(normalized),
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+        )
+        raise MixedCurrencyAggregationError(
+            currencies=normalized,
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+        )
+    if len(codes) > 1:
+        normalized = frozenset(_MISSING_CURRENCY if c is None else c for c in codes)
+        logger.warning(
+            BUDGET_MIXED_CURRENCY_REJECTED,
+            currencies=sorted(normalized),
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+        )
+        raise MixedCurrencyAggregationError(
+            currencies=normalized,
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+        )
+    return next(iter(codes))

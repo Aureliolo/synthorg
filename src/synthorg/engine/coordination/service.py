@@ -349,6 +349,12 @@ class MultiAgentCoordinator:
                 for w in dispatch_result.waves
                 if w.execution_result is not None
             )
+            # Waves with no completed results report ``currency=None``
+            # AND ``total_cost=0`` (see ``ParallelExecutionResult``);
+            # filtering them out before the guard is correct because
+            # they cannot contribute to the cross-wave aggregate, and
+            # passing ``None`` to ``assert_currencies_match`` would
+            # otherwise fail closed under the missing-currency rule.
             assert_currencies_match(
                 er.currency for er in wave_results if er.currency is not None
             )

@@ -165,6 +165,64 @@ def _is_guard_call(node: ast.Call) -> bool:
     return isinstance(func, ast.Attribute) and func.attr in _GUARD_NAMES
 
 
+def _comp_iter_source(arg: ast.expr) -> str | None:
+    """Return a stable string identifier for a comprehension's iter source.
+
+    Used to compare a guard's input collection against the aggregator's
+    input collection: a guard like ``assert_currencies_match(x.currency
+    for x in xs)`` only clears ``sum(y.cost for y in ys)`` when both
+    iterate the same source (otherwise ``ys`` is effectively unguarded).
+
+    Returns ``None`` for non-comprehension args, comprehensions with
+    multiple ``for`` clauses, or iter expressions whose source cannot
+    be canonicalised into a stable name (e.g. inline calls).  The
+    caller treats ``None`` as "cannot prove a match" and falls back to
+    the broader scope-only behaviour.
+    """
+    if not isinstance(arg, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+        return None
+    if len(arg.generators) != 1:
+        return None
+    iter_node = arg.generators[0].iter
+    return _expr_source_id(iter_node)
+
+
+def _expr_source_id(node: ast.expr) -> str | None:  # noqa: PLR0911 -- four AST shapes
+    """Canonicalise *node* to a stable dotted identifier or ``None``.
+
+    Handles the common iter sources: ``records`` (``Name``),
+    ``self.records`` / ``a.b.c`` (``Attribute`` chains), and
+    subscripted access by literal index / string key
+    (``records[0]``, ``buckets["a"]``).  Anything more dynamic
+    (function calls, slices, comprehensions) yields ``None`` so the
+    gate stays conservative -- the caller treats unknown sources as
+    not-matchable rather than risk a silent false-negative.
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _expr_source_id(node.value)
+        if prefix is None:
+            return None
+        return f"{prefix}.{node.attr}"
+    if isinstance(node, ast.Subscript):
+        prefix = _expr_source_id(node.value)
+        if prefix is None:
+            return None
+        slice_node = node.slice
+        if isinstance(slice_node, ast.Constant):
+            return f"{prefix}[{slice_node.value!r}]"
+        return None
+    return None
+
+
+def _guard_call_iter_source(node: ast.Call) -> str | None:
+    """Return the iter source of a guard call's first positional argument."""
+    if not node.args:
+        return None
+    return _comp_iter_source(node.args[0])
+
+
 def _enclosing_scope(node: ast.AST, parents: dict[int, ast.AST]) -> ast.AST | None:
     """Return the nearest enclosing FunctionDef / AsyncFunctionDef / Module."""
     current: ast.AST | None = parents.get(id(node))
@@ -213,8 +271,22 @@ def _scope_has_preceding_guard(
     earlier column.  The walk stops at nested scope boundaries so a
     guard inside an inner ``def`` / ``class`` / ``lambda`` cannot
     satisfy a target call in the enclosing scope.
+
+    When the *target* iterates a determinable source (``sum(r.cost for
+    r in records)``), a preceding guard only counts if its own input
+    iterates the same source.  This prevents
+    ``assert_currencies_match(x.currency for x in xs)`` from clearing a
+    later ``sum(y.cost for y in ys)`` whose ``ys`` is effectively
+    unguarded.  Targets whose source cannot be canonicalised
+    (subscripted access through dynamic keys, inline call results,
+    etc.) fall back to scope-only matching so the gate stays
+    conservative without flooding callers with false positives at
+    sites it cannot reason about.
     """
     target_pos = (target.lineno, target.col_offset)
+    target_source: str | None = None
+    if target.args:
+        target_source = _comp_iter_source(target.args[0])
     for sub in _walk_current_scope(scope):
         if not isinstance(sub, ast.Call):
             continue
@@ -222,7 +294,12 @@ def _scope_has_preceding_guard(
             continue
         if not _is_guard_call(sub):
             continue
-        if (sub.lineno, sub.col_offset) < target_pos:
+        if (sub.lineno, sub.col_offset) >= target_pos:
+            continue
+        if target_source is None:
+            return True
+        guard_source = _guard_call_iter_source(sub)
+        if guard_source is None or guard_source == target_source:
             return True
     return False
 

@@ -158,10 +158,11 @@ class MixedCurrencyAggregationError(DomainError):
         task_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
     ) -> None:
-        if len(currencies) < 2:  # noqa: PLR2004
+        if not currencies:
             detail = (
-                f"MixedCurrencyAggregationError requires at least 2 distinct "
-                f"currencies, got {sorted(currencies)!r}"
+                "MixedCurrencyAggregationError requires at least one "
+                "currency (or the missing-currency sentinel), got an "
+                "empty set"
             )
             raise ValueError(detail)
         super().__init__(msg or self.default_message)

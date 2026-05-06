@@ -527,6 +527,7 @@ class TestDepartmentHealthDegradation:
         )
         cost_tracker = CostTracker()
         cost_tracker.get_records = AsyncMock(  # type: ignore[method-assign]
+            spec=CostTracker.get_records,
             side_effect=RuntimeError("simulated cost failure"),
         )
         with _build_dept_client(
