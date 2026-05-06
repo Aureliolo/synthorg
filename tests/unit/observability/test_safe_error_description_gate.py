@@ -48,14 +48,38 @@ def _load_gate_module() -> object:
     return module
 
 
-def _scan_source(source: str) -> list[tuple[int, int]]:
+def _scan_source(
+    source: str,
+    *,
+    exc_info_allowlist_lines: frozenset[int] | None = None,
+) -> list[tuple[int, int]]:
     """Run the gate's ``_LoggerExceptionFinder`` against an inline source."""
     gate = _load_gate_module()
     finder_cls = gate._LoggerExceptionFinder  # type: ignore[attr-defined]
-    finder = finder_cls()
+    if exc_info_allowlist_lines is None:
+        finder = finder_cls()
+    else:
+        finder = finder_cls(exc_info_allowlist_lines=exc_info_allowlist_lines)
     finder.visit(ast.parse(textwrap.dedent(source)))
     hits: list[tuple[int, int]] = list(finder.hits)
     return hits
+
+
+def _scan_source_e2e(source: str) -> list[tuple[int, int]]:
+    """End-to-end: parse + tokenise allowlist + run finder.
+
+    Uses the same code path as ``_scan_file`` but on inline source,
+    so allowlist comments embedded in the source actually take
+    effect. Use for tests that exercise the
+    ``# lint-allow: exc-info -- <reason>`` parser.
+    """
+    gate = _load_gate_module()
+    dedented = textwrap.dedent(source)
+    allowlist = gate._collect_lint_allow_exc_info_lines(dedented)  # type: ignore[attr-defined]
+    finder_cls = gate._LoggerExceptionFinder  # type: ignore[attr-defined]
+    finder = finder_cls(exc_info_allowlist_lines=allowlist)
+    finder.visit(ast.parse(dedented))
+    return list(finder.hits)
 
 
 @pytest.mark.unit
@@ -399,6 +423,183 @@ class TestFStringBlindspot:
             """,
         )
         assert hits, "dict-unpack with f-string-interpolated exc must be flagged"
+
+
+@pytest.mark.unit
+class TestExcInfoGate:
+    """``exc_info=True`` on logger calls leaks via traceback frame-locals.
+
+    structlog's exc-info processor serialises the traceback's
+    frame-local variables into the log event. Any ``client_secret``
+    / ``refresh_token`` / Fernet ciphertext in the calling scope
+    leaks to the log sink, regardless of how the ``error=`` field is
+    constructed.
+
+    The gate flags every ``exc_info=True`` literal kwarg on a logger
+    call. Per-line opt-out via
+    ``# lint-allow: exc-info -- <reason>`` (mandatory non-empty
+    reason) covers genuine framework boundaries that already redact
+    frame-locals downstream.
+    """
+
+    @pytest.mark.parametrize(
+        "method",
+        ["exception", "warning", "error", "info", "debug"],
+    )
+    def test_exc_info_true_flagged(self, method: str) -> None:
+        """Every severity trips on ``exc_info=True`` literal."""
+        hits = _scan_source(
+            f"""
+            logger.{method}("E", exc_info=True)
+            """,
+        )
+        assert hits, f"logger.{method}(..., exc_info=True) must be flagged"
+
+    def test_exc_info_false_quiet(self) -> None:
+        """``exc_info=False`` is the explicit opt-out; do not flag."""
+        hits = _scan_source(
+            """
+            logger.warning("E", exc_info=False)
+            """,
+        )
+        assert not hits
+
+    def test_exc_info_runtime_value_quiet(self) -> None:
+        """Non-literal ``exc_info=<expr>`` is not the leak vector we target.
+
+        The gate stays conservative: only the literal ``True`` kwarg
+        is flagged. Runtime-decided exc_info is rare and opting it
+        in/out at runtime is a legitimate (if uncommon) pattern.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", exc_info=some_var)
+            """,
+        )
+        assert not hits
+
+    def test_attribute_logger_exc_info_flagged(self) -> None:
+        """``self._logger.warning(..., exc_info=True)`` trips."""
+        hits = _scan_source(
+            """
+            self._logger.warning("E", exc_info=True)
+            """,
+        )
+        assert hits
+
+    def test_non_logger_receiver_exc_info_quiet(self) -> None:
+        """``siren.warning(..., exc_info=True)`` -- not a logger."""
+        hits = _scan_source(
+            """
+            siren.warning("E", exc_info=True)
+            """,
+        )
+        assert not hits
+
+    def test_exc_info_with_fstring_error_double_flagged(self) -> None:
+        """A call with both leaks (f-string + exc_info=True) is one finder hit.
+
+        Hits are recorded per-call (``visit_Call`` appends once per
+        match), so a single call with two distinct rule violations
+        appears once. The combined ``--scan-all`` run reports the
+        site once but the rule classification is internal.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"{exc}", exc_info=True)
+            """,
+        )
+        assert hits
+
+    def test_allowlist_marker_with_reason_not_flagged(self) -> None:
+        """``# lint-allow: exc-info -- <reason>`` opts out a single line."""
+        hits = _scan_source_e2e(
+            """
+            logger.warning(
+                "E",
+                exc_info=True,  # lint-allow: exc-info -- top-level handler
+            )
+            """,
+        )
+        assert not hits, (
+            "allowlisted exc_info=True with non-empty reason must be permitted"
+        )
+
+    def test_allowlist_marker_empty_reason_still_flagged(self) -> None:
+        """``# lint-allow: exc-info --`` (empty reason) must NOT opt out."""
+        hits = _scan_source_e2e(
+            """
+            logger.warning(
+                "E",
+                exc_info=True,  # lint-allow: exc-info --
+            )
+            """,
+        )
+        assert hits, "allowlist requires a non-empty reason after `--`"
+
+    def test_allowlist_marker_no_double_dash_still_flagged(self) -> None:
+        """``# lint-allow: exc-info reason`` (no double-dash) must NOT opt out."""
+        hits = _scan_source_e2e(
+            """
+            logger.warning(
+                "E",
+                exc_info=True,  # lint-allow: exc-info top-level handler
+            )
+            """,
+        )
+        assert hits, "allowlist requires the `--` separator before the reason"
+
+    def test_allowlist_marker_only_covers_marked_line(self) -> None:
+        """An allowlist comment opts out only the call on its line."""
+        hits = _scan_source_e2e(
+            """
+            logger.warning(
+                "E1",
+                exc_info=True,  # lint-allow: exc-info -- top-level handler
+            )
+            logger.warning(
+                "E2",
+                exc_info=True,
+            )
+            """,
+        )
+        assert hits, "second unannotated call must still be flagged"
+        assert len(hits) == 1, "only the unannotated call should remain in the hit list"
+
+    def test_allowlist_marker_above_call_flagged(self) -> None:
+        """An allowlist comment on a separate line above the call does NOT opt out.
+
+        The marker must be on the same physical line as
+        ``exc_info=True,`` so reviewers and tooling can locate the
+        opt-out without scanning the file.
+        """
+        hits = _scan_source_e2e(
+            """
+            # lint-allow: exc-info -- handler
+            logger.warning("E", exc_info=True)
+            """,
+        )
+        assert hits, "marker not on the exc_info= line must not opt out"
+
+    def test_collect_lint_allow_lines_returns_set(self) -> None:
+        """The tokeniser returns the line numbers of valid allowlist comments."""
+        gate = _load_gate_module()
+        collect = gate._collect_lint_allow_exc_info_lines  # type: ignore[attr-defined]
+        source = textwrap.dedent(
+            """
+            # lint-allow: exc-info -- valid reason
+            x = 1  # lint-allow: exc-info -- another
+            y = 2  # lint-allow: exc-info --
+            z = 3  # lint-allow: exc-info something
+            w = 4  # comment
+            """,
+        )
+        lines = collect(source)
+        assert 2 in lines, "valid solo-line marker must be collected"
+        assert 3 in lines, "valid trailing marker must be collected"
+        assert 4 not in lines, "empty-reason marker must NOT be collected"
+        assert 5 not in lines, "missing `--` must NOT be collected"
+        assert 6 not in lines, "plain comment must not be collected"
 
 
 @pytest.mark.unit

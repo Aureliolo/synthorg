@@ -108,7 +108,10 @@ Usage::
 
 import argparse
 import ast
+import io
+import re
 import sys
+import tokenize
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -185,6 +188,49 @@ All four shapes can carry credential material; flag every one of
 them.
 """
 
+_ALLOW_EXC_INFO_RE: re.Pattern[str] = re.compile(
+    r"#\s*lint-allow:\s*exc-info\s*--\s*\S",
+)
+"""Per-line opt-out marker for ``exc_info=True``.
+
+Mirrors the existing CLAUDE.md gate marker shape (``persistence-boundary``,
+``dual-backend-parity``, ``currency-aggregation``, ``bootstrap-wiring``):
+``# lint-allow: <gate-name> -- <reason>`` with a mandatory non-empty
+reason. The trailing ``\\S`` anchor enforces "at least one
+non-whitespace character after the ``--``" so empty / placeholder
+reasons do not pass.
+"""
+
+
+def _collect_lint_allow_exc_info_lines(source: str) -> frozenset[int]:
+    """Return the set of physical line numbers carrying a valid opt-out.
+
+    Tokenises *source* with ``tokenize.generate_tokens`` and filters
+    ``COMMENT`` tokens whose text matches ``_ALLOW_EXC_INFO_RE``. The
+    returned set is intersected against ``ast.keyword.value.lineno``
+    in the finder so a marker on the same physical line as
+    ``exc_info=True,`` opts out only that call.
+
+    A bad source (one that ``tokenize`` cannot read) returns an empty
+    set; the AST gate already fails closed via :class:`InspectionError`
+    on parse failure, so this is the correct choice for the comment
+    layer too.
+    """
+    allow_lines: set[int] = set()
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        for tok in tokens:
+            if tok.type != tokenize.COMMENT:
+                continue
+            if _ALLOW_EXC_INFO_RE.search(tok.string):
+                allow_lines.add(tok.start[0])
+    except tokenize.TokenError, IndentationError, SyntaxError:
+        # Fail-closed at the parse layer, not here. Return an empty
+        # allowlist; if the source has tokenisation problems the
+        # AST scan will surface InspectionError separately.
+        return frozenset()
+    return frozenset(allow_lines)
+
 
 def _formatted_value_references_exception(node: ast.FormattedValue) -> bool:
     """Return ``True`` if *node* interpolates an exception-like reference.
@@ -217,27 +263,84 @@ def _is_logger_receiver(value: ast.expr) -> bool:
     return False
 
 
+_RULE_STR_EXC = "error_str_exc"
+_RULE_EXC_INFO = "exc_info_true"
+
+
 class _LoggerExceptionFinder(ast.NodeVisitor):
-    """Locate ``<logger>.<method>(..., error=str(exc_like))`` call sites.
+    """Locate logger-call leak sites covered by either rule.
+
+    Two rules are tracked:
+
+    * ``error_str_exc``: ``error=`` value subtree contains
+      ``str(<exc_like>)`` or an exception-interpolating
+      ``FormattedValue``.
+    * ``exc_info_true``: ``exc_info=True`` literal kwarg with no
+      ``# lint-allow: exc-info -- <reason>`` marker on the same
+      physical line as the ``exc_info=`` keyword value.
 
     Attributes:
-        hits: Tuples of ``(lineno, col_offset)`` for each match.
+        hits: Triples of ``(lineno, col_offset, rule)`` where *rule*
+            is one of the ``_RULE_*`` constants. A single call may
+            contribute up to two hits (one per rule) if both fire.
+        exc_info_allowlist_lines: Frozen set of physical line numbers
+            whose ``exc_info=True,`` keyword has been opted out via
+            an inline allowlist comment.
     """
 
-    def __init__(self) -> None:
-        self.hits: list[tuple[int, int]] = []
+    def __init__(
+        self,
+        *,
+        exc_info_allowlist_lines: frozenset[int] = frozenset(),
+    ) -> None:
+        self.hits: list[tuple[int, int, str]] = []
+        self.exc_info_allowlist_lines = exc_info_allowlist_lines
 
     def visit_Call(self, node: ast.Call) -> None:
-        """Match ``<logger>.<method>(...)`` calls with ``error=str(exc_like)``."""
+        """Match ``<logger>.<method>(...)`` calls against both rules."""
         func = node.func
         if (
             isinstance(func, ast.Attribute)
             and func.attr in _LOGGER_METHODS
             and _is_logger_receiver(func.value)
-            and _has_error_str_exc_kwarg(node.keywords)
         ):
-            self.hits.append((node.lineno, node.col_offset))
+            if _has_error_str_exc_kwarg(node.keywords):
+                self.hits.append(
+                    (node.lineno, node.col_offset, _RULE_STR_EXC),
+                )
+            exc_info_lineno = _find_unallowlisted_exc_info_true(
+                node.keywords,
+                self.exc_info_allowlist_lines,
+            )
+            if exc_info_lineno is not None:
+                self.hits.append(
+                    (exc_info_lineno, node.col_offset, _RULE_EXC_INFO),
+                )
         self.generic_visit(node)
+
+
+def _find_unallowlisted_exc_info_true(
+    keywords: Iterable[ast.keyword],
+    allowlist_lines: frozenset[int],
+) -> int | None:
+    """Return the lineno of an unallowlisted ``exc_info=True`` kwarg, if any.
+
+    Returns ``None`` when no ``exc_info=True`` literal kwarg is
+    present, or when every such kwarg sits on a line in
+    ``allowlist_lines``. The lineno returned is the
+    ``ast.keyword.value.lineno`` so callers can render the violation
+    pointing at the offending keyword, not at the call's opening
+    paren.
+    """
+    for kw in keywords:
+        if kw.arg != "exc_info":
+            continue
+        if not isinstance(kw.value, ast.Constant) or kw.value.value is not True:
+            continue
+        if kw.value.lineno in allowlist_lines:
+            continue
+        return kw.value.lineno
+    return None
 
 
 def _is_str_exc_call(node: ast.AST) -> bool:
@@ -326,8 +429,8 @@ class InspectionError(RuntimeError):
     """
 
 
-def _scan_file(path: Path) -> list[tuple[int, int]]:
-    """Return the sorted list of ``(lineno, col_offset)`` hits in *path*.
+def _scan_file(path: Path) -> list[tuple[int, int, str]]:
+    """Return the sorted ``(lineno, col_offset, rule)`` hits in *path*.
 
     Raises:
         InspectionError: If the file cannot be read or parsed. The
@@ -348,7 +451,8 @@ def _scan_file(path: Path) -> list[tuple[int, int]]:
     except SyntaxError as exc:
         msg = f"failed to parse {path}: SyntaxError at line {exc.lineno}: {exc.msg}"
         raise InspectionError(msg) from exc
-    finder = _LoggerExceptionFinder()
+    allowlist_lines = _collect_lint_allow_exc_info_lines(source)
+    finder = _LoggerExceptionFinder(exc_info_allowlist_lines=allowlist_lines)
     finder.visit(tree)
     return sorted(finder.hits)
 
@@ -363,6 +467,12 @@ def _rel(path: Path) -> str:
     return path.resolve().relative_to(_REPO_ROOT).as_posix()
 
 
+_RULE_MESSAGES: dict[str, str] = {
+    _RULE_STR_EXC: "logger.<method>(..., error=str(exc)) site",
+    _RULE_EXC_INFO: "logger.<method>(..., exc_info=True) site",
+}
+
+
 def _scan(src_path: Path) -> list[str]:
     """Return violation lines for *src_path*."""
     try:
@@ -371,8 +481,7 @@ def _scan(src_path: Path) -> list[str]:
         return [f"{_rel(src_path)}: inspection failed: {exc}"]
     key = _rel(src_path)
     return [
-        f"{key}:{lineno}:{col}: logger.<method>(..., error=str(exc)) site"
-        for lineno, col in hits
+        f"{key}:{lineno}:{col}: {_RULE_MESSAGES[rule]}" for lineno, col, rule in hits
     ]
 
 
@@ -404,10 +513,13 @@ def _report(violations: list[str]) -> int:
     for line in violations:
         print(line)
     print(
-        "\n`logger.<method>(..., error=str(exc))` leaks credential"
-        " material via str(exc)-embedded URLs / form bodies (and via"
-        " traceback frame-locals on ``logger.exception``)."
-        "\nReplace with:"
+        "\n`logger.<method>(..., error=str(exc))` and"
+        ' `error=f"...{exc}..."` leak credential material via'
+        " str(exc)-embedded URLs / form bodies."
+        " `logger.<method>(..., exc_info=True)` leaks via traceback"
+        " frame-locals (any in-scope client_secret / refresh_token)."
+        "\n"
+        "\nReplace error=str(exc) / f-string-exc with:"
         "\n    logger.warning("
         "\n        EVENT_NAME,"
         "\n        ...,"
@@ -415,7 +527,13 @@ def _report(violations: list[str]) -> int:
         "\n        error=safe_error_description(exc),"
         "\n    )"
         "\n"
-        "\nAdd: from synthorg.observability import safe_error_description",
+        "\nAdd: from synthorg.observability import safe_error_description"
+        "\n"
+        "\nFor exc_info=True: drop it (the redacted error= field"
+        " carries the type taxonomy operators need for triage), or"
+        " for genuine framework boundaries that already redact"
+        " frame-locals downstream, opt out per-line with:"
+        "\n    exc_info=True,  # lint-allow: exc-info -- <reason>",
         file=sys.stderr,
     )
     return 1
