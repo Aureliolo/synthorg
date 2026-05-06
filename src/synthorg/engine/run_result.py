@@ -6,6 +6,7 @@ from the engine layer (system prompt, wall-clock duration, agent/task IDs).
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.core.artifact import Artifact  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import (
@@ -51,6 +52,17 @@ class AgentRunResult(BaseModel):
     produced_artifacts: tuple[Artifact, ...] = Field(
         default=(),
         description="Artifacts produced during execution",
+    )
+    currency: CurrencyCode = Field(
+        description=(
+            "ISO 4217 currency that denominates ``total_cost``. "
+            "Populated by the engine from the active "
+            "``BudgetConfig.currency`` so cross-agent aggregations "
+            "(e.g. ``ParallelExecutionResult.total_cost``) can enforce "
+            "the same-currency invariant before summing.  Required so "
+            "constructor sites cannot silently mis-label a non-default "
+            "run as ``DEFAULT_CURRENCY``."
+        ),
     )
 
     # mypy does not yet model Pydantic's @computed_field + @property

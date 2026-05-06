@@ -15,14 +15,11 @@ from typing import NamedTuple
 
 from synthorg.budget._aggregation import group_by_agent, sum_cost
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001 -- runtime use
-from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.spending_summary import AgentSpending
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime use in filter
 from synthorg.observability import get_logger
-from synthorg.observability.events.budget import (
-    BUDGET_MIXED_CURRENCY_REJECTED,
-    BUDGET_TIME_RANGE_INVALID,
-)
+from synthorg.observability.events.budget import BUDGET_TIME_RANGE_INVALID
 
 logger = get_logger(__name__)
 
@@ -85,44 +82,6 @@ def _filter_records(  # noqa: PLR0913
     )
 
 
-def _assert_single_currency(
-    records: Sequence[CostRecord],
-    *,
-    agent_id: NotBlankStr | None = None,
-    task_id: NotBlankStr | None = None,
-    project_id: NotBlankStr | None = None,
-) -> str | None:
-    """Verify every record in *records* shares a single currency.
-
-    Empty input returns ``None`` -- an absent currency is meaningful on
-    an empty aggregation and lets callers use a fallback (e.g. the
-    current ``budget.currency`` setting) without muddying the data.
-
-    Raises:
-        MixedCurrencyAggregationError: If two or more distinct
-            currency codes are observed.
-    """
-    if not records:
-        return None
-    codes = {r.currency for r in records}
-    if len(codes) > 1:
-        logger.warning(
-            BUDGET_MIXED_CURRENCY_REJECTED,
-            currencies=sorted(codes),
-            agent_id=agent_id,
-            task_id=task_id,
-            project_id=project_id,
-            record_count=len(records),
-        )
-        raise MixedCurrencyAggregationError(
-            currencies=frozenset(codes),
-            agent_id=agent_id,
-            task_id=task_id,
-            project_id=project_id,
-        )
-    return next(iter(codes))
-
-
 def _aggregate(
     records: Sequence[CostRecord],
     *,
@@ -137,8 +96,8 @@ def _aggregate(
     :class:`MixedCurrencyAggregationError` before any summation runs,
     so callers cannot accidentally produce a cost in an undefined unit.
     """
-    currency = _assert_single_currency(
-        records,
+    currency = assert_currencies_match(
+        (r.currency for r in records),
         agent_id=agent_id,
         task_id=task_id,
         project_id=project_id,

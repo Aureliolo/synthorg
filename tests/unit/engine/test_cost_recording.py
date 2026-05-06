@@ -5,7 +5,11 @@ from typing import TYPE_CHECKING
 import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.engine.cost_recording import record_execution_costs
+from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.engine.cost_recording import (
+    record_execution_costs,
+    resolve_tracker_currency,
+)
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -373,3 +377,29 @@ class TestProjectIdPropagation:
         )
         assert len(tracker.records) == expected_count
         assert tuple(r.project_id for r in tracker.records) == expected_ids
+
+
+@pytest.mark.unit
+class TestResolveTrackerCurrency:
+    """``resolve_tracker_currency`` resolves the ISO 4217 code or falls back."""
+
+    def test_none_tracker_returns_default(self) -> None:
+        assert resolve_tracker_currency(None) == DEFAULT_CURRENCY
+
+    def test_tracker_without_budget_config_returns_default(self) -> None:
+        """A tracker whose ``budget_config`` is ``None`` falls back."""
+        from synthorg.budget.tracker import CostTracker
+
+        tracker = CostTracker()
+        assert tracker.budget_config is None
+        assert resolve_tracker_currency(tracker) == DEFAULT_CURRENCY
+
+    def test_tracker_with_budget_config_returns_configured_currency(self) -> None:
+        """Configured ``budget_config.currency`` flows through unchanged."""
+        from synthorg.budget.config import BudgetConfig
+        from synthorg.budget.tracker import CostTracker
+
+        tracker = CostTracker(
+            budget_config=BudgetConfig(total_monthly=100.0, currency="EUR"),
+        )
+        assert resolve_tracker_currency(tracker) == "EUR"

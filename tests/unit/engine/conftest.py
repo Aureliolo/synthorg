@@ -618,6 +618,7 @@ def build_run_result(task_id: str, agent_id: str) -> AgentRunResult:
         duration_seconds=0.5,
         agent_id=agent_id,
         task_id=task_id,
+        currency="USD",
     )
 
 

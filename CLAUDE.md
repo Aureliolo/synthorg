@@ -69,7 +69,7 @@ Reuse components from `web/src/components/ui/`. Never hardcode hex colors, font-
 
 ## Regional Defaults (MANDATORY)
 
-No default may privilege a region, currency, or locale. Resolution: user/company → browser/system → neutral fallback. Currency, locale, timezone, date/number formats all flow through `@/utils/format` + `@/utils/locale` (frontend) and `DEFAULT_CURRENCY` from `synthorg.budget.currency` (backend); no `_usd` suffixes; metric units only; International / British English UI default (e.g. `colour`, `behaviour`, `organise`, `centred`, `analyse`). Every cost-bearing Pydantic model carries `currency: CurrencyCode`; mixing raises `MixedCurrencyAggregationError` (HTTP 409). Enforced by `scripts/check_web_design_system.py`, `scripts/check_backend_regional_defaults.py`, and `scripts/check_forbidden_literals.py`. Per-line opt-out: `# lint-allow: regional-defaults`. See [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md).
+No default may privilege a region, currency, or locale. Resolution: user/company → browser/system → neutral fallback. Currency, locale, timezone, date/number formats all flow through `@/utils/format` + `@/utils/locale` (frontend) and `DEFAULT_CURRENCY` from `synthorg.budget.currency` (backend); no `_usd` suffixes; metric units only; International / British English UI default (e.g. `colour`, `behaviour`, `organise`, `centred`, `analyse`). Every cost-bearing Pydantic model carries `currency: CurrencyCode`; mixing raises `MixedCurrencyAggregationError` (HTTP 409, error code `4007`). Aggregations over cost-bearing fields call `assert_currencies_match` (from `synthorg.budget.currency`) before reducing. Enforced by `scripts/check_web_design_system.py`, `scripts/check_backend_regional_defaults.py`, `scripts/check_forbidden_literals.py`, and `scripts/check_currency_aggregation_invariant.py` (unguarded `sum` / `math.fsum` / `statistics.mean` / `statistics.fmean`, including bare-name imports `fsum` / `mean` / `fmean`, over `.cost` / `.amount` / `.total_cost` / `.usd` / `.eur`). Per-line opt-outs: `# lint-allow: regional-defaults` (literals/locales) and `# lint-allow: currency-aggregation -- <reason>` (aggregation invariant). See [docs/reference/regional-defaults.md](docs/reference/regional-defaults.md).
 
 ## Persistence Boundary (MANDATORY)
 
@@ -89,6 +89,7 @@ Existing gate inventory (all under `scripts/`):
 
 - `check_backend_regional_defaults.py`
 - `check_boundary_typed.py`
+- `check_currency_aggregation_invariant.py`
 - `check_dead_api_endpoints.py`
 - `check_doc_drift_counts.py`
 - `check_domain_error_hierarchy.py`

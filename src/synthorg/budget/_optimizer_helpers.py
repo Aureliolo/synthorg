@@ -16,8 +16,11 @@ from synthorg.budget._aggregation import (
     sum_cost,
     sum_tokens,
 )
-from synthorg.budget._tracker_helpers import _assert_single_currency
-from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost
+from synthorg.budget.currency import (
+    DEFAULT_CURRENCY,
+    assert_currencies_match,
+    format_cost,
+)
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.optimizer_models import (
     AgentEfficiency,
@@ -61,7 +64,7 @@ def _build_efficiency_from_records(
     # also share a currency so the resulting ``global_avg`` + per-
     # agent ``cost_per_1k`` comparisons are meaningful. Mixed input
     # raises ``MixedCurrencyAggregationError`` (HTTP 409) upstream.
-    _assert_single_currency(records)
+    assert_currencies_match(r.currency for r in records)
     by_agent = group_by_agent(records)
     global_avg = _compute_global_avg_cost_per_1k(records)
 
@@ -106,7 +109,14 @@ def _compute_window_costs(
     window_starts: tuple[datetime, ...],
     window_duration: timedelta,
 ) -> tuple[float, ...]:
-    """Compute per-window cost for a single agent's pre-filtered records."""
+    """Compute per-window cost for a single agent's pre-filtered records.
+
+    Same-currency invariant: every record in *agent_records* must share
+    one currency.  Callers (``_build_efficiency_from_records``) already
+    guard upstream; this local guard keeps the helper safe by
+    construction so a future caller cannot bypass the invariant.
+    """
+    assert_currencies_match(r.currency for r in agent_records)
     costs: list[float] = []
     for ws in window_starts:
         window_end = ws + window_duration

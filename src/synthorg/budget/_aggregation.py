@@ -2,14 +2,20 @@
 
 Consolidates the ``defaultdict(list)`` + ``math.fsum`` + cost-per-1k
 idiom that previously lived in both ``_tracker_helpers`` and
-``_optimizer_helpers``.  Pure functions, no I/O, same-currency
-enforcement delegated to the caller.
+``_optimizer_helpers``.  Pure functions, no I/O.
+
+Same-currency enforcement: :func:`sum_cost` calls
+``assert_currencies_match`` itself so it is safe by construction;
+callers do not need to guard upstream, though doing so still surfaces
+the rejection at a richer scope (with ``agent_id`` / ``task_id`` /
+``project_id`` context).
 """
 
 import math
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 
@@ -42,7 +48,15 @@ def sum_cost(records: Sequence[CostRecord]) -> float:
 
     ``math.fsum`` avoids accumulated floating-point drift that
     plain ``sum()`` would introduce across long sequences.
+
+    Same-currency invariant: callers must hand records that all share
+    one currency.  This function double-checks via
+    :func:`~synthorg.budget.currency.assert_currencies_match` so the
+    primitive is safe by construction even when the caller forgets;
+    mixed input raises :class:`MixedCurrencyAggregationError` (HTTP
+    409) before any reduction.
     """
+    assert_currencies_match(r.currency for r in records)
     return round(
         math.fsum(r.cost for r in records),
         BUDGET_ROUNDING_PRECISION,

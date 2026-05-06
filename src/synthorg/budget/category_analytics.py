@@ -221,15 +221,9 @@ def build_category_breakdown(
             undefined unit; the guard forces callers to partition
             records by currency first.
     """
-    # Local import: ``_tracker_helpers`` pulls in ``cost_record`` which
-    # transitively imports ``synthorg.providers``; importing it at module
-    # top would create a cycle through ``providers.cost_recording`` ->
-    # ``budget.cost_record`` during package initialization.
-    from synthorg.budget._tracker_helpers import (  # noqa: PLC0415
-        _assert_single_currency,
-    )
+    from synthorg.budget.currency import assert_currencies_match  # noqa: PLC0415
 
-    _assert_single_currency(records)
+    assert_currencies_match(r.currency for r in records)
     buckets: dict[LLMCallCategory | None, tuple[list[float], int, int]] = {
         cat: ([], 0, 0) for cat in LLMCallCategory
     } | {None: ([], 0, 0)}

@@ -139,6 +139,10 @@ class MixedCurrencyAggregationError(DomainError):
         agent_id: Optional agent identifier the aggregation targeted.
         task_id: Optional task identifier the aggregation targeted.
         project_id: Optional project identifier the aggregation targeted.
+        department_id: Optional department identifier the aggregation
+            targeted.  Distinct from ``project_id`` so per-department
+            rollups (``DepartmentSpending``) can attach the offending
+            department name without pretending it is a project.
     """
 
     status_code: ClassVar[int] = 409
@@ -149,7 +153,7 @@ class MixedCurrencyAggregationError(DomainError):
         "Cannot aggregate cost values across different currencies"
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- one optional id per scope dimension
         self,
         msg: str | None = None,
         *,
@@ -157,11 +161,13 @@ class MixedCurrencyAggregationError(DomainError):
         agent_id: NotBlankStr | None = None,
         task_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
+        department_id: NotBlankStr | None = None,
     ) -> None:
-        if len(currencies) < 2:  # noqa: PLR2004
+        if not currencies:
             detail = (
-                f"MixedCurrencyAggregationError requires at least 2 distinct "
-                f"currencies, got {sorted(currencies)!r}"
+                "MixedCurrencyAggregationError requires at least one "
+                "currency (or the missing-currency sentinel), got an "
+                "empty set"
             )
             raise ValueError(detail)
         super().__init__(msg or self.default_message)
@@ -169,6 +175,7 @@ class MixedCurrencyAggregationError(DomainError):
         self.agent_id = agent_id
         self.task_id = task_id
         self.project_id = project_id
+        self.department_id = department_id
 
 
 class QuotaExhaustedError(BudgetExhaustedError):

@@ -479,6 +479,32 @@ class TestAggregateDeptCost:
         assert aggregate.total_cost == pytest.approx(expected["total"])
         assert aggregate.currency == expected["currency"]
 
+    def test_aggregate_dept_cost_propagates_dept_name_on_mixed_currency(
+        self,
+    ) -> None:
+        """``dept_name`` flows through to the raised exception's project_id.
+
+        Lets operators identify which department triggered the
+        mixed-currency rejection without correlating timestamps against
+        the calling endpoint.
+        """
+        from synthorg.api.controllers._department_health import _aggregate_dept_cost
+        from synthorg.budget.errors import MixedCurrencyAggregationError
+        from synthorg.core.types import NotBlankStr
+
+        records = (
+            self._make_record("a", currency="USD"),
+            self._make_record("b", currency="EUR"),
+        )
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            _aggregate_dept_cost(
+                records,
+                frozenset({"a", "b"}),
+                _NOW,
+                dept_name=NotBlankStr("Engineering"),
+            )
+        assert exc_info.value.project_id == "Engineering"
+
 
 # ── ExceptionGroup fallback test ──────────────────────────────
 
@@ -501,6 +527,7 @@ class TestDepartmentHealthDegradation:
         )
         cost_tracker = CostTracker()
         cost_tracker.get_records = AsyncMock(  # type: ignore[method-assign]
+            spec=CostTracker.get_records,
             side_effect=RuntimeError("simulated cost failure"),
         )
         with _build_dept_client(

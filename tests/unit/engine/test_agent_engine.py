@@ -640,7 +640,8 @@ class TestAgentEngineCostRecording:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """CostTracker.record() failure does not affect execution result."""
-        tracker = MagicMock()
+        tracker = MagicMock(spec=CostTracker)
+        tracker.budget_config = None
         tracker.record = AsyncMock(side_effect=RuntimeError("DB write failed"))
         response = _make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])

@@ -20,7 +20,7 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -217,33 +217,37 @@ def _build_summaries(
             currency=currency,
         )
 
-    record_currencies = {r.currency for r in records}
-    if len(record_currencies) > 1 or next(iter(record_currencies)) != currency:
-        sorted_record_currencies = sorted(record_currencies)
+    record_currency = assert_currencies_match(r.currency for r in records)
+    if record_currency is not None and record_currency != currency:
         logger.warning(
             API_VALIDATION_FAILED,
             reason="mixed_currency_aggregation",
             scope="budget_summary",
             requested_currency=currency,
-            record_currencies=sorted_record_currencies,
+            record_currencies=[record_currency],
             record_count=len(records),
         )
         msg = (
-            f"Cost records span currencies {sorted_record_currencies}; "
+            f"Cost records denominated in {record_currency!r}; "
             f"summary requested in {currency!r}"
         )
         raise MixedCurrencyAggregationError(
             msg,
-            currencies=frozenset(record_currencies | {currency}),
+            currencies=frozenset({record_currency, currency}),
         )
 
     by_day: dict[str, list[CostRecord]] = defaultdict(list)
     for r in records:
         by_day[r.timestamp.date().isoformat()].append(r)
 
+    # day_records is a by-day partition of records; the upstream guard
+    # above already verified all records share one currency, so each
+    # partition trivially does too -- the per-day fsum below cannot
+    # observe a mixed input.
     daily = tuple(
         DailySummary(
             date=date,
+            # lint-allow: currency-aggregation -- partitioned upstream
             total_cost=math.fsum(r.cost for r in day_records),
             total_input_tokens=sum(r.input_tokens for r in day_records),
             total_output_tokens=sum(r.output_tokens for r in day_records),

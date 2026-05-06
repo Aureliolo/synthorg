@@ -285,3 +285,40 @@ class TestMultiWindowStrategy:
         assert len(calls) == 1
         # And its argument is the cost stream from the records.
         assert calls[0] == tuple(r.cost for r in records)
+
+
+@pytest.mark.unit
+class TestMultiWindowStrategyCurrency:
+    """``MultiWindowStrategy`` rejects mixed-currency records per window.
+
+    The aggregator computes ``avg_cost_per_task`` via ``math.fsum`` over
+    a window's records.  Mixing currencies in the same window produces
+    a meaningless monetary average, so the strategy raises
+    ``MixedCurrencyAggregationError`` (HTTP 409) instead.
+    """
+
+    def test_mixed_currency_in_window_raises(self) -> None:
+        from synthorg.budget.errors import MixedCurrencyAggregationError
+
+        strategy = MultiWindowStrategy(
+            windows=("7d",),
+            min_data_points=2,
+        )
+        records = (
+            make_task_metric(
+                task_id="task-1",
+                completed_at=NOW - timedelta(days=1),
+                cost=1.0,
+                currency="USD",
+            ),
+            make_task_metric(
+                task_id="task-2",
+                completed_at=NOW - timedelta(days=2),
+                cost=2.0,
+                currency="EUR",
+            ),
+        )
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            strategy.compute_windows(records, now=NOW)
+        assert exc_info.value.currencies == frozenset({"USD", "EUR"})
+        assert exc_info.value.project_id == "7d"

@@ -51,6 +51,10 @@ PostToolUse hook on every `src/synthorg/` `Edit`/`Write`. Flags:
 
 Runs in pre-push and GitHub Actions. Same detection set as the two PostToolUse hooks but covers diffs from non-Claude commits (manual git, agents that bypass the hook, Renovate, ...). The pre-push hook fails the push if any new occurrence is introduced; the CI job fails the build.
 
+### CI gate: `scripts/check_currency_aggregation_invariant.py`
+
+Runs in pre-push. AST-walks `src/synthorg/` for unguarded aggregations over currency-bearing attributes (`cost`, `amount`, `total_cost`, `usd`, `eur`) -- specifically `sum(...)`, `math.fsum(...)`, `statistics.mean(...)`, `statistics.fmean(...)`, and bare-name imports of `fsum` / `mean` / `fmean` (e.g. `from statistics import mean`) whose first argument is a generator / list / set comprehension whose element walks to one of those attributes (the detector matches wrapped forms like `abs(r.cost)` or `r.cost or 0.0`, not only bare attribute access). A preceding call to `assert_currencies_match` (or the legacy `assert_single_currency`) in the same enclosing function or module scope clears the violation; guards inside nested `def` / `class` / `lambda` bodies do NOT count for an outer aggregation. Per-line opt-out: `# lint-allow: currency-aggregation -- <reason>` (mandatory non-empty justification). The gate's job is to catch the FIRST regression after the convention has been rolled out; the helper itself lives in `synthorg.budget.currency`.
+
 ## Per-line opt-out
 
 Legitimate opt-outs use one of:
@@ -59,6 +63,8 @@ Legitimate opt-outs use one of:
 - TypeScript: `// lint-allow: regional-defaults`
 
 The marker can be placed on the offending line or the line directly above. It opts out of all four detection categories on that line; do not stack multiple markers per line.
+
+For the currency-aggregation invariant the marker is separate: `# lint-allow: currency-aggregation -- <reason>` with a mandatory non-empty justification.
 
 ## Allowlisted files
 

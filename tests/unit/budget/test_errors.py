@@ -84,14 +84,15 @@ class TestMixedCurrencyAggregationError:
         assert MixedCurrencyAggregationError.error_category == ErrorCategory.CONFLICT
         assert MixedCurrencyAggregationError.retryable is False
 
-    def test_requires_at_least_two_distinct_currencies(self) -> None:
-        """Constructor rejects inputs that do not actually mix currencies."""
-        with pytest.raises(ValueError, match="at least 2 distinct currencies"):
-            MixedCurrencyAggregationError(
-                "only one code",
-                currencies=frozenset({"EUR"}),
-            )
-        with pytest.raises(ValueError, match="at least 2 distinct currencies"):
+    def test_requires_non_empty_currencies(self) -> None:
+        """Constructor rejects an empty currency set.
+
+        Single-element sets are permitted so the missing-currency
+        sentinel (``<missing>``) raised by
+        ``assert_currencies_match`` on a non-empty all-``None``
+        iterable can be surfaced through this error.
+        """
+        with pytest.raises(ValueError, match="at least one"):
             MixedCurrencyAggregationError(
                 "empty set",
                 currencies=frozenset(),

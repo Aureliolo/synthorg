@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
 from synthorg.budget.quota import DegradationAction
 from synthorg.engine.context import AgentContext
+from synthorg.engine.cost_recording import resolve_tracker_currency
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.metrics import TaskCompletionMetrics
 from synthorg.engine.prompt import build_error_prompt
@@ -173,7 +174,8 @@ class AgentEngineErrorsMixin:
             EXECUTION_ENGINE_BUDGET_STOPPED,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"{type(exc).__name__}: {exc}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         try:
             error_ctx = ctx or AgentContext.from_identity(identity, task=task)
@@ -192,6 +194,9 @@ class AgentEngineErrorsMixin:
                 duration_seconds=duration_seconds,
                 agent_id=agent_id,
                 task_id=task_id,
+                currency=resolve_tracker_currency(
+                    getattr(self, "_cost_tracker", None),
+                ),
             )
         except MemoryError, RecursionError:
             logger.exception(
@@ -206,11 +211,14 @@ class AgentEngineErrorsMixin:
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"Failed to build budget-exhausted result: {build_exc}",
+                error_type=type(build_exc).__name__,
+                error=safe_error_description(build_exc),
+                stage="build_budget_exhausted_result",
             )
             exc.add_note(
                 f"Secondary failure while building budget-exhausted "
-                f"result: {type(build_exc).__name__}: {build_exc}",
+                f"result: {type(build_exc).__name__}: "
+                f"{safe_error_description(build_exc)}",
             )
             raise exc from None
 
@@ -288,6 +296,9 @@ class AgentEngineErrorsMixin:
                 duration_seconds=duration_seconds,
                 agent_id=agent_id,
                 task_id=task_id,
+                currency=resolve_tracker_currency(
+                    getattr(self, "_cost_tracker", None),
+                ),
             )
         except MemoryError, RecursionError:
             logger.exception(
@@ -302,12 +313,15 @@ class AgentEngineErrorsMixin:
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"Failed to build error result: {build_exc}",
-                original_error=error_msg,
+                error_type=type(build_exc).__name__,
+                error=safe_error_description(build_exc),
+                stage="build_error_result",
+                original_error_type=type(exc).__name__,
             )
             exc.add_note(
                 f"Secondary failure while building error result: "
-                f"{type(build_exc).__name__}: {build_exc}",
+                f"{type(build_exc).__name__}: "
+                f"{safe_error_description(build_exc)}",
             )
             raise exc from None
 

@@ -6,7 +6,8 @@ module under the size limit.
 
 import math
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from collections.abc import Sequence  # noqa: TC003 -- runtime type
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import OrchestrationAlertLevel
@@ -19,8 +20,8 @@ from synthorg.budget.category_analytics import (
 from synthorg.budget.coordination_config import (
     OrchestrationAlertThresholds,  # noqa: TC001
 )
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.enums import BudgetAlertLevel
-from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
 
     from synthorg.budget.config import BudgetConfig
     from synthorg.budget.cost_record import CostRecord
+    from synthorg.core.clock import Clock
 
 _COST_WINDOW_HOURS = 24 * 30
 
@@ -54,6 +56,7 @@ class CostTrackerSummaryMixin:
 
     _budget_config: BudgetConfig | None
     _department_resolver: Callable[[str], str | None] | None
+    _clock: Clock
 
     async def _snapshot(self, *, now: datetime | None = None) -> tuple[CostRecord, ...]:
         """Return an immutable snapshot of records.
@@ -69,7 +72,41 @@ class CostTrackerSummaryMixin:
         start: datetime,
         end: datetime,
     ) -> SpendingSummary:
-        """Build a spending summary for the given period."""
+        """Build a spending summary for the given period.
+
+        Takes its own records snapshot.  Callers that already hold a
+        snapshot (e.g. :class:`ReportGenerator`, which derives multiple
+        breakdowns from one consistent view) should call
+        :meth:`build_summary_from_records` directly with the pre-fetched
+        records to avoid a second tracker read that could race against
+        a concurrent ``record()``.
+        """
+        self._log_retention_window(start)
+        snapshot = await self._snapshot()
+        return self.build_summary_from_records(
+            snapshot,
+            start=start,
+            end=end,
+        )
+
+    def build_summary_from_records(
+        self,
+        records: Sequence[CostRecord],
+        *,
+        start: datetime,
+        end: datetime,
+    ) -> SpendingSummary:
+        """Build a spending summary from a pre-fetched records snapshot.
+
+        Synchronous and stateless: every aggregation derives from
+        *records* alone, so callers can produce a summary plus
+        breakdowns from the same atomic view of the tracker.
+
+        Freezes ``records`` into a tuple at the boundary so a caller
+        that hands the tracker's live backing list cannot let
+        ``_filter_records`` and the downstream aggregations observe
+        concurrent ``record()`` appends mid-build.
+        """
         from synthorg.budget._tracker_helpers import (  # noqa: PLC0415
             _aggregate,
             _build_agent_spendings,
@@ -78,17 +115,7 @@ class CostTrackerSummaryMixin:
         )
 
         _validate_time_range(start, end)
-        retention_cutoff = datetime.now(UTC) - timedelta(
-            hours=_COST_WINDOW_HOURS,
-        )
-        if start < retention_cutoff:
-            logger.warning(
-                BUDGET_QUERY_EXCEEDS_RETENTION,
-                requested_start=start.isoformat(),
-                retention_cutoff=retention_cutoff.isoformat(),
-                retention_hours=_COST_WINDOW_HOURS,
-            )
-        snapshot = await self._snapshot()
+        snapshot = tuple(records)
         filtered = _filter_records(snapshot, start=start, end=end)
         totals = _aggregate(filtered)
 
@@ -125,6 +152,24 @@ class CostTrackerSummaryMixin:
         )
 
         return summary
+
+    def _log_retention_window(self, start: datetime) -> None:
+        """Emit a warning if *start* predates the rolling retention cutoff.
+
+        Reads ``now`` through the injected :class:`Clock` so tests can
+        pin the cutoff with ``FakeClock`` and the warning's emission
+        timing stays deterministic.
+        """
+        retention_cutoff = self._clock.now() - timedelta(
+            hours=_COST_WINDOW_HOURS,
+        )
+        if start < retention_cutoff:
+            logger.warning(
+                BUDGET_QUERY_EXCEEDS_RETENTION,
+                requested_start=start.isoformat(),
+                retention_cutoff=retention_cutoff.isoformat(),
+                retention_hours=_COST_WINDOW_HOURS,
+            )
 
     async def get_category_breakdown(
         self,
@@ -208,17 +253,10 @@ class CostTrackerSummaryMixin:
 
         results: list[DepartmentSpending] = []
         for dname, spends in sorted(dept_map.items()):
-            currencies = {s.currency for s in spends if s.currency is not None}
-            if len(currencies) > 1:
-                msg = (
-                    f"Department {dname!r} has agent spendings in "
-                    f"different currencies: {sorted(currencies)}"
-                )
-                raise MixedCurrencyAggregationError(
-                    msg,
-                    currencies=frozenset(currencies),
-                )
-            dept_currency = next(iter(currencies)) if currencies else None
+            dept_currency = assert_currencies_match(
+                (s.currency for s in spends),
+                department_id=dname,
+            )
             results.append(
                 DepartmentSpending(
                     department_name=dname,

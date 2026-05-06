@@ -426,6 +426,11 @@ class AuthorityBreachDetector:
             limit = identity.authority.budget_limit
         else:
             return []
+        # Turns within an execution share the engine's configured
+        # currency by construction; the invariant is enforced at the
+        # record_execution_costs() boundary rather than at the
+        # TurnRecord level.
+        # lint-allow: currency-aggregation -- single-execution turns share currency
         total_cost = sum(t.cost for t in execution_result.turns)
         if total_cost <= limit:
             return []

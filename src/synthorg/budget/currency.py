@@ -21,10 +21,18 @@ surface in a report.
 """
 
 import math
+from collections.abc import Iterable  # noqa: TC003 -- runtime type
 from types import MappingProxyType
 from typing import Annotated, Final
 
 from pydantic import AfterValidator, StringConstraints
+
+from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.budget import BUDGET_MIXED_CURRENCY_REJECTED
+
+logger = get_logger(__name__)
 
 DEFAULT_CURRENCY: Final[str] = "USD"
 """Default ISO 4217 currency code.
@@ -197,6 +205,17 @@ def _check_iso4217(value: str) -> str:
     return value
 
 
+_MISSING_CURRENCY: Final[str] = "<missing>"
+"""Sentinel surfaced in mixed-currency errors when a row has no code.
+
+The mixed-currency guard accepts ``None`` codes (e.g. an aggregation
+where one row lost its currency due to a partial write) and reports
+them under this label so structured-log consumers and error envelopes
+can distinguish "two real currencies were mixed" from "a row was
+missing its currency entirely".
+"""
+
+
 CurrencyCode = Annotated[
     str,
     StringConstraints(min_length=3, max_length=3, pattern=r"^[A-Z]{3}$"),
@@ -210,3 +229,93 @@ requires the code to be present in ``_KNOWN_ISO4217`` so typos
 (``EURR``) and well-formed but unsupported codes (``ZZZ``) are rejected
 together.
 """
+
+
+def assert_currencies_match(
+    currencies: Iterable[str | None],
+    *,
+    agent_id: NotBlankStr | None = None,
+    task_id: NotBlankStr | None = None,
+    project_id: NotBlankStr | None = None,
+    department_id: NotBlankStr | None = None,
+) -> CurrencyCode | None:
+    """Verify every currency code in *currencies* is identical.
+
+    The same-currency invariant for cost aggregation: callers pass an
+    iterable of ISO 4217 codes pulled from the items they are about to
+    sum / mean / otherwise reduce.  Empty input returns ``None`` (no
+    aggregation, no currency).  Mixed input logs at WARNING and raises
+    :class:`~synthorg.budget.errors.MixedCurrencyAggregationError`
+    (HTTP 409) **before** any reduction runs, so the caller cannot
+    silently produce a meaningless total.  ``None`` codes are treated
+    as a distinct value: an iterable mixing ``None`` with a real code
+    raises just like any other mismatch, so callers cannot silently
+    bypass the guard by passing optional fields without filtering.
+
+    The contextual ``agent_id`` / ``task_id`` / ``project_id`` /
+    ``department_id`` keyword arguments are propagated to both the
+    warning log and the raised exception so structured-log consumers
+    can trace the rejected aggregation back to its scope.  The four
+    dimensions are deliberately distinct so a per-department rollup
+    cannot accidentally surface a department name as if it were a
+    project identifier.
+
+    Args:
+        currencies: Iterable of ISO 4217 codes (e.g. ``r.currency for r
+            in records``).  Single-pass iterables (generators) are
+            supported; the iterable is consumed exactly once.
+        agent_id: Optional agent identifier the aggregation targeted.
+        task_id: Optional task identifier the aggregation targeted.
+        project_id: Optional project identifier the aggregation
+            targeted.
+        department_id: Optional department identifier the aggregation
+            targeted (used by per-department rollups).
+
+    Returns:
+        The single shared currency code, or ``None`` for empty input.
+
+    Raises:
+        MixedCurrencyAggregationError: If two or more distinct codes
+            are observed.
+    """
+    codes: set[str | None] = set(currencies)
+    if not codes:
+        return None
+    if codes == {None}:
+        # Non-empty iterable of only-missing codes: fail closed instead
+        # of silently returning ``None`` and letting the caller reduce
+        # rows in an undefined unit.
+        normalized = frozenset({_MISSING_CURRENCY})
+        logger.warning(
+            BUDGET_MIXED_CURRENCY_REJECTED,
+            currencies=sorted(normalized),
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+            department_id=department_id,
+        )
+        raise MixedCurrencyAggregationError(
+            currencies=normalized,
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+            department_id=department_id,
+        )
+    if len(codes) > 1:
+        normalized = frozenset(_MISSING_CURRENCY if c is None else c for c in codes)
+        logger.warning(
+            BUDGET_MIXED_CURRENCY_REJECTED,
+            currencies=sorted(normalized),
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+            department_id=department_id,
+        )
+        raise MixedCurrencyAggregationError(
+            currencies=normalized,
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
+            department_id=department_id,
+        )
+    return next(iter(codes))

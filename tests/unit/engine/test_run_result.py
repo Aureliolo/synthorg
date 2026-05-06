@@ -78,6 +78,7 @@ def _make_run_result(  # noqa: PLR0913
         duration_seconds=duration_seconds,
         agent_id=agent_id,
         task_id=task_id,
+        currency="USD",
     )
 
 
@@ -199,6 +200,7 @@ class TestAgentRunResultValidation:
             duration_seconds=0.0,
             agent_id="agent-001",
             task_id=None,
+            currency="USD",
         )
         assert result.task_id is None
 
@@ -506,6 +508,7 @@ def _make_result_with_messages(
         system_prompt=prompt,
         duration_seconds=1.0,
         agent_id="agent-001",
+        currency="USD",
     )
 
 

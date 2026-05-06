@@ -11,8 +11,11 @@ from typing import TYPE_CHECKING, NamedTuple, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
-from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.currency import (
+    DEFAULT_CURRENCY,
+    CurrencyCode,
+    assert_currencies_match,
+)
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -227,7 +230,7 @@ def _aggregate_dept_cost(
     agent_id_set: frozenset[str],
     now: datetime,
     *,
-    dept_name: str | None = None,
+    dept_name: NotBlankStr | None = None,
 ) -> DepartmentCostAggregate:
     """Filter cost records to department agents and compute totals.
 
@@ -235,10 +238,10 @@ def _aggregate_dept_cost(
         cost_records: All cost records in scope.
         agent_id_set: Department agent ids used to filter records.
         now: Reference timestamp for the trend bucketing.
-        dept_name: Optional department identifier surfaced in the
-            mixed-currency warning so operators can locate the
-            offending department without correlating against the
-            calling endpoint.
+        dept_name: Optional department identifier propagated to the
+            mixed-currency log + exception so operators can locate the
+            offending department from the audit trail without
+            correlating timestamps against the calling endpoint.
 
     Raises:
         MixedCurrencyAggregationError: If the matched cost records span
@@ -248,25 +251,10 @@ def _aggregate_dept_cost(
             single currency window.
     """
     dept_records = tuple(r for r in cost_records if r.agent_id in agent_id_set)
-    currencies = {r.currency for r in dept_records}
-    if len(currencies) > 1:
-        sorted_currencies = sorted(currencies)
-        logger.warning(
-            API_REQUEST_ERROR,
-            reason="mixed_currency_aggregation",
-            scope="department_cost_aggregate",
-            dept_name=dept_name,
-            currencies=sorted_currencies,
-            record_count=len(dept_records),
-        )
-        msg = (
-            f"Department aggregate spans currencies {sorted_currencies}; "
-            f"refusing to sum without an FX policy"
-        )
-        raise MixedCurrencyAggregationError(
-            msg,
-            currencies=frozenset(currencies),
-        )
+    currency = assert_currencies_match(
+        (r.currency for r in dept_records),
+        project_id=dept_name,
+    )
     total = round(
         math.fsum(r.cost for r in dept_records),
         BUDGET_ROUNDING_PRECISION,
@@ -277,7 +265,6 @@ def _aggregate_dept_cost(
         now,
         BucketSize.DAY,
     )
-    currency = next(iter(currencies)) if currencies else None
     return DepartmentCostAggregate(total_cost=total, currency=currency, trend=trend)
 
 
@@ -324,7 +311,10 @@ def _build_health_from_data(  # noqa: PLR0913
     """
     agent_id_set = frozenset(agent_ids)
     aggregate = _aggregate_dept_cost(
-        cost_records, agent_id_set, now, dept_name=dept_name
+        cost_records,
+        agent_id_set,
+        now,
+        dept_name=NotBlankStr(dept_name),
     )
     return DepartmentHealth(
         department_name=dept_name,

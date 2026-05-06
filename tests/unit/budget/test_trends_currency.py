@@ -3,7 +3,7 @@
 Both ``bucket_cost_records`` and ``project_daily_spend`` aggregate
 ``record.cost`` across cost records.  Mixing currencies in the input
 silently produces a meaningless monetary aggregate, so both call
-``_assert_single_currency`` at the boundary and raise
+``assert_currencies_match`` at the boundary and raise
 ``MixedCurrencyAggregationError`` (HTTP 409) instead.
 """
 
@@ -94,7 +94,7 @@ class TestBucketCostRecordsCurrency:
     def test_out_of_window_mixed_currency_no_error(self) -> None:
         """Mixed currencies entirely outside ``[start, end)`` must not raise.
 
-        The ``_assert_single_currency`` guard runs on the post-filter
+        The ``assert_currencies_match`` guard runs on the post-filter
         slice, so out-of-range rows do not contribute to the
         aggregation and do not need to be currency-uniform. Without
         this regression, a partial-range query against a long-lived
@@ -148,3 +148,22 @@ class TestProjectDailySpendCurrency:
         forecast = project_daily_spend((), horizon_days=7, now=_NOW)
         assert forecast.avg_daily_spend == 0.0
         assert forecast.confidence == 0.0
+
+
+class TestComputeDailySpendDirectGuard:
+    """`_compute_daily_spend` enforces the same-currency invariant directly.
+
+    `project_daily_spend` already exercises the full code path, but the
+    private helper is also reachable from future call sites; this class
+    pins the guard at the helper boundary.
+    """
+
+    def test_mixed_currency_raises(self) -> None:
+        from synthorg.budget.trends import _compute_daily_spend
+
+        records = (
+            _record(_PRIMARY_CURRENCY, 1.00, _NOW - timedelta(days=1)),
+            _record(_ALTERNATE_CURRENCY, 2.00, _NOW),
+        )
+        with pytest.raises(MixedCurrencyAggregationError):
+            _compute_daily_spend(records)
