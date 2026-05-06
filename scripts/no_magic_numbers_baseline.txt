@@ -219,7 +219,7 @@ src/synthorg/communication/meeting/scheduler.py:58:37
 src/synthorg/config/rate_limits.py:20:22
 src/synthorg/constants.py:3:28
 src/synthorg/core/auth/config.py:9:20
-src/synthorg/core/error_taxonomy.py:138:29
+src/synthorg/core/error_taxonomy.py:139:29
 src/synthorg/core/personality.py:25:19
 src/synthorg/core/personality.py:26:24
 src/synthorg/core/personality.py:27:19
