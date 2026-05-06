@@ -19,7 +19,7 @@ from synthorg.budget.quota import (
     QuotaCheckResult,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.degradation import (
     DEGRADATION_ALERT_RAISED,
     DEGRADATION_FALLBACK_CHECK_ERROR,
@@ -203,7 +203,8 @@ async def _resolve_fallback(
             logger.warning(
                 DEGRADATION_FALLBACK_CHECK_ERROR,
                 provider=fallback_name,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             tried.append(fallback_name)
             continue

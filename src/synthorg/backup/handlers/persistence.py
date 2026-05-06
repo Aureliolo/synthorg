@@ -159,11 +159,17 @@ class PersistenceComponentHandler:
                 str(source_file),
             )
         except IntegrityCheckError as exc:
-            logger.error(
+            # Using ``logger.error`` (not ``logger.exception``) is
+            # deliberate: structlog's exc-info processor serialises
+            # traceback frame-locals into the event, leaking any
+            # in-scope credential. We pass the redacted exception
+            # description via ``safe_error_description`` instead.
+            logger.error(  # noqa: TRY400
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
-                error=f"Integrity check could not run: {exc}",
-                exc_info=True,
+                phase="integrity_check",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to run integrity check on backup: {exc}"
             raise ComponentBackupError(msg) from exc

@@ -192,8 +192,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="agent_registry_versioning",
-                    error=f"{type(exc).__name__}: {exc}",
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         # Wire Prometheus collector (no dependencies, runs in-process).
@@ -207,11 +207,13 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 app_state.set_prometheus_collector(PrometheusCollector())
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Prometheus collector init failed (non-fatal)",
-                    exc_info=True,
+                    phase="prometheus_collector_init",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         # Wire distributed trace handler and bridge OTLP log /
@@ -226,11 +228,13 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             wire_observability_callbacks(app_state)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_APP_STARTUP,
-                error="observability callback wiring failed (non-fatal)",
-                exc_info=True,
+                phase="observability_callback_wiring",
+                severity="non_fatal",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
         # Wire workflow execution observer (needs connected persistence).
@@ -317,7 +321,6 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     service="oauth_state_service",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
-                    exc_info=True,
                 )
 
         # Wire ``TrainingPlanService`` once persistence + the
@@ -355,7 +358,6 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     service="training_plan_service",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
-                    exc_info=True,
                 )
 
         # Wire ``WorkflowRollbackService`` once persistence + the
@@ -394,7 +396,6 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     service="workflow_rollback_service",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
-                    exc_info=True,
                 )
 
         # Phase 2 auto-wire: SettingsService (needs connected persistence)
@@ -507,11 +508,13 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     _training_memory_backend = _mem
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Training service auto-wire failed (non-fatal)",
-                    exc_info=True,
+                    phase="training_service_auto_wire",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         await _maybe_bootstrap_agents(app_state)
@@ -596,55 +599,65 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 await app_state.webhook_event_bridge.start()
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Webhook event bridge startup failed (non-fatal)",
-                    exc_info=True,
+                    phase="webhook_event_bridge_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         if app_state.health_prober_service is not None:
             try:
                 await app_state.health_prober_service.start()
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Integration health prober startup failed (non-fatal)",
-                    exc_info=True,
+                    phase="health_prober_service_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         if app_state.oauth_token_manager is not None:
             try:
                 await app_state.oauth_token_manager.start()
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="OAuth token manager startup failed (non-fatal)",
-                    exc_info=True,
+                    phase="oauth_token_manager_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         if app_state.escalation_sweeper is not None:
             try:
                 await app_state.escalation_sweeper.start()
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Escalation sweeper startup failed (non-fatal)",
-                    exc_info=True,
+                    phase="escalation_sweeper_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         if app_state.escalation_notify_subscriber is not None:
             try:
                 await app_state.escalation_notify_subscriber.start()
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Escalation notify subscriber startup failed (non-fatal)",
-                    exc_info=True,
+                    phase="escalation_notify_subscriber_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         # EventStreamHub inactivity-TTL janitor. Without this, an SSE
         # client that disconnects without unsubscribe (browser-tab kill,
@@ -662,11 +675,13 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Event stream hub startup failed (non-fatal)",
-                    exc_info=True,
+                    phase="event_stream_hub_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     async def on_shutdown() -> None:  # noqa: C901, PLR0912, PLR0915
@@ -787,11 +802,12 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             await _rate_limit_shared_state.set_coordinator_factory(None)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_APP_SHUTDOWN,
-                error="Failed to stop rate-limit coordinators",
-                exc_info=True,
+                phase="rate_limit_coordinator_stop",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         if _auto_wired_dispatcher is not None:
             await _try_stop(
@@ -825,11 +841,12 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 await a2a_client_obj.aclose()
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_APP_SHUTDOWN,
-                error="Failed to close A2A client",
-                exc_info=True,
+                phase="a2a_client_close",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     return [on_startup], [on_shutdown]
