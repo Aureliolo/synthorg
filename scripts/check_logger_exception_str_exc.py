@@ -36,7 +36,9 @@ parameter.
 
 The example wrappers below are non-exhaustive; the matcher works by
 descending the kwarg value subtree via ``ast.walk`` and flagging any
-descendant ``str(<exc_like>)`` call regardless of how it is wrapped:
+descendant ``str(<exc_like>)`` call OR any ``FormattedValue`` (f-string
+interpolation) of an exception-like reference, regardless of how it
+is wrapped:
 
 * ``logger.<method>(..., error=str(exc))``
 * ``self._logger.<method>(..., error=str(exc))``
@@ -46,7 +48,12 @@ descendant ``str(<exc_like>)`` call regardless of how it is wrapped:
 * ``error=str(exc)[:N] or type(exc).__name__`` (boolop wrapper)
 * ``error=str(exc) if cond else fallback`` (ifexp wrapper)
 * ``error=str(exc) + " context"`` (binop / concatenation wrapper)
-* ``error=f"failed: {str(exc)}"`` (joinedstr / f-string wrapper)
+* ``error=f"failed: {str(exc)}"`` (joinedstr with explicit ``str()``)
+* ``error=f"{type(exc).__name__}: {exc}"`` (joinedstr, implicit
+  ``__format__`` -> ``str(exc)`` via FormattedValue conversion ``-1``)
+* ``error=f"{exc!s}"`` / ``error=f"{exc!r}"`` / ``error=f"{exc!a}"``
+  (explicit conversion: ``str`` / ``repr`` / ``ascii`` -- all embed
+  exception args)
 
 Specifically, we flag a call when *all* of the following hold:
 
@@ -58,14 +65,25 @@ Specifically, we flag a call when *all* of the following hold:
    ``logger`` (the typical ``self._logger`` / ``self.audit_logger``
    shape).
 3. One keyword argument has ``arg == "error"`` whose value subtree
-   contains *anywhere* a ``Call`` to the builtin ``str`` with a single
-   positional argument that is a ``Name``, ``Attribute``, or
-   ``Subscript`` (covering ``str(exc)``, ``str(self._inner)``,
-   ``str(exc.args[0])``). ``ast.walk`` descends through any wrapper
-   construct (``Subscript`` / ``BoolOp`` / ``IfExp`` / ``BinOp`` /
-   ``JoinedStr`` / ``Compare`` / future shapes) so no per-shape
-   special-casing is needed; the gate stays current as the language
-   adds new expression types.
+   contains *anywhere* one of:
+   a. A ``Call`` to the builtin ``str`` with a single positional
+      argument that is a ``Name``, ``Attribute``, or ``Subscript``
+      (covering ``str(exc)``, ``str(self._inner)``,
+      ``str(exc.args[0])``).
+   b. A ``FormattedValue`` whose ``conversion`` is in
+      ``_FSTRING_LEAK_CONVERSIONS`` (default / ``!s`` / ``!r`` /
+      ``!a``) AND whose interpolated leaf is exception-like (Name id
+      or Attribute attr in ``_EXCEPTION_LEAF_NAMES``). The leaf
+      allowlist (``exc`` / ``e`` / ``err`` / ``error`` / ``exception``
+      / ``cause`` / ``original`` / ``inner`` / ``_inner``) is narrower
+      than the ``str(<arg>)`` shape gate to avoid false positives on
+      ``error=f"prefix {strategy_name}"``-style innocuous
+      interpolations.
+
+   ``ast.walk`` descends through any wrapper construct (``Subscript``
+   / ``BoolOp`` / ``IfExp`` / ``BinOp`` / ``JoinedStr`` / ``Compare``
+   / future shapes) so no per-shape special-casing is needed; the
+   gate stays current as the language adds new expression types.
 
 To convert a flagged site, replace::
 
@@ -115,6 +133,76 @@ across all five severity methods.
 """
 
 
+_EXCEPTION_LEAF_NAMES: frozenset[str] = frozenset(
+    {
+        "exc",
+        "e",
+        "err",
+        "error",
+        "exception",
+        "cause",
+        "original",
+        "inner",
+        "_inner",
+    },
+)
+"""Identifier names treated as exception-bearing references.
+
+Used by the ``FormattedValue`` matcher to discriminate
+``error=f"...{exc}..."`` (a credential leak: ``exc.__format__`` falls
+back to ``str(exc)``, which carries POST bodies / URLs on
+``HTTPStatusError`` and friends) from
+``error=f"Unknown strategy: {strategy_name}"`` (a plain string
+variable -- not a leak vector).
+
+The set is intentionally narrower than the existing
+``str(<arg>)``-shape matcher (which flags any
+Name/Attribute/Subscript leaf). The asymmetry reflects empirical use:
+``str(strategy_name)`` is essentially never written by hand because
+``strategy_name`` is already a string; ``f"{strategy_name}"`` is
+common because f-strings exist for concatenation. Restricting the
+f-string matcher to known exception names keeps false positives at
+zero on the existing tree while still catching every site flagged in
+the 2026-05 audit.
+
+Adding a new exception variable name (``ex``, ``problem``, ...) to
+the project requires extending this set; CLAUDE.md §Logging already
+prescribes structured kwargs for non-exception data, so divergent
+patterns should be rare.
+"""
+
+_FSTRING_LEAK_CONVERSIONS: frozenset[int] = frozenset({-1, 115, 114, 97})
+"""``ast.FormattedValue.conversion`` values that materialise the leaf.
+
+* ``-1``: default ``__format__``; for ``BaseException`` this is
+  ``str(exc)``.
+* ``115`` (``!s``, ``ord('s')``): explicit ``str(exc)``.
+* ``114`` (``!r``, ``ord('r')``): ``repr(exc)`` -- embeds ``exc.args``.
+* ``97`` (``!a``, ``ord('a')``): ``ascii(exc)`` -- still embeds
+  ``exc.args``, just escapes non-ASCII bytes.
+
+All four shapes can carry credential material; flag every one of
+them.
+"""
+
+
+def _formatted_value_references_exception(node: ast.FormattedValue) -> bool:
+    """Return ``True`` if *node* interpolates an exception-like reference.
+
+    Walks the FormattedValue's ``value`` subtree and returns ``True``
+    on the first ``Name`` whose ``id`` is in ``_EXCEPTION_LEAF_NAMES``
+    or ``Attribute`` whose terminal ``attr`` is in the same set.
+    Handles arbitrarily-deep wrappers like ``exc.args[0]`` (Subscript
+    over Attribute on Name ``exc``).
+    """
+    for inner in ast.walk(node.value):
+        if isinstance(inner, ast.Name) and inner.id in _EXCEPTION_LEAF_NAMES:
+            return True
+        if isinstance(inner, ast.Attribute) and inner.attr in _EXCEPTION_LEAF_NAMES:
+            return True
+    return False
+
+
 def _is_logger_receiver(value: ast.expr) -> bool:
     """Return ``True`` if *value* looks like a logger binding.
 
@@ -152,12 +240,46 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:
-    """Return ``True`` if any keyword's value subtree contains ``str(<exc_like>)``.
+def _is_str_exc_call(node: ast.AST) -> bool:
+    """Return ``True`` if *node* is ``str(<exc_like>)``.
 
     ``<exc_like>`` is ``ast.Name`` (``str(exc)``), ``ast.Attribute``
     (``str(self._inner)``), or ``ast.Subscript`` (``str(exc.args[0])``):
     all forms that could carry credential material through ``str``.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    if not isinstance(node.func, ast.Name) or node.func.id != "str":
+        return False
+    if len(node.args) != 1:
+        return False
+    return isinstance(node.args[0], (ast.Name, ast.Attribute, ast.Subscript))
+
+
+def _is_fstring_exc_leak(node: ast.AST) -> bool:
+    """Return ``True`` if *node* is an exception-bearing FormattedValue.
+
+    Default conversion (``-1``) materialises ``str(exc)`` via
+    ``__format__``; explicit ``!s`` / ``!r`` / ``!a`` carry the same
+    credential payload. The interpolated leaf is matched against the
+    narrow ``_EXCEPTION_LEAF_NAMES`` allowlist.
+    """
+    if not isinstance(node, ast.FormattedValue):
+        return False
+    if node.conversion not in _FSTRING_LEAK_CONVERSIONS:
+        return False
+    return _formatted_value_references_exception(node)
+
+
+def _value_subtree_leaks(value: ast.expr) -> bool:
+    """Return ``True`` if any descendant of *value* is a known leak shape."""
+    return any(
+        _is_str_exc_call(node) or _is_fstring_exc_leak(node) for node in ast.walk(value)
+    )
+
+
+def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:
+    """Return ``True`` if any keyword's value subtree contains a leak shape.
 
     The walk descends through any wrapper expression (``Subscript`` for
     truncation, ``BoolOp`` / ``IfExp`` for fallback fusion, ``BinOp`` /
@@ -171,31 +293,28 @@ def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:
     gate exists to close.
     """
     for kw in keywords:
-        values_to_scan: tuple[ast.expr, ...]
-        if kw.arg == "error":
-            values_to_scan = (kw.value,)
-        elif kw.arg is None and isinstance(kw.value, ast.Dict):
-            # ``**{"error": ...}`` or any literal-dict unpack: pull
-            # every value whose key is the string constant ``"error"``.
-            values_to_scan = tuple(
-                value
-                for key, value in zip(kw.value.keys, kw.value.values, strict=True)
-                if isinstance(key, ast.Constant) and key.value == "error"
-            )
-        else:
-            continue
-        for value in values_to_scan:
-            for node in ast.walk(value):
-                if not isinstance(node, ast.Call):
-                    continue
-                if not isinstance(node.func, ast.Name) or node.func.id != "str":
-                    continue
-                if len(node.args) != 1:
-                    continue
-                arg = node.args[0]
-                if isinstance(arg, (ast.Name, ast.Attribute, ast.Subscript)):
-                    return True
+        for value in _error_kwarg_values(kw):
+            if _value_subtree_leaks(value):
+                return True
     return False
+
+
+def _error_kwarg_values(kw: ast.keyword) -> tuple[ast.expr, ...]:
+    """Return the value subtrees that map to an ``error=`` field.
+
+    Covers both the direct ``error=...`` keyword and dict-unpack
+    forms (``**{"error": ...}``) where ``kw.arg`` is ``None`` and
+    the value is a literal ``ast.Dict``.
+    """
+    if kw.arg == "error":
+        return (kw.value,)
+    if kw.arg is None and isinstance(kw.value, ast.Dict):
+        return tuple(
+            value
+            for key, value in zip(kw.value.keys, kw.value.values, strict=True)
+            if isinstance(key, ast.Constant) and key.value == "error"
+        )
+    return ()
 
 
 class InspectionError(RuntimeError):
