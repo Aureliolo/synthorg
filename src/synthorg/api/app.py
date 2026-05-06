@@ -967,7 +967,14 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
         try:
             origins_raw = await resolver.get_json("api", "csp_docs_external_origins")
-            csp_bridge = ApiBridgeConfig(csp_docs_external_origins=tuple(origins_raw))
+            # Pass the raw JSON shape directly so ApiBridgeConfig sees
+            # the unmodified payload. ``tuple(...)`` would coerce a
+            # mapping to its keys (and other non-iterable shapes to
+            # TypeError), masking the real validation failure. Pydantic
+            # returns a ``tuple[str, ...]`` after its own validation
+            # runs, so ``set_docs_csp_origins`` still receives the
+            # correct shape.
+            csp_bridge = ApiBridgeConfig(csp_docs_external_origins=origins_raw)
             set_docs_csp_origins(csp_bridge.csp_docs_external_origins)
         except (
             SettingNotFoundError,

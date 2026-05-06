@@ -240,4 +240,3 @@ engine/strategy/
 
 - Research: #693
 - Phase 2 (meeting integration): #1158
-- HBR trendslop article: March 2026
