@@ -427,8 +427,8 @@ src/synthorg/hr/training/service.py:65:26
 src/synthorg/hr/training/source_selectors/department_diversity.py:28:31
 src/synthorg/hr/training/source_selectors/department_diversity.py:29:31
 src/synthorg/hr/training/source_selectors/role_top_performers.py:28:17
-src/synthorg/infrastructure/services.py:901:21
-src/synthorg/infrastructure/services.py:941:21
+src/synthorg/infrastructure/services.py:917:21
+src/synthorg/infrastructure/services.py:957:21
 src/synthorg/integrations/health/checks/generic_http.py:21:11
 src/synthorg/integrations/health/checks/generic_http.py:22:19
 src/synthorg/integrations/health/checks/generic_http.py:23:22
