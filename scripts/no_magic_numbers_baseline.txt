@@ -47,7 +47,7 @@ src/synthorg/api/controllers/artifacts.py:181:29
 src/synthorg/api/controllers/audit.py:39:19
 src/synthorg/api/controllers/audit.py:101:29
 src/synthorg/api/controllers/backup.py:187:29
-src/synthorg/api/controllers/budget.py:302:29
+src/synthorg/api/controllers/budget.py:320:29
 src/synthorg/api/controllers/budget_config_versions.py:46:29
 src/synthorg/api/controllers/clients.py:216:29
 src/synthorg/api/controllers/company_versions.py:46:29
@@ -124,7 +124,7 @@ src/synthorg/api/dto.py:33:21
 src/synthorg/api/dto.py:34:17
 src/synthorg/api/dto.py:36:26
 src/synthorg/api/dto.py:37:29
-src/synthorg/api/dto_discovery.py:9:12
+src/synthorg/api/dto_discovery.py:16:12
 src/synthorg/api/etag.py:97:16
 src/synthorg/api/etag.py:98:26
 src/synthorg/api/exception_handlers.py:71:38
