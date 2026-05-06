@@ -254,7 +254,7 @@ class TestSetupFacadeService:
     async def test_initialize_is_capability_gap(self) -> None:
         service = SetupFacadeService()
         with pytest.raises(CapabilityNotSupportedError):
-            await service.initialize()
+            await service.initialize(config={})
 
 
 # ── SimulationFacadeService ────────────────────────────────────────

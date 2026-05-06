@@ -33,10 +33,10 @@ PAGINATION_PROPERTIES: dict[str, Any] = {
 """Shared pagination schema with bounds for all domain list tools."""
 
 
-DESTRUCTIVE_GUARDRAIL_PROPERTIES: dict[str, Any] = {
+ADMIN_GUARDRAIL_PROPERTIES: dict[str, Any] = {
     "reason": {
         "type": "string",
-        "description": "Reason for the destructive action (non-blank)",
+        "description": "Reason for the admin action (non-blank)",
         "minLength": 1,
         "pattern": r".*\S.*",
     },
@@ -46,18 +46,22 @@ DESTRUCTIVE_GUARDRAIL_PROPERTIES: dict[str, Any] = {
         "enum": [True],
     },
 }
-"""Shared ``reason`` + ``confirm`` schema for every ``admin_tool`` destructive op.
+"""Canonical ``reason`` + ``confirm`` schema for guardrailed ``admin_tool``s.
 
-Every destructive tool's admin schema spreads ``**DESTRUCTIVE_GUARDRAIL_PROPERTIES``
-into its ``properties`` dict and lists ``"reason"`` + ``"confirm"`` in
-``required``, so the wire-level contract (non-whitespace reason, literal
-``True`` confirm) stays uniform across every delete/cancel/reject tool and
-matches the ``require_destructive_guardrails()`` handler-side check exactly.
+Guardrailed admin tools spread ``**ADMIN_GUARDRAIL_PROPERTIES`` into
+``properties`` and include ``"reason"`` + ``"confirm"`` in ``required``
+so the wire-level contract (non-whitespace reason, literal ``True``
+confirm) matches the ``require_admin_guardrails()`` handler-side check.
+A small set of admin tools opt out -- e.g. routes that defer to an
+approval queue, parameterless reconnect operations, registrations that
+record without mutating state -- via a justified
+``# lint-allow: mcp-admin-guardrail -- <reason>`` annotation enforced by
+``scripts/check_mcp_admin_tool_guardrails.py``.
 """
 
 
-DESTRUCTIVE_GUARDRAIL_REQUIRED: tuple[str, ...] = ("reason", "confirm")
-"""Required-field names that accompany :data:`DESTRUCTIVE_GUARDRAIL_PROPERTIES`."""
+ADMIN_GUARDRAIL_REQUIRED: tuple[str, ...] = ("reason", "confirm")
+"""Required-field names that accompany :data:`ADMIN_GUARDRAIL_PROPERTIES`."""
 
 
 def _make_parameters(

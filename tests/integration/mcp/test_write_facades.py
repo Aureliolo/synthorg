@@ -17,31 +17,47 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 import structlog.testing
 
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.workflow.execution_service import WorkflowExecutionService
+from synthorg.engine.workflow.service import WorkflowService
+from synthorg.engine.workflow.subworkflow_service import SubworkflowService
 from synthorg.engine.workflow.validation_types import WorkflowValidationResult
+from synthorg.engine.workflow.version_service import WorkflowVersionService
+from synthorg.hr.activity_service import ActivityFeedService
 from synthorg.hr.performance.models import CollaborationCalibration
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.meta.models import ImprovementCycleResult
-from synthorg.observability.events.mcp import MCP_HANDLER_SERVICE_FALLBACK
+from synthorg.meta.service import SelfImprovementService
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_SERVICE_FALLBACK,
+)
 from synthorg.security.autonomy.models import AutonomyUpdateResult
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.integration
 
 
-def _sync_dumped(data: dict[str, Any]) -> MagicMock:
-    mock = MagicMock()
-    mock.model_dump = MagicMock(return_value=data)
-    for k, v in data.items():
-        setattr(mock, k, v)
-    return mock
+def _sync_dumped(data: dict[str, Any]) -> SimpleNamespace:
+    """Build a Pydantic-model double whose ``model_dump`` returns *data*.
+
+    Used by handlers that call ``record.model_dump(mode="json")`` on the
+    returned service value; ``SimpleNamespace`` exposes the supplied
+    keys as real attributes (so the handler can read ``record.id`` etc.)
+    without dragging a bare ``MagicMock`` through the test surface.
+    """
+    return SimpleNamespace(**data, model_dump=lambda mode="json": data)
 
 
 @pytest.fixture
@@ -59,7 +75,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     """Wired AppState double covering every META-MCP-3 facade."""
     ns = SimpleNamespace()
 
-    registry = AsyncMock()
+    registry = AsyncMock(spec=AgentRegistryService)
     registry.get.return_value = identity
     registry.get_by_name.return_value = identity
     registry.list_active.return_value = (identity,)
@@ -72,7 +88,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     )
     ns.agent_registry = registry
 
-    tracker = AsyncMock()
+    tracker = AsyncMock(spec=PerformanceTracker)
     tracker.get_collaboration_calibration.return_value = CollaborationCalibration(
         agent_id=NotBlankStr(str(identity.id)),
         strategy_name=NotBlankStr("test-strategy"),
@@ -80,17 +96,17 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     )
     ns.performance_tracker = tracker
 
-    engine = AsyncMock()
+    engine = AsyncMock(spec=TaskEngine)
     dummy_task = _sync_dumped({"id": "task-1", "title": "Test", "status": "pending"})
     engine.create_task.return_value = dummy_task
     ns.task_engine = engine
 
-    activity_service = AsyncMock()
+    activity_service = AsyncMock(spec=ActivityFeedService)
     activity_service.list_recent_activity.return_value = ((), 0)
     ns.activity_feed_service = activity_service
     ns.has_activity_feed_service = True
 
-    workflow_service = AsyncMock()
+    workflow_service = AsyncMock(spec=WorkflowService)
     workflow_def = _sync_dumped({"id": "wfdef-1", "name": "Test", "revision": 1})
     workflow_service.create_definition.return_value = workflow_def
     workflow_service.update_definition.return_value = workflow_def
@@ -98,7 +114,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     ns.workflow_service = workflow_service
     ns.has_workflow_service = True
 
-    execution_service = AsyncMock()
+    execution_service = AsyncMock(spec=WorkflowExecutionService)
     dummy_execution = _sync_dumped(
         {"id": "wfexec-1", "definition_id": "wfdef-1", "status": "RUNNING"}
     )
@@ -109,14 +125,14 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     ns.workflow_execution_service = execution_service
     ns.has_workflow_execution_service = True
 
-    sub_service = AsyncMock()
+    sub_service = AsyncMock(spec=SubworkflowService)
     sub_service.list_summaries.return_value = ((), 0)
     sub_service.get.return_value = workflow_def
     sub_service.create.return_value = workflow_def
     ns.subworkflow_service = sub_service
     ns.has_subworkflow_service = True
 
-    version_service = AsyncMock()
+    version_service = AsyncMock(spec=WorkflowVersionService)
     version_service.list_versions.return_value = ((), 0)
     version_service.get_version.return_value = _sync_dumped(
         {"entity_id": "wfdef-1", "version": 1}
@@ -124,8 +140,8 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     ns.workflow_version_service = version_service
     ns.has_workflow_version_service = True
 
-    si_service = AsyncMock()
-    si_service.get_config = MagicMock(return_value={"enabled": False})
+    si_service = AsyncMock(spec=SelfImprovementService)
+    si_service.get_config.return_value = {"enabled": False}
     started = datetime.now(UTC)
     si_service.trigger_cycle.return_value = ImprovementCycleResult(
         started_at=started,
@@ -135,7 +151,7 @@ def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- f
     ns.self_improvement_service = si_service
     ns.has_self_improvement_service = True
 
-    ns.approval_store = AsyncMock()
+    ns.approval_store = AsyncMock(spec=ApprovalStore)
 
     ns._dummy_task = dummy_task
     ns._dummy_execution = dummy_execution
@@ -605,15 +621,13 @@ class TestErrorPaths:
 
 
 class TestDestructiveAuditEvents:
-    """Destructive ops emit MCP_DESTRUCTIVE_OP_EXECUTED on success."""
+    """Destructive ops emit MCP_ADMIN_OP_EXECUTED on success."""
 
     async def test_subworkflows_delete_emits_audit(
         self,
         app_state: SimpleNamespace,
         actor: AgentIdentity,
     ) -> None:
-        from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
-
         app_state.subworkflow_service.delete.return_value = None
         handlers = build_handler_map()
         with structlog.testing.capture_logs() as logs:
@@ -630,8 +644,8 @@ class TestDestructiveAuditEvents:
                 )
             )
         assert body["status"] == "ok"
-        events = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
-        assert events, "expected MCP_DESTRUCTIVE_OP_EXECUTED audit event"
+        events = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert events, "expected MCP_ADMIN_OP_EXECUTED audit event"
         assert events[0]["target_id"] == "sw-1@1.0.0"
 
     async def test_workflow_executions_cancel_emits_audit(
@@ -639,8 +653,6 @@ class TestDestructiveAuditEvents:
         app_state: SimpleNamespace,
         actor: AgentIdentity,
     ) -> None:
-        from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
-
         handlers = build_handler_map()
         with structlog.testing.capture_logs() as logs:
             body = _parse(
@@ -655,8 +667,8 @@ class TestDestructiveAuditEvents:
                 )
             )
         assert body["status"] == "ok"
-        events = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
-        assert events, "expected MCP_DESTRUCTIVE_OP_EXECUTED audit event"
+        events = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert events, "expected MCP_ADMIN_OP_EXECUTED audit event"
         assert events[0]["target_id"] == "wfexec-1"
 
 

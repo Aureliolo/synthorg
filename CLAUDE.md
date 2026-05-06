@@ -97,6 +97,7 @@ Existing gate inventory (all under `scripts/`):
 - `check_forbidden_literals.py`
 - `check_list_pagination.py`
 - `check_logger_exception_str_exc.py`
+- `check_mcp_admin_tool_guardrails.py`
 - `check_mock_spec.py`
 - `check_no_bulk_edit.py`
 - `check_no_em_dashes.py`
@@ -172,7 +173,7 @@ Every numeric threshold / weight / limit / timeout / scoring policy in business 
 
 ## MCP Handler Layer
 
-200+ tools across 15 domain modules under `src/synthorg/meta/mcp/domains/`. Implementing a handler: define `ToolHandler` in `src/synthorg/meta/mcp/handlers/<domain>.py`, declare `args_model`, call `require_destructive_guardrails(arguments, actor)` on any `admin_tool`, route through service-layer facades (never `app_state.persistence.*` directly), emit the three log paths via `common_logging` helpers. See [mcp-handler-contract.md](docs/reference/mcp-handler-contract.md), `docs/design/tools.md`, `docs/design/observability.md`.
+200+ tools across 15 domain modules under `src/synthorg/meta/mcp/domains/`. Implementing a handler: define `ToolHandler` in `src/synthorg/meta/mcp/handlers/<domain>.py`, declare `args_model`, call `require_admin_guardrails(arguments, actor)` on any `admin_tool`, route through service-layer facades (never `app_state.persistence.*` directly), emit the three log paths via `common_logging` helpers. See [mcp-handler-contract.md](docs/reference/mcp-handler-contract.md), `docs/design/tools.md`, `docs/design/observability.md`.
 
 ## Telemetry (Product)
 

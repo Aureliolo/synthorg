@@ -20,7 +20,8 @@ from synthorg.meta.mcp.domains._remaining_args import (
     MemoryStartFineTuneArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
-    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -179,8 +180,8 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "memory",
         "cancel_fine_tune",
         "Cancel an active fine-tune pipeline (destructive; requires confirm).",
-        {**DESTRUCTIVE_GUARDRAIL_PROPERTIES},
-        required=("reason", "confirm"),
+        ADMIN_GUARDRAIL_PROPERTIES,
+        required=ADMIN_GUARDRAIL_REQUIRED,
         args_model=MemoryCancelFineTuneArgs,
     ),
     admin_tool(
@@ -215,9 +216,9 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "Rollback a deployed checkpoint (destructive; requires confirm).",
         {
             "checkpoint_id": {"type": "string", "description": "Checkpoint UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("checkpoint_id", "reason", "confirm"),
+        required=("checkpoint_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MemoryRollbackCheckpointArgs,
     ),
     admin_tool(
@@ -226,9 +227,9 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a fine-tune checkpoint (destructive; requires confirm).",
         {
             "checkpoint_id": {"type": "string", "description": "Checkpoint UUID"},
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("checkpoint_id", "reason", "confirm"),
+        required=("checkpoint_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MemoryDeleteCheckpointArgs,
     ),
     # --- Runs ---
@@ -267,9 +268,9 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
                 "minLength": 1,
                 "pattern": _NON_BLANK_STRING_PATTERN,
             },
-            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("agent_id", "memory_id", "reason", "confirm"),
+        required=("agent_id", "memory_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MemoryDeleteEntryArgs,
     ),
 )

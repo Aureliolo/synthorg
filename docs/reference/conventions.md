@@ -212,7 +212,7 @@ validates against a frozen Pydantic args model:
 
 All args models share the convention from §8 (frozen, no NaN/Inf,
 extra=forbid) and reuse the `_ArgsBase` / `PaginationFields` /
-`DestructiveGuardrailFields` mixins under
+`AdminGuardrailFields` mixins under
 `src/synthorg/meta/mcp/domains/_common_args.py` where applicable.
 
 ## 10. Pydantic v2 model conventions

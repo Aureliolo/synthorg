@@ -7,7 +7,7 @@ from pydantic import Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     PaginationFields,
     _ArgsBase,
 )
@@ -34,7 +34,7 @@ class MessagesSendArgs(_ArgsBase):
     sender: NotBlankStr | None = Field(default=None, description="Sender name")
 
 
-class MessagesDeleteArgs(DestructiveGuardrailFields):
+class MessagesDeleteArgs(AdminGuardrailFields):
     """Args for ``messages.delete`` (destructive)."""
 
     message_id: NotBlankStr = Field(description="Message UUID")
@@ -67,7 +67,7 @@ class MeetingsUpdateArgs(_ArgsBase):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class MeetingsDeleteArgs(DestructiveGuardrailFields):
+class MeetingsDeleteArgs(AdminGuardrailFields):
     """Args for ``meetings.delete`` (destructive)."""
 
     meeting_id: NotBlankStr = Field(description="Meeting UUID")
@@ -83,8 +83,12 @@ class ConnectionsGetArgs(_ArgsBase):
     name: NotBlankStr = Field(description="Connection name")
 
 
-class ConnectionsCreateArgs(_ArgsBase):
-    """Args for ``connections.create``."""
+class ConnectionsCreateArgs(AdminGuardrailFields):
+    """Args for ``connections.create`` (admin op).
+
+    Admin op: callers must supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) in addition to the connection metadata.
+    """
 
     name: NotBlankStr = Field(description="Connection name")
     connection_type: NotBlankStr = Field(description="Connection type")
@@ -94,7 +98,7 @@ class ConnectionsCreateArgs(_ArgsBase):
     )
 
 
-class ConnectionsDeleteArgs(DestructiveGuardrailFields):
+class ConnectionsDeleteArgs(AdminGuardrailFields):
     """Args for ``connections.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a
@@ -120,8 +124,12 @@ class WebhooksGetArgs(_ArgsBase):
     webhook_id: NotBlankStr = Field(description="Webhook UUID")
 
 
-class WebhooksCreateArgs(_ArgsBase):
-    """Args for ``webhooks.create``."""
+class WebhooksCreateArgs(AdminGuardrailFields):
+    """Args for ``webhooks.create`` (admin op).
+
+    Admin op: callers must supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) in addition to the URL and events list.
+    """
 
     url: NotBlankStr = Field(description="Webhook URL")
     events: tuple[NotBlankStr, ...] = Field(
@@ -130,14 +138,18 @@ class WebhooksCreateArgs(_ArgsBase):
     )
 
 
-class WebhooksUpdateArgs(_ArgsBase):
-    """Args for ``webhooks.update``."""
+class WebhooksUpdateArgs(AdminGuardrailFields):
+    """Args for ``webhooks.update`` (admin op).
+
+    Admin op: callers must supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) in addition to the webhook UUID and updates.
+    """
 
     webhook_id: NotBlankStr = Field(description="Webhook UUID")
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class WebhooksDeleteArgs(DestructiveGuardrailFields):
+class WebhooksDeleteArgs(AdminGuardrailFields):
     """Args for ``webhooks.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a
@@ -151,7 +163,10 @@ class TunnelGetStatusArgs(_ArgsBase):
     """Args for ``tunnel.get_status``: no fields."""
 
 
-class TunnelConnectArgs(_ArgsBase):
-    """Args for ``tunnel.connect``."""
+class TunnelConnectArgs(AdminGuardrailFields):
+    """Args for ``tunnel.connect`` (admin op).
 
-    target: NotBlankStr = Field(description="Tunnel target endpoint")
+    Parameterless reconnect: callers supply only the guardrail fields
+    (``confirm=True`` + non-blank ``reason``) since the underlying
+    tunnel service does not accept a target endpoint at this layer.
+    """

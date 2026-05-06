@@ -20,7 +20,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.mcp.handlers.approvals import APPROVAL_HANDLERS
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
@@ -404,7 +404,7 @@ class TestApprovalsReject:
         assert body["data"]["decided_by"] == str(actor.id)
 
         # Audit event fires with the full attribution payload.
-        audit = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
+        audit = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(audit) == 1
         assert audit[0]["actor_agent_id"] == str(actor.id)
         assert audit[0]["reason"] == "violates policy X"
@@ -434,9 +434,7 @@ class TestApprovalsReject:
         # Audit event must NOT fire when the guardrail blocks the op;
         # a false audit trail would claim a destructive action happened
         # when it did not.
-        audit_events = [
-            e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
-        ]
+        audit_events = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert audit_events == []
 
     async def test_reject_without_reason(
@@ -497,5 +495,5 @@ class TestApprovalsReject:
         # Invoke-failed event fires; audit event must NOT (no mutation
         # was executed).
         events = {e.get("event") for e in logs}
-        assert MCP_DESTRUCTIVE_OP_EXECUTED not in events
+        assert MCP_ADMIN_OP_EXECUTED not in events
         assert MCP_HANDLER_INVOKE_FAILED in events

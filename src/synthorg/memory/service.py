@@ -672,7 +672,7 @@ class MemoryService:
             active at the time ``cancel`` was issued. Captured **before**
             ``cancel()`` runs because the orchestrator may clear
             ``current_run`` during cancellation, and the MCP handler
-            needs the id for the ``MCP_DESTRUCTIVE_OP_EXECUTED`` audit
+            needs the id for the ``MCP_ADMIN_OP_EXECUTED`` audit
             record.
 
         Raises:

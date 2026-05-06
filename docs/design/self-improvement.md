@@ -106,7 +106,7 @@ src/synthorg/meta/
     tool_builder.py    -- read_tool / write_tool / admin_tool builders
     domains/           -- 15 domain tool definition modules (200+ tools)
     handlers/          -- 15 domain handler modules + common envelope helpers
-                         (ok / err / not_supported / require_destructive_guardrails)
+                         (ok / err / not_supported / require_admin_guardrails)
 
   chief_of_staff/      -- Interactive agent role + advanced capabilities
     role.py            -- CustomRole definition

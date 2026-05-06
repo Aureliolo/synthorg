@@ -41,9 +41,11 @@ invocation.
 
 ## 3. Add destructive variants when needed
 
-For destructive ops (delete / mutate / admin), extend the args model
-with ``DestructiveGuardrailFields`` from
-``synthorg.meta.mcp.domains._common_args`` AND call
-``require_destructive_guardrails(arguments, actor)`` in the handler
-body. The ``log_handler_guardrail_violated`` helper from
-``common_logging`` covers the third structured log path.
+For admin ops (delete / mutate / admin), extend the args model
+with ``AdminGuardrailFields`` from
+``synthorg.meta.mcp.domains._common_args``, add
+``**ADMIN_GUARDRAIL_PROPERTIES`` to the tool schema and list
+``"reason"`` + ``"confirm"`` (via ``ADMIN_GUARDRAIL_REQUIRED``) in
+``required``, AND call ``require_admin_guardrails(arguments, actor)``
+in the handler body. The ``log_handler_guardrail_violated`` helper
+from ``common_logging`` covers the third structured log path.

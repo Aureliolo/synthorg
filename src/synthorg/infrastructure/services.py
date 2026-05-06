@@ -369,14 +369,26 @@ class UserFacadeService:
         )
         return cast("object | None", await fn(user_id))
 
-    async def create_user(self) -> None:
+    async def create_user(
+        self,
+        *,
+        username: NotBlankStr,  # noqa: ARG002 - part of public contract
+        role: NotBlankStr,  # noqa: ARG002
+        actor_id: NotBlankStr,  # noqa: ARG002
+    ) -> None:
         """Capability gap -- user onboarding flow owns user creation."""
         raise _capability_missing(
             "user_create",
             "users are provisioned via the onboarding flow, not MCP",
         )
 
-    async def update_user(self) -> None:
+    async def update_user(
+        self,
+        *,
+        user_id: NotBlankStr,  # noqa: ARG002 - part of public contract
+        updates: Mapping[str, object],  # noqa: ARG002
+        actor_id: NotBlankStr,  # noqa: ARG002
+    ) -> None:
         """Capability gap -- auth controller owns user mutations."""
         raise _capability_missing(
             "user_update",
@@ -694,7 +706,11 @@ class SetupFacadeService:
             ),
         }
 
-    async def initialize(self) -> None:
+    async def initialize(
+        self,
+        *,
+        config: Mapping[str, object],  # noqa: ARG002 - part of public contract
+    ) -> None:
         """Capability gap -- setup runs through the controller + CLI wizard."""
         raise _capability_missing(
             "setup_initialize",

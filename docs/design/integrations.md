@@ -240,6 +240,6 @@ MCP handler shims:
 | `OAuthFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_oauth_list_providers`/`_configure_provider`/`_remove_provider` |
 
 All destructive operations (`_delete`, `_deactivate`, `_uninstall`,
-`_remove_provider`) route through `require_destructive_guardrails()` and
-emit `MCP_DESTRUCTIVE_OP_EXECUTED` on success. Artifact delete performs
+`_remove_provider`) route through `require_admin_guardrails()` and
+emit `MCP_ADMIN_OP_EXECUTED` on success. Artifact delete performs
 storage deletion before index removal so the two cannot diverge silently.

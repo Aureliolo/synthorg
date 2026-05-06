@@ -24,7 +24,7 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
     paginate_sequence,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     coerce_pagination,
@@ -39,7 +39,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_CAPABILITY_GAP,
 )
 
@@ -208,6 +208,7 @@ async def _mcp_catalog_install(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
+    # lint-allow: mcp-admin-guardrail -- install records new entry; no state mutated
 ) -> str:
     """Install an MCP catalog entry (non-destructive create)."""
     tool = "synthorg_mcp_catalog_install"
@@ -237,18 +238,19 @@ async def _mcp_catalog_uninstall(
     """Uninstall an MCP catalog entry (destructive; enforces guardrails)."""
     tool = "synthorg_mcp_catalog_uninstall"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         installation_id = _require_str(arguments, "installation_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.mcp_catalog_facade_service.uninstall_catalog_entry(
             installation_id=installation_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 installation_id=installation_id,
                 removed=removed,
@@ -296,6 +298,7 @@ async def _oauth_configure_provider(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
+    # lint-allow: mcp-admin-guardrail -- creds shape varies; remove path is guardrailed
 ) -> str:
     """Configure an OAuth provider (creates or updates credentials)."""
     tool = "synthorg_oauth_configure_provider"
@@ -333,18 +336,19 @@ async def _oauth_remove_provider(
     """Remove an OAuth provider (destructive; enforces guardrails)."""
     tool = "synthorg_oauth_remove_provider"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         name = _require_str(arguments, "name")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.oauth_facade_service.remove_provider(
             name=name,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 provider_name=name,
                 removed=removed,
@@ -422,6 +426,7 @@ async def _clients_create(
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
+    # lint-allow: mcp-admin-guardrail -- non-destructive client registration
 ) -> str:
     """Create a new client application (non-destructive write)."""
     tool = "synthorg_clients_create"
@@ -455,18 +460,19 @@ async def _clients_deactivate(
     """Deactivate a client (destructive; enforces guardrails)."""
     tool = "synthorg_clients_deactivate"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         client_id = _require_uuid(arguments, "client_id")
+        actor_id = require_actor_id(resolved_actor)
         deactivated = await app_state.client_facade_service.deactivate_client(
             client_id=client_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if deactivated:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 client_id=client_id,
                 deactivated=deactivated,
@@ -599,18 +605,19 @@ async def _artifacts_delete(
     """Delete an artifact (destructive; enforces guardrails)."""
     tool = "synthorg_artifacts_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         artifact_id = _require_uuid(arguments, "artifact_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.artifact_facade_service.delete_artifact(
             artifact_id=artifact_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 artifact_id=artifact_id,
                 removed=removed,

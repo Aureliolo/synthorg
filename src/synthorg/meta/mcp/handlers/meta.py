@@ -38,7 +38,7 @@ from synthorg.meta.mcp.handlers.common import (
     capability_gap,
     err,
     ok,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import actor_id, coerce_pagination
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -48,7 +48,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
     MCP_HANDLER_LAZY_SERVICE_INIT,
 )
@@ -199,23 +199,19 @@ async def _meta_trigger_cycle(
     actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_meta_trigger_cycle"
-    # Capability-gap check runs first so deployments that haven't wired
-    # the self-improvement service surface the dedicated
-    # ``capability_gap`` envelope, not a guardrail violation. The
-    # destructive-op triple (identified actor + ``confirm=True`` +
-    # non-blank ``reason``) is mandatory because this tool is declared
-    # via ``admin_tool`` in ``meta/mcp/domains/meta.py``; we apply it
-    # immediately after confirming the tool can actually execute.
-    if not getattr(app_state, "has_self_improvement_service", False):
-        return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
+    # Guardrail runs first so an unauthenticated caller never learns
+    # whether the self-improvement service is installed: the wire
+    # surface stays a pure ``guardrail_violated`` for missing actor /
+    # confirm / reason; only authenticated callers see the
+    # ``capability_gap`` envelope when the service isn't wired.
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        if not getattr(app_state, "has_self_improvement_service", False):
+            return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
+        result = await app_state.self_improvement_service.trigger_cycle()
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
-    actor_str = actor_id(resolved_actor) or "mcp"
-    try:
-        result = await app_state.self_improvement_service.trigger_cycle()
     except SelfImprovementTriggerError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="unavailable")
@@ -224,9 +220,10 @@ async def _meta_trigger_cycle(
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    actor_str = actor_id(resolved_actor) or "mcp"
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
         actor_agent_id=actor_str,
         reason=reason,

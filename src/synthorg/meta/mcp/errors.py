@@ -1,6 +1,6 @@
 """MCP handler-side error types.
 
-Raised by handler helpers (``require_arg``, ``require_destructive_guardrails``)
+Raised by handler helpers (``require_arg``, ``require_admin_guardrails``)
 when caller input is malformed or a guardrail has not been satisfied.  The
 handler is expected to catch these and return an ``err(...)`` envelope to
 the invoker; they are intentionally *not* system errors.
@@ -48,12 +48,13 @@ class ArgumentValidationError(ValidationError):
 
 
 class GuardrailViolationError(ForbiddenError):
-    """Raised when a destructive-op call fails its guardrails.
+    """Raised when an admin-op call fails its guardrails.
 
     Guardrails are: ``confirm=True`` set, non-blank ``reason``, and a
-    non-None ``actor``.  Each missing precondition yields a distinct
-    ``violation`` value so operators can distinguish "caller forgot to
-    confirm" from "caller is anonymous".
+    non-None ``actor`` carrying an audit-usable identifier.  Each
+    missing precondition yields a distinct ``violation`` value so
+    operators can distinguish "caller forgot to confirm" from "caller
+    is anonymous".
 
     Attributes:
         violation: One of ``"missing_confirm"``, ``"missing_reason"``,

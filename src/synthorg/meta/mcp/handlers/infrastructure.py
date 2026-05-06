@@ -25,7 +25,7 @@ from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     err,
     ok,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     coerce_pagination,
@@ -41,7 +41,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
@@ -181,18 +181,30 @@ async def _settings_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Update or create a setting value (non-destructive write)."""
+    """Update or create a setting value (admin op; enforces guardrails)."""
     tool = "synthorg_settings_update"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         key = _require_str(arguments, "key")
         value = arguments.get("value")
+        actor_id = require_actor_id(resolved_actor)
         await app_state.settings_read_service.update_setting(
             key=key,
             value=value,
-            actor_id=require_actor_id(actor),
+            actor_id=actor_id,
+        )
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=actor_id,
+            reason=reason,
+            key=key,
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -211,17 +223,18 @@ async def _settings_delete(
     """Delete a setting key (destructive; enforces guardrails)."""
     tool = "synthorg_settings_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         key = _require_str(arguments, "key")
+        actor_id = require_actor_id(resolved_actor)
         await app_state.settings_read_service.delete_setting(
             key=key,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
+            MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             key=key,
         )
@@ -316,15 +329,26 @@ async def _providers_test_connection(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,
 ) -> str:
-    """Perform an on-demand connectivity probe against a provider."""
+    """Perform an on-demand connectivity probe against a provider (admin op)."""
     tool = "synthorg_providers_test_connection"
     try:
-        provider_id = _require_str(arguments, "provider_id")
-        result = await app_state.provider_read_service.test_connection(provider_id)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        provider_name = _require_str(arguments, "provider_name")
+        result = await app_state.provider_read_service.test_connection(provider_name)
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=require_actor_id(resolved_actor),
+            reason=reason,
+            provider_name=provider_name,
+        )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -404,11 +428,12 @@ async def _backup_create(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,
 ) -> str:
-    """Trigger a new backup run (non-destructive; records a new manifest)."""
+    """Trigger a new backup run (admin op; records a new manifest)."""
     tool = "synthorg_backup_create"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         trigger_raw = require_arg(arguments, _ARG_TRIGGER, str)
         try:
             trigger = BackupTrigger(trigger_raw)
@@ -417,8 +442,18 @@ async def _backup_create(
         manifest = await app_state.backup_facade_service.create_backup(
             trigger=trigger,
         )
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=require_actor_id(resolved_actor),
+            reason=reason,
+            trigger=trigger.value,
+        )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -437,17 +472,18 @@ async def _backup_delete(
     """Delete a backup manifest (destructive; enforces guardrails)."""
     tool = "synthorg_backup_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         backup_id = _require_str(arguments, "backup_id")
+        actor_id = require_actor_id(resolved_actor)
         await app_state.backup_facade_service.delete_backup(
             backup_id=backup_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
+            MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             backup_id=backup_id,
         )
@@ -474,17 +510,18 @@ async def _backup_restore(
     """Restore persistence state from a backup (destructive; enforces guardrails)."""
     tool = "synthorg_backup_restore"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         backup_id = _require_str(arguments, "backup_id")
+        actor_id = require_actor_id(resolved_actor)
         result = await app_state.backup_facade_service.restore_backup(
             backup_id=backup_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
+            MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             backup_id=backup_id,
         )
@@ -611,15 +648,34 @@ async def _users_get(
 async def _users_create(
     *,
     app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    """Create a new API user (non-destructive write)."""
+    """Create a new API user (admin op; enforces guardrails)."""
     tool = "synthorg_users_create"
     try:
-        await app_state.user_facade_service.create_user()
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        username = _require_str(arguments, "username")
+        role = _require_str(arguments, "role")
+        actor_id = require_actor_id(resolved_actor)
+        await app_state.user_facade_service.create_user(
+            username=username,
+            role=role,
+            actor_id=actor_id,
+        )
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=actor_id,
+            reason=reason,
+            username=username,
+            role=role,
+        )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -632,15 +688,34 @@ async def _users_create(
 async def _users_update(
     *,
     app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    """Update an existing API user (partial patch)."""
+    """Update an existing API user (admin op; partial patch)."""
     tool = "synthorg_users_update"
     try:
-        await app_state.user_facade_service.update_user()
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        user_id = _require_str(arguments, "user_id")
+        updates = require_dict(arguments, "updates")
+        actor_id = require_actor_id(resolved_actor)
+        await app_state.user_facade_service.update_user(
+            user_id=user_id,
+            updates=updates,
+            actor_id=actor_id,
+        )
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=actor_id,
+            reason=reason,
+            user_id=user_id,
+            update_keys=tuple(sorted(updates.keys())),
+        )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -659,17 +734,18 @@ async def _users_delete(
     """Delete an API user (destructive; enforces guardrails)."""
     tool = "synthorg_users_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         user_id = _require_str(arguments, "user_id")
+        actor_id = require_actor_id(resolved_actor)
         await app_state.user_facade_service.delete_user(
             user_id=user_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
+            MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
-            actor=require_actor_id(resolved_actor),
+            actor_agent_id=actor_id,
             reason=reason,
             user_id=user_id,
         )
@@ -809,18 +885,19 @@ async def _projects_delete(
     """Delete a project (destructive; enforces guardrails)."""
     tool = "synthorg_projects_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         project_id = _require_uuid(arguments, "project_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.project_facade_service.delete_project(
             project_id=project_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 project_id=project_id,
                 removed=removed,
@@ -939,15 +1016,27 @@ async def _setup_get_status(
 async def _setup_initialize(
     *,
     app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
 ) -> str:
-    """Dispatch an initialisation step (delegates to setup controller)."""
+    """Dispatch an initialisation step (admin op; delegates to setup controller)."""
     tool = "synthorg_setup_initialize"
     try:
-        await app_state.setup_facade_service.initialize()
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        config = require_dict(arguments, "config")
+        await app_state.setup_facade_service.initialize(config=config)
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=require_actor_id(resolved_actor),
+            reason=reason,
+            config_keys=tuple(sorted(config.keys())),
+        )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -1088,16 +1177,29 @@ async def _template_packs_install(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Install a new template pack (non-destructive write)."""
+    """Install a new template pack (admin op; enforces guardrails)."""
     tool = "synthorg_template_packs_install"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         name = _require_str(arguments, "name")
         version = _require_str(arguments, "version")
+        actor_id = require_actor_id(resolved_actor)
         pack = await app_state.template_pack_facade_service.install_pack(
             name=name,
             version=version,
-            actor_id=require_actor_id(actor),
+            actor_id=actor_id,
         )
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=actor_id,
+            reason=reason,
+            pack_name=name,
+            pack_version=version,
+        )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -1116,18 +1218,19 @@ async def _template_packs_uninstall(
     """Uninstall a template pack (destructive; enforces guardrails)."""
     tool = "synthorg_template_packs_uninstall"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         pack_id = _require_uuid(arguments, "pack_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.template_pack_facade_service.uninstall_pack(
             pack_id=pack_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 pack_id=pack_id,
                 removed=removed,

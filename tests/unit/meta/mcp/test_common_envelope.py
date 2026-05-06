@@ -1,6 +1,6 @@
 """Unit tests for envelope/helper utilities in ``handlers.common``.
 
-These cover ``ok``, ``err``, ``require_arg``, ``require_destructive_guardrails``,
+These cover ``ok``, ``err``, ``require_arg``, ``require_admin_guardrails``,
 ``dump_many``, ``paginate_sequence`` and ``PaginationMeta`` -- the glue every
 real MCP handler uses.  The destructive-guardrail and actor-enforcement
 tests live here because the helper is the single source of truth for
@@ -24,7 +24,7 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
     paginate_sequence,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import require_arg
 
@@ -160,7 +160,7 @@ class TestGuardrails:
     _ACTOR = _StubActor()
 
     def test_returns_reason_and_actor_on_success(self) -> None:
-        reason, actor = require_destructive_guardrails(
+        reason, actor = require_admin_guardrails(
             {"confirm": True, "reason": "approved"},
             self._ACTOR,
         )
@@ -169,7 +169,7 @@ class TestGuardrails:
 
     def test_rejects_missing_actor(self) -> None:
         with pytest.raises(GuardrailViolationError) as ei:
-            require_destructive_guardrails(
+            require_admin_guardrails(
                 {"confirm": True, "reason": "x"},
                 None,
             )
@@ -177,7 +177,7 @@ class TestGuardrails:
 
     def test_rejects_confirm_false(self) -> None:
         with pytest.raises(GuardrailViolationError) as ei:
-            require_destructive_guardrails(
+            require_admin_guardrails(
                 {"confirm": False, "reason": "x"},
                 self._ACTOR,
             )
@@ -185,12 +185,12 @@ class TestGuardrails:
 
     def test_rejects_missing_confirm(self) -> None:
         with pytest.raises(GuardrailViolationError) as ei:
-            require_destructive_guardrails({"reason": "x"}, self._ACTOR)
+            require_admin_guardrails({"reason": "x"}, self._ACTOR)
         assert ei.value.violation == "missing_confirm"
 
     def test_rejects_blank_reason(self) -> None:
         with pytest.raises(GuardrailViolationError) as ei:
-            require_destructive_guardrails(
+            require_admin_guardrails(
                 {"confirm": True, "reason": "   "},
                 self._ACTOR,
             )
@@ -198,7 +198,7 @@ class TestGuardrails:
 
     def test_rejects_missing_reason(self) -> None:
         with pytest.raises(GuardrailViolationError) as ei:
-            require_destructive_guardrails(
+            require_admin_guardrails(
                 {"confirm": True},
                 self._ACTOR,
             )
@@ -208,7 +208,7 @@ class TestGuardrails:
         # ``confirm: "true"`` would slip past a naive ``if confirm:``
         # check; the helper must insist on a real bool.
         with pytest.raises(GuardrailViolationError):
-            require_destructive_guardrails(
+            require_admin_guardrails(
                 {"confirm": "true", "reason": "x"},
                 self._ACTOR,
             )
@@ -219,7 +219,7 @@ class TestGuardrails:
         # guardrail must reject them the same way it rejects ``None``.
         opaque = object()
         with pytest.raises(GuardrailViolationError) as ei:
-            require_destructive_guardrails(
+            require_admin_guardrails(
                 {"confirm": True, "reason": "approved"},
                 opaque,
             )
@@ -229,7 +229,7 @@ class TestGuardrails:
         # A ``name`` attribute of whitespace is not a usable identifier.
         blank = _StubActor(name="   ")
         with pytest.raises(GuardrailViolationError) as ei:
-            require_destructive_guardrails(
+            require_admin_guardrails(
                 {"confirm": True, "reason": "approved"},
                 blank,
             )
@@ -242,7 +242,7 @@ class TestGuardrails:
             id = "actor-uuid-1234"
             name = None
 
-        reason, actor = require_destructive_guardrails(
+        reason, actor = require_admin_guardrails(
             {"confirm": True, "reason": "approved"},
             _IdOnly(),
         )

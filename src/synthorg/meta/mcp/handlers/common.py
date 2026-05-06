@@ -9,9 +9,9 @@ concerns in one place:
 2. **Output helpers** (``dump_many``, ``paginate_sequence``):
    Pydantic batch serialisation and in-memory pagination of an
    already-materialised sequence.
-3. **Guardrails** (``require_destructive_guardrails``) -- single source
+3. **Guardrails** (``require_admin_guardrails``) -- single source
    of truth for the ``confirm=True`` + non-blank ``reason`` + non-None
-   ``actor`` triple enforced on every destructive tool.
+   ``actor`` triple enforced on every admin tool.
 
 Argument-validation helpers (``require_arg``, ``require_non_blank``,
 ``actor_id``, ``coerce_pagination``, plus six newer extractors) live in
@@ -57,9 +57,9 @@ _TY_POS_INT = "positive int"
 _GR_MISSING_ACTOR: Literal["missing_actor"] = "missing_actor"
 _GR_MISSING_CONFIRM: Literal["missing_confirm"] = "missing_confirm"
 _GR_MISSING_REASON: Literal["missing_reason"] = "missing_reason"
-_GR_MSG_ACTOR = "Destructive operation requires an identified actor"
-_GR_MSG_CONFIRM = "Destructive operation requires 'confirm': true"
-_GR_MSG_REASON = "Destructive operation requires a non-blank 'reason'"
+_GR_MSG_ACTOR = "Admin operation requires an identified actor"
+_GR_MSG_CONFIRM = "Admin operation requires 'confirm': true"
+_GR_MSG_REASON = "Admin operation requires a non-blank 'reason'"
 
 _DC_NOT_SUPPORTED = "not_supported"
 
@@ -158,26 +158,29 @@ def _actor_has_identifier(actor: Any) -> bool:
     object that lacks both is treated as "unattributable" and rejected
     alongside ``actor is None``.
     """
-    if getattr(actor, "id", None) is not None:
-        return True
+    actor_id = getattr(actor, "id", None)
+    if actor_id is not None:
+        if not isinstance(actor_id, str):
+            return True
+        if actor_id.strip():
+            return True
     name = getattr(actor, "name", None)
     return isinstance(name, str) and bool(name.strip())
 
 
-def require_destructive_guardrails(
+def require_admin_guardrails(
     arguments: dict[str, Any],
     actor: Any,
 ) -> tuple[str, Any]:
-    """Enforce the destructive-op precondition triple.
+    """Enforce the admin-op precondition triple.
 
-    A tool is destructive if it removes, cancels, rejects, rolls back,
-    or uninstalls state (see plan for the canonical list).  Every such
-    tool's handler calls this helper first.
+    Every handler registered through :func:`admin_tool` calls this
+    helper as the lexically first call in its body.
 
     Preconditions, in order:
     1. ``actor`` is not ``None`` *and* carries an audit-usable
        identifier (``.id`` or a non-blank ``.name``) so the
-       ``MCP_DESTRUCTIVE_OP_EXECUTED`` event has real attribution;
+       ``MCP_ADMIN_OP_EXECUTED`` event has real attribution;
     2. ``arguments["confirm"]`` is the Python literal ``True`` (not
        truthy-but-non-bool);
     3. ``arguments["reason"]`` is a non-blank string.

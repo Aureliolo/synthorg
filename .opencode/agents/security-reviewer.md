@@ -17,7 +17,7 @@ You are an expert security specialist focused on identifying vulnerabilities in 
 1. **Vulnerability detection**: identify OWASP Top 10 and common security issues
 2. **Secrets detection**: find hardcoded API keys, passwords, tokens, and project-specific secret patterns
 3. **Input validation**: ensure all user inputs are sanitized at system boundaries
-4. **Authentication / authorization**: verify proper access controls and `require_destructive_guardrails(arguments, actor)` on `admin_tool` MCP handlers
+4. **Authentication / authorization**: verify proper access controls and either `require_admin_guardrails(arguments, actor)` on `admin_tool` MCP handlers, or a justified `# lint-allow: mcp-admin-guardrail -- <reason>` annotation (e.g. approval-queue routing, parameterless reconnects, non-mutating registrations)
 5. **Dependency security**: flag known-vulnerable Python or npm packages
 6. **SEC-1 prompt safety**: enforce untrusted-content fences, HTML parsing guards, and secret-log redaction
 
@@ -43,7 +43,7 @@ npm --prefix web run lint
 2. **Broken auth**: passwords hashed (argon2id preferred)? JWTs validated? Sessions secure? Setup-wizard cookies properly invalidated?
 3. **Sensitive data**: HTTPS enforced? Secrets in env vars or secret backend, not in source? PII encrypted at rest? Logs sanitized via `safe_error_description`?
 4. **Insecure markup parsing (XXE and HTML)**: XML parsers configured to disable external entities and DTD loading (XXE). For HTML, never call `lxml.html.fromstring` directly on attacker-controlled input; use `HTMLParseGuard` from `synthorg.tools.html_parse_guard`.
-5. **Broken access**: auth checked on every Litestar route? CORS properly configured? Admin MCP tools call `require_destructive_guardrails`?
+5. **Broken access**: auth checked on every Litestar route? CORS properly configured? Admin MCP tools call `require_admin_guardrails`, or do they carry a justified `mcp-admin-guardrail` opt-out?
 6. **Misconfiguration**: default creds changed? Debug mode off in prod? Security headers set? Telemetry redaction not bypassed?
 7. **XSS**: output escaped? CSP set? React auto-escaping respected (no `dangerouslySetInnerHTML` on user content)?
 8. **Insecure deserialization**: user input deserialized safely? No `pickle.load` on untrusted bytes.

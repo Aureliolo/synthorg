@@ -9,8 +9,8 @@ Destructive ops
 ---------------
 ``synthorg_approvals_reject`` is destructive and enforces
 ``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor`` via
-``require_destructive_guardrails`` before mutating state.  It emits
-``MCP_DESTRUCTIVE_OP_EXECUTED`` at INFO exactly once per successful
+``require_admin_guardrails`` before mutating state.  It emits
+``MCP_ADMIN_OP_EXECUTED`` at INFO exactly once per successful
 rejection.  Create and approve are non-destructive writes and only
 need an actor (to populate ``requested_by`` / ``decided_by``).
 """
@@ -38,7 +38,7 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
     paginate_sequence,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
@@ -53,7 +53,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
@@ -355,31 +355,24 @@ async def _reject(
 ) -> str:
     """Handler: ``synthorg_approvals_reject`` (destructive).
 
-    Guardrails (via ``require_destructive_guardrails``): ``confirm=True``,
+    Guardrails (via ``require_admin_guardrails``): ``confirm=True``,
     non-blank ``reason``, non-``None`` ``actor``.
     """
     tool = "synthorg_approvals_reject"
 
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         approval_id = require_non_blank(arguments, "approval_id")
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-
-    try:
-        reason, _ = require_destructive_guardrails(arguments, actor)
-    except GuardrailViolationError as exc:
-        log_handler_guardrail_violated(tool, exc)
-        return err(exc)
-
-    try:
         saved = await _decide(
             app_state=app_state,
             approval_id=approval_id,
-            actor=actor,
+            actor=resolved_actor,
             target=ApprovalStatus.REJECTED,
             reason=reason,
         )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -390,14 +383,11 @@ async def _reject(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
-    # Emit both the handler-success telemetry *and* the destructive-op
-    # audit event so "all handler successes" dashboards still see this
-    # path and the audit trail carries full attribution.
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
+        MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=actor_id(actor),
+        actor_agent_id=actor_id(resolved_actor),
         reason=reason,
         target_id=approval_id,
     )

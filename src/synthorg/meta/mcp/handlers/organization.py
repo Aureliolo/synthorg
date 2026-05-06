@@ -25,7 +25,7 @@ from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     err,
     ok,
-    require_destructive_guardrails,
+    require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
     coerce_pagination,
@@ -41,7 +41,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_CAPABILITY_GAP,
 )
 from synthorg.organization.services import UNSET, UnsetType
@@ -392,18 +392,19 @@ async def _departments_delete(
     """Delete a department (destructive; enforces confirm + reason + actor)."""
     tool = "synthorg_departments_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         department_id = _require_uuid(arguments, "department_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.department_service.delete_department(
             department_id=department_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 department_id=department_id,
                 removed=removed,
@@ -564,18 +565,19 @@ async def _teams_delete(
     """Delete a team (destructive; enforces confirm + reason + actor)."""
     tool = "synthorg_teams_delete"
     try:
-        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         team_id = _require_uuid(arguments, "team_id")
+        actor_id = require_actor_id(resolved_actor)
         removed = await app_state.team_service.delete_team(
             team_id=team_id,
-            actor_id=require_actor_id(resolved_actor),
+            actor_id=actor_id,
             reason=reason,
         )
         if removed:
             logger.info(
-                MCP_DESTRUCTIVE_OP_EXECUTED,
+                MCP_ADMIN_OP_EXECUTED,
                 tool_name=tool,
-                actor=require_actor_id(resolved_actor),
+                actor_agent_id=actor_id,
                 reason=reason,
                 team_id=team_id,
                 removed=removed,

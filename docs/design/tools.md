@@ -306,8 +306,8 @@ placeholder factories:
   (`domain_code="not_supported"`) but emits the dedicated
   `MCP_HANDLER_CAPABILITY_GAP` INFO event so ops telemetry distinguishes
   "primitive missing method" from "handler unwired".
-- `require_destructive_guardrails(arguments, actor)`: single source of
-  truth for the destructive-op precondition triple: non-`None` `actor`,
+- `require_admin_guardrails(arguments, actor)`: single source of
+  truth for the admin-op precondition triple: non-`None` `actor`,
   literal `confirm=True`, non-blank `reason`. Raises
   `GuardrailViolationError` with a typed `violation` code
   (`"missing_actor"` / `"missing_confirm"` / `"missing_reason"`).
@@ -357,7 +357,7 @@ handler emitted the event:
   shadow the canonical event fields (`tool_name`, `error_type`,
   `error`, `event`, `log_level`) are rejected with `ValueError`.
 - `log_handler_guardrail_violated(tool, exc)`: caught
-  `GuardrailViolationError` from a destructive-op precondition.
+  `GuardrailViolationError` from an admin-op precondition.
   Records only the typed `violation` code; the human message stays in
   the response envelope.
 
@@ -375,10 +375,10 @@ domain-specific codes set via the `domain_code` kwarg on `err(...)`.
 `build_handler_map()` in `src/synthorg/meta/mcp/handlers/__init__.py`
 merges them and raises on duplicate keys.
 
-**Schema-Level Validation.** Destructive-op schemas in
+**Schema-Level Validation.** Admin-op schemas in
 `src/synthorg/meta/mcp/domains/*.py` enforce the `reason` field as a
 non-whitespace string via `"minLength": 1` + `"pattern": r".*\S.*"`, and the
-`confirm` field as literal `True` via JSON Schema `"enum": [True]`. Handler
+`confirm` field as literal `true` via JSON Schema `"enum": [true]`. Handler
 guardrails run regardless so validation stays uniform once services come
 online.
 

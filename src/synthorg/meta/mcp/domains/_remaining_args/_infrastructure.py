@@ -9,7 +9,7 @@ from pydantic import Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
-    DestructiveGuardrailFields,
+    AdminGuardrailFields,
     IsoDatetimeStr,
     PaginationFields,
     _ArgsBase,
@@ -30,14 +30,14 @@ class SettingsGetArgs(_ArgsBase):
     key: NotBlankStr = Field(description="Setting key")
 
 
-class SettingsUpdateArgs(_ArgsBase):
-    """Args for ``settings.update``."""
+class SettingsUpdateArgs(AdminGuardrailFields):
+    """Args for ``settings.update`` (admin op)."""
 
     key: NotBlankStr = Field(description="Setting key")
     value: str = Field(description="New value")
 
 
-class SettingsDeleteArgs(DestructiveGuardrailFields):
+class SettingsDeleteArgs(AdminGuardrailFields):
     """Args for ``settings.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a
@@ -65,12 +65,14 @@ class ProvidersGetHealthArgs(_ProviderNameArgs):
     """Args for ``providers.get_health``."""
 
 
-class ProvidersTestConnectionArgs(_ProviderNameArgs):
-    """Args for ``providers.test_connection``."""
+class ProvidersTestConnectionArgs(_ProviderNameArgs, AdminGuardrailFields):
+    """Args for ``providers.test_connection`` (admin op)."""
 
 
-class BackupCreateArgs(_ArgsBase):
-    """Args for ``backup.create``: no fields."""
+class BackupCreateArgs(AdminGuardrailFields):
+    """Args for ``backup.create`` (admin op)."""
+
+    trigger: NotBlankStr = Field(description="What initiated the backup")
 
 
 class BackupListArgs(_ArgsBase):
@@ -87,7 +89,7 @@ class BackupGetArgs(_BackupIdArgs):
     """Args for ``backup.get``."""
 
 
-class BackupDeleteArgs(_BackupIdArgs, DestructiveGuardrailFields):
+class BackupDeleteArgs(_BackupIdArgs, AdminGuardrailFields):
     """Args for ``backup.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a
@@ -95,7 +97,7 @@ class BackupDeleteArgs(_BackupIdArgs, DestructiveGuardrailFields):
     """
 
 
-class BackupRestoreArgs(_BackupIdArgs, DestructiveGuardrailFields):
+class BackupRestoreArgs(_BackupIdArgs, AdminGuardrailFields):
     """Args for ``backup.restore``.
 
     Restoring overwrites the current system state.  Treat as
@@ -145,20 +147,39 @@ class UsersGetArgs(_UserIdArgs):
     """Args for ``users.get``."""
 
 
-class UsersCreateArgs(_ArgsBase):
-    """Args for ``users.create``."""
+class UsersCreateArgs(AdminGuardrailFields):
+    """Args for ``users.create`` (admin op)."""
 
     username: NotBlankStr = Field(description="Username")
     role: NotBlankStr = Field(description="User role")
 
 
-class UsersUpdateArgs(_UserIdArgs):
-    """Args for ``users.update``."""
+class UsersUpdateFields(_ArgsBase):
+    """Mutable fields exposed on the ``users.update`` patch DTO.
 
-    updates: dict[str, object] = Field(description="Fields to update")
+    Every field is optional so partial patches can land; the
+    ``extra="forbid"`` config inherited from ``_ArgsBase`` rejects
+    unknown keys at the boundary instead of letting them through to a
+    later validation stage.
+    """
+
+    role: NotBlankStr | None = Field(
+        default=None,
+        description="New access-control role for the user",
+    )
+    must_change_password: bool | None = Field(
+        default=None,
+        description="Force the user to change password on next login",
+    )
 
 
-class UsersDeleteArgs(_UserIdArgs, DestructiveGuardrailFields):
+class UsersUpdateArgs(_UserIdArgs, AdminGuardrailFields):
+    """Args for ``users.update`` (admin op)."""
+
+    updates: UsersUpdateFields = Field(description="Fields to update")
+
+
+class UsersDeleteArgs(_UserIdArgs, AdminGuardrailFields):
     """Args for ``users.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a
@@ -193,7 +214,7 @@ class ProjectsUpdateArgs(_ProjectIdArgs):
     updates: dict[str, object] = Field(description="Fields to update")
 
 
-class ProjectsDeleteArgs(_ProjectIdArgs, DestructiveGuardrailFields):
+class ProjectsDeleteArgs(_ProjectIdArgs, AdminGuardrailFields):
     """Args for ``projects.delete``.
 
     Destructive admin op: callers must supply ``confirm=True`` and a
@@ -222,13 +243,10 @@ class SetupGetStatusArgs(_ArgsBase):
     """Args for ``setup.get_status``: no fields."""
 
 
-class SetupInitializeArgs(_ArgsBase):
-    """Args for ``setup.initialize``."""
+class SetupInitializeArgs(AdminGuardrailFields):
+    """Args for ``setup.initialize`` (admin op)."""
 
-    config: dict[str, object] = Field(
-        default_factory=dict,
-        description="Initial configuration",
-    )
+    config: dict[str, object] = Field(description="Initial configuration")
 
 
 class SimulationsListArgs(PaginationFields):
@@ -265,12 +283,21 @@ class TemplatePacksGetArgs(_PackIdArgs):
     """Args for ``template_packs.get``."""
 
 
-class TemplatePacksInstallArgs(_PackIdArgs):
-    """Args for ``template_packs.install``."""
+class TemplatePacksInstallArgs(AdminGuardrailFields):
+    """Args for ``template_packs.install`` (admin op).
+
+    A new install is keyed by ``name`` + ``version`` (the pack's natural
+    composite key); the persisted ``pack_id`` UUID only exists after a
+    successful install, so ``uninstall`` is the path that takes a
+    ``pack_id``.
+    """
+
+    name: NotBlankStr = Field(description="Template pack name")
+    version: NotBlankStr = Field(description="Template pack version")
 
 
-class TemplatePacksUninstallArgs(_PackIdArgs):
-    """Args for ``template_packs.uninstall``."""
+class TemplatePacksUninstallArgs(_PackIdArgs, AdminGuardrailFields):
+    """Args for ``template_packs.uninstall`` (admin op)."""
 
 
 class IntegrationHealthGetAllArgs(_ArgsBase):
