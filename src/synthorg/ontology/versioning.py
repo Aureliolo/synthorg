@@ -20,7 +20,7 @@ from synthorg.ontology.errors import OntologyError
 from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence.postgres.version_repo import PostgresVersionRepository
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
-from synthorg.persistence.version_repo import (
+from synthorg.persistence.version_protocol import (
     VersionRepository,  # noqa: TC001 -- documented return type
 )
 from synthorg.versioning.service import VersioningService

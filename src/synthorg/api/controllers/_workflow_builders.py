@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.workflow.blueprint_models import BlueprintData
     from synthorg.engine.workflow.validation import WorkflowValidationError
-    from synthorg.persistence.workflow_definition_repo import (
+    from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
 

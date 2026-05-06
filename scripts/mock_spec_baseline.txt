@@ -1269,7 +1269,7 @@ tests/unit/engine/workflow/test_ceremony_scheduler.py:272:32
 tests/unit/engine/workflow/test_ceremony_scheduler.py:293:32
 tests/unit/engine/workflow/test_ceremony_scheduler.py:328:32
 tests/unit/engine/workflow/test_ceremony_scheduler.py:345:32
-tests/unit/engine/workflow/test_execution_observer.py:82:22
+tests/unit/engine/workflow/test_execution_observer.py:89:22
 tests/unit/engine/workflow/test_service_validate.py:24:24
 tests/unit/engine/workflow/test_service_validate.py:25:21
 tests/unit/engine/workflow/test_strategy_migration.py:223:11

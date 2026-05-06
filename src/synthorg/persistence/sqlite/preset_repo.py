@@ -18,7 +18,7 @@ from synthorg.observability.events.preset import (
     PRESET_CUSTOM_LISTED,
     PRESET_CUSTOM_SAVE_FAILED,
 )
-from synthorg.persistence.preset_repository import PresetListRow, PresetRow
+from synthorg.persistence.preset_protocol import PresetListRow, PresetRow
 
 logger = get_logger(__name__)
 

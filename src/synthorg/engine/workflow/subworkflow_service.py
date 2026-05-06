@@ -21,7 +21,7 @@ from synthorg.engine.errors import (
 # Imports kept at runtime (rather than under TYPE_CHECKING) so PEP 649
 # lazy annotation evaluation can resolve names like ParentReference in
 # ``SubworkflowHasParentsError.__init__`` when callers introspect via
-# ``inspect.get_type_hints`` or ``inspect.get_annotations``.
+# ``typing.get_type_hints`` or ``inspect.get_annotations``.
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,  # noqa: TC001 -- runtime-resolvable annotation
 )

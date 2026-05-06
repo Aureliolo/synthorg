@@ -15,7 +15,7 @@ from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
     DELEGATION_LOOP_CIRCUIT_RESET,
 )
-from synthorg.persistence.circuit_breaker_repo import (
+from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
     CircuitBreakerStateRepository,
 )

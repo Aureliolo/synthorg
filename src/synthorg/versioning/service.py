@@ -1,6 +1,6 @@
 """Generic versioning service.
 
-Wraps a :class:`~synthorg.persistence.version_repo.VersionRepository`
+Wraps a :class:`~synthorg.persistence.version_protocol.VersionRepository`
 to provide content-addressable snapshot creation: a new version is only
 persisted when the entity content has actually changed.
 """
@@ -20,7 +20,7 @@ from synthorg.versioning.hashing import compute_content_hash
 from synthorg.versioning.models import VersionSnapshot
 
 if TYPE_CHECKING:
-    from synthorg.persistence.version_repo import VersionRepository
+    from synthorg.persistence.version_protocol import VersionRepository
 
 logger = get_logger(__name__)
 

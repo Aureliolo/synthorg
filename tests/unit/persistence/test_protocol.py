@@ -31,7 +31,7 @@ from synthorg.persistence.idempotency_protocol import (
 )
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
-from synthorg.persistence.preset_repository import (
+from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,
     PresetListRow,
     PresetRow,
@@ -41,7 +41,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 from synthorg.persistence.task_protocol import TaskRepository
-from synthorg.persistence.training_repos import (
+from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
 )
@@ -49,8 +49,10 @@ from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
     UserRepository,
 )
-from synthorg.persistence.workflow_definition_repo import WorkflowDefinitionRepository
-from synthorg.persistence.workflow_execution_repo import WorkflowExecutionRepository
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionRepository,
+)
+from synthorg.persistence.workflow_execution_protocol import WorkflowExecutionRepository
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime

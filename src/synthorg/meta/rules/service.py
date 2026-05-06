@@ -28,7 +28,7 @@ from synthorg.observability.events.meta import (
 _IMMUTABLE_RULE_FIELDS: frozenset[str] = frozenset({"id", "created_at"})
 
 if TYPE_CHECKING:
-    from synthorg.persistence.custom_rule_repo import CustomRuleRepository
+    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 
 logger = get_logger(__name__)
 

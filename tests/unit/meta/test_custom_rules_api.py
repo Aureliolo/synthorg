@@ -316,7 +316,7 @@ def _state_with_persistence() -> MagicMock:
     to resolve without raising ``AttributeError``.
     """
     from synthorg.api.state import AppState
-    from synthorg.persistence.custom_rule_repo import CustomRuleRepository
+    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
     from synthorg.persistence.protocol import PersistenceBackend
 
     state = MagicMock(spec=["app_state"])

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 # ``ChannelsPlugin`` appears in the public signatures of the helpers
-# below. Under PEP 649 lazy annotations, ``inspect.get_type_hints()``
+# below. Under PEP 649 lazy annotations, ``typing.get_type_hints()``
 # resolves names against module globals at introspection time, so the
 # import must be runtime-resolvable; keeping it under TYPE_CHECKING
 # would raise ``NameError`` for any caller that introspects the

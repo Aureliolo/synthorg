@@ -26,7 +26,7 @@ from synthorg.engine.workflow.subworkflow_models import (
     SubworkflowSummary,
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
-from synthorg.persistence.subworkflow_repo import SubworkflowRepository
+from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
 
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 

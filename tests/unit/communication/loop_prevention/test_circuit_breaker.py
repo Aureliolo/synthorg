@@ -291,7 +291,7 @@ class TestCircuitBreakerDirtyTracking:
         assert ("a", "b") in cb._dirty
 
     async def test_persist_dirty_clears_set(self) -> None:
-        from synthorg.persistence.circuit_breaker_repo import (
+        from synthorg.persistence.circuit_breaker_protocol import (
             CircuitBreakerStateRepository,
         )
 
@@ -307,7 +307,7 @@ class TestCircuitBreakerDirtyTracking:
         repo.save.assert_awaited_once()
 
     async def test_load_state_restores_pairs(self) -> None:
-        from synthorg.persistence.circuit_breaker_repo import (
+        from synthorg.persistence.circuit_breaker_protocol import (
             CircuitBreakerStateRecord,
             CircuitBreakerStateRepository,
         )
@@ -345,7 +345,7 @@ class TestCircuitBreakerDirtyTracking:
         completing.  Without this, a hot-path trip recorded at
         startup gets clobbered by the stale persisted snapshot.
         """
-        from synthorg.persistence.circuit_breaker_repo import (
+        from synthorg.persistence.circuit_breaker_protocol import (
             CircuitBreakerStateRecord,
             CircuitBreakerStateRepository,
         )

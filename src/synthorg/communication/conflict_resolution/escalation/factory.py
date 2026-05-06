@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     # that the package layout cannot easily restructure. PEP 649 makes
     # the bare annotations below safe at module-load time --- they are
     # evaluated lazily only when an introspector calls
-    # ``inspect.get_type_hints()``, and that introspector can pass an
+    # ``typing.get_type_hints()``, and that introspector can pass an
     # explicit ``localns`` mapping (or the equivalent ``include_extras``
     # / ``globalns``) when it needs the resolved type.
     from synthorg.communication.conflict_resolution.escalation.registry import (

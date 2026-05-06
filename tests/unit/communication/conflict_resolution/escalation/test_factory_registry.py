@@ -7,6 +7,8 @@ unregistered key raises ValueError with a helpful message listing the
 available options.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -197,17 +199,43 @@ class TestNotifySubscriberCapabilityCheck:
 
     def test_capable_store_returns_real_subscriber(self) -> None:
         # A duck-typed store that declares the capability attribute
-        # AND exposes a callable ``subscribe_notifications`` passes the
-        # structural + capability + API gate and gets a real subscriber.
-        # The factory's runtime check rejects fakes that flip the flag
-        # but never wire the LISTEN/NOTIFY surface; see
+        # AND exposes a working ``subscribe_notifications`` async
+        # context manager passes the structural + capability + API
+        # gate and gets a real subscriber. The factory's runtime check
+        # rejects fakes that flip the flag but never wire the
+        # LISTEN/NOTIFY surface; see
         # ``test_capable_store_without_subscribe_method_is_rejected``.
+        # The fake's CM yields no payloads -- the subscriber is
+        # constructed but ``start()`` would observe an immediate
+        # iterator exit, matching the no-cross-instance-traffic shape
+        # operators see when there are no concurrent workers.
+        @asynccontextmanager
+        async def _empty_subscription(
+            channel: str,
+        ) -> AsyncIterator[AsyncIterator[str]]:
+            del channel
+
+            async def _gen() -> AsyncIterator[str]:
+                # Empty subscription -- yields nothing, mirroring the
+                # no-cross-instance-traffic shape. The ``yield`` is
+                # gated by a name lookup so mypy / ruff cannot prune
+                # it as structurally unreachable, and the conditional
+                # always evaluates false at runtime, so the iterator
+                # exits immediately with no payload.
+                emit = False
+                if emit:  # pragma: no cover
+                    yield ""
+
+            yield _gen()
+
         class _CapableFakeStore:
             supports_cross_instance_notify = True
 
-            def subscribe_notifications(self, channel: str) -> object:
-                del channel
-                return None
+            def subscribe_notifications(
+                self,
+                channel: str,
+            ) -> AbstractAsyncContextManager[AsyncIterator[str]]:
+                return _empty_subscription(channel)
 
         config = EscalationQueueConfig(
             backend="postgres",

@@ -75,10 +75,10 @@ if TYPE_CHECKING:
     from synthorg.engine.workflow.subworkflow_registry import (
         SubworkflowRegistry,
     )
-    from synthorg.persistence.workflow_definition_repo import (
+    from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
-    from synthorg.persistence.workflow_execution_repo import (
+    from synthorg.persistence.workflow_execution_protocol import (
         WorkflowExecutionRepository,
     )
 

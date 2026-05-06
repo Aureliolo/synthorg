@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.registry import AgentRegistryService
-    from synthorg.persistence.version_repo import VersionRepository
+    from synthorg.persistence.version_protocol import VersionRepository
     from synthorg.versioning.models import VersionSnapshot
     from synthorg.versioning.service import VersioningService
 

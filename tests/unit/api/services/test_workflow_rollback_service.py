@@ -29,8 +29,10 @@ from synthorg.core.persistence_errors import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
-from synthorg.persistence.version_repo import VersionRepository
-from synthorg.persistence.workflow_definition_repo import WorkflowDefinitionRepository
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionRepository,
+)
 
 pytestmark = pytest.mark.unit
 

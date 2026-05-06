@@ -17,7 +17,7 @@ from synthorg.observability.events.workflow_version import (
 
 if TYPE_CHECKING:
     from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.persistence.version_repo import VersionRepository
+    from synthorg.persistence.version_protocol import VersionRepository
     from synthorg.versioning.models import VersionSnapshot
 
 logger = get_logger(__name__)

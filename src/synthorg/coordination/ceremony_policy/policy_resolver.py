@@ -489,9 +489,21 @@ async def _fetch_department_policy(
         if dept.name == department_name:
             if dept.ceremony_policy is None:
                 return None
-            return CeremonyPolicyConfig.model_validate(
-                dept.ceremony_policy,
-            )
+            try:
+                return CeremonyPolicyConfig.model_validate(
+                    dept.ceremony_policy,
+                )
+            except ValidationError as exc:
+                logger.warning(
+                    API_SERVICE_UNAVAILABLE,
+                    service="config_resolver",
+                    department=department_name,
+                    note="invalid department ceremony_policy",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                msg = "Malformed ceremony policy data"
+                raise ServiceUnavailableError(msg) from exc
     msg = f"Department {department_name!r} not found"
     logger.warning(
         API_RESOURCE_NOT_FOUND,

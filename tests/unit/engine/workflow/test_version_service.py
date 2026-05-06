@@ -13,7 +13,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowNode,
 )
 from synthorg.engine.workflow.version_service import WorkflowVersionService
-from synthorg.persistence.version_repo import VersionRepository
+from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.versioning.models import VersionSnapshot
 
 

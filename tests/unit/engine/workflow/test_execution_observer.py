@@ -11,12 +11,19 @@ from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow.execution_observer import (
     WorkflowExecutionObserver,
 )
-from synthorg.persistence.workflow_definition_repo import (
-    WorkflowDefinitionRepository,
-)
-from synthorg.persistence.workflow_execution_repo import (
-    WorkflowExecutionRepository,
-)
+
+
+# Concrete fakes (not spec=Protocol) per the test guideline:
+# ``MagicMock(spec=Protocol)`` does not bound attribute access, so a
+# typo would still mock-out instead of raising. The observer's
+# constructor only stashes the repos and never calls any method on
+# them, so the fakes can be empty marker classes.
+class _FakeDefinitionRepo:
+    """Concrete double for ``WorkflowDefinitionRepository``."""
+
+
+class _FakeExecutionRepo:
+    """Concrete double for ``WorkflowExecutionRepository``."""
 
 
 def _make_event(
@@ -44,8 +51,8 @@ class TestWorkflowExecutionObserver:
     @pytest.mark.unit
     def test_constructor_wires_service(self) -> None:
         """Observer creates a WorkflowExecutionService with the given deps."""
-        definition_repo = MagicMock(spec=WorkflowDefinitionRepository)
-        execution_repo = MagicMock(spec=WorkflowExecutionRepository)
+        definition_repo = MagicMock(spec=_FakeDefinitionRepo)
+        execution_repo = MagicMock(spec=_FakeExecutionRepo)
         task_engine = MagicMock(spec=TaskEngine)
 
         observer = WorkflowExecutionObserver(
@@ -72,8 +79,8 @@ class TestWorkflowExecutionObserver:
     ) -> None:
         """__call__ forwards all task events to service."""
         observer = WorkflowExecutionObserver(
-            definition_repo=MagicMock(spec=WorkflowDefinitionRepository),
-            execution_repo=MagicMock(spec=WorkflowExecutionRepository),
+            definition_repo=MagicMock(spec=_FakeDefinitionRepo),
+            execution_repo=MagicMock(spec=_FakeExecutionRepo),
             task_engine=MagicMock(spec=TaskEngine),
             max_subworkflow_depth=16,
         )

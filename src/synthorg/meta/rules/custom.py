@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from synthorg.persistence.custom_rule_repo import CustomRuleRepository
+    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 
 from pydantic import (
     AwareDatetime,

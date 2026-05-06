@@ -173,7 +173,7 @@ if TYPE_CHECKING:
         CheckpointRepository,
         HeartbeatRepository,
     )
-    from synthorg.persistence.circuit_breaker_repo import (
+    from synthorg.persistence.circuit_breaker_protocol import (
         CircuitBreakerStateRepository,
     )
     from synthorg.persistence.connection_protocol import (
@@ -183,7 +183,7 @@ if TYPE_CHECKING:
         WebhookReceiptRepository,
     )
     from synthorg.persistence.cost_record_protocol import CostRecordRepository
-    from synthorg.persistence.custom_rule_repo import CustomRuleRepository
+    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
     from synthorg.persistence.decision_protocol import DecisionRepository
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
     from synthorg.persistence.idempotency_protocol import IdempotencyRepository
@@ -198,18 +198,18 @@ if TYPE_CHECKING:
         ParkedContextRepository,
     )
     from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
-    from synthorg.persistence.preset_repository import PersonalityPresetRepository
+    from synthorg.persistence.preset_protocol import PersonalityPresetRepository
     from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,
     )
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
-    from synthorg.persistence.risk_override_repo import RiskOverrideRepository
+    from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
     from synthorg.persistence.settings_protocol import SettingsRepository
     from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
-    from synthorg.persistence.subworkflow_repo import SubworkflowRepository
+    from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
     from synthorg.persistence.task_protocol import TaskRepository
-    from synthorg.persistence.training_repos import (
+    from synthorg.persistence.training_protocol import (
         TrainingPlanRepository,
         TrainingResultRepository,
     )
@@ -217,11 +217,11 @@ if TYPE_CHECKING:
         ApiKeyRepository,
         UserRepository,
     )
-    from synthorg.persistence.version_repo import VersionRepository
-    from synthorg.persistence.workflow_definition_repo import (
+    from synthorg.persistence.version_protocol import VersionRepository
+    from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
-    from synthorg.persistence.workflow_execution_repo import (
+    from synthorg.persistence.workflow_execution_protocol import (
         WorkflowExecutionRepository,
     )
     from synthorg.versioning.service import VersioningService

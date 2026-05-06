@@ -18,10 +18,10 @@ logger = get_logger(__name__)
 if TYPE_CHECKING:
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.task_engine_models import TaskStateChanged
-    from synthorg.persistence.workflow_definition_repo import (
+    from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
-    from synthorg.persistence.workflow_execution_repo import (
+    from synthorg.persistence.workflow_execution_protocol import (
         WorkflowExecutionRepository,
     )
 

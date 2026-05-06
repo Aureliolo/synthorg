@@ -36,8 +36,8 @@ if TYPE_CHECKING:
     from synthorg.engine.workflow.validation_types import (
         WorkflowValidationResult,
     )
-    from synthorg.persistence.version_repo import VersionRepository
-    from synthorg.persistence.workflow_definition_repo import (
+    from synthorg.persistence.version_protocol import VersionRepository
+    from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
     from synthorg.versioning.service import VersioningService

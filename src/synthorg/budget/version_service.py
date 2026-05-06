@@ -13,7 +13,7 @@ from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
-    from synthorg.persistence.version_repo import VersionRepository
+    from synthorg.persistence.version_protocol import VersionRepository
     from synthorg.versioning.models import VersionSnapshot
 
 logger = get_logger(__name__)

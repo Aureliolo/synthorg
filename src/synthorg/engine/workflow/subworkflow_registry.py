@@ -33,7 +33,7 @@ from synthorg.engine.errors import (
 # lazy annotation evaluation can resolve names like SubworkflowSummary
 # in ``encode_subworkflow_keyset()`` and ParentReference in
 # ``SubworkflowRegistry.find_parents()`` when introspectors call
-# ``inspect.get_type_hints()`` against module globals.
+# ``typing.get_type_hints()`` against module globals.
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,  # noqa: TC001 -- runtime-resolvable annotation
 )
@@ -47,7 +47,7 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_REGISTERED,
     SUBWORKFLOW_RESOLVED,
 )
-from synthorg.persistence.subworkflow_repo import (
+from synthorg.persistence.subworkflow_protocol import (
     SubworkflowRepository,  # noqa: TC001 -- runtime-resolvable annotation
 )
 

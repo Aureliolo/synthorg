@@ -3,7 +3,7 @@
 import aiosqlite
 import pytest
 
-from synthorg.persistence.circuit_breaker_repo import (
+from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
 )
 from synthorg.persistence.sqlite.circuit_breaker_repo import (

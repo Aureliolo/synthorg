@@ -36,7 +36,7 @@ from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
-    from synthorg.persistence.version_repo import VersionRepository
+    from synthorg.persistence.version_protocol import VersionRepository
 
 logger = get_logger(__name__)
 

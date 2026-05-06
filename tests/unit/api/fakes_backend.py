@@ -156,7 +156,7 @@ class FakeCircuitBreakerStateRepository:
     """In-memory circuit breaker state repository for tests."""
 
     def __init__(self) -> None:
-        from synthorg.persistence.circuit_breaker_repo import (
+        from synthorg.persistence.circuit_breaker_protocol import (
             CircuitBreakerStateRecord,
         )
 

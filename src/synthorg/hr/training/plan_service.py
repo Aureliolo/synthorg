@@ -42,7 +42,7 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.persistence.training_repos import (
+    from synthorg.persistence.training_protocol import (
         TrainingPlanRepository,
         TrainingResultRepository,
     )
