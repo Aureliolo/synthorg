@@ -48,7 +48,7 @@ from synthorg.engine.classification.semantic_detectors import (
     SemanticNumericalVerificationDetector,
 )
 from synthorg.engine.timeout_enforcement import engine_timeout
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.classification import (
     CLASSIFICATION_COMPLETE,
     CLASSIFICATION_ERROR,
@@ -357,21 +357,28 @@ async def _classify_safely(  # noqa: PLR0913
             task_repo=task_repo,
             provider=provider,
         )
-    except MemoryError, RecursionError:
-        logger.error(
+    except (MemoryError, RecursionError) as exc:
+        # Using ``logger.error`` (not ``logger.exception``) is
+        # deliberate: structlog's exc-info processor serialises
+        # traceback frame-locals into the event, leaking any
+        # in-scope credential. Log redacted classification context
+        # via ``safe_error_description`` and re-raise.
+        logger.error(  # noqa: TRY400
             CLASSIFICATION_ERROR,
             agent_id=agent_id,
             task_id=task_id,
-            error="non-recoverable error in classification",
-            exc_info=True,
+            severity="non_recoverable",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             CLASSIFICATION_ERROR,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"{type(exc).__name__}: {exc}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 
