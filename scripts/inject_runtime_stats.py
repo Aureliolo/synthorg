@@ -76,10 +76,10 @@ def _lookup_display(stats: dict[str, Any], name: str) -> str:
         )
         raise _UnknownStatError(name, _UnknownStatError.NOT_FOUND, msg)
     display = entry.get("display")
-    if not isinstance(display, str):
+    if not isinstance(display, str) or not display.strip():
         msg = (
-            f"<!--RS:{name}--> resolved entry is missing a 'display' field; "
-            "regenerate data/runtime_stats.yaml"
+            f"<!--RS:{name}--> resolved entry is missing a non-empty 'display' "
+            "field; regenerate data/runtime_stats.yaml"
         )
         raise _UnknownStatError(name, _UnknownStatError.MISSING_DISPLAY, msg)
     return display

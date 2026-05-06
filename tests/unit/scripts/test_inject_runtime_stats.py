@@ -108,6 +108,18 @@ class TestRewrite:
         assert exc_info.value.marker_name == "tests"
         assert exc_info.value.issue == inj._UnknownStatError.MISSING_DISPLAY
 
+    @pytest.mark.parametrize("blank", ["", "   ", "\t\n  "])
+    def test_marker_blank_display_raises(self, blank: str) -> None:
+        # Empty / whitespace-only display would inject zero visible content
+        # into the marker, leaving the rendered prose silently empty. Reject
+        # at lookup time so a buggy fetcher fails the build instead.
+        bad_stats = {"tests": {"raw": 1, "display": blank}}
+        original = "Has <!--RS:tests-->OLD<!--/RS--> only."
+        with pytest.raises(inj._UnknownStatError) as exc_info:
+            inj.rewrite_text(original, bad_stats)
+        assert exc_info.value.marker_name == "tests"
+        assert exc_info.value.issue == inj._UnknownStatError.MISSING_DISPLAY
+
     def test_unclosed_marker_left_alone(self) -> None:
         # No closing <!--/RS--> -- regex finds no match; text unchanged.
         original = "Tested with <!--RS:tests-->27,000+ tests."
@@ -203,6 +215,27 @@ class TestMain:
         ):
             assert inj.main() == 1
         err = capsys.readouterr().err
+        assert "runtime_stats.yaml" in err
+
+    def test_main_yaml_malformed_returns_one(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        # Malformed YAML escapes yaml.safe_load as YAMLError; _load_stats
+        # converts it into a TypeError that main() catches and exits 1 on,
+        # with a stderr message naming the file and the parser problem.
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        stats_file = data_dir / "runtime_stats.yaml"
+        stats_file.write_text("stats: [unclosed", encoding="utf-8")
+        with (
+            patch.object(inj, "REPO_ROOT", tmp_path),
+            patch.object(inj, "_STATS_FILE", stats_file),
+        ):
+            assert inj.main() == 1
+        err = capsys.readouterr().err
+        assert "not valid YAML" in err
         assert "runtime_stats.yaml" in err
 
     def test_main_unknown_marker_exits_one(
