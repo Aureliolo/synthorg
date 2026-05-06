@@ -27,7 +27,6 @@ from synthorg.engine.parallel_models import (
 from synthorg.engine.routing.models import (
     RoutingResult,
 )
-from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.engine.workspace.models import (
     MergeResult,
@@ -697,16 +696,13 @@ class TestMultiAgentCoordinator:
         )
         from synthorg.engine.loop_protocol import ExecutionResult
 
-        run_a = AgentRunResult(
-            execution_result=ExecutionResult(
-                context=ctx_a,
-                termination_reason=run_a.execution_result.termination_reason,
-            ),
-            system_prompt=run_a.system_prompt,
-            duration_seconds=run_a.duration_seconds,
-            agent_id=run_a.agent_id,
-            task_id=run_a.task_id,
-            currency=run_a.currency,
+        run_a = run_a.model_copy(
+            update={
+                "execution_result": ExecutionResult(
+                    context=ctx_a,
+                    termination_reason=run_a.execution_result.termination_reason,
+                ),
+            }
         )
 
         run_b = build_run_result("sub-b", agent_id)
@@ -717,16 +713,13 @@ class TestMultiAgentCoordinator:
                 )
             }
         )
-        run_b = AgentRunResult(
-            execution_result=ExecutionResult(
-                context=ctx_b,
-                termination_reason=run_b.execution_result.termination_reason,
-            ),
-            system_prompt=run_b.system_prompt,
-            duration_seconds=run_b.duration_seconds,
-            agent_id=run_b.agent_id,
-            task_id=run_b.task_id,
-            currency=run_b.currency,
+        run_b = run_b.model_copy(
+            update={
+                "execution_result": ExecutionResult(
+                    context=ctx_b,
+                    termination_reason=run_b.execution_result.termination_reason,
+                ),
+            }
         )
 
         exec_0 = ParallelExecutionResult(

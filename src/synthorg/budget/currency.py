@@ -237,6 +237,7 @@ def assert_currencies_match(
     agent_id: NotBlankStr | None = None,
     task_id: NotBlankStr | None = None,
     project_id: NotBlankStr | None = None,
+    department_id: NotBlankStr | None = None,
 ) -> CurrencyCode | None:
     """Verify every currency code in *currencies* is identical.
 
@@ -251,10 +252,13 @@ def assert_currencies_match(
     raises just like any other mismatch, so callers cannot silently
     bypass the guard by passing optional fields without filtering.
 
-    The contextual ``agent_id`` / ``task_id`` / ``project_id`` keyword
-    arguments are propagated to both the warning log and the raised
-    exception so structured-log consumers can trace the rejected
-    aggregation back to its scope.
+    The contextual ``agent_id`` / ``task_id`` / ``project_id`` /
+    ``department_id`` keyword arguments are propagated to both the
+    warning log and the raised exception so structured-log consumers
+    can trace the rejected aggregation back to its scope.  The four
+    dimensions are deliberately distinct so a per-department rollup
+    cannot accidentally surface a department name as if it were a
+    project identifier.
 
     Args:
         currencies: Iterable of ISO 4217 codes (e.g. ``r.currency for r
@@ -264,6 +268,8 @@ def assert_currencies_match(
         task_id: Optional task identifier the aggregation targeted.
         project_id: Optional project identifier the aggregation
             targeted.
+        department_id: Optional department identifier the aggregation
+            targeted (used by per-department rollups).
 
     Returns:
         The single shared currency code, or ``None`` for empty input.
@@ -286,12 +292,14 @@ def assert_currencies_match(
             agent_id=agent_id,
             task_id=task_id,
             project_id=project_id,
+            department_id=department_id,
         )
         raise MixedCurrencyAggregationError(
             currencies=normalized,
             agent_id=agent_id,
             task_id=task_id,
             project_id=project_id,
+            department_id=department_id,
         )
     if len(codes) > 1:
         normalized = frozenset(_MISSING_CURRENCY if c is None else c for c in codes)
@@ -301,11 +309,13 @@ def assert_currencies_match(
             agent_id=agent_id,
             task_id=task_id,
             project_id=project_id,
+            department_id=department_id,
         )
         raise MixedCurrencyAggregationError(
             currencies=normalized,
             agent_id=agent_id,
             task_id=task_id,
             project_id=project_id,
+            department_id=department_id,
         )
     return next(iter(codes))

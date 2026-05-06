@@ -769,7 +769,7 @@ class CostTracker(CostTrackerSummaryMixin):
         for dname, spends in sorted(dept_map.items()):
             dept_currency = assert_currencies_match(
                 (s.currency for s in spends),
-                project_id=dname,
+                department_id=dname,
             )
             results.append(
                 DepartmentSpending(

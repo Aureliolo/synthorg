@@ -149,6 +149,22 @@ def test_guard_on_same_source_clears(tmp_path: Path) -> None:
     assert _scan(source, tmp_path) == []
 
 
+def test_guard_on_same_line_clears(tmp_path: Path) -> None:
+    """Guard + aggregation on one line still clears via column ordering.
+
+    Pins the column-ordering branch of ``_scope_has_preceding_guard``:
+    when both calls share a line, the gate must compare ``col_offset``
+    rather than just ``lineno`` to decide which precedes which.
+    """
+    source = (
+        "from synthorg.budget.currency import assert_currencies_match\n"
+        "def f(records):\n"
+        "    assert_currencies_match(r.currency for r in records); "
+        "return sum(r.cost for r in records)\n"
+    )
+    assert _scan(source, tmp_path) == []
+
+
 def test_guard_in_nested_function_does_not_satisfy_outer(tmp_path: Path) -> None:
     """A guard call inside an inner ``def`` cannot clear an outer aggregation.
 
