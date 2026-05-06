@@ -116,7 +116,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC_ROOT = _REPO_ROOT / "src"
@@ -232,16 +232,45 @@ def _collect_lint_allow_exc_info_lines(source: str) -> frozenset[int]:
     return frozenset(allow_lines)
 
 
+def _walk_excluding_call_args(expr: ast.expr) -> Iterator[ast.AST]:
+    """Yield nodes in *expr*'s subtree, skipping ``Call.args`` / ``Call.keywords``.
+
+    The interpolated value of an f-string is whatever the expression
+    *evaluates to*. For a ``Call`` node, the args are passed to the
+    function and the return value is what gets stringified -- the args
+    themselves do not materialise in the f-string. So
+    ``f"{type(exc).__name__}"`` interpolates the type's name (safe);
+    ``f"{safe_error_description(exc)}"`` interpolates the helper's
+    return value (safe by intent). Both contain a Name ``exc`` deep in
+    the AST, but a naive ``ast.walk`` would flag them as leaks.
+
+    This walker visits the Call expression and its ``func`` (so a
+    method call on an exception, e.g. ``f"{exc.format_for_log()}"``,
+    still trips on the ``func`` chain), but does NOT recurse into the
+    Call's positional / keyword arguments.
+    """
+    yield expr
+    if isinstance(expr, ast.Call):
+        yield from _walk_excluding_call_args(expr.func)
+        return
+    for child in ast.iter_child_nodes(expr):
+        if isinstance(child, ast.expr):
+            yield from _walk_excluding_call_args(child)
+
+
 def _formatted_value_references_exception(node: ast.FormattedValue) -> bool:
     """Return ``True`` if *node* interpolates an exception-like reference.
 
-    Walks the FormattedValue's ``value`` subtree and returns ``True``
-    on the first ``Name`` whose ``id`` is in ``_EXCEPTION_LEAF_NAMES``
-    or ``Attribute`` whose terminal ``attr`` is in the same set.
-    Handles arbitrarily-deep wrappers like ``exc.args[0]`` (Subscript
-    over Attribute on Name ``exc``).
+    Walks the FormattedValue's ``value`` subtree (skipping ``Call``
+    arguments -- see :func:`_walk_excluding_call_args`) and returns
+    ``True`` on the first ``Name`` whose ``id`` is in
+    ``_EXCEPTION_LEAF_NAMES`` or ``Attribute`` whose terminal ``attr``
+    is in the same set. Handles wrappers like ``exc.args[0]``
+    (Subscript over Attribute on Name ``exc``) and excludes the
+    canonical safe shapes ``type(exc).__name__`` and
+    ``safe_error_description(exc)``.
     """
-    for inner in ast.walk(node.value):
+    for inner in _walk_excluding_call_args(node.value):
         if isinstance(inner, ast.Name) and inner.id in _EXCEPTION_LEAF_NAMES:
             return True
         if isinstance(inner, ast.Attribute) and inner.attr in _EXCEPTION_LEAF_NAMES:

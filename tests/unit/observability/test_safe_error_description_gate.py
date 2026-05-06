@@ -426,6 +426,70 @@ class TestFStringBlindspot:
         )
         assert hits, "dict-unpack with f-string-interpolated exc must be flagged"
 
+    def test_fstring_type_exc_name_quiet(self) -> None:
+        """``error=f"{type(exc).__name__}"`` -- safe; type taxonomy only.
+
+        ``type(exc).__name__`` is the canonical replacement for
+        ``str(exc)`` -- it carries the exception class name without
+        any of the args / message text. The walker must NOT descend
+        into the ``type(exc)`` Call to find the inner ``exc``,
+        because the Call's return value (a type object), not its
+        argument, is what gets stringified.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"{type(exc).__name__}")
+            """,
+        )
+        assert not hits, "type(exc).__name__ interpolation must not be flagged"
+
+    def test_fstring_safe_error_description_call_quiet(self) -> None:
+        """``error=f"{safe_error_description(exc)}"`` -- redacted helper.
+
+        The whole point of the helper is to be the safe replacement;
+        wrapping its return value in an f-string is unusual but must
+        not trip the gate.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"{safe_error_description(exc)}")
+            """,
+        )
+        assert not hits
+
+    def test_fstring_type_with_static_prefix_quiet(self) -> None:
+        """``error=f"prefix ({type(exc).__name__})"`` -- inner safe call.
+
+        Reproduces the activities.py:79 false-positive that was
+        flagged by an earlier walker that descended into ``Call.args``.
+        The fix uses ``_walk_excluding_call_args`` so the Name ``exc``
+        inside ``type(exc)`` does not match.
+        """
+        hits = _scan_source(
+            """
+            logger.warning(
+                "E",
+                error=f"failed; using fallback ({type(exc).__name__})",
+            )
+            """,
+        )
+        assert not hits, "static prefix + type(exc).__name__ is a safe shape, no leak"
+
+    def test_fstring_method_call_on_exc_flagged(self) -> None:
+        """``error=f"{exc.format_for_log()}"`` -- method on exc still flagged.
+
+        The walker descends into ``Call.func`` (so attribute chains
+        like ``exc.format_for_log`` still match) but skips
+        ``Call.args``. A method call on the exception itself can
+        return arbitrary leaked data; flag it.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"{exc.format_for_log()}")
+            """,
+        )
+        assert hits
+
 
 @pytest.mark.unit
 class TestExcInfoGate:
