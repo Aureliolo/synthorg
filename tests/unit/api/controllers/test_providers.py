@@ -157,11 +157,16 @@ def _make_provider_state_and_mgmt() -> tuple[MagicMock, AsyncMock]:
     Returns:
         Tuple of (mock_state, mock_provider_management).
     """
-    mgmt = AsyncMock()
-    app_state = MagicMock()
+    from litestar.datastructures import State
+
+    from synthorg.api.state import AppState
+    from synthorg.providers.management.service import ProviderManagementService
+
+    mgmt = AsyncMock(spec=ProviderManagementService)
+    app_state = MagicMock(spec=AppState)
     app_state.provider_management = mgmt
 
-    state = MagicMock()
+    state = MagicMock(spec=State)
     state.app_state = app_state
     return state, mgmt
 
@@ -532,3 +537,324 @@ class TestProbeLocalEndpoint:
                 headers=make_auth_headers("ceo"),
             )
             assert resp.status_code == 429
+
+
+@pytest.mark.unit
+class TestProviderControllerErrorSanitization:
+    """Validation / conflict error paths must surface sanitized text.
+
+    The controller wraps backend ``ProviderValidationError`` /
+    ``ProviderAlreadyExistsError`` into Litestar's
+    ``ValidationError`` / ``ConflictError`` so the API client gets a
+    structured 4xx.  The detail string MUST go through
+    ``safe_error_description`` (SEC-1) so a backend message that
+    embeds a credential, file path, or stack-trace fragment cannot
+    leak through the HTTP envelope.
+    """
+
+    @staticmethod
+    def _safe(exc: BaseException) -> str:
+        from synthorg.observability import safe_error_description
+
+        return safe_error_description(exc)
+
+    async def test_create_provider_conflict_uses_sanitized_text(self) -> None:
+        from synthorg.core.domain_errors import ConflictError
+        from synthorg.providers.errors import ProviderAlreadyExistsError
+        from synthorg.providers.management.dtos import CreateProviderRequest
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderAlreadyExistsError(
+            "Provider 'test-provider' already exists at /etc/secrets/api.key",
+        )
+        mgmt.create_provider.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ConflictError) as info:
+            await ctrl.create_provider.fn(
+                ctrl,
+                state=state,
+                data=CreateProviderRequest(name="test-provider"),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_create_provider_validation_uses_sanitized_text(self) -> None:
+        from synthorg.core.domain_errors import ValidationError
+        from synthorg.providers.errors import ProviderValidationError
+        from synthorg.providers.management.dtos import CreateProviderRequest
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError(
+            "base_url 'http://10.0.0.1/secrets' rejected by guard",
+        )
+        mgmt.create_provider.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ValidationError) as info:
+            await ctrl.create_provider.fn(
+                ctrl,
+                state=state,
+                data=CreateProviderRequest(name="test-provider"),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_create_from_preset_conflict_uses_sanitized_text(self) -> None:
+        from synthorg.core.domain_errors import ConflictError
+        from synthorg.providers.errors import ProviderAlreadyExistsError
+        from synthorg.providers.management.dtos import CreateFromPresetRequest
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderAlreadyExistsError("already configured")
+        mgmt.create_from_preset.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ConflictError) as info:
+            await ctrl.create_from_preset.fn(
+                ctrl,
+                state=state,
+                data=CreateFromPresetRequest(
+                    name="test-provider",
+                    preset_name="ollama",
+                ),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_create_from_preset_validation_uses_sanitized_text(
+        self,
+    ) -> None:
+        from synthorg.core.domain_errors import ValidationError
+        from synthorg.providers.errors import ProviderValidationError
+        from synthorg.providers.management.dtos import CreateFromPresetRequest
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError("preset 'ollama' missing capability")
+        mgmt.create_from_preset.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ValidationError) as info:
+            await ctrl.create_from_preset.fn(
+                ctrl,
+                state=state,
+                data=CreateFromPresetRequest(
+                    name="test-provider",
+                    preset_name="ollama",
+                ),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_update_provider_validation_uses_sanitized_text(self) -> None:
+        from synthorg.core.domain_errors import ValidationError
+        from synthorg.providers.errors import ProviderValidationError
+        from synthorg.providers.management.dtos import UpdateProviderRequest
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError("oauth_token_url rejected")
+        mgmt.update_provider.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ValidationError) as info:
+            await ctrl.update_provider.fn(
+                ctrl,
+                state=state,
+                name="test-provider",
+                data=UpdateProviderRequest(),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_delete_model_validation_uses_sanitized_text(self) -> None:
+        from synthorg.core.domain_errors import ValidationError
+        from synthorg.providers.errors import ProviderValidationError
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError("model still in use")
+        mgmt.delete_model.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ValidationError) as info:
+            await ctrl.delete_model.fn(
+                ctrl,
+                state=state,
+                name="test-provider",
+                model_id="test-small-001",
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_delete_model_runtime_uses_sanitized_text(self) -> None:
+        from synthorg.core.domain_errors import DomainError
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = RuntimeError("internal driver state /var/run/.cache/0xdeadbeef")
+        mgmt.delete_model.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(DomainError) as info:
+            await ctrl.delete_model.fn(
+                ctrl,
+                state=state,
+                name="test-provider",
+                model_id="test-small-001",
+            )
+        assert str(info.value) == self._safe(boom)
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "Model 'missing' not found in provider 'test-provider'",
+            "model 'missing' not found",
+            "Internal model registry mismatch: id 'missing' absent",
+        ],
+    )
+    async def test_update_model_config_model_missing_uses_sanitized_text(
+        self,
+        message: str,
+    ) -> None:
+        from synthorg.config.provider_schema import LocalModelParams
+        from synthorg.core.domain_errors import NotFoundError
+        from synthorg.providers.errors import ProviderModelNotFoundError
+        from synthorg.providers.management.dtos import UpdateModelConfigRequest
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderModelNotFoundError(message)
+        mgmt.update_model_config.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(NotFoundError) as info:
+            await ctrl.update_model_config.fn(
+                ctrl,
+                state=state,
+                name="test-provider",
+                model_id="missing",
+                data=UpdateModelConfigRequest(local_params=LocalModelParams()),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_update_model_config_validation_uses_sanitized_text(
+        self,
+    ) -> None:
+        from synthorg.config.provider_schema import LocalModelParams
+        from synthorg.core.domain_errors import ValidationError
+        from synthorg.providers.errors import ProviderValidationError
+        from synthorg.providers.management.dtos import UpdateModelConfigRequest
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError("num_ctx must be positive")
+        mgmt.update_model_config.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ValidationError) as info:
+            await ctrl.update_model_config.fn(
+                ctrl,
+                state=state,
+                name="test-provider",
+                model_id="test-small-001",
+                data=UpdateModelConfigRequest(local_params=LocalModelParams()),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_rotate_credentials_validation_uses_sanitized_text(
+        self,
+    ) -> None:
+        from unittest.mock import patch
+
+        from litestar import Request
+        from pydantic import SecretStr
+
+        from synthorg.core.domain_errors import ValidationError
+        from synthorg.providers.enums import AuthType
+        from synthorg.providers.errors import ProviderValidationError
+        from synthorg.providers.management.capability_dtos import (
+            _ApiKeyRotation,
+        )
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError("auth_type mismatch")
+        mgmt.rotate_credentials.side_effect = boom
+
+        ctrl = _provider_controller()
+        request = MagicMock(spec=Request)
+        with (
+            patch(
+                "synthorg.api.controllers.providers.request_audit_actor",
+                return_value="actor",
+            ),
+            pytest.raises(ValidationError) as info,
+        ):
+            await ctrl.rotate_credentials.fn(
+                ctrl,
+                state=state,
+                request=request,
+                name="test-provider",
+                data=_ApiKeyRotation(
+                    auth_type=AuthType.API_KEY,
+                    api_key=SecretStr("test-key"),
+                ),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_update_rate_limits_validation_uses_sanitized_text(
+        self,
+    ) -> None:
+        from unittest.mock import patch
+
+        from litestar import Request
+
+        from synthorg.core.domain_errors import ValidationError
+        from synthorg.providers.errors import ProviderValidationError
+        from synthorg.providers.management.capability_dtos import (
+            RateLimitsUpdateRequest,
+        )
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError("requests_per_minute too low")
+        mgmt.update_rate_limits.side_effect = boom
+
+        ctrl = _provider_controller()
+        request = MagicMock(spec=Request)
+        with (
+            patch(
+                "synthorg.api.controllers.providers.request_audit_actor",
+                return_value="actor",
+            ),
+            pytest.raises(ValidationError) as info,
+        ):
+            await ctrl.update_rate_limits.fn(
+                ctrl,
+                state=state,
+                request=request,
+                name="test-provider",
+                data=RateLimitsUpdateRequest(requests_per_minute=10),
+            )
+        assert str(info.value) == self._safe(boom)
+
+    async def test_sync_models_validation_uses_sanitized_text(self) -> None:
+        from unittest.mock import patch
+
+        from litestar import Request
+
+        from synthorg.core.domain_errors import ValidationError
+        from synthorg.providers.errors import ProviderValidationError
+        from synthorg.providers.management.capability_dtos import (
+            SyncModelsRequest,
+        )
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError("base_url is required")
+        mgmt.sync_models.side_effect = boom
+
+        ctrl = _provider_controller()
+        request = MagicMock(spec=Request)
+        with (
+            patch(
+                "synthorg.api.controllers.providers.request_audit_actor",
+                return_value="actor",
+            ),
+            pytest.raises(ValidationError) as info,
+        ):
+            await ctrl.sync_models.fn(
+                ctrl,
+                state=state,
+                request=request,
+                name="test-provider",
+                data=SyncModelsRequest(),
+            )
+        assert str(info.value) == self._safe(boom)

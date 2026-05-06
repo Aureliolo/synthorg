@@ -87,6 +87,7 @@ from synthorg.observability.events.provider import (
 from synthorg.providers.capabilities import ModelCapabilities  # noqa: TC001
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
+    ProviderModelNotFoundError,
     ProviderNotFoundError,
     ProviderValidationError,
     RateLimitError,
@@ -370,7 +371,7 @@ class ProviderController(Controller):
                 resource="provider",
                 name=data.name,
             )
-            raise ConflictError(str(exc)) from exc
+            raise ConflictError(safe_error_description(exc)) from exc
         except ProviderValidationError as exc:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -378,7 +379,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @post(
@@ -421,7 +422,7 @@ class ProviderController(Controller):
                 resource="provider",
                 name=data.name,
             )
-            raise ConflictError(str(exc)) from exc
+            raise ConflictError(safe_error_description(exc)) from exc
         except ProviderValidationError as exc:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -429,7 +430,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @put(
@@ -479,7 +480,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @delete(
@@ -779,7 +780,7 @@ class ProviderController(Controller):
             except ProviderValidationError as exc:
                 yield {
                     "event": "error",
-                    "data": _json.dumps(sse_error(str(exc))),
+                    "data": _json.dumps(sse_error(safe_error_description(exc))),
                 }
             except asyncio.CancelledError:
                 raise
@@ -844,7 +845,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         except ValueError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -863,7 +864,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise DomainError(str(exc)) from exc
+            raise DomainError(safe_error_description(exc)) from exc
 
     @put(
         "/{name:str}/models/{model_id:path}/config",
@@ -892,6 +893,10 @@ class ProviderController(Controller):
 
         Returns:
             Updated model response.
+
+        Raises:
+            NotFoundError: If the provider or model does not exist.
+            ValidationError: If the launch parameters are unsupported.
         """
         app_state: AppState = state.app_state
         try:
@@ -908,24 +913,24 @@ class ProviderController(Controller):
                 name=name,
             )
             raise NotFoundError(msg) from exc
+        except ProviderModelNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="model",
+                name=model_id,
+                provider=name,
+            )
+            raise NotFoundError(safe_error_description(exc)) from exc
         except ProviderValidationError as exc:
-            exc_msg = str(exc)
-            if "not found" in exc_msg:
-                logger.warning(
-                    API_RESOURCE_NOT_FOUND,
-                    resource="model",
-                    name=model_id,
-                    provider=name,
-                )
-                raise NotFoundError(exc_msg) from exc
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
                 name=name,
                 model=model_id,
-                error=exc_msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise ValidationError(exc_msg) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         model = next(
             (m for m in updated.models if m.id == model_id),
             None,
@@ -998,7 +1003,7 @@ class ProviderController(Controller):
                 name=data.model.id,
                 provider=name,
             )
-            raise ConflictError(str(exc)) from exc
+            raise ConflictError(safe_error_description(exc)) from exc
         return ApiResponse(data=to_provider_response(updated))
 
     @post(
@@ -1058,7 +1063,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=result)
 
     # ── Credentials rotation ────────────────────────────────────
@@ -1121,7 +1126,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=to_provider_response(updated))
 
     # ── Preset overrides ────────────────────────────────────────
@@ -1225,7 +1230,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=saved)
 
     @delete(
@@ -1367,7 +1372,7 @@ class ProviderController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=updated)
 
     # ── Audit log (read access) ─────────────────────────────────

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { getCareerEventColor } from '@/utils/agents'
 import { formatDate, formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
@@ -8,7 +9,7 @@ interface CareerTimelineEventProps {
   isLast?: boolean
 }
 
-export function CareerTimelineEvent({ event, isLast }: CareerTimelineEventProps) {
+function CareerTimelineEventImpl({ event, isLast }: CareerTimelineEventProps) {
   const color = getCareerEventColor(event.event_type)
 
   return (
@@ -59,3 +60,5 @@ export function CareerTimelineEvent({ event, isLast }: CareerTimelineEventProps)
     </div>
   )
 }
+
+export const CareerTimelineEvent = memo(CareerTimelineEventImpl)

@@ -1,11 +1,16 @@
+import { useState } from 'react'
+import { Plus } from 'lucide-react'
 import { useArtifactsData } from '@/hooks/useArtifactsData'
+import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { useArtifactsStore } from '@/stores/artifacts'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { formatNumber } from '@/utils/format'
 import { ArtifactsSkeleton } from './artifacts/ArtifactsSkeleton'
+import { ArtifactCreateDialog } from './artifacts/ArtifactCreateDialog'
 import { ArtifactFilters } from './artifacts/ArtifactFilters'
 import { ArtifactGridView } from './artifacts/ArtifactGridView'
 
@@ -18,6 +23,8 @@ export default function ArtifactsPage() {
     wsConnected,
     wsSetupError,
   } = useArtifactsData()
+  const createArtifact = useArtifactsStore((s) => s.createArtifact)
+  const [createOpen, setCreateOpen] = useState(false)
 
   // URL-persisted pagination over the client-filtered list. The
   // ``artifacts`` namespace lets future co-existing paginators on
@@ -46,6 +53,12 @@ export default function ArtifactsPage() {
             ? undefined
             : `${formatNumber(filteredArtifacts.length)} of ${formatNumber(totalArtifacts)}`
         }
+        primaryAction={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus aria-hidden="true" />
+            New artifact
+          </Button>
+        }
       />
 
       {error && (
@@ -70,6 +83,12 @@ export default function ArtifactsPage() {
         total={totalItems}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
+      />
+
+      <ArtifactCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreate={createArtifact}
       />
     </div>
   )

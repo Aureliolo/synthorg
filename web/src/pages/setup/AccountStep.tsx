@@ -185,9 +185,13 @@ export function AccountStep() {
         {policyError && (
           <ErrorBanner
             variant="section"
-            severity="error"
+            severity="warning"
             title="Could not load password policy"
-            description="The server policy may be stricter than the default. Retry before creating your account so validation matches the server."
+            description={
+              `Falling back to a ${minPasswordLength}-character minimum. `
+              + `If the server requires more, the create-account request will be rejected with a clear error. `
+              + `You can retry the policy fetch or proceed; either path keeps the wizard moving forwards.`
+            }
             onRetry={() => void fetchPolicy()}
           />
         )}
@@ -198,7 +202,7 @@ export function AccountStep() {
 
         <Button
           onClick={handleSubmit}
-          disabled={loading || policyLoading || policyError !== null}
+          disabled={loading || policyLoading}
           className="w-full"
         >
           {loading ? 'Creating Account...' : 'Create Account'}

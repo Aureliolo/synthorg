@@ -334,8 +334,12 @@ describe('useProjectsStore', () => {
       if (result === false) throw new Error('expected counts, not sentinel')
       expect(result.succeeded).toBe(1)
       expect(result.failed).toBe(1)
+      // failedReasons holds only the human-readable reason so the
+      // batch-toast helper can group identical reasons across the
+      // failures; per-id context is logged separately via the
+      // failedDetails channel inside the store.
       expect(result.failedReasons).toHaveLength(1)
-      expect(result.failedReasons[0]).toContain('proj-002')
+      expect(result.failedReasons[0]).toContain('contact support')
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
     })

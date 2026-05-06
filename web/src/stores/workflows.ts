@@ -8,7 +8,7 @@ import {
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { formatBatchErrors, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import type {
   BlueprintInfo,
@@ -277,20 +277,28 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
 
   batchDeleteWorkflows: async (ids: readonly string[]) => {
     try {
+      // Deduplicate before issuing requests so a caller passing the same
+      // id twice does not race two delete-API calls (one of which would
+      // 404 and inflate the failure count) or report a partial-failure
+      // toast for what was actually a single deletion.
+      const uniqueIds = Array.from(new Set(ids))
       const results = await Promise.allSettled(
-        ids.map(async (id) => {
+        uniqueIds.map(async (id) => {
           await deleteWorkflowApi(id)
           return id
         }),
       )
       const succeededIds: string[] = []
       const failedReasons: string[] = []
+      const failedDetails: { id: string; reason: string }[] = []
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           succeededIds.push(result.value)
         } else {
-          const id = ids[index] ?? '<unknown>'
-          failedReasons.push(`${id}: ${getErrorMessage(result.reason)}`)
+          const id = uniqueIds[index] ?? '<unknown>'
+          const reason = getErrorMessage(result.reason)
+          failedReasons.push(reason)
+          failedDetails.push({ id, reason })
         }
       })
       if (succeededIds.length > 0) {
@@ -307,15 +315,20 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
           }
         })
       }
-      if (failedReasons.length > 0) {
+      if (failedDetails.length > 0) {
         log.error(
           'Batch delete workflows partial failure',
-          sanitizeForLog({ failedCount: failedReasons.length, failedReasons }),
+          sanitizeForLog({ failedCount: failedDetails.length, failedDetails }),
         )
       }
       // Store owns the mutation UX: aggregated toast per outcome so
       // callers do not need to assemble their own summary messaging.
-      const failed = ids.length - succeededIds.length
+      // ``formatBatchErrors`` groups identical reasons (e.g. five
+      // workflows that all failed with the same conflict) so a 50-row
+      // failure does not produce a 50-line toast.
+      const failed = uniqueIds.length - succeededIds.length
+      const groupedDescription =
+        failedReasons.length > 0 ? formatBatchErrors(failedReasons) : undefined
       if (succeededIds.length > 0 && failed === 0) {
         useToastStore.getState().add({
           variant: 'success',
@@ -327,9 +340,8 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
       } else if (succeededIds.length > 0 && failed > 0) {
         useToastStore.getState().add({
           variant: 'warning',
-          title: `Deleted ${succeededIds.length} of ${ids.length} workflows`,
-          description: failedReasons.slice(0, 3).join('; ') +
-            (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+          title: `Deleted ${succeededIds.length} of ${uniqueIds.length} workflows`,
+          description: groupedDescription,
         })
       } else if (failed > 0) {
         useToastStore.getState().add({
@@ -338,8 +350,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
             failed === 1
               ? 'Failed to delete workflow'
               : `Failed to delete ${failed} workflows`,
-          description: failedReasons.slice(0, 3).join('; ') +
-            (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+          description: groupedDescription,
         })
       }
       // Total-failure case returns the false sentinel per the store
@@ -361,12 +372,13 @@ export const useWorkflowsStore = create<WorkflowsState>()((set, get) => ({
         'Batch delete workflows failed unexpectedly',
         sanitizeForLog(err),
       )
+      const distinctCount = new Set(ids).size
       useToastStore.getState().add({
         variant: 'error',
         title:
-          ids.length === 1
+          distinctCount === 1
             ? 'Failed to delete workflow'
-            : `Failed to delete ${ids.length} workflows`,
+            : `Failed to delete ${distinctCount} workflows`,
         description: getErrorMessage(err),
       })
       return false

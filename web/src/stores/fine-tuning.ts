@@ -21,6 +21,9 @@ import type {
 } from '@/api/endpoints/fine-tuning'
 import type { WsEvent } from '@/api/types/websocket'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 /** All valid fine-tune stage values for runtime validation of WS payloads. */
 const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>([
@@ -30,6 +33,19 @@ const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>([
 
 const log = createLogger('fine-tuning-store')
 
+/** Per-resource error map so a successful fetch never clears another's failure. */
+export interface FineTuningErrors {
+  status: string | null
+  checkpoints: string | null
+  runs: string | null
+}
+
+const NO_ERRORS: FineTuningErrors = {
+  status: null,
+  checkpoints: null,
+  runs: null,
+}
+
 interface FineTuningState {
   // State
   status: FineTuneStatus | null
@@ -37,7 +53,7 @@ interface FineTuningState {
   runs: readonly FineTuneRun[]
   preflight: PreflightResult | null
   loading: boolean
-  error: string | null
+  errors: FineTuningErrors
 
   // Actions
   fetchStatus: () => Promise<void>
@@ -52,74 +68,117 @@ interface FineTuningState {
   handleWsEvent: (event: WsEvent) => void
 }
 
+/**
+ * Pick the first non-null error from the per-resource map for a single
+ * banner string. When several resources fail concurrently the page surfaces
+ * status > checkpoints > runs in priority order; per-resource detail is
+ * still available on ``state.errors`` for finer-grained UI.
+ */
+export function selectFineTuningBannerError(
+  errors: FineTuningErrors,
+): string | null {
+  return errors.status ?? errors.checkpoints ?? errors.runs ?? null
+}
+
 export const useFineTuningStore = create<FineTuningState>((set, get) => ({
   status: null,
   checkpoints: [],
   runs: [],
   preflight: null,
   loading: false,
-  error: null,
+  errors: NO_ERRORS,
 
+  // Fetch actions follow web/CLAUDE.md: track error per resource so a
+  // later successful fetch never clears another's failure (the
+  // FineTuningPage bootstrap fans these out concurrently). The page
+  // surfaces a single banner string via ``selectFineTuningBannerError``.
+  // We intentionally do not toast on fetch failures; the inline banner
+  // already covers user awareness.
   fetchStatus: async () => {
     try {
       const status = await getFineTuneStatus()
-      set({ status, error: null })
+      set((state) => ({ status, errors: { ...state.errors, status: null } }))
     } catch (err) {
-      log.error('Failed to fetch fine-tune status', err)
-      set({ error: 'Failed to fetch status' })
+      log.error('Failed to fetch fine-tune status', sanitizeForLog(err))
+      const message = getErrorMessage(err)
+      set((state) => ({ errors: { ...state.errors, status: message } }))
     }
   },
 
   fetchCheckpoints: async () => {
     try {
       const checkpoints = await listCheckpoints()
-      set({ checkpoints, error: null })
+      set((state) => ({
+        checkpoints,
+        errors: { ...state.errors, checkpoints: null },
+      }))
     } catch (err) {
-      log.error('Failed to fetch checkpoints', err)
-      set({ error: 'Failed to fetch checkpoints' })
+      log.error('Failed to fetch checkpoints', sanitizeForLog(err))
+      const message = getErrorMessage(err)
+      set((state) => ({ errors: { ...state.errors, checkpoints: message } }))
     }
   },
 
   fetchRuns: async () => {
     try {
       const runs = await listRuns()
-      set({ runs, error: null })
+      set((state) => ({ runs, errors: { ...state.errors, runs: null } }))
     } catch (err) {
-      log.error('Failed to fetch runs', err)
-      set({ error: 'Failed to fetch runs' })
+      log.error('Failed to fetch runs', sanitizeForLog(err))
+      const message = getErrorMessage(err)
+      set((state) => ({ errors: { ...state.errors, runs: message } }))
     }
   },
 
+  // Mutations follow the canonical store pattern (web/CLAUDE.md "Zustand
+  // Store Error Handling"): log + error toast on failure. The store
+  // ``error`` field is reserved for fetch failures so the page-level
+  // ErrorBanner shows fetch errors only; mutation toasts are the sole
+  // user-facing surface for mutation errors. Success paths stay silent;
+  // the resulting state change is its own confirmation here.
   startRun: async (request) => {
-    set({ loading: true, error: null })
+    set({ loading: true })
     try {
       const status = await startFineTune(request)
       set({ status, loading: false })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to start'
-      log.error('Failed to start fine-tune run', err)
-      set({ loading: false, error: msg })
+      log.error('Failed to start fine-tune run', sanitizeForLog(err))
+      set({ loading: false })
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to start fine-tune run'),
+        description: getErrorMessage(err),
+      })
     }
   },
 
   cancelRun: async () => {
     try {
       const status = await cancelFineTune()
-      set({ status, error: null })
+      set({ status })
     } catch (err) {
-      log.error('Failed to cancel fine-tune run', err)
-      set({ error: 'Failed to cancel run' })
+      log.error('Failed to cancel fine-tune run', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to cancel fine-tune run'),
+        description: getErrorMessage(err),
+      })
     }
   },
 
   runPreflightCheck: async (request) => {
-    set({ loading: true, preflight: null, error: null })
+    set({ loading: true, preflight: null })
     try {
       const result = await runPreflight(request)
-      set({ preflight: result, loading: false, error: null })
+      set({ preflight: result, loading: false })
     } catch (err) {
-      log.error('Failed to run preflight', err)
-      set({ loading: false, error: 'Preflight check failed' })
+      log.error('Failed to run preflight', sanitizeForLog(err))
+      set({ loading: false })
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Preflight check failed'),
+        description: getErrorMessage(err),
+      })
     }
   },
 
@@ -128,8 +187,12 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await deployCheckpoint(id)
       await get().fetchCheckpoints()
     } catch (err) {
-      log.error('Failed to deploy checkpoint', err)
-      set({ error: 'Failed to deploy checkpoint' })
+      log.error('Failed to deploy checkpoint', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to deploy checkpoint'),
+        description: getErrorMessage(err),
+      })
     }
   },
 
@@ -138,8 +201,12 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await rollbackCheckpoint(id)
       await get().fetchCheckpoints()
     } catch (err) {
-      log.error('Failed to rollback checkpoint', err)
-      set({ error: 'Failed to rollback' })
+      log.error('Failed to rollback checkpoint', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to rollback checkpoint'),
+        description: getErrorMessage(err),
+      })
     }
   },
 
@@ -148,8 +215,12 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       await deleteCheckpoint(id)
       await get().fetchCheckpoints()
     } catch (err) {
-      log.error('Failed to delete checkpoint', err)
-      set({ error: 'Failed to delete checkpoint' })
+      log.error('Failed to delete checkpoint', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Failed to delete checkpoint'),
+        description: getErrorMessage(err),
+      })
     }
   },
 

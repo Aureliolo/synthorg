@@ -21,3 +21,7 @@ export const Override: Story = {
 export const Disabled: Story = {
   args: { inherit: true, onChange: () => {}, disabled: true },
 }
+
+export const InheritFromCustomSource: Story = {
+  args: { inherit: true, onChange: () => {}, inheritFrom: 'company defaults' },
+}

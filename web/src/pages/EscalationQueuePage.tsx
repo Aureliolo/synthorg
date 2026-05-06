@@ -174,12 +174,23 @@ export default function EscalationQueuePage() {
       : baseEmptyStateProps
 
   return (
-    <div className="flex flex-col gap-section-gap">
+    <div className="space-y-section-gap">
       <ListHeader
         title="Escalation queue"
         description="Conflicts the org has flagged for human review."
         count={visibleEscalations.length}
       />
+
+      {error && (
+        <ErrorBanner
+          severity="error"
+          title="Could not load escalations"
+          description={error}
+          onRetry={() => {
+            void fetchEscalations()
+          }}
+        />
+      )}
 
       {/* Status + priority filters wrapped in the shared
           SearchFilterSort layout primitive so the escalation queue
@@ -235,17 +246,6 @@ export default function EscalationQueuePage() {
           </>
         }
       />
-
-      {error && (
-        <ErrorBanner
-          severity="error"
-          title="Could not load escalations"
-          description={error}
-          onRetry={() => {
-            void fetchEscalations()
-          }}
-        />
-      )}
 
       {loading && escalations.length === 0 ? (
         <div className="flex flex-col gap-grid-gap">

@@ -27,6 +27,7 @@ type PersistedSetupState = Pick<
   | 'currency'
   | 'budgetCapEnabled'
   | 'budgetCap'
+  | 'companyResponse'
   | 'selectedTemplate'
   | 'templateVariables'
   | 'themeSettings'
@@ -34,7 +35,10 @@ type PersistedSetupState = Pick<
 
 const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
   name: SETUP_WIZARD_PERSIST_NAME,
-  version: 1,
+  // Bumping the version invalidates older entries that did not persist
+  // companyResponse so a stale wizard does not assume a company exists
+  // when the localStorage payload was written by an earlier release.
+  version: 2,
   partialize: (state) => ({
     currentStep: state.currentStep,
     stepsCompleted: state.stepsCompleted,
@@ -44,6 +48,10 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
     currency: state.currency,
     budgetCapEnabled: state.budgetCapEnabled,
     budgetCap: state.budgetCap,
+    // Persisted so the Complete step survives a forward/back navigation
+    // (or a page reload) without re-falling-back to the SkipWizardForm
+    // branch when the company has actually already been created.
+    companyResponse: state.companyResponse,
     selectedTemplate: state.selectedTemplate,
     templateVariables: state.templateVariables,
     themeSettings: state.themeSettings,

@@ -138,6 +138,113 @@ describe('useArtifactsStore', () => {
     })
   })
 
+  describe('createArtifact', () => {
+    it('prepends new artifact and emits success toast', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
+      const existing = makeArtifact('artifact-existing')
+      useArtifactsStore.setState({ artifacts: [existing], totalArtifacts: 1 })
+      const created = makeArtifact('artifact-new', { path: 'src/new.py' })
+      server.use(
+        http.post('/api/v1/artifacts', () =>
+          HttpResponse.json(apiSuccess(created)),
+        ),
+      )
+
+      const result = await useArtifactsStore.getState().createArtifact({
+        type: 'code',
+        path: 'src/new.py',
+        task_id: 'task-1',
+        created_by: 'alice',
+      })
+
+      expect(result).toEqual(created)
+      const state = useArtifactsStore.getState()
+      expect(state.artifacts).toEqual([created, existing])
+      expect(state.totalArtifacts).toBe(2)
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('success')
+      expect(toasts[0]!.title).toBe('Artifact created')
+    })
+
+    it('returns null sentinel + emits error toast on failure', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
+      const existing = makeArtifact('artifact-existing')
+      useArtifactsStore.setState({ artifacts: [existing], totalArtifacts: 1 })
+      server.use(
+        http.post('/api/v1/artifacts', () =>
+          HttpResponse.json(apiError('Quota exceeded'), { status: 422 }),
+        ),
+      )
+
+      const result = await useArtifactsStore.getState().createArtifact({
+        type: 'code',
+        path: 'src/new.py',
+        task_id: 'task-1',
+        created_by: 'alice',
+      })
+
+      expect(result).toBeNull()
+      const state = useArtifactsStore.getState()
+      // List unchanged on failure -- no optimistic insert to roll back.
+      expect(state.artifacts).toEqual([existing])
+      expect(state.totalArtifacts).toBe(1)
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toBe('Failed to create artifact')
+      expect(toasts[0]!.description).toContain('Quota exceeded')
+    })
+
+    it('clears listLoading when superseding an in-flight fetchArtifacts', async () => {
+      // Regression: createArtifact bumps _listRequestToken so any
+      // concurrent fetchArtifacts bails on its stale check. Without an
+      // explicit listLoading reset the page would stay stuck on the
+      // skeleton until a manual reload.
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
+      let resolveFetch: (() => void) | null = null
+      const fetchGate = new Promise<void>((resolve) => {
+        resolveFetch = resolve
+      })
+      server.use(
+        http.get('/api/v1/artifacts', async () => {
+          await fetchGate
+          return HttpResponse.json(apiSuccess({ data: [], pagination: null }))
+        }),
+        http.post('/api/v1/artifacts', () =>
+          HttpResponse.json(apiSuccess(makeArtifact('artifact-new'))),
+        ),
+      )
+
+      const fetchPromise = useArtifactsStore.getState().fetchArtifacts()
+      // listLoading flips to true synchronously inside fetchArtifacts.
+      expect(useArtifactsStore.getState().listLoading).toBe(true)
+
+      await useArtifactsStore.getState().createArtifact({
+        type: 'code',
+        path: 'src/new.py',
+        task_id: 'task-1',
+        created_by: 'alice',
+      })
+
+      // Even before the stale fetch settles, the create has cleared the
+      // skeleton so the user sees the optimistic insert.
+      expect(useArtifactsStore.getState().listLoading).toBe(false)
+
+      resolveFetch!()
+      await fetchPromise
+
+      // Final state still reflects the optimistic insert; the stale
+      // fetch's empty payload was discarded by the token bump.
+      const after = useArtifactsStore.getState()
+      expect(after.listLoading).toBe(false)
+      expect(after.artifacts.map((a) => a.id)).toContain('artifact-new')
+    })
+  })
+
   describe('deleteArtifact', () => {
     it('removes artifact from list', async () => {
       const a1 = makeArtifact('artifact-001')

@@ -15,6 +15,7 @@ import { AnimatePresence } from 'motion/react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { ToggleField } from '@/components/ui/toggle-field'
 import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useOptimisticUpdate } from '@/hooks/useOptimisticUpdate'
@@ -281,28 +282,6 @@ export default function TaskBoardPage() {
             ? undefined
             : `${formatNumber(filteredTasks.length)} of ${formatNumber(tasks.length)}`
         }
-        secondaryActions={
-          <>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={showDeps}
-                onChange={(e) => setShowDeps(e.target.checked)}
-                className="rounded border-border"
-              />
-              Dependencies
-            </label>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={showTerminal}
-                onChange={(e) => setShowTerminal(e.target.checked)}
-                className="rounded border-border"
-              />
-              Show terminal
-            </label>
-          </>
-        }
       />
 
       {error && (
@@ -326,6 +305,23 @@ export default function TaskBoardPage() {
         assignees={assignees}
         taskCount={filteredTasks.length}
       />
+
+      {/* View toggles sit in the same content-area band as the filter
+          chips below so they line up with ApprovalsPage's metric strip
+          (post-filter, pre-content) instead of competing with the
+          page title in ListHeader.secondaryActions. */}
+      <div className="flex flex-wrap items-center gap-grid-gap">
+        <ToggleField
+          label="Dependencies"
+          checked={showDeps}
+          onChange={setShowDeps}
+        />
+        <ToggleField
+          label="Show terminal"
+          checked={showTerminal}
+          onChange={setShowTerminal}
+        />
+      </div>
 
       {/* Active filter chips: surface every applied filter as a
           removable pill so the operator can see what's narrowing

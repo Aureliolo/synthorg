@@ -6,7 +6,7 @@ import {
   listProjects,
 } from '@/api/endpoints/projects'
 import { listTasks } from '@/api/endpoints/tasks'
-import { getErrorMessage } from '@/utils/errors'
+import { formatBatchErrors, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import { sanitizeWsString } from '@/stores/notifications'
@@ -196,7 +196,12 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   },
 
   batchDeleteProjects: async (ids: readonly string[]) => {
-    const idSet = new Set(ids)
+    // Deduplicate before issuing requests so a caller passing the same id
+    // twice does not race two delete-API calls (one of which would return
+    // 404 and trip the rollback path, restoring an actually-deleted row)
+    // or inflate succeeded / failed counts in the toast.
+    const uniqueIds = Array.from(new Set(ids))
+    const idSet = new Set(uniqueIds)
     const previous = useProjectsStore.getState()
     const removed = previous.projects.filter((p) => idSet.has(p.id))
     set((state) => {
@@ -212,7 +217,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       }
     })
     const results = await Promise.allSettled(
-      ids.map(async (id) => {
+      uniqueIds.map(async (id) => {
         await deleteProjectApi(id)
         return id
       }),
@@ -220,13 +225,16 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     const succeededIds: string[] = []
     const failedIds: string[] = []
     const failedReasons: string[] = []
+    const failedDetails: { id: string; reason: string }[] = []
     results.forEach((result, index) => {
-      const id = ids[index] ?? '<unknown>'
+      const id = uniqueIds[index] ?? '<unknown>'
       if (result.status === 'fulfilled') {
         succeededIds.push(result.value)
       } else {
+        const reason = getErrorMessage(result.reason)
         failedIds.push(id)
-        failedReasons.push(`${id}: ${getErrorMessage(result.reason)}`)
+        failedReasons.push(reason)
+        failedDetails.push({ id, reason })
       }
     })
     if (failedIds.length > 0) {
@@ -243,11 +251,14 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       })
       log.error(
         'Batch delete projects partial failure',
-        sanitizeForLog({ failedCount: failedIds.length, failedReasons }),
+        sanitizeForLog({ failedCount: failedIds.length, failedDetails }),
       )
     }
     // Store owns the mutation UX: emit aggregated toasts for the batch so
     // callers do not need to assemble their own outcome messaging.
+    // ``formatBatchErrors`` collapses identical reasons across the batch.
+    const groupedDescription =
+      failedReasons.length > 0 ? formatBatchErrors(failedReasons) : undefined
     if (succeededIds.length > 0 && failedIds.length === 0) {
       useToastStore.getState().add({
         variant: 'success',
@@ -259,9 +270,8 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     } else if (succeededIds.length > 0 && failedIds.length > 0) {
       useToastStore.getState().add({
         variant: 'warning',
-        title: `Deleted ${succeededIds.length} of ${ids.length} projects`,
-        description: failedReasons.slice(0, 3).join('; ') +
-          (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+        title: `Deleted ${succeededIds.length} of ${uniqueIds.length} projects`,
+        description: groupedDescription,
       })
     } else if (failedIds.length > 0) {
       useToastStore.getState().add({
@@ -270,8 +280,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
           failedIds.length === 1
             ? 'Failed to delete project'
             : `Failed to delete ${failedIds.length} projects`,
-        description: failedReasons.slice(0, 3).join('; ') +
-          (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+        description: groupedDescription,
       })
     }
     // Contract: delete mutations return `false` on total failure so

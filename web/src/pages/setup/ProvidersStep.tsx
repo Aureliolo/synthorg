@@ -51,11 +51,16 @@ export function ProvidersStep() {
 
   const fetchedRef = useRef(false)
 
-  // Fetch providers and presets once on first mount (not on every re-render)
+  // Fetch providers and presets once on first mount (not on every re-render).
+  // Clear any stale providersError that lingered from an earlier visit so the
+  // step re-enters cleanly: the previous error came from a different attempt
+  // and is misleading on a fresh remount, especially when the user navigated
+  // back from a later wizard step.
   useEffect(() => {
     if (fetchedRef.current) return
     fetchedRef.current = true
 
+    useSetupWizardStore.setState({ providersError: null })
     void fetchProviders()
     void fetchPresets()
   }, [fetchProviders, fetchPresets])
@@ -183,6 +188,8 @@ export function ProvidersStep() {
   const neededProviders = new Set(agents.map((a) => a.model_provider).filter((p): p is string => Boolean(p)))
   const missingProviders = [...neededProviders].filter((p) => !providers[p])
 
+  const hasConfiguredProviders = Object.keys(providers).length > 0
+
   return (
     <div className="space-y-section-gap">
       <div className="space-y-2">
@@ -191,6 +198,23 @@ export function ProvidersStep() {
           Connect your LLM providers so agents can work.
         </p>
       </div>
+
+      {/* Guidance banner shown on first entry: explains the three options
+          (cloud preset, detected local, manual) before the user picks
+          one. Hidden once at least one provider is configured to avoid
+          repeating itself on every revisit. */}
+      {!hasConfiguredProviders && !presetsLoading && (
+        <ErrorBanner
+          variant="section"
+          severity="info"
+          title="Pick at least one provider to organise your agents"
+          description={
+            'Cloud presets sign you in with an API key. Detected local servers '
+            + 'auto-fill from a probe of localhost. Configure manually for self-hosted '
+            + 'endpoints. You can mix and match before continuing.'
+          }
+        />
+      )}
 
       {providersError && (
         <ErrorBanner

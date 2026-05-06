@@ -18,6 +18,7 @@ import {
   groupByRiskLevel,
   type ApprovalPageFilters,
 } from '@/utils/approvals'
+import { formatBatchErrors } from '@/utils/errors'
 import { formatNumber } from '@/utils/format'
 
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
@@ -172,7 +173,7 @@ export default function ApprovalsPage() {
         variant: 'warning',
         title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
         description:
-          result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
+          result.failedReasons.length > 0 ? formatBatchErrors(result.failedReasons) : undefined,
       })
     }
   }, [selectedIds, batchApprove, batchComment])
@@ -202,7 +203,7 @@ export default function ApprovalsPage() {
         variant: 'warning',
         title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
         description:
-          result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
+          result.failedReasons.length > 0 ? formatBatchErrors(result.failedReasons) : undefined,
       })
     }
   }, [selectedIds, batchReject, batchReason])

@@ -6,7 +6,9 @@ import {
 import { listIntegrationHealth } from '@/api/endpoints/integration-health'
 import type { HealthReport } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import type {
   ConnectionsGet,
   ConnectionsSet,
@@ -64,10 +66,21 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
           checkingHealth: state.checkingHealth.filter((n) => n !== name),
         })
       } catch (err) {
-        log.warn('Health check failed for connection:', name, getErrorMessage(err))
+        log.warn(
+          'Health check failed for connection',
+          sanitizeForLog({ connection: name, error: getErrorMessage(err) }),
+        )
         const state = get()
         set({
           checkingHealth: state.checkingHealth.filter((n) => n !== name),
+        })
+        // Surface the failure to the operator: without a toast the
+        // spinner just disappears and they cannot tell whether the
+        // probe ran.
+        useToastStore.getState().add({
+          variant: 'error',
+          title: 'Health check failed',
+          description: `${name}: ${getErrorMessage(err)}`,
         })
       }
     },

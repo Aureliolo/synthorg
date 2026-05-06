@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { ActivityEventIcon } from '@/utils/activity-event-icon'
 import { formatRelativeTime } from '@/utils/format'
 import type { AgentActivityEvent } from '@/api/types/agents'
@@ -6,7 +7,7 @@ interface ActivityLogItemProps {
   event: AgentActivityEvent
 }
 
-export function ActivityLogItem({ event }: ActivityLogItemProps) {
+function ActivityLogItemImpl({ event }: ActivityLogItemProps) {
   return (
     <div className="flex items-start gap-3 py-2">
       <ActivityEventIcon
@@ -26,3 +27,5 @@ export function ActivityLogItem({ event }: ActivityLogItemProps) {
     </div>
   )
 }
+
+export const ActivityLogItem = memo(ActivityLogItemImpl)

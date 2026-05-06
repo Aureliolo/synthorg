@@ -289,6 +289,22 @@ class ProviderNotFoundError(ProviderError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
 
 
+class ProviderModelNotFoundError(ProviderError):
+    """A model identifier does not exist on the provider.
+
+    404 Not Found: distinct from ``ProviderNotFoundError`` (the whole
+    provider is missing) and from ``ProviderValidationError`` (the
+    request shape is wrong).  Lets the API controller route missing-
+    model errors to HTTP 404 without parsing free-form validation
+    text.
+    """
+
+    is_retryable = False
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+
+
 class ProviderValidationError(ProviderError):
     """Provider configuration failed validation.
 

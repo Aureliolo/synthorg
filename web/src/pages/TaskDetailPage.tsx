@@ -121,7 +121,7 @@ export default function TaskDetailPage() {
       )}
 
       <ErrorBoundary level="section">
-        <div className="rounded-lg border border-border bg-card p-6 space-y-section-gap">
+        <div className="rounded-lg border border-border bg-card p-card space-y-section-gap">
           <TaskDetailHeader task={task} />
           <TaskDetailMetadata task={task} />
           <TaskDetailTimeline task={task} />

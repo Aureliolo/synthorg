@@ -1,10 +1,10 @@
 import { create } from 'zustand'
-import { listArtifacts, getArtifact, getArtifactContentText, deleteArtifact as deleteArtifactApi } from '@/api/endpoints/artifacts'
+import { listArtifacts, getArtifact, getArtifactContentText, deleteArtifact as deleteArtifactApi, createArtifact as createArtifactApi } from '@/api/endpoints/artifacts'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import type { Artifact } from '@/api/types/artifacts'
+import type { Artifact, CreateArtifactRequest } from '@/api/types/artifacts'
 import type { ArtifactType } from '@/api/types/enums'
 import type { WsEvent } from '@/api/types/websocket'
 
@@ -46,6 +46,7 @@ interface ArtifactsState {
   // MUST NOT wrap these in try/catch.
   fetchArtifacts: () => Promise<void>
   fetchArtifactDetail: (id: string) => Promise<void>
+  createArtifact: (data: CreateArtifactRequest) => Promise<Artifact | null>
   deleteArtifact: (id: string) => Promise<boolean>
   setSearchQuery: (q: string) => void
   setTypeFilter: (t: ArtifactType | null) => void
@@ -138,6 +139,50 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       set({ detailLoading: false, detailError: getErrorMessage(err), selectedArtifact: null, contentPreview: null })
     } finally {
       if (_pendingDetailId === id) _pendingDetailId = null
+    }
+  },
+
+  createArtifact: async (data: CreateArtifactRequest) => {
+    try {
+      const created = await createArtifactApi(data)
+      // Bump the list-token so any in-flight ``listArtifacts`` resolves
+      // as stale and cannot overwrite this optimistic insert with an
+      // older snapshot. Use a functional ``set`` so the dedup check
+      // observes the latest state (e.g. when a WS event for the same id
+      // already arrived during the ``await``), and only increment the
+      // total when we are actually adding a new id.
+      _listRequestToken++
+      set((state) => {
+        const exists = state.artifacts.some((a) => a.id === created.id)
+        const filtered = state.artifacts.filter((a) => a.id !== created.id)
+        return {
+          artifacts: [created, ...filtered],
+          totalArtifacts: exists
+            ? state.totalArtifacts
+            : state.totalArtifacts + 1,
+          // Bumping the list token strands any in-flight ``fetchArtifacts``
+          // -- it bails on the stale check without ever clearing
+          // ``listLoading``. Reset it here so the page does not stay on
+          // the skeleton when a create lands during the initial load.
+          listLoading: false,
+        }
+      })
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Artifact created',
+      })
+      return created
+    } catch (err) {
+      log.error(
+        'Create artifact failed:',
+        sanitizeForLog({ path: data.path, error: err }),
+      )
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to create artifact',
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 

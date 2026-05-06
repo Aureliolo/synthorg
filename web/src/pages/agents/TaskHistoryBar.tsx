@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import type { TaskType } from '@/api/types/enums'
@@ -45,7 +46,7 @@ function formatDuration(task: Task): string {
   return `${hours}h ${mins}m`
 }
 
-export function TaskHistoryBar({ task, maxDurationMs }: TaskHistoryBarProps) {
+function TaskHistoryBarImpl({ task, maxDurationMs }: TaskHistoryBarProps) {
   const isActive = task.status === 'in_progress'
   const barColor = TYPE_COLORS[task.type]
   const width = getBarWidth(task, maxDurationMs)
@@ -76,3 +77,5 @@ export function TaskHistoryBar({ task, maxDurationMs }: TaskHistoryBarProps) {
     </div>
   )
 }
+
+export const TaskHistoryBar = memo(TaskHistoryBarImpl)

@@ -181,6 +181,32 @@ describe('useConnectionsStore', () => {
     )
   })
 
+  it('emits an error toast and clears the spinner when the health probe fails', async () => {
+    const { useToastStore } = await import('@/stores/toast')
+    useToastStore.getState().dismissAll()
+    server.use(
+      http.get('/api/v1/connections/:name/health', () =>
+        HttpResponse.json(apiError('Connection timeout'), { status: 504 }),
+      ),
+    )
+
+    await useConnectionsStore.getState().runHealthCheck('primary-github')
+
+    // Spinner cleared so the row is interactive again.
+    expect(useConnectionsStore.getState().checkingHealth).not.toContain(
+      'primary-github',
+    )
+    // Health map untouched so a stale prior report stays visible.
+    expect(useConnectionsStore.getState().healthMap['primary-github']).toBeUndefined()
+    // Toast surfaces the failure so the operator does not see only the
+    // spinner disappear.
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Health check failed')
+    expect(toasts[0]!.description).toContain('primary-github')
+  })
+
   it('updates filters without touching list state', () => {
     useConnectionsStore.getState().setSearchQuery('github')
     useConnectionsStore.getState().setTypeFilter('github')

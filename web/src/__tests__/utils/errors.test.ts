@@ -1,5 +1,5 @@
 import { AxiosError, type AxiosResponse } from 'axios'
-import { getErrorMessage, getErrorDetail, isAxiosError } from '@/utils/errors'
+import { formatBatchErrors, getErrorMessage, getErrorDetail, isAxiosError } from '@/utils/errors'
 import type { ErrorDetail } from '@/api/types/errors'
 
 function makeAxiosError(
@@ -74,9 +74,24 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toMatch(/refresh/i)
   })
 
-  it('returns validation message for 422', () => {
+  it('returns validation message for 422 when no detail is present', () => {
     const error = makeAxiosError(422)
     expect(getErrorMessage(error)).toContain('Validation')
+  })
+
+  it('surfaces structured error_detail.detail for 422 when data.error is absent', () => {
+    const detail: ErrorDetail = {
+      detail: 'currency: invalid_code',
+      error_code: 5000,
+      error_category: 'validation',
+      retryable: false,
+      retry_after: null,
+      instance: 'req-422',
+      title: 'Validation Failed',
+      type: 'https://docs.example.com/errors/validation',
+    }
+    const error = makeAxiosError(422, { error_detail: detail })
+    expect(getErrorMessage(error)).toBe('currency: invalid_code')
   })
 
   it('returns rate limit message for 429', () => {
@@ -113,9 +128,25 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(new Error('Something went wrong'))).toBe('Something went wrong')
   })
 
-  it('returns generic message for Error with long message', () => {
-    const longMsg = 'x'.repeat(201)
-    expect(getErrorMessage(new Error(longMsg))).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
+  it('passes through Error.message verbatim for long prose messages', () => {
+    // The 200-char ceiling was dropped: long validation messages from
+    // backend exceptions now reach the user instead of being replaced
+    // with the generic fallback. JSON-shaped messages stay suppressed
+    // (covered by the next test).
+    const longMsg = 'x'.repeat(500)
+    expect(getErrorMessage(new Error(longMsg))).toBe(longMsg)
+  })
+
+  it('truncates Error.message past ~1000 chars with an ellipsis', () => {
+    // Without a ceiling a multi-kilobyte backend description (e.g. a
+    // bulk-import validator naming every invalid row) would blow up
+    // toast / banner layouts. The cap keeps the message recognisably
+    // incomplete so users know to consult support for the full detail.
+    const overLong = 'a'.repeat(2000)
+    const result = getErrorMessage(new Error(overLong))
+    expect(result).toHaveLength(1001)
+    expect(result.endsWith('…')).toBe(true)
+    expect(result.startsWith('aaaa')).toBe(true)
   })
 
   it('returns generic message for Error starting with {', () => {
@@ -126,6 +157,32 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage('string')).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
     expect(getErrorMessage(42)).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
     expect(getErrorMessage(null)).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
+  })
+})
+
+describe('formatBatchErrors', () => {
+  it('returns an empty string for an empty array', () => {
+    expect(formatBatchErrors([])).toBe('')
+  })
+
+  it('returns the single reason verbatim when only one entry exists', () => {
+    expect(formatBatchErrors(['version mismatch'])).toBe('version mismatch')
+  })
+
+  it('groups identical reasons with a count prefix', () => {
+    const out = formatBatchErrors([
+      'version mismatch',
+      'version mismatch',
+      'version mismatch',
+      'not found',
+      'not found',
+    ])
+    expect(out).toBe('3× version mismatch; 2× not found')
+  })
+
+  it('preserves first-occurrence ordering across distinct reasons', () => {
+    const out = formatBatchErrors(['a', 'b', 'a'])
+    expect(out).toBe('2× a; b')
   })
 })
 

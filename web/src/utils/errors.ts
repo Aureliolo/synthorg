@@ -2,9 +2,20 @@
 
 import axios, { type AxiosError } from 'axios'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { ErrorCode, ErrorDetail } from '@/api/types/errors'
 
 const log = createLogger('errors')
+
+/**
+ * Cap on prose error messages reaching the user surface. Backend validators
+ * can emit very long descriptions (e.g. enumerating every invalid field on
+ * a bulk import); without a ceiling a multi-kilobyte string would blow up
+ * toast and banner layouts. The truncation marker keeps the message
+ * recognisably incomplete so users know to ask for the full detail in
+ * support.
+ */
+const MAX_ERROR_MESSAGE_LEN = 1000
 
 /**
  * Duck-typed check for ``ApiRequestError`` instances without importing
@@ -42,8 +53,17 @@ export function getErrorMessage(error: unknown): string {
       | { error?: string; error_detail?: ErrorDetail; success?: boolean }
       | undefined
 
-    // For 4xx errors, surface the backend's validation message
-    if (data?.error && typeof data.error === 'string' && status !== undefined && status < 500) {
+    // For 4xx errors, surface the backend's validation message.
+    // 422 is excluded so the structured ``error_detail.detail`` branch
+    // below can prefer the field-specific RFC 9457 detail over the
+    // generic ``data.error`` string when both are present.
+    if (
+      data?.error
+      && typeof data.error === 'string'
+      && status !== undefined
+      && status < 500
+      && status !== 422
+    ) {
       return data.error
     }
 
@@ -62,8 +82,20 @@ export function getErrorMessage(error: unknown): string {
         // assumed concurrency only, which misled users when the cause
         // was a duplicate or version skew.
         return 'The resource state changed. Refresh the page and try again.'
-      case 422:
+      case 422: {
+        // Prefer the structured ``error_detail.detail`` envelope (RFC
+        // 9457) over the plain ``data.error`` string so the user sees
+        // the specific field or rule that failed when the backend
+        // sends both.
+        const structuredDetail = data?.error_detail?.detail
+        if (typeof structuredDetail === 'string' && structuredDetail.trim() !== '') {
+          return structuredDetail
+        }
+        if (typeof data?.error === 'string' && data.error.trim() !== '') {
+          return data.error
+        }
         return 'Validation error. Please check your input.'
+      }
       case 429:
         return 'Too many requests. Please try again in a moment.'
       case 502:
@@ -94,13 +126,23 @@ export function getErrorMessage(error: unknown): string {
   }
 
   if (error instanceof Error) {
-    // Only surface messages from errors explicitly thrown by our own code.
-    // Errors from unknown sources could contain backend internals.
+    // JSON-shaped messages are suppressed because they typically carry a
+    // backend stack trace or structured envelope leaked through to the
+    // client. Plain prose passes through up to ``MAX_ERROR_MESSAGE_LEN``
+    // characters so genuine long validation messages reach the user
+    // without breaking toast / banner layouts when an upstream emits a
+    // multi-kilobyte description.
     const msg = error.message
-    if (msg && msg.length < 200 && !/^\{/.test(msg)) {
-      return msg
+    if (msg && !/^\{/.test(msg)) {
+      if (msg.length <= MAX_ERROR_MESSAGE_LEN) {
+        return msg
+      }
+      return `${msg.slice(0, MAX_ERROR_MESSAGE_LEN)}…`
     }
-    log.warn('Error message suppressed (too long or JSON-shaped):', msg?.slice(0, 300))
+    log.warn(
+      'Error message suppressed (JSON-shaped)',
+      sanitizeForLog({ preview: msg?.slice(0, 300) }),
+    )
     return 'An unexpected error occurred. Please refresh the page or contact support if this persists.'
   }
 
@@ -189,4 +231,24 @@ export function getCrudErrorTitle(
     if (status === 429) return { title: 'Rate limit reached' }
   }
   return { title: fallback }
+}
+
+/**
+ * Group an array of per-item failure reasons by identical text so a
+ * batch operation surfaces "5× version mismatch; 2× not found" instead
+ * of repeating the same line for every failed id.
+ *
+ * Ordering is insertion order of the first occurrence, which keeps the
+ * most-recent reason visible at the head when callers feed reasons in
+ * the order results came back.
+ */
+export function formatBatchErrors(reasons: readonly string[]): string {
+  if (reasons.length === 0) return ''
+  const counts = new Map<string, number>()
+  for (const reason of reasons) {
+    counts.set(reason, (counts.get(reason) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .map(([reason, count]) => (count === 1 ? reason : `${count}× ${reason}`))
+    .join('; ')
 }
