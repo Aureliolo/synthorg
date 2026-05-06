@@ -16,7 +16,6 @@ overrides it at runtime.
 """
 
 import json
-from typing import TYPE_CHECKING
 
 from packaging.version import InvalidVersion, Version
 
@@ -25,20 +24,28 @@ from synthorg.engine.errors import (
     SubworkflowIOError,
     SubworkflowNotFoundError,
 )
+
+# Imports kept at runtime (rather than under TYPE_CHECKING) so PEP 649
+# lazy annotation evaluation can resolve names like SubworkflowSummary
+# in ``encode_subworkflow_keyset()`` and ParentReference in
+# ``SubworkflowRegistry.find_parents()`` when introspectors call
+# ``inspect.get_type_hints()`` against module globals.
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,  # noqa: TC001 -- runtime-resolvable annotation
+)
+from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runtime-resolvable annotation
+    ParentReference,
+    SubworkflowSummary,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_DELETED,
     SUBWORKFLOW_REGISTERED,
     SUBWORKFLOW_RESOLVED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.engine.workflow.subworkflow_models import (
-        ParentReference,
-        SubworkflowSummary,
-    )
-    from synthorg.persistence.subworkflow_repo import SubworkflowRepository
+from synthorg.persistence.subworkflow_repo import (
+    SubworkflowRepository,  # noqa: TC001 -- runtime-resolvable annotation
+)
 
 logger = get_logger(__name__)
 

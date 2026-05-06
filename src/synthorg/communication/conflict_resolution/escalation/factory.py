@@ -240,16 +240,25 @@ def build_escalation_notify_subscriber(
     # ``supports_cross_instance_notify = False`` would still satisfy
     # the protocol structurally. The explicit ``is True`` guard
     # complements the structural check so opt-out values do not get
-    # treated as opt-in.
+    # treated as opt-in. The third clause -- a callable
+    # ``subscribe_notifications`` -- closes the duck-typing gap a
+    # capability marker alone leaves open: a fake that flips the flag
+    # to ``True`` but never wires the LISTEN/NOTIFY surface
+    # ``PostgresEscalationNotifySubscriber`` calls would otherwise
+    # construct here and fail at the first awaited iteration of the
+    # subscription loop. Failing in the factory keeps the error at the
+    # configuration boundary where the operator can act on it.
     if (
         not isinstance(store, CrossInstanceNotifyCapableStore)
         or getattr(store, "supports_cross_instance_notify", False) is not True
+        or not callable(getattr(store, "subscribe_notifications", None))
     ):
         msg = (
             "cross_instance_notify enabled but the configured store does not "
-            "implement CrossInstanceNotifyCapableStore (no "
-            "supports_cross_instance_notify attribute). Either inject a "
-            "Postgres-backed store or set cross_instance_notify='off'."
+            "implement CrossInstanceNotifyCapableStore (missing "
+            "supports_cross_instance_notify=True or callable "
+            "subscribe_notifications). Either inject a Postgres-backed "
+            "store or set cross_instance_notify='off'."
         )
         if mode == "on":
             logger.warning(

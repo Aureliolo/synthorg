@@ -8,16 +8,20 @@ semver row.  Parent workflows pin a specific version in their
 ``SUBWORKFLOW`` node configs; deleting a pinned version is rejected.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import WorkflowDefinition  # noqa: TC001
 
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.subworkflow_models import (
-        ParentReference,
-        SubworkflowSummary,
-    )
+# ``ParentReference`` and ``SubworkflowSummary`` appear in protocol
+# method annotations (``find_parents``, ``list_summaries``,
+# ``delete_if_unreferenced``, ``search``); under PEP 649 lazy
+# annotation evaluation they must be resolvable from module globals
+# when introspectors call ``inspect.get_type_hints()``.
+from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runtime-resolvable annotation
+    ParentReference,
+    SubworkflowSummary,
+)
 
 __all__ = ["SubworkflowRepository"]
 

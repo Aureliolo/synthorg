@@ -537,15 +537,4 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
-__all__ = [
-    "ProjectRootError",
-    "_iter_targets",
-    "_line_has_trailing_marker",
-    "_resolve_dotted_module",
-    "_resolve_import_from_module",
-    "_resolve_project_root",
-    "_resolve_root",
-    "_scan_all",
-    "_scan_file",
-    "main",
-]
+__all__ = ["ProjectRootError", "main"]

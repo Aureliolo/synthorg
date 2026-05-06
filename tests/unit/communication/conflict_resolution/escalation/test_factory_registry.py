@@ -197,12 +197,17 @@ class TestNotifySubscriberCapabilityCheck:
 
     def test_capable_store_returns_real_subscriber(self) -> None:
         # A duck-typed store that declares the capability attribute
-        # passes the structural check and gets a real subscriber.
-        # No concrete persistence class is imported by the factory or
-        # this test, and the real subscriber's __init__ never invokes
-        # subscribe_notifications, so the fake needs no method body.
+        # AND exposes a callable ``subscribe_notifications`` passes the
+        # structural + capability + API gate and gets a real subscriber.
+        # The factory's runtime check rejects fakes that flip the flag
+        # but never wire the LISTEN/NOTIFY surface; see
+        # ``test_capable_store_without_subscribe_method_is_rejected``.
         class _CapableFakeStore:
             supports_cross_instance_notify = True
+
+            def subscribe_notifications(self, channel: str) -> object:
+                del channel
+                return None
 
         config = EscalationQueueConfig(
             backend="postgres",
@@ -219,6 +224,30 @@ class TestNotifySubscriberCapabilityCheck:
             reconnect_delay_seconds=1.0,
         )
         assert isinstance(subscriber, PostgresEscalationNotifySubscriber)
+
+    def test_capable_store_without_subscribe_method_is_rejected(self) -> None:
+        # A fake that flips the capability marker to ``True`` but does
+        # not wire ``subscribe_notifications`` would otherwise reach the
+        # real subscriber and fail at first iteration. The factory
+        # closes that gap by also requiring the callable, raising at
+        # configuration time on ``mode="on"``.
+        class _MarkerOnlyStore:
+            supports_cross_instance_notify = True
+
+        config = EscalationQueueConfig(
+            backend="postgres",
+            cross_instance_notify="on",
+            notify_channel="escalations",
+        )
+        store = cast(EscalationQueueStore, _MarkerOnlyStore())
+        registry = PendingFuturesRegistry()
+        with pytest.raises(ValueError, match="subscribe_notifications"):
+            build_escalation_notify_subscriber(
+                config,
+                store,
+                registry,
+                reconnect_delay_seconds=1.0,
+            )
 
     def test_off_returns_noop_regardless_of_capability(self) -> None:
         # Even a capability-marked store must yield the no-op when the
