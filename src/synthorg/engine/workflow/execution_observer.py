@@ -41,6 +41,11 @@ class WorkflowExecutionObserver:
         definition_repo: Repository for reading workflow definitions.
         execution_repo: Repository for persisting execution state.
         task_engine: Required by the underlying ``WorkflowExecutionService``.
+        max_subworkflow_depth: Maximum nested subworkflow depth allowed
+            before the underlying service refuses to spawn another
+            child execution; resolved from
+            ``EngineBridgeConfig.max_subworkflow_depth`` at startup so
+            operator overrides (DB > env > YAML) flow through unchanged.
     """
 
     def __init__(

@@ -2,7 +2,7 @@
 
 import threading
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -297,7 +297,6 @@ class TestCircuitBreakerDirtyTracking:
 
         config = CircuitBreakerConfig(bounce_threshold=1, cooldown_seconds=10)
         repo = MagicMock(spec=SQLiteCircuitBreakerStateRepository)
-        repo.save = AsyncMock()
         cb = DelegationCircuitBreaker(config, state_repo=repo)
         cb.record_delegation("a", "b")
         assert cb._dirty
@@ -323,7 +322,7 @@ class TestCircuitBreakerDirtyTracking:
             opened_at=50.0,
         )
         repo = MagicMock(spec=SQLiteCircuitBreakerStateRepository)
-        repo.load_all = AsyncMock(return_value=(record,))
+        repo.load_all.return_value = (record,)
 
         cb = DelegationCircuitBreaker(config, state_repo=repo)
         await cb.load_state()
@@ -363,7 +362,7 @@ class TestCircuitBreakerDirtyTracking:
             opened_at=None,
         )
         repo = MagicMock(spec=SQLiteCircuitBreakerStateRepository)
-        repo.load_all = AsyncMock(return_value=(record,))
+        repo.load_all.return_value = (record,)
 
         cb = DelegationCircuitBreaker(config, state_repo=repo)
         # Pre-populate with a "live" entry that record_delegation

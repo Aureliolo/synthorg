@@ -4,10 +4,7 @@ Owns the read-side helpers that build the project-level
 :class:`CeremonyPolicyConfig` from settings, fetch the optional
 department-level override, and merge them into a resolved response with
 per-field origin tracking. The HTTP controller and the MCP service
-layer both depend on this module so neither has to depend on the other
-(the previous shape had ``CeremonyPolicyService`` lazy-importing helpers
-from the ``api.controllers`` module, which the dependency-inversion
-audit flagged as a layer reach).
+layer both depend on this module so neither has to depend on the other.
 """
 
 import asyncio
@@ -431,7 +428,16 @@ async def _lookup_dept_override_from_settings(
         msg = "Malformed ceremony policies data"
         raise ServiceUnavailableError(msg) from exc
 
-    if not isinstance(policies, dict) or department_name not in policies:
+    if not isinstance(policies, dict):
+        logger.warning(
+            API_SERVICE_UNAVAILABLE,
+            service="settings",
+            department=department_name,
+            note="malformed dept_ceremony_policies root payload (non-dict)",
+        )
+        msg = "Malformed ceremony policies data"
+        raise ServiceUnavailableError(msg)
+    if department_name not in policies:
         return _SETTINGS_NOT_FOUND
     val = policies[department_name]
     if val is None:
