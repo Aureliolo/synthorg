@@ -934,6 +934,17 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     startup = [*startup, notification_dispatcher.start]
 
     async def _resolve_runtime_security_settings() -> None:
+        # Each security key resolves independently so a validation
+        # failure on an unrelated ``api.*`` field (e.g. a bad
+        # ``request_max_body_size_bytes``) does not silently suppress
+        # CSP-origin or error-docs overrides. The shared
+        # ``ApiBridgeConfig`` validator still runs per key by
+        # constructing a one-field model -- defaults satisfy the
+        # remaining fields without re-resolving them.
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            ApiBridgeConfig,
+        )
+
         if not app_state.has_config_resolver:
             logger.warning(
                 API_BRIDGE_CONFIG_RESOLVE_FAILED,
@@ -943,8 +954,11 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
             return
         resolver = app_state.config_resolver
+
         try:
-            bridge = await resolver.get_api_bridge_config()
+            origins_raw = await resolver.get_json("api", "csp_docs_external_origins")
+            csp_bridge = ApiBridgeConfig(csp_docs_external_origins=tuple(origins_raw))
+            set_docs_csp_origins(csp_bridge.csp_docs_external_origins)
         except (
             SettingNotFoundError,
             SettingsEncryptionError,
@@ -954,19 +968,36 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             logger.warning(
                 API_BRIDGE_CONFIG_RESOLVE_FAILED,
                 bridge="api",
+                key="csp_docs_external_origins",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                fallback="module_defaults",
+                fallback="module_default",
             )
-            return
-        set_docs_csp_origins(bridge.csp_docs_external_origins)
-        set_error_docs_base_url(bridge.error_docs_base_url)
-        logger.info(
-            SETTINGS_VALUE_RESOLVED,
-            namespace="api",
-            key="error_docs_base_url",
-            value=bridge.error_docs_base_url,
-        )
+
+        try:
+            url_raw = await resolver.get_str("api", "error_docs_base_url")
+            error_bridge = ApiBridgeConfig(error_docs_base_url=url_raw)
+            set_error_docs_base_url(error_bridge.error_docs_base_url)
+            logger.info(
+                SETTINGS_VALUE_RESOLVED,
+                namespace="api",
+                key="error_docs_base_url",
+                value=error_bridge.error_docs_base_url,
+            )
+        except (
+            SettingNotFoundError,
+            SettingsEncryptionError,
+            ValueError,
+            ValidationError,
+        ) as exc:
+            logger.warning(
+                API_BRIDGE_CONFIG_RESOLVE_FAILED,
+                bridge="api",
+                key="error_docs_base_url",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback="module_default",
+            )
 
     startup = [*startup, _resolve_runtime_security_settings]
 

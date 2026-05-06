@@ -452,6 +452,7 @@ async def test_get_tools_bridge_config_rejects_bad_memory_literal(
 # ── slack_default_webhook_url canonical-URL validation ──────────
 
 
+@pytest.mark.unit
 class TestSlackDefaultWebhookUrlValidator:
     """``slack_default_webhook_url`` must accept only empty or canonical
     Slack incoming-webhook URLs. The pattern alone is too permissive;

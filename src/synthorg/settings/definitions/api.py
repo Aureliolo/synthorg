@@ -219,7 +219,7 @@ _r.register(
         group="Errors",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        validator_pattern=r"^https://[\w.\-:/]+$",
+        validator_pattern=(r"^https://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[^\s?#]*)?$"),
         yaml_path="api.error_docs_base_url",
     )
 )

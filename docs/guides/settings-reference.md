@@ -1,11 +1,11 @@
 ---
 title: Settings Reference
-description: How SynthOrg settings resolve, the 21 runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
+description: How SynthOrg settings resolve, the 22 runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
 ---
 
 # Settings Reference
 
-SynthOrg has ~100 individually-resolved settings across 21 namespaces. Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
+SynthOrg has ~100 individually-resolved settings across 22 namespaces (9 user-facing + 13 operator-only). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
 
 ---
 

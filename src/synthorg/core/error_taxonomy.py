@@ -22,6 +22,7 @@ not match how they are consumed.
 from enum import IntEnum, StrEnum
 from types import MappingProxyType
 from typing import Final
+from urllib.parse import urlsplit
 
 
 class ErrorCategory(StrEnum):
@@ -184,14 +185,46 @@ def set_error_docs_base_url(value: str) -> None:
     ``api.error_docs_base_url`` setting. Reset to
     :data:`_ERROR_DOCS_BASE_DEFAULT` for test isolation.
 
+    Validates the input at the boundary so a future caller that
+    bypasses the bridge-config validator cannot inject a malformed or
+    non-HTTPS base URL into every error response. Trailing slashes are
+    stripped (``category_type_uri`` appends ``#<category>``); userinfo,
+    query, and fragment components are rejected outright.
+
     Calling this outside startup creates a brief eventual-consistency
     window for in-flight error responses, since :func:`category_type_uri`
     reads the global at call time. The ``api.error_docs_base_url``
     setting is ``restart_required=True`` precisely to keep this
     single-writer.
+
+    Args:
+        value: HTTPS base URL (e.g. ``https://docs.example.com/errors``).
+
+    Raises:
+        ValueError: If *value* is empty, non-HTTPS, or carries
+            userinfo / query / fragment components.
     """
+    candidate = value.strip()
+    if not candidate:
+        msg = "error_docs_base_url must not be empty"
+        raise ValueError(msg)
+    parsed = urlsplit(candidate)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        msg = (
+            "error_docs_base_url must be a canonical HTTPS URL"
+            " (host required, no userinfo / query / fragment)"
+        )
+        raise ValueError(msg)
+    normalised = candidate.rstrip("/")
     global _ERROR_DOCS_BASE  # noqa: PLW0603 -- single-writer startup hook; tests reset via the same setter
-    _ERROR_DOCS_BASE = value
+    _ERROR_DOCS_BASE = normalised
 
 
 def category_title(cat: ErrorCategory) -> str:

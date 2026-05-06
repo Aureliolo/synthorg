@@ -74,7 +74,10 @@ _r.register(
         level=SettingLevel.ADVANCED,
         sensitive=True,
         restart_required=True,
-        validator_pattern=r"^(|https://hooks\.slack\.com/services/.+)$",
+        validator_pattern=(
+            r"^(?:|https://hooks\.slack\.com/services/"
+            r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+)$"
+        ),
         yaml_path="notifications.slack.default_webhook_url",
     )
 )

@@ -90,6 +90,10 @@ class TestDocsBaseUrlOverride:
 
     @pytest.fixture(autouse=True)
     def _reset_base_url(self) -> Generator[None]:
+        # Reset both before and after so the first test in this class
+        # cannot inherit a value mutated by an earlier file on the same
+        # xdist worker.
+        set_error_docs_base_url(_ERROR_DOCS_BASE_DEFAULT)
         yield
         set_error_docs_base_url(_ERROR_DOCS_BASE_DEFAULT)
 
@@ -101,3 +105,37 @@ class TestDocsBaseUrlOverride:
         set_error_docs_base_url("https://docs.example.com/errors")
         uri = category_type_uri(ErrorCategory.VALIDATION)
         assert uri == "https://docs.example.com/errors#validation"
+
+    def test_override_strips_trailing_slash(self) -> None:
+        set_error_docs_base_url("https://docs.example.com/errors/")
+        uri = category_type_uri(ErrorCategory.AUTH)
+        assert uri == "https://docs.example.com/errors#auth"
+
+    @pytest.mark.parametrize(
+        "bad_value",
+        [
+            "",
+            "   ",
+            "http://docs.example.com/errors",
+            "ftp://docs.example.com/errors",
+            "javascript:alert(1)",
+            "https:///errors",
+            "https://user:pw@docs.example.com/errors",
+            "https://docs.example.com/errors?q=1",
+            "https://docs.example.com/errors#frag",
+        ],
+        ids=[
+            "empty",
+            "whitespace_only",
+            "http_insecure",
+            "ftp_scheme",
+            "javascript_scheme",
+            "no_host",
+            "with_userinfo",
+            "with_query",
+            "with_fragment",
+        ],
+    )
+    def test_setter_rejects_malformed_input(self, bad_value: str) -> None:
+        with pytest.raises(ValueError, match="error_docs_base_url"):
+            set_error_docs_base_url(bad_value)

@@ -207,7 +207,10 @@ def _create_slack_sink(
         SlackNotificationSink,
     )
 
-    webhook_url = params.get("webhook_url", "")
+    # Treat whitespace-only as blank so the bridge fallback fires
+    # instead of letting "   " reach SlackNotificationSink which would
+    # then raise ValueError and drop the sink entirely.
+    webhook_url = (params.get("webhook_url") or "").strip()
     used_bridge_default = False
     if not webhook_url and bridge_config is not None:
         webhook_url = bridge_config.slack_default_webhook_url
