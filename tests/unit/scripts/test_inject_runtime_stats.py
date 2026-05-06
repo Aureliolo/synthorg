@@ -39,7 +39,7 @@ _STATS_FIXTURE: dict[str, Any] = {
     "stats": {
         "tests": {"raw": 27000, "rounded": 27000, "display": "27,000+"},
         "version": {"raw": "v0.7.1", "display": "v0.7.1"},
-        "mem0_stars": {"raw": 54000, "rounded": 54000, "display": "54k+"},
+        "provider_stars": {"raw": 54000, "rounded": 54000, "display": "54k+"},
         "providers_curated": {"raw": 19, "display": "19"},
         "providers_via_litellm": {"raw": 100, "display": "100+"},
         "subagents": {"raw": 7, "display": "7"},
@@ -82,12 +82,12 @@ class TestRewrite:
         original = (
             "Tested with <!--RS:tests-->OLD<!--/RS--> tests across "
             "<!--RS:subagents-->OLD<!--/RS--> agents.\n"
-            "Production-ready (<!--RS:mem0_stars-->OLD<!--/RS--> stars)."
+            "Production-ready (<!--RS:provider_stars-->OLD<!--/RS--> stars)."
         )
         rewritten = inj.rewrite_text(original, _STATS_FIXTURE["stats"])
         assert "<!--RS:tests-->27,000+<!--/RS-->" in rewritten
         assert "<!--RS:subagents-->7<!--/RS-->" in rewritten
-        assert "<!--RS:mem0_stars-->54k+<!--/RS-->" in rewritten
+        assert "<!--RS:provider_stars-->54k+<!--/RS-->" in rewritten
 
     def test_no_markers_unchanged(self) -> None:
         original = "Plain prose without any markers.\n# Heading\n- bullet"
@@ -191,7 +191,7 @@ class TestMain:
             encoding="utf-8",
         )
         roadmap.write_text(
-            "Stars: <!--RS:mem0_stars-->OLD<!--/RS-->.\n",
+            "Stars: <!--RS:provider_stars-->OLD<!--/RS-->.\n",
             encoding="utf-8",
         )
         with patch.object(inj, "_SCOPED_FILES", ("README.md", "docs/roadmap/index.md")):

@@ -37,6 +37,13 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _STATS_FILE: Path = REPO_ROOT / "data" / "runtime_stats.yaml"
 
+# Auto-generated docs (`docs/reference/comparison.md`, `docs/openapi/`,
+# `docs/api/`) are intentionally excluded: their numeric content flows
+# from a different build-time pipeline (e.g. `scripts/generate_comparison.py`
+# rewrites `docs/reference/comparison.md` from `data/competitors.yaml`,
+# not from runtime_stats.yaml). Adding them here would either be a no-op
+# (no `<!--RS:...-->` markers exist) or, for paths that don't yet exist
+# on disk, fail the build under the round-3 fail-fast contract.
 _SCOPED_FILES: Final[tuple[str, ...]] = (
     "README.md",
     "docs/index.md",
