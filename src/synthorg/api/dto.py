@@ -152,7 +152,7 @@ class ApiResponse[T](BaseModel):
         success: Whether the request succeeded (computed from ``error``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     data: T | None = None
     error: str | None = None
@@ -229,7 +229,7 @@ class PaginatedResponse[T](BaseModel):
         success: Whether the request succeeded (computed from ``error``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     data: tuple[T, ...] = ()
     error: str | None = None
@@ -608,7 +608,7 @@ class CoordinationPhaseResponse(BaseModel):
         error: Error description if the phase failed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     phase: NotBlankStr
     success: bool
@@ -640,7 +640,7 @@ class CoordinationResultResponse(BaseModel):
         is_success: Whether all phases succeeded (computed).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     parent_task_id: NotBlankStr = Field(max_length=128)
     topology: NotBlankStr

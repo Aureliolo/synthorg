@@ -20,7 +20,7 @@ The four resolution paths are:
 | Typed boundary (`parse_typed` at every external dict ingestion) | Standing gate | `scripts/check_boundary_typed.py` |
 | Vendor-name leakage (Anthropic / OpenAI / Claude / GPT) | Standing gate | `scripts/check_forbidden_literals.py` |
 | Regional-default hardcoding (currency / locale / timezone / language) | Standing gate | `scripts/check_backend_regional_defaults.py` + `scripts/check_web_design_system.py` |
-| Request DTO `extra="forbid"` | Standing gate | `scripts/check_request_dto_forbid_extra.py` |
+| API DTO `extra="forbid"` (request / response / snapshot / result / envelope / status / info / summary suffixes) | Standing gate | `scripts/check_dto_forbid_extra.py` |
 | Em-dashes (U+2014) in source | Standing gate | `scripts/check_no_em_dashes.py` |
 | Redundant per-test `pytest.mark.timeout(30)` | Standing gate | `scripts/check_no_redundant_timeout.py` |
 | Bulk edits without explicit user approval | Standing gate | `scripts/check_no_bulk_edit.py` |

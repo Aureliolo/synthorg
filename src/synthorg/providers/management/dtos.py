@@ -529,6 +529,7 @@ class ProbeLocalResponse(BaseModel):
     model_config = ConfigDict(
         frozen=True,
         allow_inf_nan=False,
+        extra="forbid",
         # ``MappingProxyType`` instances are stored on the model after
         # ``_freeze_mappings`` runs; Pydantic-core needs the lenient
         # arbitrary-type allowance to keep them past validation.

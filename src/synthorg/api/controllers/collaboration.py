@@ -93,7 +93,7 @@ class CalibrationSummaryResponse(BaseModel):
         records: Calibration records.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     average_drift: float | None = Field(default=None, ge=0.0, le=10.0)

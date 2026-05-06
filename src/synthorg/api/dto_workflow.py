@@ -262,7 +262,7 @@ class BlueprintInfoResponse(BaseModel):
         edge_count: Number of edges in the graph.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Blueprint identifier")
     display_name: NotBlankStr = Field(description="Human-readable name")

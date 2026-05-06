@@ -115,7 +115,7 @@ class UpdateEntityRequest(BaseModel):
 class EntityFieldResponse(BaseModel):
     """Field in an entity definition response."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     type_hint: NotBlankStr
@@ -125,7 +125,7 @@ class EntityFieldResponse(BaseModel):
 class EntityRelationResponse(BaseModel):
     """Relationship in an entity definition response."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     target: NotBlankStr
     relation: NotBlankStr
@@ -135,7 +135,7 @@ class EntityRelationResponse(BaseModel):
 class EntityResponse(BaseModel):
     """Entity definition response."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     tier: EntityTier
@@ -153,7 +153,7 @@ class EntityResponse(BaseModel):
 class EntityVersionResponse(BaseModel):
     """Version snapshot response."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     entity_id: NotBlankStr
     version: int = Field(ge=1)
@@ -166,7 +166,7 @@ class EntityVersionResponse(BaseModel):
 class DriftAgentResponse(BaseModel):
     """Per-agent drift detail in a drift report response."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     divergence_score: float = Field(ge=0.0, le=1.0)
@@ -176,7 +176,7 @@ class DriftAgentResponse(BaseModel):
 class DriftReportResponse(BaseModel):
     """Drift report response."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     entity_name: NotBlankStr
     divergence_score: float = Field(ge=0.0, le=1.0)
@@ -188,7 +188,7 @@ class DriftReportResponse(BaseModel):
 class DriftSummary(BaseModel):
     """Aggregate drift metrics for entity list enrichment."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     avg_drift_score: float = Field(
         ge=0.0,

@@ -28,7 +28,7 @@ __all__ = [
 class PresetSummaryResponse(BaseModel):
     """Summary of a personality preset for list endpoints."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     description: str = ""
@@ -39,7 +39,7 @@ class PresetSummaryResponse(BaseModel):
 class PresetDetailResponse(BaseModel):
     """Full personality preset definition."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     source: PresetSource

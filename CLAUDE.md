@@ -107,7 +107,7 @@ Existing gate inventory (all under `scripts/`):
 - `check_orphan_fixtures.py`
 - `check_persistence_boundary.py`
 - `check_provider_complete_chokepoint.py`
-- `check_request_dto_forbid_extra.py`
+- `check_dto_forbid_extra.py`
 - `check_schema_drift.py`
 - `check_setting_to_startup_trace.py`
 - `check_web_design_system.py`

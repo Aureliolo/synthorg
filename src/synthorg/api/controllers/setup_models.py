@@ -210,7 +210,7 @@ class SetupCompanyResponse(BaseModel):
         agents: Agent summaries for the Review Org step.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     company_name: NotBlankStr
     description: str | None
@@ -386,7 +386,7 @@ class SetupAgentsListResponse(BaseModel):
         agent_count: Number of agents (computed from ``agents``).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agents: tuple[SetupAgentSummary, ...]
 

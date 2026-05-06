@@ -215,7 +215,7 @@ class ChatResponse(BaseModel):
         confidence: LLM's self-assessed confidence (0-1).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     answer: NotBlankStr
     sources: tuple[NotBlankStr, ...] = ()

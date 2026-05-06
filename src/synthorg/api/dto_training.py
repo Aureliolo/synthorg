@@ -80,7 +80,7 @@ class TrainingPlanResponse(BaseModel):
         executed_at: When the plan finished executing, if any.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     new_agent_id: NotBlankStr
@@ -116,7 +116,7 @@ class TrainingResultResponse(BaseModel):
         completed_at: Pipeline completion timestamp.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     plan_id: NotBlankStr

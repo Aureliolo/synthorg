@@ -105,7 +105,7 @@ class PeriodSummary(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     total_cost: float = Field(
         ge=0.0, description="Total cost in the configured currency"
@@ -152,7 +152,7 @@ class CostRecordListResponse(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     data: tuple[CostRecord, ...] = ()
     error: str | None = None
