@@ -401,18 +401,22 @@ async def _lookup_dept_override_from_settings(
         return _SETTINGS_NOT_FOUND
     except SettingsError as exc:
         # Domain-level settings failure (validation, encryption, etc.).
-        # Log + fall back so a corrupt single key does not kill the
-        # whole ceremony-policy read; the operator sees the structured
-        # event in the audit log.
+        # Surface as ``ServiceUnavailableError`` so callers see the
+        # outage explicitly rather than receiving a lower-precedence
+        # config-resolver fallback that silently masks corrupt or
+        # unreadable settings. The malformed-JSON branch below uses
+        # the same error contract; both failure modes are
+        # observability incidents the operator must see.
         logger.warning(
-            API_REQUEST_ERROR,
-            endpoint="ceremony_policy.fetch_dept",
+            API_SERVICE_UNAVAILABLE,
+            service="settings",
             department=department_name,
-            note="settings_lookup_failed_falling_back_to_config",
+            note="dept_ceremony_policies lookup failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return _SETTINGS_NOT_FOUND
+        msg = "Failed to fetch ceremony policies data"
+        raise ServiceUnavailableError(msg) from exc
 
     try:
         policies = json.loads(entry.value)

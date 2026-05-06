@@ -7,14 +7,22 @@ persistence boundary closed from the controller edge.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
+# ``BudgetConfig``, ``VersionRepository``, and ``VersionSnapshot``
+# appear in public method signatures; PEP 649 lazy annotation
+# evaluation needs them in module globals so introspectors
+# (``typing.get_type_hints``, ``inspect.get_annotations``) can resolve
+# the names at runtime.
+from synthorg.budget.config import (
+    BudgetConfig,  # noqa: TC001 -- runtime-resolvable annotation
+)
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.persistence.version_protocol import VersionRepository
-    from synthorg.versioning.models import VersionSnapshot
+from synthorg.persistence.version_protocol import (
+    VersionRepository,  # noqa: TC001 -- runtime-resolvable annotation
+)
+from synthorg.versioning.models import (
+    VersionSnapshot,  # noqa: TC001 -- runtime-resolvable annotation
+)
 
 logger = get_logger(__name__)
 

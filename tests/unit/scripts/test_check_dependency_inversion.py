@@ -252,6 +252,47 @@ class TestSourceModuleCrossCheck:
         assert "SQLiteConfig" in capsys.readouterr().out
 
 
+class TestPackageAliasBypass:
+    def test_parent_package_alias_then_attribute_access_is_flagged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        # ``import synthorg.persistence as p`` does not itself land on
+        # a forbidden module, but ``p.config.SQLiteConfig`` walks
+        # straight into one. The longest-prefix attribute-access pass
+        # must catch it; otherwise the gate has a real bypass.
+        project_root = _make_project(
+            tmp_path,
+            files={
+                "src/synthorg/api/app.py": (
+                    "import synthorg.persistence as p\n_ = p.config.SQLiteConfig\n"
+                ),
+            },
+        )
+        assert _scan(project_root) == 1
+        captured = capsys.readouterr().out
+        assert "SQLiteConfig" in captured
+        assert "synthorg.persistence.config" in captured
+
+    def test_parent_package_alias_to_innocuous_attr_is_not_flagged(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        # ``p.config.something_unforbidden`` should NOT be flagged: the
+        # attr name has to be in ``_FORBIDDEN_IMPORTS`` for the gate to
+        # fire. Confirms the longest-prefix path doesn't over-fire.
+        project_root = _make_project(
+            tmp_path,
+            files={
+                "src/synthorg/api/app.py": (
+                    "import synthorg.persistence as p\n_ = p.config.NotForbidden\n"
+                ),
+            },
+        )
+        assert _scan(project_root) == 0
+
+
 class TestWildcardImports:
     def test_wildcard_from_forbidden_module_is_flagged(
         self,

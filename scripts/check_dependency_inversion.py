@@ -190,37 +190,53 @@ def _is_forbidden_source(module: str) -> bool:
     )
 
 
+def _is_forbidden_or_parent_of_forbidden(module: str) -> bool:
+    """Return True iff *module* is forbidden OR a parent package of one.
+
+    A bare ``import synthorg.persistence as p`` does not itself land
+    on a forbidden module, but ``p.config`` then walks straight into
+    ``synthorg.persistence.config``. Recording such parent aliases
+    lets the attribute-access pass match the longest prefix back to a
+    forbidden submodule via :func:`_check_attribute_access`.
+    """
+    if module in _FORBIDDEN_MODULE_PATHS:
+        return True
+    return any(
+        forbidden.startswith(module + ".") for forbidden in _FORBIDDEN_MODULE_PATHS
+    )
+
+
 def _collect_module_aliases(
     tree: ast.Module,
     lines: list[str],
     rel: str,
 ) -> dict[str, str]:
-    """Return ``{access_path: forbidden_module}`` for forbidden module imports.
+    """Return ``{access_path: imported_module}`` for forbidden-relevant imports.
 
-    Three import shapes need coverage so the attribute-access pass can
+    Four import shapes need coverage so the attribute-access pass can
     resolve every form of indirect access to a forbidden module:
 
     - ``import synthorg.persistence.config as cfg`` -- usage is
-      ``cfg.SQLiteConfig``; the access base is the bare alias ``cfg``,
-      so the key is ``"cfg"``.
+      ``cfg.SQLiteConfig``; the access base is the bare alias ``cfg``.
     - ``import synthorg.persistence.config`` -- usage is
       ``synthorg.persistence.config.SQLiteConfig``; the access base
-      walks the full dotted module path, so the key is the full module
-      string (NOT just the root binding ``synthorg``: that wouldn't
-      match the resolved attribute chain and would also collide with
-      unrelated ``synthorg.X`` imports).
+      walks the full dotted module path.
     - ``from synthorg.persistence import config as cfg`` (or without
-      ``as``) -- usage is ``cfg.SQLiteConfig`` (or ``config.SQLiteConfig``);
-      the access base is the bound submodule name (the alias if given,
-      otherwise the imported leaf name). The full forbidden-module
-      string is reconstructed from the resolved module + ``alias.name``;
-      relative imports (``from ..persistence import config``) walk
-      ``node.level`` up the file's package before joining.
+      ``as``) -- usage is ``cfg.SQLiteConfig`` /
+      ``config.SQLiteConfig``; the access base is the bound submodule
+      name. The full module path is reconstructed from the resolved
+      base + ``alias.name``; relative imports walk ``node.level`` up
+      the file's package before joining.
+    - ``import synthorg.persistence as p`` (parent-package alias) --
+      usage is ``p.config.SQLiteConfig``. The alias resolves to the
+      parent package; ``_check_attribute_access`` performs longest-
+      prefix match to walk down to the forbidden submodule.
 
-    The map value is the forbidden module the access reaches in any of
-    the three shapes. Suppression markers on the import line skip the
-    alias entirely so callers don't get a violation against an
-    explicitly-allowed import.
+    The map value is the module the access base resolves to (which can
+    be a forbidden submodule, a forbidden module via re-export, or a
+    parent package of a forbidden submodule). Suppression markers on
+    the import line skip the alias entirely so callers don't get a
+    violation against an explicitly-allowed import.
     """
     aliases_to_module: dict[str, str] = {}
     for node in ast.walk(tree):
@@ -241,7 +257,7 @@ def _collect_module_aliases(
         else:
             continue
         for access_key, module_name in access_pairs:
-            if module_name not in _FORBIDDEN_MODULE_PATHS:
+            if not _is_forbidden_or_parent_of_forbidden(module_name):
                 continue
             lineno = node.lineno
             line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
@@ -306,9 +322,15 @@ def _check_attribute_access(
 ) -> str | None:
     """Return a violation message for ``aliased_module.<Concrete>`` access.
 
-    Resolves the attribute base back to a previously-imported module via
-    *aliases_to_module*; non-resolvable bases (function calls, subscripts,
-    locals shadowing an alias) yield ``None``.
+    Walks the longest prefix of the attribute chain back to an entry
+    in *aliases_to_module* and joins the alias's resolved module with
+    the remaining segments. The combined path is then checked against
+    the forbidden surface so all four indirection shapes (bare import,
+    aliased submodule import, ``from ... import``, and parent-package
+    alias such as ``import synthorg.persistence as p; p.config.X``)
+    converge on the same exact-forbidden-module check. Non-resolvable
+    bases (function calls, subscripts, locals shadowing an alias)
+    yield ``None``.
     """
     attr_name = node.attr
     if attr_name not in _FORBIDDEN_IMPORTS:
@@ -316,7 +338,20 @@ def _check_attribute_access(
     dotted = _resolve_dotted_module(node.value)
     if dotted is None:
         return None
-    forbidden_module = aliases_to_module.get(dotted)
+    parts = dotted.split(".")
+    forbidden_module: str | None = None
+    for prefix_len in range(len(parts), 0, -1):
+        prefix = ".".join(parts[:prefix_len])
+        alias_target = aliases_to_module.get(prefix)
+        if alias_target is None:
+            continue
+        remaining = parts[prefix_len:]
+        full_module = (
+            ".".join([alias_target, *remaining]) if remaining else alias_target
+        )
+        if full_module in _FORBIDDEN_MODULE_PATHS:
+            forbidden_module = full_module
+            break
     if forbidden_module is None:
         return None
     lineno = node.lineno

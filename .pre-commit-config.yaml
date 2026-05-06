@@ -292,7 +292,7 @@ repos:
         # Trigger on changes to the protocol module, either backend, the
         # gate script itself, or this config so a PR cannot weaken the
         # check by editing the script without touching the backends.
-        files: ^(src/synthorg/persistence/(protocol|sqlite/backend|postgres/backend)\.py|scripts/check_persistence_protocol_return_types\.py|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/persistence/(protocol|[^/]+_protocol|sqlite/backend|postgres/backend)\.py|scripts/check_persistence_protocol_return_types\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

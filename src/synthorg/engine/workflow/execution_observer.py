@@ -6,24 +6,29 @@ or CANCELLED), delegates to ``WorkflowExecutionService`` to update
 the parent workflow execution accordingly.
 """
 
-from typing import TYPE_CHECKING
-
+# ``TaskEngine``, ``TaskStateChanged``, and the two workflow
+# repository protocols appear in public ``__init__`` / ``__call__``
+# signatures. PEP 649 lazy annotation evaluation requires them in
+# module globals so introspectors (``typing.get_type_hints`` /
+# ``inspect.get_annotations``) can resolve the names at runtime.
+from synthorg.engine.task_engine import (
+    TaskEngine,  # noqa: TC001 -- runtime-resolvable annotation
+)
+from synthorg.engine.task_engine_models import (
+    TaskStateChanged,  # noqa: TC001 -- runtime-resolvable annotation
+)
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
 from synthorg.observability import get_logger
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionRepository,  # noqa: TC001 -- runtime-resolvable annotation
+)
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionRepository,  # noqa: TC001 -- runtime-resolvable annotation
+)
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.engine.task_engine_models import TaskStateChanged
-    from synthorg.persistence.workflow_definition_protocol import (
-        WorkflowDefinitionRepository,
-    )
-    from synthorg.persistence.workflow_execution_protocol import (
-        WorkflowExecutionRepository,
-    )
 
 
 class WorkflowExecutionObserver:

@@ -252,32 +252,39 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 for o in getattr(task_engine, "_observers", ())
             )
             if not _already_registered:
-                # Resolve the subworkflow-depth limit through the engine
-                # bridge config so the operator's ``engine.max_subworkflow_depth``
-                # setting (DB > env > YAML > code default) drives the
-                # observer's underlying ``WorkflowExecutionService``. Test
-                # fixtures and early-startup paths without a wired
-                # ``config_resolver`` fall back to the bridge config's
-                # Pydantic default, matching the seed value the legacy
-                # module constant carried so behaviour does not change
-                # when settings resolution is unavailable.
-                from synthorg.settings.bridge_configs import (  # noqa: PLC0415
-                    EngineBridgeConfig,
-                )
-
-                if app_state.has_config_resolver:
+                # Defer observer registration until ``config_resolver``
+                # is available. Registering with a default
+                # ``EngineBridgeConfig()`` would lock the seed
+                # ``max_subworkflow_depth`` for the observer's
+                # lifetime, ignoring any operator override that lands
+                # later via DB / env / YAML. ``register_observer`` is
+                # append-only and the ``_already_registered`` guard
+                # makes this block idempotent, so the next ``on_startup``
+                # re-entry (test fixture, hot reload, or any startup
+                # phase that auto-wires the resolver) will re-attempt
+                # registration with the resolved bridge config.
+                if not app_state.has_config_resolver:
+                    logger.warning(
+                        API_APP_STARTUP,
+                        component="workflow_execution_observer",
+                        note=(
+                            "config_resolver not yet wired; deferring "
+                            "WorkflowExecutionObserver registration so "
+                            "engine.max_subworkflow_depth is not pinned "
+                            "to its seed default"
+                        ),
+                    )
+                else:
                     engine_bridge = (
                         await app_state.config_resolver.get_engine_bridge_config()
                     )
-                else:
-                    engine_bridge = EngineBridgeConfig()
-                _wf_observer = WorkflowExecutionObserver(
-                    definition_repo=persistence.workflow_definitions,
-                    execution_repo=persistence.workflow_executions,
-                    task_engine=task_engine,
-                    max_subworkflow_depth=engine_bridge.max_subworkflow_depth,
-                )
-                task_engine.register_observer(_wf_observer)
+                    _wf_observer = WorkflowExecutionObserver(
+                        definition_repo=persistence.workflow_definitions,
+                        execution_repo=persistence.workflow_executions,
+                        task_engine=task_engine,
+                        max_subworkflow_depth=engine_bridge.max_subworkflow_depth,
+                    )
+                    task_engine.register_observer(_wf_observer)
 
         # Wire ``OAuthStateService`` once persistence + the
         # ``oauth_states`` repository are available.  Owns the only
