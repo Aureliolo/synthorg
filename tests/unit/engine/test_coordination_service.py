@@ -694,13 +694,10 @@ class TestMultiAgentCoordinator:
                 )
             }
         )
-        from synthorg.engine.loop_protocol import ExecutionResult
-
         run_a = run_a.model_copy(
             update={
-                "execution_result": ExecutionResult(
-                    context=ctx_a,
-                    termination_reason=run_a.execution_result.termination_reason,
+                "execution_result": run_a.execution_result.model_copy(
+                    update={"context": ctx_a},
                 ),
             }
         )
@@ -715,9 +712,8 @@ class TestMultiAgentCoordinator:
         )
         run_b = run_b.model_copy(
             update={
-                "execution_result": ExecutionResult(
-                    context=ctx_b,
-                    termination_reason=run_b.execution_result.termination_reason,
+                "execution_result": run_b.execution_result.model_copy(
+                    update={"context": ctx_b},
                 ),
             }
         )
