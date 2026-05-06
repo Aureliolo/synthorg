@@ -24,6 +24,8 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GATE_SCRIPT = _REPO_ROOT / "scripts" / "check_logger_exception_str_exc.py"
@@ -600,6 +602,179 @@ class TestExcInfoGate:
         assert 4 not in lines, "empty-reason marker must NOT be collected"
         assert 5 not in lines, "missing `--` must NOT be collected"
         assert 6 not in lines, "plain comment must not be collected"
+
+
+# Hypothesis strategies for the gate-fuzz tests below.
+#
+# The fuzz strategy synthesises Python source for
+# ``logger.<method>(EVENT, error=<expr>)`` where ``<expr>`` is a
+# wrapper tree of bounded depth around either a "leak" leaf
+# (interpolating an exception) or a "safe" leaf
+# (``safe_error_description(exc)`` / ``type(exc).__name__``).
+#
+# The property under test is set-membership: any tree that contains a
+# leak leaf must trip the gate, any tree that contains only safe
+# leaves must not. Don't model "is this materialisation safe" inside
+# the fuzz -- that's the gate's job, not the test's.
+
+_LEAK_LEAVES: tuple[str, ...] = (
+    "str(exc)",
+    'f"{exc}"',
+    'f"{exc!s}"',
+    'f"{exc!r}"',
+    'f"{exc.args[0]}"',
+    'f"{self._inner}"',
+    "str(exc.args[0])",
+    "str(self._inner)",
+)
+"""Expressions that the gate should always flag when used as ``error=``."""
+
+_SAFE_LEAVES: tuple[str, ...] = (
+    "safe_error_description(exc)",
+    "type(exc).__name__",
+    '"static literal"',
+    'f"{strategy_name}"',
+    'f"{config.field_name}"',
+    'f"failed after {attempts}"',
+)
+"""Expressions that must NOT trip the gate even after wrapping."""
+
+
+def _wrap(expr: str, kind: str) -> str:
+    """Compose *expr* inside a single wrapper of *kind*.
+
+    Wrappers preserve any leaks in *expr* (they don't redact); the
+    gate's ``ast.walk`` traversal must catch leaks regardless of
+    wrapper depth.
+    """
+    if kind == "subscript":
+        return f"({expr})[:200]"
+    if kind == "binop":
+        return f"({expr}) + ' ctx'"
+    if kind == "ifexp":
+        return f"({expr}) if cond else 'fallback'"
+    if kind == "boolop":
+        return f"({expr}) or 'fallback'"
+    if kind == "joinedstr":
+        return f'f"{{{expr}}}"'
+    msg = f"unknown wrapper kind: {kind}"
+    raise ValueError(msg)
+
+
+_WRAPPER_KINDS: tuple[str, ...] = ("subscript", "binop", "ifexp", "boolop")
+"""Wrappers that preserve the inner expression as a subtree.
+
+Excludes ``joinedstr`` because composing an arbitrary subtree
+*inside* an f-string interpolation requires the subtree to be a
+valid expression -- which our generated wrappers (containing string
+literals) usually aren't. The four listed wrappers all accept
+arbitrary sub-expressions.
+"""
+
+
+@st.composite
+def _wrapped_expression(
+    draw: st.DrawFn,
+    leaves: tuple[str, ...],
+    *,
+    max_depth: int = 4,
+) -> str:
+    """Generate a Python expression wrapping a *leaves* element."""
+    expr = draw(st.sampled_from(leaves))
+    depth = draw(st.integers(min_value=0, max_value=max_depth))
+    for _ in range(depth):
+        kind = draw(st.sampled_from(_WRAPPER_KINDS))
+        expr = _wrap(expr, kind)
+    return expr
+
+
+@pytest.mark.unit
+class TestGateFuzz:
+    """Property-based fuzz: wrapper combinatorics never hide a leak.
+
+    Generates ``logger.<method>(EVENT, error=<expr>)`` calls with
+    randomly stacked wrappers around either a leak leaf or a safe
+    leaf. The gate must flag iff the leaf is a leak. Catches
+    regressions in the wrapper-walk logic that targeted unit tests
+    might miss when a new ``ast`` node type is introduced.
+
+    ``derandomize=True`` is required for CI determinism: structlog
+    failures on a flaky fuzz are expensive to diagnose, and the
+    isolation gate (``run_affected_tests.py``) re-runs against the
+    baseline twice, so non-deterministic test outcomes break the
+    monotonic-shrink guarantee.
+    """
+
+    @given(_wrapped_expression(_LEAK_LEAVES))
+    @settings(max_examples=200, derandomize=True)
+    def test_leak_leaf_always_flagged(self, expr: str) -> None:
+        """Any wrapper around a leak leaf must trip the gate."""
+        source = f"""
+        logger.warning("E", error={expr})
+        """
+        hits = _scan_source(source)
+        assert hits, f"wrapper around leak leaf must be flagged; got quiet on: {expr}"
+
+    @given(_wrapped_expression(_SAFE_LEAVES))
+    @settings(max_examples=200, derandomize=True)
+    def test_safe_leaf_never_flagged(self, expr: str) -> None:
+        """Any wrapper around a safe leaf must NOT trip the gate."""
+        source = f"""
+        logger.warning("E", error={expr})
+        """
+        hits = _scan_source(source)
+        assert not hits, (
+            f"wrapper around safe leaf must not be flagged; got hit on: {expr}"
+        )
+
+    @given(
+        st.booleans(),
+        st.text(
+            alphabet=st.characters(min_codepoint=33, max_codepoint=126),
+            min_size=1,
+            max_size=40,
+        ),
+    )
+    @settings(max_examples=100, derandomize=True)
+    def test_exc_info_allowlist_respects_marker(
+        self,
+        allowlisted: bool,
+        reason: str,
+    ) -> None:
+        """A non-empty reason after ``--`` opts out; bare allowlist does not.
+
+        Generates a ``logger.warning(..., exc_info=True)`` call with
+        either an ``exc-info -- <reason>`` marker (allowlisted) or no
+        marker at all. The gate must flag iff there is no marker.
+        """
+        # The reason must contain at least one non-whitespace char to
+        # match _ALLOW_EXC_INFO_RE; we strip leading whitespace and
+        # discard empty draws since Hypothesis can produce all-space
+        # strings inside the alphabet.
+        cleaned_reason = reason.strip()
+        if not cleaned_reason:
+            return
+        # Comments cannot contain a literal newline; reject reasons
+        # whose printable codepoints survive but produce a multi-line
+        # comment when rendered. The alphabet bounds (33-126) already
+        # exclude newline (10), so this is a safety net.
+        if "\n" in cleaned_reason:
+            return
+        if allowlisted:
+            source = (
+                'logger.warning("E", exc_info=True)  # lint-allow: '
+                f"exc-info -- {cleaned_reason}\n"
+            )
+        else:
+            source = 'logger.warning("E", exc_info=True)\n'
+        hits = _scan_source_e2e(source)
+        if allowlisted:
+            assert not hits, (
+                "valid allowlist marker must opt out; got hit with "
+                f"reason={cleaned_reason!r}"
+            )
+        else:
+            assert hits, "missing allowlist marker must be flagged"
 
 
 @pytest.mark.unit
