@@ -324,9 +324,11 @@ async run(
     - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`,
       `STAGNATION`, `PARKED`) leave the task in its current state.
       `STAGNATION` indicates the agent was stuck in a repetitive loop.
-      `PARKED` indicates the agent was
-      suspended by an approval-timeout policy; the task remains at its current
-      status until explicitly resumed. Approval parking is distinct from the
+      `PARKED` indicates the agent paused while waiting for a human
+      approval decision from `ApprovalGate`; the task remains at its
+      current status until explicitly resumed. The Approval Timeout
+      Policy controls how long the parked state persists and how it
+      ultimately resolves. Approval parking is distinct from the
       checkpoint-based `SUSPENDED` state produced by graceful shutdown
       (which preserves an agent's full context across a process restart);
       see [Approval Timeout Policy](security.md#approval-timeout-policy)

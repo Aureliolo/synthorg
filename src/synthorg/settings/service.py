@@ -207,7 +207,7 @@ def _validate_enum(definition: SettingDefinition, value: str) -> None:
 
 def _validate_json(definition: SettingDefinition, value: str) -> None:
     try:
-        json.loads(value)
+        parsed = json.loads(value)
     except json.JSONDecodeError as exc:
         if definition.sensitive:
             msg = (
@@ -216,6 +216,34 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
             )
         else:
             msg = f"Invalid JSON: {exc}"
+        raise SettingValidationError(msg) from exc
+    # Dispatch to any per-setting shape validator so write-time and
+    # runtime contracts stay aligned (e.g. canonical-origin checks for
+    # ``api.csp_docs_external_origins``). Validators raise ``ValueError``
+    # which we re-wrap as ``SettingValidationError`` to keep the error
+    # surface uniform; sensitive payloads are masked the same way the
+    # parse-error branch above masks them.
+    from synthorg.settings.json_validators import (  # noqa: PLC0415
+        get_json_validator,
+    )
+
+    # SettingNamespace is a StrEnum, so passing it directly gives the
+    # underlying string value (e.g. ``"api"``).
+    validator = get_json_validator(str(definition.namespace), definition.key)
+    if validator is None:
+        return
+    try:
+        validator(parsed)
+    except ValueError as exc:
+        if definition.sensitive:
+            msg = (
+                f"Invalid JSON shape for sensitive setting"
+                f" {definition.namespace}/{definition.key}"
+            )
+        else:
+            msg = (
+                f"Invalid JSON shape for {definition.namespace}/{definition.key}: {exc}"
+            )
         raise SettingValidationError(msg) from exc
 
 

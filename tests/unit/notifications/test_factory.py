@@ -166,16 +166,18 @@ class TestCreateSlackSink:
         )
         assert _create_slack_sink({}, bridge_config=bridge) is None
 
-    def test_invalid_bridge_default_logs_and_returns_none(self) -> None:
-        # The bridge default is structurally valid (matches the
-        # NotificationsBridgeConfig pattern) but targets a private IP,
-        # which SlackNotificationSink rejects via _validate_outbound_url.
-        # The factory must catch the ValueError, log, and return None.
+    def test_invalid_explicit_url_returns_none_even_with_bridge_default(
+        self,
+    ) -> None:
+        # An explicit per-sink ``webhook_url`` overrides the bridge
+        # default, so the factory must still reject an outbound target
+        # that ``SlackNotificationSink._validate_outbound_url`` blocks
+        # (here a loopback IP). The bridge default is canonical and
+        # would have been valid -- proving the factory does not silently
+        # swap to it when the explicit URL is bad.
         bridge = NotificationsBridgeConfig(
             slack_default_webhook_url="https://hooks.slack.com/services/T/B/X",
         )
-        # Force the sink construction to raise by passing a private IP
-        # via params, which bypasses the bridge fallback path.
         sink = _create_slack_sink(
             {"webhook_url": "https://127.0.0.1/services/T/B/X"},
             bridge_config=bridge,

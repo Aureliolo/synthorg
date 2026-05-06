@@ -25,6 +25,21 @@ from synthorg.api.middleware import (
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _reset_docs_csp_module() -> Any:
+    """Reset the docs CSP global at setup AND teardown of every test.
+
+    Module-scope autouse instead of class-scope so test classes earlier
+    in this file (TestCSPPathSelection, TestSecurityHeadersHook) and any
+    later additions are protected from cross-file mutation by another
+    test on the same xdist worker. The reset is cheap (re-builds the
+    default CSP string) and runs only once per test entry/exit.
+    """
+    set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
+    yield
+    set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
+
+
 def _make_app(*handlers: Any) -> Litestar:
     """Build a minimal Litestar app with the security hook wired in."""
     return Litestar(
@@ -188,20 +203,13 @@ class TestCSPPathSelection:
 
 
 class TestDocsCspOriginsOverride:
-    """``set_docs_csp_origins`` lets operators retarget Scalar UI origins."""
+    """``set_docs_csp_origins`` lets operators retarget Scalar UI origins.
 
-    @pytest.fixture(autouse=True)
-    def _reset_docs_csp(self) -> Any:
-        """Reset the docs CSP at setup AND teardown.
-
-        Mutating the module-level CSP would leak across tests in the
-        same xdist worker; resetting only post-yield lets the first
-        test in this class inherit a mutated value from an earlier file
-        on the same worker. Setup-side reset closes that window.
-        """
-        set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
-        yield
-        set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
+    The module-level ``_reset_docs_csp_module`` fixture restores the
+    default CSP at setup and teardown of every test in this file, so
+    individual tests in this class can mutate the global without
+    leaking into siblings or earlier classes on the same xdist worker.
+    """
 
     def test_default_csp_lists_all_default_origins(self) -> None:
         from synthorg.api import middleware

@@ -941,11 +941,21 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # ``ApiBridgeConfig`` validator still runs per key by
         # constructing a one-field model -- defaults satisfy the
         # remaining fields without re-resolving them.
+        # Failure branches must actively re-write the module global to
+        # ``ApiBridgeConfig()`` defaults, not just log "fallback":
+        # a previous app instance (or earlier test on the same worker)
+        # may have already mutated the global, in which case skipping
+        # the write would silently keep a stale override instead of
+        # the documented default.
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             ApiBridgeConfig,
         )
 
+        defaults = ApiBridgeConfig()
+
         if not app_state.has_config_resolver:
+            set_docs_csp_origins(defaults.csp_docs_external_origins)
+            set_error_docs_base_url(defaults.error_docs_base_url)
             logger.warning(
                 API_BRIDGE_CONFIG_RESOLVE_FAILED,
                 bridge="api",
@@ -965,6 +975,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             ValueError,
             ValidationError,
         ) as exc:
+            set_docs_csp_origins(defaults.csp_docs_external_origins)
             logger.warning(
                 API_BRIDGE_CONFIG_RESOLVE_FAILED,
                 bridge="api",
@@ -990,6 +1001,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             ValueError,
             ValidationError,
         ) as exc:
+            set_error_docs_base_url(defaults.error_docs_base_url)
             logger.warning(
                 API_BRIDGE_CONFIG_RESOLVE_FAILED,
                 bridge="api",
