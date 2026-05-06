@@ -4,7 +4,7 @@ SynthOrg's UI text is shipped in **International / British English**. UI text tr
 
 ## Decision
 
-This was confirmed on 2026-04-30. The dashboard ships UI copy in International / British English (`colour`, `behaviour`, `organise`, `centred`, `analyse`). Strings are inline in components; there is no `t()` resolver, no message catalog, and no locale switcher. Currency / date / time / number formatting continues to be locale-resolved at runtime through the existing helpers; only the UI text variant is fixed.
+The dashboard ships UI copy in International / British English (`colour`, `behaviour`, `organise`, `centred`, `analyse`). Strings are inline in components; there is no `t()` resolver, no message catalog, and no locale switcher. Currency / date / time / number formatting continues to be locale-resolved at runtime through the existing helpers; only the UI text variant is fixed.
 
 ## What this means in practice
 

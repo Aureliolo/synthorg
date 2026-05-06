@@ -200,6 +200,13 @@ the original context exactly where it left off. This mirrors real company behavi
 starts another task while waiting for a code review, then returns to the original work when
 feedback arrives.
 
+Approval parking is distinct from the checkpoint-based `SUSPENDED` state produced by
+graceful shutdown: the former is an in-process, voluntary pause initiated by the agent
+when a high-risk action needs human sign-off, the latter is an externally-driven save
+of in-flight context across a process restart. See
+[Graceful Shutdown Protocol](coordination.md#graceful-shutdown-protocol) for the
+shutdown-time mechanism.
+
 === "Wait Forever"
 
     The action stays in the human queue indefinitely. No timeout, no auto-resolution. The agent

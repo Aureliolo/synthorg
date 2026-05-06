@@ -10,11 +10,21 @@ historical hardcoded value so a consumer can construct one from defaults for
 tests without an active settings service.
 """
 
+import re
 from typing import Final
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
+
+# Canonical origin pattern: scheme + host (+ optional port) only -- no
+# path, query, fragment, or userinfo. The CSP spec treats anything past
+# the host as a source expression, so a permissive regex would let
+# operators leak whole URLs into the directive and silently degrade
+# /docs CSP. ``urlsplit`` handles the structural check; the regex
+# rejects whitespace and embedded slashes up front.
+_CSP_ORIGIN_RE: Final[re.Pattern[str]] = re.compile(r"^https?://[^\s/]+$")
 
 # WebSocket first-message auth handshake timeout bounds. Exposed as
 # module constants so the ``set_ws_auth_timeout_seconds`` setter on
@@ -88,10 +98,55 @@ class NotificationsBridgeConfig(BaseModel):
     slack_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     ntfy_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     email_smtp_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    slack_default_webhook_url: str = Field(
+        default="",
+        pattern=r"^(|https://hooks\.slack\.com/services/.+)$",
+    )
     ntfy_default_url: NotBlankStr = Field(
         default=NotBlankStr("https://ntfy.sh"),
         pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
     )
+
+    @field_validator("slack_default_webhook_url")
+    @classmethod
+    def _validate_slack_default_webhook_url(cls, value: str) -> str:
+        if value == "":
+            return value
+        if value != value.strip():
+            msg = (
+                "slack_default_webhook_url must not have leading or trailing whitespace"
+            )
+            raise ValueError(msg)
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            msg = (
+                "slack_default_webhook_url must use a numeric port in"
+                " 1..65535 when one is supplied"
+            )
+            raise ValueError(msg) from exc
+        if port == 0:
+            msg = (
+                "slack_default_webhook_url must use a port in 1..65535 (0 is reserved)"
+            )
+            raise ValueError(msg)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "hooks.slack.com"
+            or parsed.username is not None
+            or parsed.password is not None
+            or not parsed.path.startswith("/services/")
+            or parsed.query
+            or parsed.fragment
+        ):
+            msg = (
+                "slack_default_webhook_url must be a canonical Slack"
+                " webhook URL: https://hooks.slack.com/services/<path>"
+                " with no userinfo, query, or fragment"
+            )
+            raise ValueError(msg)
+        return value
 
 
 class ToolsBridgeConfig(BaseModel):
@@ -212,6 +267,104 @@ class ApiBridgeConfig(BaseModel):
         default=1.0, ge=0.5, le=60.0
     )
     lifecycle_drain_timeout_seconds: float = Field(default=40.0, ge=5.0, le=300.0)
+    csp_docs_external_origins: tuple[NotBlankStr, ...] = Field(
+        default=(
+            NotBlankStr("https://cdn.jsdelivr.net"),
+            NotBlankStr("https://fonts.scalar.com"),
+            NotBlankStr("https://proxy.scalar.com"),
+        ),
+    )
+    error_docs_base_url: NotBlankStr = Field(
+        default=NotBlankStr("https://synthorg.io/docs/errors"),
+        pattern=r"^https://[\w.\-:/]+$",
+    )
+
+    @field_validator("csp_docs_external_origins")
+    @classmethod
+    def _validate_csp_origins(
+        cls,
+        value: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        if not value:
+            msg = (
+                "csp_docs_external_origins must contain at least one"
+                " trusted origin; an empty tuple would yield a malformed"
+                " /docs CSP with trailing whitespace before each ``;``"
+            )
+            raise ValueError(msg)
+        for origin in value:
+            if not _CSP_ORIGIN_RE.fullmatch(origin):
+                msg = (
+                    f"csp_docs_external_origins entry {origin!r} does not"
+                    " match http(s)://host pattern; refusing to apply to"
+                    " avoid CSP downgrade"
+                )
+                raise ValueError(msg)
+            parsed = urlsplit(origin)
+            # urlsplit defers port parsing until ``.port`` is read, then
+            # raises ValueError for non-numeric or out-of-65535 values.
+            # ``.port == 0`` is accepted by urlsplit but unusable for an
+            # HTTP origin, so reject it alongside the parse failures.
+            try:
+                port = parsed.port
+            except ValueError as exc:
+                msg = (
+                    f"csp_docs_external_origins entry {origin!r} must use"
+                    " a numeric port in 1..65535"
+                )
+                raise ValueError(msg) from exc
+            if port == 0:
+                msg = (
+                    f"csp_docs_external_origins entry {origin!r} must use"
+                    " a port in 1..65535 (0 is reserved)"
+                )
+                raise ValueError(msg)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+            ):
+                msg = (
+                    f"csp_docs_external_origins entry {origin!r} must be"
+                    " a canonical origin (scheme + host + optional port,"
+                    " no path, query, fragment, or userinfo)"
+                )
+                raise ValueError(msg)
+        return value
+
+    @field_validator("error_docs_base_url")
+    @classmethod
+    def _validate_error_docs_base_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            msg = (
+                "error_docs_base_url must use a numeric port in 1..65535"
+                " when one is supplied"
+            )
+            raise ValueError(msg) from exc
+        if port == 0:
+            msg = "error_docs_base_url must use a port in 1..65535 (0 is reserved)"
+            raise ValueError(msg)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            msg = (
+                "error_docs_base_url must be a canonical HTTPS URL"
+                " (host required, no userinfo / query / fragment)"
+            )
+            raise ValueError(msg)
+        return value
 
 
 class EngineBridgeConfig(BaseModel):

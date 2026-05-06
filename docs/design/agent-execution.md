@@ -206,7 +206,9 @@ async run(
 2. **Pre-flight budget enforcement**: if `BudgetEnforcer` is provided, check
    monthly hard stop and daily limit via `check_can_execute()`, then apply
    auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or
-   `DailyLimitExceededError` on violation.
+   `DailyLimitExceededError` on violation. See
+   [Budget & Cost Management](budget.md#cost-controls) for the full
+   pre-flight / in-flight / task-boundary enforcement model.
 3. **Project validation**: if `ProjectRepository` is provided, validate that the
    task's project exists (`ProjectNotFoundError` if not) and that the agent is a
    member of the project team (`ProjectAgentNotMemberError` if not; empty teams
@@ -322,9 +324,16 @@ async run(
     - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`,
       `STAGNATION`, `PARKED`) leave the task in its current state.
       `STAGNATION` indicates the agent was stuck in a repetitive loop.
-      `PARKED` indicates the agent was
-      suspended by an approval-timeout policy; the task remains at its current
-      status until explicitly resumed.
+      `PARKED` indicates the agent paused while waiting for a human
+      approval decision from `ApprovalGate`; the task remains at its
+      current status until explicitly resumed. The Approval Timeout
+      Policy controls how long the parked state persists and how it
+      ultimately resolves. Approval parking is distinct from the
+      checkpoint-based `SUSPENDED` state produced by graceful shutdown
+      (which preserves an agent's full context across a process restart);
+      see [Approval Timeout Policy](security.md#approval-timeout-policy)
+      and [Graceful Shutdown](coordination.md#graceful-shutdown-protocol)
+      for the two parking mechanisms.
     - Each transition is synced to TaskEngine incrementally (see
       [AgentEngine <-> TaskEngine Incremental Sync](engine.md#agentengine--taskengine-incremental-sync)).
     - Transition failures are logged but do not discard the successful execution

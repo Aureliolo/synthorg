@@ -1,11 +1,11 @@
 ---
 title: Settings Reference
-description: How SynthOrg settings resolve, the 17 runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
+description: How SynthOrg settings resolve, the 22 runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
 ---
 
 # Settings Reference
 
-SynthOrg has ~100 individually-resolved settings across 17 namespaces. Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
+SynthOrg has ~100 individually-resolved settings across 22 namespaces (9 user-facing + 13 operator-only). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
 
 ---
 
@@ -63,6 +63,23 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `notifications` | Sink registry, dispatcher timeout, severity threshold |
 | `tools` | Sandbox backends, tool access levels, progressive disclosure thresholds |
 | `settings` | Dispatcher polling interval, change-notification channel |
+| `client` | Human-response timeout, scored-feedback passing score / strictness multiplier / floor for synthesised AIClients |
+| `hr` | Training-pipeline kill switch, evaluation metric toggles (quality, cost, latency, task count) |
+| `simulations` | Per-run timeouts for synthetic-client task and code-review simulations |
+| `telemetry` | Anonymous product telemetry opt-in (off by default; token embedded at build) |
+| `workers` | Uvicorn worker count, distributed dispatcher publish retry budget and backoff |
+
+### Security headers and error documentation
+
+The `api` namespace also carries operator-tunable settings that govern the response surface of `/docs/` and RFC 9457 error payloads, and the `notifications` namespace has a Slack default URL fallback:
+
+| Setting | Type | Default | Purpose |
+|---------|------|---------|---------|
+| `api.csp_docs_external_origins` | JSON list | `["https://cdn.jsdelivr.net", "https://fonts.scalar.com", "https://proxy.scalar.com"]` | Trusted external origins used to build the relaxed Content-Security-Policy on `/docs/` paths. Override with internally-mirrored hosts when the backend is not allowed to reach the public Scalar CDN. Each origin must match `^https?://[\w.\-:/]+$`; a malformed entry rejects the bridge config and the runtime falls back to defaults with a `WARNING` log. |
+| `api.error_docs_base_url` | STRING | `https://synthorg.io/docs/errors` | Base URL appended with `#<category>` for the RFC 9457 `type` field on every error response. HTTPS-only (`^https://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[^\s?#]*)?$`); userinfo, query, and fragment components are rejected at runtime. |
+| `notifications.slack_default_webhook_url` | STRING (sensitive) | `""` | Optional fallback Slack incoming webhook applied when a Slack sink is configured without its own `webhook_url`. Empty default keeps every sink explicit; setting a value lets operators centralise the URL. Encrypted at rest. |
+
+All three are `restart_required=True`: the CSP and error-docs URL are baked into module-level state during startup; the Slack default is read at sink construction and is not hot-reloaded.
 
 ## REST API
 

@@ -118,7 +118,7 @@ competitors:
       observability: {support: full, note: "Structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, OTLP"}
       web_dashboard: {support: full, note: "React 19 dashboard with org chart, tasks, budgets, workflow editor, setup wizard, WebSocket + SSE resilience"}
       cli: {support: partial, note: "Go binary for container management and verification; not used for agent orchestration"}
-      production_ready: {support: partial, note: "Docker + CI/CD + cosign + SLSA L3 provenance; stable REST API; SQLite GA; PostgreSQL backend in progress"}
+      production_ready: {support: full, note: "Docker + CI/CD + cosign + SLSA L3 provenance; stable REST API; SQLite + PostgreSQL backends GA"}
       workflow_types: {support: partial, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking, and ceremony scheduling shipped; throughput-adaptive and milestone-driven strategies still in progress"}
       template_system: {support: full, note: "9 company templates, 23 personality presets, locale-aware name generation"}
 

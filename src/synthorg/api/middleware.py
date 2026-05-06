@@ -13,6 +13,7 @@ for matched routes -- 404 and 405 responses from the router bypass it.
 """
 
 import time
+from collections.abc import Sequence  # noqa: TC003 -- used by runtime helpers below
 from contextlib import suppress
 from types import MappingProxyType
 from typing import Any, Final
@@ -34,6 +35,7 @@ from synthorg.observability.events.api import (
     API_REQUEST_STARTED,
 )
 from synthorg.observability.events.metrics import METRICS_RECORD_FAILED
+from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
 
 _UNMATCHED_ROUTE: Final[str] = "__unmatched__"
 
@@ -49,23 +51,94 @@ _API_CSP: Final[str] = (
 )
 
 # Relaxed CSP for /docs/ -- Scalar UI loads resources from external origins.
-# cdn.jsdelivr.net: JS bundle, CSS, fonts, source maps
-# fonts.scalar.com: Scalar-hosted font files
-# proxy.scalar.com: API proxy and registry features
 # 'unsafe-inline' in script-src/style-src: required by Scalar UI which uses
 # inline <script> and <style> elements.  Accepted risk -- /docs is read-only,
 # unauthenticated, and serves no user-submitted content.
-_DOCS_CSP: Final[str] = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-    "img-src 'self' data: https://cdn.jsdelivr.net; "
-    "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.scalar.com; "
-    "connect-src 'self' https://cdn.jsdelivr.net https://proxy.scalar.com; "
-    "object-src 'none'; "
-    "base-uri 'self'; "
-    "frame-ancestors 'none'"
+#
+# The trusted-origin list is operator-tunable via the
+# ``api.csp_docs_external_origins`` setting; defaults are the Scalar
+# UI public CDN, fonts, and proxy hosts. ``set_docs_csp_origins`` is
+# called once at startup with the resolved list, replacing the
+# default-built ``_DOCS_CSP`` string.
+_DOCS_CSP_DEFAULT_ORIGINS: Final[tuple[str, ...]] = (
+    "https://cdn.jsdelivr.net",
+    "https://fonts.scalar.com",
+    "https://proxy.scalar.com",
 )
+
+
+def build_docs_csp(origins: Sequence[str]) -> str:
+    """Build the relaxed Scalar UI CSP from a list of trusted origins.
+
+    Origins are applied uniformly to ``script-src``, ``style-src``,
+    ``img-src``, ``font-src`` and ``connect-src`` so operators can
+    swap the public Scalar hosts for an internally-mirrored CDN with
+    a single configuration change.
+
+    An empty *origins* list raises ``ValueError`` rather than emit a
+    malformed CSP with trailing whitespace before each ``;``. CSP
+    parsers tolerate the trailing space but operators reading the
+    header back would see an obviously broken policy; the
+    ``ApiBridgeConfig`` validator is the right place to enforce
+    non-empty (currently only validates pattern), so callers pass
+    through the bridge-config-validated tuple.
+
+    Args:
+        origins: Origin URLs that Scalar UI assets and proxy requests
+            may target. Must be non-empty. Each entry must already be
+            a valid origin (scheme + host); ``ApiBridgeConfig``
+            performs the per-entry validation.
+
+    Returns:
+        A CSP header value safe to assign to
+        ``Content-Security-Policy`` for ``/docs/`` responses.
+
+    Raises:
+        ValueError: If *origins* is empty.
+    """
+    if not origins:
+        msg = "build_docs_csp requires at least one trusted origin"
+        raise ValueError(msg)
+    joined = " ".join(origins)
+    return (
+        f"default-src 'self'; "
+        f"script-src 'self' 'unsafe-inline' {joined}; "
+        f"style-src 'self' 'unsafe-inline' {joined}; "
+        f"img-src 'self' data: {joined}; "
+        f"font-src 'self' data: {joined}; "
+        f"connect-src 'self' {joined}; "
+        f"object-src 'none'; "
+        f"base-uri 'self'; "
+        f"frame-ancestors 'none'"
+    )
+
+
+_DOCS_CSP: str = build_docs_csp(_DOCS_CSP_DEFAULT_ORIGINS)
+
+
+def set_docs_csp_origins(origins: Sequence[str]) -> None:
+    """Replace the docs CSP value with one built from *origins*.
+
+    Called once at app startup after resolving
+    ``api.csp_docs_external_origins`` through the settings service.
+    Reset to the default list with ``_DOCS_CSP_DEFAULT_ORIGINS`` for
+    test isolation.
+
+    Calling this outside startup creates a brief eventual-consistency
+    window for in-flight HTTP responses, since the docs ``before_send``
+    hook reads the global at request time. The
+    ``api.csp_docs_external_origins`` setting is marked
+    ``restart_required=True`` precisely to keep this single-writer.
+    """
+    global _DOCS_CSP  # noqa: PLW0603 -- single-writer startup hook; tests reset via the same setter
+    _DOCS_CSP = build_docs_csp(origins)
+    logger.info(
+        SETTINGS_VALUE_RESOLVED,
+        namespace="api",
+        key="csp_docs_external_origins",
+        origins_count=len(origins),
+    )
+
 
 # Cache-Control for API data endpoints (named constant for test
 # clarity; applied via _SECURITY_HEADERS).

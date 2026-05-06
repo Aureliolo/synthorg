@@ -217,10 +217,10 @@ External tools are integrated via the **Model Context Protocol** (MCP).
 
 ### SynthOrg MCP Tool Surface
 
-SynthOrg exposes its own MCP server offering 200+ tools across 17 domains
-(agents, agents_autonomy, tasks, workflows, workflow_executions, approvals,
-budget, memory, quality, organization, communication, coordination, analytics,
-integrations, infrastructure, signals, meta). Tool definitions are classified
+SynthOrg exposes its own MCP server offering 200+ tools across 15 domain
+modules (agents, analytics, approvals, budget, communication, coordination,
+infrastructure, integrations, memory, meta, organization, quality, signals,
+tasks, workflows). Tool definitions are classified
 by capability action via the
 `read_tool` / `write_tool` / `admin_tool` builders
 (`src/synthorg/meta/mcp/tool_builder.py`); only the `admin_tool` subset is

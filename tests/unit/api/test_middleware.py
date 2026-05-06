@@ -14,12 +14,30 @@ from synthorg.api.middleware import (
     _API_CSP,
     _DOCS_CACHE_CONTROL,
     _DOCS_CSP,
+    _DOCS_CSP_DEFAULT_ORIGINS,
     _SECURITY_HEADERS,
     RequestLoggingMiddleware,
+    build_docs_csp,
     security_headers_hook,
+    set_docs_csp_origins,
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _reset_docs_csp_module() -> Any:
+    """Reset the docs CSP global at setup AND teardown of every test.
+
+    Module-scope autouse instead of class-scope so test classes earlier
+    in this file (TestCSPPathSelection, TestSecurityHeadersHook) and any
+    later additions are protected from cross-file mutation by another
+    test on the same xdist worker. The reset is cheap (re-builds the
+    default CSP string) and runs only once per test entry/exit.
+    """
+    set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
+    yield
+    set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
 
 
 def _make_app(*handlers: Any) -> Litestar:
@@ -182,6 +200,176 @@ class TestCSPPathSelection:
         """API paths keep COOP same-origin."""
         response = test_client.get("/api/v1/healthz")
         assert response.headers.get("cross-origin-opener-policy") == "same-origin"
+
+
+class TestDocsCspOriginsOverride:
+    """``set_docs_csp_origins`` lets operators retarget Scalar UI origins.
+
+    The module-level ``_reset_docs_csp_module`` fixture restores the
+    default CSP at setup and teardown of every test in this file, so
+    individual tests in this class can mutate the global without
+    leaking into siblings or earlier classes on the same xdist worker.
+    """
+
+    def test_default_csp_lists_all_default_origins(self) -> None:
+        from synthorg.api import middleware
+
+        # Read the live module attribute (not the file-level imported
+        # snapshot) so the fixture's pre-yield reset is observed even if
+        # an earlier file on the same xdist worker mutated the global
+        # before this module was imported.
+        # Tokenise so the assertion is a complete-token match, avoiding
+        # CodeQL's ``py/incomplete-url-substring-sanitization`` rule.
+        tokens = set(middleware._DOCS_CSP.replace(";", " ").split())
+        assert tokens.issuperset(_DOCS_CSP_DEFAULT_ORIGINS)
+
+    def test_override_replaces_default_origins(self) -> None:
+        from synthorg.api import middleware
+
+        custom_origin = "https://internal-cdn.example.com"
+        evicted_origin = "https://cdn.jsdelivr.net"
+        set_docs_csp_origins([custom_origin])
+        tokens = set(middleware._DOCS_CSP.replace(";", " ").split())
+        # Set-membership operators avoid the ``literal in str`` shape
+        # that triggers ``py/incomplete-url-substring-sanitization`` on
+        # token-set checks even when both sides are operator-controlled.
+        assert tokens.issuperset({custom_origin})
+        assert tokens.isdisjoint({evicted_origin})
+
+    def test_build_docs_csp_applies_origins_uniformly(self) -> None:
+        # Parses the CSP into a directive map and asserts the origin
+        # appears in every directive that is supposed to carry it.
+        # Resilient to directive reordering or whitespace tweaks.
+        origin = "https://only.example.com"
+        result = build_docs_csp([origin])
+        directives = {
+            tokens[0]: tokens[1:]
+            for raw in result.split(";")
+            if (tokens := raw.strip().split()) and len(tokens) > 1
+        }
+        for name in ("script-src", "style-src", "img-src", "font-src", "connect-src"):
+            assert origin in directives[name], (
+                f"{name} missing {origin!r} in {directives[name]}"
+            )
+
+    def test_build_docs_csp_rejects_empty_origins(self) -> None:
+        # Avoids producing a malformed CSP like
+        # "script-src 'self' 'unsafe-inline' ;" with trailing whitespace
+        # before the semicolon. The bridge config validator never lets
+        # an empty tuple through, but the function fails fast as a
+        # belt-and-braces check.
+        with pytest.raises(ValueError, match="at least one trusted origin"):
+            build_docs_csp([])
+
+
+class TestApiBridgeConfigSecurity:
+    """``ApiBridgeConfig`` rejects CSP origins that would degrade
+    /docs CSP, and rejects non-HTTPS error-docs URLs."""
+
+    @pytest.mark.parametrize(
+        "bad_origin",
+        [
+            "javascript:alert(1)",
+            "data:text/html,<img src=x>",
+            "not a url",
+            "ftp://example.com",
+            "",
+            "https://cdn.example.com/path",
+            "https://cdn.example.com/",
+            "https://cdn.example.com?q=1",
+            "https://cdn.example.com#frag",
+            "https://user:pw@cdn.example.com",
+            "https://cdn.example.com:99999",
+            "https://cdn.example.com:0",
+        ],
+        ids=[
+            "javascript_scheme",
+            "data_scheme",
+            "not_a_url",
+            "ftp_scheme",
+            "empty",
+            "with_path",
+            "trailing_slash",
+            "with_query",
+            "with_fragment",
+            "with_userinfo",
+            "port_out_of_range",
+            "port_zero",
+        ],
+    )
+    def test_csp_origins_validator_rejects_bad_schemes(self, bad_origin: str) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        with pytest.raises(ValidationError):
+            ApiBridgeConfig(
+                csp_docs_external_origins=("https://cdn.example.com", bad_origin),
+            )
+
+    def test_csp_origins_validator_rejects_empty_tuple(self) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        with pytest.raises(ValidationError, match="at least one trusted origin"):
+            ApiBridgeConfig(csp_docs_external_origins=())
+
+    @pytest.mark.parametrize(
+        "good_origin",
+        [
+            "https://cdn.example.com",
+            "http://internal.example",
+            "https://cdn.example.com:8443",
+        ],
+        ids=["https_host", "http_host", "https_with_port"],
+    )
+    def test_csp_origins_validator_accepts_canonical_origins(
+        self, good_origin: str
+    ) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        cfg = ApiBridgeConfig(csp_docs_external_origins=(good_origin,))
+        assert cfg.csp_docs_external_origins == (good_origin,)
+
+    @pytest.mark.parametrize(
+        "bad_url",
+        [
+            "http://docs.example.com/errors",
+            "javascript:alert(1)",
+            "ftp://docs.example.com",
+            "https://user:pw@docs.example.com/errors",
+            "https://docs.example.com/errors?q=1",
+            "https://docs.example.com/errors#frag",
+            "https://docs.example.com:99999/errors",
+        ],
+        ids=[
+            "http_insecure",
+            "javascript_scheme",
+            "ftp_scheme",
+            "with_userinfo",
+            "with_query",
+            "with_fragment",
+            "port_out_of_range",
+        ],
+    )
+    def test_error_docs_base_url_validator_rejects_non_https(
+        self, bad_url: str
+    ) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        with pytest.raises(ValidationError):
+            ApiBridgeConfig(error_docs_base_url=bad_url)
+
+    def test_error_docs_base_url_accepts_https_override(self) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        cfg = ApiBridgeConfig(
+            error_docs_base_url="https://docs.example.com/errors",
+        )
+        assert cfg.error_docs_base_url == "https://docs.example.com/errors"
 
 
 # ── Cache-Control path selection ──────────────────────────────

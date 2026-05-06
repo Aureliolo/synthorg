@@ -142,6 +142,11 @@ When the process receives SIGTERM/SIGINT (user Ctrl+C, Docker stop, systemd
 shutdown), the framework stops cleanly without losing work or leaking costs.
 Shutdown strategies are implemented behind a `ShutdownStrategy` protocol.
 
+Shutdown-time `SUSPENDED` is distinct from the in-process `PARKED` state used
+when an agent waits for human approval; see
+[Approval Timeout Policy](security.md#approval-timeout-policy) for the
+agent-driven parking mechanism.
+
 ### Strategy 1: Cooperative with Timeout (Default / MVP)
 
 The engine sets a shutdown event, stops accepting new tasks, and gives in-flight

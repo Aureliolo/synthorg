@@ -10,7 +10,7 @@
 
 ## Background
 
-HBR research (March 2026) shows LLMs systematically recommend trendy, context-insensitive strategies across 7 core business tensions. Prompt-level fixes produce < 2% bias reduction. SynthOrg mitigates this structurally through constitutional principles, multi-lens analysis, confidence calibration, and output mode control.
+Industry research shows LLMs systematically recommend trendy, context-insensitive strategies across 7 core business tensions. Prompt-level fixes produce only marginal bias reduction. SynthOrg mitigates this structurally through constitutional principles, multi-lens analysis, confidence calibration, and output mode control.
 
 ## Strategic Output Modes
 
@@ -240,4 +240,3 @@ engine/strategy/
 
 - Research: #693
 - Phase 2 (meeting integration): #1158
-- HBR trendslop article: March 2026

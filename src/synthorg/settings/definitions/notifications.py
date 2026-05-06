@@ -61,6 +61,30 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.NOTIFICATIONS,
+        key="slack_default_webhook_url",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Optional fallback Slack incoming-webhook URL applied when a"
+            " Slack notification sink is configured without its own"
+            " ``webhook_url`` parameter. Leave blank to require every"
+            " sink to specify the URL explicitly."
+        ),
+        group="Slack",
+        level=SettingLevel.ADVANCED,
+        sensitive=True,
+        restart_required=True,
+        validator_pattern=(
+            r"^(?:|https://hooks\.slack\.com/services/"
+            r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+)$"
+        ),
+        yaml_path="notifications.slack.default_webhook_url",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.NOTIFICATIONS,
         key="ntfy_default_url",
         type=SettingType.STRING,
         default="https://ntfy.sh",
