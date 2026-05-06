@@ -106,6 +106,7 @@ class TestBuildPostgresPersistenceConfigFromUrl:
             ("postgresql://h/db", "username and password"),
             ("postgresql://u:p@h", "database name"),
             ("postgresql://u:p@/db", "host"),
+            ("postgresql://u:p@h:0/db", "port 0"),
         ],
     )
     def test_invalid_url_raises_value_error(
@@ -138,7 +139,7 @@ class TestBuildPostgresPersistenceConfigFromUrl:
         assert cfg.postgres.username == "u"
         assert cfg.postgres.password.get_secret_value() == "p@"
 
-    def test_uppercase_scheme_is_rejected(self) -> None:
+    def test_uppercase_scheme_is_normalized_and_accepted(self) -> None:
         # urlparse lowercases the scheme by default, so the strict
         # ``in {"postgres", "postgresql"}`` check accepts ``POSTGRESQL``
         # silently. That is fine for now (RFC 3986 declares the scheme

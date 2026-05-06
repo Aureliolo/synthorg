@@ -26,7 +26,10 @@ Per-line opt-out: ``# lint-allow: dependency-inversion -- <required
 justification>`` as a trailing comment on the import line.
 
 Exits non-zero with a structured violation list. Designed to run
-under ``pre-push`` alongside ``check_persistence_boundary.py``.
+under ``pre-push`` alongside ``check_persistence_boundary.py`` and
+``check_persistence_protocol_return_types.py``; the three gates
+together pin the persistence boundary, the protocol-typed public
+surface, and the high-level dependency direction.
 
 Usage:
     python scripts/check_dependency_inversion.py
