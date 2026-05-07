@@ -17,9 +17,9 @@
 
 SynthOrg is a Python framework for building **synthetic organizations**, autonomous AI agents orchestrated as a virtual company. Unlike task-queue or DAG-based agent frameworks, SynthOrg models agents as members of an actual organization with roles, departments, hierarchies, persistent memory, budgets, and structured communication.
 
-Define your company in YAML. Agents collaborate through a message bus, follow workflows (Kanban, Agile sprints, or custom), track costs against budgets, and produce real artifacts. The framework is provider-agnostic (100+ LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and designed for the full autonomy spectrum, from human approval on every action to fully autonomous operation.
+Define your company in YAML. Agents collaborate through a message bus, follow workflows (Kanban, Agile sprints, or custom), track costs against budgets, and produce real artifacts. The framework is provider-agnostic (<!--RS:providers_via_litellm-->100+<!--/RS--> LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and designed for the full autonomy spectrum, from human approval on every action to fully autonomous operation.
 
-> **Early access.** Core subsystems are built and tested (27,000+ tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
+> **Early access.** Core subsystems are built and tested (<!--RS:tests-->27,000+<!--/RS--> tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
 
 ## Why SynthOrg?
 
@@ -30,7 +30,7 @@ Most agent frameworks give you **functions that call LLMs**. SynthOrg gives you 
 - **Cost-aware by design.** Per-agent token budgets, automatic model downgrade at task boundaries, spending reports, trend analysis, and CFO-level optimization with anomaly detection.
 - **Trust spectrum.** From locked-down (human approves every tool call) to fully autonomous, with a fail-closed security rule engine, output scanning, progressive trust, and audit logging in between.
 - **Real workflows.** Kanban boards, Agile sprints with velocity tracking, ceremony scheduling (8 strategies), visual workflow editor with starter blueprints and version history with diff/rollback, and workflow execution from graph definitions.
-- **Provider-agnostic.** Any LLM via LiteLLM: Ollama, LM Studio, vLLM, and 100+ cloud providers. Local model management with pull/delete/configure for Ollama and LM Studio.
+- **Provider-agnostic.** Any LLM via LiteLLM: Ollama, LM Studio, vLLM, and <!--RS:providers_via_litellm-->100+<!--/RS--> cloud providers. Local model management with pull/delete/configure for Ollama and LM Studio.
 
 ## Quick Start
 
@@ -135,7 +135,8 @@ graph TB
 
 ## Compare
 
-SynthOrg vs [44 agent frameworks](https://synthorg.io/compare/) across 14 dimensions: org structure, multi-agent coordination, memory, budget tracking, security, observability, and more.
+SynthOrg vs [44 agent frameworks](https://synthorg.io/compare/) across 14 dimensions: org structure, multi-agent coordination, memory, budget tracking, security, observability, and more. <!-- lint-allow: doc-numeric-macros -- competitor count is sourced from data/competitors.yaml via generate_comparison.py, not runtime_stats -->
+
 
 ## Documentation
 

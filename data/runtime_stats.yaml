@@ -1,0 +1,52 @@
+# Single source of truth for build-time numeric claims rendered in the
+# public docs.
+#
+# Consumed by:
+#   - scripts/inject_runtime_stats.py -> rewrites <!--RS:NAME-->...<!--/RS-->
+#     markers in README.md and selected docs/ pages.
+#
+# Refreshed by:
+#   - scripts/generate_runtime_stats.py (CI runs it before zensical build;
+#     local devs may run it on demand).
+#
+# This file is committed canonically: the generator falls back to these
+# values when its source calls (pytest --collect-only, gh release list,
+# gh api repos/mem0ai/mem0, list_presets, .claude/agents glob) fail or
+# are unavailable. Keeping it under version control means PR diffs
+# surface drift in the underlying numbers.
+#
+# Schema versioning lets the gate + injector evolve without silently
+# accepting old layouts; bump schema_version when changing field shapes.
+schema_version: 1
+last_generated_utc: "2026-05-06T00:00:00Z"
+generator_revision: "manual-seed"
+
+stats:
+  tests:
+    raw: 27000
+    rounded: 27000
+    display: "27,000+"
+  version:
+    raw: "v0.7.1"
+    display: "v0.7.1"
+  mem0_stars:
+    raw: 54000
+    rounded: 54000
+    display: "54k+"
+  providers_curated:
+    raw: 19
+    display: "19"
+  providers_via_litellm:
+    raw: 100
+    display: "100+"
+  subagents:
+    raw: 7
+    display: "7"
+
+sources:
+  tests: "uv run python -m pytest --collect-only -q"
+  version: "gh release list --limit 1 --json tagName"
+  mem0_stars: "gh api repos/mem0ai/mem0 --jq .stargazers_count"
+  providers_curated: "synthorg.providers.presets.list_presets"
+  providers_via_litellm: "len(litellm.model_cost) (lazy import)"
+  subagents: "glob .claude/agents/*.md"

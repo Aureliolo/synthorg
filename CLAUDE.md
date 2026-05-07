@@ -99,6 +99,7 @@ Existing gate inventory (all under `scripts/`):
 - `check_logger_exception_str_exc.py`
 - `check_mcp_admin_tool_guardrails.py`
 - `check_mock_spec.py`
+- `check_doc_numeric_macros.py`
 - `check_no_bulk_edit.py`
 - `check_no_em_dashes.py`
 - `check_no_redundant_timeout.py`
@@ -130,6 +131,10 @@ For every mutable setting: **DB > env (`SYNTHORG_<NS>_<KEY>`) > YAML > code defa
 ## No Hardcoded Values (MANDATORY)
 
 Every numeric threshold / weight / limit / timeout / scoring policy in business logic lives in `src/synthorg/settings/definitions/<namespace>.py`, not as a bare numeric literal. Sync hot-path consumers read the resolved value from a frozen Pydantic bridge config (e.g. `EngineBridgeConfig`) populated by `ConfigResolver.get_<ns>_bridge_config()` at startup. Bare module-level `_FOO = 1024` constants and bare numeric defaults (`def f(timeout=30)`) are forbidden. Allowlisted: `0`, `1`, `-1` (sentinel/off-by-one), HTTP status codes 100-599 in `status_code=` defaults, hex bit-masks (`0xff`, `0x80`), powers-of-2 in `buffering=` / `chunk_size=` / `buffer_size=` defaults, anything inside `settings/definitions/`, `persistence/migrations/`, `observability/events/`. Per-line opt-out: `# lint-allow: magic-numbers -- <reason>` (mandatory non-empty justification). Enforced by `scripts/check_no_magic_numbers.py` with site-by-site monotonic-shrink baseline at `scripts/no_magic_numbers_baseline.txt`. See [docs/reference/scoring-hyperparameters.md](docs/reference/scoring-hyperparameters.md) for the inventory of migrated settings + rationale.
+
+## Doc Numeric Claims (MANDATORY)
+
+Numeric claims in `README.md` and the public docs (`docs/index.md`, `docs/roadmap/index.md`, `docs/architecture/decisions.md`) about test count, latest release, Mem0 stars, provider count, and subagent count MUST be sourced from `data/runtime_stats.yaml` via inline HTML-comment markers `<!--RS:NAME-->display value<!--/RS-->`. CI runs the generator (`scripts/generate_runtime_stats.py`) and then the injector (`scripts/inject_runtime_stats.py`) BEFORE `zensical build`, so the rendered HTML always reflects fresh values; the HTML comments themselves are stripped by the markdown renderer. The generator refreshes the YAML from authoritative sources (pytest collect, `gh release list`, `gh api`, `synthorg.providers.presets.list_presets`, `.claude/agents` glob) and falls back to committed values when offline. Static historical counts and illustrative scale numbers may carry a per-line opt-out: `<!-- lint-allow: doc-numeric-macros -- <reason> -->` (reason mandatory). Enforced by `scripts/check_doc_numeric_macros.py` (pre-push). See `data/README.md` for schema and regen commands.
 
 ## Shell Usage
 

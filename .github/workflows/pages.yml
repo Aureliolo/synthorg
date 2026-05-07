@@ -87,6 +87,35 @@ jobs:
       - name: Generate comparison page
         run: uv run python scripts/generate_comparison.py
 
+      - name: Refresh runtime stats
+        # Best-effort refresh of data/runtime_stats.yaml (pytest count,
+        # latest release, Mem0 stars, provider count). The script
+        # preserves committed values when its source calls fail, so
+        # this step never blocks the build on transient gh / network
+        # issues.
+        #
+        # GH_TOKEN is required: gh release list and gh api repos/...
+        # authenticate via this env var. The default GITHUB_TOKEN has
+        # contents:read scope (set at job level), which is sufficient
+        # for both calls. Without it, anonymous gh calls would hit a
+        # tighter rate limit and the script would fall back to
+        # committed values silently.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python scripts/generate_runtime_stats.py
+
+      - name: Inject runtime stats into docs
+        # Idempotent: rewrites <!--RS:NAME-->...<!--/RS--> markers in
+        # README.md and the in-scope docs from data/runtime_stats.yaml.
+        # Mutates the workspace checkout only; nothing is committed back.
+        # Re-running across the build's 3-attempt retry loop is safe
+        # because the marker substitution is deterministic from the
+        # YAML. Failures (missing YAML, malformed marker name) block the
+        # deploy: the docs-freshness contract requires that published
+        # HTML always reflects the current YAML, never stale marker
+        # content.
+        run: uv run python scripts/inject_runtime_stats.py
+
       - name: Build docs
         # TODO: Restore --strict once zensical supports it
         # https://github.com/zensical/backlog/issues/72

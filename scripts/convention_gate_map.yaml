@@ -65,6 +65,11 @@ mandatory_rules:
     header: No Hardcoded Values
     gate: scripts/check_no_magic_numbers.py
 
+  - id: claude-md::doc-numeric-claims
+    file: CLAUDE.md
+    header: Doc Numeric Claims
+    gate: scripts/check_doc_numeric_macros.py
+
   - id: claude-md::test-regression
     file: CLAUDE.md
     header: Test Regression

@@ -205,6 +205,25 @@ repos:
         files: ^(docs/design/observability\.md|docs/design/agent-execution\.md|docs/research/(control-plane-audit|acg-formalism-evaluation)\.md|src/synthorg/observability/events/.*\.py|scripts/check_doc_drift_counts\.py)$
         pass_filenames: false
 
+      - id: doc-numeric-macros
+        name: doc numeric macros (no bare claims in public docs)
+        entry: uv
+        args: [run, python, scripts/check_doc_numeric_macros.py]
+        language: system
+        # Pre-push catches bare numeric literals in scoped docs before
+        # they leave the dev's machine; CI then regenerates and injects
+        # values from data/runtime_stats.yaml at build time. The two
+        # halves are complementary: the gate enforces the contract,
+        # the injector keeps values fresh.
+        #
+        # Files list mirrors `_SCOPED_FILES` in
+        # scripts/check_doc_numeric_macros.py + the YAML source of
+        # truth + the injector/generator/gate themselves. Keep this
+        # list in sync with `_SCOPED_FILES` whenever the scope changes.
+        files: ^(README\.md|docs/index\.md|docs/roadmap/index\.md|docs/architecture/decisions\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: mypy
         name: mypy type-check (affected modules)
         entry: uv run python scripts/run_affected_mypy.py
