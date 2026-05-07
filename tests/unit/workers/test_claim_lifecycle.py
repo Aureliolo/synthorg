@@ -55,10 +55,42 @@ class _ClientStub:
         ...
 
 
-class _AckStub:
-    """Concrete spec for a JetStream-fetched message's ``ack()`` coroutine."""
+class _AckCallableStub:
+    """Concrete callable spec for a message's ``ack()`` coroutine.
 
-    async def ack(self) -> None:  # pragma: no cover (spec only)
+    ``AsyncMock(spec=...)`` rejects unbound-method specs (``_AckStub.ack``)
+    because ``mock`` resolves the spec via attribute access on the
+    target. Spec-ing on a class with ``async def __call__`` gives a
+    well-typed callable contract that mocks accept cleanly.
+    """
+
+    async def __call__(
+        self, *args: object, **kwargs: object
+    ) -> None:  # pragma: no cover
+        ...
+
+
+class _LoggerStub:
+    """Concrete spec for the structlog-bound logger used by the queue.
+
+    The queue only invokes ``warning`` / ``error`` / ``info`` / ``debug``
+    (structlog ``BoundLoggerLazyProxy`` exposes these as bound methods).
+    Listing them explicitly here means the spy mock rejects unexpected
+    attribute access at test time -- a typo in a future
+    ``logger.something_else(...)`` call would surface as
+    ``AttributeError`` instead of being silently absorbed.
+    """
+
+    def warning(self, *args: object, **kwargs: object) -> None:  # pragma: no cover
+        ...
+
+    def error(self, *args: object, **kwargs: object) -> None:  # pragma: no cover
+        ...
+
+    def info(self, *args: object, **kwargs: object) -> None:  # pragma: no cover
+        ...
+
+    def debug(self, *args: object, **kwargs: object) -> None:  # pragma: no cover
         ...
 
 
@@ -80,7 +112,7 @@ class _FakeMsg:
 
     def __init__(self, data: bytes) -> None:
         self.data = data
-        self.ack = AsyncMock(spec=_AckStub.ack)
+        self.ack = AsyncMock(spec=_AckCallableStub)
 
 
 def _patch_logger(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
@@ -92,7 +124,7 @@ def _patch_logger(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     object itself is replaced. The fixture-style helper centralises
     this pattern across the tests below.
     """
-    spy = MagicMock(spec=["warning", "error", "info", "debug"])
+    spy = MagicMock(spec=_LoggerStub)
     monkeypatch.setattr(claim_module, "logger", spy)
     return spy
 
