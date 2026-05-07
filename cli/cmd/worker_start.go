@@ -63,9 +63,14 @@ func runWorkerStart(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	// Precedence: explicit flag > env/config (via Tunables) > flag default.
+	// Precedence for --nats-url: explicit flag > SYNTHORG_NATS_URL env >
+	// compiled-in fallback. Single source of truth shared with the
+	// backend's ``communication.nats_url`` setting; no parallel
+	// CLI-only tunable layer.
 	if !cmd.Flags().Changed("nats-url") {
-		workerStartNatsURL = opts.Tunables.DefaultNATSURL
+		if envURL := strings.TrimSpace(os.Getenv("SYNTHORG_NATS_URL")); envURL != "" {
+			workerStartNatsURL = envURL
+		}
 	}
 	if !cmd.Flags().Changed("stream-prefix") {
 		workerStartStreamPrefix = opts.Tunables.DefaultNATSStreamPrefix

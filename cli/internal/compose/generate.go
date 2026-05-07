@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"text/template"
 
@@ -172,10 +173,22 @@ func ParamsFromState(s config.State) (Params, error) {
 		NATSImageTag:          tun.NATSImageTag,
 		PostgresDigest:        pgDigest,
 		NATSDigest:            natsDigest,
-		NATSURL:               tun.DefaultNATSURL,
+		NATSURL:               resolveNATSURL(),
 		DisableDefaultDHIPins: tun.CustomRegistry,
 		DigestPins:            digestPins,
 	}, nil
+}
+
+// resolveNATSURL returns the NATS URL embedded into the generated
+// compose.yml backend env block. Reads “SYNTHORG_NATS_URL“ directly
+// so the CLI and the backend's “communication.nats_url“ setting
+// share a single env var, falling back to the compiled-in default
+// when the env var is unset or whitespace-only.
+func resolveNATSURL() string {
+	if v := strings.TrimSpace(os.Getenv("SYNTHORG_NATS_URL")); v != "" {
+		return v
+	}
+	return config.DefaultNATSURLValue
 }
 
 // PostgresEnabled reports whether the Postgres persistence backend is active.

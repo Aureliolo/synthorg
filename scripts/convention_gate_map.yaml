@@ -219,3 +219,8 @@ mandatory_rules:
       reason: |
         Detailed expansion of web/CLAUDE.md "WS wire protocol
         (MANDATORY)". Same enforcement chain.
+
+  - id: docs-reference-configuration-precedence-md::kill-switch-idiom
+    file: docs/reference/configuration-precedence.md
+    header: Kill-Switch Idiom
+    gate: scripts/check_long_running_loops_have_kill_switch.py

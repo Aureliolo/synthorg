@@ -102,8 +102,10 @@ type State struct {
 	PostgresImageTag string `json:"postgres_image_tag,omitempty"`
 	NATSImageTag     string `json:"nats_image_tag,omitempty"`
 
-	// Default values for the `synthorg worker start` flags.
-	DefaultNATSURL          string `json:"default_nats_url,omitempty"`
+	// Default value for the `synthorg worker start --stream-prefix` flag.
+	// The NATS URL is no longer persisted as CLI config -- the worker
+	// reads ``SYNTHORG_NATS_URL`` directly so the CLI and the backend's
+	// ``communication.nats_url`` setting share a single env var.
 	DefaultNATSStreamPrefix string `json:"default_nats_stream_prefix,omitempty"`
 
 	// Timeout strings parsed by time.ParseDuration (e.g. "30s", "5m").
@@ -529,11 +531,6 @@ func (s State) validateTunables() error {
 	}
 	if s.NATSImageTag != "" && !IsValidImageTag(s.NATSImageTag) {
 		return fmt.Errorf("invalid nats_image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.NATSImageTag)
-	}
-	if s.DefaultNATSURL != "" {
-		if err := ValidateNATSURL(s.DefaultNATSURL); err != nil {
-			return fmt.Errorf("invalid default_nats_url: %w", err)
-		}
 	}
 	if s.DefaultNATSStreamPrefix != "" && !IsValidStreamPrefix(s.DefaultNATSStreamPrefix) {
 		return fmt.Errorf("invalid default_nats_stream_prefix %q: must match [A-Z0-9][A-Z0-9_-]*", s.DefaultNATSStreamPrefix)

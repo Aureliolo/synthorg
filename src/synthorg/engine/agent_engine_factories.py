@@ -37,6 +37,7 @@ class AgentEngineFactoriesMixin:
     _event_stream_hub: Any
     _interrupt_store: Any
     _approval_gate: Any
+    _approval_interrupt_timeout_seconds: float | None
     _stagnation_detector: Any
     _compaction_callback: Any
     _auto_loop_config: Any
@@ -56,7 +57,16 @@ class AgentEngineFactoriesMixin:
     _cost_tracker: Any
 
     def _make_approval_gate(self) -> ApprovalGate | None:
-        """Build an ApprovalGate if an approval store is configured."""
+        """Build an ApprovalGate if an approval store is configured.
+
+        The interrupt timeout is sourced from
+        ``EngineBridgeConfig.approval_interrupt_timeout_seconds`` via the
+        engine's ``approval_interrupt_timeout_seconds`` constructor kwarg
+        (projected onto ``self._approval_interrupt_timeout_seconds``).
+        When the engine is built without that kwarg the gate falls back
+        to its own 300s default so callers that bypass the bridge config
+        keep working.
+        """
         if self._approval_store is None:
             return None
 
@@ -64,12 +74,17 @@ class AgentEngineFactoriesMixin:
             ParkService,
         )
 
-        return ApprovalGate(
-            park_service=ParkService(),
-            parked_context_repo=self._parked_context_repo,
-            event_hub=self._event_stream_hub,
-            interrupt_store=self._interrupt_store,
-        )
+        kwargs: dict[str, Any] = {
+            "park_service": ParkService(),
+            "parked_context_repo": self._parked_context_repo,
+            "event_hub": self._event_stream_hub,
+            "interrupt_store": self._interrupt_store,
+        }
+        if self._approval_interrupt_timeout_seconds is not None:
+            kwargs["interrupt_timeout_seconds"] = (
+                self._approval_interrupt_timeout_seconds
+            )
+        return ApprovalGate(**kwargs)
 
     def _make_default_loop(self) -> ExecutionLoop:
         """Build the default ``react`` loop via the shared factory."""

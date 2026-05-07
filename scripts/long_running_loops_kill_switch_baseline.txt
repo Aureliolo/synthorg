@@ -1,0 +1,40 @@
+# Frozen long-running loops without a kill-switch.
+# One ``<relpath>:<func>`` per line. New violations not on this
+# list fail the gate; entries here that no longer match the
+# scan emit a stale-baseline warning.
+src/synthorg/api/approval_store.py:_list_from_repo
+src/synthorg/api/bus_bridge.py:_poll_channel
+src/synthorg/api/controllers/events.py:_sse_event_stream
+src/synthorg/api/controllers/ws.py:_outbound_consumer
+src/synthorg/api/controllers/ws.py:_receive_loop
+src/synthorg/api/controllers/ws_revalidation.py:_periodic_revalidate
+src/synthorg/api/lifecycle_helpers.py:_audit_retention_loop
+src/synthorg/api/services/idempotency_service.py:run_idempotent
+src/synthorg/backup/scheduler.py:_run_loop
+src/synthorg/budget/quota_poller.py:_poll_loop
+src/synthorg/client/continuous.py:start
+src/synthorg/communication/bus/_nats_history.py:collect_history_batches
+src/synthorg/communication/bus/_nats_receive.py:receive_blocking
+src/synthorg/communication/bus/_nats_receive.py:receive_with_timeout
+src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:_never
+src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:subscribe_notifications
+src/synthorg/communication/conflict_resolution/escalation/notify.py:_run
+src/synthorg/communication/conflict_resolution/escalation/sweeper.py:_run
+src/synthorg/communication/event_stream/stream.py:_janitor_loop
+src/synthorg/communication/meeting/scheduler.py:_run_periodic
+src/synthorg/engine/task_engine_loops.py:_observer_dispatch_loop
+src/synthorg/engine/workflow/webhook_bridge.py:_poll_loop
+src/synthorg/hr/pruning/service.py:_run_loop
+src/synthorg/integrations/health/prober.py:_probe_loop
+src/synthorg/integrations/oauth/token_manager.py:_refresh_loop
+src/synthorg/integrations/rate_limiting/shared_state.py:_poll_loop
+src/synthorg/meta/chief_of_staff/monitor.py:_loop
+src/synthorg/persistence/sqlite/escalation_repo.py:_never
+src/synthorg/persistence/sqlite/escalation_repo.py:subscribe_notifications
+src/synthorg/providers/resilience/rate_limiter.py:_wait_for_rpm_slot
+src/synthorg/providers/resilience/rate_limiter.py:acquire
+src/synthorg/security/timeout/scheduler.py:_run_loop
+src/synthorg/settings/dispatcher.py:_poll_loop
+src/synthorg/telemetry/collector.py:_heartbeat_loop
+src/synthorg/tools/sandbox/lifecycle/per_agent.py:_idle_expire
+src/synthorg/workers/worker.py:run

@@ -25,6 +25,7 @@ from synthorg.observability.events.notification import (
 if TYPE_CHECKING:
     from synthorg.notifications.protocol import NotificationSink
     from synthorg.settings.bridge_configs import NotificationsBridgeConfig
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,7 @@ def build_notification_dispatcher(
     config: NotificationConfig,
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> NotificationDispatcher:
     """Build a ``NotificationDispatcher`` from configuration.
 
@@ -47,6 +49,11 @@ def build_notification_dispatcher(
             ``ConfigResolver.get_notifications_bridge_config()`` and
             rebuilds the dispatcher so operator tuning takes effect
             on restart.
+        config_resolver: Optional resolver enabling the
+            ``notifications.dispatcher_enabled`` runtime kill-switch.
+            ``None`` disables the gate (always-on dispatcher); the
+            startup wiring threads the resolver in via the dispatcher
+            rebuild path or a later ``set_config_resolver`` call.
 
     Returns:
         Configured notification dispatcher.
@@ -67,6 +74,7 @@ def build_notification_dispatcher(
     return NotificationDispatcher(
         sinks=tuple(sinks),
         min_severity=config.min_severity,
+        config_resolver=config_resolver,
     )
 
 

@@ -109,17 +109,19 @@ export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
 /** Display order for setting namespaces shown in the Settings page.
  * 'company' and 'providers' are excluded -- they have dedicated pages.
  * 'settings' is excluded -- service-managed internal knobs.
- * CFG-1 audit: a2a, communication, integrations, meta, notifications,
- * tools added so operators see every runtime-editable namespace.
+ * Includes every namespace the backend registry exposes (client and
+ * telemetry land in the dashboard now that the registry surfaces
+ * them).  The historical 'display' tab pointed at a non-existent
+ * backend namespace and has been removed.
  * Each setting's `restart_required` flag is honored by RestartBadge. */
 export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
   'memory',
   'budget',
-  'display',
   'security',
   'coordination',
   'observability',
+  'telemetry',
   'backup',
   'engine',
   'communication',
@@ -129,11 +131,13 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'notifications',
   'tools',
   'hr',
+  'client',
 ] as const
 
 /** Human-readable display names for setting namespaces. */
 export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>> = {
   api: 'Server',
+  client: 'Client',
   company: 'Company',
   providers: 'Providers',
   memory: 'Memory',
@@ -143,7 +147,6 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   observability: 'Observability',
   backup: 'Backup',
   engine: 'Engine',
-  display: 'Display',
   communication: 'Communication',
   a2a: 'A2A Federation',
   integrations: 'Integrations',
@@ -152,6 +155,7 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   tools: 'Tools',
   settings: 'Settings (internal)',
   hr: 'HR',
+  telemetry: 'Telemetry',
 }
 
 /** sessionStorage key for the advanced-mode first-toggle warning. */

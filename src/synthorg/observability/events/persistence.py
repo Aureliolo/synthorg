@@ -480,6 +480,9 @@ PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP: Final[str] = "persistence.webhook_receipt.c
 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED: Final[str] = (
     "persistence.webhook_receipt.cleanup_failed"
 )
+PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED: Final[str] = (
+    "persistence.webhook_receipt.cleanup_paused"
+)
 PERSISTENCE_WEBHOOK_RECEIPT_DESERIALIZE_FAILED: Final[str] = (
     "persistence.webhook_receipt.deserialize_failed"
 )

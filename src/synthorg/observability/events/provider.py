@@ -96,6 +96,7 @@ PROVIDER_HEALTH_PROBE_SKIPPED: Final[str] = "provider.health_probe.skipped"
 PROVIDER_HEALTH_PROBER_STARTED: Final[str] = "provider.health_prober.started"
 PROVIDER_HEALTH_PROBER_STOPPED: Final[str] = "provider.health_prober.stopped"
 PROVIDER_HEALTH_PROBER_CYCLE_FAILED: Final[str] = "provider.health_prober.cycle_failed"
+PROVIDER_HEALTH_PROBER_PAUSED: Final[str] = "provider.health_prober.paused"
 
 # ── Provider discovery allowlist ─────────────────────────────
 

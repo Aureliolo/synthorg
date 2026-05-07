@@ -581,7 +581,7 @@ func TestParamsFromState(t *testing.T) {
 // compiled-in defaults. A silent fallback would emit a compose.yml
 // built from defaults that masks the broken override.
 func TestParamsFromState_InvalidTunableReturnsError(t *testing.T) {
-	t.Setenv("SYNTHORG_DEFAULT_NATS_URL", "http://not-a-nats-scheme") // rejected by ValidateNATSURL
+	t.Setenv("SYNTHORG_REGISTRY_HOST", "not valid host") // rejected by IsValidRegistryHost
 	s := config.State{
 		ImageTag:    "v1.0.0",
 		BackendPort: 3001,
@@ -589,7 +589,7 @@ func TestParamsFromState_InvalidTunableReturnsError(t *testing.T) {
 		LogLevel:    "info",
 	}
 	if _, err := ParamsFromState(s); err == nil {
-		t.Fatal("ParamsFromState: want error for invalid SYNTHORG_DEFAULT_NATS_URL, got nil")
+		t.Fatal("ParamsFromState: want error for invalid SYNTHORG_REGISTRY_HOST, got nil")
 	}
 }
 

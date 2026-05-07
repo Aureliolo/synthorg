@@ -3,16 +3,20 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.tools.sandbox._image_resolution import (
+    set_resolved_sandbox_image,
+)
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.policy import NetworkPolicy, SandboxPolicy
 
 pytestmark = pytest.mark.unit
 
 
-# The autouse fixture `_isolate_sandbox_image_env` lives in conftest.py so
-# every test in this directory starts with a clean SYNTHORG_SANDBOX_IMAGE
-# env var. Tests here that need a specific value still use monkeypatch.setenv
-# explicitly.
+# The autouse fixture ``_isolate_sandbox_image_resolution`` in
+# ``conftest.py`` resets the resolution cache + clears the legacy env
+# vars around every test in this directory. Tests that need a
+# specific resolved value override the cache via
+# ``set_resolved_sandbox_image(...)`` directly.
 
 
 class TestDockerSandboxConfigDefaults:
@@ -42,60 +46,50 @@ class TestDockerSandboxConfigDefaults:
 
 
 class TestDockerSandboxConfigImageResolution:
-    """SYNTHORG_SANDBOX_IMAGE env var drives the default image reference.
+    """The resolved-image cache drives ``DockerSandboxConfig.image``.
 
-    The CLI injects the digest-pinned sandbox image reference into the
-    backend container via this env var so the CLI and backend stay
-    version-locked. Explicit YAML config still wins over the env var.
-    Both the env-var-resolved and fallback branches emit structured log
-    events so operators debugging image mismatches have a signal to follow.
+    The cache is populated at startup by
+    ``_apply_bridge_config`` after resolving ``tools.sandbox_image``
+    (env-aware via ``env_var_override="SYNTHORG_SANDBOX_IMAGE"``)
+    through ``ConfigResolver``. Explicit YAML config still wins over
+    the cache. Both resolved and fallback branches emit structured
+    log events so operators debugging image mismatches have a signal
+    to follow.
     """
 
-    def test_env_var_provides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_cache_provides_default(self) -> None:
         pinned = (
             "ghcr.io/aureliolo/synthorg-sandbox@sha256:"
             "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
         )
-        monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", pinned)
+        set_resolved_sandbox_image(pinned)
         config = DockerSandboxConfig()
         assert config.image == pinned
 
     @pytest.mark.parametrize(
-        ("env_action", "env_value"),
-        [
-            ("delenv", None),
-            ("setenv", ""),
-            ("setenv", "   "),
-        ],
+        "cached",
+        [None, "", "   "],
         ids=["unset", "empty", "whitespace"],
     )
-    def test_fallback_when_env_var_absent_or_blank(
+    def test_fallback_when_cache_absent_or_blank(
         self,
-        monkeypatch: pytest.MonkeyPatch,
-        env_action: str,
-        env_value: str | None,
+        cached: str | None,
     ) -> None:
-        if env_action == "delenv":
-            monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
-        else:
-            monkeypatch.setenv("SYNTHORG_SANDBOX_IMAGE", env_value)  # type: ignore[arg-type]
+        # Whitespace-only is treated as unset by ``get_resolved_*``
+        # because the docker_config field validators would reject it
+        # and the documented behaviour is fall-through to the constant.
+        set_resolved_sandbox_image(cached.strip() if cached is not None else None)
         config = DockerSandboxConfig()
         assert config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
 
-    def test_explicit_yaml_wins_over_env_var(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv(
-            "SYNTHORG_SANDBOX_IMAGE",
-            "ghcr.io/aureliolo/synthorg-sandbox:env-var",
-        )
+    def test_explicit_yaml_wins_over_cache(self) -> None:
+        set_resolved_sandbox_image("ghcr.io/aureliolo/synthorg-sandbox:cached")
         config = DockerSandboxConfig(image="explicit:yaml")
         assert config.image == "explicit:yaml"
 
-    def test_fallback_path_logs_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from synthorg.tools.sandbox import docker_config as module
+    def test_fallback_path_logs_debug(self) -> None:
+        from synthorg.tools.sandbox import _image_resolution as module
 
-        monkeypatch.delenv("SYNTHORG_SANDBOX_IMAGE", raising=False)
         recorded: list[tuple[str, str, dict[str, object]]] = []
 
         def _capture(event: str, **kwargs: object) -> None:

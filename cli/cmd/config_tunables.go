@@ -31,8 +31,6 @@ func applyTunableConfigValue(state *config.State, key, value string) (bool, erro
 		return true, setTag(value, "postgres_image_tag", &state.PostgresImageTag)
 	case "nats_image_tag":
 		return true, setTag(value, "nats_image_tag", &state.NATSImageTag)
-	case "default_nats_url":
-		return true, setNATSURL(value, &state.DefaultNATSURL)
 	case "default_nats_stream_prefix":
 		return true, setStreamPrefix(value, &state.DefaultNATSStreamPrefix)
 	case "backup_create_timeout":
@@ -84,8 +82,6 @@ func resetTunableConfigValue(state *config.State, key string) bool {
 		state.PostgresImageTag = ""
 	case "nats_image_tag":
 		state.NATSImageTag = ""
-	case "default_nats_url":
-		state.DefaultNATSURL = ""
 	case "default_nats_stream_prefix":
 		state.DefaultNATSStreamPrefix = ""
 	case "backup_create_timeout":
@@ -135,8 +131,6 @@ func tunableConfigGetValue(state config.State, key string) (string, bool) {
 		return displayOrFallback(state.PostgresImageTag, config.DefaultPostgresImageTag), true
 	case "nats_image_tag":
 		return displayOrFallback(state.NATSImageTag, config.DefaultNATSImageTag), true
-	case "default_nats_url":
-		return displayOrFallback(state.DefaultNATSURL, config.DefaultNATSURLValue), true
 	case "default_nats_stream_prefix":
 		return displayOrFallback(state.DefaultNATSStreamPrefix, config.DefaultNATSStreamPrefixValue), true
 	case "backup_create_timeout":
@@ -183,8 +177,6 @@ func tunableEnvVarForKey(key string) string {
 		return EnvPostgresImageTag
 	case "nats_image_tag":
 		return EnvNATSImageTag
-	case "default_nats_url":
-		return EnvDefaultNATSURL
 	case "default_nats_stream_prefix":
 		return EnvDefaultNATSStreamPfx
 	case "backup_create_timeout":
@@ -241,15 +233,6 @@ func setImageRepoPrefix(value string, target *string) error {
 func setTag(value, key string, target *string) error {
 	if !config.IsValidImageTag(value) {
 		return fmt.Errorf("invalid %s %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", key, value)
-	}
-	*target = value
-	return nil
-}
-
-// setNATSURL validates a NATS URL and writes it into target.
-func setNATSURL(value string, target *string) error {
-	if err := config.ValidateNATSURL(value); err != nil {
-		return fmt.Errorf("invalid default_nats_url %q: %w", value, err)
 	}
 	*target = value
 	return nil

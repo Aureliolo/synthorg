@@ -19,7 +19,6 @@ var tunableKeys = []struct {
 	{"dhi_registry", "private.docker.example"},
 	{"postgres_image_tag", "17-debian13"},
 	{"nats_image_tag", "2.11-debian13"},
-	{"default_nats_url", "nats://example.com:4222"},
 	{"default_nats_stream_prefix", "CUSTOM"},
 	{"backup_create_timeout", "90s"},
 	{"backup_restore_timeout", "45s"},
@@ -91,7 +90,6 @@ func TestTunableKeys_InvalidValues(t *testing.T) {
 		"dhi_registry":               "invalid!host",
 		"postgres_image_tag":         "-leading-dash",
 		"nats_image_tag":             "with space",
-		"default_nats_url":           "http://example.com",
 		"default_nats_stream_prefix": "lowercase",
 		"backup_create_timeout":      "not-a-duration",
 		"health_check_timeout":       "-5s",
@@ -112,7 +110,7 @@ func TestTunableKeys_ComposeAffectingSet(t *testing.T) {
 	want := []string{
 		"registry_host", "image_repo_prefix", "dhi_registry",
 		"postgres_image_tag", "nats_image_tag",
-		"default_nats_url", "default_nats_stream_prefix",
+		"default_nats_stream_prefix",
 	}
 	for _, k := range want {
 		if !composeAffectingKeys[k] {

@@ -61,6 +61,7 @@ class A2ABridgeConfig(BaseModel):
 
     client_timeout_seconds: float = Field(default=30.0, ge=5.0, le=300.0)
     push_verification_clock_skew_seconds: int = Field(default=300, ge=0, le=3600)
+    max_message_parts: int = Field(default=100, ge=1, le=10_000)
 
 
 class IntegrationsBridgeConfig(BaseModel):
@@ -233,6 +234,7 @@ class ApiBridgeConfig(BaseModel):
     ws_frame_timeout_seconds: int = Field(default=30, ge=1, le=600)
     ws_revalidation_window_seconds: int = Field(default=60, ge=1, le=3_600)
     ws_revalidation_max_failures: int = Field(default=5, ge=1, le=100)
+    sse_keepalive_seconds: float = Field(default=30.0, ge=1.0, le=600.0)
     max_rpm_default: int = Field(default=60, ge=1, le=100_000)
     compression_minimum_size_bytes: int = Field(default=1000, ge=100, le=10_000)
     request_max_body_size_bytes: int = Field(
@@ -267,6 +269,12 @@ class ApiBridgeConfig(BaseModel):
         default=1.0, ge=0.5, le=60.0
     )
     lifecycle_drain_timeout_seconds: float = Field(default=40.0, ge=5.0, le=300.0)
+    approval_urgency_critical_seconds: float = Field(
+        default=3600.0, ge=60.0, le=86_400.0
+    )
+    approval_urgency_high_seconds: float = Field(
+        default=14_400.0, ge=300.0, le=604_800.0
+    )
     csp_docs_external_origins: tuple[NotBlankStr, ...] = Field(
         default=(
             NotBlankStr("https://cdn.jsdelivr.net"),

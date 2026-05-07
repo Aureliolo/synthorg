@@ -23,6 +23,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_STARTED,
     PROVIDER_HEALTH_PROBE_SUCCESS,
     PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+    PROVIDER_HEALTH_PROBER_PAUSED,
     PROVIDER_HEALTH_PROBER_STARTED,
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
@@ -32,6 +33,7 @@ from synthorg.providers.discovery_policy import (
 )
 from synthorg.providers.errors import ProviderLifecycleConflictError
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
+from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -285,21 +287,57 @@ class ProviderHealthProber:
             self._stop_event = asyncio.Event()
             logger.info(PROVIDER_HEALTH_PROBER_STOPPED)
 
+    async def _resolve_enabled(self) -> bool:
+        """Resolve the kill-switch, fail-safe to ``True``.
+
+        Operators flip ``api.health_prober_enabled=false`` to pause
+        provider HTTP probing mid-flight without tearing down the loop.
+        A settings-backend outage must not silently pause observability,
+        so any resolver failure resolves to enabled.
+        """
+        try:
+            return await self._config_resolver.get_bool(
+                SettingNamespace.API.value, "health_prober_enabled"
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+                error=(
+                    "Failed to resolve api.health_prober_enabled; defaulting to enabled"
+                ),
+                error_type=type(exc).__name__,
+                error_desc=safe_error_description(exc),
+            )
+            return True
+
     async def _run_loop(self) -> None:
-        """Main loop: probe all, then sleep until next cycle or stop."""
+        """Main loop: probe all, then sleep until next cycle or stop.
+
+        Gated by ``api.health_prober_enabled`` (live, per-cycle): when
+        the setting is ``False`` every cycle short-circuits -- the loop
+        keeps running so operators can re-enable without restarting,
+        but no probe traffic is sent.
+        """
         while not self._stop_event.is_set():
-            try:
-                await self._probe_all()
-            except asyncio.CancelledError:
-                raise
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+            if await self._resolve_enabled():
+                try:
+                    await self._probe_all()
+                except asyncio.CancelledError:
+                    raise
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+            else:
+                logger.debug(PROVIDER_HEALTH_PROBER_PAUSED, reason="paused_by_setting")
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),

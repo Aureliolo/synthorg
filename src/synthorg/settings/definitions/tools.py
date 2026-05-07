@@ -198,6 +198,55 @@ _r.register(
     )
 )
 
+# ── Sandbox image references (env-var-aware bootstrap) ───────────
+# Backed by the resolver's DB > env > YAML > default chain so the
+# canonical resolved value lives at the settings layer rather than
+# being re-read from ``os.environ`` inside Pydantic field defaults.
+# ``env_var_override`` matches the historical env vars the CLI
+# injects into the backend container, preserving operator workflow.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="sandbox_image",
+        type=SettingType.STRING,
+        default="ghcr.io/aureliolo/synthorg-sandbox:latest",
+        description=(
+            "Docker image used for sandbox containers. The CLI injects"
+            " a digest-pinned reference via ``SYNTHORG_SANDBOX_IMAGE``;"
+            " operators running the backend outside the CLI fall back"
+            " to the registered default. Resolved once at startup and"
+            " injected into ``DockerSandboxConfig`` via the sandbox"
+            " image-resolution cache."
+        ),
+        group="Docker Sandbox",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_SANDBOX_IMAGE",
+        yaml_path="tools.sandbox.docker.image",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="sidecar_image",
+        type=SettingType.STRING,
+        default="ghcr.io/aureliolo/synthorg-sidecar:latest",
+        description=(
+            "Docker image used for the sandbox network sidecar"
+            " container. Same resolution path as ``tools.sandbox_image``."
+        ),
+        group="Docker Sandbox",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_SIDECAR_IMAGE",
+        yaml_path="tools.sandbox.docker.sidecar_image",
+    )
+)
+
 # ── Git command timeout (overall execution bound) ────────────────
 # Distinct from ``git_kill_grace_timeout_seconds`` (post-SIGTERM grace);
 # this caps total git subprocess wall-clock.

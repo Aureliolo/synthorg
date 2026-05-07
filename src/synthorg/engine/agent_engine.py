@@ -185,6 +185,7 @@ class AgentEngine(
         event_reader: EventReader | None = None,
         event_stream_hub: EventStreamHub | None = None,
         interrupt_store: InterruptStore | None = None,
+        approval_interrupt_timeout_seconds: float | None = None,
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
         self._event_reader = event_reader
@@ -203,6 +204,7 @@ class AgentEngine(
         self._model_resolver = model_resolver
         self._approval_store = approval_store
         self._parked_context_repo = parked_context_repo
+        self._approval_interrupt_timeout_seconds = approval_interrupt_timeout_seconds
         self._stagnation_detector = stagnation_detector
         self._auto_loop_config = auto_loop_config
         self._hybrid_loop_config = hybrid_loop_config

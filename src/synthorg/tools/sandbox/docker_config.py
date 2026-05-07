@@ -1,6 +1,5 @@
 """Docker sandbox configuration model."""
 
-import os
 import re
 from typing import Any, Literal, Self
 
@@ -9,9 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import (
-    CONFIG_ENV_VAR_FALLBACK,
-    CONFIG_ENV_VAR_RESOLVED,
     CONFIG_VALIDATION_FAILED,
+)
+from synthorg.tools.sandbox._image_resolution import (
+    get_resolved_sandbox_image,
+    get_resolved_sidecar_image,
 )
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.network_presets import PRESETS
@@ -23,10 +24,6 @@ _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 _MIN_PORT = 1
 _MAX_PORT = 65535
 _HOST_PORT_PARTS = 2
-_SANDBOX_IMAGE_ENV_VAR = "SYNTHORG_SANDBOX_IMAGE"
-_FALLBACK_SANDBOX_IMAGE = "ghcr.io/aureliolo/synthorg-sandbox:latest"
-_SIDECAR_IMAGE_ENV_VAR = "SYNTHORG_SIDECAR_IMAGE"
-_FALLBACK_SIDECAR_IMAGE = "ghcr.io/aureliolo/synthorg-sidecar:latest"
 
 # Docker tmpfs size syntax: positive integer, optional k/m/g suffix
 # (case-insensitive).  Rejects leading zeros, negatives, and unknown
@@ -36,54 +33,23 @@ _TMPFS_SIZE_PATTERN = re.compile(r"^[1-9]\d*[kmg]?$", re.IGNORECASE)
 
 
 def _default_sandbox_image() -> str:
-    """Resolve the default sandbox image from ``SYNTHORG_SANDBOX_IMAGE``.
+    """Resolve the default sandbox image from the resolution cache.
 
-    The CLI injects the digest-pinned sandbox image reference into the
-    backend container via this env var.  When it is unset, empty, or
-    whitespace-only, fall back to the ghcr.io tag-based reference so an
-    operator running the backend outside the CLI still gets a pullable
-    default.  Logs both branches so operators debugging image-resolution
-    issues see which source won.
+    The cache is populated at startup by ``_apply_bridge_config``
+    after resolving ``tools.sandbox_image`` through ``ConfigResolver``
+    (which honours the canonical DB > env > YAML > default chain via
+    ``env_var_override="SYNTHORG_SANDBOX_IMAGE"``). Tests outside the
+    lifecycle path get the documented fallback constant.
     """
-    raw = os.environ.get(_SANDBOX_IMAGE_ENV_VAR, "")
-    value = raw.strip()
-    if value:
-        logger.debug(
-            CONFIG_ENV_VAR_RESOLVED,
-            var=_SANDBOX_IMAGE_ENV_VAR,
-            resolved=value,
-        )
-        return value
-    logger.debug(
-        CONFIG_ENV_VAR_FALLBACK,
-        var=_SANDBOX_IMAGE_ENV_VAR,
-        fallback=_FALLBACK_SANDBOX_IMAGE,
-        reason="env var unset or whitespace-only",
-    )
-    return _FALLBACK_SANDBOX_IMAGE
+    return get_resolved_sandbox_image()
 
 
 def _default_sidecar_image() -> str:
-    """Resolve the default sidecar image from ``SYNTHORG_SIDECAR_IMAGE``.
+    """Resolve the default sidecar image from the resolution cache.
 
-    Same resolution pattern as :func:`_default_sandbox_image`.
+    Same resolution path as :func:`_default_sandbox_image`.
     """
-    raw = os.environ.get(_SIDECAR_IMAGE_ENV_VAR, "")
-    value = raw.strip()
-    if value:
-        logger.debug(
-            CONFIG_ENV_VAR_RESOLVED,
-            var=_SIDECAR_IMAGE_ENV_VAR,
-            resolved=value,
-        )
-        return value
-    logger.debug(
-        CONFIG_ENV_VAR_FALLBACK,
-        var=_SIDECAR_IMAGE_ENV_VAR,
-        fallback=_FALLBACK_SIDECAR_IMAGE,
-        reason="env var unset or whitespace-only",
-    )
-    return _FALLBACK_SIDECAR_IMAGE
+    return get_resolved_sidecar_image()
 
 
 class DockerSandboxConfig(BaseModel):

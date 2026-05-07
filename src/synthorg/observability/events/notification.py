@@ -21,6 +21,10 @@ NOTIFICATION_SINK_START_FAILED: Final[str] = "notification.sink.start_failed"
 NOTIFICATION_SINK_CLOSE_FAILED: Final[str] = "notification.sink.close_failed"
 NOTIFICATION_DISPATCHER_STARTED: Final[str] = "notification.dispatcher.started"
 NOTIFICATION_DISPATCHER_CLOSED: Final[str] = "notification.dispatcher.closed"
+NOTIFICATION_DISPATCHER_PAUSED: Final[str] = "notification.dispatcher.paused"
+NOTIFICATION_DISPATCHER_RESOLVE_FAILED: Final[str] = (
+    "notification.dispatcher.resolve_failed"
+)
 NOTIFICATION_EMAIL_PARTIAL_CREDENTIALS: Final[str] = (
     "notification.email.partial_credentials"
 )

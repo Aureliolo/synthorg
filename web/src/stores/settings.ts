@@ -21,13 +21,6 @@ function fetchAllSettingsEntries(): Promise<SettingEntry[]> {
 }
 
 const CURRENCY_PATTERN = /^[A-Z]{3}$/
-// Minimal BCP 47 sanity check; full validation is the backend's job.
-// Accepts plain language (`en`), language-region (`en-GB`), and
-// language-script-region (`zh-Hant-HK`). Empty or malformed tags fall
-// back to the browser default via `getLocale()`. Three atoms, no
-// repeat on a group, so no catastrophic-backtracking risk.
-// eslint-disable-next-line security/detect-unsafe-regex -- bounded atoms, no nested quantifiers
-const LOCALE_PATTERN = /^[A-Za-z]{2,3}(?:-[A-Za-z]{4})?(?:-[A-Za-z]{2}|-[0-9]{3})?$/
 
 /** Extract valid currency from entries, or undefined if not found/invalid. */
 function deriveCurrency(
@@ -43,28 +36,9 @@ function deriveCurrency(
   return undefined
 }
 
-/** Extract valid locale from entries, or null if not found/invalid. */
-function deriveLocale(entries: SettingEntry[]): string | null {
-  const entry = entries.find(
-    (e) => e.definition.namespace === 'display'
-      && e.definition.key === 'locale',
-  )
-  if (!entry?.value) return null
-  const trimmed = entry.value.trim()
-  if (trimmed.length === 0) return null
-  if (!LOCALE_PATTERN.test(trimmed)) return null
-  return trimmed
-}
-
 interface SettingsState {
   /** ISO 4217 currency code for display formatting. */
   currency: string
-  /**
-   * BCP 47 locale override from the `display.locale` setting, or
-   * `null` when the operator has not configured one (falls back to
-   * the browser's `navigator.language`).
-   */
-  locale: string | null
   /** Full setting definitions (schema). */
   schema: SettingDefinition[]
   /** All setting entries with resolved values. */
@@ -80,8 +54,6 @@ interface SettingsState {
 
   /** Fetch the configured currency from the budget settings namespace. */
   fetchCurrency: () => Promise<void>
-  /** Fetch the configured display locale from the display namespace. */
-  fetchLocale: () => Promise<void>
   /** Fetch both schema and all settings entries. */
   fetchSettingsData: () => Promise<void>
   /** Lightweight re-fetch of entries only (for polling). */
@@ -96,7 +68,6 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
   currency: DEFAULT_CURRENCY,
-  locale: null,
   schema: [],
   entries: [],
   loading: false,
@@ -120,18 +91,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     } catch (error) {
       log.warn(
         'Failed to fetch currency, keeping default:',
-        getErrorMessage(error),
-      )
-    }
-  },
-
-  fetchLocale: async () => {
-    try {
-      const entries = await settingsApi.getNamespaceSettings('display')
-      set({ locale: deriveLocale(entries) })
-    } catch (error) {
-      log.warn(
-        'Failed to fetch display locale, falling back to browser:',
         getErrorMessage(error),
       )
     }
@@ -161,7 +120,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       }
       const c = deriveCurrency(entries)
       if (c) patch.currency = c
-      patch.locale = deriveLocale(entries)
       set(patch)
     } catch (error) {
       set({ loading: false, error: getErrorMessage(error) })
@@ -178,7 +136,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     const patch: Partial<SettingsState> = { entries, error: null }
     const c = deriveCurrency(entries)
     if (c) patch.currency = c
-    patch.locale = deriveLocale(entries)
     set(patch)
   },
 
@@ -200,13 +157,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
           entries: newEntries,
           savingKeys: newSaving,
         }
-        // Keep standalone currency / locale fields in sync
+        // Keep the standalone currency field in sync with the entry list.
         if (ns === 'budget' && key === 'currency') {
           const c = deriveCurrency(newEntries)
           if (c) patch.currency = c
-        }
-        if (ns === 'display' && key === 'locale') {
-          patch.locale = deriveLocale(newEntries)
         }
         return patch
       })
@@ -254,13 +208,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         if (refreshedEntries) {
           update.entries = refreshedEntries
           update.error = null
-          // Keep standalone currency / locale in sync after reset
           if (ns === 'budget' && key === 'currency') {
             const c = deriveCurrency(refreshedEntries)
             if (c) update.currency = c
-          }
-          if (ns === 'display' && key === 'locale') {
-            update.locale = deriveLocale(refreshedEntries)
           }
         }
         return update

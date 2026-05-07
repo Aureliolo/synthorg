@@ -799,6 +799,44 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="health_prober_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for the provider health prober. When"
+            " False the loop stays resident but every cycle short-circuits"
+            " -- pauses provider HTTP probing without tearing down"
+            " lifecycle. Real API call outcomes still update the health"
+            " tracker. Resolver outage falls back to enabled (safer than"
+            " silently pausing observability)."
+        ),
+        group="Providers",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="webhook_receipt_cleanup_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for the per-connection webhook receipt"
+            " sweep loop. When False the loop stays resident but every"
+            " 24h tick short-circuits -- pauses receipt pruning without"
+            " tearing down lifecycle. Receipts continue to accumulate"
+            " until the flag is flipped back. Resolver outage falls"
+            " back to enabled."
+        ),
+        group="Webhooks",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="rate_limiter_enabled",
         type=SettingType.BOOLEAN,
         default="true",

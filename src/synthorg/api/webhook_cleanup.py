@@ -20,6 +20,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+    PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,
 )
 from synthorg.settings.enums import SettingNamespace
 
@@ -39,6 +40,38 @@ class _CleanupOutcome(NamedTuple):
 logger = get_logger(__name__)
 
 _DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS = 90
+
+
+async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
+    """Resolve the webhook-cleanup kill-switch, fail-safe to ``True``.
+
+    Operators flip ``api.webhook_receipt_cleanup_enabled=false`` to
+    pause the per-connection sweep mid-flight without tearing down the
+    lifespan task.  A settings-backend outage must not silently flip
+    the sweep off (receipts would accumulate forever) -- prefer
+    enabled on resolver failure and surface the error.
+    """
+    if not app_state.has_config_resolver:
+        return True
+    try:
+        return await app_state.config_resolver.get_bool(
+            SettingNamespace.API.value, "webhook_receipt_cleanup_enabled"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+            error=(
+                "Failed to resolve api.webhook_receipt_cleanup_enabled;"
+                " defaulting to enabled"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+        return True
 
 
 async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
@@ -237,6 +270,11 @@ async def _webhook_receipt_cleanup_loop(
     receipt retention is durable (days, weeks, months) rather than
     transient (seconds, minutes).
 
+    Gated by ``api.webhook_receipt_cleanup_enabled`` (live, per-tick):
+    when the setting is ``False`` every 24h tick short-circuits -- the
+    loop keeps running so operators can re-enable without restarting,
+    but no sweep work is done.
+
     ``clock`` is the time-injection seam: production wires
     :class:`SystemClock` (which delegates to ``asyncio.sleep``) and
     tests inject ``FakeClock`` so the loop is driven deterministically
@@ -245,5 +283,11 @@ async def _webhook_receipt_cleanup_loop(
     """
     effective_clock: Clock = clock if clock is not None else SystemClock()
     while True:
-        await _webhook_receipt_cleanup_tick(app_state)
+        if await _resolve_webhook_receipt_cleanup_enabled(app_state):
+            await _webhook_receipt_cleanup_tick(app_state)
+        else:
+            logger.debug(
+                PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,
+                reason="paused_by_setting",
+            )
         await effective_clock.sleep(_WEBHOOK_RECEIPT_CLEANUP_TICK_SECONDS)

@@ -101,6 +101,7 @@ _HAPPY_CASES: tuple[
             ("api", "ws_frame_timeout_seconds"): "30",
             ("api", "ws_revalidation_window_seconds"): "60",
             ("api", "ws_revalidation_max_failures"): "5",
+            ("api", "sse_keepalive_seconds"): "30.0",
             ("api", "max_rpm_default"): "60",
             ("api", "compression_minimum_size_bytes"): "1000",
             ("api", "request_max_body_size_bytes"): "52428800",
@@ -123,6 +124,8 @@ _HAPPY_CASES: tuple[
             ("api", "lifecycle_persistence_shutdown_seconds"): "5.0",
             ("api", "lifecycle_approval_timeout_shutdown_seconds"): "1.0",
             ("api", "lifecycle_drain_timeout_seconds"): "25.0",
+            ("api", "approval_urgency_critical_seconds"): "3600.0",
+            ("api", "approval_urgency_high_seconds"): "14400.0",
             ("api", "csp_docs_external_origins"): (
                 '["https://cdn.example.com", "https://fonts.example.com"]'
             ),
@@ -135,6 +138,7 @@ _HAPPY_CASES: tuple[
             "ws_frame_timeout_seconds": 30,
             "ws_revalidation_window_seconds": 60,
             "ws_revalidation_max_failures": 5,
+            "sse_keepalive_seconds": 30.0,
             "max_rpm_default": 60,
             "compression_minimum_size_bytes": 1000,
             "request_max_body_size_bytes": 52_428_800,
@@ -143,6 +147,8 @@ _HAPPY_CASES: tuple[
             "max_metrics_per_query": 10_000,
             "rate_limit_gc_every_n_acquires": 1024,
             "lifecycle_drain_timeout_seconds": 25.0,
+            "approval_urgency_critical_seconds": 3600.0,
+            "approval_urgency_high_seconds": 14_400.0,
             "max_meeting_context_keys": 20,
             "csp_docs_external_origins": (
                 "https://cdn.example.com",
@@ -178,10 +184,12 @@ _HAPPY_CASES: tuple[
         {
             ("a2a", "client_timeout_seconds"): "45.0",
             ("a2a", "push_verification_clock_skew_seconds"): "120",
+            ("a2a", "max_message_parts"): "250",
         },
         {
             "client_timeout_seconds": 45.0,
             "push_verification_clock_skew_seconds": 120,
+            "max_message_parts": 250,
         },
     ),
     (
@@ -398,6 +406,7 @@ async def test_get_api_bridge_config_rejects_out_of_range(
             ("api", "ws_frame_timeout_seconds"): "30",
             ("api", "ws_revalidation_window_seconds"): "60",
             ("api", "ws_revalidation_max_failures"): "5",
+            ("api", "sse_keepalive_seconds"): "30.0",
             ("api", "max_rpm_default"): "60",
             ("api", "compression_minimum_size_bytes"): "1000",
             # 10 GiB - way over the 512 MiB cap.
@@ -421,6 +430,8 @@ async def test_get_api_bridge_config_rejects_out_of_range(
             ("api", "lifecycle_persistence_shutdown_seconds"): "5.0",
             ("api", "lifecycle_approval_timeout_shutdown_seconds"): "1.0",
             ("api", "lifecycle_drain_timeout_seconds"): "25.0",
+            ("api", "approval_urgency_critical_seconds"): "3600.0",
+            ("api", "approval_urgency_high_seconds"): "14400.0",
             ("api", "csp_docs_external_origins"): ('["https://cdn.example.com"]'),
             ("api", "error_docs_base_url"): "https://docs.example.com/errors",
         }
