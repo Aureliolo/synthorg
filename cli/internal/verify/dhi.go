@@ -70,12 +70,14 @@ Fxa4333s1KsL9ISjtmRzGNih9lNRsqfRVjgFgJIdL6EQ9dohdanvn7r2cg==
 // INDEX digest. At runtime, the CLI resolves this to the platform-specific
 // manifest, then discovers attestations via the OCI referrers API.
 //
-// Renovate updates these digests automatically via a custom regex manager.
+// Both keys and values are derived from the canonical Default*Image{Tag,Digest}
+// constants in cli/internal/config/state.go so a Renovate bump touches one
+// file and one regex match per dependency. The literal "dhi.io" prefix is
+// intentional: overriding dhiRegistry invalidates the lookup (verification
+// is skipped for non-default registries; see the dhiRegistry doc comment).
 var dhiPinnedIndexDigests = map[string]string{
-	// renovate: datasource=docker depName=dhi.io/postgres
-	"dhi.io/postgres:18-debian13": "sha256:e2f2beada5e76f69453d5533153909f875b48fb021f092df73e182b8325ff2d3",
-	// renovate: datasource=docker depName=dhi.io/nats
-	"dhi.io/nats:2.12-debian13": "sha256:33f3b26c651c15669d50da0d88ccd1fea1f3c9782e38dcf70c4ae1584e9cc5ca",
+	"dhi.io/postgres:" + config.DefaultPostgresImageTag: config.DefaultPostgresImageDigest,
+	"dhi.io/nats:" + config.DefaultNATSImageTag:         config.DefaultNATSImageDigest,
 }
 
 // DHIPinnedIndexDigest returns the pinned index digest for a DHI image.

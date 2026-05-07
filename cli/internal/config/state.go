@@ -134,9 +134,11 @@ const (
 	DefaultImageRepoPrefix = "aureliolo/synthorg-"
 	DefaultDHIRegistry     = "dhi.io"
 	// renovate: datasource=docker depName=dhi.io/postgres
-	DefaultPostgresImageTag = "18-debian13"
+	DefaultPostgresImageTag    = "18-debian13"
+	DefaultPostgresImageDigest = "sha256:e2f2beada5e76f69453d5533153909f875b48fb021f092df73e182b8325ff2d3"
 	// renovate: datasource=docker depName=dhi.io/nats
-	DefaultNATSImageTag = "2.12-debian13"
+	DefaultNATSImageTag    = "2.12-debian13"
+	DefaultNATSImageDigest = "sha256:33f3b26c651c15669d50da0d88ccd1fea1f3c9782e38dcf70c4ae1584e9cc5ca"
 
 	DefaultNATSURLValue          = "nats://nats:4222"
 	DefaultNATSStreamPrefixValue = "SYNTHORG"
