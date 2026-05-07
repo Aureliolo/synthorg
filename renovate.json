@@ -74,6 +74,12 @@
       "labels": ["dependencies", "type:chore", "scope:docker"]
     },
     {
+      "description": "Dev/CI compose files mirror image pins whose canonical source-of-truth lives in cli/internal/config/state.go (Default*ImageTag) and cli/internal/verify/dhi.go (dhiPinnedIndexDigests). Letting the docker-compose manager update them independently produces upgrade-collision warnings when the custom regex managers land on a different newValue, which aborts the entire renovate/container branch. The custom regex managers are the single update path; a Go test verifies docker/compose*.yml stays in sync.",
+      "matchFileNames": ["docker/compose*.yml"],
+      "matchManagers": ["docker-compose"],
+      "enabled": false
+    },
+    {
       "description": "Container dependencies (compose template images via custom regex)",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["/dhi\\.io/.*/", "/busybox/", "/postgres/", "/nats/", "ariga/atlas"],
