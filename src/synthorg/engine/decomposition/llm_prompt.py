@@ -399,7 +399,6 @@ def parse_tool_call_response(
                     DECOMPOSITION_LLM_PARSE_ERROR,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
-                    exc_type=type(exc).__name__,
                 )
                 msg = f"Failed to parse tool call arguments: {safe_error_description(exc)}"  # noqa: E501
                 raise DecompositionError(msg) from exc
@@ -475,7 +474,6 @@ def parse_content_response(
             DECOMPOSITION_LLM_PARSE_ERROR,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_type=type(exc).__name__,
         )
         msg = f"Failed to parse plan from content JSON: {safe_error_description(exc)}"
         raise DecompositionError(msg) from exc

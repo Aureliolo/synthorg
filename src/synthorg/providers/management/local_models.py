@@ -290,7 +290,8 @@ class OllamaModelManager:
                 PROVIDER_MODEL_PULL_FAILED,
                 provider="ollama",
                 model=model_name,
-                error=err,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             yield PullProgressEvent(
                 status=err,
@@ -352,7 +353,8 @@ class OllamaModelManager:
                 PROVIDER_MODEL_DELETE_FAILED,
                 provider="ollama",
                 model=model_name,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise RuntimeError(msg) from exc
         finally:

@@ -544,25 +544,33 @@ class MessageBusBridge:
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 break
-            except OSError, ConnectionError, TimeoutError:
+            except (OSError, ConnectionError, TimeoutError) as exc:
                 consecutive_errors += 1
                 if consecutive_errors >= max_errors:
                     logger.error(
                         API_BRIDGE_CHANNEL_DEAD,
                         channel=channel_name,
                         consecutive_errors=consecutive_errors,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                     break
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     channel=channel_name,
                     consecutive_errors=consecutive_errors,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 await asyncio.sleep(poll_timeout)
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 logger.error(
                     API_BRIDGE_CHANNEL_DEAD,
                     channel=channel_name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 break
 

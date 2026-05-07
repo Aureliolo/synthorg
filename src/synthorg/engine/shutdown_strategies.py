@@ -579,10 +579,11 @@ class CheckpointAndStopStrategy:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
                 task_id=task_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         if saved:

@@ -290,9 +290,13 @@ class RetentionManager:
                 if data.get("backup_id") == backup_id:
                     shutil.rmtree(entry)
                     return True
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 logger.warning(
                     BACKUP_MANIFEST_INVALID,
                     path=str(manifest_path),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return False

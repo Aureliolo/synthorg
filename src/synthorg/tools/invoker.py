@@ -684,6 +684,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 tool_call_id=tool_call.id,
                 tool_name=tool.name,
                 note="Failed to track parking metadata",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolResult(
                 tool_call_id=tool_call.id,

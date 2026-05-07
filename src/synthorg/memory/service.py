@@ -971,6 +971,7 @@ class MemoryService:
                 MEMORY_CHECKPOINT_ROLLBACK_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 stage="rollback",
                 step=step,
             )
@@ -978,6 +979,7 @@ class MemoryService:
                 MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 step=step,
             )
 

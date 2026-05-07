@@ -522,13 +522,17 @@ class MeetingOrchestrator:
                     description=action_item.description,
                     assignee=action_item.assignee_id,
                 )
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 failures += 1
-                logger.exception(
+                logger.error(
                     MEETING_TASK_CREATION_FAILED,
                     meeting_id=meeting_id,
                     description=action_item.description,
                     assignee=action_item.assignee_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         if failures:
             logger.warning(

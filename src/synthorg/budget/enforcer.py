@@ -186,10 +186,12 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 BUDGET_UTILIZATION_ERROR,
                 reason="falling_back_to_none",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         else:
@@ -247,11 +249,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             raise
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 BUDGET_PREFLIGHT_ERROR,
                 agent_id=agent_id,
                 reason="falling_back_to_allow_execution",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return PreFlightResult()
 
@@ -601,11 +605,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             )
         except MemoryError, RecursionError:  # builtin MemoryError (OOM)
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 BUDGET_RESOLVE_MODEL_ERROR,
                 agent_id=str(identity.id),
                 reason="cost_tracker_query_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return identity
 
@@ -710,11 +716,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 BUDGET_BASELINE_ERROR,
                 agent_id=agent_id,
                 reason="falling_back_to_zero_baselines",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return 0.0, 0.0
 
@@ -758,11 +766,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.error(
                     error_event,
                     project_id=project_id,
                     reason="project_cost_aggregate_query_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             else:
                 raw = aggregate.total_cost if aggregate else 0.0
@@ -781,11 +791,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 error_event,
                 project_id=project_id,
                 reason="project_cost_query_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         else:

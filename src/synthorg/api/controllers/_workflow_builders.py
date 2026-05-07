@@ -94,15 +94,16 @@ def _validate_collection(
     try:
         return tuple(model_cls.model_validate(i) for i in items)  # type: ignore[attr-defined]
     except (ValueError, ValidationError) as exc:
+        safe_exc = safe_error_description(exc)
         logger.warning(
             WORKFLOW_DEF_INVALID_REQUEST,
             field=field_name,
             error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            error=safe_exc,
         )
         return Response(
             content=ApiResponse[WorkflowDefinition](
-                error=invalid_message.format(exc=exc),
+                error=invalid_message.format(exc=safe_exc),
             ),
             status_code=422,
         )

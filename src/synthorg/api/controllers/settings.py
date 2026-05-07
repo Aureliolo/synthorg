@@ -458,11 +458,13 @@ class SettingsController(Controller):
             )
             msg = "Invalid setting value"
             raise DomainValidationError(msg) from exc
-        except SettingsEncryptionError:
+        except SettingsEncryptionError as exc:
             logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=namespace,
                 key=key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = "Internal error processing sensitive setting"
             raise InternalServerException(msg) from None

@@ -521,9 +521,13 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     sidecar_id=sidecar_id[:12],
                 )
                 await self._wait_sidecar_healthy(docker, sidecar_id)
-            except BaseException as exc:
-                # Catch BaseException to handle CancelledError too;
-                # sidecar must be cleaned up even on task cancellation.
+            except Exception as exc:
+                # Clean up the sidecar before wrapping ordinary
+                # failures into ``SandboxStartError``. ``MemoryError`` /
+                # ``RecursionError`` and ``CancelledError`` propagate
+                # via the bare-``except`` clause below so cancellation
+                # and catastrophic interpreter errors keep their
+                # original semantics.
                 removed = await self._remove_container(
                     docker,
                     sidecar_id,
@@ -535,6 +539,22 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     )
                 msg = f"Sidecar startup failed: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
+            except BaseException:
+                # Cancellation / MemoryError / RecursionError /
+                # SystemExit / KeyboardInterrupt: still clean up the
+                # sidecar but propagate the original BaseException so
+                # caller cancellation and fatal-error semantics are
+                # preserved (do NOT wrap as SandboxStartError).
+                removed = await self._remove_container(
+                    docker,
+                    sidecar_id,
+                )
+                if removed:
+                    self._tracked_containers.pop(
+                        f"_sidecar:{sidecar_id}",
+                        None,
+                    )
+                raise
             # Don't pop the _sidecar: temp key yet -- keep it tracked
             # until the sandbox container is created and takes over.
             network_mode = f"container:{sidecar_id}"
