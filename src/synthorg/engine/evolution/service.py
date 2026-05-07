@@ -127,7 +127,6 @@ class EvolutionService:
                 agent_id=str(agent_id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             return ()
 
@@ -397,7 +396,6 @@ class EvolutionService:
                 agent_id=str(agent_id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             return None
 
@@ -433,6 +431,5 @@ class EvolutionService:
                 agent_id=str(agent_id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             return ()

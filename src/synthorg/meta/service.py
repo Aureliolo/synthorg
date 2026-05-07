@@ -632,10 +632,14 @@ class SelfImprovementService:
         if self._outcome_store is not None:
             try:
                 await self._outcome_store.record_outcome(outcome)
-            except Exception:
-                logger.exception(
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
                     COS_OUTCOME_RECORD_FAILED,
                     proposal_id=str(proposal.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         # Emit anonymized event for cross-deployment analytics.
@@ -742,17 +746,25 @@ class SelfImprovementService:
             if close is not None:
                 try:
                     await close()
-                except Exception:
-                    logger.exception(
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
                         META_SERVICE_CLOSE_FAILED,
                         reason="applier_close_failed",
                         altitude=str(applier.altitude),
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
         if self._analytics_emitter is not None:
             try:
                 await self._analytics_emitter.aclose()
-            except Exception:
-                logger.exception(
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
                     XDEPLOY_EVENT_EMIT_FAILED,
                     reason="emitter_close_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )

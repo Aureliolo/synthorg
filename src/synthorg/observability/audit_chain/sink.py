@@ -391,7 +391,7 @@ class AuditChainSink(logging.Handler):
             # the field locations; this event is the audit-chain side
             # of the same incident, distinguishing schema-reject from
             # signing-timeout from JSON-encode failure.
-            logger.error(  # noqa: TRY400 -- logger.exception leaks frame-locals; see SEC-1
+            logger.error(
                 AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
                 audited_event=msg,
                 error_type=type(exc).__name__,
@@ -409,7 +409,7 @@ class AuditChainSink(logging.Handler):
             # frame-locals in its traceback (signer key paths, TSA
             # auth headers); the structured fields below are the only
             # diagnostics that should reach any sink.
-            logger.error(  # noqa: TRY400 -- see rationale above
+            logger.error(
                 AUDIT_CHAIN_EMIT_TIMEOUT,
                 audited_event=msg,
                 timeout_seconds=self._signing_timeout_seconds,
@@ -421,7 +421,6 @@ class AuditChainSink(logging.Handler):
             # recurse on the single-worker signing executor.
             logger.error(
                 AUDIT_CHAIN_EMIT_ERROR,
-                exc_info=True,
             )
             self._invoke_append_callback("error", 0, 0.0)
 
@@ -446,5 +445,4 @@ class AuditChainSink(logging.Handler):
         except Exception:
             logger.warning(
                 AUDIT_CHAIN_CALLBACK_ERROR,
-                exc_info=True,
             )

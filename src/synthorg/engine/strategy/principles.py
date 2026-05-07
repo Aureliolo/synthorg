@@ -100,7 +100,7 @@ def _parse_pack_yaml(
     try:
         data = yaml.safe_load(yaml_text)
     except yaml.YAMLError as exc:
-        msg = f"Failed to parse YAML from {source_name}: {exc}"
+        msg = f"Failed to parse YAML from {source_name}: {safe_error_description(exc)}"
         logger.warning(
             STRATEGY_PACK_INVALID,
             source=source_name,
@@ -130,7 +130,7 @@ def _parse_pack_yaml(
             principles=principles,
         )
     except (TypeError, ValueError, KeyError, PydanticValidationError) as exc:
-        msg = f"Validation failed for pack from {source_name}: {exc}"
+        msg = f"Validation failed for pack from {source_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             STRATEGY_PACK_INVALID,
             source=source_name,
@@ -164,7 +164,7 @@ def _load_builtin(name: str) -> PrinciplePack:
         ref = resources.files("synthorg.engine.strategy.packs") / filename
         yaml_text = ref.read_text(encoding="utf-8")
     except (OSError, ImportError, TypeError) as exc:
-        msg = f"Failed to read built-in pack resource {filename!r}: {exc}"
+        msg = f"Failed to read built-in pack resource {filename!r}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             STRATEGY_PACK_NOT_FOUND,
             source=source_name,
@@ -294,7 +294,9 @@ def load_and_merge(
         try:
             principle = ConstitutionalPrinciple(**raw)
         except (TypeError, PydanticValidationError) as exc:
-            msg = f"Invalid custom principle at index {i}: {exc}"
+            msg = (
+                f"Invalid custom principle at index {i}: {safe_error_description(exc)}"
+            )
             logger.warning(
                 STRATEGY_PACK_INVALID,
                 source="custom",

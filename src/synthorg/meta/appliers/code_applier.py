@@ -142,7 +142,7 @@ class CodeApplier:
             # runs after the ``_write_changes`` / GitHub-client
             # paths, and the traceback carries full proposal payload
             # + branch / commit metadata in frame-locals.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 META_APPLY_FAILED,
                 altitude="code_modification",
                 proposal_id=str(proposal.id),

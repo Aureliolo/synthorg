@@ -216,7 +216,7 @@ class TrainingService:
                 result = await self._run_pipeline(plan, started_at)
             except Exception as exc:
                 # Prefer ``warning`` + ``safe_error_description`` over
-                # ``logger.exception(..., error=str(exc))`` so
+                # ``logger.warning(..., error=str(exc))`` so
                 # ``str(exc)`` on provider / memory errors doesn't
                 # land credential text in the traceback-bearing
                 # frame-locals.

@@ -114,7 +114,7 @@ async def record_execution_costs(  # noqa: PLR0913
             # pass. This function documents recording failures as
             # logged-and-suppressed -- keep that contract for
             # construction errors too.
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_COST_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -170,7 +170,6 @@ async def record_execution_costs(  # noqa: PLR0913
                 output_tokens=turn.output_tokens,
                 cost=turn.cost,
                 reason="metrics_mirror_failed",
-                exc_info=True,
             )
 
 
@@ -193,16 +192,9 @@ async def _submit_cost_record(
     try:
         await tracker.record(record)
     except MemoryError, RecursionError:
-        logger.error(
-            EXECUTION_ENGINE_COST_FAILED,
-            agent_id=agent_id,
-            task_id=task_id,
-            error="non-recoverable error in cost recording",
-            exc_info=True,
-        )
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             EXECUTION_ENGINE_COST_FAILED,
             agent_id=agent_id,
             task_id=task_id,

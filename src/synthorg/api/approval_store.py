@@ -752,7 +752,7 @@ class ApprovalStore:
                     # meaningful and operators must be able to alert
                     # on it. Both paths emit at ERROR so alerting is
                     # not sensitive to which expiration path fired.
-                    logger.error(  # noqa: TRY400
+                    logger.error(
                         API_APPROVAL_EXPIRE_CALLBACK_FAILED,
                         approval_id=item.id,
                         error_type=type(exc).__name__,
@@ -800,7 +800,7 @@ class ApprovalStore:
             # propagate, but a failed downstream side effect (webhook,
             # audit dispatch, workflow resume) is operationally
             # meaningful and operators must be able to alert on it.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 API_APPROVAL_EXPIRE_CALLBACK_FAILED,
                 approval_id=expired.id,
                 error_type=type(exc).__name__,

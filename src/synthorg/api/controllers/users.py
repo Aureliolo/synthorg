@@ -233,7 +233,6 @@ class UserController(Controller):
                     user_id=user.id,
                     intent="create_user",
                     constraint=exc.constraint,
-                    exc_info=True,
                 )
                 raise
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
@@ -243,7 +242,6 @@ class UserController(Controller):
                 API_USER_SAVE_FAILED,
                 user_id=user.id,
                 intent="create_user",
-                exc_info=True,
             )
             raise
 
@@ -383,7 +381,6 @@ class UserController(Controller):
                     user_id=user.id,
                     intent="update_user_role",
                     constraint=exc.constraint,
-                    exc_info=True,
                 )
                 raise
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
@@ -393,7 +390,6 @@ class UserController(Controller):
                 API_USER_SAVE_FAILED,
                 user_id=user.id,
                 intent="update_user_role",
-                exc_info=True,
             )
             raise
 
@@ -460,7 +456,6 @@ class UserController(Controller):
                     user_id=user_id,
                     intent="delete_user",
                     constraint=exc.constraint,
-                    exc_info=True,
                 )
                 raise
             logger.warning(API_RESOURCE_CONFLICT, reason=msg)
@@ -470,7 +465,6 @@ class UserController(Controller):
                 API_USER_SAVE_FAILED,
                 user_id=user_id,
                 intent="delete_user",
-                exc_info=True,
             )
             raise
         if not deleted:
@@ -568,7 +562,6 @@ class UserController(Controller):
                 intent="grant_org_role",
                 role=data.role.value,
                 constraint=exc.constraint,
-                exc_info=True,
             )
             raise
         except QueryError:
@@ -577,7 +570,6 @@ class UserController(Controller):
                 user_id=user.id,
                 intent="grant_org_role",
                 role=data.role.value,
-                exc_info=True,
             )
             raise
         return ApiResponse(data=_to_response(updated))
@@ -650,7 +642,6 @@ class UserController(Controller):
                 intent="revoke_org_role",
                 role=role,
                 constraint=exc.constraint,
-                exc_info=True,
             )
             raise
         except QueryError:
@@ -659,6 +650,5 @@ class UserController(Controller):
                 user_id=user.id,
                 intent="revoke_org_role",
                 role=role,
-                exc_info=True,
             )
             raise

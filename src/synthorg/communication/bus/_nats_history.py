@@ -60,7 +60,7 @@ async def create_history_scan_consumer(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"History scan consumer creation failed for {subject}: {exc}"
+        msg = f"History scan consumer creation failed for {subject}: {safe_error_description(exc)}"  # noqa: E501
         raise BusStreamError(
             msg, context={"stream": stream_name, "subject": subject}
         ) from exc
@@ -100,7 +100,7 @@ async def collect_history_batches(
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"History batch fetch failed for {subject}: {exc}"
+            msg = f"History batch fetch failed for {subject}: {safe_error_description(exc)}"  # noqa: E501
             raise BusStreamError(
                 msg, context={"stream": stream_name, "subject": subject}
             ) from exc
@@ -143,7 +143,6 @@ def try_parse_matching(raw: Any, subject: str) -> Message | None:
             subject=subject,
             size=len(raw.data),
             phase="history_scan",
-            exc_info=True,
         )
         return None
 

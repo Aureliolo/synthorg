@@ -337,7 +337,7 @@ class SeparateAnalyzerProposer:
                 # operators with context before propagating; otherwise
                 # a downstream catch-and-translate would hide the
                 # error path entirely.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     EVOLUTION_PROPOSER_PARSE_ERROR,
                     agent_id=str(agent_id),
                     error_type=type(exc).__name__,

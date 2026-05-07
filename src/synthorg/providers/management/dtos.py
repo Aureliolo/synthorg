@@ -28,6 +28,7 @@ from synthorg.config.schema import (  # noqa: TC001
     ProviderModelConfig,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import safe_error_description
 from synthorg.providers.capabilities import ModelCapabilities  # noqa: TC001
 from synthorg.providers.enums import AuthType
 
@@ -161,7 +162,7 @@ def _validate_http_url(v: str | None, *, field: str) -> str | None:
     try:
         _ = parsed.port  # raises ValueError on a malformed ``host:bad`` port
     except ValueError as exc:
-        msg = f"{field} has malformed port: {exc}"
+        msg = f"{field} has malformed port: {safe_error_description(exc)}"
         raise ValueError(msg) from exc
     return v
 

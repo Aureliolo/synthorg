@@ -215,7 +215,6 @@ class ApprovalGate:
                     APPROVAL_GATE_NOTIFICATION_FAILED,
                     approval_id=escalation.approval_id,
                     note="Failed to create interrupt in store",
-                    exc_info=True,
                 )
 
         if self._event_hub is None or interrupt_id is None:
@@ -242,7 +241,6 @@ class ApprovalGate:
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=escalation.approval_id,
                 note="Failed to publish APPROVAL_INTERRUPT event",
-                exc_info=True,
             )
 
         return interrupt_id
@@ -283,7 +281,6 @@ class ApprovalGate:
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=escalation.approval_id,
-                exc_info=True,
             )
 
     def _serialize_context(
@@ -400,7 +397,6 @@ class ApprovalGate:
                     APPROVAL_GATE_NOTIFICATION_FAILED,
                     approval_id=approval_id,
                     note="Failed to publish APPROVAL_RESUMED event",
-                    exc_info=True,
                 )
 
         return context, parked.id
@@ -430,7 +426,6 @@ class ApprovalGate:
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=parked.approval_id,
                 note="Failed to resolve interrupt on resume",
-                exc_info=True,
             )
 
     async def _load_parked(

@@ -26,7 +26,7 @@ from synthorg.hr.scaling.models import (
     ScalingContext,
     ScalingDecision,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_SCALING_CYCLE_COMPLETE,
     HR_SCALING_CYCLE_STARTED,
@@ -240,9 +240,9 @@ class ScalingService:
                 logger.warning(
                     HR_SCALING_STRATEGY_EVALUATED,
                     strategy=str(s.name),
-                    error=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                     decisions=0,
-                    exc_info=True,
                 )
                 return ()
 
@@ -389,13 +389,15 @@ class ScalingService:
                 HR_SCALING_EXECUTION_FAILED,
                 decision_id=str(decision.id),
                 action="hire",
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ScalingActionRecord(
                 decision_id=decision.id,
                 outcome=ScalingOutcome.FAILED,
-                reason=NotBlankStr(f"{type(exc).__name__}: {exc}"),
+                reason=NotBlankStr(
+                    f"{type(exc).__name__}: {safe_error_description(exc)}"
+                ),
                 executed_at=now,
             )
         return ScalingActionRecord(
@@ -442,13 +444,15 @@ class ScalingService:
                 HR_SCALING_EXECUTION_FAILED,
                 decision_id=str(decision.id),
                 action="prune",
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ScalingActionRecord(
                 decision_id=decision.id,
                 outcome=ScalingOutcome.FAILED,
-                reason=NotBlankStr(f"{type(exc).__name__}: {exc}"),
+                reason=NotBlankStr(
+                    f"{type(exc).__name__}: {safe_error_description(exc)}"
+                ),
                 executed_at=now,
             )
         result_id = (
@@ -477,13 +481,16 @@ class ScalingService:
             if isinstance(inner, (CooldownGuard, RateLimitGuard)):
                 try:
                     await inner.record_action(decision)
-                except Exception:
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
                     logger.error(
                         HR_SCALING_EXECUTION_FAILED,
                         action="guard_record_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
-                        exc_info=True,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
     async def _release_guard_reservations(
@@ -495,13 +502,16 @@ class ScalingService:
             if isinstance(inner, CooldownGuard):
                 try:
                     await inner.release_reservation(decision)
-                except Exception:
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
                     logger.error(
                         HR_SCALING_EXECUTION_FAILED,
                         action="guard_release_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
-                        exc_info=True,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
     def record_action(self, record: ScalingActionRecord) -> None:

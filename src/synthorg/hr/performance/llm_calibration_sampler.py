@@ -19,7 +19,7 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.hr.performance.models import LlmCalibrationRecord
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.performance import (
     PERF_LLM_SAMPLE_COMPLETED,
     PERF_LLM_SAMPLE_FAILED,
@@ -144,7 +144,6 @@ class LlmCalibrationSampler:
                 PERF_LLM_SAMPLE_FAILED,
                 agent_id=record.agent_id,
                 record_id=record.id,
-                exc_info=True,
             )
             return None
 
@@ -293,9 +292,9 @@ class LlmCalibrationSampler:
                 agent_id=record.agent_id,
                 record_id=record.id,
                 reason="parse_error",
-                raw_content=raw_content[:500],
+                raw_content_len=len(raw_content),
             )
-            msg = f"Failed to parse LLM response: {exc}"
+            msg = f"Failed to parse LLM response: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
 
         max_score = 10.0
@@ -306,7 +305,7 @@ class LlmCalibrationSampler:
                 record_id=record.id,
                 reason="out_of_range",
                 llm_score=score,
-                raw_content=raw_content[:500],
+                raw_content_len=len(raw_content),
             )
             msg = f"LLM score {score} outside valid range [0, 10]"
             raise ValueError(msg)
@@ -317,7 +316,7 @@ class LlmCalibrationSampler:
                 agent_id=record.agent_id,
                 record_id=record.id,
                 reason="blank_rationale",
-                raw_content=raw_content[:500],
+                raw_content_len=len(raw_content),
             )
             msg = "LLM returned blank rationale"
             raise ValueError(msg)

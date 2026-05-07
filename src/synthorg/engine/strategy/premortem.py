@@ -248,7 +248,6 @@ class DefaultPremortemExecutor:
                     STRATEGY_PREMORTEM_RESPONSE_SKIPPED,
                     participant_id=str(pid),
                     reason="agent_caller raised",
-                    exc_info=True,
                 )
 
         async with asyncio.TaskGroup() as tg:

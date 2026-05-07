@@ -338,7 +338,6 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 error="provider_error",
                 metrics=metrics,
                 period=period,
-                exc_info=True,
             )
             return ToolExecutionResult(
                 content="Analytics query failed.",

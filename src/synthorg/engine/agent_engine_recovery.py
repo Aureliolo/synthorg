@@ -20,7 +20,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
 from synthorg.engine.task_sync import apply_post_execution_transitions
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_RECOVERY_FAILED,
     EXECUTION_RESUME_COMPLETE,
@@ -113,11 +113,12 @@ class AgentEngineRecoveryMixin:
         except BudgetExhaustedError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_RECOVERY_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return execution_result, None
 
@@ -191,11 +192,12 @@ class AgentEngineRecoveryMixin:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_RESUME_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         else:

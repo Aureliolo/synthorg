@@ -163,9 +163,11 @@ class AuthorizationCodeFlow:
         except Exception as exc:
             logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
-                error="failed to decrypt stored PKCE verifier",
+                reason="pkce_verifier_decrypt_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = f"Invalid PKCE verifier in OAuth state: {exc}"
+            msg = f"Invalid PKCE verifier in OAuth state: {safe_error_description(exc)}"
             raise TokenExchangeFailedError(msg) from exc
 
         payload = {

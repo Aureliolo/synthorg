@@ -24,7 +24,7 @@ from synthorg.memory.procedural.models import (
 )
 from synthorg.memory.procedural.proposer import ProceduralMemoryProposer  # noqa: TC001
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
     PROCEDURAL_MEMORY_PAYLOAD_BUILT,
@@ -191,8 +191,9 @@ async def _try_build_payload(
             PROCEDURAL_MEMORY_ERROR,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"payload construction failed: {type(exc).__name__}: {exc}",
-            exc_info=True,
+            context="payload construction failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     logger.debug(
@@ -233,8 +234,8 @@ async def _store_and_materialize(
             PROCEDURAL_MEMORY_STORE_FAILED,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"{type(exc).__name__}: {exc}",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 
@@ -266,8 +267,9 @@ async def _store_and_materialize(
                 PROCEDURAL_MEMORY_SKILL_MD,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"SKILL.md write failed: {type(exc).__name__}: {exc}",
-                exc_info=True,
+                context="SKILL.md write failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     return memory_id
@@ -328,8 +330,8 @@ async def propose_procedural_memory(  # noqa: PLR0913
             agent_id=agent_id,
             task_id=task_id,
             reason="proposer_failed",
-            error=f"{type(exc).__name__}: {exc}",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 

@@ -66,7 +66,6 @@ async def try_mid_execution_resume(
             APPROVAL_GATE_RESUME_FAILED,
             approval_id=approval_id,
             error="Failed to resume parked context",
-            exc_info=True,
         )
         # Resume lookup failed -- do NOT fall through to review
         # gate, because the parked context may still exist.

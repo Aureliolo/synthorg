@@ -18,7 +18,7 @@ from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.meta.telemetry.anonymizer import anonymize_decision, anonymize_rollout
 from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent, EventBatch
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cross_deployment import (
     XDEPLOY_BATCH_DROPPED,
     XDEPLOY_BATCH_FLUSH_FAILED,
@@ -176,8 +176,13 @@ class HttpAnalyticsEmitter:
             await self._enqueue(event)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(XDEPLOY_EVENT_EMIT_FAILED, event_type="proposal_decision")
+        except Exception as exc:
+            logger.warning(
+                XDEPLOY_EVENT_EMIT_FAILED,
+                event_type="proposal_decision",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def emit_rollout(
         self,
@@ -202,8 +207,13 @@ class HttpAnalyticsEmitter:
             await self._enqueue(event)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(XDEPLOY_EVENT_EMIT_FAILED, event_type="rollout_result")
+        except Exception as exc:
+            logger.warning(
+                XDEPLOY_EVENT_EMIT_FAILED,
+                event_type="rollout_result",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def flush(self) -> None:
         """Flush all buffered events to the collector.
@@ -454,7 +464,7 @@ class HttpAnalyticsEmitter:
         try:
             await retry.execute(post_once, event_count=event_count)
         except _TransientPostError as exc:
-            logger.error(  # noqa: TRY400 -- exhaustion is expected; no traceback
+            logger.error(
                 XDEPLOY_BATCH_FLUSH_FAILED,
                 event_count=event_count,
                 retries_exhausted=True,

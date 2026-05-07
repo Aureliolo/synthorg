@@ -210,15 +210,15 @@ class ModelResolver:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ROUTING_SELECTION_FAILED,
                 ref=ref,
                 candidate_count=len(candidates),
                 selector=type(self._selector).__name__,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = (
-                f"Selector failed for {ref!r} with {len(candidates)} candidates: {exc}"
-            )
+            msg = f"Selector failed for {ref!r} with {len(candidates)} candidates: {safe_error_description(exc)}"  # noqa: E501
             raise ModelResolutionError(msg, context={"ref": ref}) from exc
         logger.debug(
             ROUTING_MODEL_RESOLVED,

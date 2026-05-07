@@ -67,7 +67,6 @@ class CompanyController(Controller):
                 namespace="company",
                 key="_composed",
                 error_count=len(eg.exceptions),
-                exc_info=True,
             )
             raise eg.exceptions[0] from eg
         data: dict[str, Any] = {

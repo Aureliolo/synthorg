@@ -39,7 +39,7 @@ from synthorg.memory.fine_tune_plan import (
     FineTunePlan,
     MemoryBackendUnsupportedError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_BACKUP_UNAVAILABLE,
     MEMORY_CHECKPOINT_DEPLOY_FAILED,
@@ -297,12 +297,13 @@ class MemoryService:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.error(
                 MEMORY_ENTRY_DELETE_FAILED,
                 agent_id=agent_id,
                 memory_id=memory_id,
                 reason="backend_exception",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         if deleted:
@@ -845,6 +846,7 @@ class MemoryService:
                 MEMORY_CHECKPOINT_DEPLOY_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -970,13 +972,15 @@ class MemoryService:
                 MEMORY_CHECKPOINT_ROLLBACK_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 stage="rollback",
                 step=step,
             )
-            logger.error(  # noqa: TRY400 -- not an exception-context log; distinct audit event, not a traceback dump
+            logger.error(
                 MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 step=step,
             )
 

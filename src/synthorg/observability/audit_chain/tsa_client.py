@@ -395,7 +395,7 @@ def _decode_response(raw: bytes) -> Any:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"TSA response is not a valid ASN.1 TimeStampResp: {exc}"
+        msg = f"TSA response is not a valid ASN.1 TimeStampResp: {safe_error_description(exc)}"  # noqa: E501
         raise TsaProtocolError(msg) from exc
 
 
@@ -515,12 +515,13 @@ def _verify_signature(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             SECURITY_TIMESTAMP_SIGNATURE_INVALID,
             tsa_url=tsa_url,
-            error=type(exc).__name__,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
-        msg = f"TSA signature verification failed: {exc}"
+        msg = f"TSA signature verification failed: {safe_error_description(exc)}"
         raise TsaSignatureError(msg) from exc
 
 
@@ -539,14 +540,15 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
         # Log a fingerprint of the rejected PEM so operators can
         # cross-reference the config source without pasting the
         # (potentially large) cert material into logs.
-        logger.exception(
+        logger.warning(
             SECURITY_TIMESTAMP_PROTOCOL_ERROR,
             reason="invalid_trusted_root_pem",
             pem_bytes=len(pem_bytes),
             pem_sha256_prefix=hashlib.sha256(pem_bytes).hexdigest()[:16],
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
-        msg = f"Invalid trusted-root PEM: {exc}"
+        msg = f"Invalid trusted-root PEM: {safe_error_description(exc)}"
         raise ValueError(msg) from exc
 
 

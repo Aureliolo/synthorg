@@ -88,7 +88,6 @@ async def _safe_call(
             source=source,
             agent_id=agent_id,
             error_type="system",
-            exc_info=True,
         )
         raise
     except memory_errors.MemoryError as exc:
@@ -97,7 +96,6 @@ async def _safe_call(
             source=source,
             agent_id=agent_id,
             error_type=type(exc).__qualname__,
-            exc_info=True,
         )
         return ()
     except Exception as exc:
@@ -106,7 +104,6 @@ async def _safe_call(
             source=source,
             agent_id=agent_id,
             error_type=type(exc).__qualname__,
-            exc_info=True,
         )
         return ()
 
@@ -234,7 +231,6 @@ class ContextInjectionStrategy:
                 source="pipeline",
                 agent_id=agent_id,
                 error_type="system",
-                exc_info=True,
             )
             raise
         except memory_errors.MemoryError:
@@ -242,7 +238,6 @@ class ContextInjectionStrategy:
                 MEMORY_RETRIEVAL_DEGRADED,
                 source="pipeline",
                 agent_id=agent_id,
-                exc_info=True,
             )
             return ()
         except Exception as exc:
@@ -261,7 +256,6 @@ class ContextInjectionStrategy:
                         source="pipeline",
                         agent_id=agent_id,
                         error_type="system_in_exception_group",
-                        exc_info=True,
                     )
                     raise system_errors.exceptions[0] from exc
             logger.error(
@@ -269,7 +263,6 @@ class ContextInjectionStrategy:
                 source="pipeline",
                 agent_id=agent_id,
                 error_type=type(exc).__qualname__,
-                exc_info=True,
             )
             return ()
 
@@ -334,7 +327,6 @@ class ContextInjectionStrategy:
                     agent_id=agent_id,
                     error_type=type(exc).__qualname__,
                     reason="query_specific_rerank_failed_falling_back",
-                    exc_info=True,
                 )
 
         ranked = self._filter_or_fail_closed(ranked, agent_id=agent_id)
@@ -459,7 +451,6 @@ class ContextInjectionStrategy:
                 source="memory_filter",
                 agent_id=agent_id,
                 error_type="system",
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -472,7 +463,6 @@ class ContextInjectionStrategy:
                     self._memory_filter, "strategy_name", "unknown"
                 ),
                 reason="filter_failed_failing_closed",
-                exc_info=True,
             )
             return ()
         if not filtered:

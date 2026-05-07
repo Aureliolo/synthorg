@@ -149,7 +149,7 @@ class OrgInflectionMonitor:
                 # orphan task that may still own snapshot state.
                 task.cancel()
                 self._stop_failed = True
-                logger.error(  # noqa: TRY400
+                logger.error(
                     COS_INFLECTION_CHECK_FAILED,
                     error=("stop exceeded hard deadline; monitor marked unrestartable"),
                     timeout_seconds=self._stop_drain_timeout_seconds,
@@ -196,8 +196,12 @@ class OrgInflectionMonitor:
                 raise
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(COS_INFLECTION_CHECK_FAILED)
+            except Exception as exc:
+                logger.warning(
+                    COS_INFLECTION_CHECK_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
@@ -239,10 +243,12 @@ class OrgInflectionMonitor:
                 await sink.on_inflection(inflection)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.warning(
                     COS_INFLECTION_CHECK_FAILED,
                     sink=type(sink).__name__,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         async with asyncio.TaskGroup() as tg:

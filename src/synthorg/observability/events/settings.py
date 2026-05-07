@@ -29,6 +29,12 @@ timed-out stop, or a post-subscribe task spawn failed. Kept distinct from
 ``SETTINGS_DISPATCHER_STARTED`` so rejected starts do not inflate the
 successful-start metric."""
 SETTINGS_DISPATCHER_STOPPED: Final[str] = "settings.dispatcher.stopped"
+SETTINGS_DISPATCHER_STOP_FAILED: Final[str] = "settings.dispatcher.stop.failed"
+"""Emitted when ``SettingsChangeDispatcher.stop()`` cannot complete
+cleanly -- the drain exceeds the hard deadline or the post-drain
+unsubscribe call fails. Kept distinct from
+``SETTINGS_DISPATCHER_STOPPED`` so dashboards / alerts that key on the
+clean-shutdown event do not silently absorb failed stops."""
 SETTINGS_DISPATCHER_POLL_ERROR: Final[str] = "settings.dispatcher.poll_error"
 SETTINGS_DISPATCHER_CHANNEL_DEAD: Final[str] = "settings.dispatcher.channel_dead"
 SETTINGS_SUBSCRIBER_NOTIFIED: Final[str] = "settings.subscriber.notified"

@@ -587,8 +587,8 @@ class PerformanceTracker:
                 logger.warning(
                     PERF_SNAPSHOT_FAILED,
                     agent_id=str(agent_id),
-                    error=type(exc).__name__,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 results.append(None)
             else:
@@ -936,7 +936,6 @@ class PerformanceTracker:
                 agent_id=record.agent_id,
                 record_id=record.id,
                 reason="behavioral_score_failed",
-                exc_info=True,
             )
             return
 
@@ -953,7 +952,6 @@ class PerformanceTracker:
                 agent_id=record.agent_id,
                 record_id=record.id,
                 reason="llm_sample_failed",
-                exc_info=True,
             )
 
     # ── Inflection emission ─────────────────────────────────────
@@ -1040,6 +1038,6 @@ class PerformanceTracker:
             logger.warning(
                 PERF_INFLECTION_EMISSION_FAILED,
                 agent_id=str(agent_id),
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )

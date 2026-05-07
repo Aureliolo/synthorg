@@ -458,11 +458,13 @@ class SettingsController(Controller):
             )
             msg = "Invalid setting value"
             raise DomainValidationError(msg) from exc
-        except SettingsEncryptionError:
-            logger.exception(
+        except SettingsEncryptionError as exc:
+            logger.error(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=namespace,
                 key=key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = "Internal error processing sensitive setting"
             raise InternalServerException(msg) from None
@@ -597,14 +599,14 @@ class SettingsController(Controller):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(SETTINGS_OBSERVABILITY_VALIDATION_FAILED)
-            return ApiResponse(
-                data=TestSinkConfigResponse(
-                    valid=False,
-                    error="Internal error validating sink configuration",
-                ),
+        except Exception as exc:
+            logger.error(
+                SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+            msg = "Internal error validating sink configuration"
+            raise InternalServerException(msg) from None
         return ApiResponse(
             data=TestSinkConfigResponse(valid=True),
         )
@@ -801,13 +803,16 @@ async def _get_setting_or_default(
             key=key,
         )
         return fallback
-    except Exception:
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
         logger.warning(
             SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
             namespace=SettingNamespace.OBSERVABILITY.value,
             key=key,
-            error="Failed to resolve observability setting",
-            exc_info=True,
+            note="Failed to resolve observability setting",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return fallback
     return val.value
@@ -825,10 +830,14 @@ def _parse_root_level(raw: str) -> LogLevel:
     try:
         return LogLevel(raw.upper())
     except ValueError:
+        # Operators may store arbitrary text in this key from a
+        # mis-typed CLI invocation; ``raw`` would otherwise leak that
+        # into the log sink. Static message keeps the diagnostic
+        # generic; the namespace + key are enough for triage.
         logger.warning(
             SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
             key="root_log_level",
-            error=f"Invalid log level {raw!r}, defaulting to DEBUG",
+            note="Invalid log level value, defaulting to DEBUG",
         )
         return LogLevel.DEBUG
 

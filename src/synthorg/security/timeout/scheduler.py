@@ -223,7 +223,7 @@ class ApprovalTimeoutScheduler:
                     )
             except TimeoutError:
                 self._stop_failed = True
-                logger.error(  # noqa: TRY400
+                logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
                     error="stop drain timed out",
                     timeout_seconds=timeout,
@@ -301,7 +301,6 @@ class ApprovalTimeoutScheduler:
                 logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
                     error="Unexpected error in scheduler loop",
-                    exc_info=True,
                 )
 
     async def _check_pending_approvals(self) -> None:
@@ -316,7 +315,6 @@ class ApprovalTimeoutScheduler:
             logger.error(
                 TIMEOUT_SCHEDULER_ERROR,
                 error="Failed to list pending approvals",
-                exc_info=True,
             )
             return
 
@@ -334,7 +332,6 @@ class ApprovalTimeoutScheduler:
                 TIMEOUT_SCHEDULER_ERROR,
                 approval_id=item.id,
                 error="Failed to evaluate item",
-                exc_info=True,
             )
             return
 
@@ -373,7 +370,6 @@ class ApprovalTimeoutScheduler:
                 TIMEOUT_SCHEDULER_ERROR,
                 approval_id=item.id,
                 error="Failed to persist timeout resolution",
-                exc_info=True,
             )
             return
 
@@ -398,7 +394,6 @@ class ApprovalTimeoutScheduler:
                     TIMEOUT_SCHEDULER_ERROR,
                     approval_id=item.id,
                     error="on_timeout_resolve callback failed",
-                    exc_info=True,
                 )
 
     async def _notify_escalation(

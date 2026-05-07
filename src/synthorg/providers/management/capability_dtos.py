@@ -38,6 +38,7 @@ from pydantic import (
 
 from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import safe_error_description
 from synthorg.providers.enums import (
     AuthType,  # noqa: TC001 -- runtime literal discriminator
 )
@@ -536,7 +537,7 @@ class _OAuthRotation(BaseModel):
         try:
             _ = parsed.port  # raises on malformed ``host:bad`` ports
         except ValueError as exc:
-            msg = f"oauth_token_url has malformed port: {exc}"
+            msg = f"oauth_token_url has malformed port: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
         return v
 

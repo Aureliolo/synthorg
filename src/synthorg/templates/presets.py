@@ -458,7 +458,7 @@ def _validate_presets() -> None:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Invalid personality preset {name!r}: {exc}"
+            msg = f"Invalid personality preset {name!r}: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
 
 
@@ -580,7 +580,7 @@ def generate_auto_name(
         return str(fake.name())
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         from synthorg.observability.events.template import (  # noqa: PLC0415
             TEMPLATE_NAME_GEN_FAKER_ERROR,
         )
@@ -589,7 +589,8 @@ def generate_auto_name(
             TEMPLATE_NAME_GEN_FAKER_ERROR,
             locales=locale_list[:5],
             seed=seed,
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         # Fall back to a known-safe locale.
         fallback = Faker(["en_US"])

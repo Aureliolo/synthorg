@@ -351,13 +351,15 @@ class _BaseSemanticDetector:
             return _parse_findings(response.content, self.category)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 DETECTOR_ERROR,
                 detector=detector_name,
                 agent_id=context.agent_id,
                 task_id=context.task_id,
                 message_count=message_count,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ()
         finally:

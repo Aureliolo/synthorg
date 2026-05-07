@@ -146,7 +146,6 @@ class SemanticDriftDetector(BaseAgentMiddleware):
                 MIDDLEWARE_SEMANTIC_DRIFT_ERROR,
                 agent_id=str(ctx.agent_id),
                 task_id=str(ctx.task_id),
-                exc_info=True,
             )
 
         return result

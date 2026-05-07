@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_POLICY_ENGINE_ERROR,
 )
@@ -81,13 +81,15 @@ def build_policy_engine(
         for path in config.policy_files:
             try:
                 policy_texts.append(path.read_text(encoding="utf-8"))
-            except OSError as exc:
-                logger.exception(
+            except (OSError, UnicodeDecodeError) as exc:
+                logger.warning(
                     SECURITY_POLICY_ENGINE_ERROR,
-                    error=f"Failed to read policy file {path}: {exc}",
+                    context="policy_file_read_failed",
                     path=str(path),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                msg_0 = f"Cannot read policy file {path}: {exc}"
+                msg_0 = f"Cannot read policy file {path}: {safe_error_description(exc)}"
                 raise ValueError(
                     msg_0,
                 ) from exc

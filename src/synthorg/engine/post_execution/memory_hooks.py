@@ -8,7 +8,7 @@ as explicit parameters (no ``self``).
 import asyncio
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     DISTILLATION_CAPTURE_FAILED,
     DISTILLATION_CAPTURE_SKIPPED,
@@ -85,9 +85,9 @@ async def try_capture_distillation(
             DISTILLATION_CAPTURE_FAILED,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"{type(exc).__name__}: {exc}",
             reason="validation_or_capture_failed",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 
@@ -151,8 +151,9 @@ async def try_procedural_memory(  # noqa: PLR0913
             PROCEDURAL_MEMORY_ERROR,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"procedural memory failed: {type(exc).__name__}: {exc}",
-            exc_info=True,
+            phase="procedural_memory",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 
@@ -199,6 +200,7 @@ async def try_evolution_trigger(
             EVOLUTION_TRIGGER_FAILED,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"evolution trigger failed: {type(exc).__name__}: {exc}",
-            exc_info=True,
+            phase="evolution_trigger",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )

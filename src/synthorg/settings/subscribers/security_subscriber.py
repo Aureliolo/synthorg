@@ -7,7 +7,7 @@ the ``ProviderDiscoveryPolicy`` when it changes.
 import json
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_ALLOWLIST_UPDATE_FAILED,
     SECURITY_ALLOWLIST_UPDATED,
@@ -103,18 +103,24 @@ class SecuritySubscriber:
                 SECURITY_ALLOWLIST_UPDATE_FAILED,
                 namespace=namespace,
                 key=key,
-                error=f"failed to parse allowlist: {exc}",
+                context="failed to parse allowlist",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
 
         try:
             await self._on_changed(allowlist)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 SECURITY_ALLOWLIST_UPDATE_FAILED,
                 namespace=namespace,
                 key=key,
-                error=f"failed to apply allowlist: {exc}",
+                context="failed to apply allowlist",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.info(

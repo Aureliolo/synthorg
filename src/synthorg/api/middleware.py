@@ -318,7 +318,6 @@ def _record_request_metric(
             METRICS_RECORD_FAILED,
             component="api_request_duration",
             reason="collector_access_failed",
-            exc_info=True,
         )
         return
     try:
@@ -334,7 +333,6 @@ def _record_request_metric(
         logger.warning(
             METRICS_RECORD_FAILED,
             component="api_request_duration",
-            exc_info=True,
         )
 
 

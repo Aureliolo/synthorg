@@ -176,7 +176,6 @@ def publish_ws_event(
             event_type=event_type.value,
             channel=channel,
             note="Failed to publish WS event",
-            exc_info=True,
         )
 
 

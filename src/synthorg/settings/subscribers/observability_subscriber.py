@@ -130,7 +130,6 @@ class ObservabilitySettingsSubscriber:
                 subscriber=self.subscriber_name,
                 key=key,
                 note=f"invalid root_log_level: {root_result.value!r}",
-                exc_info=True,
             )
             return None
 
@@ -161,7 +160,6 @@ class ObservabilitySettingsSubscriber:
                 subscriber=self.subscriber_name,
                 key=key,
                 note="invalid sink configuration -- keeping existing config",
-                exc_info=True,
             )
             return None
 
@@ -194,7 +192,6 @@ class ObservabilitySettingsSubscriber:
                     "configure_logging failed -- old pipeline was already "
                     "torn down; logging may be degraded"
                 ),
-                exc_info=True,
             )
             return
 
@@ -218,7 +215,6 @@ class ObservabilitySettingsSubscriber:
                 subscriber=self.subscriber_name,
                 key=key,
                 note="failed to read settings",
-                exc_info=True,
             )
             return
 

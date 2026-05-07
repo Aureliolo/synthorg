@@ -7,6 +7,7 @@ import re
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import safe_error_description
 from synthorg.settings.enums import (
     SettingLevel,
     SettingNamespace,
@@ -158,7 +159,7 @@ class SettingDefinition(BaseModel):
             try:
                 re.compile(self.validator_pattern)
             except re.error as exc:
-                msg = f"Invalid validator_pattern: {exc}"
+                msg = f"Invalid validator_pattern: {safe_error_description(exc)}"
                 raise ValueError(msg) from exc
         if self.default is not None:
             self._validate_default()

@@ -15,7 +15,7 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.engine.workspace.models import MergeConflict
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
 )
@@ -240,11 +240,13 @@ def _parse_conflicts_from_content(content: str) -> tuple[MergeConflict, ...]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        msg = f"Cannot parse response content as JSON: {exc}"
+        error_desc = safe_error_description(exc)
+        msg = f"Cannot parse response content as JSON: {error_desc}"
         logger.warning(
             WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
             reason="parse_error",
-            error=msg,
+            error_type=type(exc).__name__,
+            error=error_desc,
         )
         raise ValueError(msg) from exc
 

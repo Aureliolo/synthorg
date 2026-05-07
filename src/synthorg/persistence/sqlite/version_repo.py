@@ -133,7 +133,7 @@ class SQLiteVersionRepository[T: BaseModel]:
             )
         except json.JSONDecodeError as exc:
             context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
-            msg = f"Corrupt JSON in version snapshot {context!r}: {exc}"
+            msg = f"Corrupt JSON in version snapshot {context!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
@@ -145,7 +145,7 @@ class SQLiteVersionRepository[T: BaseModel]:
             raise QueryError(msg) from exc
         except ValidationError as exc:
             context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
-            msg = f"Schema mismatch in version snapshot {context!r}: {exc}"
+            msg = f"Schema mismatch in version snapshot {context!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
@@ -157,7 +157,7 @@ class SQLiteVersionRepository[T: BaseModel]:
             raise QueryError(msg) from exc
         except (ValueError, KeyError) as exc:
             context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
-            msg = f"Failed to deserialize version snapshot {context!r}: {exc}"
+            msg = f"Failed to deserialize version snapshot {context!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,
@@ -174,7 +174,7 @@ class SQLiteVersionRepository[T: BaseModel]:
             # (e.g. TypeError, AttributeError) so all callback errors
             # are normalized to QueryError.
             context = f"{data.get('entity_id', '?')}@v{data.get('version', '?')}"
-            msg = f"Failed to deserialize version snapshot {context!r}: {exc}"
+            msg = f"Failed to deserialize version snapshot {context!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 VERSION_FETCH_FAILED,
                 table=self._table,

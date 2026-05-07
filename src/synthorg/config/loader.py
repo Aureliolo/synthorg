@@ -120,7 +120,7 @@ def _parse_yaml_string(
         if mark is not None:
             line = mark.line + 1
             col = mark.column + 1
-        msg = f"YAML syntax error in {source_name}: {exc}"
+        msg = f"YAML syntax error in {source_name}: {safe_error_description(exc)}"
         logger.warning(
             CONFIG_PARSE_FAILED,
             source=source_name,

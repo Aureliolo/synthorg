@@ -111,11 +111,17 @@ def list_blueprints() -> tuple[BlueprintInfo, ...]:
             try:
                 data = _load_builtin(name)
                 seen[name] = _blueprint_info_from_data(data, "builtin")
-            except BlueprintNotFoundError, BlueprintValidationError, OSError:
-                logger.exception(
+            except (
+                BlueprintNotFoundError,
+                BlueprintValidationError,
+                OSError,
+            ) as err:
+                logger.warning(
                     BLUEPRINT_LIST,
                     blueprint_name=name,
                     action="skip_invalid",
+                    error_type=type(err).__name__,
+                    error=safe_error_description(err),
                 )
 
     return tuple(info for _, info in sorted(seen.items()))
@@ -267,7 +273,7 @@ def _parse_blueprint_yaml(yaml_text: str, source_name: str) -> BlueprintData:
     try:
         raw = yaml.safe_load(yaml_text)
     except yaml.YAMLError as exc:
-        msg = f"Failed to parse YAML from {source_name}: {exc}"
+        msg = f"Failed to parse YAML from {source_name}: {safe_error_description(exc)}"
         logger.warning(
             BLUEPRINT_LIST,
             source=source_name,
@@ -290,7 +296,7 @@ def _parse_blueprint_yaml(yaml_text: str, source_name: str) -> BlueprintData:
     try:
         return BlueprintData.model_validate(blueprint_dict)
     except (ValueError, TypeError, ValidationError) as exc:
-        msg = f"Blueprint validation failed for {source_name}: {exc}"
+        msg = f"Blueprint validation failed for {source_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             BLUEPRINT_LIST,
             source=source_name,
@@ -314,7 +320,7 @@ def _load_builtin(name: str) -> BlueprintData:
         ref = resources.files("synthorg.engine.workflow.blueprints") / filename
         yaml_text = ref.read_text(encoding="utf-8")
     except (OSError, ImportError, TypeError) as exc:
-        msg = f"Failed to read built-in blueprint {filename!r}: {exc}"
+        msg = f"Failed to read built-in blueprint {filename!r}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             BLUEPRINT_LOAD_NOT_FOUND,
             source=source_name,

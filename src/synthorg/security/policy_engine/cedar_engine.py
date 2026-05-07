@@ -118,7 +118,7 @@ class CedarPolicyEngine:
             raise
         except Exception as exc:
             latency_ms = (time.perf_counter() - start) * 1000
-            logger.error(  # noqa: TRY400
+            logger.error(
                 SECURITY_POLICY_ENGINE_ERROR,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -131,13 +131,13 @@ class CedarPolicyEngine:
             if self._fail_closed:
                 decision = PolicyDecision(
                     allow=False,
-                    reason=f"Policy evaluation error (fail-closed): {exc}",
+                    reason=f"Policy evaluation error (fail-closed): {safe_error_description(exc)}",  # noqa: E501
                     latency_ms=latency_ms,
                 )
             else:
                 decision = PolicyDecision(
                     allow=True,
-                    reason=f"Policy evaluation error (fail-open): {exc}",
+                    reason=f"Policy evaluation error (fail-open): {safe_error_description(exc)}",  # noqa: E501
                     latency_ms=latency_ms,
                 )
 
@@ -159,6 +159,5 @@ class CedarPolicyEngine:
                 reason="metrics_mirror_failed",
                 decision_allow=decision.allow,
                 action_type=request.action_type,
-                exc_info=True,
             )
         return decision

@@ -65,14 +65,16 @@ class PersistenceComponentHandler:
                 str(self._db_path),
                 str(target_file),
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to back up persistence DB: {exc}"
+            msg = f"Failed to back up persistence DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
         logger.info(
             BACKUP_COMPONENT_COMPLETED,
@@ -113,21 +115,23 @@ class PersistenceComponentHandler:
                 self._atomic_swap, self._db_path, source_file, bak_path
             )
         except ComponentBackupError as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to restore persistence DB: {exc}"
+            msg = f"Failed to restore persistence DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
 
     async def validate_source(self, source_dir: Path) -> bool:
@@ -159,13 +163,19 @@ class PersistenceComponentHandler:
                 str(source_file),
             )
         except IntegrityCheckError as exc:
+            # Using ``logger.error`` (not ``logger.exception``) is
+            # deliberate: structlog's exc-info processor serialises
+            # traceback frame-locals into the event, leaking any
+            # in-scope credential. We pass the redacted exception
+            # description via ``safe_error_description`` instead.
             logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
-                error=f"Integrity check could not run: {exc}",
-                exc_info=True,
+                phase="integrity_check",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = f"Failed to run integrity check on backup: {exc}"
+            msg = f"Failed to run integrity check on backup: {safe_error_description(exc)}"  # noqa: E501
             raise ComponentBackupError(msg) from exc
 
     @staticmethod

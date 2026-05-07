@@ -70,14 +70,16 @@ class MemoryComponentHandler:
         target = target_dir / _MEMORY_SUBDIR
         try:
             size = await asyncio.to_thread(self._copy_tree, self._data_dir, target)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to back up memory data: {exc}"
+            msg = f"Failed to back up memory data: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
         logger.info(
             BACKUP_COMPONENT_COMPLETED,
@@ -122,14 +124,16 @@ class MemoryComponentHandler:
             )
         except ComponentBackupError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to restore memory data: {exc}"
+            msg = f"Failed to restore memory data: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
 
     async def validate_source(self, source_dir: Path) -> bool:

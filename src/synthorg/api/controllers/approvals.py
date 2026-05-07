@@ -302,7 +302,6 @@ def _publish_approval_event(
             API_APPROVAL_PUBLISH_FAILED,
             approval_id=item.id,
             event_type=event_type.value,
-            exc_info=True,
         )
 
 

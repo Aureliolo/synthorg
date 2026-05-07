@@ -144,7 +144,6 @@ async def cancel_if_pending(task: asyncio.Task[Any]) -> None:
             COMM_BUS_RECEIVE_ERROR,
             phase="cancel_pending_task",
             task_repr=repr(task),
-            exc_info=True,
         )
         raise
 

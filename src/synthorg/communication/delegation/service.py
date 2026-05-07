@@ -244,7 +244,6 @@ class DelegationService:
                     DELEGATION_RECORD_STORE_FAILED,
                     delegator=request.delegator_id,
                     delegatee=request.delegatee_id,
-                    exc_info=True,
                 )
 
         logger.info(

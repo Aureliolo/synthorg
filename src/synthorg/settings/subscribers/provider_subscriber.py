@@ -123,7 +123,6 @@ class ProviderSettingsSubscriber:
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="model_router",
                 attempted_strategy=attempted_strategy,
-                exc_info=True,
             )
             raise
         self._app_state.swap_model_router(new_router)

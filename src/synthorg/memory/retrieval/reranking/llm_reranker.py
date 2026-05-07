@@ -159,7 +159,7 @@ class LLMQuerySpecificReranker:
             # Emit failure telemetry before re-raising so operators
             # can correlate system-level reranker aborts with the
             # triggering query/candidate set.
-            logger.exception(
+            logger.warning(
                 MEMORY_RERANK_FAILED,
                 error="system_error",
                 candidate_count=len(candidates),

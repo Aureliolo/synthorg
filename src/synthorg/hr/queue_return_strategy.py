@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.enums import TaskStatus
 from synthorg.hr.errors import TaskReassignmentError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_FIRING_REASSIGNMENT_FAILED,
     HR_FIRING_TASKS_REASSIGNED,
@@ -71,15 +71,18 @@ class QueueReturnStrategy:
                 )
                 interrupted.append(updated)
             except ValueError as exc:
+                safe_error = safe_error_description(exc)
                 msg = (
                     f"Failed to interrupt task {task.id!r} "
-                    f"(status={task.status.value}): {exc}"
+                    f"(status={task.status.value}): {safe_error}"
                 )
                 logger.warning(
                     HR_FIRING_REASSIGNMENT_FAILED,
                     agent_id=agent_id,
                     task_id=task.id,
-                    error=msg,
+                    task_status=task.status.value,
+                    error_type=type(exc).__name__,
+                    error=safe_error,
                 )
                 raise TaskReassignmentError(msg) from exc
 

@@ -14,7 +14,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
 
 if TYPE_CHECKING:
@@ -153,8 +153,8 @@ class ApprovalGateGuard:
                     guard="approval_gate",
                     action="approval_creation_failed",
                     decision_id=str(decision.id),
-                    error=f"{type(exc).__name__}: {exc}",
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 # Drop the decision: without an approval item it
                 # cannot be safely executed through the existing flow.

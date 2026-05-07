@@ -166,7 +166,7 @@ class BackupController(Controller):
             # the raw pydantic ValidationError. Surface a 5xx instead
             # so the operator gets a stable error and the failure is
             # visible in logs.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_FAILED,
                 scope="backup",
                 idempotency_key=idempotency_key,
@@ -377,7 +377,6 @@ class BackupController(Controller):
                 backup_id=data.backup_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             msg = "Restore operation failed"
             raise InternalServerException(msg) from exc

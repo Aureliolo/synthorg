@@ -182,7 +182,7 @@ class ResilientTimestampProvider:
         try:
             token = await self._client.request_timestamp(payload)
         except _SECURITY_INCIDENT_EXCEPTIONS as exc:
-            logger.exception(
+            logger.error(
                 SECURITY_TIMESTAMP_INCIDENT,
                 tsa_url=self._client.tsa_url,
                 incident=type(exc).__name__,

@@ -298,18 +298,35 @@ class FineTuneOrchestrator:
                     self._current_run or run,
                     "cancelled by user",
                 )
-            except Exception:
-                # Update in-memory state even if DB fails.
-                self._current_run = run.model_copy(
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # Update in-memory state even if DB fails. Mirror
+                # ``_mark_failed`` so the snapshot has the same terminal
+                # shape (progress cleared, timestamps stamped) instead
+                # of a stale stage with leftover progress data.
+                # Base on the latest snapshot (``self._current_run``)
+                # rather than the entry-state ``run`` so a cancellation
+                # mid-pipeline does not regress ``stages_completed`` or
+                # the current stage if a later stage already updated
+                # the in-memory snapshot.
+                now = datetime.now(UTC)
+                base = self._current_run or run
+                self._current_run = base.model_copy(
                     update={
                         "stage": FineTuneStage.FAILED,
                         "error": "cancelled by user",
+                        "progress": None,
+                        "updated_at": now,
+                        "completed_at": now,
                     },
                 )
-                logger.exception(
+                logger.warning(
                     MEMORY_FINE_TUNE_FAILED,
                     run_id=run.id,
-                    error="failed to persist cancellation state",
+                    note="failed_to_persist_cancellation_state",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             self._schedule_ws(
                 "memory.fine_tune.failed",
@@ -344,7 +361,7 @@ class FineTuneOrchestrator:
                 # record on this path. ``noqa: TRY400`` because
                 # ``logger.exception`` would auto-attach a traceback
                 # whose frame-locals can carry credentials.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     MEMORY_FINE_TUNE_FAILED,
                     run_id=run.id,
                     stage="persist_failed_state",
@@ -659,7 +676,6 @@ class FineTuneOrchestrator:
                 MEMORY_FINE_TUNE_WS_EMIT_FAILED,
                 event_type=event_type,
                 run_id=run.id,
-                exc_info=True,
             )
 
     @staticmethod

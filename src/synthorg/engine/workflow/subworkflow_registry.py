@@ -41,7 +41,7 @@ from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runt
     ParentReference,
     SubworkflowSummary,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_DELETED,
     SUBWORKFLOW_REGISTERED,
@@ -121,7 +121,7 @@ class SubworkflowRegistry:
         except InvalidVersion as exc:
             msg = (
                 f"Subworkflow {definition.id!r} has invalid semver "
-                f"{definition.version!r}: {exc}"
+                f"{definition.version!r}: {safe_error_description(exc)}"
             )
             raise SubworkflowIOError(msg) from exc
 

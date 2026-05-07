@@ -341,7 +341,6 @@ class ConflictResolutionService:
                 dissent_id=record.id,
                 conflict_id=conflict_id,
                 transport="bus",
-                exc_info=True,
             )
 
     async def _publish_dissent_sse(
@@ -379,5 +378,4 @@ class ConflictResolutionService:
                 dissent_id=record.id,
                 conflict_id=conflict_id,
                 transport="sse",
-                exc_info=True,
             )

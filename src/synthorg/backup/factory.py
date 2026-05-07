@@ -108,6 +108,5 @@ def build_backup_service(
         logger.warning(
             API_APP_STARTUP,
             error="Failed to build backup service",
-            exc_info=True,
         )
         return None

@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_DNS_FAILED,
     WEB_SSRF_BLOCKED,
@@ -223,9 +223,27 @@ def is_allowed_http_scheme(url: str) -> bool:
 # ── DNS resolution helpers ──────────────────────────────────────
 
 
-def _dns_failure(hostname: str, reason: str, message: str) -> str:
-    """Log a DNS resolution failure and return the error message."""
-    logger.warning(WEB_DNS_FAILED, hostname=hostname, reason=reason)
+def _dns_failure(
+    hostname: str,
+    reason: str,
+    message: str,
+    *,
+    error_type: str | None = None,
+    error: str | None = None,
+) -> str:
+    """Log a DNS resolution failure and return the error message.
+
+    ``error_type`` / ``error`` are forwarded as structured fields when
+    the caller has a sanitised exception description (the OSError
+    branch of :func:`resolve_dns`); the timeout branch passes neither
+    because the cause is the wait, not a backend failure.
+    """
+    payload: dict[str, object] = {"hostname": hostname, "reason": reason}
+    if error_type is not None:
+        payload["error_type"] = error_type
+    if error is not None:
+        payload["error"] = error
+    logger.warning(WEB_DNS_FAILED, **payload)
     return message
 
 
@@ -256,10 +274,13 @@ async def resolve_dns(
             f"DNS resolution for {hostname!r} timed out",
         )
     except OSError as exc:
+        safe_error = safe_error_description(exc)
         return _dns_failure(
             hostname,
-            str(exc),
-            f"DNS resolution for {hostname!r} failed: {exc}",
+            "dns_resolution_error",
+            f"DNS resolution for {hostname!r} failed: {safe_error}",
+            error_type=type(exc).__name__,
+            error=safe_error,
         )
     except Exception as exc:
         if isinstance(exc, MemoryError | RecursionError):
@@ -267,10 +288,11 @@ async def resolve_dns(
         logger.error(
             WEB_DNS_FAILED,
             hostname=hostname,
-            reason=f"unexpected: {type(exc).__name__}: {exc}",
-            exc_info=True,
+            reason="unexpected_dns_resolution_error",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
-        return f"DNS resolution for {hostname!r} failed: {exc}"
+        return f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}"
 
     if not results:
         return _dns_failure(

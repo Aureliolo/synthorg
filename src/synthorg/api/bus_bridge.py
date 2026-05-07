@@ -272,7 +272,6 @@ class MessageBusBridge:
                             API_BUS_BRIDGE_SUBSCRIBE_FAILED,
                             channel=channel_name,
                             subscriber_id=_SUBSCRIBER_ID,
-                            exc_info=True,
                         )
                         continue
                     subscribed_channels.append(channel_name)
@@ -318,7 +317,6 @@ class MessageBusBridge:
                                 channel=channel_name,
                                 subscriber_id=_SUBSCRIBER_ID,
                                 phase="rollback_unsubscribe_failed",
-                                exc_info=True,
                             )
                         failed_channels.append(channel_name)
                         logger.warning(
@@ -326,7 +324,6 @@ class MessageBusBridge:
                             channel=channel_name,
                             subscriber_id=_SUBSCRIBER_ID,
                             phase="task_spawn_failed",
-                            exc_info=True,
                         )
                         continue
                     self._tasks.append(task)
@@ -358,7 +355,6 @@ class MessageBusBridge:
                             channel=channel_name,
                             subscriber_id=_SUBSCRIBER_ID,
                             phase="rollback_unsubscribe_failed",
-                            exc_info=True,
                         )
                 if rollback_unsubscribe_failed:
                     # Rollback unsubscribe failure leaves live
@@ -382,7 +378,6 @@ class MessageBusBridge:
                         orphaned_channels=tuple(orphaned_channels),
                         subscribed_channels=tuple(subscribed_channels),
                         failed_channels=tuple(failed_channels),
-                        exc_info=True,
                     )
                     raise
                 self._running = False
@@ -391,7 +386,6 @@ class MessageBusBridge:
                     error="bus bridge startup rolled back after unexpected error",
                     subscribed_channels=tuple(subscribed_channels),
                     failed_channels=tuple(failed_channels),
-                    exc_info=True,
                 )
                 raise
 
@@ -479,7 +473,7 @@ class MessageBusBridge:
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable diagnostic
                     # information beyond the structured fields below.
-                    logger.error(  # noqa: TRY400
+                    logger.error(
                         API_APP_SHUTDOWN,
                         component="bus_bridge",
                         error=(
@@ -550,28 +544,33 @@ class MessageBusBridge:
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 break
-            except OSError, ConnectionError, TimeoutError:
+            except (OSError, ConnectionError, TimeoutError) as exc:
                 consecutive_errors += 1
                 if consecutive_errors >= max_errors:
                     logger.error(
                         API_BRIDGE_CHANNEL_DEAD,
                         channel=channel_name,
                         consecutive_errors=consecutive_errors,
-                        exc_info=True,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                     break
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     channel=channel_name,
                     consecutive_errors=consecutive_errors,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 await asyncio.sleep(poll_timeout)
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 logger.error(
                     API_BRIDGE_CHANNEL_DEAD,
                     channel=channel_name,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 break
 

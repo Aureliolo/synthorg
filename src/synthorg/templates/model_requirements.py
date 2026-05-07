@@ -97,7 +97,6 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
                 TEMPLATE_MODEL_REQUIREMENT_INVALID,
                 raw_requirement=raw,
                 reason="dict_validation_failed",
-                exc_info=True,
             )
             raise
 

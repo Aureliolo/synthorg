@@ -31,7 +31,7 @@ from synthorg.communication.meeting.protocol import (  # noqa: TC001
     MeetingProtocol,
     TaskCreator,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meeting import (
     MEETING_ACTION_ITEM_EXTRACTED,
     MEETING_BUDGET_EXHAUSTED,
@@ -40,6 +40,7 @@ from synthorg.observability.events.meeting import (
     MEETING_FAILED,
     MEETING_LENS_ASSIGNMENT_FAILED,
     MEETING_PROTOCOL_NOT_FOUND,
+    MEETING_RECORD_MIRROR_DRIFT,
     MEETING_STARTED,
     MEETING_TASK_CREATED,
     MEETING_TASK_CREATION_FAILED,
@@ -60,7 +61,8 @@ def _format_exception(exc: BaseException) -> str:
     Flattens ``ExceptionGroup`` (produced by ``asyncio.TaskGroup``
     when multiple concurrent tasks fail) into a single human-readable
     string.  Handles nested groups recursively.  Non-group exceptions
-    are returned via ``str()``.
+    are returned via ``safe_error_description()`` so callers never
+    embed unredacted ``str(exc)`` into log/UI fields.
     """
     if isinstance(exc, ExceptionGroup):
         parts: list[str] = []
@@ -68,9 +70,9 @@ def _format_exception(exc: BaseException) -> str:
             if isinstance(sub, ExceptionGroup):
                 parts.append(_format_exception(sub))
             else:
-                parts.append(f"{type(sub).__name__}: {sub}")
+                parts.append(safe_error_description(sub))
         return f"Multiple errors: {'; '.join(parts)}"
-    return str(exc)
+    return safe_error_description(exc)
 
 
 class MeetingOrchestrator:
@@ -322,8 +324,8 @@ class MeetingOrchestrator:
             # TRY400: this is an invariant-violation log, not a stack
             # trace use case; the relevant context is the structured
             # fields below, not the ValueError trace.
-            logger.error(  # noqa: TRY400
-                MEETING_FAILED,
+            logger.error(
+                MEETING_RECORD_MIRROR_DRIFT,
                 reason="record_mirror_drift",
                 meeting_id=meeting_id,
                 list_len=len(self._records),
@@ -520,13 +522,17 @@ class MeetingOrchestrator:
                     description=action_item.description,
                     assignee=action_item.assignee_id,
                 )
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 failures += 1
-                logger.exception(
+                logger.error(
                     MEETING_TASK_CREATION_FAILED,
                     meeting_id=meeting_id,
                     description=action_item.description,
                     assignee=action_item.assignee_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         if failures:
             logger.warning(
@@ -556,7 +562,6 @@ class MeetingOrchestrator:
             logger.warning(
                 MEETING_LENS_ASSIGNMENT_FAILED,
                 error="Lens assignment failed, proceeding without lenses",
-                exc_info=True,
             )
             return None
 

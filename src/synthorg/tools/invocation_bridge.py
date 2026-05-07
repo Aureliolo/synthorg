@@ -75,7 +75,6 @@ async def record_tool_invocation(
                 TOOL_INVOCATION_RECORD_FAILED,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                exc_info=True,
             )
 
     if result.is_timeout:

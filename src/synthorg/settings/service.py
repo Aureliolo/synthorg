@@ -215,7 +215,7 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
                 f" {definition.namespace}/{definition.key}"
             )
         else:
-            msg = f"Invalid JSON: {exc}"
+            msg = f"Invalid JSON: {safe_error_description(exc)}"
         raise SettingValidationError(msg) from exc
     # Dispatch to any per-setting shape validator so write-time and
     # runtime contracts stay aligned (e.g. canonical-origin checks for
@@ -241,9 +241,7 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
                 f" {definition.namespace}/{definition.key}"
             )
         else:
-            msg = (
-                f"Invalid JSON shape for {definition.namespace}/{definition.key}: {exc}"
-            )
+            msg = f"Invalid JSON shape for {definition.namespace}/{definition.key}: {safe_error_description(exc)}"  # noqa: E501
         raise SettingValidationError(msg) from exc
 
 

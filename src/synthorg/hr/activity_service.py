@@ -74,7 +74,7 @@ def _collect_result[ResultT](
     try:
         return task.result()
     except Exception as exc:
-        logger.error(  # noqa: TRY400 -- explicit structured audit event
+        logger.error(
             HR_ACTIVITY_SOURCE_FETCH_FAILED,
             source=source,
             error_type=type(exc).__name__,
@@ -536,7 +536,7 @@ class ActivityFeedService:
             # surfaces the failure instead of silently dropping the
             # entire activity window. The log gives operators enough
             # context to triage.
-            logger.error(  # noqa: TRY400 -- explicit structured audit event
+            logger.error(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
                 source="lifecycle_repo",
                 agent_id=agent_id,
@@ -568,7 +568,7 @@ class ActivityFeedService:
                 until=now,
             )
         except Exception as exc:
-            logger.error(  # noqa: TRY400 -- explicit structured audit event
+            logger.error(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
                 source="performance_tracker",
                 agent_id=agent_id,

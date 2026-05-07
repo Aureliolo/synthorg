@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.enums import WorkflowValueType
 from synthorg.engine.errors import SubworkflowIOError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import SUBWORKFLOW_IO_INVALID
 
 if TYPE_CHECKING:
@@ -199,7 +199,7 @@ def resolve_input_bindings(
                     parent_vars=parent_vars,
                 )
             except KeyError as exc:
-                msg = f"Cannot resolve input binding {decl.name!r}: {exc}"
+                msg = f"Cannot resolve input binding {decl.name!r}: {safe_error_description(exc)}"  # noqa: E501
                 logger.warning(SUBWORKFLOW_IO_INVALID, error=msg)
                 raise SubworkflowIOError(msg) from exc
             _validate_value_type(decl.name, value, decl.type)
@@ -266,7 +266,7 @@ def project_output_bindings(
                     child_vars=child_vars,
                 )
             except KeyError as exc:
-                msg = f"Cannot resolve output binding {decl.name!r}: {exc}"
+                msg = f"Cannot resolve output binding {decl.name!r}: {safe_error_description(exc)}"  # noqa: E501
                 logger.warning(SUBWORKFLOW_IO_INVALID, error=msg)
                 raise SubworkflowIOError(msg) from exc
             _validate_value_type(decl.name, value, decl.type)

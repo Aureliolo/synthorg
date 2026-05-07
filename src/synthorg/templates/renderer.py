@@ -340,7 +340,9 @@ def _render_jinja2(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Jinja2 rendering failed for {source_name}: {exc}"
+        msg = (
+            f"Jinja2 rendering failed for {source_name}: {safe_error_description(exc)}"
+        )
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -372,7 +374,7 @@ def _parse_rendered_yaml(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Rendered template YAML is invalid for {source_name}: {exc}"
+        msg = f"Rendered template YAML is invalid for {source_name}: {safe_error_description(exc)}"  # noqa: E501
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -582,7 +584,7 @@ def _extract_numeric_config(
             field_name="budget_monthly",
         )
     except ValueError as exc:
-        msg = f"Invalid numeric value in rendered template {source_name!r}: {exc}"
+        msg = f"Invalid numeric value in rendered template {source_name!r}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             TEMPLATE_RENDER_TYPE_ERROR,
             source=source_name,
@@ -750,7 +752,7 @@ def _resolve_model_tier(agent: dict[str, Any]) -> str:
         try:
             return parse_model_requirement(model_raw).tier
         except (ValidationError, ValueError) as exc:
-            msg = f"Invalid structured model requirement: {exc}"
+            msg = f"Invalid structured model requirement: {safe_error_description(exc)}"
             logger.warning(
                 TEMPLATE_RENDER_TYPE_ERROR,
                 field="model",

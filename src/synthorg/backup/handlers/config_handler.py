@@ -71,14 +71,16 @@ class ConfigComponentHandler:
                 self._config_path,
                 config_dir,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to back up config file: {exc}"
+            msg = f"Failed to back up config file: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
         logger.info(
             BACKUP_COMPONENT_COMPLETED,
@@ -130,14 +132,16 @@ class ConfigComponentHandler:
                 source_file,
                 self._config_path,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to restore config file: {exc}"
+            msg = f"Failed to restore config file: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
 
     async def validate_source(self, source_dir: Path) -> bool:

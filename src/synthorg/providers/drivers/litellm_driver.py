@@ -581,7 +581,6 @@ class LiteLLMDriver(BaseCompletionProvider):
                     PROVIDER_CALL_ERROR,
                     provider=provider,
                     model=model,
-                    exc_info=True,
                 )
                 raise handle_exc(exc, model) from exc
 
@@ -757,7 +756,6 @@ class LiteLLMDriver(BaseCompletionProvider):
             logger.warning(
                 PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
                 model=litellm_model,
-                exc_info=True,
             )
             return {}
         return info if isinstance(info, dict) else {}

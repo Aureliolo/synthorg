@@ -26,6 +26,7 @@ from synthorg.observability.events.api import (
     API_REQUEST_COMPLETED,
     API_REQUEST_STARTED,
 )
+from synthorg.observability.redaction import safe_error_description
 
 # ── Flushing file handlers ────────────────────────────────────────
 # Standard RotatingFileHandler and WatchedFileHandler buffer writes,
@@ -88,7 +89,7 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
             except OSError as exc:
                 print(  # noqa: T201
                     f"WARNING: Compressed rotation failed for "
-                    f"{self.baseFilename}: {exc}; "
+                    f"{self.baseFilename}: {safe_error_description(exc)}; "
                     "uncompressed backup retained",
                     file=sys.stderr,
                     flush=True,
@@ -135,7 +136,7 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
             src.unlink()
         except OSError as exc:
             print(  # noqa: T201
-                f"WARNING: Failed to compress rotated log {path}: {exc}",
+                f"WARNING: Failed to compress rotated log {path}: {safe_error_description(exc)}",  # noqa: E501
                 file=sys.stderr,
                 flush=True,
             )
@@ -144,7 +145,7 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
                     tmp_gz.unlink()
             except OSError as cleanup_exc:
                 print(  # noqa: T201
-                    f"WARNING: Failed to clean up temp file {tmp_gz}: {cleanup_exc}",
+                    f"WARNING: Failed to clean up temp file {tmp_gz}: {safe_error_description(cleanup_exc)}",  # noqa: E501
                     file=sys.stderr,
                     flush=True,
                 )
@@ -309,7 +310,7 @@ def _ensure_log_dir(file_path: Path, sink_name: str) -> None:
     except OSError as exc:
         msg = (
             f"Failed to create log directory '{file_path.parent}' "
-            f"for sink '{sink_name}': {exc}"
+            f"for sink '{sink_name}': {safe_error_description(exc)}"
         )
         raise RuntimeError(msg) from exc
 
@@ -361,9 +362,7 @@ def _build_file_handler(
             raise ValueError(msg)
         return _FlushingWatchedFileHandler(filename=str(file_path))
     except OSError as exc:
-        msg = (
-            f"Failed to open log file '{file_path}' for sink '{sink.file_path}': {exc}"
-        )
+        msg = f"Failed to open log file '{file_path}' for sink '{sink.file_path}': {safe_error_description(exc)}"  # noqa: E501
         raise RuntimeError(msg) from exc
 
 

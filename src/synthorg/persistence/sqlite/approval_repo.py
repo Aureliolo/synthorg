@@ -53,6 +53,46 @@ _APPROVALS_UPSERT_SQL = """
 """
 
 
+async def _safe_rollback(
+    db: aiosqlite.Connection,
+    *,
+    operation: str,
+    **log_context: object,
+) -> None:
+    """Roll back the current transaction, logging any rollback failure.
+
+    Bare ``await db.rollback()`` calls in ``except`` blocks can themselves
+    raise (the connection that prompted the rollback is often the same
+    one that's about to be torn down). When that happens, the rollback
+    exception unwinds past the original error, and callers receive a
+    raw ``sqlite3.Error`` instead of the contracted domain error
+    (``ConstraintViolationError`` / ``QueryError``). This helper logs
+    the rollback failure under its own structured event and swallows
+    it so the original exception can be re-raised by the caller.
+    ``MemoryError`` / ``RecursionError`` propagate unchanged.
+
+    ``operation`` names the caller (``save`` / ``save_many`` /
+    ``delete``) so dashboards can attribute rollback failures; it
+    lands in the ``operation`` log field, distinct from the fixed
+    ``phase="rollback"`` field this helper sets unconditionally. The
+    keyword-only ``operation`` parameter prevents the previous shape
+    from colliding with the hardcoded ``phase`` kwarg in **log_context.
+    """
+    try:
+        await db.rollback()
+    except MemoryError, RecursionError:
+        raise
+    except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+        logger.error(
+            API_APPROVAL_REPO_FAILED,
+            phase="rollback",
+            operation=operation,
+            error_type=type(rollback_exc).__name__,
+            error=safe_error_description(rollback_exc),
+            **log_context,
+        )
+
+
 def _row_to_item(row: Row) -> ApprovalItem:
     """Convert a database row to an ApprovalItem.
 
@@ -181,7 +221,7 @@ class SQLiteApprovalRepository:
                 await self._db.execute(_APPROVALS_UPSERT_SQL, params)
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await self._db.rollback()
+                await _safe_rollback(self._db, operation="save", approval_id=item.id)
                 msg = f"Constraint violation saving approval {item.id!r}"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -194,7 +234,7 @@ class SQLiteApprovalRepository:
                     constraint=str(exc),
                 ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._db.rollback()
+                await _safe_rollback(self._db, operation="save", approval_id=item.id)
                 msg = f"Failed to save approval {item.id!r}"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -247,7 +287,9 @@ class SQLiteApprovalRepository:
                 await self._db.executemany(_APPROVALS_UPSERT_SQL, param_rows)
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await self._db.rollback()
+                await _safe_rollback(
+                    self._db, operation="save_many", batch_size=len(items)
+                )
                 msg = f"Constraint violation saving approval batch (size={len(items)})"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -257,7 +299,9 @@ class SQLiteApprovalRepository:
                 )
                 raise ConstraintViolationError(msg, constraint=str(exc)) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._db.rollback()
+                await _safe_rollback(
+                    self._db, operation="save_many", batch_size=len(items)
+                )
                 msg = f"Failed to save approval batch (size={len(items)})"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -306,7 +350,7 @@ class SQLiteApprovalRepository:
                     # the rollback failure is a structured event, not
                     # a stack-trace dump. ``rollback_exc`` is captured
                     # in ``error_type`` + ``error`` already.
-                    logger.error(  # noqa: TRY400
+                    logger.error(
                         API_APPROVAL_REPO_FAILED,
                         batch_size=len(ids),
                         phase="rollback",
@@ -454,7 +498,9 @@ class SQLiteApprovalRepository:
                 cursor = await self._db.execute(sql, (approval_id,))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._db.rollback()
+                await _safe_rollback(
+                    self._db, operation="delete", approval_id=approval_id
+                )
                 msg = f"Failed to delete approval {approval_id!r}"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,

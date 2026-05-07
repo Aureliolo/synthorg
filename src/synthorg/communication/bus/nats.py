@@ -332,7 +332,6 @@ class JetStreamMessageBus:
                 COMM_BUS_STREAM_SCAN_FAILED,
                 phase="resolve_history_params",
                 error=("failed to resolve NATS history settings; using scan defaults"),
-                exc_info=True,
             )
             return 100, 0.5
         return batch_size, fetch_timeout

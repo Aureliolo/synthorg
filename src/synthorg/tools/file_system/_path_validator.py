@@ -91,7 +91,7 @@ class PathValidator:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Invalid path: {path} ({exc})"
+            msg = f"Invalid path: {path} ({safe_error_description(exc)})"
             raise ValueError(msg) from exc
 
         if not resolved.is_relative_to(self._workspace_root):

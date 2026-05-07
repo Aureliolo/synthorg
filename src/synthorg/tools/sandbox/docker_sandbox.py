@@ -204,6 +204,8 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             client = aiodocker.Docker()
             try:
                 await client.version()
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 await client.close()
                 logger.warning(
@@ -211,7 +213,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                msg = f"Docker daemon unavailable: {exc}"
+                msg = f"Docker daemon unavailable: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
             self._docker = client
             return client
@@ -521,9 +523,13 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     sidecar_id=sidecar_id[:12],
                 )
                 await self._wait_sidecar_healthy(docker, sidecar_id)
-            except BaseException as exc:
-                # Catch BaseException to handle CancelledError too;
-                # sidecar must be cleaned up even on task cancellation.
+            except MemoryError, RecursionError:
+                # Catastrophic interpreter errors are subclasses of
+                # ``Exception``, so they would be caught by the
+                # ``except Exception`` arm below and silently wrapped
+                # into ``SandboxStartError``. Re-raise them here after
+                # the sidecar cleanup so the original semantics are
+                # preserved.
                 removed = await self._remove_container(
                     docker,
                     sidecar_id,
@@ -533,8 +539,40 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                         f"_sidecar:{sidecar_id}",
                         None,
                     )
-                msg = f"Sidecar startup failed: {exc}"
+                raise
+            except Exception as exc:
+                # Clean up the sidecar before wrapping ordinary
+                # failures into ``SandboxStartError``. The
+                # ``BaseException`` clause below covers
+                # ``CancelledError`` / ``SystemExit`` /
+                # ``KeyboardInterrupt`` -- those are not subclasses of
+                # ``Exception`` and propagate without wrapping.
+                removed = await self._remove_container(
+                    docker,
+                    sidecar_id,
+                )
+                if removed:
+                    self._tracked_containers.pop(
+                        f"_sidecar:{sidecar_id}",
+                        None,
+                    )
+                msg = f"Sidecar startup failed: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
+            except BaseException:
+                # Cancellation / SystemExit / KeyboardInterrupt: still
+                # clean up the sidecar but propagate the original
+                # BaseException so caller cancellation semantics are
+                # preserved (do NOT wrap as SandboxStartError).
+                removed = await self._remove_container(
+                    docker,
+                    sidecar_id,
+                )
+                if removed:
+                    self._tracked_containers.pop(
+                        f"_sidecar:{sidecar_id}",
+                        None,
+                    )
+                raise
             # Don't pop the _sidecar: temp key yet -- keep it tracked
             # until the sandbox container is created and takes over.
             network_mode = f"container:{sidecar_id}"
@@ -551,6 +589,8 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
 
         try:
             container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             if sidecar_id:
                 removed = await self._remove_container(
@@ -562,11 +602,13 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                         f"_sidecar:{sidecar_id}",
                         None,
                     )
-            msg = f"Failed to create container: {exc}"
-            logger.exception(
+            error_desc = safe_error_description(exc)
+            msg = f"Failed to create container: {error_desc}"
+            logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 command=command,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=error_desc,
             )
             raise SandboxStartError(msg) from exc
 
@@ -612,7 +654,6 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                         SANDBOX_CONTAINER_LOGS_COLLECTED,
                         sidecar_id=sidecar_id[:12],
                         status="collection_error_in_cleanup",
-                        exc_info=True,
                     )
 
             # Ship collected logs even on execution failure so
@@ -692,12 +733,16 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
         try:
             await container_obj.start()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            msg = f"Failed to start container {container_id[:12]}: {exc}"
-            logger.exception(
+            error_desc = safe_error_description(exc)
+            msg = f"Failed to start container {container_id[:12]}: {error_desc}"
+            logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 container_id=container_id[:12],
-                error=msg,
+                error_type=type(exc).__name__,
+                error=error_desc,
             )
             raise SandboxStartError(msg) from exc
 

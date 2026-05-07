@@ -104,11 +104,7 @@ from synthorg.observability import safe_error_description
 logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))
 ```
 
-Rare sites that genuinely need the traceback for catastrophic interpreter state (`MemoryError`, `RecursionError`) use:
-
-```python
-logger.error(EVENT, ..., error_type=type(exc).__name__, error=safe_error_description(exc), exc_info=True)
-```
+`exc_info=True` is forbidden by default (the structlog exc-info processor still serialises traceback frame-locals even when the `error=` field is redacted). For genuine framework-boundary handlers that operate downstream of a frame-local scrubber (e.g., a hardened crash sink), opt out per-line with `# lint-allow: exc-info -- <reason>` on the same physical line as the `exc_info=True,` keyword. The reason field is mandatory and non-empty.
 
 Caller-facing detail is preserved via `raise ... from exc`.
 
@@ -118,4 +114,14 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
 
 ### Pre-commit gate
 
-`scripts/check_logger_exception_str_exc.py` blocks every `logger.<method>(..., error=str(exc))` site unconditionally (no allowlist, no baseline) where `<method>` is one of `exception`, `warning`, `error`, `info`, or `debug`. The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions, and the `error=` value subtree is walked via `ast.walk` so wrapped forms (`str(exc)[:200]` truncation, `str(exc) or fallback` boolop, `str(exc) if cond else fallback` ifexp, `BinOp` concatenation, f-string `JoinedStr`) are caught alongside the bare form. The script's filename is preserved (rather than renamed) so the pre-commit hook ID `no-new-logger-exception-str-exc` stays stable in `.pre-commit-config.yaml` and CI job references.
+`scripts/check_logger_exception_str_exc.py` enforces two rules unconditionally (no global allowlist, no baseline) for every logger severity (`exception`, `warning`, `error`, `info`, `debug`) on bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`), or any Name whose id contains `logger`. The **`exc_info=True` rule** (rule 2 below) supports a required same-line per-call opt-out marker (`# lint-allow: exc-info -- <reason>` with a mandatory non-empty reason); this is a per-instance carve-out for genuine framework-boundary handlers, *not* a global allowlist or list-based baseline:
+
+1. **Leak-shape rule** (`error=` value): the `error=` value subtree is walked via a custom `ast.walk` traversal that excludes `Call.args` and class-introspection chains (so `f"{type(exc).__name__}"`, `f"{exc.__class__.__name__}"`, `f"{safe_error_description(exc)}"` are not flagged) and that flags any of:
+   - `str(<exc_like>)` calls where `<exc_like>` is `Name` / `Attribute` / `Subscript` (covers `str(exc)`, `str(self._inner)`, `str(exc.args[0])`).
+   - `FormattedValue` interpolation with conversion `-1` / `!s` / `!r` / `!a` of any leaf whose Name id or Attribute terminal-attr matches `_EXCEPTION_LEAF_NAMES` (`exc, e, err, error, exception, cause, original, inner, _inner`).
+   - One-level Name-binding indirection: `error_msg = str(exc); ...; error=error_msg` (or any RHS leak shape including `f"...{exc}..."`) -- the alias is collected per-function-scope and flagged when later passed as `error=`.
+   - Wrapper combinations are walked: `str(exc)[:200]` (Subscript), `str(exc) or fallback` (BoolOp), `str(exc) if cond else fallback` (IfExp), `str(exc) + " ctx"` (BinOp), `f"failed: {str(exc)}"` (JoinedStr), `**{"error": str(exc)}` (Dict-unpack).
+
+2. **`exc_info=True` rule**: any literal `exc_info=True` kwarg on a logger call is flagged, with a per-line `# lint-allow: exc-info -- <reason>` opt-out (mandatory non-empty reason). The marker must sit on the same physical line as the `exc_info=True,` keyword so reviewers and tooling can locate the opt-out without scanning the file.
+
+The matcher is the source of truth; the gate's docstring (`scripts/check_logger_exception_str_exc.py`) describes the AST shapes covered and the rationale per-rule. The script's filename is preserved (rather than renamed) so the pre-commit hook ID `no-new-logger-exception-str-exc` stays stable in `.pre-commit-config.yaml` and CI job references.

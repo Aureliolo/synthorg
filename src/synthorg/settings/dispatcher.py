@@ -11,13 +11,14 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
 from synthorg.communication.errors import ChannelAlreadyExistsError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
     SETTINGS_DISPATCHER_POLL_ERROR,
     SETTINGS_DISPATCHER_START_REJECTED,
     SETTINGS_DISPATCHER_STARTED,
+    SETTINGS_DISPATCHER_STOP_FAILED,
     SETTINGS_DISPATCHER_STOPPED,
     SETTINGS_SUBSCRIBER_ERROR,
     SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -153,7 +154,6 @@ class SettingsChangeDispatcher:
                     SETTINGS_DISPATCHER_START_REJECTED,
                     error="channel ensure/subscribe failed during start()",
                     reason="subscribe_failed",
-                    exc_info=True,
                 )
                 raise
             try:
@@ -188,7 +188,6 @@ class SettingsChangeDispatcher:
                         SETTINGS_DISPATCHER_START_REJECTED,
                         error="rollback unsubscribe failed during start() cleanup",
                         reason="rollback_unsubscribe_failed",
-                        exc_info=True,
                     )
                 raise
             logger.info(
@@ -223,7 +222,7 @@ class SettingsChangeDispatcher:
                         asyncio.shield(self._task),
                         timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                     )
-                except TimeoutError:
+                except TimeoutError as exc:
                     # Drain exceeded the hard deadline. Mark the
                     # dispatcher unrestartable and re-raise: a future
                     # start() must not spawn a second poll task
@@ -237,13 +236,15 @@ class SettingsChangeDispatcher:
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable
                     # diagnostic beyond the structured fields below.
-                    logger.error(  # noqa: TRY400
-                        SETTINGS_DISPATCHER_STOPPED,
-                        error=(
+                    logger.error(
+                        SETTINGS_DISPATCHER_STOP_FAILED,
+                        note=(
                             "stop exceeded hard deadline; "
                             "dispatcher marked unrestartable"
                         ),
                         timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                     raise
                 except asyncio.CancelledError:
@@ -271,7 +272,9 @@ class SettingsChangeDispatcher:
             # queue until channel cleanup.
             try:
                 await self._bus.unsubscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 # Unsubscribe failure means the bus still holds a
                 # stale ``__settings_dispatcher__`` registration on
                 # ``#settings``. Mark the dispatcher unrestartable so
@@ -282,11 +285,12 @@ class SettingsChangeDispatcher:
                 # stop unsubscribe instead of early-returning.
                 self._stop_failed = True
                 logger.error(
-                    SETTINGS_DISPATCHER_STOPPED,
-                    error=(
+                    SETTINGS_DISPATCHER_STOP_FAILED,
+                    note=(
                         "clean-stop unsubscribe failed; dispatcher marked unrestartable"
                     ),
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 
@@ -306,8 +310,9 @@ class SettingsChangeDispatcher:
         if exc is not None:
             logger.error(
                 SETTINGS_DISPATCHER_CHANNEL_DEAD,
-                error="Settings dispatcher poll loop died unexpectedly",
-                exc_info=exc,
+                note="Settings dispatcher poll loop died unexpectedly",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         else:
             logger.warning(
@@ -344,24 +349,28 @@ class SettingsChangeDispatcher:
                 raise
             except MemoryError, RecursionError:
                 raise
-            except OSError, TimeoutError:
+            except (OSError, TimeoutError) as exc:
                 consecutive_errors += 1
                 if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
-                    logger.exception(
+                    logger.error(
                         SETTINGS_DISPATCHER_CHANNEL_DEAD,
                         consecutive_errors=consecutive_errors,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                     break
                 logger.warning(
                     SETTINGS_DISPATCHER_POLL_ERROR,
                     consecutive_errors=consecutive_errors,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 await asyncio.sleep(_ERROR_BACKOFF)
-            except Exception:
+            except Exception as exc:
                 logger.error(
                     SETTINGS_DISPATCHER_CHANNEL_DEAD,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 break
 
@@ -394,13 +403,14 @@ class SettingsChangeDispatcher:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.error(
                     SETTINGS_SUBSCRIBER_ERROR,
                     subscriber=getattr(subscriber, "subscriber_name", "unknown"),
                     namespace=namespace,
                     key=key,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
 

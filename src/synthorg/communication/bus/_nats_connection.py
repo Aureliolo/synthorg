@@ -61,8 +61,13 @@ async def connect(state: _NatsState) -> None:
         )
     except (TimeoutError, NoServersError, OSError) as exc:
         redacted = redact_url(state.nats_config.url)
-        msg = f"Failed to connect to NATS at {redacted}: {exc}"
-        logger.exception(COMM_BUS_DISCONNECTED, error=msg, url=redacted)
+        msg = f"Failed to connect to NATS at {redacted}: {safe_error_description(exc)}"
+        logger.warning(
+            COMM_BUS_DISCONNECTED,
+            url=redacted,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise BusConnectionError(
             msg,
             context={"url": redacted},
@@ -132,7 +137,7 @@ async def ensure_stream(state: _NatsState) -> None:
         else:
             await state.js.update_stream(stream_config)
     except NatsError as exc:
-        msg = f"Failed to set up stream {state.stream_name}: {exc}"
+        msg = f"Failed to set up stream {state.stream_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             COMM_BUS_STREAM_SCAN_FAILED,
             stream=state.stream_name,
@@ -163,7 +168,7 @@ async def ensure_kv_bucket(state: _NatsState) -> None:
                 bucket=state.kv_bucket_name,
             )
     except NatsError as exc:
-        msg = f"Failed to set up KV bucket {state.kv_bucket_name}: {exc}"
+        msg = f"Failed to set up KV bucket {state.kv_bucket_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel="*",
@@ -177,7 +182,7 @@ async def ensure_kv_bucket(state: _NatsState) -> None:
         ) from exc
 
 
-async def stop(state: _NatsState) -> None:
+async def stop(state: _NatsState) -> None:  # noqa: C901
     """Stop the bus gracefully. Idempotent.
 
     Cancels outstanding ``receive()`` calls and closes the
@@ -203,12 +208,15 @@ async def stop(state: _NatsState) -> None:
             await sub.unsubscribe()
         except asyncio.CancelledError:
             pass
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.warning(
                 COMM_BUS_DISCONNECTED,
                 phase="stop_unsubscribe",
                 subscription=str(key),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
     state.subscriptions.clear()
 
@@ -217,11 +225,14 @@ async def stop(state: _NatsState) -> None:
             await state.client.drain()
         except asyncio.CancelledError:
             pass
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.warning(
                 COMM_BUS_DISCONNECTED,
                 phase="stop_drain",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         state.client = None
         state.js = None

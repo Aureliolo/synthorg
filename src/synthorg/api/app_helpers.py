@@ -33,7 +33,7 @@ from synthorg.engine.agent_engine import (  # noqa: TC001
     PersonalityTrimNotifier,
     PersonalityTrimPayload,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
@@ -81,12 +81,13 @@ def _make_expire_callback(
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_APPROVAL_PUBLISH_FAILED,
                 approval_id=item.id,
                 event_type=WsEventType.APPROVAL_EXPIRED.value,
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     return _on_expire
@@ -148,12 +149,13 @@ def _make_meeting_publisher(
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_WS_SEND_FAILED,
                 note="Failed to publish meeting WebSocket event",
                 event_name=event_name,
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     return _on_meeting_event
@@ -184,7 +186,7 @@ def make_personality_trim_notifier(
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,
                 reason="failed to publish personality.trimmed WebSocket event",
@@ -194,7 +196,8 @@ def make_personality_trim_notifier(
                 trim_tier=payload.get("trim_tier"),
                 before_tokens=payload.get("before_tokens"),
                 after_tokens=payload.get("after_tokens"),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     return _on_personality_trimmed

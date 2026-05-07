@@ -55,13 +55,15 @@ class RetentionManager:
         """
         try:
             manifests = await asyncio.to_thread(self._load_manifests)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_RETENTION_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to load manifests: {exc}"
+            msg = f"Failed to load manifests: {safe_error_description(exc)}"
             raise RetentionError(msg) from exc
 
         if not manifests:
@@ -137,8 +139,10 @@ class RetentionManager:
                         backup_id=manifest.backup_id,
                         error="Backup not found for deletion",
                     )
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
-                logger.error(  # noqa: TRY400
+                logger.error(
                     BACKUP_RETENTION_FAILED,
                     backup_id=manifest.backup_id,
                     error_type=type(exc).__name__,
@@ -286,10 +290,13 @@ class RetentionManager:
                 if data.get("backup_id") == backup_id:
                     shutil.rmtree(entry)
                     return True
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 logger.warning(
                     BACKUP_MANIFEST_INVALID,
                     path=str(manifest_path),
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return False

@@ -199,7 +199,7 @@ class AgentEngineErrorsMixin:
                 ),
             )
         except MemoryError, RecursionError:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -207,7 +207,7 @@ class AgentEngineErrorsMixin:
             )
             raise
         except Exception as build_exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -238,14 +238,21 @@ class AgentEngineErrorsMixin:
         provider: CompletionProvider | None = None,
     ) -> AgentRunResult:
         """Build an error ``AgentRunResult`` when the execution pipeline fails."""
-        raw_msg = str(exc)
-        sanitized = sanitize_message(raw_msg)
-        error_msg = f"{type(exc).__name__}: {sanitized}"
-        logger.exception(
+        # ``error_msg`` propagates back into agent context (the LLM
+        # sees it on retry / handoff) and must not carry credential
+        # material. Build it from ``safe_error_description`` (the
+        # canonical credential scrubber); then run the result through
+        # ``sanitize_message`` to additionally strip paths / URLs that
+        # would otherwise leak operator-internal identifiers into the
+        # LLM-context payload.
+        error_desc = safe_error_description(exc)
+        error_msg = sanitize_message(error_desc)
+        logger.warning(
             EXECUTION_ENGINE_ERROR,
             agent_id=agent_id,
             task_id=task_id,
-            error=error_msg,
+            error_type=type(exc).__name__,
+            error=error_desc,
         )
 
         pre_fatal_status = (
@@ -301,7 +308,7 @@ class AgentEngineErrorsMixin:
                 ),
             )
         except MemoryError, RecursionError:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -309,7 +316,7 @@ class AgentEngineErrorsMixin:
             )
             raise
         except Exception as build_exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,

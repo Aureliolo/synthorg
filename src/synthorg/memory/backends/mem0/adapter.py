@@ -170,7 +170,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                     operation="connect",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
-                    exc_info=True,
                 )
                 raise
             except Exception as exc:
@@ -180,7 +179,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                     error=safe_error_description(exc),
                     error_type=type(exc).__name__,
                 )
-                msg = f"Failed to connect to Mem0: {exc}"
+                msg = f"Failed to connect to Mem0: {safe_error_description(exc)}"
                 raise MemoryConnectionError(msg) from exc
             self._client = client  # pyright: ignore[reportAttributeAccessIssue]
             self._connected = True
@@ -263,7 +262,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="health_check",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -440,7 +438,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="store",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -450,7 +447,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
-            msg = f"Failed to store memory: {exc}"
+            msg = f"Failed to store memory: {safe_error_description(exc)}"
             raise MemoryStoreError(msg) from exc
         else:
             await self._try_sparse_upsert(agent_id, memory_id, request.content)
@@ -516,7 +513,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="retrieve",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -526,7 +522,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
-            msg = f"Failed to retrieve memories: {exc}"
+            msg = f"Failed to retrieve memories: {safe_error_description(exc)}"
             raise MemoryRetrievalError(msg) from exc
         else:
             if query.text is not None:
@@ -613,7 +609,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="get",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -624,7 +619,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
-            msg = f"Failed to get memory {memory_id}: {exc}"
+            msg = f"Failed to get memory {memory_id}: {safe_error_description(exc)}"
             raise MemoryRetrievalError(msg) from exc
         else:
             logger.debug(
@@ -679,7 +674,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="delete",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -690,7 +684,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
-            msg = f"Failed to delete memory {memory_id}: {exc}"
+            msg = f"Failed to delete memory {memory_id}: {safe_error_description(exc)}"
             raise MemoryStoreError(msg) from exc
         else:
             logger.info(
@@ -763,7 +757,6 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 operation="count",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )
             raise
         except Exception as exc:
@@ -773,7 +766,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
-            msg = f"Failed to count memories: {exc}"
+            msg = f"Failed to count memories: {safe_error_description(exc)}"
             raise MemoryRetrievalError(msg) from exc
         else:
             truncated = len(raw_list) == self._max_memories_per_agent

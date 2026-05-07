@@ -158,7 +158,6 @@ async def publish_shared(
             operation="publish",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         raise
     except Exception as exc:
@@ -168,7 +167,7 @@ async def publish_shared(
             error=safe_error_description(exc),
             error_type=type(exc).__name__,
         )
-        msg = f"Failed to publish shared memory: {exc}"
+        msg = f"Failed to publish shared memory: {safe_error_description(exc)}"
         raise MemoryStoreError(msg) from exc
     else:
         logger.info(
@@ -257,7 +256,6 @@ async def search_shared_memories(
             operation="search_shared",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         raise
     except Exception as exc:
@@ -268,7 +266,7 @@ async def search_shared_memories(
             query_text=query.text,
             exclude_agent=exclude_agent,
         )
-        msg = f"Failed to search shared knowledge: {exc}"
+        msg = f"Failed to search shared knowledge: {safe_error_description(exc)}"
         raise MemoryRetrievalError(msg) from exc
     else:
         logger.info(
@@ -324,7 +322,6 @@ async def retract_shared(
             operation="retract",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         raise
     except Exception as exc:
@@ -335,7 +332,7 @@ async def retract_shared(
             error=safe_error_description(exc),
             error_type=type(exc).__name__,
         )
-        msg = f"Failed to retract shared memory {memory_id}: {exc}"
+        msg = f"Failed to retract shared memory {memory_id}: {safe_error_description(exc)}"  # noqa: E501
         raise MemoryStoreError(msg) from exc
     else:
         logger.info(

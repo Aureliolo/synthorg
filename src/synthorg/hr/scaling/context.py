@@ -8,7 +8,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.hr.scaling.models import ScalingContext, ScalingSignal
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_SCALING_CONTEXT_BUILT,
     HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
@@ -170,8 +170,8 @@ class ScalingContextBuilder:
                 HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
                 source=name,
                 action="collection_failed",
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ()
         return result

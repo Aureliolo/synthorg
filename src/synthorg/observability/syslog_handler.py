@@ -13,6 +13,7 @@ import structlog
 from structlog.stdlib import ProcessorFormatter
 
 from synthorg.observability.enums import SyslogFacility, SyslogProtocol
+from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
     from synthorg.observability.config import SinkConfig
@@ -72,7 +73,7 @@ def build_syslog_handler(
         msg = (
             f"Failed to connect to syslog endpoint "
             f"{sink.syslog_host}:{sink.syslog_port} "
-            f"({sink.syslog_protocol.value.upper()}): {exc}"
+            f"({sink.syslog_protocol.value.upper()}): {safe_error_description(exc)}"
         )
         raise RuntimeError(msg) from exc
     # UDP: disable NUL terminator (datagrams are self-framing, NUL

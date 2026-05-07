@@ -10,7 +10,7 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_HYBRID_PLAN_TRUNCATED,
@@ -214,11 +214,12 @@ async def invoke_checkpoint_callback(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             EXECUTION_CHECKPOINT_CALLBACK_FAILED,
             execution_id=ctx.execution_id,
             turn=turn_number,
-            error=f"{type(exc).__name__}: {exc}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 

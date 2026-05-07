@@ -240,7 +240,6 @@ class OtlpHandler(logging.Handler):
             except Exception:
                 _internal_logger.error(
                     METRICS_OTLP_FLUSHER_ERROR,
-                    exc_info=True,
                 )
 
     def _drain_and_flush(self) -> None:
@@ -362,7 +361,6 @@ class OtlpHandler(logging.Handler):
                 METRICS_OTLP_CALLBACK_ERROR,
                 outcome=outcome,
                 dropped_records=dropped,
-                exc_info=True,
             )
 
     def close(self) -> None:

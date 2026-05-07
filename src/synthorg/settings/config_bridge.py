@@ -110,6 +110,5 @@ def extract_from_config(config: object, yaml_path: str) -> str | None:
             yaml_path=yaml_path,
             reason="unsupported_type",
             value_type=type(current).__name__,
-            exc_info=True,
         )
         raise

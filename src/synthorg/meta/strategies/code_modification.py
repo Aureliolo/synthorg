@@ -177,11 +177,13 @@ class CodeModificationStrategy:
             response = await self._call_llm(prompt)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 META_CODE_GEN_FAILED,
                 rule=rule_match.rule_name,
                 reason="provider_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 

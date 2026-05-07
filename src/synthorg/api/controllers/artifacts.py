@@ -534,7 +534,7 @@ class ArtifactController(Controller):
             # storage-retrieve cardinality) so blob-store outages are
             # visible alongside metadata-fetch failures without sharing
             # a counter.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
                 artifact_id=artifact_id,
                 operation="download",

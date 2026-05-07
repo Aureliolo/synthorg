@@ -813,7 +813,6 @@ class SetupController(Controller):
             logger.warning(
                 SETUP_COMPLETE_CHECK_ERROR,
                 check="auto_select_embedder",
-                exc_info=True,
             )
 
         await settings_svc.set("api", "setup_complete", "true")

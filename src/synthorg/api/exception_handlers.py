@@ -263,7 +263,6 @@ def _build_response(  # noqa: PLR0913
             error="Failed to build structured error response",
             detail=detail,
             original_status_code=status_code,
-            exc_info=True,
         )
         # Re-check content negotiation defensively: if ``_wants_problem_json``
         # itself was the original failure, default to the envelope shape
@@ -354,8 +353,11 @@ def _log_error(
 ) -> None:
     """Log an API error with request context.
 
-    Uses ERROR level (with traceback) for 5xx server errors and
-    WARNING for 4xx client errors.
+    Uses ERROR level for 5xx server errors and WARNING for 4xx client
+    errors. ``error_type`` + ``error=safe_error_description(exc)``
+    supplies operator-visible diagnostic context without attaching the
+    traceback (whose frame-locals would carry connection strings,
+    tokens, etc. straight to the sink).
     """
     log = logger.error if status >= _SERVER_ERROR_THRESHOLD else logger.warning
     log(
@@ -365,7 +367,6 @@ def _log_error(
         status_code=status,
         error_type=type(exc).__qualname__,
         error=safe_error_description(exc),
-        exc_info=status >= _SERVER_ERROR_THRESHOLD,
     )
 
 
@@ -642,11 +643,17 @@ def handle_invalid_cursor(
     """Map :class:`InvalidCursorError` to 400.
 
     Cursor tokens are opaque to the client; if tampering or decoding
-    fails, surface the original (non-sensitive) message so operators
-    can distinguish malformed-base64 from signature-mismatch in logs.
+    fails, surface a sanitised description (via
+    ``safe_error_description``) in the 400 response body so operators
+    can distinguish malformed-base64 from signature-mismatch without
+    leaking secret-prefixed tokens or signature material into the
+    error envelope.
     """
     _log_error(request, exc, status=400)
-    detail = str(exc) or "Invalid pagination cursor"
+    # ``safe_error_description`` is documented to always return at
+    # least ``type(exc).__name__`` when ``str(exc)`` is empty, so no
+    # fallback string is needed here.
+    detail = safe_error_description(exc)
     return _build_response(
         request,
         detail=detail,

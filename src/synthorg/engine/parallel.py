@@ -26,7 +26,7 @@ from synthorg.engine.parallel_models import (
     ParallelProgress,
 )
 from synthorg.engine.resource_lock import InMemoryResourceLock, ResourceLock
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.parallel import (
     PARALLEL_AGENT_CANCELLED,
     PARALLEL_AGENT_COMPLETE,
@@ -162,13 +162,17 @@ class ParallelExecutor:
             if lock is not None:
                 try:
                     await self._release_all_locks(group, lock)
-                except Exception as exc:
-                    logger.exception(
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as release_exc:
+                    logger.warning(
                         PARALLEL_LOCK_RELEASE_ERROR,
-                        error="Failed to release resource locks",
+                        note="Failed to release resource locks",
                         group_id=group.group_id,
+                        error_type=type(release_exc).__name__,
+                        error=safe_error_description(release_exc),
                     )
-                    release_error = exc
+                    release_error = release_exc
 
         if release_error is not None:
             lock_msg = (
@@ -246,7 +250,8 @@ class ParallelExecutor:
             # Individual errors already logged in _record_error_outcome.
             logger.warning(
                 PARALLEL_GROUP_SUPPRESSED,
-                error=f"ExceptionGroup suppressed: {eg!r}",
+                note="ExceptionGroup suppressed",
+                error_type=type(eg).__name__,
                 group_id=group.group_id,
                 exception_count=len(eg.exceptions),
             )
@@ -351,7 +356,9 @@ class ParallelExecutor:
                 PARALLEL_AGENT_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error=f"Failed to register with shutdown manager: {exc}",
+                context="Failed to register with shutdown manager",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             outcomes[task_id] = AgentOutcome(
                 task_id=task_id,
@@ -423,7 +430,7 @@ class ParallelExecutor:
         progress: _ProgressState,
     ) -> None:
         """Record a failed agent outcome."""
-        error_msg = f"{type(exc).__name__}: {exc}"
+        error_msg = safe_error_description(exc)
         outcomes[assignment.task_id] = AgentOutcome(
             task_id=assignment.task_id,
             agent_id=assignment.agent_id,
@@ -435,7 +442,8 @@ class ParallelExecutor:
             group_id=group.group_id,
             agent_id=assignment.agent_id,
             task_id=assignment.task_id,
-            error=error_msg,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
     def _record_fatal_outcome(  # noqa: PLR0913
@@ -448,13 +456,15 @@ class ParallelExecutor:
         progress: _ProgressState,
     ) -> None:
         """Record a fatal error outcome (MemoryError/RecursionError)."""
-        error_msg = f"Fatal: {type(exc).__name__}: {exc}"
-        logger.exception(
+        error_msg = f"Fatal: {safe_error_description(exc)}"
+        logger.warning(
             PARALLEL_AGENT_ERROR,
             group_id=group.group_id,
             agent_id=assignment.agent_id,
             task_id=assignment.task_id,
-            error=error_msg,
+            note="fatal",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         fatal_errors.append(exc)
         outcomes[assignment.task_id] = AgentOutcome(
@@ -583,9 +593,13 @@ class ParallelExecutor:
         )
         try:
             self._progress_callback(snapshot)
-        except Exception:
-            logger.exception(
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
                 PARALLEL_PROGRESS_UPDATE,
-                error="Progress callback raised",
+                note="Progress callback raised",
                 group_id=snapshot.group_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )

@@ -238,9 +238,9 @@ class ConnectionCatalog:
     ) -> None:
         """Persist the connection row; on failure, delete the orphaned secret.
 
-        SEC-1: structured warning with redacted error rather than
-        ``logger.exception`` so a raw traceback can't leak repo /
-        secret-backend internals.
+        Uses a structured warning with a redacted error rather than
+        ``logger.exception`` so a raw traceback cannot leak repo /
+        secret-backend internals into the log sink.
         """
         try:
             await self._repo.save(connection)
@@ -497,7 +497,9 @@ class ConnectionCatalog:
                 # PATCH persistence failed; surface ``connection_name``
                 # context before re-raising so the failure is
                 # attributable in dashboards (the repo's own exception
-                # only carries a row id).  SEC-1: redacted error.
+                # only carries a row id). Error is redacted via
+                # ``safe_error_description`` to keep secret-backend
+                # internals out of the log sink.
                 logger.warning(
                     CONNECTION_UPDATE_FAILED,
                     connection_name=name,
@@ -565,8 +567,9 @@ class ConnectionCatalog:
                     # problem, not a connection-delete problem -- use
                     # the cleanup-scoped event so dashboards stop
                     # overcounting successful connection deletions
-                    # when secret cleanup blows up.  SEC-1: redacted
-                    # error to keep backend internals out of logs.
+                    # when secret cleanup blows up. Error is redacted
+                    # via ``safe_error_description`` to keep backend
+                    # internals out of the log sink.
                     logger.warning(
                         SECRET_DELETE_FAILED,
                         connection_name=name,
@@ -621,9 +624,11 @@ class ConnectionCatalog:
             try:
                 data = json.loads(raw.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                # SEC-1: ``f"...: {exc}"`` would interpolate raw
-                # exception text in a secret-bearing path; route via
-                # ``safe_error_description``.
+                # Raw exception messages on this code path may contain
+                # secret material (the malformed payload was the
+                # connection's stored secret); route the description
+                # through ``safe_error_description`` so the credential
+                # scrubber masks any embedded tokens before logging.
                 logger.warning(
                     SECRET_RETRIEVAL_FAILED,
                     connection_name=name,
@@ -752,9 +757,10 @@ class ConnectionCatalog:
     ) -> None:
         """Persist the rotated connection; delete the new secret on failure.
 
-        SEC-1: redacted errors throughout -- the OAuth-token path is
-        secret-bearing and raw tracebacks can leak token / backend
-        internals.
+        Logs use ``safe_error_description`` rather than raw tracebacks
+        because the OAuth-token path is secret-bearing -- tracebacks
+        on this code path can leak token / backend internals into the
+        log sink.
         """
         try:
             await self._repo.save(updated)

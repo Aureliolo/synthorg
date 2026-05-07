@@ -238,7 +238,6 @@ class EmailSenderTool(BaseCommunicationTool):
                 COMM_TOOL_EMAIL_SEND_FAILED,
                 error="smtp_error",
                 recipient_count=len(all_recipients),
-                exc_info=True,
             )
             return ToolExecutionResult(
                 content="Email sending failed.",

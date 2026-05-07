@@ -186,7 +186,7 @@ class DistributedDispatcher:
                 error_type=type(root_exc).__name__,
                 error=safe_error_description(root_exc),
             )
-            logger.error(  # noqa: TRY400
+            logger.error(
                 WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
                 task_id=task_id,
                 attempts=_PUBLISH_MAX_ATTEMPTS,

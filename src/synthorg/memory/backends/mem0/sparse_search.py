@@ -216,7 +216,6 @@ def scored_points_to_entries(
                 MEMORY_SPARSE_SEARCH_FAILED,
                 point_id=str(getattr(point, "id", "unknown")),
                 reason="system error during point conversion",
-                exc_info=True,
             )
             raise
         except Exception:
@@ -225,7 +224,6 @@ def scored_points_to_entries(
                 MEMORY_SPARSE_SEARCH_FAILED,
                 point_id=str(getattr(point, "id", "unknown")),
                 reason="malformed payload",
-                exc_info=True,
             )
     if skipped > 0:
         level = logger.error if not entries else logger.warning
@@ -393,7 +391,6 @@ async def async_init_sparse_field(
             backend="qdrant",
             collection=collection_name,
             operation="init_sparse_field",
-            exc_info=True,
         )
         raise
 
@@ -431,7 +428,6 @@ async def async_try_sparse_upsert(  # noqa: PLR0913
             backend="mem0",
             operation="sparse_upsert",
             agent_id=agent_id,
-            exc_info=True,
         )
         raise
     except Exception as exc:
@@ -495,7 +491,6 @@ async def async_retrieve_sparse(
             backend="mem0",
             operation="retrieve_sparse",
             agent_id=agent_id,
-            exc_info=True,
         )
         raise
     except Exception as exc:
@@ -506,5 +501,5 @@ async def async_retrieve_sparse(
             error_type=type(exc).__name__,
             source="sparse",
         )
-        msg = f"Failed sparse retrieval: {exc}"
+        msg = f"Failed sparse retrieval: {safe_error_description(exc)}"
         raise MemoryRetrievalError(msg) from exc

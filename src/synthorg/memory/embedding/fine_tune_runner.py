@@ -27,7 +27,7 @@ from typing import Any, Final
 
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.observability.events.fine_tune import (
     FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
@@ -65,11 +65,13 @@ def _resolve_health_port() -> int:
     try:
         port = int(raw)
     except ValueError as exc:
-        logger.exception(
+        logger.error(
             CONFIG_VALIDATION_FAILED,
             env_var=_HEALTH_PORT_ENV_VAR,
             value=safe_raw,
             reason="not-an-integer",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"{_HEALTH_PORT_ENV_VAR}={safe_raw!r} is not a valid integer"
         raise ValueError(msg) from exc
@@ -120,9 +122,10 @@ def _load_config() -> dict[str, Any] | None:
     try:
         raw = _CONFIG_PATH.read_text(encoding="utf-8")
         config = json.loads(raw)
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        error_desc = safe_error_description(exc)
         print(  # noqa: T201
-            f"ERROR: unable to read config file {_CONFIG_PATH}: {exc}",
+            f"ERROR: unable to read config file {_CONFIG_PATH}: {error_desc}",
             file=sys.stderr,
         )
         return None
@@ -174,7 +177,6 @@ def _start_health_server() -> http.server.HTTPServer | None:
             FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
             port=port,
             reason="Health server could not bind; continuing without health endpoint",
-            exc_info=True,
         )
         return None
     _HealthHandler._start_time = time.monotonic()  # noqa: SLF001
@@ -228,7 +230,10 @@ def _run() -> int:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            print(f"ERROR: {stage_name} failed: {exc}", file=sys.stderr)  # noqa: T201
+            print(  # noqa: T201
+                f"ERROR: {stage_name} failed: {safe_error_description(exc)}",
+                file=sys.stderr,
+            )
             return 1
 
         print(f"STAGE_COMPLETE:{stage_name}", flush=True)  # noqa: T201

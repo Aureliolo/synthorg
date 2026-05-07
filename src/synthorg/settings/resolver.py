@@ -146,7 +146,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_integer",
-                exc_info=True,
             )
             msg = f"Setting {namespace}/{key} has an invalid integer value"
             raise ValueError(msg) from None
@@ -182,7 +181,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_float",
-                exc_info=True,
             )
             msg = f"Setting {namespace}/{key} has an invalid float value"
             raise ValueError(msg) from None
@@ -220,7 +218,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_boolean",
-                exc_info=True,
             )
             msg = f"Setting {namespace}/{key} is not a recognized boolean"
             raise ValueError(msg) from None
@@ -263,7 +260,6 @@ class ConfigResolver:
                 key=key,
                 reason="invalid_enum",
                 enum_cls=enum_cls.__name__,
-                exc_info=True,
             )
             msg = f"Setting {namespace}/{key} has an invalid {enum_cls.__name__} value"
             raise ValueError(msg) from None
@@ -315,7 +311,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="decryption_failed",
-                exc_info=True,
             )
             raise
         try:
@@ -326,7 +321,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_json",
-                exc_info=True,
             )
             msg = f"Setting {namespace}/{key} has an invalid JSON value"
             raise ValueError(msg) from exc
@@ -353,7 +347,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_json_fallback",
-                exc_info=True,
             )
             return fallback
         if raw is None:
@@ -375,7 +368,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_schema_fallback",
-                exc_info=True,
             )
             return fallback
 
@@ -401,7 +393,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_json_fallback",
-                exc_info=True,
             )
             return fallback
         if raw is None:
@@ -423,7 +414,6 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_schema_fallback",
-                exc_info=True,
             )
             return fallback
 
@@ -549,7 +539,6 @@ class ConfigResolver:
                 namespace="budget",
                 key="_composed",
                 error_count=len(eg.exceptions),
-                exc_info=True,
             )
             raise eg.exceptions[0] from eg
 
@@ -624,7 +613,6 @@ class ConfigResolver:
                 namespace="api",
                 key="_composed",
                 error_count=len(eg.exceptions),
-                exc_info=True,
             )
             raise eg.exceptions[0] from eg
 
@@ -705,7 +693,6 @@ class ConfigResolver:
                 namespace="coordination",
                 key="_composed",
                 error_count=len(eg.exceptions),
-                exc_info=True,
             )
             raise eg.exceptions[0] from eg
 
@@ -772,7 +759,6 @@ class ConfigResolver:
                 key="_bridge_composed",
                 error_count=len(eg.exceptions),
                 failed_keys=failed_keys,
-                exc_info=True,
             )
             raise eg.exceptions[0] from eg
         return {key: task.result() for key, task in tasks.items()}
@@ -1191,7 +1177,6 @@ def _build_budget_alerts(warn: int, crit: int, stop: int) -> BudgetAlertConfig:
             namespace="budget",
             key="_alerts",
             reason="threshold_ordering",
-            exc_info=True,
         )
         msg = "Budget alert thresholds must satisfy warn < critical < hard_stop"
         raise ValueError(msg) from exc

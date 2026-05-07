@@ -349,7 +349,6 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
                 limit=limit,
                 error_type="system",
                 reason="system_error_in_search",
-                exc_info=True,
             )
             raise
         except asyncio.CancelledError:
@@ -364,7 +363,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
             )
             return SEARCH_UNAVAILABLE
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 source=SEARCH_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
@@ -412,7 +411,6 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
                 memory_id=memory_id,
                 error_type="system",
                 reason="system_error_in_recall",
-                exc_info=True,
             )
             raise
         except asyncio.CancelledError:
@@ -427,7 +425,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
             )
             return RECALL_UNAVAILABLE
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 source=RECALL_MEMORY_TOOL_NAME,
                 agent_id=agent_id,

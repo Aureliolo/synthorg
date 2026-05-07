@@ -288,7 +288,7 @@ class CoordinationController(Controller):
             # Drop ``logger.exception`` -- frame-locals on the
             # unexpected-coordination traceback can carry the full
             # coordination context (task body, agent rosters).
-            logger.error(  # noqa: TRY400
+            logger.error(
                 API_COORDINATION_FAILED,
                 task_id=task_id,
                 error_type=type(exc).__name__,

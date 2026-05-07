@@ -1,7 +1,7 @@
 """Scrub secret material out of exception strings before logging.
 
 Structured logs have proven to be a secret-exfiltration channel when
-callers write ``logger.exception(EVENT, error=str(exc))`` on paths that
+callers write ``logger.warning(EVENT, error=str(exc))`` on paths that
 touch OAuth token exchange, Fernet decryption, or any HTTP call whose
 request body contains credentials.  Two risks combine there:
 
@@ -197,6 +197,9 @@ def safe_error_description(exc: BaseException) -> str:
     # (``MemoryError`` / ``RecursionError``), which must propagate per
     # project convention so the process can surface the failure.
     try:
+        # Direct ``str(exc)`` is intentional here: this function IS the
+        # redacted wrapper. ``scrub_secret_tokens`` is applied below.
+        # Calling ``safe_error_description`` here would infinitely recurse.
         message = str(exc)
     except MemoryError, RecursionError:
         raise

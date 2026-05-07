@@ -152,18 +152,22 @@ class HumanEscalationResolver:
         future = await self._registry.register(escalation.id)
         try:
             await self._store.create(escalation)
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             # Reap the future so the registry does not leak, and log
             # the failure so operators see the root cause (a failed
             # ``create`` also surfaces to the caller, but the queue
             # context -- escalation id, conflict id -- is only visible
             # here).
-            logger.exception(
+            logger.warning(
                 CONFLICT_ESCALATION_QUEUED,
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
                 subject=conflict.subject,
                 note="store_create_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             await self._registry.cancel(escalation.id)
             raise
@@ -318,11 +322,13 @@ class HumanEscalationResolver:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="mark_expired_failed",
             )
         logger.warning(

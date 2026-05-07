@@ -172,14 +172,26 @@ class JetStreamTaskQueue:
         if self._sub is not None:
             try:
                 await self._sub.unsubscribe()
-            except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             self._sub = None
         if self._client is not None:
             try:
                 await self._client.drain()
-            except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_DRAIN_FAILED)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKERS_TASK_QUEUE_DRAIN_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             self._client = None
             self._js = None
 
@@ -188,14 +200,26 @@ class JetStreamTaskQueue:
         if self._sub is not None:
             try:
                 await self._sub.unsubscribe()
-            except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             self._sub = None
         if self._client is not None:
             try:
                 await self._client.drain()
-            except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_DRAIN_FAILED)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKERS_TASK_QUEUE_DRAIN_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             self._client = None
             self._js = None
 
@@ -214,7 +238,7 @@ class JetStreamTaskQueue:
             )
         except (TimeoutError, NoServersError, OSError) as exc:
             safe_url = redact_url(self._nats_config.url)
-            msg = f"Failed to connect to NATS at {safe_url} for task queue: {exc}"
+            msg = f"Failed to connect to NATS at {safe_url} for task queue: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 WORKERS_TASK_QUEUE_CONNECT_FAILED,
                 url=safe_url,
@@ -260,7 +284,7 @@ class JetStreamTaskQueue:
         except NatsError as exc:
             msg = (
                 f"Failed to set up task queue stream "
-                f"{self._queue_config.stream_name}: {exc}"
+                f"{self._queue_config.stream_name}: {safe_error_description(exc)}"
             )
             raise BusStreamError(
                 msg,
@@ -296,7 +320,7 @@ class JetStreamTaskQueue:
                 config=consumer_config,
             )
         except NatsError as exc:
-            msg = f"Failed to create task queue consumer {self._durable_name}: {exc}"
+            msg = f"Failed to create task queue consumer {self._durable_name}: {safe_error_description(exc)}"  # noqa: E501
             raise BusStreamError(
                 msg,
                 context={
@@ -349,8 +373,14 @@ class JetStreamTaskQueue:
             )
             try:
                 await raw.ack()
-            except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             return None
         try:
             claim = TaskClaim.model_validate_json(raw.data.decode("utf-8"))
@@ -363,8 +393,14 @@ class JetStreamTaskQueue:
             )
             try:
                 await raw.ack()
-            except Exception:
-                logger.exception(WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             return None
         return claim, raw
 

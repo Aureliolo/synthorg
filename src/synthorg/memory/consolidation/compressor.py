@@ -34,7 +34,7 @@ from synthorg.memory.consolidation.models import (
     CompressedExperience,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     EXPERIENCE_COMPRESSED,
     EXPERIENCE_COMPRESSION_FAILED,
@@ -253,7 +253,9 @@ class LLMExperienceCompressor:
         except Exception as exc:
             logger.warning(
                 EXPERIENCE_COMPRESSION_FAILED,
-                error=f"provider call failed: {exc}",
+                context="provider call failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 model=self._model,
                 agent_id=agent_id,
                 source_artifact_ids=list(source_artifact_ids),
@@ -269,13 +271,15 @@ class LLMExperienceCompressor:
         except json.JSONDecodeError as exc:
             logger.warning(
                 EXPERIENCE_COMPRESSION_FAILED,
-                error=f"JSON decode failed: {exc}",
+                context="JSON decode failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 content_length=len(response.content),
                 content_hash=hashlib.sha256(
                     response.content.encode("utf-8"),
                 ).hexdigest()[:16],
             )
-            msg = f"malformed compression output: {exc}"
+            msg = f"malformed compression output: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
         if not isinstance(parsed, dict):
             msg = f"LLM returned non-dict: {type(parsed).__name__}"
@@ -334,7 +338,9 @@ class LLMExperienceCompressor:
         except Exception as exc:
             logger.warning(
                 EXPERIENCE_COMPRESSION_FAILED,
-                error=f"CompressedExperience validation failed: {exc}",
+                context="CompressedExperience validation failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 agent_id=agent_id,
                 source_artifact_count=len(source_artifact_ids),
             )

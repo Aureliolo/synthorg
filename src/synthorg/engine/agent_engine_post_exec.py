@@ -141,7 +141,6 @@ class AgentEnginePostExecMixin:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                     reason="classification_failed",
-                    exc_info=True,
                 )
         await self._try_procedural_memory(
             failed_result or execution_result,
@@ -303,7 +302,6 @@ class AgentEnginePostExecMixin:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 reason="coordination_metrics_failed",
-                exc_info=True,
             )
 
     async def _try_procedural_memory(
@@ -350,12 +348,14 @@ class AgentEnginePostExecMixin:
             self._log_completion(result, agent_id, task_id, duration)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error="Completion logging failed",
+                note="Completion logging failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         return result
 

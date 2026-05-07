@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from structlog.stdlib import ProcessorFormatter
 
+from synthorg.observability.redaction import safe_error_description
+
 if TYPE_CHECKING:
     from synthorg.observability.config import SinkConfig
 
@@ -89,7 +91,7 @@ class HttpBatchHandler(logging.Handler):
                 self._drain_and_flush()
             except Exception as exc:
                 print(  # noqa: T201
-                    f"ERROR: log-http-flusher encountered unexpected error: {exc}",
+                    f"ERROR: log-http-flusher encountered unexpected error: {safe_error_description(exc)}",  # noqa: E501
                     file=sys.stderr,
                     flush=True,
                 )
@@ -145,7 +147,7 @@ class HttpBatchHandler(logging.Handler):
             print(  # noqa: T201
                 f"WARNING: HTTP log shipping failed after "
                 f"{1 + self._max_retries} attempts to {self._url}: "
-                f"{error} "
+                f"{safe_error_description(error)} "
                 f"(dropped {len(entries)} records, "
                 f"total dropped: {self._dropped_count})",
                 file=sys.stderr,

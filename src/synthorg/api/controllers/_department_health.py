@@ -126,7 +126,6 @@ async def _resolve_active_count(
             API_REQUEST_ERROR,
             endpoint="departments.health",
             error="agent_registry_query_failed",
-            exc_info=True,
         )
         return 0
 
@@ -180,7 +179,6 @@ async def _resolve_agent_ids(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.health.resolve_id",
-            exc_info=True,
         )
         return ()
     return tuple(str(i.id) for i in identities if i is not None)
@@ -375,7 +373,6 @@ async def assemble_department_health(
             endpoint="departments.health",
             department=dept_name,
             error_count=len(eg.exceptions),
-            exc_info=True,
         )
         return _build_degraded_health(dept_name, agent_count, now, currency=currency)
 
@@ -393,7 +390,6 @@ async def assemble_department_health(
             endpoint="departments.health.snapshots",
             department=dept_name,
             error_count=len(eg.exceptions),
-            exc_info=True,
         )
         snapshots = ()
 

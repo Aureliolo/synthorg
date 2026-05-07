@@ -14,6 +14,7 @@ from uuid import uuid4
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import safe_error_description
 
 
 class ParkedContext(BaseModel):
@@ -55,7 +56,7 @@ class ParkedContext(BaseModel):
         try:
             json.loads(self.context_json)
         except (json.JSONDecodeError, TypeError) as exc:
-            msg = f"context_json must be valid JSON: {exc}"
+            msg = f"context_json must be valid JSON: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
         return self

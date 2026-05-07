@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlparse
 
 from pydantic import SecretStr
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001 -- documented return type
@@ -76,7 +76,7 @@ def _validate_postgres_url(db_url: str) -> tuple[str, int, str, str, str]:
         parsed = urlparse(db_url)
     except ValueError as exc:
         _fail_url(
-            f"SYNTHORG_DATABASE_URL could not be parsed: {exc}",
+            f"SYNTHORG_DATABASE_URL could not be parsed: {safe_error_description(exc)}",
             "url_parse_failed",
             exc,
         )
@@ -97,7 +97,7 @@ def _validate_postgres_url(db_url: str) -> tuple[str, int, str, str, str]:
         parsed_port = parsed.port
     except ValueError as exc:
         _fail_url(
-            f"SYNTHORG_DATABASE_URL has an invalid host/port: {exc}",
+            f"SYNTHORG_DATABASE_URL has an invalid host/port: {safe_error_description(exc)}",  # noqa: E501
             "invalid_host_port",
             exc,
         )

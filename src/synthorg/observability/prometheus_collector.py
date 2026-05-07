@@ -83,7 +83,6 @@ async def _fetch_workflow_definitions(
         logger.warning(
             METRICS_SCRAPE_FAILED,
             component="workflow_definition_repo",
-            exc_info=True,
         )
         return None
     return frozenset(str(d.id) for d in definitions)
@@ -108,7 +107,6 @@ async def _fetch_departments(app_state: AppState) -> frozenset[str] | None:
         logger.warning(
             METRICS_SCRAPE_FAILED,
             component="department_service",
-            exc_info=True,
         )
         return None
     return frozenset(str(r.name) for r in records)
@@ -320,7 +318,6 @@ class PrometheusCollector(RecordingMixin):
                 logger.warning(
                     METRICS_SCRAPE_FAILED,
                     component="cost_tracker",
-                    exc_info=True,
                 )
         self._refresh_cost_gauge(total_cost)
         self._refresh_budget_metrics(app_state, billing_cost)
@@ -469,7 +466,6 @@ class PrometheusCollector(RecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="budget",
-                exc_info=True,
             )
 
     def _refresh_daily_budget_metric(
@@ -532,7 +528,6 @@ class PrometheusCollector(RecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="daily_budget",
-                exc_info=True,
             )
 
     async def _refresh_agent_metrics(
@@ -581,7 +576,6 @@ class PrometheusCollector(RecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="agent_registry",
-                exc_info=True,
             )
             return None
         # Successful fetch: clear stale labels first, then re-set.
@@ -664,7 +658,6 @@ class PrometheusCollector(RecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="agent_cost",
-                exc_info=True,
             )
 
     async def _refresh_task_metrics(self, app_state: AppState) -> None:
@@ -724,5 +717,4 @@ class PrometheusCollector(RecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="task_engine",
-                exc_info=True,
             )

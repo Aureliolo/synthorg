@@ -519,7 +519,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         primary_error_type=type(exc).__name__,
                         primary_error=safe_error_description(exc),
                         note="Rollback failed after primary error",
-                        exc_info=True,
                     )
                 raise
 

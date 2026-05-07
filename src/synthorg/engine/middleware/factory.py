@@ -8,6 +8,7 @@ Middleware whose required dependencies are unavailable is skipped
 with a DEBUG log (safe default = opt-out).
 """
 
+import inspect
 from typing import TYPE_CHECKING, Any
 
 from synthorg.engine.middleware.coordination_protocol import (
@@ -23,7 +24,7 @@ from synthorg.engine.middleware.registry import (
     get_agent_middleware_factory,
     get_coordination_middleware_factory,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_CHAIN_BUILT,
     MIDDLEWARE_COORDINATION_CHAIN_BUILT,
@@ -50,10 +51,14 @@ def build_agent_middleware_chain(
     Resolves each name in ``config.chain`` via the agent registry,
     instantiates with ``deps``, and composes into a chain.
 
-    Middleware whose factory raises ``TypeError`` (missing required
-    dependency) is skipped with a DEBUG log.  Middleware whose name
-    is not registered is also skipped (not an error -- allows
-    incremental registration).
+    Middleware whose factory's signature cannot be satisfied by
+    ``deps`` (missing required parameter or unsupported keyword) is
+    detected via ``inspect.signature(factory).bind`` and skipped with
+    a DEBUG log -- no string matching on Python's TypeError messages.
+    Middleware whose name is not registered is also skipped (not an
+    error -- allows incremental registration). A TypeError that
+    escapes the post-bind ``factory(**deps)`` call is treated as a
+    factory body bug and propagated.
 
     Args:
         config: Agent middleware configuration.
@@ -77,23 +82,28 @@ def build_agent_middleware_chain(
             continue
 
         try:
-            mw = factory(**effective_deps)
-        except TypeError as exc:
-            # Only skip if the TypeError is from missing factory args,
-            # not from internal bugs in the factory
-            if "argument" not in str(exc) and "parameter" not in str(exc):
-                logger.exception(
-                    MIDDLEWARE_SKIPPED,
-                    middleware=name,
-                    reason=f"factory_error: {exc}",
-                )
-                raise
+            inspect.signature(factory).bind(**effective_deps)
+        except TypeError as sig_exc:
             logger.debug(
                 MIDDLEWARE_SKIPPED,
                 middleware=name,
-                reason=f"missing_dependency: {exc}",
+                reason="missing_dependency",
+                error_type=type(sig_exc).__name__,
+                error=safe_error_description(sig_exc),
             )
             continue
+
+        try:
+            mw = factory(**effective_deps)
+        except TypeError as exc:
+            logger.error(
+                MIDDLEWARE_SKIPPED,
+                middleware=name,
+                reason="factory_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
 
         middleware.append(mw)
 
@@ -147,21 +157,28 @@ def build_coordination_middleware_chain(
             continue
 
         try:
-            mw = factory(**effective_deps)
-        except TypeError as exc:
-            if "argument" not in str(exc) and "parameter" not in str(exc):
-                logger.exception(
-                    MIDDLEWARE_COORDINATION_SKIPPED,
-                    middleware=name,
-                    reason=f"factory_error: {exc}",
-                )
-                raise
+            inspect.signature(factory).bind(**effective_deps)
+        except TypeError as sig_exc:
             logger.debug(
                 MIDDLEWARE_COORDINATION_SKIPPED,
                 middleware=name,
-                reason=f"missing_dependency: {exc}",
+                reason="missing_dependency",
+                error_type=type(sig_exc).__name__,
+                error=safe_error_description(sig_exc),
             )
             continue
+
+        try:
+            mw = factory(**effective_deps)
+        except TypeError as exc:
+            logger.error(
+                MIDDLEWARE_COORDINATION_SKIPPED,
+                middleware=name,
+                reason="factory_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
 
         middleware.append(mw)
 

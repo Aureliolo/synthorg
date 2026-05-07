@@ -179,10 +179,12 @@ def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
     """Create a CostTracker from config."""
     try:
         tracker = CostTracker(budget_config=effective_config.budget)
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire cost tracker",
+            note="Failed to auto-wire cost tracker",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="cost_tracker")
@@ -195,10 +197,12 @@ def _wire_provider_registry(
     """Create a ProviderRegistry from config."""
     try:
         registry = ProviderRegistry.from_config(effective_config.providers)
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to build provider registry from config",
+            note="Failed to build provider registry from config",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="provider_registry")
@@ -234,10 +238,12 @@ def _wire_task_engine(
             persistence=persistence,
             message_bus=message_bus,
         )
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire task engine",
+            note="Failed to auto-wire task engine",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
 
@@ -303,10 +309,14 @@ def _register_distributed_dispatcher(
         )
         dispatcher = DistributedDispatcher(task_queue=task_queue)
         engine.register_observer(dispatcher.on_task_state_changed)
-    except Exception:
-        logger.exception(
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
             API_APP_STARTUP,
-            error="Failed to register distributed dispatcher",
+            note="Failed to register distributed dispatcher",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 
@@ -346,10 +356,12 @@ def _auto_wire_message_bus(
                 update={"channels": (*bus_config.channels, *extra)},
             )
         bus = build_message_bus(bus_config)
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire message bus",
+            note="Failed to auto-wire message bus",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
     logger.info(
@@ -467,10 +479,12 @@ def auto_wire_meetings(
         ceremony_scheduler = CeremonyScheduler(
             meeting_scheduler=meeting_scheduler,
         )
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire ceremony scheduler",
+            note="Failed to auto-wire ceremony scheduler",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="ceremony_scheduler")
@@ -598,10 +612,12 @@ def _wire_meeting_orchestrator(
             protocol_registry=protocol_registry,
             agent_caller=agent_caller,
         )
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire meeting orchestrator",
+            note="Failed to auto-wire meeting orchestrator",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="meeting_orchestrator")
@@ -660,10 +676,12 @@ def _wire_meeting_scheduler(
             orchestrator=orchestrator,
             participant_resolver=resolver,
         )
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire meeting scheduler",
+            note="Failed to auto-wire meeting scheduler",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="meeting_scheduler")
@@ -712,12 +730,14 @@ async def auto_wire_settings(  # noqa: PLR0913
             encryptor=encryptor,
             message_bus=message_bus,
         )
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error=(
+            note=(
                 "Failed to create SettingsService -- check encryption key configuration"
             ),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
 
@@ -732,20 +752,24 @@ async def auto_wire_settings(  # noqa: PLR0913
             app_state,
             backup_service,
         )
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to build settings dispatcher",
+            note="Failed to build settings dispatcher",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
 
     if dispatcher is not None:
         try:
             await dispatcher.start()
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 API_APP_STARTUP,
-                error="Failed to start auto-wired settings dispatcher",
+                note="Failed to start auto-wired settings dispatcher",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.info(API_SERVICE_AUTO_WIRED, service="settings_dispatcher")

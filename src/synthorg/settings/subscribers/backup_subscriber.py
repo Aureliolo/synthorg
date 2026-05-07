@@ -95,14 +95,17 @@ class BackupSettingsSubscriber:
         """Start or stop the scheduler based on the current setting value."""
         try:
             result = await self._settings_service.get("backup", "enabled")
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.error(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace="backup",
                 key="enabled",
                 note="failed to read setting",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
 
@@ -122,7 +125,7 @@ class BackupSettingsSubscriber:
                 # gives the operator the namespace/key plus the
                 # scrubbed error before re-raising so the dispatcher
                 # still records the failure.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     SETTINGS_SUBSCRIBER_NOTIFIED,
                     subscriber=self.subscriber_name,
                     namespace="backup",
@@ -153,14 +156,17 @@ class BackupSettingsSubscriber:
         """Update the scheduler interval from current settings."""
         try:
             result = await self._settings_service.get("backup", "schedule_hours")
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.error(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace="backup",
                 key="schedule_hours",
                 note="failed to read setting",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
 
@@ -168,7 +174,7 @@ class BackupSettingsSubscriber:
         try:
             hours = int(result.value)
         except ValueError, TypeError:
-            logger.exception(
+            logger.warning(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace="backup",

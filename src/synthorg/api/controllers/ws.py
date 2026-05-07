@@ -346,8 +346,14 @@ async def _outbound_consumer(
             except WebSocketDisconnect:
                 logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
                 return
-            except Exception:
-                logger.error(API_WS_SEND_FAILED, exc_info=True)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    API_WS_SEND_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 await socket.close(code=1011, reason="Internal error")
                 return
         finally:
@@ -373,7 +379,6 @@ async def _send_auth_ok(socket: WebSocket[Any, Any, Any]) -> None:
         logger.error(
             API_WS_SEND_FAILED,
             reason="send_error_auth_ok",
-            exc_info=True,
         )
         await socket.close(code=1011, reason="Internal error")
         raise
@@ -470,7 +475,6 @@ async def _setup_connection(
             reason="subscribe_failed",
             client=str(socket.client),
             user_id=user.user_id,
-            exc_info=True,
         )
         await socket.close(code=1011, reason="Internal error")
         return None
@@ -488,7 +492,6 @@ async def _setup_connection(
             reason="presence_connect_failed",
             client=str(socket.client),
             user_id=user.user_id,
-            exc_info=True,
         )
         try:
             await channels_plugin.unsubscribe(subscriber)
@@ -497,7 +500,6 @@ async def _setup_connection(
                 API_WS_TRANSPORT_ERROR,
                 reason="unsubscribe_after_presence_connect_failure",
                 client=str(socket.client),
-                exc_info=True,
             )
         await socket.close(code=1011, reason="Internal error")
         return None
@@ -518,7 +520,6 @@ async def _setup_connection(
                 API_WS_TRANSPORT_ERROR,
                 reason="unsubscribe_after_auth_ok_failure",
                 client=str(socket.client),
-                exc_info=True,
             )
         app_state.user_presence.disconnect(user.user_id)
         return None
@@ -563,7 +564,6 @@ async def _teardown_connection(
             API_WS_TRANSPORT_ERROR,
             reason="outbound_consumer_failed",
             client=str(socket.client),
-            exc_info=True,
         )
     try:
         await channels_plugin.unsubscribe(subscriber)
@@ -572,7 +572,6 @@ async def _teardown_connection(
             API_WS_TRANSPORT_ERROR,
             error="Failed to unsubscribe",
             client=str(socket.client),
-            exc_info=True,
         )
     app_state = socket.app.state["app_state"]
     # Presence disconnect is best-effort: if the user_presence
@@ -587,7 +586,6 @@ async def _teardown_connection(
             reason="presence_disconnect_failed",
             client=str(socket.client),
             user_id=user.user_id,
-            exc_info=True,
         )
     logger.info(API_WS_DISCONNECTED, client=str(socket.client))
     if outer_cancelled_exc is not None:
@@ -789,6 +787,5 @@ async def _receive_loop(  # noqa: PLR0913 -- one extra optional kw arg for the t
             API_WS_TRANSPORT_ERROR,
             user_id=conn_user.user_id,
             client=str(socket.client),
-            exc_info=True,
         )
         raise

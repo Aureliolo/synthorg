@@ -104,7 +104,6 @@ class AgentEngineContextMixin:
                     ),
                     fallback_trimming_enabled=True,
                     fallback_tokens_override=None,
-                    exc_info=True,
                 )
             else:
                 trimming_enabled = resolved_enabled
@@ -197,7 +196,6 @@ class AgentEngineContextMixin:
                 task_id=task_id,
                 trim_tier=trim_tier,
                 reason="notifier callback raised",
-                exc_info=True,
             )
 
     async def _read_notify_enabled(
@@ -226,7 +224,6 @@ class AgentEngineContextMixin:
                     "failed to read personality_trimming_notify setting;"
                     " fail-open with default notify_enabled=True"
                 ),
-                exc_info=True,
             )
             return True
 

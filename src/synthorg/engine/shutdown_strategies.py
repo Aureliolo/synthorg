@@ -24,7 +24,7 @@ from synthorg.engine.shutdown import (
     _log_post_cancel_exceptions,
     _run_cleanup,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
     EXECUTION_SHUTDOWN_CHECKPOINT_SAVE,
@@ -65,7 +65,9 @@ def _count_cooperative_exits(
             errored += 1
             logger.warning(
                 EXECUTION_SHUTDOWN_TASK_ERROR,
-                error=(f"Task raised during shutdown: {type(exc).__name__}: {exc}"),
+                context="task_raised_during_shutdown",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         else:
             completed += 1
@@ -577,10 +579,11 @@ class CheckpointAndStopStrategy:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
                 task_id=task_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         if saved:

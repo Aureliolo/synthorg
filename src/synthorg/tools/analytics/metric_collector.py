@@ -227,7 +227,6 @@ class MetricCollectorTool(BaseAnalyticsTool):
                 ANALYTICS_TOOL_METRIC_RECORD_FAILED,
                 metric_name=metric_name,
                 error="sink_error",
-                exc_info=True,
             )
             return ToolExecutionResult(
                 content="Metric recording failed.",

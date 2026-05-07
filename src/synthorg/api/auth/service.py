@@ -130,7 +130,7 @@ class AuthService:
             )
             raise
         except argon2.exceptions.InvalidHashError as exc:
-            logger.error(  # noqa: TRY400 -- structlog event constant; not the stdlib `error` shape
+            logger.error(
                 SECURITY_AUTH_FAILED,
                 reason="invalid_hash_data_corruption",
                 error_type=type(exc).__name__,

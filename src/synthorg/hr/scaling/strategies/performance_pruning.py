@@ -158,7 +158,6 @@ class PerformancePruningStrategy:
                     strategy="performance_pruning",
                     agent_id=agent_key,
                     action="per_agent_error",
-                    exc_info=True,
                 )
                 continue
 

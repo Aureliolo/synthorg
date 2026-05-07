@@ -18,7 +18,7 @@ from synthorg.memory.procedural.success_proposer import (
     SuccessMemoryProposer,  # noqa: TC001
 )
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_CAPTURE_QUALITY_BELOW_THRESHOLD,
     PROCEDURAL_CAPTURE_STORE_FAILED,
@@ -131,8 +131,8 @@ class SuccessCaptureStrategy:
         except Exception as exc:
             logger.warning(
                 PROCEDURAL_CAPTURE_STORE_FAILED,
-                error=f"{type(exc).__name__}: {exc}",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         else:

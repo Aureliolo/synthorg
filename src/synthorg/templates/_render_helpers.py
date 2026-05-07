@@ -39,7 +39,7 @@ def _parse_budget(dept: dict[str, Any]) -> float:
             field_name=f"departments[{dept.get('name', '')}].budget_percent",
         )
     except ValueError as exc:
-        msg = f"Invalid department budget value: {exc}"
+        msg = f"Invalid department budget value: {safe_error_description(exc)}"
         logger.warning(
             TEMPLATE_RENDER_TYPE_ERROR,
             department=dept.get("name", ""),
@@ -251,7 +251,7 @@ def validate_as_root_config(
                     key_path=key_path,
                 ),
             )
-        logger.exception(
+        logger.warning(
             TEMPLATE_RENDER_VALIDATION_ERROR,
             source_name=source_name,
             error_count=len(exc.errors()),

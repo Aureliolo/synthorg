@@ -155,8 +155,10 @@ class BackupService(BackupServiceArchiveMixin):
                 dir_name=dir_name,
                 backup_dir=backup_dir,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_FAILED,
                 backup_id=backup_id,
                 error_type=type(exc).__name__,
@@ -265,11 +267,13 @@ class BackupService(BackupServiceArchiveMixin):
 
         try:
             await self._retention.prune()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Drop exc_info on retention failure so the filesystem
             # path / connection details that ``str(exc)`` would
             # carry don't leak via the traceback frame-locals.
-            logger.error(  # noqa: TRY400 -- fail-loud, no traceback
+            logger.error(
                 BACKUP_RETENTION_FAILED,
                 backup_id=backup_id,
                 reason="retention_pruning_failed",
@@ -331,7 +335,7 @@ class BackupService(BackupServiceArchiveMixin):
                 safety_backup_id=safety_manifest.backup_id,
             )
         except RestoreError as exc:
-            logger.error(  # noqa: TRY400
+            logger.error(
                 BACKUP_RESTORE_FAILED,
                 backup_id=backup_id,
                 error_type=type(exc).__name__,
@@ -379,6 +383,8 @@ class BackupService(BackupServiceArchiveMixin):
                     msg = f"No handler for component: {comp.value}"
                     raise RestoreError(msg)  # noqa: TRY301
                 await handler.restore(backup_dir)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 BACKUP_RESTORE_ROLLBACK,
@@ -387,7 +393,7 @@ class BackupService(BackupServiceArchiveMixin):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Restore failed for {backup_id}: {exc}"
+            msg = f"Restore failed for {backup_id}: {safe_error_description(exc)}"
             raise RestoreError(msg) from exc
 
         logger.info(

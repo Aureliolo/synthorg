@@ -102,7 +102,6 @@ class SQLiteOntologyDriftReportRepository:
                 logger.error(
                     ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
                     entity_name=report.entity_name,
-                    exc_info=True,
                 )
                 raise
 

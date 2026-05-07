@@ -153,7 +153,6 @@ class DiskQuotaWatcher:
                 logger.warning(
                     WORKSPACE_DISK_CHECK_ERROR,
                     path=str(p),
-                    exc_info=True,
                 )
                 return DiskQuotaStatus(
                     path=p,

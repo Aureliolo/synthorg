@@ -110,6 +110,8 @@ async def _probe_service(
         return None
     try:
         return await probe()
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         # ``exc_info=True`` would serialize frame locals from the probe
         # into the log record; persistence / bus probes carry connection
@@ -248,7 +250,7 @@ class ReadinessController(Controller):
             # sanitized description but never attach frame locals
             # that could serialize connection state from the failing
             # probe.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 API_HEALTH_CHECK,
                 component="readiness",
                 error_type=type(group).__name__,

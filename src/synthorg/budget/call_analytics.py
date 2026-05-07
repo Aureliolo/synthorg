@@ -249,5 +249,4 @@ async def _dispatch_retry_rate_alert(
         logger.warning(
             ANALYTICS_RETRY_RATE_ALERT,
             error="retry_rate_alert_dispatch_failed",
-            exc_info=True,
         )

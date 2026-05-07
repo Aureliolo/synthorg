@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.approval.models import EscalationInfo
 from synthorg.core.enums import ApprovalRiskLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_INTERCEPTOR_ERROR,
     SECURITY_OUTPUT_SCAN_ERROR,
@@ -259,11 +259,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None, ToolResult(
                 tool_call_id=tool_call.id,
@@ -344,11 +346,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 SECURITY_OUTPUT_SCAN_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content="Output scan failed (fail-closed). Tool output withheld.",
@@ -591,23 +595,28 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         try:
             return await tool.execute(arguments=safe_args)
         except (MemoryError, RecursionError) as exc:
-            logger.exception(
+            logger.warning(
                 TOOL_INVOKE_NON_RECOVERABLE,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         except Exception as exc:
-            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
-            logger.exception(
+            # Propagated error string lands in agent context; redact to
+            # prevent credential leakage from third-party HTTP / driver
+            # exceptions.
+            redacted_error = safe_error_description(exc)
+            logger.warning(
                 TOOL_INVOKE_EXECUTION_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error=error_msg,
+                error_type=type(exc).__name__,
+                error=redacted_error,
             )
             exec_err = ToolExecutionError(
-                error_msg,
+                redacted_error,
                 context={"tool": tool_call.name},
             )
             return ToolResult(
@@ -668,15 +677,17 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 TOOL_INVOKE_EXECUTION_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool.name,
                 note="Failed to track parking metadata",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolResult(
                 tool_call_id=tool_call.id,
-                content=f"Approval escalation tracking failed: {exc}",
+                content=f"Approval escalation tracking failed: {safe_error_description(exc)}",  # noqa: E501
                 is_error=True,
             )
         return None

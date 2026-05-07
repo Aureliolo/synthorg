@@ -463,7 +463,6 @@ class AgentController(Controller):
                 endpoint="agents.activity",
                 agent_name=agent_name,
                 detail="budget config unavailable, using default currency",
-                exc_info=True,
             )
             currency = DEFAULT_CURRENCY
         timeline = merge_activity_timeline(

@@ -63,7 +63,6 @@ def _wire_mcp_catalog() -> CatalogService | None:
         logger.warning(
             API_APP_STARTUP,
             error="MCP catalog auto-wire failed (non-fatal)",
-            exc_info=True,
         )
         return None
     else:
@@ -107,7 +106,6 @@ def _wire_mcp_installations_repo(
         logger.warning(
             API_APP_STARTUP,
             error="MCP installations repo auto-wire failed (non-fatal)",
-            exc_info=True,
         )
     return None
 
@@ -172,7 +170,6 @@ def _wire_rate_limit_coordinator_factory(
                     "could not read rate_limit_rpm from catalog cache; using default"
                 ),
                 connection_name=name,
-                exc_info=True,
             )
         return SharedRateLimitCoordinator(
             bus=_bus,
@@ -330,7 +327,6 @@ def auto_wire_integrations(  # noqa: PLR0913
         logger.warning(
             API_APP_STARTUP,
             error="Integration services auto-wire failed (non-fatal)",
-            exc_info=True,
         )
 
     return bundle

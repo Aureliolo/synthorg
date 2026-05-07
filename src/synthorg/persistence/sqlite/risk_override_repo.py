@@ -58,7 +58,6 @@ class SQLiteRiskOverrideRepository:
             logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
                 error="rollback failed",
-                exc_info=True,
             )
 
     async def save(self, override: RiskTierOverride) -> None:

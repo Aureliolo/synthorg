@@ -128,7 +128,6 @@ class BackupServiceArchiveMixin:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
-                exc_info=True,
             )
             return None
 
@@ -170,7 +169,6 @@ class BackupServiceArchiveMixin:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(entry),
-                exc_info=True,
             )
         return None
 
@@ -286,7 +284,6 @@ class BackupServiceArchiveMixin:
                 logger.warning(
                     BACKUP_MANIFEST_INVALID,
                     path=str(entry),
-                    exc_info=True,
                 )
         return None
 
@@ -335,7 +332,6 @@ class BackupServiceArchiveMixin:
                     BACKUP_FAILED,
                     backup_id=backup_id,
                     error="Failed to extract archive",
-                    exc_info=True,
                 )
                 if await asyncio.to_thread(temp_dir.exists):
                     await asyncio.to_thread(shutil.rmtree, temp_dir)

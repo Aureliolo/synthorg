@@ -372,7 +372,7 @@ class MeetingScheduler:
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable diagnostic
                     # information beyond the structured fields below.
-                    logger.error(  # noqa: TRY400
+                    logger.error(
                         MEETING_SCHEDULER_ERROR,
                         note=(
                             "stop exceeded hard deadline; "
@@ -500,11 +500,13 @@ class MeetingScheduler:
                     await self._execute_meeting(meeting_type)
                 except MemoryError, RecursionError:
                     raise
-                except Exception:
-                    logger.exception(
+                except Exception as exc:
+                    logger.warning(
                         MEETING_SCHEDULER_ERROR,
                         meeting_type=meeting_type.name,
                         note="periodic execution failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
         except asyncio.CancelledError:  # noqa: TRY203
             raise
@@ -536,11 +538,15 @@ class MeetingScheduler:
 
         try:
             agenda = self._build_default_agenda(meeting_type, context)
-        except Exception:
-            logger.exception(
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type.name,
                 note="agenda build failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -578,11 +584,13 @@ class MeetingScheduler:
             return None
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type.name,
                 note="participant resolution failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -627,11 +635,13 @@ class MeetingScheduler:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type.name,
                 note="orchestrator execution failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -662,13 +672,14 @@ class MeetingScheduler:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_id=record.meeting_id,
                 meeting_type=record.meeting_type_name,
                 note="event publisher failed",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _publish_started_event(self, meeting_type_name: str) -> None:
@@ -688,12 +699,13 @@ class MeetingScheduler:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type_name,
                 note="started event publish failed",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @staticmethod

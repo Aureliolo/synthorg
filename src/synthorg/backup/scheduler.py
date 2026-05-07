@@ -218,7 +218,7 @@ class BackupScheduler:
                 )
             except TimeoutError:
                 self._stop_failed = True
-                logger.error(  # noqa: TRY400
+                logger.error(
                     BACKUP_FAILED,
                     error=(
                         "stop exceeded hard deadline; scheduler marked unrestartable"

@@ -268,7 +268,6 @@ def evaluate_condition(
         logger.warning(
             CONDITION_EVAL_PARSE_ERROR,
             expression=expr[:200],
-            exc_info=True,
         )
         return False
 

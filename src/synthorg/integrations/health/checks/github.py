@@ -151,16 +151,21 @@ class GitHubHealthCheck:
         # TaskGroup.
         try:
             credentials = await self._catalog.get_credentials(connection.name)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
+            error_desc = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
-                error=f"credential resolution failed: {exc}",
+                context="credential resolution failed",
+                error_type=type(exc).__name__,
+                error=error_desc,
             )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
-                error_detail=f"credential resolution failed: {exc}",
+                error_detail=f"credential resolution failed: {error_desc}",
                 checked_at=now,
             )
         token = credentials.get("token")
@@ -240,6 +245,6 @@ class GitHubHealthCheck:
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
                 latency_ms=elapsed,
-                error_detail=str(exc),
+                error_detail=safe_error_description(exc),
                 checked_at=datetime.now(UTC),
             )

@@ -143,7 +143,6 @@ async def _read_setting_list(
             action="corrupt_setting_json",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         msg = f"Setting 'company/{key}' contains invalid JSON"
         raise DomainError(msg) from exc
@@ -370,11 +369,13 @@ class TemplatePackController(Controller):
             # ``apply_failed`` trace the outer ``except Exception`` would
             # otherwise emit for the same expected error.
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 TEMPLATE_PACK_APPLY_ERROR,
                 pack_name=data.pack_name,
                 action="apply_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.info(

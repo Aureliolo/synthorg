@@ -37,7 +37,7 @@ from synthorg.budget.coordination_metrics import (
     compute_straggler_gap,
     compute_token_speedup_ratio,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_ALERT_FIRED,
     COORD_METRICS_COLLECTION_COMPLETED,
@@ -392,7 +392,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="efficiency",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         else:
@@ -426,7 +427,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="overhead",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         else:
@@ -463,7 +465,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="error_amplification",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         else:
@@ -503,7 +506,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="message_density",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         else:
@@ -537,7 +541,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="redundancy",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         else:
@@ -559,7 +564,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="amdahl_ceiling",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -579,7 +585,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="straggler_gap",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -615,7 +622,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="token_speedup_ratio",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -640,7 +648,8 @@ class CoordinationMetricsCollector:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="message_overhead",
-                error=f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -699,11 +708,12 @@ class CoordinationMetricsCollector:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="alert_dispatch",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
 

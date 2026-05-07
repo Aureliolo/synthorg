@@ -81,7 +81,7 @@ class DriftDetectionService:
             # ``exc_info=True`` would attach the full traceback to
             # the log record and bypass ``safe_error_description``,
             # reintroducing secret / PII leakage on this error path.
-            logger.error(  # noqa: TRY400
+            logger.error(
                 ONTOLOGY_DRIFT_DETECT_FAILED,
                 entity_name=entity_name,
                 agent_count=len(agent_ids),
@@ -104,9 +104,9 @@ class DriftDetectionService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1: full traceback on a persistence-error path can
+                # full traceback on a persistence-error path can
                 # leak backend metadata; stick to the redacted form.
-                logger.error(  # noqa: TRY400
+                logger.error(
                     ONTOLOGY_DRIFT_STORE_FAILED,
                     entity_name=entity_name,
                     divergence_score=report.divergence_score,
@@ -169,7 +169,7 @@ class DriftDetectionService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(  # noqa: TRY400
+                logger.error(
                     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
                     entity_name=entity_name,
                     error_type=type(exc).__name__,

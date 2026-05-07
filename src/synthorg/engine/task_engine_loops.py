@@ -19,7 +19,7 @@ from synthorg.engine.task_engine_models import (
     TaskMutationResult,
     TaskStateChanged,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_DRAIN_COMPLETE,
     TASK_ENGINE_DRAIN_START,
@@ -279,12 +279,12 @@ class TaskEngineLoopsMixin:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            internal_msg = f"{type(exc).__name__}: {exc}"
-            logger.exception(
+            logger.error(
                 TASK_ENGINE_MUTATION_FAILED,
                 mutation_type=mutation.mutation_type,
                 request_id=mutation.request_id,
-                error=internal_msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             if not envelope.future.done():
                 envelope.future.set_result(
@@ -343,5 +343,4 @@ class TaskEngineLoopsMixin:
                     mutation_type=event.mutation_type,
                     request_id=event.request_id,
                     task_id=event.task_id,
-                    exc_info=True,
                 )

@@ -207,7 +207,7 @@ def copy_revisions(dest: Path, *, backend: BackendName = "sqlite") -> str:
     try:
         shutil.copytree(str(src_ref), str(dest))
     except (OSError, shutil.Error) as exc:
-        msg = f"Failed to copy migration revisions to {dest}: {exc}"
+        msg = f"Failed to copy migration revisions to {dest}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             error_type=type(exc).__name__,
@@ -412,7 +412,7 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
                 env=env,
             )
         except OSError as exc:
-            msg = f"Failed to start Atlas process: {exc}"
+            msg = f"Failed to start Atlas process: {safe_error_description(exc)}"
             raise MigrationError(msg) from exc
         try:
             out, err = proc.communicate(timeout=_ATLAS_SUBPROCESS_TIMEOUT_SECONDS)
@@ -421,10 +421,13 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
             # Drain pipes so the process actually exits.
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.communicate(timeout=_ATLAS_KILL_GRACE_SECONDS)
-            stderr_text = (exc.stderr or b"").decode(errors="replace")
+            # Atlas stderr on timeout can carry DSNs / SQL fragments
+            # / connection URIs; the structured log emitted upstream
+            # already records `error_type`+`error` via the MigrationError
+            # path, and the message itself must not embed raw stderr.
             msg = (
                 f"Atlas command timed out after "
-                f"{_ATLAS_SUBPROCESS_TIMEOUT_SECONDS:.0f}s: {stderr_text}"
+                f"{_ATLAS_SUBPROCESS_TIMEOUT_SECONDS:.0f}s"
             )
             raise MigrationError(msg) from exc
         except BaseException:
@@ -440,19 +443,24 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
         returncode, stdout_bytes, stderr_bytes = await asyncio.to_thread(
             _spawn_and_wait,
         )
-    except MigrationError:
-        logger.exception(PERSISTENCE_MIGRATION_FAILED, command=" ".join(safe_cmd))
+    except MigrationError as exc:
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            command=" ".join(safe_cmd),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise
 
     stdout = stdout_bytes.decode()
     stderr = stderr_bytes.decode()
 
     if returncode != 0:
-        msg = f"Atlas command failed (exit {returncode}): {stderr}"
+        msg = f"Atlas command failed (exit {returncode})"
         logger.error(
             PERSISTENCE_MIGRATION_FAILED,
             exit_code=returncode,
-            stderr=stderr,
+            stderr_length=len(stderr),
         )
         raise MigrationError(msg)
 
@@ -524,11 +532,13 @@ async def migrate_apply(
                     last.get("Version", "") if isinstance(last, dict) else ""
                 )
     except json.JSONDecodeError as exc:
-        msg = f"Atlas returned non-JSON output: {stdout[:200]}"
-        logger.exception(
+        msg = "Atlas returned non-JSON output"
+        logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
-            note="Atlas returned non-JSON output",
-            output_sample=stdout[:200],
+            note=msg,
+            output_length=len(stdout),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise MigrationError(msg) from exc
 
@@ -583,11 +593,13 @@ async def migrate_status(
             pending = data.get("Pending", [])
             pending_count = len(pending) if isinstance(pending, list) else 0
     except json.JSONDecodeError as exc:
-        msg = f"Atlas status returned non-JSON output: {stdout[:200]}"
-        logger.exception(
+        msg = "Atlas status returned non-JSON output"
+        logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
-            note="Atlas status returned non-JSON output",
-            output_sample=stdout[:200],
+            note=msg,
+            output_length=len(stdout),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise MigrationError(msg) from exc
 
