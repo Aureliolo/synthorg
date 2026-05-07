@@ -486,102 +486,121 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         self._leak_aliases: set[str] = set()
 
     def visit_Module(self, node: ast.Module) -> None:
-        """Collect module-level leak-aliases then recurse.
+        """Walk module body in natural source order.
 
-        Without this pass, ``error_msg = str(exc)`` at module scope
-        (e.g. inside an ``if __name__ == "__main__":`` block or a
-        top-level try/except) would never be added to the alias set,
-        and a downstream ``logger.warning(EVENT, error=error_msg)``
-        would slip through. The function-scope pass below mirrors this
-        same setup/teardown so closures inherit module aliases without
-        the inner additions leaking back into the module set.
+        ``ast.NodeVisitor.generic_visit`` traverses children in source
+        order, and the assignment / walrus visitors below update the
+        alias set inline as those nodes are encountered. So a sequence
+        like ``error_msg = str(exc); logger.warning(error=error_msg);
+        error_msg = "static"`` flags the middle call BEFORE the third
+        statement's safe-rebind discard clears the alias -- the
+        alternative shape (pre-pass over the whole body, visit
+        afterwards) collapses the source ordering and lets a real
+        leak slip past whenever a later assignment is non-leaky.
         """
         previous_aliases = self._leak_aliases
         self._leak_aliases = set(previous_aliases)
-        for stmt in node.body:
-            self._collect_leak_aliases(stmt)
-        for child in ast.iter_child_nodes(node):
-            self.visit(child)
+        self.generic_visit(node)
         self._leak_aliases = previous_aliases
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """Collect leak-aliases for the function then recurse."""
+        """Walk function body with a fresh inherited alias set."""
         self._visit_function_scope(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        """Collect leak-aliases for the async function then recurse."""
+        """Walk async function body with a fresh inherited alias set."""
         self._visit_function_scope(node)
 
     def _visit_function_scope(
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> None:
-        """Walk *node* with a fresh leak-alias set for this scope."""
+        """Walk *node*'s body in source order with a fresh alias set.
+
+        Inherits outer aliases (closures see them) but additions made
+        in this scope must not leak back out. ``generic_visit`` is the
+        natural source-order walker; the per-node assignment visitors
+        update ``self._leak_aliases`` inline as we go.
+        """
         previous_aliases = self._leak_aliases
-        # Inherit outer aliases (closures see them) but additions made
-        # in this scope must not leak back out.
         self._leak_aliases = set(previous_aliases)
-        for stmt in node.body:
-            self._collect_leak_aliases(stmt)
-        for child in ast.iter_child_nodes(node):
-            self.visit(child)
+        self.generic_visit(node)
         self._leak_aliases = previous_aliases
 
-    def _collect_leak_aliases(self, node: ast.AST) -> None:
-        """Record any ``Name = <leak-shape>`` assignment in *node*'s subtree.
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        """Lambda body is its own scope; isolate alias additions."""
+        previous_aliases = self._leak_aliases
+        self._leak_aliases = set(previous_aliases)
+        self.generic_visit(node)
+        self._leak_aliases = previous_aliases
 
-        Descends through ``try`` / ``with`` / ``if`` blocks within the
-        function body but stops at nested ``FunctionDef`` /
-        ``AsyncFunctionDef`` / ``Lambda`` boundaries -- those define
-        their own scope and get their own alias set when visited.
+    def _apply_assignment(
+        self,
+        target: ast.expr,
+        value: ast.expr | None,
+        *,
+        is_aug: bool,
+    ) -> None:
+        """Record a single Name-target assignment's effect on the alias set.
 
-        Tracks both direct leak shapes (``msg = str(exc)``) and
-        transitive aliases (``safe = msg`` where ``msg`` is already a
-        registered alias). The transitive arm walks the RHS for any
-        ``Name`` whose id is in ``self._leak_aliases`` so a one-hop
-        rebinding chain still surfaces the credential at the eventual
-        ``error=`` kwarg.
+        Common helper for ``visit_Assign`` / ``visit_AnnAssign`` /
+        ``visit_AugAssign`` / ``visit_NamedExpr``. ``is_aug=True``
+        suppresses the discard branch -- ``+=`` / ``*=`` / etc. are
+        mutations on the existing buffer, not fresh bindings, so
+        appending or scaling a leaky string keeps the credential
+        material in scope.
         """
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            return  # nested scope -- handled by its own visit_FunctionDef pass
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-            value = node.value
-            leaks = value is not None and (
-                _value_aliases_exception(value)
-                or self._value_subtree_references_leak_alias(value)
-            )
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            for target in targets:
-                if isinstance(target, ast.Name):
-                    if leaks:
-                        self._leak_aliases.add(target.id)
-                    else:
-                        # Safe rebind: ``msg = safe_error_description(msg)``
-                        # clears the leak status. Without this, the
-                        # canonical remediation pattern would leave
-                        # ``msg`` in the alias set forever and the
-                        # downstream ``error=msg`` would still trip
-                        # the gate even though the value is now
-                        # sanitized.
-                        self._leak_aliases.discard(target.id)
-        elif isinstance(node, ast.NamedExpr):
-            # Walrus (``msg := str(exc)``) binds the target with the
-            # leak shape exactly like ``msg = str(exc)``; without this
-            # branch, ``error=(msg := str(exc))[:N]`` would slip past
-            # the alias collector. ``NamedExpr.target`` is always a
-            # plain ``Name`` per the grammar -- no tuple unpack.
-            value = node.value
-            if isinstance(node.target, ast.Name):
-                leaks = value is not None and (
-                    _value_aliases_exception(value)
-                    or self._value_subtree_references_leak_alias(value)
-                )
-                if leaks:
-                    self._leak_aliases.add(node.target.id)
-                else:
-                    self._leak_aliases.discard(node.target.id)
-        for child in ast.iter_child_nodes(node):
-            self._collect_leak_aliases(child)
+        if not isinstance(target, ast.Name):
+            return
+        leaks = value is not None and (
+            _value_aliases_exception(value)
+            or self._value_subtree_references_leak_alias(value)
+        )
+        if leaks:
+            self._leak_aliases.add(target.id)
+        elif not is_aug:
+            # Safe rebind: ``msg = safe_error_description(msg)``
+            # clears the leak status so the canonical remediation
+            # pattern doesn't leave ``msg`` in the alias set forever.
+            # AugAssign falls through here (``is_aug=True``) and the
+            # taint is preserved.
+            self._leak_aliases.discard(target.id)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        """Update aliases for each Name target then descend."""
+        for target in node.targets:
+            self._apply_assignment(target, node.value, is_aug=False)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        """Update aliases for the annotated target then descend."""
+        self._apply_assignment(node.target, node.value, is_aug=False)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        """Update aliases for the augmented target then descend.
+
+        AugAssign is treated as ADD-ONLY: a tainted name can pick up
+        new taint from a leaky RHS, but a non-leaky RHS does NOT
+        clear the existing taint because the operation mutates the
+        buffer in place rather than rebinding.
+        """
+        self._apply_assignment(node.target, node.value, is_aug=True)
+        self.generic_visit(node)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        """Update aliases for a walrus binding then descend.
+
+        ``error=(msg := str(exc))`` binds ``msg`` at the moment the
+        walrus evaluates -- which is during the enclosing call's
+        argument evaluation, BEFORE any later statement that
+        references ``msg``. The kwarg-side check on the same call
+        already sees ``str(exc)`` directly through the value subtree,
+        so the alias only matters if a later statement reads ``msg``.
+        Updating aliases here at visit-time keeps that case correct.
+        """
+        self._apply_assignment(node.target, node.value, is_aug=False)
+        self.generic_visit(node)
 
     def _value_subtree_references_leak_alias(self, value: ast.expr) -> bool:
         """Return ``True`` if *value* references a known leak alias.
@@ -786,21 +805,21 @@ def _value_aliases_exception(value: ast.expr) -> bool:
 
 
 def _expr_subtree_has_exception_leaf(node: ast.expr) -> bool:
-    """Return ``True`` if *node* references an exception-named leaf.
+    """Return ``True`` if *node* evaluates to an exception-named leaf.
 
-    Mirrors the leaf-allowlist used by
-    :func:`_formatted_value_references_exception` but operates on a
-    plain expression subtree (``ast.Name`` / ``ast.Attribute`` /
-    ``ast.Subscript`` chains). Used by :func:`_value_aliases_exception`
-    to discriminate ``str(exc)`` / ``str(exc.args[0])`` /
-    ``str(self._inner)`` from innocuous ``str(identity.id)``.
+    Delegates to :func:`_expression_evaluates_to_exception` so the
+    alias-collection side uses the same terminal-only matching as
+    the f-string side: only the OUTERMOST Attribute ``.attr`` is
+    checked against :data:`_EXCEPTION_LEAF_NAMES`, intermediate
+    Attribute segments along a chain (e.g. ``inner`` in
+    ``config.inner.foo``) are navigation rather than values being
+    read out and do NOT match. Without this delegation, an alias
+    assignment like ``msg = str(config.inner.foo)`` would register
+    ``msg`` as a leak alias on the basis of the intermediate
+    ``inner`` attribute, and any downstream ``error=msg`` would
+    false-positive.
     """
-    for inner in ast.walk(node):
-        if isinstance(inner, ast.Name) and inner.id in _EXCEPTION_LEAF_NAMES:
-            return True
-        if isinstance(inner, ast.Attribute) and inner.attr in _EXCEPTION_LEAF_NAMES:
-            return True
-    return False
+    return _expression_evaluates_to_exception(node)
 
 
 def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:

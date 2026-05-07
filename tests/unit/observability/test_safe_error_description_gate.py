@@ -899,6 +899,82 @@ class TestVariableIndirection:
             "same-name rebind through sanitizer must clear the alias status"
         )
 
+    def test_log_between_leaky_assign_and_safe_rebind_flagged(self) -> None:
+        """Source-order matters: log between two assigns must still trip.
+
+        Without source-order walking, the alias collector would
+        absorb both assignments BEFORE visiting any logger calls, and
+        the post-log ``error_msg = "static"`` discard would clear the
+        alias before the matcher checks the in-the-middle
+        ``logger.warning(error=error_msg)``. The
+        ``_walk_body_in_source_order`` helper that collect-then-visits
+        each statement before moving to the next is the fix.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    error_msg = str(exc)
+                    logger.warning("E", error=error_msg)
+                    error_msg = "static"
+            """,
+        )
+        assert hits, (
+            "leak between two same-name assignments must still trip the gate; "
+            "source-order walking is what makes the safe-rebind-discard safe"
+        )
+
+    def test_aug_assign_preserves_taint(self) -> None:
+        """``error_msg += " ctx"`` preserves leak status -- mutation, not rebind.
+
+        ``AugAssign`` appends to the existing leaky buffer rather
+        than replacing it, so the credential material stays in the
+        string. The collector must NEVER discard taint on
+        ``+=``/``*=``/etc. -- those are mutations, not fresh
+        bindings. Only plain ``Assign`` and ``AnnAssign`` clear taint.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    error_msg = str(exc)
+                    error_msg += " (additional context)"
+                    logger.warning("E", error=error_msg)
+            """,
+        )
+        assert hits, (
+            "AugAssign on a leaky alias must keep the taint; "
+            "appending to the buffer doesn't sanitize the credential"
+        )
+
+    def test_intermediate_attr_in_str_arg_not_aliased(self) -> None:
+        """``msg = str(config.inner.foo); error=msg`` must NOT trip the gate.
+
+        ``_expr_subtree_has_exception_leaf`` previously walked all
+        nested Attribute attrs and matched on the intermediate
+        ``inner`` segment of ``config.inner.foo``, registering ``msg``
+        as a leak alias even though the actual value was a config
+        field read. After delegating to
+        ``_expression_evaluates_to_exception`` (terminal-only
+        matching), only the OUTERMOST attribute or the chain BASE
+        Name is checked.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                msg = str(config.inner.foo)
+                logger.warning("E", error=msg)
+            """,
+        )
+        assert not hits, (
+            "intermediate Attribute segment matching the leaf-name set "
+            "must not register the alias as a leak"
+        )
+
 
 @pytest.mark.unit
 class TestExcInfoGate:
