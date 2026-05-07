@@ -697,6 +697,57 @@ class TestVariableIndirection:
         )
         assert hits, "module-level alias must trip the gate"
 
+    def test_alias_through_safe_error_description_not_flagged(self) -> None:
+        """``error=safe_error_description(msg)`` must NOT trip the gate.
+
+        The sanitizer is the documented remediation: passing a
+        leak-alias through it cleans the value. The kwarg-side
+        alias walker (``_has_error_alias_kwarg``) uses
+        ``_walk_excluding_call_args`` so the inner ``Name`` inside
+        the sanitizer's argument list does not propagate the alias
+        match -- otherwise the documented fix path would itself trip
+        the gate it was added to silence.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    msg = str(exc)
+                    logger.warning("E", error=safe_error_description(msg))
+            """,
+        )
+        assert not hits, "passing an alias through safe_error_description must not flag"
+
+    def test_alias_rebound_through_safe_error_description_not_flagged(
+        self,
+    ) -> None:
+        """``safe = safe_error_description(msg); error=safe`` must NOT trip.
+
+        The transitive alias collector
+        (``_value_subtree_references_leak_alias``) uses
+        ``_walk_excluding_call_args`` so a rebinding through the
+        sanitizer does not register ``safe`` as a leak alias. The
+        downstream ``error=safe`` then passes cleanly. Without this
+        carve-out an entire class of legitimate cleanups would be
+        rejected by the gate they were added to satisfy.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    msg = str(exc)
+                    safe = safe_error_description(msg)
+                    logger.warning("E", error=safe)
+            """,
+        )
+        assert not hits, (
+            "rebinding through safe_error_description must not flag downstream"
+        )
+
 
 @pytest.mark.unit
 class TestExcInfoGate:
@@ -765,6 +816,31 @@ class TestExcInfoGate:
         hits = _scan_source(
             """
             siren.warning("E", exc_info=True)
+            """,
+        )
+        assert not hits
+
+    def test_exc_info_dict_unpack_flagged(self) -> None:
+        """``logger.warning(..., **{"exc_info": True})`` must trip the gate.
+
+        Without the dict-unpack arm of ``_exc_info_kwarg_values`` a
+        caller could re-enable traceback-frame-locals serialisation by
+        smuggling the kwarg through ``**{"exc_info": True}`` and the
+        gate would silently let the call ship.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", **{"exc_info": True})
+            """,
+        )
+        assert hits, "**{'exc_info': True} must be flagged like exc_info=True"
+        assert any(rule == "exc_info_true" for _, _, rule in hits)
+
+    def test_exc_info_dict_unpack_false_quiet(self) -> None:
+        """``**{"exc_info": False}`` mirrors the literal-False opt-out."""
+        hits = _scan_source(
+            """
+            logger.warning("E", **{"exc_info": False})
             """,
         )
         assert not hits
@@ -982,7 +1058,7 @@ class TestGateFuzz:
     """
 
     @given(_wrapped_expression(_LEAK_LEAVES))
-    @settings(max_examples=200, derandomize=True)
+    @settings(derandomize=True)
     def test_leak_leaf_always_flagged(self, expr: str) -> None:
         """Any wrapper around a leak leaf must trip the gate."""
         source = f"""
@@ -992,7 +1068,7 @@ class TestGateFuzz:
         assert hits, f"wrapper around leak leaf must be flagged; got quiet on: {expr}"
 
     @given(_wrapped_expression(_SAFE_LEAVES))
-    @settings(max_examples=200, derandomize=True)
+    @settings(derandomize=True)
     def test_safe_leaf_never_flagged(self, expr: str) -> None:
         """Any wrapper around a safe leaf must NOT trip the gate."""
         source = f"""
@@ -1011,7 +1087,7 @@ class TestGateFuzz:
             max_size=40,
         ),
     )
-    @settings(max_examples=100, derandomize=True)
+    @settings(derandomize=True)
     def test_exc_info_allowlist_respects_marker(
         self,
         allowlisted: bool,

@@ -435,14 +435,19 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         is already in ``self._leak_aliases``. Catches one-hop transitive
         aliasing (``msg = str(exc); safe = msg``) and the same wrapper
         shapes ``_value_subtree_leaks`` covers (subscript / boolop /
-        ifexp / binop / joinedstr) -- ``ast.walk`` traverses all
-        descendants regardless of wrapper.
+        ifexp / binop / joinedstr).
+
+        Uses :func:`_walk_excluding_call_args` so a sanitized rebinding
+        ``safe = safe_error_description(msg)`` does NOT pick ``msg`` up
+        through the sanitizer's argument list -- the sanitizer cleans
+        the value, and treating the rebinding as transitive would
+        defeat the documented remediation path.
         """
         if not self._leak_aliases:
             return False
         return any(
             isinstance(inner, ast.Name) and inner.id in self._leak_aliases
-            for inner in ast.walk(value)
+            for inner in _walk_excluding_call_args(value)
         )
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -501,10 +506,32 @@ def _has_error_alias_kwarg(
         return False
     for kw in keywords:
         for value in _error_kwarg_values(kw):
-            for inner in ast.walk(value):
+            for inner in _walk_excluding_call_args(value):
                 if isinstance(inner, ast.Name) and inner.id in leak_aliases:
                     return True
     return False
+
+
+def _exc_info_kwarg_values(kw: ast.keyword) -> tuple[ast.expr, ...]:
+    """Return the value subtrees that map to an ``exc_info=`` field.
+
+    Mirrors :func:`_error_kwarg_values`: covers both the direct
+    ``exc_info=...`` keyword and dict-unpack forms
+    (``**{"exc_info": True}``) where ``kw.arg`` is ``None`` and the
+    value is a literal ``ast.Dict``. Without the dict-unpack arm a
+    caller could re-enable traceback-frame-locals serialisation by
+    smuggling the kwarg through ``**{"exc_info": True}`` and bypass
+    the gate entirely.
+    """
+    if kw.arg == "exc_info":
+        return (kw.value,)
+    if kw.arg is None and isinstance(kw.value, ast.Dict):
+        return tuple(
+            value
+            for key, value in zip(kw.value.keys, kw.value.values, strict=True)
+            if isinstance(key, ast.Constant) and key.value == "exc_info"
+        )
+    return ()
 
 
 def _find_unallowlisted_exc_info_true(
@@ -518,16 +545,17 @@ def _find_unallowlisted_exc_info_true(
     ``allowlist_lines``. The lineno returned is the
     ``ast.keyword.value.lineno`` so callers can render the violation
     pointing at the offending keyword, not at the call's opening
-    paren.
+    paren. Both direct ``exc_info=`` and dict-unpack
+    ``**{"exc_info": True}`` shapes are covered via
+    :func:`_exc_info_kwarg_values`.
     """
     for kw in keywords:
-        if kw.arg != "exc_info":
-            continue
-        if not isinstance(kw.value, ast.Constant) or kw.value.value is not True:
-            continue
-        if kw.value.lineno in allowlist_lines:
-            continue
-        return kw.value.lineno
+        for value in _exc_info_kwarg_values(kw):
+            if not isinstance(value, ast.Constant) or value.value is not True:
+                continue
+            if value.lineno in allowlist_lines:
+                continue
+            return value.lineno
     return None
 
 

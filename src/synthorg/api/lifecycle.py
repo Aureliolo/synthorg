@@ -285,10 +285,12 @@ async def _init_persistence(
 
     try:
         await persistence.migrate()
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error="Failed to run persistence migrations",
+            note="Failed to run persistence migrations",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
 
@@ -299,10 +301,12 @@ async def _init_persistence(
     if not app_state.has_mcp_installations_repo:
         try:
             app_state.set_mcp_installations_repo(persistence.mcp_installations)
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_APP_STARTUP,
-                error="Failed to wire persistence-backed MCP installations repo",
+                note="Failed to wire persistence-backed MCP installations repo",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
 
@@ -380,10 +384,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         if persistence is not None:
             try:
                 await persistence.connect()
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to connect persistence",
+                    note="Failed to connect persistence",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             # Mark connected immediately so cleanup can disconnect
@@ -392,10 +398,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             await _init_persistence(persistence, app_state)
             try:
                 await ensure_system_user(persistence, app_state.auth_service)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to bootstrap system user",
+                    note="Failed to bootstrap system user",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 
@@ -430,10 +438,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     )
                 except MemoryError, RecursionError:
                     raise
-                except Exception:
+                except Exception as exc:
                     logger.error(
                         API_APP_STARTUP,
                         note="Lockout store initialization failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
             if not app_state.has_refresh_store:
@@ -447,29 +457,35 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     )
                 except MemoryError, RecursionError:
                     raise
-                except Exception:
+                except Exception as exc:
                     logger.error(
                         API_APP_STARTUP,
                         note="Refresh-token store initialization failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
         if message_bus is not None:
             try:
                 await message_bus.start()
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to start message bus",
+                    note="Failed to start message bus",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             started_bus = True
         if distributed_task_queue is not None:
             try:
                 await distributed_task_queue.start()
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to start distributed task queue",
+                    note="Failed to start distributed task queue",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             started_distributed_task_queue = True
@@ -497,10 +513,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         if bridge is not None and getattr(bridge, "_running", None) is not True:
             try:
                 await bridge.start()
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to start message bus bridge",
+                    note="Failed to start message bus bridge",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             started_bridge = True
@@ -515,20 +533,24 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         if settings_dispatcher is not None and _sd_running is not True:
             try:
                 await settings_dispatcher.start()
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to start settings dispatcher",
+                    note="Failed to start settings dispatcher",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             started_settings_dispatcher = True
         if task_engine is not None and task_engine.is_running is not True:
             try:
                 await task_engine.start()
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to start task engine",
+                    note="Failed to start task engine",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             started_task_engine = True
@@ -538,10 +560,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         if meeting_scheduler is not None and _ms_running is not True:
             try:
                 await meeting_scheduler.start()
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to start meeting scheduler",
+                    note="Failed to start meeting scheduler",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             started_meeting_scheduler = True
@@ -560,10 +584,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 if not _bs_already_running:
                     await backup_service.start()
                     started_backup_service = True
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to start backup service",
+                    note="Failed to start backup service",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 
@@ -575,10 +601,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     )
                 except MemoryError, RecursionError:
                     raise
-                except Exception:
+                except Exception as exc:
                     logger.warning(
                         API_APP_STARTUP,
-                        error="Startup backup failed (non-fatal)",
+                        note="Startup backup failed (non-fatal)",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
         if approval_timeout_scheduler is not None:
             try:
@@ -601,10 +629,12 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     note="Approval timeout scheduler is unrestartable",
                 )
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to start approval timeout scheduler",
+                    note="Failed to start approval timeout scheduler",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
     except Exception:
@@ -708,10 +738,12 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_SHUTDOWN,
-                    error="Shutdown backup failed (non-fatal)",
+                    note="Shutdown backup failed (non-fatal)",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         await _try_stop(
             backup_service.stop(),
@@ -814,10 +846,12 @@ async def _maybe_start_health_prober(
         await prober.start()
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
-            error="Health prober startup failed (non-fatal)",
+            note="Health prober startup failed (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     return prober

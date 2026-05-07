@@ -78,10 +78,9 @@ async def _resolve_lifecycle_cap(app_state: AppState) -> int:
         if not _lifecycle_cap_fallback_logged:
             logger.warning(
                 API_REQUEST_ERROR,
-                error=(
-                    "failed to resolve max_lifecycle_events_per_query;"
-                    f" using fallback ({type(exc).__name__})"
-                ),
+                note="failed to resolve max_lifecycle_events_per_query; using fallback",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 cap=_MAX_LIFECYCLE_EVENTS,
             )
             _lifecycle_cap_fallback_logged = True
