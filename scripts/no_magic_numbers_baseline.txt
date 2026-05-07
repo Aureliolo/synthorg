@@ -629,8 +629,8 @@ src/synthorg/meta/telemetry/recommender.py:54:41
 src/synthorg/meta/telemetry/recommender.py:55:44
 src/synthorg/meta/telemetry/recommender.py:113:31
 src/synthorg/meta/telemetry/recommender.py:114:32
-src/synthorg/meta/validation/ci_validator.py:22:27
-src/synthorg/meta/validation/ci_validator.py:38:31
+src/synthorg/meta/validation/ci_validator.py:23:27
+src/synthorg/meta/validation/ci_validator.py:39:31
 src/synthorg/notifications/adapters/email.py:66:20
 src/synthorg/notifications/adapters/email.py:72:38
 src/synthorg/notifications/adapters/ntfy.py:102:41
