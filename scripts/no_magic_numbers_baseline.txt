@@ -34,7 +34,7 @@ src/synthorg/api/auth/token_size.py:38:29
 src/synthorg/api/auth_response_discriminator.py:29:30
 src/synthorg/api/boundary.py:46:24
 src/synthorg/api/controllers/activities.py:45:24
-src/synthorg/api/controllers/activities.py:365:29
+src/synthorg/api/controllers/activities.py:364:29
 src/synthorg/api/controllers/agent_identity_versions.py:111:29
 src/synthorg/api/controllers/agents.py:66:24
 src/synthorg/api/controllers/agents.py:190:29
