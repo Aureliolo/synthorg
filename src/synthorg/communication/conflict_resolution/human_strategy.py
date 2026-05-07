@@ -318,11 +318,13 @@ class HumanEscalationResolver:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
                 conflict_id=conflict.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="mark_expired_failed",
             )
         logger.warning(

@@ -437,7 +437,8 @@ class ParallelExecutor:
             group_id=group.group_id,
             agent_id=assignment.agent_id,
             task_id=assignment.task_id,
-            error=error_msg,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
     def _record_fatal_outcome(  # noqa: PLR0913
@@ -456,7 +457,9 @@ class ParallelExecutor:
             group_id=group.group_id,
             agent_id=assignment.agent_id,
             task_id=assignment.task_id,
-            error=error_msg,
+            note="fatal",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         fatal_errors.append(exc)
         outcomes[assignment.task_id] = AgentOutcome(

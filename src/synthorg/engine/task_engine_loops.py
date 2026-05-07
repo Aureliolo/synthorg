@@ -279,12 +279,12 @@ class TaskEngineLoopsMixin:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            internal_msg = f"{type(exc).__name__}: {safe_error_description(exc)}"
-            logger.exception(
+            logger.error(
                 TASK_ENGINE_MUTATION_FAILED,
                 mutation_type=mutation.mutation_type,
                 request_id=mutation.request_id,
-                error=internal_msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             if not envelope.future.done():
                 envelope.future.set_result(

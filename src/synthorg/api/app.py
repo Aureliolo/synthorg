@@ -306,10 +306,12 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 persistence = create_backend(pg_persistence_config)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Postgres persistence creation failed",
+                    note="Postgres persistence creation failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             assert pg_persistence_config.postgres is not None  # noqa: S101
@@ -340,10 +342,12 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
-                    error="Failed to create persistence backend from env",
+                    note="Failed to create persistence backend from env",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             logger.info(
@@ -785,10 +789,12 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_APP_STARTUP,
-                error="A2A gateway auto-wire failed (non-fatal)",
+                note="A2A gateway auto-wire failed (non-fatal)",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     # Wire the optional client-simulation runtime onto AppState BEFORE the

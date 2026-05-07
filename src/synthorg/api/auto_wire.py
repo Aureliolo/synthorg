@@ -180,9 +180,9 @@ def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
     try:
         tracker = CostTracker(budget_config=effective_config.budget)
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire cost tracker",
+            note="Failed to auto-wire cost tracker",
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="cost_tracker")
@@ -196,9 +196,9 @@ def _wire_provider_registry(
     try:
         registry = ProviderRegistry.from_config(effective_config.providers)
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to build provider registry from config",
+            note="Failed to build provider registry from config",
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="provider_registry")
@@ -235,9 +235,9 @@ def _wire_task_engine(
             message_bus=message_bus,
         )
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire task engine",
+            note="Failed to auto-wire task engine",
         )
         raise
 
@@ -347,9 +347,9 @@ def _auto_wire_message_bus(
             )
         bus = build_message_bus(bus_config)
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire message bus",
+            note="Failed to auto-wire message bus",
         )
         raise
     logger.info(
@@ -468,9 +468,9 @@ def auto_wire_meetings(
             meeting_scheduler=meeting_scheduler,
         )
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire ceremony scheduler",
+            note="Failed to auto-wire ceremony scheduler",
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="ceremony_scheduler")
@@ -599,9 +599,9 @@ def _wire_meeting_orchestrator(
             agent_caller=agent_caller,
         )
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire meeting orchestrator",
+            note="Failed to auto-wire meeting orchestrator",
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="meeting_orchestrator")
@@ -661,9 +661,9 @@ def _wire_meeting_scheduler(
             participant_resolver=resolver,
         )
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to auto-wire meeting scheduler",
+            note="Failed to auto-wire meeting scheduler",
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="meeting_scheduler")
@@ -713,9 +713,9 @@ async def auto_wire_settings(  # noqa: PLR0913
             message_bus=message_bus,
         )
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error=(
+            note=(
                 "Failed to create SettingsService -- check encryption key configuration"
             ),
         )
@@ -733,9 +733,9 @@ async def auto_wire_settings(  # noqa: PLR0913
             backup_service,
         )
     except Exception:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
-            error="Failed to build settings dispatcher",
+            note="Failed to build settings dispatcher",
         )
         raise
 
@@ -743,9 +743,9 @@ async def auto_wire_settings(  # noqa: PLR0913
         try:
             await dispatcher.start()
         except Exception:
-            logger.warning(
+            logger.error(
                 API_APP_STARTUP,
-                error="Failed to start auto-wired settings dispatcher",
+                note="Failed to start auto-wired settings dispatcher",
             )
             raise
         logger.info(API_SERVICE_AUTO_WIRED, service="settings_dispatcher")

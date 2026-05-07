@@ -298,7 +298,9 @@ class FineTuneOrchestrator:
                     self._current_run or run,
                     "cancelled by user",
                 )
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 # Update in-memory state even if DB fails.
                 self._current_run = run.model_copy(
                     update={
@@ -309,7 +311,9 @@ class FineTuneOrchestrator:
                 logger.warning(
                     MEMORY_FINE_TUNE_FAILED,
                     run_id=run.id,
-                    error="failed to persist cancellation state",
+                    note="failed_to_persist_cancellation_state",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             self._schedule_ws(
                 "memory.fine_tune.failed",

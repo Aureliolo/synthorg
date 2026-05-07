@@ -965,9 +965,18 @@ class TestGateFuzz:
             assert hits, "missing allowlist marker must be flagged"
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 class TestRepoIsClean:
-    """End-to-end check: the gate finds zero violations after the sweep."""
+    """End-to-end check: the gate finds zero violations after the sweep.
+
+    Marked ``integration`` rather than ``unit``: the test runs
+    ``cmd_scan_all()`` which AST-walks every ``.py`` file under
+    ``src/synthorg/`` (~600 files), well past the unit-suite per-test
+    wall-clock budget. The pre-commit hook (``check_logger_exception_str_exc``)
+    enforces the same gate locally, so unit-suite filtering does not lose
+    coverage; this test is the CI/full-run safety net for the assembled
+    repo state.
+    """
 
     def test_scan_all_returns_zero_violations(self) -> None:
         """``--scan-all`` exits 0 across the post-sweep ``src/synthorg/``."""

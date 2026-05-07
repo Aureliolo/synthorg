@@ -390,16 +390,16 @@ class DeviceFlow:
                 )
                 raise TokenExchangeFailedError(msg)
 
-            error = data.get("error")
-            if error == "authorization_pending":
+            oauth_error_code = data.get("error")
+            if oauth_error_code == "authorization_pending":
                 continue
-            if error == "slow_down":
+            if oauth_error_code == "slow_down":
                 poll_interval += 5
                 continue
-            if error == "expired_token":
+            if oauth_error_code == "expired_token":
                 break
-            if error:
-                msg = f"Device flow error: {safe_error_description(error)}"
+            if oauth_error_code:
+                msg = f"Device flow error: {oauth_error_code}"
                 raise TokenExchangeFailedError(msg)
 
             access_token_raw = data.get("access_token")

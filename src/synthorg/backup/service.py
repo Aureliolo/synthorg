@@ -155,6 +155,8 @@ class BackupService(BackupServiceArchiveMixin):
                 dir_name=dir_name,
                 backup_dir=backup_dir,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 BACKUP_FAILED,
@@ -265,6 +267,8 @@ class BackupService(BackupServiceArchiveMixin):
 
         try:
             await self._retention.prune()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Drop exc_info on retention failure so the filesystem
             # path / connection details that ``str(exc)`` would
@@ -379,6 +383,8 @@ class BackupService(BackupServiceArchiveMixin):
                     msg = f"No handler for component: {comp.value}"
                     raise RestoreError(msg)  # noqa: TRY301
                 await handler.restore(backup_dir)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 BACKUP_RESTORE_ROLLBACK,

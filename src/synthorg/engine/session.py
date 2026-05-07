@@ -194,6 +194,7 @@ class Session:
                 execution_id=execution_id,
                 reason="failed to read events from event_reader",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -375,12 +376,14 @@ def _replay_from_events(
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 SESSION_REPLAY_ERROR,
                 execution_id=execution_id,
                 event_name=event.event_name,
                 reason="unexpected error processing event",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     completeness = _compute_completeness(

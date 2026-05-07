@@ -281,14 +281,17 @@ class TestLifecycle:
 class TestSystemErrorLogging:
     """Pin the logger contract for ``MemoryError`` / ``RecursionError``.
 
-    The mem0 adapter is the rare site where traceback exposure is
-    justified for catastrophic interpreter state. The contract is:
-    log at ERROR level via ``logger.error(EVENT, ..., exc_info=True,
-    error_type=type(exc).__name__, error=safe_error_description(exc))``,
-    then re-raise. Regressing this back to ``logger.exception``
-    (which serialises frame-locals) or to ``logger.warning`` (which
-    loses the traceback) is a regression; this test catches both
-    directions.
+    The contract is: log at ERROR level via
+    ``logger.error(EVENT, ..., error_type=type(exc).__name__,
+    error=safe_error_description(exc))`` WITHOUT ``exc_info`` or
+    ``logger.exception``, then re-raise. Setting ``exc_info=True`` (or
+    using ``logger.exception``) would have structlog serialise the
+    traceback's frame-locals -- in-scope tokens, Fernet ciphertext,
+    connection URIs -- into the sink, the SEC-1 leak vector this PR
+    closes. Downgrading to ``logger.warning`` is also wrong: this is
+    catastrophic interpreter state and operators need it surfaced at
+    ERROR. The ``"exc_info" not in call.kwargs`` assertion below is
+    the canonical regression guard for both directions.
     """
 
     @pytest.mark.parametrize(

@@ -11,7 +11,7 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
 from synthorg.communication.errors import ChannelAlreadyExistsError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
@@ -303,8 +303,9 @@ class SettingsChangeDispatcher:
         if exc is not None:
             logger.error(
                 SETTINGS_DISPATCHER_CHANNEL_DEAD,
-                error="Settings dispatcher poll loop died unexpectedly",
-                exc_info=exc,
+                note="Settings dispatcher poll loop died unexpectedly",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         else:
             logger.warning(
@@ -341,22 +342,28 @@ class SettingsChangeDispatcher:
                 raise
             except MemoryError, RecursionError:
                 raise
-            except OSError, TimeoutError:
+            except (OSError, TimeoutError) as exc:
                 consecutive_errors += 1
                 if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
-                    logger.exception(
+                    logger.error(
                         SETTINGS_DISPATCHER_CHANNEL_DEAD,
                         consecutive_errors=consecutive_errors,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                     break
                 logger.warning(
                     SETTINGS_DISPATCHER_POLL_ERROR,
                     consecutive_errors=consecutive_errors,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 await asyncio.sleep(_ERROR_BACKOFF)
-            except Exception:
+            except Exception as exc:
                 logger.error(
                     SETTINGS_DISPATCHER_CHANNEL_DEAD,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 break
 

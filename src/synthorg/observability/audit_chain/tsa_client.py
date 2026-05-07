@@ -518,7 +518,8 @@ def _verify_signature(
         logger.warning(
             SECURITY_TIMESTAMP_SIGNATURE_INVALID,
             tsa_url=tsa_url,
-            error=type(exc).__name__,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"TSA signature verification failed: {safe_error_description(exc)}"
         raise TsaSignatureError(msg) from exc
@@ -545,6 +546,7 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
             pem_bytes=len(pem_bytes),
             pem_sha256_prefix=hashlib.sha256(pem_bytes).hexdigest()[:16],
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Invalid trusted-root PEM: {safe_error_description(exc)}"
         raise ValueError(msg) from exc

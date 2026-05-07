@@ -718,8 +718,9 @@ class TaskEngine(TaskEngineLoopsMixin):
             msg = f"Failed to read task: {safe_error_description(exc)}"
             logger.warning(
                 TASK_ENGINE_READ_FAILED,
-                error=msg,
                 task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise TaskInternalError(msg) from exc
 

@@ -34,7 +34,7 @@ src/synthorg/api/auth/token_size.py:38:29
 src/synthorg/api/auth_response_discriminator.py:29:30
 src/synthorg/api/boundary.py:46:24
 src/synthorg/api/controllers/activities.py:45:24
-src/synthorg/api/controllers/activities.py:336:29
+src/synthorg/api/controllers/activities.py:339:29
 src/synthorg/api/controllers/agent_identity_versions.py:111:29
 src/synthorg/api/controllers/agents.py:66:24
 src/synthorg/api/controllers/agents.py:190:29
@@ -598,7 +598,7 @@ src/synthorg/meta/rules/builtin.py:316:45
 src/synthorg/meta/rules/builtin.py:367:27
 src/synthorg/meta/rules/builtin.py:368:29
 src/synthorg/meta/rules/builtin.py:420:43
-src/synthorg/meta/strategies/code_modification.py:478:22
+src/synthorg/meta/strategies/code_modification.py:480:22
 src/synthorg/meta/telemetry/aggregator.py:20:27
 src/synthorg/meta/telemetry/collector.py:23:22
 src/synthorg/meta/telemetry/collector.py:85:31

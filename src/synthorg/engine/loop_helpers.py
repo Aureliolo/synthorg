@@ -104,7 +104,8 @@ def check_shutdown(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=ctx.turn_count,
-            error=error_msg,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return build_result(
             ctx,
@@ -149,7 +150,8 @@ def check_budget(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=ctx.turn_count,
-            error=error_msg,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return build_result(
             ctx,
@@ -257,7 +259,8 @@ async def call_provider(  # noqa: PLR0913
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=turn_number,
-            error=error_msg,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return build_result(
             ctx,
@@ -558,7 +561,9 @@ async def check_stagnation(  # noqa: PLR0913
             EXECUTION_LOOP_ERROR,
             execution_id=execution_id,
             turn=ctx.turn_count,
-            error=f"Stagnation check failed: {type(exc).__name__}",
+            note="stagnation_check_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 

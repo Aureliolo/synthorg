@@ -31,7 +31,7 @@ from synthorg.hr.activity import (
 )
 from synthorg.hr.enums import ActivityEventType  # noqa: TC001
 from synthorg.hr.performance.models import TaskMetricRecord  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_ACTIVITY_FEED_QUERIED,
     API_REQUEST_ERROR,
@@ -169,12 +169,15 @@ async def _run_async_fetchers(
     except ExceptionGroup as eg:
         fatal = eg.subgroup((MemoryError, RecursionError))
         if fatal is not None:
+            fatal_exc = fatal.exceptions[0]
             logger.error(
                 API_REQUEST_ERROR,
                 endpoint="activities",
                 detail="Unable to fetch activity data at this time.",
+                error_type=type(fatal_exc).__name__,
+                error=safe_error_description(fatal_exc),
             )
-            raise fatal.exceptions[0] from eg
+            raise fatal_exc from eg
         svc = eg.subgroup(ServiceUnavailableError)
         if svc is not None:
             logger.warning(

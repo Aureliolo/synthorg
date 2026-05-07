@@ -131,13 +131,13 @@ def build_update_fields(
             "nodes",
             data.nodes,
             WorkflowNode,
-            "Invalid nodes: {safe_error_description(exc)}",
+            "Invalid nodes: {exc}",
         ),
         (
             "edges",
             data.edges,
             WorkflowEdge,
-            "Invalid edges: {safe_error_description(exc)}",
+            "Invalid edges: {exc}",
         ),
     )
     for field_name, items, model_cls, message in collection_specs:

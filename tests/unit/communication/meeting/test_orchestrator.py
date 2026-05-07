@@ -65,7 +65,9 @@ class TestFormatException:
 
     def test_simple_exception(self) -> None:
         exc = RuntimeError("something broke")
-        assert _format_exception(exc) == "something broke"
+        # ``_format_exception`` routes through ``safe_error_description``
+        # so the redacted output prefixes the exception type name.
+        assert _format_exception(exc) == "RuntimeError: something broke"
 
     def test_exception_group(self) -> None:
         group = ExceptionGroup(

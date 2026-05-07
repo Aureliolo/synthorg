@@ -196,8 +196,12 @@ class OrgInflectionMonitor:
                 raise
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.warning(COS_INFLECTION_CHECK_FAILED)
+            except Exception as exc:
+                logger.warning(
+                    COS_INFLECTION_CHECK_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
@@ -239,10 +243,12 @@ class OrgInflectionMonitor:
                 await sink.on_inflection(inflection)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     COS_INFLECTION_CHECK_FAILED,
                     sink=type(sink).__name__,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         async with asyncio.TaskGroup() as tg:

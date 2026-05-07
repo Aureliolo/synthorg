@@ -120,7 +120,12 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 return
             exc = task.exception()
             if exc is not None:
-                logger.error(event, error=message, exc_info=exc)
+                logger.error(
+                    event,
+                    note=message,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
         return _callback
 

@@ -145,7 +145,7 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
                     tmp_gz.unlink()
             except OSError as cleanup_exc:
                 print(  # noqa: T201
-                    f"WARNING: Failed to clean up temp file {tmp_gz}: {cleanup_exc}",
+                    f"WARNING: Failed to clean up temp file {tmp_gz}: {safe_error_description(cleanup_exc)}",  # noqa: E501
                     file=sys.stderr,
                     flush=True,
                 )

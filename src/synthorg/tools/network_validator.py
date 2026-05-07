@@ -258,7 +258,7 @@ async def resolve_dns(
     except OSError as exc:
         return _dns_failure(
             hostname,
-            str(exc),
+            "dns_resolution_error",
             f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}",
         )
     except Exception as exc:

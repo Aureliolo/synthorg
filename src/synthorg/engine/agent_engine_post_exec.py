@@ -348,12 +348,14 @@ class AgentEnginePostExecMixin:
             self._log_completion(result, agent_id, task_id, duration)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error="Completion logging failed",
+                note="Completion logging failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         return result
 

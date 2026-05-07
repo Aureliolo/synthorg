@@ -99,11 +99,13 @@ class ConfigApplier:
             return ApplyResult(success=True, changes_applied=count)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 META_APPLY_FAILED,
                 altitude="config_tuning",
                 proposal_id=str(proposal.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ApplyResult(
                 success=False,
@@ -179,7 +181,8 @@ class ConfigApplier:
             return self._fail(
                 proposal,
                 error_message=(
-                    f"config_provider raised {type(exc).__name__}: {str(exc)[:200]}"
+                    f"config_provider raised {type(exc).__name__}: "
+                    f"{safe_error_description(exc)}"
                 ),
             )
 

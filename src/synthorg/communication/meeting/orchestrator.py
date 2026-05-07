@@ -31,7 +31,7 @@ from synthorg.communication.meeting.protocol import (  # noqa: TC001
     MeetingProtocol,
     TaskCreator,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meeting import (
     MEETING_ACTION_ITEM_EXTRACTED,
     MEETING_BUDGET_EXHAUSTED,
@@ -68,9 +68,11 @@ def _format_exception(exc: BaseException) -> str:
             if isinstance(sub, ExceptionGroup):
                 parts.append(_format_exception(sub))
             else:
-                parts.append(f"{type(sub).__name__}: {sub}")
+                parts.append(
+                    f"{type(sub).__name__}: {safe_error_description(sub)}",
+                )
         return f"Multiple errors: {'; '.join(parts)}"
-    return str(exc)
+    return safe_error_description(exc)
 
 
 class MeetingOrchestrator:

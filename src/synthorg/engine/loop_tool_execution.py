@@ -248,11 +248,12 @@ async def execute_tool_calls(  # noqa: PLR0913, C901
         raise
     except Exception as exc:
         error_msg = f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
-        logger.exception(
+        logger.error(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=turn_number,
-            error=error_msg,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             tools=tool_names,
         )
         return _build_error_result(ctx, turns, error_msg)

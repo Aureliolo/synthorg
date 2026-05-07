@@ -597,8 +597,12 @@ class SettingsController(Controller):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.warning(SETTINGS_OBSERVABILITY_VALIDATION_FAILED)
+        except Exception as exc:
+            logger.warning(
+                SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ApiResponse(
                 data=TestSinkConfigResponse(
                     valid=False,

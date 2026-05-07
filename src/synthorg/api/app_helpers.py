@@ -33,7 +33,7 @@ from synthorg.engine.agent_engine import (  # noqa: TC001
     PersonalityTrimNotifier,
     PersonalityTrimPayload,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
@@ -81,11 +81,13 @@ def _make_expire_callback(
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_APPROVAL_PUBLISH_FAILED,
                 approval_id=item.id,
                 event_type=WsEventType.APPROVAL_EXPIRED.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     return _on_expire

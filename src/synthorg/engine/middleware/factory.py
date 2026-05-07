@@ -82,16 +82,20 @@ def build_agent_middleware_chain(
             # Only skip if the TypeError is from missing factory args,
             # not from internal bugs in the factory
             if "argument" not in str(exc) and "parameter" not in str(exc):
-                logger.exception(
+                logger.error(
                     MIDDLEWARE_SKIPPED,
                     middleware=name,
-                    reason=f"factory_error: {safe_error_description(exc)}",
+                    reason="factory_error",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             logger.debug(
                 MIDDLEWARE_SKIPPED,
                 middleware=name,
-                reason=f"missing_dependency: {safe_error_description(exc)}",
+                reason="missing_dependency",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             continue
 
@@ -150,16 +154,20 @@ def build_coordination_middleware_chain(
             mw = factory(**effective_deps)
         except TypeError as exc:
             if "argument" not in str(exc) and "parameter" not in str(exc):
-                logger.exception(
+                logger.error(
                     MIDDLEWARE_COORDINATION_SKIPPED,
                     middleware=name,
-                    reason=f"factory_error: {safe_error_description(exc)}",
+                    reason="factory_error",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             logger.debug(
                 MIDDLEWARE_COORDINATION_SKIPPED,
                 middleware=name,
-                reason=f"missing_dependency: {safe_error_description(exc)}",
+                reason="missing_dependency",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             continue
 

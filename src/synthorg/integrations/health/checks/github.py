@@ -242,6 +242,6 @@ class GitHubHealthCheck:
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
                 latency_ms=elapsed,
-                error_detail=str(exc),
+                error_detail=safe_error_description(exc),
                 checked_at=datetime.now(UTC),
             )

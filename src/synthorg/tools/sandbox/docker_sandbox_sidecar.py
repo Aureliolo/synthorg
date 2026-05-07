@@ -106,10 +106,11 @@ class DockerSandboxSidecarMixin:
             container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:
             msg = f"Failed to create sidecar container: {safe_error_description(exc)}"
-            logger.exception(
+            logger.error(
                 DOCKER_EXECUTE_FAILED,
                 command="sidecar",
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise SandboxStartError(msg) from exc
 

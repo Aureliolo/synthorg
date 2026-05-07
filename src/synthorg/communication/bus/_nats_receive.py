@@ -271,11 +271,15 @@ async def fetch_with_shutdown(
         return []
     except asyncio.CancelledError:
         return None
-    except Exception:
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
         logger.warning(
             COMM_BUS_RECEIVE_ERROR,
             channel=channel_name,
             subscriber=subscriber_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     return result
@@ -293,12 +297,16 @@ async def try_ack(
     """
     try:
         await msg.ack()
-    except Exception:
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
         logger.warning(
             COMM_BUS_RECEIVE_ERROR,
             channel=channel_name,
             subscriber=subscriber_id,
             phase="ack",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return False
     return True

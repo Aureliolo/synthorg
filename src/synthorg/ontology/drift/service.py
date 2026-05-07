@@ -104,7 +104,7 @@ class DriftDetectionService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # SEC-1: full traceback on a persistence-error path can
+                # full traceback on a persistence-error path can
                 # leak backend metadata; stick to the redacted form.
                 logger.error(
                     ONTOLOGY_DRIFT_STORE_FAILED,

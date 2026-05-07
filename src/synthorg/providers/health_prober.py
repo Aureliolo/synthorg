@@ -294,8 +294,12 @@ class ProviderHealthProber:
                 raise
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.warning(PROVIDER_HEALTH_PROBER_CYCLE_FAILED)
+            except Exception as exc:
+                logger.warning(
+                    PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
