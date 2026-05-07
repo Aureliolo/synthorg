@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from structlog.stdlib import ProcessorFormatter
 
-from synthorg.observability import safe_error_description
 from synthorg.observability.enums import SyslogFacility, SyslogProtocol
+from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
     from synthorg.observability.config import SinkConfig

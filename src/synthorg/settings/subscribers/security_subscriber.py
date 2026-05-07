@@ -111,6 +111,8 @@ class SecuritySubscriber:
 
         try:
             await self._on_changed(allowlist)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 SECURITY_ALLOWLIST_UPDATE_FAILED,

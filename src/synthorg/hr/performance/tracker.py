@@ -587,7 +587,8 @@ class PerformanceTracker:
                 logger.warning(
                     PERF_SNAPSHOT_FAILED,
                     agent_id=str(agent_id),
-                    error=type(exc).__name__,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 results.append(None)
             else:

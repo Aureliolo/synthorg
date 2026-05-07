@@ -644,6 +644,29 @@ class TestVariableIndirection:
         # must not be flagged via stale alias propagation.
         assert len(hits) == 1, "lambda-internal alias must not bleed into outer scope"
 
+    def test_call_wrapped_alias_flagged(self) -> None:
+        """``wrapped = passthrough(msg); logger.warning(error=wrapped)`` leaks.
+
+        Without descending into ``Call.args`` during alias collection,
+        a leak hidden behind an arbitrary identity-style call would
+        slip past the gate. The alias-aware walker descends into call
+        arguments and stops only at the documented safe boundaries
+        (``safe_error_description(...)`` and class-introspection
+        chains).
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    msg = str(exc)
+                    wrapped = passthrough(msg)
+                    logger.warning("E", error=wrapped)
+            """,
+        )
+        assert hits, "alias hidden in a passthrough call must trip the gate"
+
     def test_unrelated_alias_quiet(self) -> None:
         """``error_msg = "static"; logger.warning(error=error_msg)`` -- safe."""
         hits = _scan_source(

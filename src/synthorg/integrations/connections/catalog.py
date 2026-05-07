@@ -624,9 +624,11 @@ class ConnectionCatalog:
             try:
                 data = json.loads(raw.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                # ``f"...: {safe_error_description(exc)}"`` would interpolate raw
-                # exception text in a secret-bearing path; route via
-                # ``safe_error_description``.
+                # Raw exception messages on this code path may contain
+                # secret material (the malformed payload was the
+                # connection's stored secret); route the description
+                # through ``safe_error_description`` so the credential
+                # scrubber masks any embedded tokens before logging.
                 logger.warning(
                     SECRET_RETRIEVAL_FAILED,
                     connection_name=name,

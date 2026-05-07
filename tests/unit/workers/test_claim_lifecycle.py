@@ -2,18 +2,17 @@
 
 The model-only tests in ``test_claim.py`` do not exercise the
 queue client's ``stop()`` / ``_drain_partial()`` / ``next_claim()``
-error paths. Those paths carry the SEC-1 carve-outs added in the
-logger-error-AST-redaction sweep:
+error paths. These tests pin the contract on those paths:
 
-* ``except MemoryError, RecursionError: raise`` ahead of the broad
-  ``except Exception`` handlers (so OOM / stack overflow propagate
-  instead of being absorbed as queue-teardown warnings).
+* ``MemoryError`` and ``RecursionError`` propagate unchanged
+  (catastrophic interpreter state must reach the supervisor instead
+  of being absorbed as a queue-teardown warning).
 * Structured ``error_type`` / ``error=safe_error_description(exc)``
-  on the previously-opaque warning logs.
+  fields land on the warning logs emitted for ordinary failures.
 
-These tests pin the contract by injecting mocks directly onto the
-private ``_sub`` / ``_client`` slots so we don't need a live NATS
-container -- the public ``start()`` path is unaffected.
+Tests inject mocks directly onto the private ``_sub`` / ``_client``
+slots so the suite does not need a live NATS container -- the
+public ``start()`` path is unaffected.
 """
 
 from typing import Any

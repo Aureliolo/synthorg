@@ -281,6 +281,77 @@ def _walk_excluding_call_args(expr: ast.expr) -> Iterator[ast.AST]:
             yield from _walk_excluding_call_args(child)
 
 
+_SANITIZER_NAMES: frozenset[str] = frozenset({"safe_error_description"})
+"""Callable names whose return value is a documented safe redaction.
+
+Used by :func:`_walk_alias_aware`: the walker descends into the
+arguments of arbitrary calls (so ``passthrough(raw)`` still surfaces
+``raw`` as an alias reference) but stops at calls to a sanitizer
+because the sanitizer's return value is the canonical safe shape --
+treating an alias passed *through* it as a leak would defeat the
+documented remediation path.
+"""
+
+
+def _is_sanitizer_call(node: ast.AST) -> bool:
+    """Return ``True`` when *node* is a call to a sanitizer.
+
+    Matches both bare names (``safe_error_description(raw)``) and
+    attribute access (``redaction.safe_error_description(raw)``);
+    method calls on a receiver (``self.safe_error_description(raw)``)
+    are intentionally included for the same reason -- the helper's
+    contract holds regardless of how it's bound.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id in _SANITIZER_NAMES
+    if isinstance(func, ast.Attribute):
+        return func.attr in _SANITIZER_NAMES
+    return False
+
+
+def _walk_alias_aware(expr: ast.expr) -> Iterator[ast.AST]:
+    """Yield nodes in *expr*'s subtree, descending into ``Call.args``.
+
+    Mirror of :func:`_walk_excluding_call_args` for the alias-tracking
+    code path -- where the question is "does this expression
+    *reference* a known leak alias", not "does the value the
+    expression *evaluates to* leak". A reference can be hidden inside
+    an arbitrary identity-style call (``passthrough(raw)``,
+    ``operator.identity(raw)``), so we must descend into ``Call.args``
+    by default. We still stop at the two documented safe boundaries:
+
+    * Calls to a sanitizer in ``_SANITIZER_NAMES`` -- the helper's
+      return value is safe by contract; treating an alias passed
+      through it as a leak would defeat the remediation path.
+    * Class-introspection chains (``exc.__class__.__name__``) --
+      type metadata, not credential material.
+
+    Method calls on a logger / receiver (``logger.warning(...)``)
+    appear as ``Attribute`` chains under the ``Call.func``, so the
+    func subtree is walked even when the call body is sanitizer-like;
+    that mirrors :func:`_walk_excluding_call_args`'s behaviour for
+    the f-string matcher.
+    """
+    yield expr
+    if isinstance(expr, ast.Call):
+        yield from _walk_alias_aware(expr.func)
+        if _is_sanitizer_call(expr):
+            return
+        for arg in expr.args:
+            yield from _walk_alias_aware(arg)
+        for kw in expr.keywords:
+            yield from _walk_alias_aware(kw.value)
+        return
+    if isinstance(expr, ast.Attribute) and expr.attr in _TYPE_INTROSPECTION_ATTRS:
+        return
+    for child in ast.iter_child_nodes(expr):
+        if isinstance(child, ast.expr):
+            yield from _walk_alias_aware(child)
+
+
 def _formatted_value_references_exception(node: ast.FormattedValue) -> bool:
     """Return ``True`` if *node* interpolates an exception-like reference.
 
@@ -435,19 +506,23 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         is already in ``self._leak_aliases``. Catches one-hop transitive
         aliasing (``msg = str(exc); safe = msg``) and the same wrapper
         shapes ``_value_subtree_leaks`` covers (subscript / boolop /
-        ifexp / binop / joinedstr).
+        ifexp / binop / joinedstr), AND aliases hidden inside arbitrary
+        identity-style calls (``safe = passthrough(msg)``).
 
-        Uses :func:`_walk_excluding_call_args` so a sanitized rebinding
-        ``safe = safe_error_description(msg)`` does NOT pick ``msg`` up
-        through the sanitizer's argument list -- the sanitizer cleans
-        the value, and treating the rebinding as transitive would
-        defeat the documented remediation path.
+        Uses :func:`_walk_alias_aware` (not the f-string-matcher's
+        ``_walk_excluding_call_args``): for alias tracking the question
+        is whether the expression *references* a leak alias anywhere,
+        even inside a call's arguments -- a passthrough wrapper around
+        ``msg`` still propagates the alias. The walker stops only at
+        sanitizer calls (``safe_error_description(...)``) and type-
+        introspection chains, where the return value is documented-
+        safe regardless of inputs.
         """
         if not self._leak_aliases:
             return False
         return any(
             isinstance(inner, ast.Name) and inner.id in self._leak_aliases
-            for inner in _walk_excluding_call_args(value)
+            for inner in _walk_alias_aware(value)
         )
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -507,7 +582,7 @@ def _has_error_alias_kwarg(
         return False
     for kw in keywords:
         for value in _error_kwarg_values(kw):
-            for inner in _walk_excluding_call_args(value):
+            for inner in _walk_alias_aware(value):
                 if isinstance(inner, ast.Name) and inner.id in leak_aliases:
                     return True
     return False

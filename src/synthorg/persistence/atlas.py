@@ -453,11 +453,11 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
     stderr = stderr_bytes.decode()
 
     if returncode != 0:
-        msg = f"Atlas command failed (exit {returncode}): {stderr}"
+        msg = f"Atlas command failed (exit {returncode})"
         logger.error(
             PERSISTENCE_MIGRATION_FAILED,
             exit_code=returncode,
-            stderr=stderr,
+            stderr_length=len(stderr),
         )
         raise MigrationError(msg)
 
