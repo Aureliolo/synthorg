@@ -541,7 +541,7 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         *,
         is_aug: bool,
     ) -> None:
-        """Record a single Name-target assignment's effect on the alias set.
+        """Record a single assignment's effect on the alias set.
 
         Common helper for ``visit_Assign`` / ``visit_AnnAssign`` /
         ``visit_AugAssign`` / ``visit_NamedExpr``. ``is_aug=True``
@@ -549,22 +549,37 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         mutations on the existing buffer, not fresh bindings, so
         appending or scaling a leaky string keeps the credential
         material in scope.
+
+        Destructuring targets (``Tuple`` / ``List`` / ``Starred``) are
+        walked recursively so each constituent ``Name`` element gets
+        the same leak-detection treatment. The RHS is evaluated as a
+        whole -- pairing target elements with value elements requires
+        the value to be a literal tuple/list of matching shape, and
+        for opaque RHS (``error_msg, _ = some_func()``) we don't have
+        that. Conservative shape: if any element of the RHS leaks,
+        every destructured name picks up the taint.
         """
-        if not isinstance(target, ast.Name):
+        if isinstance(target, ast.Name):
+            leaks = value is not None and (
+                _value_aliases_exception(value)
+                or self._value_subtree_references_leak_alias(value)
+            )
+            if leaks:
+                self._leak_aliases.add(target.id)
+            elif not is_aug:
+                # Safe rebind: ``msg = safe_error_description(msg)``
+                # clears the leak status so the canonical remediation
+                # pattern doesn't leave ``msg`` in the alias set
+                # forever. AugAssign falls through here
+                # (``is_aug=True``) and the taint is preserved.
+                self._leak_aliases.discard(target.id)
             return
-        leaks = value is not None and (
-            _value_aliases_exception(value)
-            or self._value_subtree_references_leak_alias(value)
-        )
-        if leaks:
-            self._leak_aliases.add(target.id)
-        elif not is_aug:
-            # Safe rebind: ``msg = safe_error_description(msg)``
-            # clears the leak status so the canonical remediation
-            # pattern doesn't leave ``msg`` in the alias set forever.
-            # AugAssign falls through here (``is_aug=True``) and the
-            # taint is preserved.
-            self._leak_aliases.discard(target.id)
+        if isinstance(target, (ast.Tuple, ast.List)):
+            for elt in target.elts:
+                self._apply_assignment(elt, value, is_aug=is_aug)
+            return
+        if isinstance(target, ast.Starred):
+            self._apply_assignment(target.value, value, is_aug=is_aug)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         """Update aliases for each Name target then descend."""
@@ -629,7 +644,18 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         )
 
     def visit_Call(self, node: ast.Call) -> None:
-        """Match ``<logger>.<method>(...)`` calls against both rules."""
+        """Match ``<logger>.<method>(...)`` calls against both rules.
+
+        ``generic_visit`` runs FIRST so any same-call walrus binding
+        (``logger.warning("E", context=(msg := str(exc)), error=msg)``)
+        has fired ``visit_NamedExpr`` and updated ``_leak_aliases``
+        before the kwarg-side alias check tests for ``error=msg``.
+        Without that ordering the same-call walrus would slip past
+        because the alias check would see ``msg`` as un-bound. Direct
+        ``error=str(exc)`` forms don't depend on alias state and are
+        unaffected by the visit order.
+        """
+        self.generic_visit(node)
         func = node.func
         if (
             isinstance(func, ast.Attribute)
@@ -651,7 +677,6 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
                 self.hits.append(
                     (exc_info_lineno, node.col_offset, _RULE_EXC_INFO),
                 )
-        self.generic_visit(node)
 
 
 def _has_error_alias_kwarg(

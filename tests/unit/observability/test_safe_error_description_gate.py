@@ -951,6 +951,61 @@ class TestVariableIndirection:
             "appending to the buffer doesn't sanitize the credential"
         )
 
+    def test_tuple_destructuring_alias_flagged(self) -> None:
+        """``(error_msg, _) = (str(exc), None); error=error_msg`` must trip.
+
+        Tuple/list destructuring binds each constituent ``Name`` to
+        its corresponding value position. Without recursive descent
+        in ``_apply_assignment``, the gate would early-return on the
+        non-Name ``Tuple`` target and leave ``error_msg`` untracked.
+        Conservative shape: any element of the RHS leaking taints
+        every destructured name on the LHS, since pairing target
+        elements to value elements only works when both are literal
+        same-shape sequences (and the simpler all-or-nothing rule
+        avoids false negatives on opaque RHS like ``foo()``).
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    (error_msg, _ignored) = (str(exc), None)
+                    logger.warning("E", error=error_msg)
+            """,
+        )
+        assert hits, "tuple-destructured leak alias must trip the gate"
+
+    def test_same_call_walrus_alias_flagged(self) -> None:
+        """``logger.warning(context=(msg := str(exc)), error=msg)`` must trip.
+
+        The walrus binds ``msg`` during the same call's argument
+        evaluation. Without ``visit_Call`` running ``generic_visit``
+        BEFORE the alias-kwarg check, ``visit_NamedExpr`` hasn't
+        fired yet when the matcher tests for ``error=msg``, so the
+        alias is missing from ``_leak_aliases``. The reordered
+        visitor descends into children first, lets the walrus update
+        the alias set, then runs the kwarg check against the now-
+        complete state.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "E",
+                        context=(msg := str(exc)),
+                        error=msg,
+                    )
+            """,
+        )
+        assert hits, (
+            "same-call walrus alias must trip the gate; "
+            "visit_Call must descend into children before checking kwargs"
+        )
+
     def test_intermediate_attr_in_str_arg_not_aliased(self) -> None:
         """``msg = str(config.inner.foo); error=msg`` must NOT trip the gate.
 
