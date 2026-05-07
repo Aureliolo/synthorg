@@ -55,6 +55,8 @@ _APPROVALS_UPSERT_SQL = """
 
 async def _safe_rollback(
     db: aiosqlite.Connection,
+    *,
+    operation: str,
     **log_context: object,
 ) -> None:
     """Roll back the current transaction, logging any rollback failure.
@@ -68,6 +70,13 @@ async def _safe_rollback(
     the rollback failure under its own structured event and swallows
     it so the original exception can be re-raised by the caller.
     ``MemoryError`` / ``RecursionError`` propagate unchanged.
+
+    ``operation`` names the caller (``save`` / ``save_many`` /
+    ``delete``) so dashboards can attribute rollback failures; it
+    lands in the ``operation`` log field, distinct from the fixed
+    ``phase="rollback"`` field this helper sets unconditionally. The
+    keyword-only ``operation`` parameter prevents the previous shape
+    from colliding with the hardcoded ``phase`` kwarg in **log_context.
     """
     try:
         await db.rollback()
@@ -77,6 +86,7 @@ async def _safe_rollback(
         logger.error(
             API_APPROVAL_REPO_FAILED,
             phase="rollback",
+            operation=operation,
             error_type=type(rollback_exc).__name__,
             error=safe_error_description(rollback_exc),
             **log_context,
@@ -211,7 +221,7 @@ class SQLiteApprovalRepository:
                 await self._db.execute(_APPROVALS_UPSERT_SQL, params)
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await _safe_rollback(self._db, approval_id=item.id, phase="save")
+                await _safe_rollback(self._db, operation="save", approval_id=item.id)
                 msg = f"Constraint violation saving approval {item.id!r}"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -224,7 +234,7 @@ class SQLiteApprovalRepository:
                     constraint=str(exc),
                 ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(self._db, approval_id=item.id, phase="save")
+                await _safe_rollback(self._db, operation="save", approval_id=item.id)
                 msg = f"Failed to save approval {item.id!r}"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -277,7 +287,9 @@ class SQLiteApprovalRepository:
                 await self._db.executemany(_APPROVALS_UPSERT_SQL, param_rows)
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await _safe_rollback(self._db, batch_size=len(items), phase="save_many")
+                await _safe_rollback(
+                    self._db, operation="save_many", batch_size=len(items)
+                )
                 msg = f"Constraint violation saving approval batch (size={len(items)})"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -287,7 +299,9 @@ class SQLiteApprovalRepository:
                 )
                 raise ConstraintViolationError(msg, constraint=str(exc)) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(self._db, batch_size=len(items), phase="save_many")
+                await _safe_rollback(
+                    self._db, operation="save_many", batch_size=len(items)
+                )
                 msg = f"Failed to save approval batch (size={len(items)})"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -484,7 +498,9 @@ class SQLiteApprovalRepository:
                 cursor = await self._db.execute(sql, (approval_id,))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(self._db, approval_id=approval_id, phase="delete")
+                await _safe_rollback(
+                    self._db, operation="delete", approval_id=approval_id
+                )
                 msg = f"Failed to delete approval {approval_id!r}"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,

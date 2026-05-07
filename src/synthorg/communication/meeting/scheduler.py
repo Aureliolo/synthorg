@@ -672,12 +672,14 @@ class MeetingScheduler:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_id=record.meeting_id,
                 meeting_type=record.meeting_type_name,
                 note="event publisher failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _publish_started_event(self, meeting_type_name: str) -> None:
@@ -697,11 +699,13 @@ class MeetingScheduler:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type_name,
                 note="started event publish failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @staticmethod

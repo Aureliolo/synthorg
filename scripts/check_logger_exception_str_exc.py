@@ -496,6 +496,22 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
                 for target in targets:
                     if isinstance(target, ast.Name):
                         self._leak_aliases.add(target.id)
+        elif isinstance(node, ast.NamedExpr):
+            # Walrus (``msg := str(exc)``) binds the target with the
+            # leak shape exactly like ``msg = str(exc)``; without this
+            # branch, ``error=(msg := str(exc))[:N]`` would slip past
+            # the alias collector. ``NamedExpr.target`` is always a
+            # plain ``Name`` per the grammar -- no tuple unpack.
+            value = node.value
+            if (
+                value is not None
+                and (
+                    _value_aliases_exception(value)
+                    or self._value_subtree_references_leak_alias(value)
+                )
+                and isinstance(node.target, ast.Name)
+            ):
+                self._leak_aliases.add(node.target.id)
         for child in ast.iter_child_nodes(node):
             self._collect_leak_aliases(child)
 

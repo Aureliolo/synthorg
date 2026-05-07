@@ -628,6 +628,7 @@ class TestVariableIndirection:
         hits = _scan_source(
             """
             def outer():
+                error_msg = "outer-static"
                 try:
                     pass
                 except Exception as exc:
@@ -638,11 +639,38 @@ class TestVariableIndirection:
                 logger.warning("E2", error=error_msg)
             """,
         )
-        # Only the lambda's own logger call references a leak shape;
-        # the outer call references ``error_msg`` which was never
-        # bound (lambdas do not bind into the enclosing scope), so it
-        # must not be flagged via stale alias propagation.
+        # ``error_msg`` is bound in the outer scope to a non-leak
+        # static value; the only leak-shape lives inside the lambda's
+        # own body. The walker stops alias propagation at the Lambda
+        # boundary, so the outer call must not be flagged via stale
+        # alias propagation -- exactly one hit, from the lambda.
         assert len(hits) == 1, "lambda-internal alias must not bleed into outer scope"
+
+    def test_walrus_alias_flagged(self) -> None:
+        """``error=(msg := str(exc))`` binds ``msg`` and trips the gate.
+
+        Without ``ast.NamedExpr`` handling in
+        ``_collect_leak_aliases``, the walrus operator's binding form
+        would slip past the alias collector even though the value
+        flowing into ``error=`` is the same leak shape as a regular
+        ``msg = str(exc)`` followed by ``error=msg``.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    logger.warning("E", error=(msg := str(exc)))
+                    logger.warning("E2", error=msg)
+            """,
+        )
+        # Both calls are leaks: the walrus call passes the leaky
+        # value directly; the second references the alias the walrus
+        # bound. The gate must flag both, with the inner str(exc)
+        # surfacing the FormattedValue / Call shape regardless of the
+        # walrus wrap.
+        assert len(hits) >= 2, f"walrus binding must be tracked as an alias; got {hits}"
 
     def test_call_wrapped_alias_flagged(self) -> None:
         """``wrapped = passthrough(msg); logger.warning(error=wrapped)`` leaks.
@@ -824,13 +852,24 @@ class TestExcInfoGate:
         ["exception", "warning", "error", "info", "debug"],
     )
     def test_exc_info_true_flagged(self, method: str) -> None:
-        """Every severity trips on ``exc_info=True`` literal."""
+        """Every severity trips on ``exc_info=True`` literal.
+
+        Asserts both presence and rule classification: the hit must
+        carry ``exc_info_true`` so a regression where the gate
+        absorbs the violation under the ``error_str_exc`` rule (or
+        any other id) is caught here, not in production.
+        """
         hits = _scan_source(
             f"""
             logger.{method}("E", exc_info=True)
             """,
         )
         assert hits, f"logger.{method}(..., exc_info=True) must be flagged"
+        rule_ids = {rule_id for _, _, rule_id in hits}
+        assert "exc_info_true" in rule_ids, (
+            f"logger.{method}(..., exc_info=True) must trip the exc_info_true "
+            f"rule specifically; got rule_ids={rule_ids}"
+        )
 
     def test_exc_info_false_quiet(self) -> None:
         """``exc_info=False`` is the explicit opt-out; do not flag."""

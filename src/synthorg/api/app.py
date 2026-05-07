@@ -728,6 +728,19 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     a2a_controllers: tuple[type[Controller], ...] = ()
     a2a_root_controllers: tuple[type[Controller], ...] = ()
     if effective_config.a2a.enabled:
+        # Build every A2A artefact into local variables FIRST so an
+        # exception anywhere in the construction chain leaves
+        # ``app_state`` untouched. Only commit to ``app_state`` and
+        # the controller tuples after every required object is
+        # successfully constructed -- otherwise a half-wired surface
+        # would survive a non-fatal failure (card builder set but
+        # client absent, peer registry registered but gateway
+        # controller missing, etc.).
+        a2a_card_builder = None
+        a2a_root_pending: tuple[type[Controller], ...] = ()
+        a2a_pending: tuple[type[Controller], ...] = ()
+        a2a_peer_registry = None
+        a2a_client_obj = None
         try:
             from synthorg.a2a.agent_card import (  # noqa: PLC0415
                 AgentCardBuilder,
@@ -744,11 +757,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     ),
                 ),
             )
-            card_builder = AgentCardBuilder(
+            a2a_card_builder = AgentCardBuilder(
                 default_auth_schemes=auth_schemes,
             )
-            app_state.set_a2a_card_builder(card_builder)
-            a2a_root_controllers = (WellKnownAgentCardController,)
+            a2a_root_pending = (WellKnownAgentCardController,)
 
             # Outbound client + JSON-RPC gateway need the connection
             # catalog and integrations enabled.
@@ -763,7 +775,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     PeerRegistry,
                 )
 
-                peer_registry = PeerRegistry()
+                a2a_peer_registry = PeerRegistry()
                 a2a_http_client = httpx.AsyncClient(
                     timeout=effective_config.a2a.client_timeout_seconds
                 )
@@ -772,21 +784,13 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 )
 
                 a2a_network_policy = NetworkPolicy()
-                a2a_client = A2AClient(
+                a2a_client_obj = A2AClient(
                     connection_catalog,
                     network_validator=a2a_network_policy,
                     http_client=a2a_http_client,
                     timeout_seconds=effective_config.a2a.client_timeout_seconds,
                 )
-
-                app_state.set_a2a_peer_registry(peer_registry)
-                app_state.set_a2a_client(a2a_client)
-                a2a_controllers = (A2AGatewayController,)
-
-            logger.info(
-                API_SERVICE_AUTO_WIRED,
-                service="a2a_gateway",
-            )
+                a2a_pending = (A2AGatewayController,)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -795,6 +799,20 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 note="A2A gateway auto-wire failed (non-fatal)",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+            )
+        else:
+            # Commit only on full success. Partial failures land in
+            # the except branch above with all ``app_state`` slots
+            # still empty.
+            app_state.set_a2a_card_builder(a2a_card_builder)
+            a2a_root_controllers = a2a_root_pending
+            if a2a_peer_registry is not None and a2a_client_obj is not None:
+                app_state.set_a2a_peer_registry(a2a_peer_registry)
+                app_state.set_a2a_client(a2a_client_obj)
+                a2a_controllers = a2a_pending
+            logger.info(
+                API_SERVICE_AUTO_WIRED,
+                service="a2a_gateway",
             )
 
     # Wire the optional client-simulation runtime onto AppState BEFORE the

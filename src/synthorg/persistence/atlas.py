@@ -421,10 +421,13 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
             # Drain pipes so the process actually exits.
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.communicate(timeout=_ATLAS_KILL_GRACE_SECONDS)
-            stderr_text = (exc.stderr or b"").decode(errors="replace")
+            # Atlas stderr on timeout can carry DSNs / SQL fragments
+            # / connection URIs; the structured log emitted upstream
+            # already records `error_type`+`error` via the MigrationError
+            # path, and the message itself must not embed raw stderr.
             msg = (
                 f"Atlas command timed out after "
-                f"{_ATLAS_SUBPROCESS_TIMEOUT_SECONDS:.0f}s: {stderr_text}"
+                f"{_ATLAS_SUBPROCESS_TIMEOUT_SECONDS:.0f}s"
             )
             raise MigrationError(msg) from exc
         except BaseException:

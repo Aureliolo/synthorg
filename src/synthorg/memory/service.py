@@ -846,6 +846,7 @@ class MemoryService:
                 MEMORY_CHECKPOINT_DEPLOY_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

@@ -122,9 +122,10 @@ def _load_config() -> dict[str, Any] | None:
     try:
         raw = _CONFIG_PATH.read_text(encoding="utf-8")
         config = json.loads(raw)
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        error_desc = safe_error_description(exc)
         print(  # noqa: T201
-            f"ERROR: unable to read config file {_CONFIG_PATH}: {safe_error_description(exc)}",  # noqa: E501
+            f"ERROR: unable to read config file {_CONFIG_PATH}: {error_desc}",
             file=sys.stderr,
         )
         return None

@@ -222,7 +222,7 @@ class SettingsChangeDispatcher:
                         asyncio.shield(self._task),
                         timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                     )
-                except TimeoutError:
+                except TimeoutError as exc:
                     # Drain exceeded the hard deadline. Mark the
                     # dispatcher unrestartable and re-raise: a future
                     # start() must not spawn a second poll task
@@ -243,6 +243,8 @@ class SettingsChangeDispatcher:
                             "dispatcher marked unrestartable"
                         ),
                         timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
                     raise
                 except asyncio.CancelledError:

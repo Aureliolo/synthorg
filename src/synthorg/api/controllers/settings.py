@@ -803,12 +803,16 @@ async def _get_setting_or_default(
             key=key,
         )
         return fallback
-    except Exception:
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
         logger.warning(
             SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
             namespace=SettingNamespace.OBSERVABILITY.value,
             key=key,
-            error="Failed to resolve observability setting",
+            note="Failed to resolve observability setting",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return fallback
     return val.value
@@ -826,10 +830,14 @@ def _parse_root_level(raw: str) -> LogLevel:
     try:
         return LogLevel(raw.upper())
     except ValueError:
+        # Operators may store arbitrary text in this key from a
+        # mis-typed CLI invocation; ``raw`` would otherwise leak that
+        # into the log sink. Static message keeps the diagnostic
+        # generic; the namespace + key are enough for triage.
         logger.warning(
             SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
             key="root_log_level",
-            error=f"Invalid log level {raw!r}, defaulting to DEBUG",
+            note="Invalid log level value, defaulting to DEBUG",
         )
         return LogLevel.DEBUG
 

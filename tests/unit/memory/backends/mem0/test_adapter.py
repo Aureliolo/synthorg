@@ -307,12 +307,12 @@ class TestSystemErrorLogging:
     ) -> None:
         """health_check on system error logs at ERROR with redacted fields.
 
-        Per CLAUDE.md SEC-1: ``exc_info=True`` is forbidden because
-        structlog's exc-info processor would serialise traceback
-        frame-locals (in-scope tokens, connection URIs) into the log
-        sink. The call passes ``error_type`` + ``error=safe_error_description(exc)``
-        instead; the type taxonomy operators need for triage is
-        preserved without the credential leak.
+        ``exc_info=True`` is forbidden because structlog's exc-info
+        processor would serialise traceback frame-locals (in-scope
+        tokens, connection URIs) into the log sink. The call passes
+        ``error_type`` + ``error=safe_error_description(exc)`` instead;
+        the type taxonomy operators need for triage is preserved
+        without the credential leak.
         """
         mock_client.get_all.side_effect = exc_type("system failure")
         with (
@@ -324,9 +324,9 @@ class TestSystemErrorLogging:
             await backend.health_check()
         mock_logger.error.assert_called_once()
         call = mock_logger.error.call_args
-        # SEC-1: exc_info=True must NEVER be passed; the redacted
-        # error= field carries the type taxonomy without leaking
-        # frame-locals via the traceback processor.
+        # exc_info=True must NEVER be passed; the redacted error=
+        # field carries the type taxonomy without the traceback
+        # processor serialising frame-locals into the log event.
         assert "exc_info" not in call.kwargs
         assert call.kwargs.get("error_type") == exc_type.__name__
         assert "error" in call.kwargs

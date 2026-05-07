@@ -124,12 +124,12 @@ async def _cleanup_connection_receipts(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
             connection_name=str(conn.name),
             retention_days=effective,
-            error=(
+            message=(
                 "Webhook receipt sweep failed for connection;"
                 " continuing with remaining connections"
             ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
         return _CleanupOutcome("failed", 0)
     return _CleanupOutcome("swept", rows_removed)
@@ -189,9 +189,9 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
     except Exception as exc:
         logger.warning(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
-            error="Failed to list connections for webhook receipt sweep",
+            message="Failed to list connections for webhook receipt sweep",
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
         )
         return
 

@@ -210,6 +210,8 @@ async def _run_async_fetchers(
             detail=(
                 "Activity data service is currently unavailable. Please try again."
             ),
+            error_type=type(svc_exc).__name__,
+            error=safe_error_description(svc_exc),
         )
         raise svc_exc from svc_eg
     except* Exception as other_eg:

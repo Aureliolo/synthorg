@@ -650,7 +650,10 @@ def handle_invalid_cursor(
     error envelope.
     """
     _log_error(request, exc, status=400)
-    detail = safe_error_description(exc) or "Invalid pagination cursor"
+    # ``safe_error_description`` is documented to always return at
+    # least ``type(exc).__name__`` when ``str(exc)`` is empty, so no
+    # fallback string is needed here.
+    detail = safe_error_description(exc)
     return _build_response(
         request,
         detail=detail,

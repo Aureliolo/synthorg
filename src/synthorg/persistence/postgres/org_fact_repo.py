@@ -575,13 +575,15 @@ ORDER BY lo.fact_id
                 await cur.execute(sql, {"ts": timestamp})
                 rows = await cur.fetchall()
         except Exception as exc:
+            ts_iso = timestamp.isoformat()
+            error_desc = safe_error_description(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
-                timestamp=timestamp.isoformat(),
+                timestamp=ts_iso,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=error_desc,
             )
-            msg = f"Failed to query snapshot at {timestamp.isoformat()}: {safe_error_description(exc)}"  # noqa: E501
+            msg = f"Failed to query snapshot at {ts_iso}: {error_desc}"
             raise OrgMemoryQueryError(msg) from exc
         result = tuple(_row_to_snapshot(row) for row in rows)
         logger.debug(
@@ -609,13 +611,14 @@ ORDER BY lo.fact_id
                 )
                 rows = await cur.fetchall()
         except Exception as exc:
+            error_desc = safe_error_description(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 fact_id=fact_id,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=error_desc,
             )
-            msg = f"Failed to get operation log for {fact_id}: {safe_error_description(exc)}"  # noqa: E501
+            msg = f"Failed to get operation log for {fact_id}: {error_desc}"
             raise OrgMemoryQueryError(msg) from exc
         result = tuple(_row_to_operation_log_entry(row) for row in rows)
         logger.debug(

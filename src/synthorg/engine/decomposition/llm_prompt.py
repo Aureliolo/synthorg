@@ -395,12 +395,14 @@ def parse_tool_call_response(
                 )
                 raise
             except Exception as exc:
+                error_desc = safe_error_description(exc)
                 logger.warning(
                     DECOMPOSITION_LLM_PARSE_ERROR,
                     error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                    error=error_desc,
+                    parent_task_id=parent_task_id,
                 )
-                msg = f"Failed to parse tool call arguments: {safe_error_description(exc)}"  # noqa: E501
+                msg = f"Failed to parse tool call arguments: {error_desc}"
                 raise DecompositionError(msg) from exc
 
     msg = "No tool call for submit_decomposition_plan found"
@@ -470,10 +472,12 @@ def parse_content_response(
         )
         raise
     except Exception as exc:
+        error_desc = safe_error_description(exc)
         logger.warning(
             DECOMPOSITION_LLM_PARSE_ERROR,
             error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            error=error_desc,
+            parent_task_id=parent_task_id,
         )
-        msg = f"Failed to parse plan from content JSON: {safe_error_description(exc)}"
+        msg = f"Failed to parse plan from content JSON: {error_desc}"
         raise DecompositionError(msg) from exc
