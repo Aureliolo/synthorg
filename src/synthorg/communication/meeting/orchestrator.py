@@ -70,9 +70,7 @@ def _format_exception(exc: BaseException) -> str:
             if isinstance(sub, ExceptionGroup):
                 parts.append(_format_exception(sub))
             else:
-                parts.append(
-                    f"{type(sub).__name__}: {safe_error_description(sub)}",
-                )
+                parts.append(safe_error_description(sub))
         return f"Multiple errors: {'; '.join(parts)}"
     return safe_error_description(exc)
 

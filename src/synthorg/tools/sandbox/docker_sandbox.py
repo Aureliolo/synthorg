@@ -204,6 +204,8 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             client = aiodocker.Docker()
             try:
                 await client.version()
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 await client.close()
                 logger.warning(
@@ -521,13 +523,30 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     sidecar_id=sidecar_id[:12],
                 )
                 await self._wait_sidecar_healthy(docker, sidecar_id)
+            except MemoryError, RecursionError:
+                # Catastrophic interpreter errors are subclasses of
+                # ``Exception``, so they would be caught by the
+                # ``except Exception`` arm below and silently wrapped
+                # into ``SandboxStartError``. Re-raise them here after
+                # the sidecar cleanup so the original semantics are
+                # preserved.
+                removed = await self._remove_container(
+                    docker,
+                    sidecar_id,
+                )
+                if removed:
+                    self._tracked_containers.pop(
+                        f"_sidecar:{sidecar_id}",
+                        None,
+                    )
+                raise
             except Exception as exc:
                 # Clean up the sidecar before wrapping ordinary
-                # failures into ``SandboxStartError``. ``MemoryError`` /
-                # ``RecursionError`` and ``CancelledError`` propagate
-                # via the bare-``except`` clause below so cancellation
-                # and catastrophic interpreter errors keep their
-                # original semantics.
+                # failures into ``SandboxStartError``. The
+                # ``BaseException`` clause below covers
+                # ``CancelledError`` / ``SystemExit`` /
+                # ``KeyboardInterrupt`` -- those are not subclasses of
+                # ``Exception`` and propagate without wrapping.
                 removed = await self._remove_container(
                     docker,
                     sidecar_id,
@@ -540,10 +559,9 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                 msg = f"Sidecar startup failed: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
             except BaseException:
-                # Cancellation / MemoryError / RecursionError /
-                # SystemExit / KeyboardInterrupt: still clean up the
-                # sidecar but propagate the original BaseException so
-                # caller cancellation and fatal-error semantics are
+                # Cancellation / SystemExit / KeyboardInterrupt: still
+                # clean up the sidecar but propagate the original
+                # BaseException so caller cancellation semantics are
                 # preserved (do NOT wrap as SandboxStartError).
                 removed = await self._remove_container(
                     docker,
@@ -571,6 +589,8 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
 
         try:
             container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             if sidecar_id:
                 removed = await self._remove_container(
@@ -713,6 +733,8 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
         try:
             await container_obj.start()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             error_desc = safe_error_description(exc)
             msg = f"Failed to start container {container_id[:12]}: {error_desc}"

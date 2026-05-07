@@ -481,12 +481,16 @@ class ScalingService:
             if isinstance(inner, (CooldownGuard, RateLimitGuard)):
                 try:
                     await inner.record_action(decision)
-                except Exception:
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
                     logger.error(
                         HR_SCALING_EXECUTION_FAILED,
                         action="guard_record_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
     async def _release_guard_reservations(
@@ -498,12 +502,16 @@ class ScalingService:
             if isinstance(inner, CooldownGuard):
                 try:
                     await inner.release_reservation(decision)
-                except Exception:
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
                     logger.error(
                         HR_SCALING_EXECUTION_FAILED,
                         action="guard_release_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
 
     def record_action(self, record: ScalingActionRecord) -> None:

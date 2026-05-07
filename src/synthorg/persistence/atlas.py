@@ -529,11 +529,11 @@ async def migrate_apply(
                     last.get("Version", "") if isinstance(last, dict) else ""
                 )
     except json.JSONDecodeError as exc:
-        msg = f"Atlas returned non-JSON output: {stdout[:200]}"
+        msg = "Atlas returned non-JSON output"
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
-            note="Atlas returned non-JSON output",
-            output_sample=stdout[:200],
+            note=msg,
+            output_length=len(stdout),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -590,11 +590,11 @@ async def migrate_status(
             pending = data.get("Pending", [])
             pending_count = len(pending) if isinstance(pending, list) else 0
     except json.JSONDecodeError as exc:
-        msg = f"Atlas status returned non-JSON output: {stdout[:200]}"
+        msg = "Atlas status returned non-JSON output"
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
-            note="Atlas status returned non-JSON output",
-            output_sample=stdout[:200],
+            note=msg,
+            output_length=len(stdout),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

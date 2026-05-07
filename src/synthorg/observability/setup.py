@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 import structlog
 
-from synthorg.observability import safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.log_trace_correlation import inject_trace_context
@@ -24,6 +23,7 @@ from synthorg.observability.processors import (
     sanitize_sensitive_fields,
     scrub_event_fields,
 )
+from synthorg.observability.redaction import safe_error_description
 from synthorg.observability.sinks import SINK_ROUTING, build_handler
 
 # Default per-logger levels applied when no config overrides are given.

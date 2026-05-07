@@ -309,6 +309,8 @@ def _register_distributed_dispatcher(
         )
         dispatcher = DistributedDispatcher(task_queue=task_queue)
         engine.register_observer(dispatcher.on_task_state_changed)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,

@@ -346,6 +346,8 @@ async def _outbound_consumer(
             except WebSocketDisconnect:
                 logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
                 return
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.error(
                     API_WS_SEND_FAILED,

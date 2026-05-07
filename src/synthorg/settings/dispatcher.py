@@ -396,12 +396,14 @@ class SettingsChangeDispatcher:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.error(
                     SETTINGS_SUBSCRIBER_ERROR,
                     subscriber=getattr(subscriber, "subscriber_name", "unknown"),
                     namespace=namespace,
                     key=key,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
 

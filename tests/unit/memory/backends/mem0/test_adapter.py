@@ -284,14 +284,14 @@ class TestSystemErrorLogging:
     The contract is: log at ERROR level via
     ``logger.error(EVENT, ..., error_type=type(exc).__name__,
     error=safe_error_description(exc))`` WITHOUT ``exc_info`` or
-    ``logger.exception``, then re-raise. Setting ``exc_info=True`` (or
-    using ``logger.exception``) would have structlog serialise the
+    ``logger.exception``, then re-raise. ``exc_info=True`` (or
+    ``logger.exception``) would have structlog serialise the
     traceback's frame-locals -- in-scope tokens, Fernet ciphertext,
-    connection URIs -- into the sink, the SEC-1 leak vector this PR
-    closes. Downgrading to ``logger.warning`` is also wrong: this is
-    catastrophic interpreter state and operators need it surfaced at
-    ERROR. The ``"exc_info" not in call.kwargs`` assertion below is
-    the canonical regression guard for both directions.
+    connection URIs -- into the sink. Downgrading to
+    ``logger.warning`` is also wrong: this is catastrophic interpreter
+    state and operators need it surfaced at ERROR. The
+    ``"exc_info" not in call.kwargs`` assertion below is the canonical
+    regression guard for both directions.
     """
 
     @pytest.mark.parametrize(

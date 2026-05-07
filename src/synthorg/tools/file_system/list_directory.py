@@ -108,13 +108,14 @@ def _list_sync(
             if line is not None:
                 lines.append(line)
         except OSError as exc:
+            error_desc = safe_error_description(exc)
             logger.warning(
                 TOOL_FS_ERROR,
                 path=str(entry),
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=error_desc,
             )
-            lines.append(f"[ERROR] {entry.name} ({safe_error_description(exc)})")
+            lines.append(f"[ERROR] {entry.name} ({error_desc})")
 
     return lines, raw_capped
 

@@ -117,7 +117,7 @@ class TestPublish:
             await backend.publish("test-agent-001", make_store_request())
         mock_logger.error.assert_called_once()
         call = mock_logger.error.call_args
-        # SEC-1: exc_info=True must NEVER be passed.
+        # exc_info=True must NEVER be passed.
         assert "exc_info" not in call.kwargs
         assert call.kwargs.get("error_type") == exc_type.__name__
         assert "error" in call.kwargs

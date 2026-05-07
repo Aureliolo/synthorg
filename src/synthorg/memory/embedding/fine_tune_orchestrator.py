@@ -305,8 +305,14 @@ class FineTuneOrchestrator:
                 # ``_mark_failed`` so the snapshot has the same terminal
                 # shape (progress cleared, timestamps stamped) instead
                 # of a stale stage with leftover progress data.
+                # Base on the latest snapshot (``self._current_run``)
+                # rather than the entry-state ``run`` so a cancellation
+                # mid-pipeline does not regress ``stages_completed`` or
+                # the current stage if a later stage already updated
+                # the in-memory snapshot.
                 now = datetime.now(UTC)
-                self._current_run = run.model_copy(
+                base = self._current_run or run
+                self._current_run = base.model_copy(
                     update={
                         "stage": FineTuneStage.FAILED,
                         "error": "cancelled by user",

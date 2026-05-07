@@ -405,11 +405,15 @@ class ShutdownManager:
         )
         try:
             self._strategy.request_shutdown()
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.warning(
                 EXECUTION_SHUTDOWN_SIGNAL,
                 signal=sig.name,
-                error="request_shutdown() raised -- falling back to loop.stop()",
+                note="request_shutdown() raised -- falling back to loop.stop()",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             # If request_shutdown() itself fails, stop the event loop as
             # a last resort to avoid a process that ignores signals.
@@ -438,11 +442,15 @@ class ShutdownManager:
                     signal=sig_name,
                 )
                 self._strategy.request_shutdown()
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 logger.warning(
                     EXECUTION_SHUTDOWN_SIGNAL,
                     signal=sig_name,
-                    error="request_shutdown() raised -- falling back to loop.stop()",
+                    note="request_shutdown() raised -- falling back to loop.stop()",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 with contextlib.suppress(Exception):
                     asyncio.get_running_loop().stop()
