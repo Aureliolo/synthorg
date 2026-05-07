@@ -737,7 +737,7 @@ src/synthorg/persistence/postgres/workflow_execution_repo.py:55:22
 src/synthorg/persistence/provider_audit_protocol.py:62:21
 src/synthorg/persistence/settings_protocol.py:56:21
 src/synthorg/persistence/sqlite/approval_repo.py:30:23
-src/synthorg/persistence/sqlite/approval_repo.py:369:21
+src/synthorg/persistence/sqlite/approval_repo.py:399:21
 src/synthorg/persistence/sqlite/artifact_repo.py:27:22
 src/synthorg/persistence/sqlite/artifact_repo.py:269:21
 src/synthorg/persistence/sqlite/audit_repository.py:127:21
