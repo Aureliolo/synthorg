@@ -12,7 +12,6 @@ from pydantic import (
     ConfigDict,
     Field,
     computed_field,
-    model_validator,
 )
 
 from synthorg.api.dto import ApiResponse
@@ -108,15 +107,6 @@ class CalibrationSummaryResponse(BaseModel):
         default=(),
         description="Calibration records",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _drop_computed_fields_on_input(cls, values: object) -> object:
-        if isinstance(values, dict):
-            return {
-                k: v for k, v in values.items() if k not in cls.model_computed_fields
-            }
-        return values
 
     @computed_field(description="Number of calibration records")  # type: ignore[prop-decorator]
     @property

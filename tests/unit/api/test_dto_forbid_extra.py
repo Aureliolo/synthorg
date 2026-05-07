@@ -680,31 +680,49 @@ def test_gate_passes_dict_literal_model_config_with_forbid(tmp_path: Path) -> No
 
 
 def test_api_response_round_trip_preserves_payload() -> None:
-    """``ApiResponse[T]`` survives ``model_dump()`` -> ``model_validate()``.
+    """``ApiResponse[T]`` survives a round-trip when computed fields are excluded.
 
-    The envelope emits a ``success`` computed field on dump; Pydantic
-    skips computed fields on input validation, so the round-trip works
-    even with ``extra="forbid"``.
+    Round-trip serialization must use ``exclude_computed_fields=True`` so
+    the dump emits only settable fields; ``model_validate`` then runs
+    against ``extra="forbid"`` without an input-stripping validator
+    weakening the contract.
     """
     original = ApiResponse[str](data="hello")
-    dumped = original.model_dump()
-    assert dumped["success"] is True
+    dumped = original.model_dump(exclude_computed_fields=True)
+    assert "success" not in dumped
     restored = ApiResponse[str].model_validate(dumped)
     assert restored.data == "hello"
     assert restored.error is None
     assert restored.success is True
 
 
+def test_api_response_rejects_dump_with_computed_field_when_re_validated() -> None:
+    """A plain ``model_dump()`` dict is rejected because computed keys re-appear.
+
+    This is the strict-contract trade-off: ``model_dump()`` includes
+    computed fields by default; without ``exclude_computed_fields=True``
+    a re-validation hits ``extra="forbid"`` and raises -- which is the
+    intended behaviour for the API boundary.
+    """
+    original = ApiResponse[str](data="hello")
+    dumped = original.model_dump()
+    assert dumped["success"] is True
+    with pytest.raises(ValidationError) as exc_info:
+        ApiResponse[str].model_validate(dumped)
+    error_types = {err["type"] for err in exc_info.value.errors()}
+    assert "extra_forbidden" in error_types
+
+
 def test_paginated_response_round_trip_preserves_payload() -> None:
-    """``PaginatedResponse[T]`` survives ``model_dump()`` -> ``model_validate()``."""
+    """``PaginatedResponse[T]`` survives a round-trip with computed fields excluded."""
     from synthorg.api.dto import PaginationMeta
 
     original = PaginatedResponse[str](
         data=("a", "b"),
         pagination=PaginationMeta(limit=50, next_cursor=None, has_more=False),
     )
-    dumped = original.model_dump()
-    assert dumped["success"] is True
+    dumped = original.model_dump(exclude_computed_fields=True)
+    assert "success" not in dumped
     restored = PaginatedResponse[str].model_validate(dumped)
     assert restored.data == ("a", "b")
     assert restored.pagination.has_more is False
@@ -714,7 +732,7 @@ def test_paginated_response_round_trip_preserves_payload() -> None:
 def test_api_response_rejects_round_trip_with_fabricated_field() -> None:
     """A dumped envelope augmented with a stray key must be rejected on revalidate."""
     original = ApiResponse[str](data="ok")
-    dumped = original.model_dump()
+    dumped = original.model_dump(exclude_computed_fields=True)
     dumped["fabricated"] = "evil"
     with pytest.raises(ValidationError) as exc_info:
         ApiResponse[str].model_validate(dumped)
