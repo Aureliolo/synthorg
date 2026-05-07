@@ -103,9 +103,20 @@ gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | {id, author: .
 ```bash
 HEAD_BRANCH="$(gh pr view N --json headRefName --jq .headRefName)"
 
-# CodeQL + other code-scanning alerts visible on the PR branch.
+# CodeQL + other code-scanning alerts visible on the PR. CodeQL's
+# pull-request workflow attaches alerts to ``refs/pull/<N>/head``,
+# NOT ``refs/heads/<HEAD_BRANCH>`` -- the branch ref only sees alerts
+# from a workflow that runs on `push` events to the branch (typically
+# the default-branch CodeQL job, not the PR-scoped one). Query BOTH
+# refs and union the results so PR-scoped alerts are not invisible to
+# the babysit loop. Without this union, alert-card inline review
+# comments from `github-advanced-security[bot]` (which link to
+# `/security/code-scanning/<N>`) silently bypass the gate even though
+# the underlying alert is open.
 gh api "repos/OWNER/REPO/code-scanning/alerts?state=open&ref=refs/heads/$HEAD_BRANCH&per_page=100" --paginate \
-  --jq '[.[] | {number, severity: .rule.severity, rule: .rule.id, path: .most_recent_instance.location.path, line: .most_recent_instance.location.start_line, message: .most_recent_instance.message.text, html_url}]'
+  --jq '[.[] | {number, severity: .rule.severity, rule: .rule.id, path: .most_recent_instance.location.path, line: .most_recent_instance.location.start_line, message: .most_recent_instance.message.text, html_url, ref: .most_recent_instance.ref}]'
+gh api "repos/OWNER/REPO/code-scanning/alerts?state=open&ref=refs/pull/$N/head&per_page=100" --paginate \
+  --jq '[.[] | {number, severity: .rule.severity, rule: .rule.id, path: .most_recent_instance.location.path, line: .most_recent_instance.location.start_line, message: .most_recent_instance.message.text, html_url, ref: .most_recent_instance.ref}]'
 
 # Dependabot vulnerability info, scoped to the PR's actual dependency
 # changes. The /dependabot/alerts endpoint is repo-wide (no ref filter
@@ -148,7 +159,7 @@ Convergence holds when ALL true:
   1. **Rolling summary comment (primary signal).** CodeRabbit posts ONE issue comment with a leading marker `<!-- This is an auto-generated comment: summarize by coderabbit.ai -->` and *edits that same comment* on every push. Find it via `gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | select(.user.login == "coderabbitai[bot]" and (.body | startswith("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->")))] | .[0]'` (sort-stable, the *first* such comment is the rolling one). Both convergence checks below are *substring* matches against the comment body -- the body has banner / details / configuration sections wrapping the relevant lines, so don't try to anchor either match to a specific position. **Convergence holds** when (a) the body contains the substring `No actionable comments were generated in the recent review. 🎉`, AND (b) the body contains a `Reviewing files that changed from the base of the PR and between <BASE_SHA> and <HEAD_SHA>.` block whose `<HEAD_SHA>` token equals the current `headRefOid`. This is the canonical "review done, nothing to fix" signal; trust it.
   2. **Per-review fallback.** If the summary comment is unavailable (very early PR, or CodeRabbit changed its banner format), accept the older signal: the most recent CodeRabbit review body contains `Actionable comments posted: 0`.
   3. **Silent-approval fallback (last resort).** If the most recent CodeRabbit review's `commit_id` is older than the current head AND the rolling summary comment is also stale (its `updated_at` predates `HEAD_COMMIT_TIME` from the Phase 1 fetch), AND the CodeRabbit `StatusContext` (`__typename: "StatusContext", context: "CodeRabbit"`) for the current head is `state: SUCCESS`, AND no rate-limit / "currently processing" / "I'll be back" markers (as defined in the Phase 4 marker table) were detected on the most recent CodeRabbit-authored item across reviews + issue comments (the same scan set Phase 4 uses) -- treat as silent approval. Used only when neither (1) nor (2) is conclusive.
-- **Zero open security alerts in scope.** Scope is per-scanner (matches Phase 6b): zero open **code-scanning** alerts on the PR branch (`ref=refs/heads/$HEAD_BRANCH`), zero **Dependabot** vulnerabilities introduced/surfaced by the PR's dependency changes (via `/dependency-graph/compare/<base>...<head>`), and zero open **secret-scanning** alerts at the repository level (secret-scanning is always repo-scoped because a leaked secret is a leaked secret regardless of which PR happened to surface it). Every in-scope alert must be either fixed or explicitly dismissed via Phase 6b.
+- **Zero open security alerts in scope.** Scope is per-scanner (matches Phase 6b): zero open **code-scanning** alerts visible on EITHER `ref=refs/heads/$HEAD_BRANCH` OR `ref=refs/pull/$N/head` (CodeQL's PR workflow uses the latter; the branch ref only sees alerts from workflows that run on `push` events), zero **Dependabot** vulnerabilities introduced/surfaced by the PR's dependency changes (via `/dependency-graph/compare/<base>...<head>`), and zero open **secret-scanning** alerts at the repository level (secret-scanning is always repo-scoped because a leaked secret is a leaked secret regardless of which PR happened to surface it). Every in-scope alert must be either fixed or explicitly dismissed via Phase 6b.
 - No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4).
 
 If converged:
@@ -259,7 +270,7 @@ Build the working set:
 
 Build a separate working set from the three scanner fetches in Phase 1. Scope per scanner:
 
-- **code-scanning** (CodeQL etc.): alerts visible on the PR branch (`ref=refs/heads/$HEAD_BRANCH`), filtered by Phase 1's fetch.
+- **code-scanning** (CodeQL etc.): union of alerts visible on `ref=refs/heads/$HEAD_BRANCH` AND `ref=refs/pull/$N/head` (Phase 1 queries both -- CodeQL's PR workflow writes alerts to the pull-ref, not the branch ref). Inline review comments from `github-advanced-security[bot]` link to `/security/code-scanning/<N>` URLs; the alert-number behind that URL must show up in this fetch or it slips past the gate.
 - **Dependabot**: vulnerabilities the PR's manifest changes introduce or surface, returned by the `/dependency-graph/compare/<base>...<head>` endpoint. Anything pre-existing-and-unchanged at the dependency level is out of scope for this PR's babysit (it would block every unrelated PR otherwise).
 - **secret-scanning**: alerts on the repo. Secret-scanning has no per-PR or per-branch filter, so every open secret alert is treated as in scope; the whole point of secret scanning is that any leaked secret needs immediate handling regardless of which PR happened to surface it.
 
