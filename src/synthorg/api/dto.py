@@ -69,7 +69,7 @@ class ErrorDetail(BaseModel):
         type: Documentation URI for the error category.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     detail: NotBlankStr
     error_code: ErrorCode
@@ -109,7 +109,7 @@ class ProblemDetail(BaseModel):
             when not applicable).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: NotBlankStr
     title: NotBlankStr

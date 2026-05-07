@@ -119,7 +119,16 @@ def _has_basemodel_ancestor(
     classes: dict[str, ast.ClassDef],
     visited: set[str] | None = None,
 ) -> bool:
-    """Recursively check whether ``node`` ultimately inherits from ``BaseModel``."""
+    """Recursively check whether ``node`` ultimately inherits from ``BaseModel``.
+
+    Only resolves base classes defined within the same source file
+    (``classes`` index). A cross-file base whose own name does not end
+    with one of :data:`DTO_SUFFIXES` cannot be resolved and is treated
+    as *not* a ``BaseModel`` descendant; such DTOs will escape the gate
+    unless they carry their own ``model_config`` assignment (as done
+    for ``CreatePresetRequest``/``UpdatePresetRequest`` in
+    ``dto_personalities.py``).
+    """
     if visited is None:
         visited = set()
     if node.name in visited:
