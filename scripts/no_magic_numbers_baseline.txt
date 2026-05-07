@@ -810,8 +810,8 @@ src/synthorg/security/trust/config.py:18:39
 src/synthorg/security/trust/milestone_strategy.py:34:39
 src/synthorg/security/trust/weighted_strategy.py:27:40
 src/synthorg/settings/bridge_configs.py:34:44
-src/synthorg/settings/dispatcher.py:38:48
-src/synthorg/settings/dispatcher.py:41:44
+src/synthorg/settings/dispatcher.py:39:48
+src/synthorg/settings/dispatcher.py:42:44
 src/synthorg/settings/subscribers/per_op_rate_limit_subscriber.py:50:33
 src/synthorg/telemetry/collector.py:85:45
 src/synthorg/telemetry/collector.py:95:33
