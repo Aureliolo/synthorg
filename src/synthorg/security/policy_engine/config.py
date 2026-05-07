@@ -81,7 +81,7 @@ def build_policy_engine(
         for path in config.policy_files:
             try:
                 policy_texts.append(path.read_text(encoding="utf-8"))
-            except OSError as exc:
+            except (OSError, UnicodeDecodeError) as exc:
                 logger.warning(
                     SECURITY_POLICY_ENGINE_ERROR,
                     context="policy_file_read_failed",

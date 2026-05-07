@@ -38,7 +38,7 @@ src/synthorg/notifications/dispatcher.py:76:NotificationDispatcher:_lifecycle_lo
 src/synthorg/notifications/dispatcher.py:87:NotificationDispatcher:_dispatch_idle:Event
 src/synthorg/providers/health_prober.py:182:ProviderHealthProber:_stop_event:Event
 src/synthorg/providers/health_prober.py:188:ProviderHealthProber:_lifecycle_lock:Lock
-src/synthorg/settings/dispatcher.py:103:SettingsChangeDispatcher:_lifecycle_lock:Lock
+src/synthorg/settings/dispatcher.py:104:SettingsChangeDispatcher:_lifecycle_lock:Lock
 src/synthorg/telemetry/collector.py:321:TelemetryCollector:_lifecycle_lock:Lock
 src/synthorg/workers/worker.py:83:Worker:_stop_event:Event
 src/synthorg/workers/worker.py:92:Worker:_lifecycle_lock:Lock

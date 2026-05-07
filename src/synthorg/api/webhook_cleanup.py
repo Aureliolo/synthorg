@@ -69,18 +69,18 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
         raise
     except Exception as exc:
         # ``logger.exception`` would attach a traceback that could leak
-        # secret-bearing frame state into structured logs (SEC-1); use
+        # secret-bearing frame state into structured logs; use
         # ``logger.error`` with ``safe_error_description`` instead.
         logger.error(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
-            error=(
+            message=(
                 "Failed to resolve integrations.webhook_receipt_retention_days;"
                 f" falling back to {_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS} days."
                 " If an operator set the value to 0 (disable sweep) it will"
                 " NOT take effect until the settings backend recovers."
             ),
             error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+            error=safe_error_description(exc),
             fallback_days=_DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS,
         )
         return _DEFAULT_WEBHOOK_RECEIPT_RETENTION_DAYS

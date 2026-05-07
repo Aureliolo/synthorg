@@ -302,12 +302,18 @@ async def _init_persistence(
         try:
             app_state.set_mcp_installations_repo(persistence.mcp_installations)
         except Exception as exc:
-            logger.warning(
+            # The repo is required: ``create_app`` deliberately leaves
+            # the slot empty when persistence is configured so the
+            # in-memory stub does not survive into a real boot. If the
+            # wire-up fails, the app would serve traffic with no MCP
+            # installations repo wired at all -- fail closed instead.
+            logger.error(
                 API_APP_STARTUP,
                 note="Failed to wire persistence-backed MCP installations repo",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            raise
 
 
 def _reset_if_tasks_dead(  # noqa: PLR0911

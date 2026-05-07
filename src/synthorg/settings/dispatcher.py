@@ -18,6 +18,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_DISPATCHER_POLL_ERROR,
     SETTINGS_DISPATCHER_START_REJECTED,
     SETTINGS_DISPATCHER_STARTED,
+    SETTINGS_DISPATCHER_STOP_FAILED,
     SETTINGS_DISPATCHER_STOPPED,
     SETTINGS_SUBSCRIBER_ERROR,
     SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -236,8 +237,8 @@ class SettingsChangeDispatcher:
                     # TimeoutError traceback with no actionable
                     # diagnostic beyond the structured fields below.
                     logger.error(
-                        SETTINGS_DISPATCHER_STOPPED,
-                        error=(
+                        SETTINGS_DISPATCHER_STOP_FAILED,
+                        note=(
                             "stop exceeded hard deadline; "
                             "dispatcher marked unrestartable"
                         ),
@@ -269,7 +270,9 @@ class SettingsChangeDispatcher:
             # queue until channel cleanup.
             try:
                 await self._bus.unsubscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 # Unsubscribe failure means the bus still holds a
                 # stale ``__settings_dispatcher__`` registration on
                 # ``#settings``. Mark the dispatcher unrestartable so
@@ -280,10 +283,12 @@ class SettingsChangeDispatcher:
                 # stop unsubscribe instead of early-returning.
                 self._stop_failed = True
                 logger.error(
-                    SETTINGS_DISPATCHER_STOPPED,
-                    error=(
+                    SETTINGS_DISPATCHER_STOP_FAILED,
+                    note=(
                         "clean-stop unsubscribe failed; dispatcher marked unrestartable"
                     ),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 

@@ -65,11 +65,13 @@ def _resolve_health_port() -> int:
     try:
         port = int(raw)
     except ValueError as exc:
-        logger.exception(
+        logger.error(
             CONFIG_VALIDATION_FAILED,
             env_var=_HEALTH_PORT_ENV_VAR,
             value=safe_raw,
             reason="not-an-integer",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"{_HEALTH_PORT_ENV_VAR}={safe_raw!r} is not a valid integer"
         raise ValueError(msg) from exc

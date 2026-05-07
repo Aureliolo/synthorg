@@ -497,10 +497,11 @@ def _has_error_alias_kwarg(
     bypass: the alias tracker collects ``msg`` but the value site sees
     a ``Subscript`` instead of a bare ``Name``.
 
-    Only one level of aliasing is tracked. Multi-hop aliasing
-    (``a = str(exc); b = a; logger.warning(error=b)``) requires a
-    transitive analysis pass that the project currently does not need;
-    the gate stays conservative.
+    Multi-hop aliasing (``a = str(exc); b = a; logger.warning(error=b)``)
+    is also caught: :meth:`_LoggerExceptionFinder._collect_leak_aliases`
+    runs :meth:`_value_subtree_references_leak_alias` on each RHS, so a
+    rebinding to an existing alias propagates the alias status to the
+    new name and the kwarg-side walk here picks it up.
     """
     if not leak_aliases:
         return False

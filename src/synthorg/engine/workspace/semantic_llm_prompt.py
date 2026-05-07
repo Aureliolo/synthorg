@@ -240,11 +240,13 @@ def _parse_conflicts_from_content(content: str) -> tuple[MergeConflict, ...]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        msg = f"Cannot parse response content as JSON: {safe_error_description(exc)}"
+        error_desc = safe_error_description(exc)
+        msg = f"Cannot parse response content as JSON: {error_desc}"
         logger.warning(
             WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
             reason="parse_error",
-            error=msg,
+            error_type=type(exc).__name__,
+            error=error_desc,
         )
         raise ValueError(msg) from exc
 

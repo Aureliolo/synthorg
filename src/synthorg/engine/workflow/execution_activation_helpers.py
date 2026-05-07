@@ -211,15 +211,16 @@ def process_conditional_node(  # noqa: PLR0913
     try:
         result = evaluate_condition(expr, ctx)
     except (ValueError, TypeError, KeyError) as exc:
+        error_desc = safe_error_description(exc)
         logger.warning(
             WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
             execution_id=execution_id,
             node_id=nid,
             expression=expr,
             error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            error=error_desc,
         )
-        msg = f"Failed to evaluate condition on node {nid!r}: {safe_error_description(exc)}"  # noqa: E501
+        msg = f"Failed to evaluate condition on node {nid!r}: {error_desc}"
         raise WorkflowConditionEvalError(msg) from exc
 
     safe_expr = expr.replace("\n", " ").replace("\r", " ")

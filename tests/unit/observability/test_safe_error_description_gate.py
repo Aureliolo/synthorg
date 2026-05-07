@@ -614,6 +614,36 @@ class TestVariableIndirection:
         # an out-of-scope name; the gate doesn't try to resolve that.
         assert len(hits) == 1, "inner alias must not bleed into outer scope"
 
+    def test_alias_in_nested_lambda_isolated(self) -> None:
+        """Aliases captured by a lambda do not leak alias status to the outer scope.
+
+        Mirrors :meth:`test_alias_in_nested_function_isolated` for the
+        ``Lambda`` boundary specifically -- the walker stops alias
+        propagation at every nested scope (``FunctionDef`` /
+        ``AsyncFunctionDef`` / ``Lambda``). Without this guard, an
+        alias defined inside a lambda body would silently extend the
+        outer scope's leak-alias set and start flagging unrelated
+        outer logger calls.
+        """
+        hits = _scan_source(
+            """
+            def outer():
+                try:
+                    pass
+                except Exception as exc:
+                    fail = lambda: logger.warning(
+                        "E",
+                        error=(lambda msg=str(exc): msg)(),
+                    )
+                logger.warning("E2", error=error_msg)
+            """,
+        )
+        # Only the lambda's own logger call references a leak shape;
+        # the outer call references ``error_msg`` which was never
+        # bound (lambdas do not bind into the enclosing scope), so it
+        # must not be flagged via stale alias propagation.
+        assert len(hits) == 1, "lambda-internal alias must not bleed into outer scope"
+
     def test_unrelated_alias_quiet(self) -> None:
         """``error_msg = "static"; logger.warning(error=error_msg)`` -- safe."""
         hits = _scan_source(
