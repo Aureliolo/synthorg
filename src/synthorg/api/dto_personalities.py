@@ -28,7 +28,7 @@ __all__ = [
 class PresetSummaryResponse(BaseModel):
     """Summary of a personality preset for list endpoints."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     description: str = ""
@@ -39,7 +39,7 @@ class PresetSummaryResponse(BaseModel):
 class PresetDetailResponse(BaseModel):
     """Full personality preset definition."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr
     source: PresetSource
@@ -88,6 +88,8 @@ class _PresetFieldsBase(BaseModel):
 class CreatePresetRequest(_PresetFieldsBase):
     """POST body for creating a custom personality preset."""
 
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
     name: NotBlankStr = Field(max_length=100)
 
     def to_config_dict(self) -> dict[str, Any]:
@@ -97,6 +99,8 @@ class CreatePresetRequest(_PresetFieldsBase):
 
 class UpdatePresetRequest(_PresetFieldsBase):
     """PUT body for updating a custom personality preset."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     def to_config_dict(self) -> dict[str, Any]:
         """Convert to a dict suitable for PersonalityConfig validation."""

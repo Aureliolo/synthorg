@@ -99,7 +99,7 @@ class CookieSessionResponse(BaseModel):
         must_change_password: Whether password change is required.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     expires_in: int = Field(gt=0)
     must_change_password: bool
@@ -117,7 +117,7 @@ class UserInfoResponse(BaseModel):
         scoped_departments: Departments accessible to dept admins.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr
     username: NotBlankStr
@@ -135,7 +135,7 @@ class WsTicketResponse(BaseModel):
         expires_in: Ticket lifetime in seconds.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     ticket: NotBlankStr
     expires_in: int = Field(gt=0)
@@ -156,7 +156,7 @@ class SessionResponse(BaseModel):
         is_current: Whether this is the caller's current session.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     session_id: NotBlankStr
     user_id: NotBlankStr

@@ -6,7 +6,13 @@ from typing import Any
 from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+)
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
@@ -93,7 +99,7 @@ class CalibrationSummaryResponse(BaseModel):
         records: Calibration records.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
     average_drift: float | None = Field(default=None, ge=0.0, le=10.0)

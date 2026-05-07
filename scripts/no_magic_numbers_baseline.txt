@@ -124,7 +124,7 @@ src/synthorg/api/dto.py:33:21
 src/synthorg/api/dto.py:34:17
 src/synthorg/api/dto.py:36:26
 src/synthorg/api/dto.py:37:29
-src/synthorg/api/dto_discovery.py:9:12
+src/synthorg/api/dto_discovery.py:15:12
 src/synthorg/api/etag.py:97:16
 src/synthorg/api/etag.py:98:26
 src/synthorg/api/exception_handlers.py:71:38

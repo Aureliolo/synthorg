@@ -1,6 +1,12 @@
 """Discovery allowlist DTOs for the provider management API."""
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -18,7 +24,7 @@ class DiscoveryPolicyResponse(BaseModel):
         entry_count: Number of entries in the allowlist (computed).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     host_port_allowlist: tuple[NotBlankStr, ...] = ()
     block_private_ips: bool = True
