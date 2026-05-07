@@ -393,6 +393,50 @@ class TestFStringBlindspot:
             "config / settings access is not a leak vector"
         )
 
+    def test_fstring_intermediate_attr_in_chain_quiet(self) -> None:
+        """``error=f"{config.inner.foo}"`` must NOT trip on the intermediate ``inner``.
+
+        ``inner`` is in :data:`_EXCEPTION_LEAF_NAMES` (covers
+        ``self._inner`` / ``cause.inner``), but here it's a chain
+        SEGMENT, not the value being read out -- the f-string
+        actually interpolates ``config.inner.foo``. A naive walker
+        that yielded every nested ``Attribute`` would false-positive
+        on the intermediate ``inner``. The terminal-attr-only matcher
+        in ``_expression_evaluates_to_exception`` checks the OUTERMOST
+        attr (``foo``, not in set) and only descends through the
+        chain looking at the BASE Name (``config``, not in set), so
+        this innocuous config access is not flagged.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"{config.inner.foo}")
+            """,
+        )
+        assert not hits, (
+            "intermediate Attribute segment matching the leaf-name set "
+            "must not false-positive when the OUTERMOST attr is non-leak"
+        )
+
+    def test_fstring_terminal_inner_flagged(self) -> None:
+        """``error=f"{cause.inner}"`` -- terminal ``.inner`` is exception-like.
+
+        Symmetric companion to
+        :meth:`test_fstring_intermediate_attr_in_chain_quiet`: when
+        ``inner`` IS the OUTERMOST attribute (the value being
+        interpolated), it matches the leaf-name set and the gate
+        fires. ``inner`` is in the set specifically to catch nested-
+        exception accessors like ``self._inner`` / ``cause.inner``.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"{cause.inner}")
+            """,
+        )
+        assert hits, (
+            "terminal .inner Attribute must trip the gate -- "
+            "this is the documented nested-exception accessor pattern"
+        )
+
     def test_fstring_subscript_wrapper_flagged(self) -> None:
         """``error=f"{exc}"[:200]`` -- truncation preserves the prefix leak."""
         hits = _scan_source(
@@ -827,6 +871,32 @@ class TestVariableIndirection:
         )
         assert not hits, (
             "rebinding through safe_error_description must not flag downstream"
+        )
+
+    def test_same_name_safe_rebind_clears_alias(self) -> None:
+        """``msg = str(exc); msg = safe_error_description(msg)`` clears alias.
+
+        The canonical remediation pattern reuses the same name for
+        the sanitized value. Without ``_collect_leak_aliases``
+        discarding the alias on a safe rebind, the second assignment
+        leaves ``msg`` in the alias set and the downstream
+        ``error=msg`` would still trip the gate even though the value
+        is now sanitized. The safe-rebind-discard branch in the
+        collector is the fix; this test pins the contract.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    msg = str(exc)
+                    msg = safe_error_description(msg)
+                    logger.warning("E", error=msg)
+            """,
+        )
+        assert not hits, (
+            "same-name rebind through sanitizer must clear the alias status"
         )
 
 

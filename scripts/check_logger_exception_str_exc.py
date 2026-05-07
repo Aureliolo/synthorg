@@ -355,20 +355,80 @@ def _walk_alias_aware(expr: ast.expr) -> Iterator[ast.AST]:
 def _formatted_value_references_exception(node: ast.FormattedValue) -> bool:
     """Return ``True`` if *node* interpolates an exception-like reference.
 
-    Walks the FormattedValue's ``value`` subtree (skipping ``Call``
-    arguments -- see :func:`_walk_excluding_call_args`) and returns
-    ``True`` on the first ``Name`` whose ``id`` is in
-    ``_EXCEPTION_LEAF_NAMES`` or ``Attribute`` whose terminal ``attr``
-    is in the same set. Handles wrappers like ``exc.args[0]``
-    (Subscript over Attribute on Name ``exc``) and excludes the
-    canonical safe shapes ``type(exc).__name__`` and
-    ``safe_error_description(exc)``.
+    Recursive descent through wrapper nodes (``Subscript`` / ``Call``
+    / ``BinOp`` / ``BoolOp`` / ``IfExp``) bottoming out at the leaf
+    expression, then matches against ``_EXCEPTION_LEAF_NAMES``. The
+    matcher is *terminal* on Attribute chains: only the OUTERMOST
+    ``.attr`` is checked against the leaf-name set, plus the chain
+    BASE Name -- intermediate Attribute segments (``config.inner.foo``
+    where ``inner`` is a chain segment, not the value being read) do
+    NOT match. This eliminates false positives like
+    ``f"{config.inner.foo}"`` triggering on the ``inner`` segment
+    while still catching ``f"{exc}"`` / ``f"{exc.args[0]}"`` /
+    ``f"{exc.message}"`` and excluding the canonical safe shapes
+    ``type(exc).__name__`` / ``safe_error_description(exc)``.
     """
-    for inner in _walk_excluding_call_args(node.value):
-        if isinstance(inner, ast.Name) and inner.id in _EXCEPTION_LEAF_NAMES:
+    return _expression_evaluates_to_exception(node.value)
+
+
+def _expression_evaluates_to_exception(expr: ast.expr) -> bool:  # noqa: PLR0911
+    """Return ``True`` if *expr* evaluates to an exception-bearing value.
+
+    Mirrors the Python evaluation chain rather than a free-form walk:
+
+    * ``Name`` -- match if id in :data:`_EXCEPTION_LEAF_NAMES`.
+    * ``Attribute`` -- match if the OUTERMOST ``.attr`` is in the
+      exception set; otherwise descend through ``.value`` looking
+      only at the chain BASE Name (intermediate Attribute segments
+      do not re-match against the leaf-name set, so a chain like
+      ``config.inner.foo`` whose outer attr is ``foo`` does not
+      false-positive on the intermediate ``inner``).
+      Class-introspection attrs (``__class__`` / ``__name__`` etc.)
+      short-circuit safe.
+    * ``Subscript`` -- recurse on the indexed expression (e.g.
+      ``exc.args[0]`` reaches ``exc`` through Attribute(args)).
+    * ``Call`` -- recurse on ``.func`` only (skip args), so
+      ``safe_error_description(raw)`` evaluates against the function
+      name (not in the set) and the raw arg is not pulled in.
+    * ``BinOp`` / ``BoolOp`` / ``IfExp`` -- any operand evaluating
+      to exception material taints the result.
+    """
+    if isinstance(expr, ast.Name):
+        return expr.id in _EXCEPTION_LEAF_NAMES
+    if isinstance(expr, ast.Attribute):
+        if expr.attr in _TYPE_INTROSPECTION_ATTRS:
+            return False
+        if expr.attr in _EXCEPTION_LEAF_NAMES:
             return True
-        if isinstance(inner, ast.Attribute) and inner.attr in _EXCEPTION_LEAF_NAMES:
-            return True
+        return _chain_base_is_exception_name(expr.value)
+    if isinstance(expr, ast.Subscript):
+        return _expression_evaluates_to_exception(expr.value)
+    if isinstance(expr, ast.Call):
+        return _expression_evaluates_to_exception(expr.func)
+    if isinstance(expr, (ast.BinOp, ast.BoolOp, ast.IfExp)):
+        return any(
+            isinstance(child, ast.expr) and _expression_evaluates_to_exception(child)
+            for child in ast.iter_child_nodes(expr)
+        )
+    return False
+
+
+def _chain_base_is_exception_name(expr: ast.expr) -> bool:
+    """Walk through a chain looking only at the BASE ``Name``.
+
+    Used by :func:`_expression_evaluates_to_exception` after the
+    OUTERMOST Attribute attr has already been checked: intermediate
+    Attribute segments along the chain are navigation, not values
+    being read out, so we skip checking their ``.attr`` against the
+    leaf-name set and keep descending until a Name (or non-chain
+    expression) is reached.
+    """
+    if isinstance(expr, ast.Name):
+        return expr.id in _EXCEPTION_LEAF_NAMES
+    if isinstance(expr, ast.Attribute):
+        return _chain_base_is_exception_name(expr.value)
+    if isinstance(expr, ast.Subscript):
+        return _chain_base_is_exception_name(expr.value)
     return False
 
 
@@ -486,16 +546,24 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
             return  # nested scope -- handled by its own visit_FunctionDef pass
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             value = node.value
-            if value is not None and (
+            leaks = value is not None and (
                 _value_aliases_exception(value)
                 or self._value_subtree_references_leak_alias(value)
-            ):
-                targets = (
-                    node.targets if isinstance(node, ast.Assign) else [node.target]
-                )
-                for target in targets:
-                    if isinstance(target, ast.Name):
+            )
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    if leaks:
                         self._leak_aliases.add(target.id)
+                    else:
+                        # Safe rebind: ``msg = safe_error_description(msg)``
+                        # clears the leak status. Without this, the
+                        # canonical remediation pattern would leave
+                        # ``msg`` in the alias set forever and the
+                        # downstream ``error=msg`` would still trip
+                        # the gate even though the value is now
+                        # sanitized.
+                        self._leak_aliases.discard(target.id)
         elif isinstance(node, ast.NamedExpr):
             # Walrus (``msg := str(exc)``) binds the target with the
             # leak shape exactly like ``msg = str(exc)``; without this
@@ -503,15 +571,15 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
             # the alias collector. ``NamedExpr.target`` is always a
             # plain ``Name`` per the grammar -- no tuple unpack.
             value = node.value
-            if (
-                value is not None
-                and (
+            if isinstance(node.target, ast.Name):
+                leaks = value is not None and (
                     _value_aliases_exception(value)
                     or self._value_subtree_references_leak_alias(value)
                 )
-                and isinstance(node.target, ast.Name)
-            ):
-                self._leak_aliases.add(node.target.id)
+                if leaks:
+                    self._leak_aliases.add(node.target.id)
+                else:
+                    self._leak_aliases.discard(node.target.id)
         for child in ast.iter_child_nodes(node):
             self._collect_leak_aliases(child)
 
