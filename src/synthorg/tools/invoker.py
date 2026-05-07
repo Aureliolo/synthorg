@@ -604,11 +604,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
             raise
         except Exception as exc:
-            # Use the redacted helper for both the log line and the
-            # user-facing ToolExecutionError message: the propagated
-            # error string lands in agent context, where credential
-            # material from third-party HTTP / driver exceptions
-            # would otherwise leak just as it would in the log sink.
+            # Propagated error string lands in agent context; redact to
+            # prevent credential leakage from third-party HTTP / driver
+            # exceptions.
             redacted_error = safe_error_description(exc)
             logger.warning(
                 TOOL_INVOKE_EXECUTION_ERROR,

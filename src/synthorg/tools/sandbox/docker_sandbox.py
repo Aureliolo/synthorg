@@ -582,11 +582,13 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                         f"_sidecar:{sidecar_id}",
                         None,
                     )
-            msg = f"Failed to create container: {safe_error_description(exc)}"
+            error_desc = safe_error_description(exc)
+            msg = f"Failed to create container: {error_desc}"
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 command=command,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=error_desc,
             )
             raise SandboxStartError(msg) from exc
 
@@ -712,11 +714,13 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         try:
             await container_obj.start()
         except Exception as exc:
-            msg = f"Failed to start container {container_id[:12]}: {safe_error_description(exc)}"  # noqa: E501
+            error_desc = safe_error_description(exc)
+            msg = f"Failed to start container {container_id[:12]}: {error_desc}"
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 container_id=container_id[:12],
-                error=msg,
+                error_type=type(exc).__name__,
+                error=error_desc,
             )
             raise SandboxStartError(msg) from exc
 

@@ -50,6 +50,14 @@ MEETING_PARSING_NO_SECTION: Final[str] = "meeting.parsing.no_section"
 
 # Internal invariant violations
 MEETING_INTERNAL_ERROR: Final[str] = "meeting.internal.error"
+MEETING_RECORD_MIRROR_DRIFT: Final[str] = "meeting.internal.record_mirror_drift"
+"""Storage invariant: ``_records_by_id`` and ``_records`` diverged.
+
+Distinct from ``MEETING_FAILED`` because this is a delete-time
+storage-mirror bug (the dict did not see a record present in the
+list), not a meeting-execution failure. Dashboards / alerts wired off
+``meeting.lifecycle.failed`` would otherwise misclassify these as
+real protocol failures and inflate the failure-rate signal."""
 
 # Scheduler lifecycle
 MEETING_SCHEDULER_STARTED: Final[str] = "meeting.scheduler.started"

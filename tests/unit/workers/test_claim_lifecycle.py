@@ -17,12 +17,13 @@ container -- the public ``start()`` path is unaffected.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import synthorg.workers.claim as claim_module
 from synthorg.communication.config import NatsConfig
-from synthorg.workers.claim import JetStreamTaskQueue
+from synthorg.workers.claim import _MAX_CLAIM_PAYLOAD_BYTES, JetStreamTaskQueue
 from synthorg.workers.config import QueueConfig
 
 
@@ -82,9 +83,26 @@ class _FakeMsg:
         self.ack = AsyncMock(spec=_AckStub.ack)
 
 
+def _patch_logger(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Replace the queue module's logger with a spy and return it.
+
+    structlog's ``BoundLoggerLazyProxy`` caches bound severity methods
+    on the proxy's ``__dict__`` after first access; assigning a new
+    ``MagicMock`` over the proxy bypasses that cache because the proxy
+    object itself is replaced. The fixture-style helper centralises
+    this pattern across the tests below.
+    """
+    spy = MagicMock(spec=["warning", "error", "info", "debug"])
+    monkeypatch.setattr(claim_module, "logger", spy)
+    return spy
+
+
 @pytest.mark.unit
-async def test_stop_logs_unsubscribe_failure_with_structured_fields() -> None:
+async def test_stop_logs_unsubscribe_failure_with_structured_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """``stop()`` swallows unsubscribe errors but emits ``error_type`` + ``error``."""
+    spy = _patch_logger(monkeypatch)
     queue = _make_queue()
     queue._sub = AsyncMock(spec=_SubscriptionStub)
     queue._sub.unsubscribe.side_effect = RuntimeError("transient nats error")
@@ -96,11 +114,18 @@ async def test_stop_logs_unsubscribe_failure_with_structured_fields() -> None:
     await queue.stop()
 
     assert queue._sub is None
+    spy.warning.assert_called_once()
+    kwargs = spy.warning.call_args.kwargs
+    assert kwargs["error_type"] == "RuntimeError"
+    assert kwargs["error"].startswith("RuntimeError:")
 
 
 @pytest.mark.unit
-async def test_stop_logs_drain_failure_with_structured_fields() -> None:
+async def test_stop_logs_drain_failure_with_structured_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """``stop()`` swallows drain errors but emits ``error_type`` + ``error``."""
+    spy = _patch_logger(monkeypatch)
     queue = _make_queue()
     queue._client = AsyncMock(spec=_ClientStub)
     queue._client.drain.side_effect = RuntimeError("transient nats error")
@@ -109,6 +134,10 @@ async def test_stop_logs_drain_failure_with_structured_fields() -> None:
 
     assert queue._client is None
     assert queue._js is None
+    spy.warning.assert_called_once()
+    kwargs = spy.warning.call_args.kwargs
+    assert kwargs["error_type"] == "RuntimeError"
+    assert kwargs["error"].startswith("RuntimeError:")
 
 
 @pytest.mark.unit
@@ -134,8 +163,11 @@ async def test_stop_re_raises_recursion_error_from_drain() -> None:
 
 
 @pytest.mark.unit
-async def test_drain_partial_logs_unsubscribe_failure() -> None:
+async def test_drain_partial_logs_unsubscribe_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """``_drain_partial`` mirrors ``stop()``'s teardown carve-out."""
+    spy = _patch_logger(monkeypatch)
     queue = _make_queue()
     queue._sub = AsyncMock(spec=_SubscriptionStub)
     queue._sub.unsubscribe.side_effect = RuntimeError("nats")
@@ -146,6 +178,11 @@ async def test_drain_partial_logs_unsubscribe_failure() -> None:
 
     assert queue._sub is None
     assert queue._client is None
+    # Both unsubscribe and drain failed -- two structured warnings.
+    assert spy.warning.call_count == 2
+    for call in spy.warning.call_args_list:
+        assert call.kwargs["error_type"] == "RuntimeError"
+        assert call.kwargs["error"].startswith("RuntimeError:")
 
 
 @pytest.mark.unit
@@ -160,12 +197,16 @@ async def test_drain_partial_re_raises_memory_error_from_drain() -> None:
 
 
 @pytest.mark.unit
-async def test_next_claim_oversize_payload_logs_ack_failure() -> None:
+async def test_next_claim_oversize_payload_logs_ack_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Oversize-payload branch: ``raw.ack()`` failure is logged structured."""
+    spy = _patch_logger(monkeypatch)
     queue = _make_queue()
-    # ``_MAX_CLAIM_PAYLOAD_BYTES`` is 64KiB at module scope; produce a
-    # payload that overflows the limit so the oversize branch fires.
-    huge_payload = b"x" * (1024 * 128)
+    # ``_MAX_CLAIM_PAYLOAD_BYTES`` is the production cap (1 MiB at the
+    # time of writing). Use ``+1`` so the oversize branch reliably
+    # fires regardless of the exact limit value.
+    huge_payload = b"x" * (_MAX_CLAIM_PAYLOAD_BYTES + 1)
     raw = _FakeMsg(huge_payload)
     raw.ack.side_effect = RuntimeError("ack failed")
 
@@ -176,11 +217,25 @@ async def test_next_claim_oversize_payload_logs_ack_failure() -> None:
 
     assert result is None
     raw.ack.assert_awaited_once()
+    # Two warnings are expected: the payload-too-large preflight and
+    # the ack-failure structured log. Pin both shapes.
+    warning_kwargs = [c.kwargs for c in spy.warning.call_args_list]
+    assert any(kw.get("reason") == "payload_too_large" for kw in warning_kwargs), (
+        "expected the oversize-payload preflight warning"
+    )
+    assert any(
+        kw.get("error_type") == "RuntimeError"
+        and kw.get("error", "").startswith("RuntimeError:")
+        for kw in warning_kwargs
+    ), "expected the ack-failure structured warning"
 
 
 @pytest.mark.unit
-async def test_next_claim_malformed_payload_logs_ack_failure() -> None:
+async def test_next_claim_malformed_payload_logs_ack_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Malformed-claim branch: ``raw.ack()`` failure is logged structured."""
+    spy = _patch_logger(monkeypatch)
     queue = _make_queue()
     raw = _FakeMsg(b"this is not valid json")
     raw.ack.side_effect = RuntimeError("ack failed")
@@ -192,13 +247,22 @@ async def test_next_claim_malformed_payload_logs_ack_failure() -> None:
 
     assert result is None
     raw.ack.assert_awaited_once()
+    warning_kwargs = [c.kwargs for c in spy.warning.call_args_list]
+    assert any(kw.get("reason") == "validation_failed" for kw in warning_kwargs), (
+        "expected the malformed-claim parse-failure warning"
+    )
+    assert any(
+        kw.get("error_type") == "RuntimeError"
+        and kw.get("error", "").startswith("RuntimeError:")
+        for kw in warning_kwargs
+    ), "expected the ack-failure structured warning"
 
 
 @pytest.mark.unit
 async def test_next_claim_oversize_payload_re_raises_memory_error() -> None:
     """``MemoryError`` from ``raw.ack()`` on oversize-payload propagates."""
     queue = _make_queue()
-    huge_payload = b"x" * (1024 * 128)
+    huge_payload = b"x" * (_MAX_CLAIM_PAYLOAD_BYTES + 1)
     raw = _FakeMsg(huge_payload)
     raw.ack.side_effect = MemoryError("oom")
 

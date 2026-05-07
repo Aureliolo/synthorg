@@ -40,6 +40,7 @@ from synthorg.observability.events.meeting import (
     MEETING_FAILED,
     MEETING_LENS_ASSIGNMENT_FAILED,
     MEETING_PROTOCOL_NOT_FOUND,
+    MEETING_RECORD_MIRROR_DRIFT,
     MEETING_STARTED,
     MEETING_TASK_CREATED,
     MEETING_TASK_CREATION_FAILED,
@@ -60,7 +61,8 @@ def _format_exception(exc: BaseException) -> str:
     Flattens ``ExceptionGroup`` (produced by ``asyncio.TaskGroup``
     when multiple concurrent tasks fail) into a single human-readable
     string.  Handles nested groups recursively.  Non-group exceptions
-    are returned via ``str()``.
+    are returned via ``safe_error_description()`` so callers never
+    embed unredacted ``str(exc)`` into log/UI fields.
     """
     if isinstance(exc, ExceptionGroup):
         parts: list[str] = []
@@ -325,7 +327,7 @@ class MeetingOrchestrator:
             # trace use case; the relevant context is the structured
             # fields below, not the ValueError trace.
             logger.error(
-                MEETING_FAILED,
+                MEETING_RECORD_MIRROR_DRIFT,
                 reason="record_mirror_drift",
                 meeting_id=meeting_id,
                 list_len=len(self._records),
