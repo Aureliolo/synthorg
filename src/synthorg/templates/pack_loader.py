@@ -299,7 +299,7 @@ def _load_builtin(name: str) -> LoadedTemplate:
         ref = resources.files("synthorg.templates.packs") / filename
         yaml_text = ref.read_text(encoding="utf-8")
     except (OSError, ImportError, TypeError) as exc:
-        msg = f"Failed to read built-in pack resource {filename!r}: {exc}"
+        msg = f"Failed to read built-in pack resource {filename!r}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             TEMPLATE_PACK_LOAD_NOT_FOUND,
             source=source_name,

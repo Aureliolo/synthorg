@@ -600,15 +600,21 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
             raise
         except Exception as exc:
-            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
+            # Use the redacted helper for both the log line and the
+            # user-facing ToolExecutionError message: the propagated
+            # error string lands in agent context, where credential
+            # material from third-party HTTP / driver exceptions
+            # would otherwise leak just as it would in the log sink.
+            redacted_error = safe_error_description(exc)
             logger.warning(
                 TOOL_INVOKE_EXECUTION_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error=error_msg,
+                error_type=type(exc).__name__,
+                error=redacted_error,
             )
             exec_err = ToolExecutionError(
-                error_msg,
+                redacted_error,
                 context={"tool": tool_call.name},
             )
             return ToolResult(
@@ -677,7 +683,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
             return ToolResult(
                 tool_call_id=tool_call.id,
-                content=f"Approval escalation tracking failed: {exc}",
+                content=f"Approval escalation tracking failed: {safe_error_description(exc)}",  # noqa: E501
                 is_error=True,
             )
         return None

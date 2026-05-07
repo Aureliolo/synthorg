@@ -78,7 +78,7 @@ class ConfigComponentHandler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to back up config file: {exc}"
+            msg = f"Failed to back up config file: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
         logger.info(
             BACKUP_COMPONENT_COMPLETED,
@@ -137,7 +137,7 @@ class ConfigComponentHandler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to restore config file: {exc}"
+            msg = f"Failed to restore config file: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
 
     async def validate_source(self, source_dir: Path) -> bool:

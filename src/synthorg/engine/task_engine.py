@@ -715,7 +715,7 @@ class TaskEngine(TaskEngineLoopsMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            msg = f"Failed to read task: {exc}"
+            msg = f"Failed to read task: {safe_error_description(exc)}"
             logger.warning(
                 TASK_ENGINE_READ_FAILED,
                 error=msg,

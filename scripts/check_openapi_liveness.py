@@ -72,7 +72,7 @@ def main() -> int:
         # TRY400: logger.exception() attaches a traceback whose serialized
         # frame-locals can leak secrets per CLAUDE.md SEC-1.  Use
         # logger.error with safe_error_description instead.
-        logger.error(  # noqa: TRY400
+        logger.error(
             "openapi_export_failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

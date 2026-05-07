@@ -61,7 +61,7 @@ async def connect(state: _NatsState) -> None:
         )
     except (TimeoutError, NoServersError, OSError) as exc:
         redacted = redact_url(state.nats_config.url)
-        msg = f"Failed to connect to NATS at {redacted}: {exc}"
+        msg = f"Failed to connect to NATS at {redacted}: {safe_error_description(exc)}"
         logger.warning(COMM_BUS_DISCONNECTED, error=msg, url=redacted)
         raise BusConnectionError(
             msg,
@@ -132,7 +132,7 @@ async def ensure_stream(state: _NatsState) -> None:
         else:
             await state.js.update_stream(stream_config)
     except NatsError as exc:
-        msg = f"Failed to set up stream {state.stream_name}: {exc}"
+        msg = f"Failed to set up stream {state.stream_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             COMM_BUS_STREAM_SCAN_FAILED,
             stream=state.stream_name,
@@ -163,7 +163,7 @@ async def ensure_kv_bucket(state: _NatsState) -> None:
                 bucket=state.kv_bucket_name,
             )
     except NatsError as exc:
-        msg = f"Failed to set up KV bucket {state.kv_bucket_name}: {exc}"
+        msg = f"Failed to set up KV bucket {state.kv_bucket_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel="*",

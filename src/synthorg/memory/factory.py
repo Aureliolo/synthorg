@@ -91,7 +91,7 @@ def _create_mem0_backend(
         )
         raise
     except Exception as exc:
-        msg = f"Invalid Mem0 configuration: {exc}"
+        msg = f"Invalid Mem0 configuration: {safe_error_description(exc)}"
         logger.warning(
             MEMORY_BACKEND_CONFIG_INVALID,
             backend="mem0",
@@ -114,7 +114,7 @@ def _create_mem0_backend(
         )
         raise
     except Exception as exc:
-        msg = f"Failed to create Mem0 backend: {exc}"
+        msg = f"Failed to create Mem0 backend: {safe_error_description(exc)}"
         logger.warning(
             MEMORY_BACKEND_CONFIG_INVALID,
             backend="mem0",

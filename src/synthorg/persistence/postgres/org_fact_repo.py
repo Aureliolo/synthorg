@@ -106,7 +106,7 @@ def _snapshot_row_to_org_fact(row: dict[str, Any]) -> OrgFact:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Failed to deserialize snapshot row: {exc}"
+        msg = f"Failed to deserialize snapshot row: {safe_error_description(exc)}"
         raise OrgMemoryQueryError(msg) from exc
 
 
@@ -147,7 +147,7 @@ def _row_to_operation_log_entry(row: dict[str, Any]) -> OperationLogEntry:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Failed to deserialize operation log row: {exc}"
+        msg = f"Failed to deserialize operation log row: {safe_error_description(exc)}"
         raise OrgMemoryQueryError(msg) from exc
 
 
@@ -179,7 +179,7 @@ def _row_to_snapshot(row: dict[str, Any]) -> OperationLogSnapshot:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Failed to deserialize snapshot_at row: {exc}"
+        msg = f"Failed to deserialize snapshot_at row: {safe_error_description(exc)}"
         raise OrgMemoryQueryError(msg) from exc
 
 
@@ -314,7 +314,7 @@ class PostgresOrgFactRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to save org fact: {exc}"
+            msg = f"Failed to save org fact: {safe_error_description(exc)}"
             raise OrgMemoryWriteError(msg) from exc
         else:
             logger.info(
@@ -372,7 +372,7 @@ class PostgresOrgFactRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to delete org fact: {exc}"
+            msg = f"Failed to delete org fact: {safe_error_description(exc)}"
             raise OrgMemoryWriteError(msg) from exc
         else:
             logger.info(
@@ -403,7 +403,7 @@ class PostgresOrgFactRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to get org fact: {exc}"
+            msg = f"Failed to get org fact: {safe_error_description(exc)}"
             raise OrgMemoryQueryError(msg) from exc
         if row is None:
             return None
@@ -462,7 +462,7 @@ class PostgresOrgFactRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to query org facts: {exc}"
+            msg = f"Failed to query org facts: {safe_error_description(exc)}"
             raise OrgMemoryQueryError(msg) from exc
         return tuple(_snapshot_row_to_org_fact(row) for row in rows)
 
@@ -504,7 +504,7 @@ class PostgresOrgFactRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to list org facts by category: {exc}"
+            msg = f"Failed to list org facts by category: {safe_error_description(exc)}"
             raise OrgMemoryQueryError(msg) from exc
         return tuple(_snapshot_row_to_org_fact(row) for row in rows)
 
@@ -581,7 +581,7 @@ ORDER BY lo.fact_id
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to query snapshot at {timestamp.isoformat()}: {exc}"
+            msg = f"Failed to query snapshot at {timestamp.isoformat()}: {safe_error_description(exc)}"  # noqa: E501
             raise OrgMemoryQueryError(msg) from exc
         result = tuple(_row_to_snapshot(row) for row in rows)
         logger.debug(
@@ -615,7 +615,7 @@ ORDER BY lo.fact_id
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to get operation log for {fact_id}: {exc}"
+            msg = f"Failed to get operation log for {fact_id}: {safe_error_description(exc)}"  # noqa: E501
             raise OrgMemoryQueryError(msg) from exc
         result = tuple(_row_to_operation_log_entry(row) for row in rows)
         logger.debug(

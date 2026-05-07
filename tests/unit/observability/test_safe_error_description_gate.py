@@ -255,9 +255,10 @@ class TestFStringBlindspot:
     which on ``HTTPStatusError`` / ``psycopg.Error`` carries the same
     payload.
 
-    The pre-2026-05 gate matched only explicit ``str(<exc_like>)``
-    Call nodes; f-string interpolation slipped past because no Call
-    is involved. These tests pin the new ``FormattedValue`` matcher.
+    f-string interpolation does not produce a ``Call`` node; the
+    matcher inspects ``FormattedValue`` directly so credentials
+    routed through ``error=f"...{exc}..."`` are caught alongside
+    the explicit ``str(<exc_like>)`` shape.
     """
 
     @pytest.mark.parametrize(
@@ -475,6 +476,28 @@ class TestFStringBlindspot:
         )
         assert not hits, "static prefix + type(exc).__name__ is a safe shape, no leak"
 
+    def test_fstring_exc_class_name_quiet(self) -> None:
+        """``error=f"{exc.__class__.__name__}"`` -- type metadata, safe.
+
+        Same shape as ``type(exc).__name__``: evaluates to the
+        exception's class name, not its message.
+        """
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"{exc.__class__.__name__}")
+            """,
+        )
+        assert not hits, "exc.__class__.__name__ is type metadata, no leak"
+
+    def test_fstring_exc_class_qualname_quiet(self) -> None:
+        """``error=f"{exc.__class__.__qualname__}"`` -- type metadata, safe."""
+        hits = _scan_source(
+            """
+            logger.warning("E", error=f"{exc.__class__.__qualname__}")
+            """,
+        )
+        assert not hits
+
     def test_fstring_method_call_on_exc_flagged(self) -> None:
         """``error=f"{exc.format_for_log()}"`` -- method on exc still flagged.
 
@@ -489,6 +512,107 @@ class TestFStringBlindspot:
             """,
         )
         assert hits
+
+
+@pytest.mark.unit
+class TestVariableIndirection:
+    """``error_msg = str(exc); logger.warning(error=error_msg)`` is the same leak.
+
+    A naive AST gate that only inspects the kwarg value at the call
+    site misses indirection through a one-step Name binding. The
+    finder tracks per-function-scope leak aliases: any Name whose
+    assignment RHS contains a known leak shape is flagged when later
+    referenced as the ``error=`` kwarg.
+    """
+
+    def test_str_exc_alias_flagged(self) -> None:
+        """``error_msg = str(exc); logger.warning(error=error_msg)``."""
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    error_msg = str(exc)
+                    logger.warning("E", error=error_msg)
+            """,
+        )
+        assert hits, "variable-indirection bypass must be flagged"
+
+    def test_fstring_exc_alias_flagged(self) -> None:
+        """``msg = f"{exc}"; logger.warning(error=msg)``."""
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    msg = f"{exc}"
+                    logger.warning("E", error=msg)
+            """,
+        )
+        assert hits, "f-string-aliased exc must be flagged via indirection"
+
+    def test_safe_alias_quiet(self) -> None:
+        """``msg = safe_error_description(exc); logger.warning(error=msg)`` -- safe."""
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    msg = safe_error_description(exc)
+                    logger.warning("E", error=msg)
+            """,
+        )
+        assert not hits, "redacted alias must not be flagged"
+
+    def test_alias_with_or_fallback_flagged(self) -> None:
+        """``error_msg = str(exc) or "fallback"; logger.warning(error=error_msg)``.
+
+        The alias still binds to a leak shape (BoolOp value), so the
+        gate's wrapper-walk catches it during alias collection.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    error_msg = str(exc) or "fallback"
+                    logger.warning("E", error=error_msg)
+            """,
+        )
+        assert hits
+
+    def test_alias_in_nested_function_isolated(self) -> None:
+        """Aliases collected in an inner function do not leak to outer scope."""
+        hits = _scan_source(
+            """
+            def outer():
+                def inner():
+                    try:
+                        pass
+                    except Exception as exc:
+                        error_msg = str(exc)
+                        logger.warning("E", error=error_msg)
+                logger.warning("E2", error=error_msg)
+            """,
+        )
+        # Only the inner call is flagged. The outer call references
+        # an out-of-scope name; the gate doesn't try to resolve that.
+        assert len(hits) == 1, "inner alias must not bleed into outer scope"
+
+    def test_unrelated_alias_quiet(self) -> None:
+        """``error_msg = "static"; logger.warning(error=error_msg)`` -- safe."""
+        hits = _scan_source(
+            """
+            def f():
+                error_msg = "static description"
+                logger.warning("E", error=error_msg)
+            """,
+        )
+        assert not hits, "non-leak alias must not be flagged"
 
 
 @pytest.mark.unit

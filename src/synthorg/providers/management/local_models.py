@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_DELETE_FAILED,
     PROVIDER_MODEL_DELETED,
@@ -285,7 +285,7 @@ class OllamaModelManager:
                 ):
                     yield event
         except httpx.HTTPError as exc:
-            err = f"HTTP error during pull: {exc}"
+            err = f"HTTP error during pull: {safe_error_description(exc)}"
             logger.warning(
                 PROVIDER_MODEL_PULL_FAILED,
                 provider="ollama",
@@ -347,7 +347,7 @@ class OllamaModelManager:
                 model=model_name,
             )
         except httpx.HTTPError as exc:
-            msg = f"HTTP error during delete: {exc}"
+            msg = f"HTTP error during delete: {safe_error_description(exc)}"
             logger.warning(
                 PROVIDER_MODEL_DELETE_FAILED,
                 provider="ollama",

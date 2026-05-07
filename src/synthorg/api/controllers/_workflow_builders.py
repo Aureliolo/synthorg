@@ -127,8 +127,18 @@ def build_update_fields(
             WorkflowIODeclaration,
             "Invalid 'outputs' field in request.",
         ),
-        ("nodes", data.nodes, WorkflowNode, "Invalid nodes: {exc}"),
-        ("edges", data.edges, WorkflowEdge, "Invalid edges: {exc}"),
+        (
+            "nodes",
+            data.nodes,
+            WorkflowNode,
+            "Invalid nodes: {safe_error_description(exc)}",
+        ),
+        (
+            "edges",
+            data.edges,
+            WorkflowEdge,
+            "Invalid edges: {safe_error_description(exc)}",
+        ),
     )
     for field_name, items, model_cls, message in collection_specs:
         if items is None:

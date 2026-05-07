@@ -621,7 +621,7 @@ class ConnectionCatalog:
             try:
                 data = json.loads(raw.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                # SEC-1: ``f"...: {exc}"`` would interpolate raw
+                # SEC-1: ``f"...: {safe_error_description(exc)}"`` would interpolate raw
                 # exception text in a secret-bearing path; route via
                 # ``safe_error_description``.
                 logger.warning(

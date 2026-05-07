@@ -395,7 +395,9 @@ class ScalingService:
             return ScalingActionRecord(
                 decision_id=decision.id,
                 outcome=ScalingOutcome.FAILED,
-                reason=NotBlankStr(f"{type(exc).__name__}: {exc}"),
+                reason=NotBlankStr(
+                    f"{type(exc).__name__}: {safe_error_description(exc)}"
+                ),
                 executed_at=now,
             )
         return ScalingActionRecord(
@@ -448,7 +450,9 @@ class ScalingService:
             return ScalingActionRecord(
                 decision_id=decision.id,
                 outcome=ScalingOutcome.FAILED,
-                reason=NotBlankStr(f"{type(exc).__name__}: {exc}"),
+                reason=NotBlankStr(
+                    f"{type(exc).__name__}: {safe_error_description(exc)}"
+                ),
                 executed_at=now,
             )
         result_id = (

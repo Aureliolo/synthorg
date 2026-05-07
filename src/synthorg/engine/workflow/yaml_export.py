@@ -14,7 +14,7 @@ from synthorg.engine.workflow.graph_utils import (
     build_adjacency_maps,
     topological_sort,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_EXPORT_FAILED,
     WORKFLOW_DEF_EXPORTED,
@@ -186,7 +186,7 @@ def _serialize_yaml(
             allow_unicode=True,
         )
     except yaml.YAMLError as exc:
-        msg = f"YAML serialization failed: {exc}"
+        msg = f"YAML serialization failed: {safe_error_description(exc)}"
         logger.exception(
             WORKFLOW_DEF_EXPORT_FAILED,
             workflow_id=workflow_id,

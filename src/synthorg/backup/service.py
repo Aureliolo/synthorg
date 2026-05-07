@@ -387,7 +387,7 @@ class BackupService(BackupServiceArchiveMixin):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Restore failed for {backup_id}: {exc}"
+            msg = f"Restore failed for {backup_id}: {safe_error_description(exc)}"
             raise RestoreError(msg) from exc
 
         logger.info(

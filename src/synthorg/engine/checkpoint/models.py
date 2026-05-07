@@ -20,6 +20,7 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import safe_error_description
 
 
 class Checkpoint(BaseModel):
@@ -57,7 +58,7 @@ class Checkpoint(BaseModel):
         try:
             parsed = json.loads(self.context_json)
         except (json.JSONDecodeError, TypeError) as exc:
-            msg = f"context_json must be valid JSON: {exc}"
+            msg = f"context_json must be valid JSON: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
         if not isinstance(parsed, dict):
             msg = "context_json must be a JSON object, not a primitive or array"

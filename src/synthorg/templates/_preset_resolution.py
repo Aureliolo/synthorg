@@ -112,5 +112,5 @@ def _validate_inline_personality(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Invalid inline personality for agent {agent_name!r}: {exc}"
+        msg = f"Invalid inline personality for agent {agent_name!r}: {safe_error_description(exc)}"  # noqa: E501
         raise TemplateRenderError(msg) from exc

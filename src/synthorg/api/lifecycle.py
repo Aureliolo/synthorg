@@ -145,8 +145,14 @@ async def _try_stop(
             error=error_msg,
         )
         return False
-    except Exception:
-        logger.warning(event, error=error_msg)
+    except Exception as exc:
+        logger.warning(
+            event,
+            service=service,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            context=error_msg,
+        )
         return False
     return True
 

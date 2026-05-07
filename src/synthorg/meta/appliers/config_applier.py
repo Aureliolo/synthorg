@@ -26,7 +26,7 @@ from synthorg.meta.models import (
     ImprovementProposal,
     ProposalAltitude,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
@@ -188,7 +188,7 @@ class ConfigApplier:
             try:
                 parts = parse_dotted_path(change.path)
             except DottedPathError as exc:
-                errors.append(f"{change.path}: {exc}")
+                errors.append(f"{change.path}: {safe_error_description(exc)}")
                 continue
             try:
                 _validate_change_against_model(
@@ -197,7 +197,7 @@ class ConfigApplier:
                     new_value=change.new_value,
                 )
             except _PathResolutionError as exc:
-                errors.append(f"{change.path}: {exc}")
+                errors.append(f"{change.path}: {safe_error_description(exc)}")
             except ValidationError as exc:
                 errors.extend(format_validation_errors(exc, path_prefix=change.path))
 

@@ -99,7 +99,7 @@ def check_shutdown(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        error_msg = f"Shutdown checker failed: {type(exc).__name__}: {exc}"
+        error_msg = f"Shutdown checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
@@ -144,7 +144,7 @@ def check_budget(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        error_msg = f"Budget checker failed: {type(exc).__name__}: {exc}"
+        error_msg = f"Budget checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
@@ -252,7 +252,7 @@ async def call_provider(  # noqa: PLR0913
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        error_msg = f"Provider error on turn {turn_number}: {type(exc).__name__}: {exc}"
+        error_msg = f"Provider error on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,

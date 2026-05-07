@@ -131,13 +131,13 @@ class CedarPolicyEngine:
             if self._fail_closed:
                 decision = PolicyDecision(
                     allow=False,
-                    reason=f"Policy evaluation error (fail-closed): {exc}",
+                    reason=f"Policy evaluation error (fail-closed): {safe_error_description(exc)}",  # noqa: E501
                     latency_ms=latency_ms,
                 )
             else:
                 decision = PolicyDecision(
                     allow=True,
-                    reason=f"Policy evaluation error (fail-open): {exc}",
+                    reason=f"Policy evaluation error (fail-open): {safe_error_description(exc)}",  # noqa: E501
                     latency_ms=latency_ms,
                 )
 

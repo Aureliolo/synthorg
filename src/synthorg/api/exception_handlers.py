@@ -645,7 +645,7 @@ def handle_invalid_cursor(
     can distinguish malformed-base64 from signature-mismatch in logs.
     """
     _log_error(request, exc, status=400)
-    detail = str(exc) or "Invalid pagination cursor"
+    detail = safe_error_description(exc) or "Invalid pagination cursor"
     return _build_response(
         request,
         detail=detail,

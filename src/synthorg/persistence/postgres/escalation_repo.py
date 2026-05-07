@@ -205,7 +205,7 @@ INSERT INTO conflict_escalations (
                 constraint=constraint_name or str(exc),
             ) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to create escalation {escalation.id!r}: {exc}"
+            msg = f"Failed to create escalation {escalation.id!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_create_failed",
@@ -229,7 +229,7 @@ INSERT INTO conflict_escalations (
                 )
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            msg = f"Failed to fetch escalation {escalation_id!r}: {exc}"
+            msg = f"Failed to fetch escalation {escalation_id!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_get_failed",
@@ -280,7 +280,7 @@ INSERT INTO conflict_escalations (
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
-            msg = f"Failed to list escalations: {exc}"
+            msg = f"Failed to list escalations: {safe_error_description(exc)}"
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_list_failed",
@@ -350,7 +350,7 @@ INSERT INTO conflict_escalations (
                 rows = await cur.fetchall()
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to mark escalations expired: {exc}"
+            msg = f"Failed to mark escalations expired: {safe_error_description(exc)}"
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_mark_expired_failed",
@@ -417,7 +417,7 @@ INSERT INTO conflict_escalations (
                     )
                     raise ValueError(msg)
         except psycopg.Error as exc:
-            msg = f"Failed to update escalation {escalation_id!r}: {exc}"
+            msg = f"Failed to update escalation {escalation_id!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_update_failed",

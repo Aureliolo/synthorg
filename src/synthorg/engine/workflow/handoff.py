@@ -18,6 +18,7 @@ from synthorg.engine.quality.verification import (
     AtomicProbe,  # noqa: TC001
     VerificationRubric,  # noqa: TC001
 )
+from synthorg.observability import safe_error_description
 
 
 class HandoffArtifact(StructuredArtifact):
@@ -82,6 +83,6 @@ class HandoffArtifact(StructuredArtifact):
         try:
             json.dumps(dict(self.payload), allow_nan=False)
         except (TypeError, ValueError) as exc:
-            msg = f"Payload must be JSON-serializable: {exc}"
+            msg = f"Payload must be JSON-serializable: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
         return self

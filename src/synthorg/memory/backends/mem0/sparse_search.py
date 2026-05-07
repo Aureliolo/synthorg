@@ -501,5 +501,5 @@ async def async_retrieve_sparse(
             error_type=type(exc).__name__,
             source="sparse",
         )
-        msg = f"Failed sparse retrieval: {exc}"
+        msg = f"Failed sparse retrieval: {safe_error_description(exc)}"
         raise MemoryRetrievalError(msg) from exc

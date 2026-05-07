@@ -165,7 +165,7 @@ class AuthorizationCodeFlow:
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 error="failed to decrypt stored PKCE verifier",
             )
-            msg = f"Invalid PKCE verifier in OAuth state: {exc}"
+            msg = f"Invalid PKCE verifier in OAuth state: {safe_error_description(exc)}"
             raise TokenExchangeFailedError(msg) from exc
 
         payload = {

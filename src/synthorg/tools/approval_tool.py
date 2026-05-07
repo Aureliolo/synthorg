@@ -99,7 +99,7 @@ class RequestHumanApprovalTool(BaseTool):
         except KeyError as exc:
             return ToolExecutionResult(
                 content=(
-                    f"Missing required argument: {exc}. "
+                    f"Missing required argument: {safe_error_description(exc)}. "
                     f"Required: action_type, title, description"
                 ),
                 is_error=True,

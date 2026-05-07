@@ -214,7 +214,7 @@ class JetStreamTaskQueue:
             )
         except (TimeoutError, NoServersError, OSError) as exc:
             safe_url = redact_url(self._nats_config.url)
-            msg = f"Failed to connect to NATS at {safe_url} for task queue: {exc}"
+            msg = f"Failed to connect to NATS at {safe_url} for task queue: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 WORKERS_TASK_QUEUE_CONNECT_FAILED,
                 url=safe_url,
@@ -260,7 +260,7 @@ class JetStreamTaskQueue:
         except NatsError as exc:
             msg = (
                 f"Failed to set up task queue stream "
-                f"{self._queue_config.stream_name}: {exc}"
+                f"{self._queue_config.stream_name}: {safe_error_description(exc)}"
             )
             raise BusStreamError(
                 msg,
@@ -296,7 +296,7 @@ class JetStreamTaskQueue:
                 config=consumer_config,
             )
         except NatsError as exc:
-            msg = f"Failed to create task queue consumer {self._durable_name}: {exc}"
+            msg = f"Failed to create task queue consumer {self._durable_name}: {safe_error_description(exc)}"  # noqa: E501
             raise BusStreamError(
                 msg,
                 context={

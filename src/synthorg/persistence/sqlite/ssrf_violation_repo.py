@@ -196,7 +196,7 @@ class SQLiteSsrfViolationRepository:
                 # and leave the Postgres sibling and SQLite repo
                 # with divergent contracts.
                 row_id = row[0] if row else "unknown"
-                msg = f"Failed to deserialize SSRF violation row {row_id!r}: {exc}"
+                msg = f"Failed to deserialize SSRF violation row {row_id!r}: {safe_error_description(exc)}"  # noqa: E501
                 logger.warning(
                     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
                     row_id=row_id,

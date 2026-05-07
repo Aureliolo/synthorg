@@ -61,7 +61,7 @@ class RetentionManager:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to load manifests: {exc}"
+            msg = f"Failed to load manifests: {safe_error_description(exc)}"
             raise RetentionError(msg) from exc
 
         if not manifests:

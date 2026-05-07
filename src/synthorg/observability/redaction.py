@@ -197,6 +197,9 @@ def safe_error_description(exc: BaseException) -> str:
     # (``MemoryError`` / ``RecursionError``), which must propagate per
     # project convention so the process can surface the failure.
     try:
+        # Direct ``str(exc)`` is intentional here: this function IS the
+        # redacted wrapper. ``scrub_secret_tokens`` is applied below.
+        # Calling ``safe_error_description`` here would infinitely recurse.
         message = str(exc)
     except MemoryError, RecursionError:
         raise

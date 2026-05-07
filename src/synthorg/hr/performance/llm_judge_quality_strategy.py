@@ -26,7 +26,7 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.hr.performance.models import QualityScoreResult, TaskMetricRecord
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.performance import (
     PERF_LLM_JUDGE_COMPLETED,
     PERF_LLM_JUDGE_FAILED,
@@ -277,7 +277,7 @@ class LlmJudgeQualityStrategy:
                 task_id=task_id,
                 reason="parse_error",
             )
-            msg = f"Failed to parse LLM response: {exc}"
+            msg = f"Failed to parse LLM response: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
 
         if not rationale:

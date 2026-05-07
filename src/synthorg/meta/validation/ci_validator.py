@@ -10,7 +10,7 @@ from pathlib import Path
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.meta.models import CIValidationResult
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CI_VALIDATION_FAILED,
     META_CI_VALIDATION_PASSED,
@@ -241,7 +241,9 @@ class LocalCIValidator:
             )
             return False
         except OSError as exc:
-            errors.append(f"{step_name}: subprocess error: {exc}")
+            errors.append(
+                f"{step_name}: subprocess error: {safe_error_description(exc)}"
+            )
             return False
 
 

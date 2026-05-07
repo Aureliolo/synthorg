@@ -19,6 +19,7 @@ from synthorg.core.types import (
     NotBlankStr,
     validate_unique_strings,
 )
+from synthorg.observability import safe_error_description
 
 _VALID_NATS_URL_SCHEMES: frozenset[str] = frozenset({"nats", "tls", "nats+tls"})
 """NATS URL schemes accepted at config load.
@@ -147,7 +148,7 @@ class NatsConfig(BaseModel):
         try:
             parsed = urlparse(value)
         except ValueError as exc:
-            msg = f"invalid NATS url {value!r}: {exc}"
+            msg = f"invalid NATS url {value!r}: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
         if parsed.scheme.lower() not in _VALID_NATS_URL_SCHEMES:
             schemes = ", ".join(sorted(_VALID_NATS_URL_SCHEMES))

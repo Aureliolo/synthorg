@@ -149,7 +149,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 await self._db.rollback()
                 raise ConstraintViolationError(msg, constraint=str(exc)) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to create escalation {escalation.id!r}: {exc}"
+                msg = f"Failed to create escalation {escalation.id!r}: {safe_error_description(exc)}"  # noqa: E501
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="escalation_create_failed",
@@ -167,7 +167,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             cursor = await self._db.execute(sql, (escalation_id,))
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to fetch escalation {escalation_id!r}: {exc}"
+            msg = f"Failed to fetch escalation {escalation_id!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_get_failed",
@@ -210,7 +210,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             page_cursor = await self._db.execute(page_sql, (*params, limit, offset))
             rows = await page_cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to list escalations: {exc}"
+            msg = f"Failed to list escalations: {safe_error_description(exc)}"
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_list_failed",
@@ -373,7 +373,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 cursor = await self._db.execute(update_sql, params)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to update escalation {escalation_id!r}: {exc}"
+                msg = f"Failed to update escalation {escalation_id!r}: {safe_error_description(exc)}"  # noqa: E501
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="escalation_update_failed",

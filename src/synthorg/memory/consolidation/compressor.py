@@ -279,7 +279,7 @@ class LLMExperienceCompressor:
                     response.content.encode("utf-8"),
                 ).hexdigest()[:16],
             )
-            msg = f"malformed compression output: {exc}"
+            msg = f"malformed compression output: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
         if not isinstance(parsed, dict):
             msg = f"LLM returned non-dict: {type(parsed).__name__}"

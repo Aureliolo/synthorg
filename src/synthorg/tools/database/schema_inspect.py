@@ -129,7 +129,7 @@ class SchemaInspectTool(BaseDatabaseTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Schema inspection failed: {exc}",
+                content=f"Schema inspection failed: {safe_error_description(exc)}",
                 is_error=True,
             )
 

@@ -433,7 +433,10 @@ class TestInvokeEmptyErrorMessage:
         )
         result = await extended_invoker.invoke(call)
         assert result.is_error is True
-        assert "ValueError (no message)" in result.content
+        # ``safe_error_description`` returns just the type name when
+        # ``str(exc)`` is empty (per its documented contract); the
+        # ``ToolExecutionError`` then appends the tool context.
+        assert "ValueError" in result.content
 
 
 @pytest.mark.unit

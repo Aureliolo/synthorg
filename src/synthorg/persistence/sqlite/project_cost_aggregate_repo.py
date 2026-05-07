@@ -194,7 +194,7 @@ class SQLiteProjectCostAggregateRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to fetch project cost aggregate for {project_id!r}: {exc}"
+            msg = f"Failed to fetch project cost aggregate for {project_id!r}: {safe_error_description(exc)}"  # noqa: E501
             raise QueryError(msg) from exc
 
         if row is None:
@@ -236,7 +236,7 @@ class SQLiteProjectCostAggregateRepository:
             )
             msg = (
                 f"Failed to deserialize project cost aggregate"
-                f" for {project_id!r}: {exc}"
+                f" for {project_id!r}: {safe_error_description(exc)}"
             )
             raise QueryError(msg) from exc
 
@@ -370,7 +370,7 @@ class SQLiteProjectCostAggregateRepository:
                             )
                             msg = (
                                 f"Failed to deserialize project cost aggregate"
-                                f" for {project_id!r} after increment: {exc}"
+                                f" for {project_id!r} after increment: {safe_error_description(exc)}"  # noqa: E501
                             )
                             raise QueryError(msg) from exc
                         await self._db.commit()
@@ -384,7 +384,7 @@ class SQLiteProjectCostAggregateRepository:
                     )
                     msg = (
                         f"Failed to increment project cost aggregate for "
-                        f"{project_id!r}: {exc}"
+                        f"{project_id!r}: {safe_error_description(exc)}"
                     )
                     raise QueryError(msg) from exc
                 db_committed = True

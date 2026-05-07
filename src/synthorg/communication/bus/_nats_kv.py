@@ -68,7 +68,7 @@ async def create_channel_in_kv(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"KV create failed for channel {channel.name!r}: {exc}"
+        msg = f"KV create failed for channel {channel.name!r}: {safe_error_description(exc)}"  # noqa: E501
         raise BusStreamError(msg, context={"channel": channel.name}) from exc
 
 
@@ -130,7 +130,7 @@ async def fetch_kv_entry(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"KV transport error for channel {channel_name!r}: {exc}"
+        msg = f"KV transport error for channel {channel_name!r}: {safe_error_description(exc)}"  # noqa: E501
         raise BusStreamError(msg, context={"channel": channel_name}) from exc
     if entry is None or entry.value is None:
         return None
@@ -157,7 +157,7 @@ def decode_kv_channel(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Corrupt KV entry for channel {channel_name!r}: {exc}"
+        msg = f"Corrupt KV entry for channel {channel_name!r}: {safe_error_description(exc)}"  # noqa: E501
         raise BusStreamError(msg, context={"channel": channel_name}) from exc
     except ValueError as exc:
         logger.warning(
@@ -166,7 +166,7 @@ def decode_kv_channel(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Invalid KV data for channel {channel_name!r}: {exc}"
+        msg = f"Invalid KV data for channel {channel_name!r}: {safe_error_description(exc)}"  # noqa: E501
         raise BusStreamError(msg, context={"channel": channel_name}) from exc
     if channel.name != channel_name:
         mismatch = (
@@ -203,7 +203,7 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
             error=safe_error_description(exc),
             phase="list_channels_scan",
         )
-        msg = f"KV scan failed: {exc}"
+        msg = f"KV scan failed: {safe_error_description(exc)}"
         raise BusStreamError(msg, context={"phase": "list_channels_scan"}) from exc
 
     decoded_keys: list[tuple[str, str]] = []

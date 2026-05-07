@@ -211,7 +211,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                msg = f"Docker daemon unavailable: {exc}"
+                msg = f"Docker daemon unavailable: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
             self._docker = client
             return client
@@ -533,7 +533,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                         f"_sidecar:{sidecar_id}",
                         None,
                     )
-                msg = f"Sidecar startup failed: {exc}"
+                msg = f"Sidecar startup failed: {safe_error_description(exc)}"
                 raise SandboxStartError(msg) from exc
             # Don't pop the _sidecar: temp key yet -- keep it tracked
             # until the sandbox container is created and takes over.
@@ -562,7 +562,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                         f"_sidecar:{sidecar_id}",
                         None,
                     )
-            msg = f"Failed to create container: {exc}"
+            msg = f"Failed to create container: {safe_error_description(exc)}"
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 command=command,
@@ -692,7 +692,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
         try:
             await container_obj.start()
         except Exception as exc:
-            msg = f"Failed to start container {container_id[:12]}: {exc}"
+            msg = f"Failed to start container {container_id[:12]}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 container_id=container_id[:12],

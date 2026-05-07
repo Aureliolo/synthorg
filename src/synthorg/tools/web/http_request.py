@@ -187,7 +187,7 @@ class HttpRequestTool(BaseWebTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"HTTP request failed: {exc}",
+                content=f"HTTP request failed: {safe_error_description(exc)}",
                 is_error=True,
             )
 

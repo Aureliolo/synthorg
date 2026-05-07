@@ -395,7 +395,7 @@ def _decode_response(raw: bytes) -> Any:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"TSA response is not a valid ASN.1 TimeStampResp: {exc}"
+        msg = f"TSA response is not a valid ASN.1 TimeStampResp: {safe_error_description(exc)}"  # noqa: E501
         raise TsaProtocolError(msg) from exc
 
 
@@ -520,7 +520,7 @@ def _verify_signature(
             tsa_url=tsa_url,
             error=type(exc).__name__,
         )
-        msg = f"TSA signature verification failed: {exc}"
+        msg = f"TSA signature verification failed: {safe_error_description(exc)}"
         raise TsaSignatureError(msg) from exc
 
 
@@ -546,7 +546,7 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
             pem_sha256_prefix=hashlib.sha256(pem_bytes).hexdigest()[:16],
             error_type=type(exc).__name__,
         )
-        msg = f"Invalid trusted-root PEM: {exc}"
+        msg = f"Invalid trusted-root PEM: {safe_error_description(exc)}"
         raise ValueError(msg) from exc
 
 

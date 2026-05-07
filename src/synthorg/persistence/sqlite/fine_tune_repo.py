@@ -64,7 +64,7 @@ def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
             stages_completed=stages,
         )
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
-        msg = f"Corrupt fine-tune run row: {exc}"
+        msg = f"Corrupt fine-tune run row: {safe_error_description(exc)}"
         raise QueryError(msg) from exc
 
 
@@ -93,7 +93,7 @@ def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
             backup_config_json=row["backup_config_json"],
         )
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
-        msg = f"Corrupt checkpoint row: {exc}"
+        msg = f"Corrupt checkpoint row: {safe_error_description(exc)}"
         raise QueryError(msg) from exc
 
 

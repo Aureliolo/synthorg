@@ -162,7 +162,7 @@ class GitHubHealthCheck:
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
-                error_detail=f"credential resolution failed: {exc}",
+                error_detail=f"credential resolution failed: {safe_error_description(exc)}",  # noqa: E501
                 checked_at=now,
             )
         token = credentials.get("token")

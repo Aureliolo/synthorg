@@ -458,7 +458,7 @@ def _validate_presets() -> None:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Invalid personality preset {name!r}: {exc}"
+            msg = f"Invalid personality preset {name!r}: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
 
 

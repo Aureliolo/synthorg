@@ -74,7 +74,7 @@ def integrity_check(db_path: str) -> bool:
         with contextlib.closing(sqlite3.connect(db_path)) as conn:
             result = conn.execute("PRAGMA integrity_check").fetchone()
     except (sqlite3.Error, OSError) as exc:
-        msg = f"integrity_check could not run on {db_path!r}: {exc}"
+        msg = f"integrity_check could not run on {db_path!r}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             BACKUP_COMPONENT_FAILED,
             component="sqlite_integrity_check",

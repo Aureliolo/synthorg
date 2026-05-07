@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final, cast
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability._shipping_sink_parsers import (
     build_custom_http_sink as _build_custom_http_sink_impl,
 )
@@ -152,7 +152,7 @@ def _parse_json(raw: str, label: str) -> Any:
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
-        msg = f"Invalid JSON for {label}: {exc}"
+        msg = f"Invalid JSON for {label}: {safe_error_description(exc)}"
         raise ValueError(msg) from exc
 
 

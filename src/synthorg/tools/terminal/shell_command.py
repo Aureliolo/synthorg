@@ -203,7 +203,7 @@ class ShellCommandTool(BaseTerminalTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Sandbox error: {exc}",
+                content=f"Sandbox error: {safe_error_description(exc)}",
                 is_error=True,
             )
 

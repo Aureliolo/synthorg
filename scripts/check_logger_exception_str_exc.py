@@ -165,8 +165,7 @@ Name/Attribute/Subscript leaf). The asymmetry reflects empirical use:
 ``strategy_name`` is already a string; ``f"{strategy_name}"`` is
 common because f-strings exist for concatenation. Restricting the
 f-string matcher to known exception names keeps false positives at
-zero on the existing tree while still catching every site flagged in
-the 2026-05 audit.
+zero while still catching every exception-bearing interpolation.
 
 Adding a new exception variable name (``ex``, ``problem``, ...) to
 the project requires extending this set; CLAUDE.md §Logging already
@@ -232,6 +231,20 @@ def _collect_lint_allow_exc_info_lines(source: str) -> frozenset[int]:
     return frozenset(allow_lines)
 
 
+_TYPE_INTROSPECTION_ATTRS: frozenset[str] = frozenset(
+    {"__class__", "__name__", "__qualname__", "__module__"},
+)
+"""Attribute names that resolve to type metadata, not exception data.
+
+``exc.__class__.__name__`` and ``exc.__class__.__qualname__`` produce
+the exception's type name -- the same shape as
+``type(exc).__name__``, which is a documented safe shape. These
+chains are fully constituted by static class introspection and
+carry no credential material, so the walker stops descending at the
+terminal-introspection attribute.
+"""
+
+
 def _walk_excluding_call_args(expr: ast.expr) -> Iterator[ast.AST]:
     """Yield nodes in *expr*'s subtree, skipping ``Call.args`` / ``Call.keywords``.
 
@@ -244,6 +257,11 @@ def _walk_excluding_call_args(expr: ast.expr) -> Iterator[ast.AST]:
     return value (safe by intent). Both contain a Name ``exc`` deep in
     the AST, but a naive ``ast.walk`` would flag them as leaks.
 
+    Class-introspection chains (``exc.__class__.__name__``,
+    ``exc.__class__.__qualname__``) are also safe -- they evaluate to
+    type metadata, not exception data. The walker stops at any
+    Attribute access whose ``attr`` is in ``_TYPE_INTROSPECTION_ATTRS``.
+
     This walker visits the Call expression and its ``func`` (so a
     method call on an exception, e.g. ``f"{exc.format_for_log()}"``,
     still trips on the ``func`` chain), but does NOT recurse into the
@@ -252,6 +270,11 @@ def _walk_excluding_call_args(expr: ast.expr) -> Iterator[ast.AST]:
     yield expr
     if isinstance(expr, ast.Call):
         yield from _walk_excluding_call_args(expr.func)
+        return
+    if isinstance(expr, ast.Attribute) and expr.attr in _TYPE_INTROSPECTION_ATTRS:
+        # Class-introspection chain terminates here; the underlying
+        # Name (e.g. ``exc``) is bound to a type / class / qualname
+        # value that does not carry credential material.
         return
     for child in ast.iter_child_nodes(expr):
         if isinstance(child, ast.expr):
@@ -324,6 +347,57 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
     ) -> None:
         self.hits: list[tuple[int, int, str]] = []
         self.exc_info_allowlist_lines = exc_info_allowlist_lines
+        # Names known to alias a leak shape in the current function
+        # scope, e.g. ``error_msg = str(exc)`` rebinds ``error_msg``
+        # to credential-bearing material. Cleared when entering a new
+        # function. Outer-scope (module-level) aliases live on the
+        # base set for the module body.
+        self._leak_aliases: set[str] = set()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        """Collect leak-aliases for the function then recurse."""
+        self._visit_function_scope(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        """Collect leak-aliases for the async function then recurse."""
+        self._visit_function_scope(node)
+
+    def _visit_function_scope(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> None:
+        """Walk *node* with a fresh leak-alias set for this scope."""
+        previous_aliases = self._leak_aliases
+        # Inherit outer aliases (closures see them) but additions made
+        # in this scope must not leak back out.
+        self._leak_aliases = set(previous_aliases)
+        for stmt in node.body:
+            self._collect_leak_aliases(stmt)
+        for child in ast.iter_child_nodes(node):
+            self.visit(child)
+        self._leak_aliases = previous_aliases
+
+    def _collect_leak_aliases(self, node: ast.AST) -> None:
+        """Record any ``Name = <leak-shape>`` assignment in *node*'s subtree.
+
+        Descends through ``try`` / ``with`` / ``if`` blocks within the
+        function body but stops at nested ``FunctionDef`` /
+        ``AsyncFunctionDef`` / ``Lambda`` boundaries -- those define
+        their own scope and get their own alias set when visited.
+        """
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return  # nested scope -- handled by its own visit_FunctionDef pass
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            value = node.value
+            if value is not None and _value_subtree_leaks(value):
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        self._leak_aliases.add(target.id)
+        for child in ast.iter_child_nodes(node):
+            self._collect_leak_aliases(child)
 
     def visit_Call(self, node: ast.Call) -> None:
         """Match ``<logger>.<method>(...)`` calls against both rules."""
@@ -333,7 +407,10 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
             and func.attr in _LOGGER_METHODS
             and _is_logger_receiver(func.value)
         ):
-            if _has_error_str_exc_kwarg(node.keywords):
+            if _has_error_str_exc_kwarg(node.keywords) or _has_error_alias_kwarg(
+                node.keywords,
+                self._leak_aliases,
+            ):
                 self.hits.append(
                     (node.lineno, node.col_offset, _RULE_STR_EXC),
                 )
@@ -346,6 +423,31 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
                     (exc_info_lineno, node.col_offset, _RULE_EXC_INFO),
                 )
         self.generic_visit(node)
+
+
+def _has_error_alias_kwarg(
+    keywords: Iterable[ast.keyword],
+    leak_aliases: set[str],
+) -> bool:
+    """Return ``True`` if ``error=<Name>`` references a known leak alias.
+
+    Catches the variable-indirection bypass:
+
+        error_msg = str(exc)              # alias added to leak set
+        logger.warning(EVENT, error=error_msg)   # caught here
+
+    Only one level of aliasing is tracked. Multi-hop aliasing
+    (``a = str(exc); b = a; logger.warning(error=b)``) requires a
+    transitive analysis pass that the project currently does not need;
+    the gate stays conservative.
+    """
+    if not leak_aliases:
+        return False
+    for kw in keywords:
+        for value in _error_kwarg_values(kw):
+            if isinstance(value, ast.Name) and value.id in leak_aliases:
+                return True
+    return False
 
 
 def _find_unallowlisted_exc_info_true(

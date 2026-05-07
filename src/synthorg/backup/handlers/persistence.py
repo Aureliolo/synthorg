@@ -72,7 +72,7 @@ class PersistenceComponentHandler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to back up persistence DB: {exc}"
+            msg = f"Failed to back up persistence DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
         logger.info(
             BACKUP_COMPONENT_COMPLETED,
@@ -127,7 +127,7 @@ class PersistenceComponentHandler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to restore persistence DB: {exc}"
+            msg = f"Failed to restore persistence DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
 
     async def validate_source(self, source_dir: Path) -> bool:
@@ -171,7 +171,7 @@ class PersistenceComponentHandler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to run integrity check on backup: {exc}"
+            msg = f"Failed to run integrity check on backup: {safe_error_description(exc)}"  # noqa: E501
             raise ComponentBackupError(msg) from exc
 
     @staticmethod

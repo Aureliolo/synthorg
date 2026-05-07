@@ -25,7 +25,11 @@ from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
     wrap_untrusted,
 )
-from synthorg.observability import get_logger, scrub_secret_tokens
+from synthorg.observability import (
+    get_logger,
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PARK_TASKLESS,
 )
@@ -243,9 +247,7 @@ async def execute_tool_calls(  # noqa: PLR0913, C901
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        error_msg = (
-            f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {exc}"
-        )
+        error_msg = f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.exception(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,

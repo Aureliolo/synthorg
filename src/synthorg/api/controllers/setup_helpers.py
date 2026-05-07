@@ -678,7 +678,7 @@ def load_template_safe(template_name: str) -> LoadedTemplate:
         )
         raise NotFoundError(msg) from exc
     except (TemplateRenderError, TemplateValidationError) as exc:
-        msg = f"Template {template_name!r} is invalid: {exc}"
+        msg = f"Template {template_name!r} is invalid: {safe_error_description(exc)}"
         logger.warning(
             SETUP_TEMPLATE_INVALID,
             template=template_name,

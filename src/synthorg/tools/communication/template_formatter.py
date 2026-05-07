@@ -156,7 +156,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Invalid template syntax: {exc}",
+                content=f"Invalid template syntax: {safe_error_description(exc)}",
                 is_error=True,
             )
 
@@ -171,7 +171,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=f"Template rendering failed: {exc}",
+                content=f"Template rendering failed: {safe_error_description(exc)}",
                 is_error=True,
             )
 

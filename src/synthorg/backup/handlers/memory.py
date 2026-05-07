@@ -77,7 +77,7 @@ class MemoryComponentHandler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to back up memory data: {exc}"
+            msg = f"Failed to back up memory data: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
         logger.info(
             BACKUP_COMPONENT_COMPLETED,
@@ -129,7 +129,7 @@ class MemoryComponentHandler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to restore memory data: {exc}"
+            msg = f"Failed to restore memory data: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
 
     async def validate_source(self, source_dir: Path) -> bool:

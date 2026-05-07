@@ -34,7 +34,7 @@ from synthorg.budget.quota import (
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.budget import (
     BUDGET_BASELINE_ERROR,
@@ -419,7 +419,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            msg = f"Degradation resolution failed for provider {provider_name!r}: {exc}"
+            msg = f"Degradation resolution failed for provider {provider_name!r}: {safe_error_description(exc)}"  # noqa: E501
             raise QuotaExhaustedError(
                 msg,
                 provider_name=provider_name,

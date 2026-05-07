@@ -233,7 +233,7 @@ def _validate_team_model(team_dict: dict[str, Any]) -> Team:
     try:
         return Team(**team_dict)
     except (ValueError, TypeError) as exc:
-        msg = f"Team validation failed: {exc}"
+        msg = f"Team validation failed: {safe_error_description(exc)}"
         logger.warning(
             API_VALIDATION_FAILED,
             reason="team_model_validation_failed",

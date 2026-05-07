@@ -19,7 +19,7 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.hr.performance.models import LlmCalibrationRecord
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.performance import (
     PERF_LLM_SAMPLE_COMPLETED,
     PERF_LLM_SAMPLE_FAILED,
@@ -294,7 +294,7 @@ class LlmCalibrationSampler:
                 reason="parse_error",
                 raw_content=raw_content[:500],
             )
-            msg = f"Failed to parse LLM response: {exc}"
+            msg = f"Failed to parse LLM response: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
 
         max_score = 10.0

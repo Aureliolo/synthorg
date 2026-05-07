@@ -114,7 +114,7 @@ def _list_sync(
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            lines.append(f"[ERROR] {entry.name} ({exc})")
+            lines.append(f"[ERROR] {entry.name} ({safe_error_description(exc)})")
 
     return lines, raw_capped
 

@@ -425,7 +425,7 @@ class ParallelExecutor:
         progress: _ProgressState,
     ) -> None:
         """Record a failed agent outcome."""
-        error_msg = f"{type(exc).__name__}: {exc}"
+        error_msg = f"{type(exc).__name__}: {safe_error_description(exc)}"
         outcomes[assignment.task_id] = AgentOutcome(
             task_id=assignment.task_id,
             agent_id=assignment.agent_id,
@@ -450,7 +450,7 @@ class ParallelExecutor:
         progress: _ProgressState,
     ) -> None:
         """Record a fatal error outcome (MemoryError/RecursionError)."""
-        error_msg = f"Fatal: {type(exc).__name__}: {exc}"
+        error_msg = f"Fatal: {type(exc).__name__}: {safe_error_description(exc)}"
         logger.warning(
             PARALLEL_AGENT_ERROR,
             group_id=group.group_id,

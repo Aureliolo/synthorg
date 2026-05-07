@@ -469,7 +469,9 @@ class ProviderHealthProber:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            error_msg = _truncate(f"{type(exc).__name__}: {exc}")
+            error_msg = _truncate(
+                f"{type(exc).__name__}: {safe_error_description(exc)}"
+            )
 
         elapsed_ms = (self._clock.monotonic() - start) * 1000
         return elapsed_ms, success, error_msg

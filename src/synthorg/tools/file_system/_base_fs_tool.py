@@ -8,6 +8,7 @@ from abc import ABC
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import ToolCategory
+from synthorg.observability import safe_error_description
 from synthorg.tools.base import BaseTool
 from synthorg.tools.file_system._path_validator import PathValidator
 
@@ -33,7 +34,10 @@ def _map_os_error(exc: OSError, user_path: str, verb: str) -> tuple[str, str]:
         return "is_directory", f"Path is a directory, not a file: {user_path}"
     if isinstance(exc, PermissionError):
         return "permission_denied", f"Permission denied: {user_path}"
-    return "os_error", f"OS error {verb} file '{user_path}': {exc}"
+    return (
+        "os_error",
+        f"OS error {verb} file '{user_path}': {safe_error_description(exc)}",
+    )
 
 
 class BaseFileSystemTool(BaseTool, ABC):

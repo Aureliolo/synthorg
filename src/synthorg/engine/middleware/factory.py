@@ -23,7 +23,7 @@ from synthorg.engine.middleware.registry import (
     get_agent_middleware_factory,
     get_coordination_middleware_factory,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_CHAIN_BUILT,
     MIDDLEWARE_COORDINATION_CHAIN_BUILT,
@@ -85,13 +85,13 @@ def build_agent_middleware_chain(
                 logger.exception(
                     MIDDLEWARE_SKIPPED,
                     middleware=name,
-                    reason=f"factory_error: {exc}",
+                    reason=f"factory_error: {safe_error_description(exc)}",
                 )
                 raise
             logger.debug(
                 MIDDLEWARE_SKIPPED,
                 middleware=name,
-                reason=f"missing_dependency: {exc}",
+                reason=f"missing_dependency: {safe_error_description(exc)}",
             )
             continue
 
@@ -153,13 +153,13 @@ def build_coordination_middleware_chain(
                 logger.exception(
                     MIDDLEWARE_COORDINATION_SKIPPED,
                     middleware=name,
-                    reason=f"factory_error: {exc}",
+                    reason=f"factory_error: {safe_error_description(exc)}",
                 )
                 raise
             logger.debug(
                 MIDDLEWARE_COORDINATION_SKIPPED,
                 middleware=name,
-                reason=f"missing_dependency: {exc}",
+                reason=f"missing_dependency: {safe_error_description(exc)}",
             )
             continue
 

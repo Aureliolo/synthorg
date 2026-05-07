@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -120,7 +120,7 @@ def welch_t_test(
         # pathological inputs. Translate to the public Welch failure
         # type so callers treat it like any other Welch precondition
         # miss instead of leaking a raw RuntimeError.
-        msg = f"Welch p-value computation failed to converge: {exc}"
+        msg = f"Welch p-value computation failed to converge: {safe_error_description(exc)}"  # noqa: E501
         raise InsufficientDataError(msg) from exc
     p_two_sided = min(1.0, max(0.0, p_two_sided))
     return WelchResult(t=t, df=df, p_two_sided=p_two_sided)

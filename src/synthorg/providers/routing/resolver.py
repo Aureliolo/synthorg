@@ -216,9 +216,7 @@ class ModelResolver:
                 candidate_count=len(candidates),
                 selector=type(self._selector).__name__,
             )
-            msg = (
-                f"Selector failed for {ref!r} with {len(candidates)} candidates: {exc}"
-            )
+            msg = f"Selector failed for {ref!r} with {len(candidates)} candidates: {safe_error_description(exc)}"  # noqa: E501
             raise ModelResolutionError(msg, context={"ref": ref}) from exc
         logger.debug(
             ROUTING_MODEL_RESOLVED,

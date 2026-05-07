@@ -89,7 +89,7 @@ def build_policy_engine(
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                msg_0 = f"Cannot read policy file {path}: {exc}"
+                msg_0 = f"Cannot read policy file {path}: {safe_error_description(exc)}"
                 raise ValueError(
                     msg_0,
                 ) from exc

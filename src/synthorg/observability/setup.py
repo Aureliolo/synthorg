@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 import structlog
 
+from synthorg.observability import safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.log_trace_correlation import inject_trace_context
@@ -187,7 +188,7 @@ def _handle_sink_failure(
     if sink.file_path in _CRITICAL_SINKS:
         print(  # noqa: T201
             f"CRITICAL: Log sink '{sink.file_path}' could not "
-            f"be initialised: {exc}. Refusing to start with "
+            f"be initialised: {safe_error_description(exc)}. Refusing to start with "
             "missing audit/access logs.",
             file=sys.stderr,
             flush=True,
@@ -200,7 +201,7 @@ def _handle_sink_failure(
         raise RuntimeError(msg) from exc
     print(  # noqa: T201
         f"WARNING: Failed to initialise log sink "
-        f"{sink!r}: {exc}. This sink will be skipped.",
+        f"{sink!r}: {safe_error_description(exc)}. This sink will be skipped.",
         file=sys.stderr,
         flush=True,
     )

@@ -219,7 +219,7 @@ def process_conditional_node(  # noqa: PLR0913
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Failed to evaluate condition on node {nid!r}: {exc}"
+        msg = f"Failed to evaluate condition on node {nid!r}: {safe_error_description(exc)}"  # noqa: E501
         raise WorkflowConditionEvalError(msg) from exc
 
     safe_expr = expr.replace("\n", " ").replace("\r", " ")

@@ -306,7 +306,7 @@ def _load_builtin(name: str) -> LoadedTemplate:
         ref = resources.files("synthorg.templates.builtins") / filename
         yaml_text = ref.read_text(encoding="utf-8")
     except (OSError, ImportError, TypeError) as exc:
-        msg = f"Failed to read built-in template resource {filename!r}: {exc}"
+        msg = f"Failed to read built-in template resource {filename!r}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             TEMPLATE_LOAD_READ_ERROR,
             source=source_name,
@@ -414,7 +414,7 @@ def _parse_template_yaml(
     try:
         data = yaml.safe_load(safe_text)
     except yaml.YAMLError as exc:
-        msg = f"Template YAML syntax error in {source_name}: {exc}"
+        msg = f"Template YAML syntax error in {source_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             TEMPLATE_LOAD_PARSE_ERROR,
             source=source_name,
@@ -431,7 +431,7 @@ def _parse_template_yaml(
         normalized = _normalize_template_data(template_data)
         return CompanyTemplate(**normalized)
     except (ValidationError, ValueError, TypeError) as exc:
-        msg = f"Template validation failed for {source_name}: {exc}"
+        msg = f"Template validation failed for {source_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             TEMPLATE_LOAD_PARSE_ERROR,
             source=source_name,

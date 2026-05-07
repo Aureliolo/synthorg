@@ -138,7 +138,7 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
             row_id = str(row["id"]) if row else "<unknown>"
         except TypeError, KeyError:
             row_id = "<unknown>"
-        msg = f"Failed to parse approval row {row_id!r}: {exc}"
+        msg = f"Failed to parse approval row {row_id!r}: {safe_error_description(exc)}"
         logger.warning(
             API_APPROVAL_REPO_FAILED,
             row_id=row_id,

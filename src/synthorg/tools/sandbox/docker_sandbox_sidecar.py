@@ -9,7 +9,7 @@ import asyncio
 import secrets
 from typing import TYPE_CHECKING, Any, Final
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import DOCKER_EXECUTE_FAILED
 from synthorg.observability.events.sandbox import (
     SANDBOX_NETWORK_ENFORCEMENT,
@@ -105,7 +105,7 @@ class DockerSandboxSidecarMixin:
         try:
             container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:
-            msg = f"Failed to create sidecar container: {exc}"
+            msg = f"Failed to create sidecar container: {safe_error_description(exc)}"
             logger.exception(
                 DOCKER_EXECUTE_FAILED,
                 command="sidecar",

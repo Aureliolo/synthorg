@@ -263,7 +263,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         effective_config = _bootstrap_app_logging(effective_config)
     except Exception as exc:
         print(  # noqa: T201
-            f"CRITICAL: Failed to initialise logging pipeline: {exc}. "
+            f"CRITICAL: Failed to initialise logging pipeline: {safe_error_description(exc)}. "  # noqa: E501
             "Check SYNTHORG_LOG_DIR, SYNTHORG_LOG_LEVEL, and the "
             "'logging' section of your config file.",
             file=sys.stderr,

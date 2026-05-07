@@ -30,7 +30,7 @@ from synthorg.engine.stagnation.models import (
     StagnationVerdict,
 )
 from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_RECOVERY_COMPLETE,
     EXECUTION_RECOVERY_SNAPSHOT,
@@ -224,7 +224,7 @@ class RecoveryResult(BaseModel):
             try:
                 parsed = json.loads(self.checkpoint_context_json)
             except json.JSONDecodeError as exc:
-                msg = f"checkpoint_context_json must be valid JSON: {exc}"
+                msg = f"checkpoint_context_json must be valid JSON: {safe_error_description(exc)}"  # noqa: E501
                 raise ValueError(msg) from exc
             if not isinstance(parsed, dict):
                 msg = "checkpoint_context_json must be a JSON object"

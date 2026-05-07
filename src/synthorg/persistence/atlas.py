@@ -207,7 +207,7 @@ def copy_revisions(dest: Path, *, backend: BackendName = "sqlite") -> str:
     try:
         shutil.copytree(str(src_ref), str(dest))
     except (OSError, shutil.Error) as exc:
-        msg = f"Failed to copy migration revisions to {dest}: {exc}"
+        msg = f"Failed to copy migration revisions to {dest}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             PERSISTENCE_MIGRATION_FAILED,
             error_type=type(exc).__name__,
@@ -412,7 +412,7 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
                 env=env,
             )
         except OSError as exc:
-            msg = f"Failed to start Atlas process: {exc}"
+            msg = f"Failed to start Atlas process: {safe_error_description(exc)}"
             raise MigrationError(msg) from exc
         try:
             out, err = proc.communicate(timeout=_ATLAS_SUBPROCESS_TIMEOUT_SECONDS)
@@ -440,8 +440,13 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
         returncode, stdout_bytes, stderr_bytes = await asyncio.to_thread(
             _spawn_and_wait,
         )
-    except MigrationError:
-        logger.warning(PERSISTENCE_MIGRATION_FAILED, command=" ".join(safe_cmd))
+    except MigrationError as exc:
+        logger.warning(
+            PERSISTENCE_MIGRATION_FAILED,
+            command=" ".join(safe_cmd),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise
 
     stdout = stdout_bytes.decode()
@@ -529,6 +534,8 @@ async def migrate_apply(
             PERSISTENCE_MIGRATION_FAILED,
             note="Atlas returned non-JSON output",
             output_sample=stdout[:200],
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise MigrationError(msg) from exc
 
@@ -588,6 +595,8 @@ async def migrate_status(
             PERSISTENCE_MIGRATION_FAILED,
             note="Atlas status returned non-JSON output",
             output_sample=stdout[:200],
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise MigrationError(msg) from exc
 

@@ -27,7 +27,9 @@ from synthorg.tools.file_system._base_fs_tool import _map_os_error
         (
             OSError("disk full"),
             "os_error",
-            "OS error reading file '/workspace/missing.txt': disk full",
+            # ``safe_error_description`` prefixes the type name; the
+            # surrounding format string supplies the verb + path.
+            "OS error reading file '/workspace/missing.txt': OSError: disk full",
         ),
     ],
     ids=["file_not_found", "is_directory", "permission_denied", "generic_os"],

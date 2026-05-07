@@ -399,7 +399,7 @@ class DeviceFlow:
             if error == "expired_token":
                 break
             if error:
-                msg = f"Device flow error: {error}"
+                msg = f"Device flow error: {safe_error_description(error)}"
                 raise TokenExchangeFailedError(msg)
 
             access_token_raw = data.get("access_token")

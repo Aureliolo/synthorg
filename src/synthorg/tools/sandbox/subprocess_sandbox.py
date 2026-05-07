@@ -435,7 +435,7 @@ class SubprocessSandbox:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to start '{command}': {exc}"
+            msg = f"Failed to start '{command}': {safe_error_description(exc)}"
             raise SandboxStartError(
                 msg,
                 context={"command": command},

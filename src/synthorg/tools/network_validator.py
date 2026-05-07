@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_DNS_FAILED,
     WEB_SSRF_BLOCKED,
@@ -259,7 +259,7 @@ async def resolve_dns(
         return _dns_failure(
             hostname,
             str(exc),
-            f"DNS resolution for {hostname!r} failed: {exc}",
+            f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}",
         )
     except Exception as exc:
         if isinstance(exc, MemoryError | RecursionError):
@@ -267,9 +267,9 @@ async def resolve_dns(
         logger.error(
             WEB_DNS_FAILED,
             hostname=hostname,
-            reason=f"unexpected: {type(exc).__name__}: {exc}",
+            reason=f"unexpected: {type(exc).__name__}: {safe_error_description(exc)}",
         )
-        return f"DNS resolution for {hostname!r} failed: {exc}"
+        return f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}"
 
     if not results:
         return _dns_failure(

@@ -33,7 +33,7 @@ from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_FAILED,
@@ -207,11 +207,12 @@ class LlmDecompositionStrategy:
             try:
                 plan = self._parse_response(response, task.id)
             except DecompositionError as exc:
-                last_error = str(exc)
+                last_error = safe_error_description(exc)
                 logger.warning(
                     DECOMPOSITION_LLM_PARSE_ERROR,
                     task_id=task.id,
                     attempt=attempt,
+                    error_type=type(exc).__name__,
                     error=last_error,
                 )
                 continue
@@ -219,10 +220,11 @@ class LlmDecompositionStrategy:
             try:
                 self._validate_plan(plan, context)
             except DecompositionError as exc:
-                last_error = str(exc)
+                last_error = safe_error_description(exc)
                 logger.warning(
                     DECOMPOSITION_VALIDATION_ERROR,
                     task_id=task.id,
+                    error_type=type(exc).__name__,
                     error=last_error,
                 )
                 continue
