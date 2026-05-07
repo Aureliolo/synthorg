@@ -192,12 +192,6 @@ async def _submit_cost_record(
     try:
         await tracker.record(record)
     except MemoryError, RecursionError:
-        logger.error(
-            EXECUTION_ENGINE_COST_FAILED,
-            agent_id=agent_id,
-            task_id=task_id,
-            error="non-recoverable error in cost recording",
-        )
         raise
     except Exception as exc:
         logger.warning(

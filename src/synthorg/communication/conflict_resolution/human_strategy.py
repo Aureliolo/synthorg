@@ -152,7 +152,9 @@ class HumanEscalationResolver:
         future = await self._registry.register(escalation.id)
         try:
             await self._store.create(escalation)
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             # Reap the future so the registry does not leak, and log
             # the failure so operators see the root cause (a failed
             # ``create`` also surfaces to the caller, but the queue
@@ -164,6 +166,8 @@ class HumanEscalationResolver:
                 conflict_id=conflict.id,
                 subject=conflict.subject,
                 note="store_create_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             await self._registry.cancel(escalation.id)
             raise

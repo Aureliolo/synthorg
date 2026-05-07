@@ -177,7 +177,7 @@ async def ensure_kv_bucket(state: _NatsState) -> None:
         ) from exc
 
 
-async def stop(state: _NatsState) -> None:
+async def stop(state: _NatsState) -> None:  # noqa: C901
     """Stop the bus gracefully. Idempotent.
 
     Cancels outstanding ``receive()`` calls and closes the
@@ -203,11 +203,15 @@ async def stop(state: _NatsState) -> None:
             await sub.unsubscribe()
         except asyncio.CancelledError:
             pass
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.warning(
                 COMM_BUS_DISCONNECTED,
                 phase="stop_unsubscribe",
                 subscription=str(key),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
     state.subscriptions.clear()
 
@@ -216,10 +220,14 @@ async def stop(state: _NatsState) -> None:
             await state.client.drain()
         except asyncio.CancelledError:
             pass
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.warning(
                 COMM_BUS_DISCONNECTED,
                 phase="stop_drain",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         state.client = None
         state.js = None

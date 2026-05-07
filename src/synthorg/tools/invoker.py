@@ -259,11 +259,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None, ToolResult(
                 tool_call_id=tool_call.id,
@@ -344,11 +346,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 SECURITY_OUTPUT_SCAN_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content="Output scan failed (fail-closed). Tool output withheld.",

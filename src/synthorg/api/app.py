@@ -307,7 +307,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.warning(
+                logger.error(
                     API_APP_STARTUP,
                     note="Postgres persistence creation failed",
                     error_type=type(exc).__name__,
@@ -343,7 +343,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.warning(
+                logger.error(
                     API_APP_STARTUP,
                     note="Failed to create persistence backend from env",
                     error_type=type(exc).__name__,

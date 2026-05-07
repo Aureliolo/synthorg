@@ -114,7 +114,7 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
 
 ### Pre-commit gate
 
-`scripts/check_logger_exception_str_exc.py` enforces two rules unconditionally (no allowlist, no baseline) for every logger severity (`exception`, `warning`, `error`, `info`, `debug`) on bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`), or any Name whose id contains `logger`:
+`scripts/check_logger_exception_str_exc.py` enforces two rules unconditionally (no global allowlist, no baseline) for every logger severity (`exception`, `warning`, `error`, `info`, `debug`) on bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`), or any Name whose id contains `logger`. The **`exc_info=True` rule** (rule 2 below) supports a required same-line per-call opt-out marker (`# lint-allow: exc-info -- <reason>` with a mandatory non-empty reason); this is a per-instance carve-out for genuine framework-boundary handlers, *not* a global allowlist or list-based baseline:
 
 1. **Leak-shape rule** (`error=` value): the `error=` value subtree is walked via a custom `ast.walk` traversal that excludes `Call.args` and class-introspection chains (so `f"{type(exc).__name__}"`, `f"{exc.__class__.__name__}"`, `f"{safe_error_description(exc)}"` are not flagged) and that flags any of:
    - `str(<exc_like>)` calls where `<exc_like>` is `Name` / `Attribute` / `Subscript` (covers `str(exc)`, `str(self._inner)`, `str(exc.args[0])`).

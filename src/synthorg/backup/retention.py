@@ -55,6 +55,8 @@ class RetentionManager:
         """
         try:
             manifests = await asyncio.to_thread(self._load_manifests)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 BACKUP_RETENTION_FAILED,
@@ -137,6 +139,8 @@ class RetentionManager:
                         backup_id=manifest.backup_id,
                         error="Backup not found for deletion",
                     )
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.error(
                     BACKUP_RETENTION_FAILED,

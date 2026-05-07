@@ -301,11 +301,18 @@ class FineTuneOrchestrator:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # Update in-memory state even if DB fails.
+                # Update in-memory state even if DB fails. Mirror
+                # ``_mark_failed`` so the snapshot has the same terminal
+                # shape (progress cleared, timestamps stamped) instead
+                # of a stale stage with leftover progress data.
+                now = datetime.now(UTC)
                 self._current_run = run.model_copy(
                     update={
                         "stage": FineTuneStage.FAILED,
                         "error": "cancelled by user",
+                        "progress": None,
+                        "updated_at": now,
+                        "completed_at": now,
                     },
                 )
                 logger.warning(

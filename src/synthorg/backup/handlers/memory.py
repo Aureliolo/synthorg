@@ -70,6 +70,8 @@ class MemoryComponentHandler:
         target = target_dir / _MEMORY_SUBDIR
         try:
             size = await asyncio.to_thread(self._copy_tree, self._data_dir, target)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 BACKUP_COMPONENT_FAILED,
@@ -121,6 +123,8 @@ class MemoryComponentHandler:
                 bak_path,
             )
         except ComponentBackupError:
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.error(

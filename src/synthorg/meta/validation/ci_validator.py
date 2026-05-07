@@ -241,6 +241,9 @@ class LocalCIValidator:
             )
             return False
         except OSError as exc:
+            if proc is not None:
+                proc.kill()
+                await proc.wait()
             errors.append(
                 f"{step_name}: subprocess error: {safe_error_description(exc)}"
             )

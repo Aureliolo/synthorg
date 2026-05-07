@@ -354,6 +354,25 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         # base set for the module body.
         self._leak_aliases: set[str] = set()
 
+    def visit_Module(self, node: ast.Module) -> None:
+        """Collect module-level leak-aliases then recurse.
+
+        Without this pass, ``error_msg = str(exc)`` at module scope
+        (e.g. inside an ``if __name__ == "__main__":`` block or a
+        top-level try/except) would never be added to the alias set,
+        and a downstream ``logger.warning(EVENT, error=error_msg)``
+        would slip through. The function-scope pass below mirrors this
+        same setup/teardown so closures inherit module aliases without
+        the inner additions leaking back into the module set.
+        """
+        previous_aliases = self._leak_aliases
+        self._leak_aliases = set(previous_aliases)
+        for stmt in node.body:
+            self._collect_leak_aliases(stmt)
+        for child in ast.iter_child_nodes(node):
+            self.visit(child)
+        self._leak_aliases = previous_aliases
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         """Collect leak-aliases for the function then recurse."""
         self._visit_function_scope(node)
@@ -429,12 +448,22 @@ def _has_error_alias_kwarg(
     keywords: Iterable[ast.keyword],
     leak_aliases: set[str],
 ) -> bool:
-    """Return ``True`` if ``error=<Name>`` references a known leak alias.
+    """Return ``True`` if ``error=`` references a known leak alias.
 
     Catches the variable-indirection bypass:
 
         error_msg = str(exc)              # alias added to leak set
-        logger.warning(EVENT, error=error_msg)   # caught here
+        logger.warning(EVENT, error=error_msg)             # caught
+        logger.warning(EVENT, error=error_msg[:200])       # caught
+        logger.warning(EVENT, error=error_msg or "...")    # caught
+
+    The walk descends through any wrapper expression (``Subscript`` for
+    truncation, ``BoolOp`` / ``IfExp`` for fallback fusion, ``BinOp`` /
+    ``JoinedStr`` for concatenation), the same shapes
+    :func:`_has_error_str_exc_kwarg` already covers for non-aliased
+    values. Without this, ``error=msg[:200]`` would be a single-line
+    bypass: the alias tracker collects ``msg`` but the value site sees
+    a ``Subscript`` instead of a bare ``Name``.
 
     Only one level of aliasing is tracked. Multi-hop aliasing
     (``a = str(exc); b = a; logger.warning(error=b)``) requires a
@@ -445,8 +474,9 @@ def _has_error_alias_kwarg(
         return False
     for kw in keywords:
         for value in _error_kwarg_values(kw):
-            if isinstance(value, ast.Name) and value.id in leak_aliases:
-                return True
+            for inner in ast.walk(value):
+                if isinstance(inner, ast.Name) and inner.id in leak_aliases:
+                    return True
     return False
 
 

@@ -162,13 +162,17 @@ class ParallelExecutor:
             if lock is not None:
                 try:
                     await self._release_all_locks(group, lock)
-                except Exception as exc:
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as release_exc:
                     logger.warning(
                         PARALLEL_LOCK_RELEASE_ERROR,
-                        error="Failed to release resource locks",
+                        note="Failed to release resource locks",
                         group_id=group.group_id,
+                        error_type=type(release_exc).__name__,
+                        error=safe_error_description(release_exc),
                     )
-                    release_error = exc
+                    release_error = release_exc
 
         if release_error is not None:
             lock_msg = (
@@ -588,9 +592,13 @@ class ParallelExecutor:
         )
         try:
             self._progress_callback(snapshot)
-        except Exception:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.warning(
                 PARALLEL_PROGRESS_UPDATE,
-                error="Progress callback raised",
+                note="Progress callback raised",
                 group_id=snapshot.group_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )

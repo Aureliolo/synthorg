@@ -324,12 +324,16 @@ async def _run_cleanup(
                 await callback()
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
                 all_succeeded = False
                 logger.warning(
                     EXECUTION_SHUTDOWN_CLEANUP_FAILED,
                     callback_index=i,
                     callback_count=len(callbacks),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     try:

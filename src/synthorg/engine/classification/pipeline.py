@@ -399,12 +399,14 @@ async def _dispatch_to_sinks(
             await sink.on_classification(result)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 CLASSIFICATION_SINK_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
                 sink=type(sink).__name__,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
 
@@ -509,7 +511,7 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
             context = await loader.load(execution_result, agent_id, task_id)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             detector_names = [type(d).__name__ for d in detectors]
             logger.warning(
                 CONTEXT_LOADER_ERROR,
@@ -518,6 +520,8 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
                 execution_id=execution_id,
                 scope=scope.value,
                 detectors=detector_names,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             continue
         for detector in detectors:
@@ -575,7 +579,7 @@ async def _safe_detect(  # noqa: PLR0913
             timeout_seconds=timeout_seconds,
         )
         return ()
-    except Exception:
+    except Exception as exc:
         logger.warning(
             DETECTOR_ERROR,
             agent_id=agent_id,
@@ -585,5 +589,7 @@ async def _safe_detect(  # noqa: PLR0913
             message_count=len(
                 context.execution_result.context.conversation,
             ),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return ()

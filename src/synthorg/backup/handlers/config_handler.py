@@ -71,6 +71,8 @@ class ConfigComponentHandler:
                 self._config_path,
                 config_dir,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 BACKUP_COMPONENT_FAILED,
@@ -130,6 +132,8 @@ class ConfigComponentHandler:
                 source_file,
                 self._config_path,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 BACKUP_COMPONENT_FAILED,

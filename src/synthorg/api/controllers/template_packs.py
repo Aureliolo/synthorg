@@ -369,11 +369,13 @@ class TemplatePackController(Controller):
             # ``apply_failed`` trace the outer ``except Exception`` would
             # otherwise emit for the same expected error.
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 TEMPLATE_PACK_APPLY_ERROR,
                 pack_name=data.pack_name,
                 action="apply_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.info(

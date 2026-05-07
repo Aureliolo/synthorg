@@ -267,7 +267,9 @@ async def resolve_dns(
         logger.error(
             WEB_DNS_FAILED,
             hostname=hostname,
-            reason=f"unexpected: {type(exc).__name__}: {safe_error_description(exc)}",
+            reason="unexpected_dns_resolution_error",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}"
 

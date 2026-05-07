@@ -54,8 +54,14 @@ def _scan_source(
     source: str,
     *,
     exc_info_allowlist_lines: frozenset[int] | None = None,
-) -> list[tuple[int, int]]:
-    """Run the gate's ``_LoggerExceptionFinder`` against an inline source."""
+) -> list[tuple[int, int, str]]:
+    """Run the gate's ``_LoggerExceptionFinder`` against an inline source.
+
+    Each hit is a ``(lineno, col_offset, rule_id)`` triple where
+    ``rule_id`` is one of ``error_str_exc`` / ``exc_info_true``;
+    callers that only need the line / column can ignore the third
+    element.
+    """
     gate = _load_gate_module()
     finder_cls = gate._LoggerExceptionFinder  # type: ignore[attr-defined]
     if exc_info_allowlist_lines is None:
@@ -63,11 +69,11 @@ def _scan_source(
     else:
         finder = finder_cls(exc_info_allowlist_lines=exc_info_allowlist_lines)
     finder.visit(ast.parse(textwrap.dedent(source)))
-    hits: list[tuple[int, int]] = list(finder.hits)
+    hits: list[tuple[int, int, str]] = list(finder.hits)
     return hits
 
 
-def _scan_source_e2e(source: str) -> list[tuple[int, int]]:
+def _scan_source_e2e(source: str) -> list[tuple[int, int, str]]:
     """End-to-end: parse + tokenise allowlist + run finder.
 
     Uses the same code path as ``_scan_file`` but on inline source,
@@ -614,6 +620,56 @@ class TestVariableIndirection:
         )
         assert not hits, "non-leak alias must not be flagged"
 
+    def test_alias_subscript_wrapped_flagged(self) -> None:
+        """``error=error_msg[:200]`` references a leak alias under a slice."""
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    error_msg = str(exc)
+                    logger.warning("E", error=error_msg[:200])
+            """,
+        )
+        assert hits, (
+            "subscript-wrapped alias reference must trip the gate; truncation "
+            "still preserves the credential prefix"
+        )
+
+    def test_alias_boolop_wrapped_flagged(self) -> None:
+        """``error=error_msg or "fallback"`` references a leak alias under BoolOp."""
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    error_msg = str(exc)
+                    logger.warning("E", error=error_msg or "fallback")
+            """,
+        )
+        assert hits, "BoolOp-wrapped alias reference must trip the gate"
+
+    def test_alias_module_scope_flagged(self) -> None:
+        """Module-level ``error_msg = str(exc)`` aliases must be tracked.
+
+        Without ``visit_Module`` registration, top-level assignments in
+        an ``if __name__ == '__main__':`` block or a try/except at
+        module scope would never reach the alias collector and the
+        downstream logger call would slip through.
+        """
+        hits = _scan_source(
+            """
+            try:
+                pass
+            except Exception as exc:
+                error_msg = str(exc)
+                logger.warning("E", error=error_msg)
+            """,
+        )
+        assert hits, "module-level alias must trip the gate"
+
 
 @pytest.mark.unit
 class TestExcInfoGate:
@@ -687,19 +743,24 @@ class TestExcInfoGate:
         assert not hits
 
     def test_exc_info_with_fstring_error_double_flagged(self) -> None:
-        """A call with both leaks (f-string + exc_info=True) is one finder hit.
+        """A call with both leaks records one hit per rule (str_exc + exc_info).
 
-        Hits are recorded per-call (``visit_Call`` appends once per
-        match), so a single call with two distinct rule violations
-        appears once. The combined ``--scan-all`` run reports the
-        site once but the rule classification is internal.
+        The finder appends a hit for each rule that triggers, so a
+        single call with both an f-string-interpolated exception AND a
+        literal ``exc_info=True`` produces two hits with distinct rule
+        IDs. Pinning the rule classification here protects against a
+        regression where one of the two violations is silently absorbed
+        into the other.
         """
         hits = _scan_source(
             """
             logger.warning("E", error=f"{exc}", exc_info=True)
             """,
         )
-        assert hits
+        rule_ids = {rule_id for _, _, rule_id in hits}
+        assert rule_ids == {"error_str_exc", "exc_info_true"}, (
+            f"expected both rule IDs to fire on a dual-leak call; got {rule_ids}"
+        )
 
     def test_allowlist_marker_with_reason_not_flagged(self) -> None:
         """``# lint-allow: exc-info -- <reason>`` opts out a single line."""

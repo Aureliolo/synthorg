@@ -274,6 +274,8 @@ class CompositeSemanticAnalyzer:
                     base_sources=base_sources,
                     merged_sources=merged_sources,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,

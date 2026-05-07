@@ -65,6 +65,8 @@ class PersistenceComponentHandler:
                 str(self._db_path),
                 str(target_file),
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 BACKUP_COMPONENT_FAILED,
@@ -119,6 +121,8 @@ class PersistenceComponentHandler:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.error(

@@ -399,6 +399,10 @@ class DeviceFlow:
             if oauth_error_code == "expired_token":
                 break
             if oauth_error_code:
+                logger.warning(
+                    OAUTH_TOKEN_EXCHANGE_FAILED,
+                    error=oauth_error_code,
+                )
                 msg = f"Device flow error: {oauth_error_code}"
                 raise TokenExchangeFailedError(msg)
 

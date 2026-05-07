@@ -149,11 +149,13 @@ def _make_meeting_publisher(
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_WS_SEND_FAILED,
                 note="Failed to publish meeting WebSocket event",
                 event_name=event_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     return _on_meeting_event
@@ -184,7 +186,7 @@ def make_personality_trim_notifier(
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,
                 reason="failed to publish personality.trimmed WebSocket event",
@@ -194,6 +196,8 @@ def make_personality_trim_notifier(
                 trim_tier=payload.get("trim_tier"),
                 before_tokens=payload.get("before_tokens"),
                 after_tokens=payload.get("after_tokens"),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     return _on_personality_trimmed

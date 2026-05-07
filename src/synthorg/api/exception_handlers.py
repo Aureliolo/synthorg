@@ -353,8 +353,11 @@ def _log_error(
 ) -> None:
     """Log an API error with request context.
 
-    Uses ERROR level (with traceback) for 5xx server errors and
-    WARNING for 4xx client errors.
+    Uses ERROR level for 5xx server errors and WARNING for 4xx client
+    errors. ``error_type`` + ``error=safe_error_description(exc)``
+    supplies operator-visible diagnostic context without attaching the
+    traceback (whose frame-locals would carry connection strings,
+    tokens, etc. straight to the sink).
     """
     log = logger.error if status >= _SERVER_ERROR_THRESHOLD else logger.warning
     log(
@@ -364,7 +367,6 @@ def _log_error(
         status_code=status,
         error_type=type(exc).__qualname__,
         error=safe_error_description(exc),
-        exc_info=status >= _SERVER_ERROR_THRESHOLD,
     )
 
 

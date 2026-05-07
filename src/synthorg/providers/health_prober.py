@@ -378,11 +378,13 @@ class ProviderHealthProber:
             await self._probe_one(name, config, ollama_port=ollama_port)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 PROVIDER_HEALTH_PROBE_FAILED,
                 provider=name,
-                error="Unexpected error during probe",
+                note="Unexpected error during probe",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def _probe_one(
