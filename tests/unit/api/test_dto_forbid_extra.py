@@ -676,6 +676,47 @@ def test_gate_passes_dict_literal_model_config_with_forbid(tmp_path: Path) -> No
     assert _GATE._walk(target) == []
 
 
+def test_gate_uses_final_model_config_assignment(tmp_path: Path) -> None:
+    """Last-write-wins: a permissive override after ``extra="forbid"`` is flagged.
+
+    Python class assignment is last-write-wins, so the gate must inspect
+    the final ``model_config`` value rather than the first match.
+    Otherwise a class could declare ``extra="forbid"`` early and silently
+    override it lower in the class body.
+    """
+    source = textwrap.dedent(
+        """
+        from pydantic import BaseModel, ConfigDict
+
+        class FooResponse(BaseModel):
+            model_config = ConfigDict(frozen=True, extra="forbid")
+            value: int = 0
+            model_config = ConfigDict(frozen=True)
+        """
+    )
+    target = tmp_path / "sample.py"
+    target.write_text(source, encoding="utf-8")
+    violations = _GATE._walk(target)
+    assert [name for _, _, name in violations] == ["FooResponse"]
+
+
+def test_gate_passes_when_final_assignment_forbids(tmp_path: Path) -> None:
+    """The final ``model_config`` assignment determines the verdict."""
+    source = textwrap.dedent(
+        """
+        from pydantic import BaseModel, ConfigDict
+
+        class FooResponse(BaseModel):
+            model_config = ConfigDict(frozen=True)
+            value: int = 0
+            model_config = ConfigDict(frozen=True, extra="forbid")
+        """
+    )
+    target = tmp_path / "sample.py"
+    target.write_text(source, encoding="utf-8")
+    assert _GATE._walk(target) == []
+
+
 # ── Envelope round-trip tests ────────────────────────────────────────
 
 

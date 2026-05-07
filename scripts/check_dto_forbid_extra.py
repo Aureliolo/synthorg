@@ -82,7 +82,14 @@ def _model_config_assignment_value(stmt: ast.stmt) -> ast.expr | None:
 
 
 def _model_config_value(node: ast.ClassDef) -> ast.Call | ast.Dict | None:
-    """Return the ``model_config`` AST value (``ConfigDict(...)`` or ``{...}``)."""
+    """Return the effective ``model_config`` AST value.
+
+    Python class assignments are last-write-wins, so the gate must return
+    the *final* ``model_config`` assignment in the class body, not the
+    first. Otherwise a class could bypass the gate by setting
+    ``extra="forbid"`` early and overriding it later.
+    """
+    selected: ast.Call | ast.Dict | None = None
     for stmt in node.body:
         value = _model_config_assignment_value(stmt)
         if value is None:
@@ -92,10 +99,10 @@ def _model_config_value(node: ast.ClassDef) -> ast.Call | ast.Dict | None:
             if (isinstance(func, ast.Name) and func.id == "ConfigDict") or (
                 isinstance(func, ast.Attribute) and func.attr == "ConfigDict"
             ):
-                return value
-        if isinstance(value, ast.Dict):
-            return value
-    return None
+                selected = value
+        elif isinstance(value, ast.Dict):
+            selected = value
+    return selected
 
 
 def _base_name(base: ast.expr) -> str | None:
