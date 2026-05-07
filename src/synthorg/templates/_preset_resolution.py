@@ -106,11 +106,12 @@ def _validate_inline_personality(
     try:
         PersonalityConfig(**personality)
     except (ValidationError, TypeError) as exc:
+        desc = safe_error_description(exc)
         logger.warning(
             TEMPLATE_RENDER_VALIDATION_ERROR,
             agent_name=agent_name,
             error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            error=desc,
         )
-        msg = f"Invalid inline personality for agent {agent_name!r}: {safe_error_description(exc)}"  # noqa: E501
+        msg = f"Invalid inline personality for agent {agent_name!r}: {desc}"
         raise TemplateRenderError(msg) from exc

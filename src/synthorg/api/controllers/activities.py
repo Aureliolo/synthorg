@@ -98,6 +98,33 @@ _SRC_DELEGATION_RECORD_STORE = "delegation_record_store"
 _SRC_BUDGET_CONFIG = "budget_config"
 
 
+def _first_leaf_exception(eg: BaseExceptionGroup[BaseException]) -> BaseException:
+    """Return the first non-group leaf exception inside *eg*.
+
+    ``except*`` and ``ExceptionGroup.subgroup`` preserve the original
+    nested structure, so ``eg.exceptions[0]`` may itself be another
+    ``ExceptionGroup`` (e.g. if the inner ``TaskGroup`` raised a group
+    that the outer ``TaskGroup`` re-grouped). Walk the leftmost spine
+    until a non-group leaf is reached so the caller always logs and
+    re-raises a real cause, not a wrapper group.
+    """
+    candidate: BaseException = eg
+    while isinstance(candidate, BaseExceptionGroup) and candidate.exceptions:
+        candidate = candidate.exceptions[0]
+    return candidate
+
+
+def _leaf_exception_count(eg: BaseExceptionGroup[BaseException]) -> int:
+    """Count non-group leaf exceptions across the nested structure of *eg*."""
+    count = 0
+    for child in eg.exceptions:
+        if isinstance(child, BaseExceptionGroup):
+            count += _leaf_exception_count(child)
+        else:
+            count += 1
+    return count
+
+
 class ActivityWindowHours(IntEnum):
     """Allowed time windows for the activity feed."""
 
@@ -166,28 +193,27 @@ async def _run_async_fetchers(
             del_task = tg.create_task(
                 _fetch_delegation_records(app_state, agent_id, since, now),
             )
-    except ExceptionGroup as eg:
-        fatal = eg.subgroup((MemoryError, RecursionError))
-        if fatal is not None:
-            fatal_exc = fatal.exceptions[0]
-            logger.error(
-                API_REQUEST_ERROR,
-                endpoint="activities",
-                detail="Unable to fetch activity data at this time.",
-                error_type=type(fatal_exc).__name__,
-                error=safe_error_description(fatal_exc),
-            )
-            raise fatal_exc from eg
-        svc = eg.subgroup(ServiceUnavailableError)
-        if svc is not None:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="activities",
-                detail=(
-                    "Activity data service is currently unavailable. Please try again."
-                ),
-            )
-            raise svc.exceptions[0] from eg
+    except* (MemoryError, RecursionError) as fatal_eg:
+        fatal_exc = _first_leaf_exception(fatal_eg)
+        logger.error(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            detail="Unable to fetch activity data at this time.",
+            error_type=type(fatal_exc).__name__,
+            error=safe_error_description(fatal_exc),
+        )
+        raise fatal_exc from fatal_eg
+    except* ServiceUnavailableError as svc_eg:
+        svc_exc = _first_leaf_exception(svc_eg)
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            detail=(
+                "Activity data service is currently unavailable. Please try again."
+            ),
+        )
+        raise svc_exc from svc_eg
+    except* Exception as other_eg:
         failed_sources = [
             src
             for src, task in [
@@ -200,7 +226,7 @@ async def _run_async_fetchers(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="activities",
-            error_count=len(eg.exceptions),
+            error_count=_leaf_exception_count(other_eg),
             failed_sources=failed_sources,
         )
 

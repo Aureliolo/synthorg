@@ -403,12 +403,22 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         function body but stops at nested ``FunctionDef`` /
         ``AsyncFunctionDef`` / ``Lambda`` boundaries -- those define
         their own scope and get their own alias set when visited.
+
+        Tracks both direct leak shapes (``msg = str(exc)``) and
+        transitive aliases (``safe = msg`` where ``msg`` is already a
+        registered alias). The transitive arm walks the RHS for any
+        ``Name`` whose id is in ``self._leak_aliases`` so a one-hop
+        rebinding chain still surfaces the credential at the eventual
+        ``error=`` kwarg.
         """
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             return  # nested scope -- handled by its own visit_FunctionDef pass
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             value = node.value
-            if value is not None and _value_subtree_leaks(value):
+            if value is not None and (
+                _value_aliases_exception(value)
+                or self._value_subtree_references_leak_alias(value)
+            ):
                 targets = (
                     node.targets if isinstance(node, ast.Assign) else [node.target]
                 )
@@ -417,6 +427,23 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
                         self._leak_aliases.add(target.id)
         for child in ast.iter_child_nodes(node):
             self._collect_leak_aliases(child)
+
+    def _value_subtree_references_leak_alias(self, value: ast.expr) -> bool:
+        """Return ``True`` if *value* references a known leak alias.
+
+        Walks the RHS expression subtree for any ``ast.Name`` whose id
+        is already in ``self._leak_aliases``. Catches one-hop transitive
+        aliasing (``msg = str(exc); safe = msg``) and the same wrapper
+        shapes ``_value_subtree_leaks`` covers (subscript / boolop /
+        ifexp / binop / joinedstr) -- ``ast.walk`` traverses all
+        descendants regardless of wrapper.
+        """
+        if not self._leak_aliases:
+            return False
+        return any(
+            isinstance(inner, ast.Name) and inner.id in self._leak_aliases
+            for inner in ast.walk(value)
+        )
 
     def visit_Call(self, node: ast.Call) -> None:
         """Match ``<logger>.<method>(...)`` calls against both rules."""
@@ -540,6 +567,52 @@ def _value_subtree_leaks(value: ast.expr) -> bool:
     return any(
         _is_str_exc_call(node) or _is_fstring_exc_leak(node) for node in ast.walk(value)
     )
+
+
+def _value_aliases_exception(value: ast.expr) -> bool:
+    """Return ``True`` only for genuinely exception-bearing alias values.
+
+    Tighter than :func:`_value_subtree_leaks`: requires the leaf inside
+    ``str(...)`` / f-string interpolation to be exception-named (``exc``
+    / ``e`` / ``err`` / ``error`` / ``exception`` / ``cause`` /
+    ``original`` / ``inner`` / ``_inner``), so innocuous shapes like
+    ``agent_key = str(identity.id)`` or ``msg = f"agent {agent_key}"``
+    are NOT registered as aliases. The use-site walker
+    (``_value_subtree_leaks``) stays permissive on the kwarg side; only
+    the transitive *collection* needs to be narrow to avoid
+    propagating non-exception names through every intermediate string.
+    """
+    for node in ast.walk(value):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "str"
+            and len(node.args) == 1
+        ):
+            inner = node.args[0]
+            if _expr_subtree_has_exception_leaf(inner):
+                return True
+        if _is_fstring_exc_leak(node):
+            return True
+    return False
+
+
+def _expr_subtree_has_exception_leaf(node: ast.expr) -> bool:
+    """Return ``True`` if *node* references an exception-named leaf.
+
+    Mirrors the leaf-allowlist used by
+    :func:`_formatted_value_references_exception` but operates on a
+    plain expression subtree (``ast.Name`` / ``ast.Attribute`` /
+    ``ast.Subscript`` chains). Used by :func:`_value_aliases_exception`
+    to discriminate ``str(exc)`` / ``str(exc.args[0])`` /
+    ``str(self._inner)`` from innocuous ``str(identity.id)``.
+    """
+    for inner in ast.walk(node):
+        if isinstance(inner, ast.Name) and inner.id in _EXCEPTION_LEAF_NAMES:
+            return True
+        if isinstance(inner, ast.Attribute) and inner.attr in _EXCEPTION_LEAF_NAMES:
+            return True
+    return False
 
 
 def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:

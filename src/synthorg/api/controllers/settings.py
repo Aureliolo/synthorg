@@ -459,7 +459,7 @@ class SettingsController(Controller):
             msg = "Invalid setting value"
             raise DomainValidationError(msg) from exc
         except SettingsEncryptionError as exc:
-            logger.warning(
+            logger.error(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=namespace,
                 key=key,
@@ -600,17 +600,13 @@ class SettingsController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(
+            logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return ApiResponse(
-                data=TestSinkConfigResponse(
-                    valid=False,
-                    error="Internal error validating sink configuration",
-                ),
-            )
+            msg = "Internal error validating sink configuration"
+            raise InternalServerException(msg) from None
         return ApiResponse(
             data=TestSinkConfigResponse(valid=True),
         )

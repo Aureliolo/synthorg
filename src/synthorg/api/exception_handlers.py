@@ -643,8 +643,11 @@ def handle_invalid_cursor(
     """Map :class:`InvalidCursorError` to 400.
 
     Cursor tokens are opaque to the client; if tampering or decoding
-    fails, surface the original (non-sensitive) message so operators
-    can distinguish malformed-base64 from signature-mismatch in logs.
+    fails, surface a sanitised description (via
+    ``safe_error_description``) in the 400 response body so operators
+    can distinguish malformed-base64 from signature-mismatch without
+    leaking secret-prefixed tokens or signature material into the
+    error envelope.
     """
     _log_error(request, exc, status=400)
     detail = safe_error_description(exc) or "Invalid pagination cursor"

@@ -356,6 +356,8 @@ async def _do_analysis(  # noqa: PLR0913
         )
     except asyncio.CancelledError:
         raise
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         logger.warning(
             WORKSPACE_SEMANTIC_ANALYSIS_FAILED,

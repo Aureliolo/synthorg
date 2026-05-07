@@ -434,9 +434,15 @@ class TestInvokeEmptyErrorMessage:
         result = await extended_invoker.invoke(call)
         assert result.is_error is True
         # ``safe_error_description`` returns just the type name when
-        # ``str(exc)`` is empty (per its documented contract); the
-        # ``ToolExecutionError`` then appends the tool context.
+        # ``str(exc)`` is empty (per its documented contract). The
+        # negative assertion locks that contract: a regression that
+        # appended an empty parenthetical (``"ValueError ()"``) when
+        # ``str(exc)`` is empty would surface here. The wrapping
+        # ``ToolExecutionError`` is allowed to append its own
+        # ``" (tool=...)"`` context, so we look for the empty-parens
+        # shape specifically rather than any open paren.
         assert "ValueError" in result.content
+        assert "ValueError ()" not in result.content
 
 
 @pytest.mark.unit

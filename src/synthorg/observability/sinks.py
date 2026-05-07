@@ -20,13 +20,13 @@ if TYPE_CHECKING:
 import structlog
 from structlog.stdlib import ProcessorFormatter
 
-from synthorg.observability import safe_error_description
 from synthorg.observability.config import RotationConfig, SinkConfig
 from synthorg.observability.enums import RotationStrategy, SinkType
 from synthorg.observability.events.api import (
     API_REQUEST_COMPLETED,
     API_REQUEST_STARTED,
 )
+from synthorg.observability.redaction import safe_error_description
 
 # ── Flushing file handlers ────────────────────────────────────────
 # Standard RotatingFileHandler and WatchedFileHandler buffer writes,

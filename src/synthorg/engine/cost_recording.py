@@ -5,6 +5,7 @@ Handles per-turn cost recording from execution results into the
 structured logging.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -191,6 +192,8 @@ async def _submit_cost_record(
     """
     try:
         await tracker.record(record)
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
     except Exception as exc:

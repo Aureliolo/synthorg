@@ -19,6 +19,7 @@ These tests pin the gate's contract:
 """
 
 import ast
+import functools
 import importlib.util
 import textwrap
 from pathlib import Path
@@ -31,12 +32,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GATE_SCRIPT = _REPO_ROOT / "scripts" / "check_logger_exception_str_exc.py"
 
 
+@functools.lru_cache(maxsize=1)
 def _load_gate_module() -> object:
     """Load the gate script as a module so we can call its internals.
 
     Importlib's spec/module form is the standard way to import a
     file that lives outside ``sys.path``; the ``scripts/`` directory
-    is intentionally not on the package path.
+    is intentionally not on the package path. Result is cached because
+    re-executing the gate's module body on every test call is the
+    single largest cost in this test file (the gate registers AST
+    visitors and pre-compiles regex patterns at import time).
     """
     spec = importlib.util.spec_from_file_location(
         "_check_logger_gate",
@@ -650,6 +655,28 @@ class TestVariableIndirection:
             """,
         )
         assert hits, "BoolOp-wrapped alias reference must trip the gate"
+
+    def test_transitive_alias_chain_flagged(self) -> None:
+        """``msg = str(exc); safe = msg; logger.warning(error=safe)`` still leaks.
+
+        A naive one-hop tracker only registers ``msg`` and misses the
+        rebinding to ``safe``. The transitive arm of
+        ``_collect_leak_aliases`` walks the RHS for any ``Name`` whose
+        id is already in the alias set so the chain is closed at
+        collection time.
+        """
+        hits = _scan_source(
+            """
+            def f():
+                try:
+                    pass
+                except Exception as exc:
+                    msg = str(exc)
+                    safe = msg
+                    logger.warning("E", error=safe)
+            """,
+        )
+        assert hits, "transitive alias chain must trip the gate"
 
     def test_alias_module_scope_flagged(self) -> None:
         """Module-level ``error_msg = str(exc)`` aliases must be tracked.

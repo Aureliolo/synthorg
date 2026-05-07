@@ -130,7 +130,7 @@ async def _try_stop(
         await awaitable
     except MemoryError, RecursionError:
         raise
-    except TimeoutError:
+    except TimeoutError as exc:
         from synthorg.observability.events.api import (  # noqa: PLC0415
             API_APP_SHUTDOWN_TIMEOUT,
         )
@@ -142,7 +142,9 @@ async def _try_stop(
             API_APP_SHUTDOWN_TIMEOUT,
             service=service,
             timeout_seconds=timeout,
-            error=error_msg,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            context=error_msg,
         )
         return False
     except Exception as exc:
@@ -272,10 +274,12 @@ async def _init_persistence(
                 secret,
             )
             app_state.set_auth_service(AuthService(auth_config))
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_APP_STARTUP,
-                error="Failed to resolve JWT secret",
+                note="Failed to resolve JWT secret",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
