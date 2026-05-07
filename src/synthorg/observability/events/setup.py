@@ -44,7 +44,7 @@ SETUP_MODEL_NOT_FOUND: Final[str] = "setup.agent.model_not_found"
 # first available model. Logged at DEBUG because fallback IS the
 # documented contract for tier-mismatch and the wizard provider gate
 # now blocks the "no models at all" case where this would actually
-# matter. See issue #1666 B-5.
+# matter.
 SETUP_MODEL_FALLBACK_USED: Final[str] = "setup.agent.model_fallback_used"
 
 # Wizard rejected a provider that could not surface a tier-classifiable

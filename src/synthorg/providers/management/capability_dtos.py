@@ -190,8 +190,9 @@ class ProviderAuditEvent(BaseModel):
 
     ``payload`` is event-type-specific structured metadata. Senders
     MUST keep credentials masked (``"prefix***last4"``) -- the audit
-    row is read-only forever and any plaintext leak is permanent. The
-    SEC-1 secret-log rule applies here.
+    row is read-only forever and any plaintext leak is permanent;
+    use ``safe_error_description`` (or an equivalent redactor) for
+    any operator-readable detail.
 
     Attributes:
         id: Monotonic row identifier assigned by persistence on save.
@@ -232,9 +233,9 @@ class ProviderAuditEvent(BaseModel):
         ``frozen=True`` on the model only prevents attribute
         reassignment; without this hook the audit row's ``payload``
         dict could be mutated post-construction, breaking the
-        append-only contract this model documents.  Round 6's shallow
-        ``MappingProxyType`` wrap was insufficient -- nested ``dict`` /
-        ``list`` / ``set`` values stayed mutable, so a caller could
+        append-only contract this model documents.  A shallow
+        ``MappingProxyType`` wrap is insufficient -- nested ``dict`` /
+        ``list`` / ``set`` values stay mutable, so a caller could
         still rewrite ``event.payload["nested"]["k"] = "evil"`` and
         violate the audit invariant.  ``_recursively_freeze`` walks
         the entire payload tree and produces an immutable equivalent

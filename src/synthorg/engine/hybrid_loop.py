@@ -183,7 +183,7 @@ class HybridLoop:
 
         warn_insufficient_budget(self._config, ctx)
 
-        # Phase 1: Planning
+        # Planning.
         plan_result = await self._run_planning_phase(
             ctx,
             provider,
@@ -198,7 +198,7 @@ class HybridLoop:
         ctx, plan = plan_result
         all_plans.append(plan)
 
-        # Phase 2: Execute steps
+        # Execute steps.
         return await self._run_steps(
             ctx,
             provider,

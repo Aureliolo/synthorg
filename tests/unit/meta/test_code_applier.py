@@ -451,7 +451,7 @@ class TestGitHubExceptions:
 
 
 class TestPartialWriteError:
-    """Regression tests for the partial-revert path (#1683 round 3).
+    """Regression tests for the partial-revert path.
 
     Verifies that ``_write_changes`` records the successfully-written
     subset on ``PartialWriteError.applied`` so the outer ``apply()``

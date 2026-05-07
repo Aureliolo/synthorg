@@ -1,7 +1,7 @@
-"""Tests for DTO parity fixes from issue #1386.
+"""Tests for DTO parity contracts.
 
 Covers:
-- ``UpdateDepartmentRequest.teams`` now requires structured ``Team`` objects
+- ``UpdateDepartmentRequest.teams`` requires structured ``Team`` objects
 - ``UpdateAgentOrgRequest`` gained ``model_provider`` / ``model_id`` with the
   pair-validation rule shared with ``CreateAgentOrgRequest``.
 - ``PullModelRequest`` / ``UpdateModelConfigRequest`` accept the expected

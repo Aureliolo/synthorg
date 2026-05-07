@@ -547,9 +547,9 @@ class TestProviderControllerErrorSanitization:
     ``ProviderAlreadyExistsError`` into Litestar's
     ``ValidationError`` / ``ConflictError`` so the API client gets a
     structured 4xx.  The detail string MUST go through
-    ``safe_error_description`` (SEC-1) so a backend message that
-    embeds a credential, file path, or stack-trace fragment cannot
-    leak through the HTTP envelope.
+    ``safe_error_description`` so a backend message that embeds a
+    credential, file path, or stack-trace fragment cannot leak
+    through the HTTP envelope.
     """
 
     @staticmethod

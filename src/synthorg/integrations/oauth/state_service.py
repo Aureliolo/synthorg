@@ -1,9 +1,9 @@
 """OAuthStateService -- audit-aware facade over the OAuth state repo.
 
-The :class:`OAuthController` previously called
-``persistence.oauth_states.save(...)`` directly from the
-``initiate_flow`` handler.  Routing the write through this service
-centralises the durable save and the audit-grade
+The :class:`OAuthController` routes the ``initiate_flow`` durable
+save through this service rather than calling
+``persistence.oauth_states.save(...)`` directly.  Centralising the
+save here pairs the durable write with the audit-grade
 :data:`SECURITY_OAUTH_STATE_PERSISTED` event so audit logging cannot
 silently regress when a new field or write path is added; every other
 persistence-layer mutation in the controller stack already follows the

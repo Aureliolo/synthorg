@@ -1,10 +1,9 @@
 """Unit tests for :class:`WorkflowRollbackService`.
 
-The controller previously called ``repo.save(rolled_back)`` directly
-on the workflow_definitions repository, then constructed a fresh
-``VersioningService`` for the post-rollback snapshot.  The service
-centralises both writes so audit logging cannot regress when a new
-write path is added to the rollback contract.
+The service centralises the rollback write and the post-rollback
+snapshot construction (via :class:`VersioningService`) so audit
+logging cannot regress when a new write path is added to the
+rollback contract.
 
 These tests pin:
 

@@ -128,7 +128,7 @@ class TestTaskStructureClassifier:
             "next build the API",
             "finally deploy it",
             "step 1 is setup",
-            "phase 2 is testing",
+            "phase 2 is testing",  # lint-allow: migration-framing -- classifier fixture
         ],
         ids=[
             "then",

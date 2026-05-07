@@ -699,7 +699,7 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     # those to the idiomatic ``type: ["string", "null"]`` shape that
     # OpenAPI renderers (Scalar, Swagger UI, Redoc) prefer, and converts
     # ``$ref``-based nullable unions to ``anyOf`` so renderers can deref
-    # cleanly.  Originally tracked under closed issue #268.
+    # cleanly.
     result = _normalize_nullable_unions(result, all_schemas=schemas)
 
     path_count = len(result.get("paths", {}))

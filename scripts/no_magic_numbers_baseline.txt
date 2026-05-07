@@ -822,7 +822,7 @@ src/synthorg/telemetry/event_counter.py:116:23
 src/synthorg/telemetry/event_counter_protocol.py:61:23
 src/synthorg/telemetry/host_info.py:66:45
 src/synthorg/templates/_inheritance.py:42:25
-src/synthorg/templates/model_matcher.py:287:22
+src/synthorg/templates/model_matcher.py:286:22
 src/synthorg/tools/_git_base.py:50:33
 src/synthorg/tools/_git_base.py:51:44
 src/synthorg/tools/_git_base.py:103:35

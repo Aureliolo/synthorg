@@ -84,9 +84,9 @@ def build_strategic_prompt_sections(
     """
     output_mode = agent.strategic_output_mode or config.output_mode
 
-    # Strategic context section.
-    # Phase 1: reads context directly from config fields. Phase 2 will
-    # wire build_context() to support memory/composite context providers.
+    # Strategic context section.  Reads context directly from config
+    # fields; a future memory / composite provider path will wire
+    # build_context() in front of this read.
     # The context fields are admin-set but may carry per-tenant
     # content in a multi-tenant deployment, so we wrap each value
     # in a ``<config-value>`` fence and append a directive below

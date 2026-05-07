@@ -4,8 +4,8 @@ Returns one boolean per optional subsystem so the web dashboard can
 gate polling on the surfaces that are actually wired in this
 deployment. Without this surface the dashboard polled every endpoint
 unconditionally and recorded a 503 every cycle for any subsystem the
-operator had not configured -- 16+ such errors logged in 57h of
-runtime against a minimally-configured install (issue #1666 B-3).
+operator had not configured -- a minimally-configured install used
+to log 16+ such errors in 57h of runtime.
 """
 
 from typing import TYPE_CHECKING

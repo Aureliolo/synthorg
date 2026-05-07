@@ -1,7 +1,7 @@
 """Regression tests: budget enforcer tracks fire-and-forget notifications.
 
-Issue #1404 -- the monthly/daily budget notifications must be tracked
-via :class:`BackgroundTaskRegistry` so failures surface at ERROR with
+Monthly / daily budget notifications must be tracked via
+:class:`BackgroundTaskRegistry` so failures surface at ERROR with
 ``NOTIFICATION_SEND_FAILED``, instead of vanishing into asyncio's GC
 warning stream.
 

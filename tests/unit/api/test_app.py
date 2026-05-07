@@ -538,7 +538,7 @@ class TestTryStop:
 
 @pytest.mark.unit
 class TestAutoWirePhase1:
-    """Phase 1 auto-wiring: services created at construction time."""
+    """Construction-time auto-wiring: services created at app build."""
 
     def test_auto_wires_message_bus(
         self,
@@ -640,7 +640,7 @@ class TestAutoWirePhase1:
 
 @pytest.mark.unit
 class TestAutoWirePhase2:
-    """Phase 2 auto-wiring: settings_service after persistence connects."""
+    """On-startup auto-wiring: settings_service after persistence connects."""
 
     async def test_auto_wire_settings_creates_service(
         self,
@@ -715,9 +715,9 @@ class TestAutoWirePhase2:
         monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
         app = create_app()
         state: AppState = app.state["app_state"]
-        # Before startup, settings not yet wired (Phase 2 pending)
+        # Before startup, settings not yet wired (on_startup pending).
         assert not state.has_settings_service
-        # But Phase 1 services are wired
+        # But construction-time services are wired.
         assert state.has_message_bus
         assert state.has_task_engine
 
@@ -727,7 +727,7 @@ class TestAutoWirePhase2:
         fake_message_bus: Any,
         root_config: Any,
     ) -> None:
-        """Phase 2 is skipped when settings_service is explicitly provided."""
+        """On-startup auto-wire skipped when settings_service is explicitly provided."""
         import synthorg.settings.definitions  # noqa: F401
         from synthorg.settings.registry import get_registry
         from synthorg.settings.service import SettingsService
@@ -813,7 +813,7 @@ class TestAppStateSetSettingsService:
 
 @pytest.mark.unit
 class TestAutoWirePhase1Details:
-    """Detailed Phase 1 auto-wiring tests for edge cases."""
+    """Detailed construction-time auto-wiring tests for edge cases."""
 
     def test_auto_wired_bus_includes_api_channels(
         self,
@@ -859,14 +859,14 @@ class TestAutoWirePhase1Details:
 
 @pytest.mark.unit
 class TestAutoWirePhase2ErrorPaths:
-    """Phase 2 auto-wiring: error handling and rollback."""
+    """On-startup auto-wiring: error handling and rollback."""
 
     async def test_phase2_failure_triggers_safe_shutdown(
         self,
         monkeypatch: pytest.MonkeyPatch,
         root_config: Any,
     ) -> None:
-        """Phase 2 failure in on_startup calls _safe_shutdown for cleanup."""
+        """On-startup auto-wire failure calls _safe_shutdown for cleanup."""
         from unittest.mock import AsyncMock
 
         from synthorg.api.approval_store import ApprovalStore
@@ -908,7 +908,7 @@ class TestAutoWirePhase2ErrorPaths:
             effective_config=root_config,
         )
 
-        # Mock _safe_startup so on_startup gets past Phase 1
+        # Mock _safe_startup so on_startup gets past the early stage.
         safe_startup_mock = AsyncMock()
         monkeypatch.setattr(
             "synthorg.api.lifecycle_builder._safe_startup",
@@ -1024,7 +1024,7 @@ class TestAutoWirePhase2ErrorPaths:
 
 @pytest.mark.unit
 class TestAutoWirePhase1ErrorPaths:
-    """Phase 1 auto-wiring: error handling edge cases."""
+    """Construction-time auto-wiring: error handling edge cases."""
 
     def test_channel_overlap_deduplication(
         self,
@@ -1267,8 +1267,7 @@ class TestBuildMiddleware:
         mw = _build_middleware(root_config.api)
         # Eight layers (outside-in): ip_floor, ETagMiddleware,
         # auth_mw, csrf_mw, unauth_rl, RequestLoggingMiddleware,
-        # auth_rl, and the innermost PerOpConcurrencyMiddleware
-        # (#1489 SEC-2 + #1600 Phase 4 ETag conditional GET).
+        # auth_rl, and the innermost PerOpConcurrencyMiddleware.
         assert len(mw) == 8
 
     def test_three_rate_limiters_have_distinct_stores(

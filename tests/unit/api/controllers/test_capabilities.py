@@ -1,4 +1,4 @@
-"""Tests for ``GET /api/v1/capabilities`` (#1666 B-3)."""
+"""Tests for ``GET /api/v1/capabilities``."""
 
 from typing import Any
 
@@ -77,7 +77,7 @@ class TestCapabilitiesController:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Issue #1666 B-3: unconfigured simulations route does not exist.
+        """Unconfigured simulations route does not exist.
 
         Without ``client_simulation_state`` wired the simulation
         controller is not registered at all, so the dashboard's

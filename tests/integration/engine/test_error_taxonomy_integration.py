@@ -388,7 +388,7 @@ class TestErrorTaxonomyIntegration:
         assert "NotificationEngine" in omitted_descriptions
 
 
-# ── Integration tests for issue #228 acceptance criteria ───────
+# ── Integration tests for the error-taxonomy acceptance criteria ──
 
 
 def _child_task(
@@ -418,8 +418,8 @@ def _child_task(
 class TestCrossAgentNumericalDriftTaskTree:
     """LLM numerical-drift detection across a task tree.
 
-    Covers issue #228 acceptance criterion: "classify a task tree
-    with multiple agents producing cross-agent numerical drift,
+    Covers the acceptance criterion "classify a task tree with
+    multiple agents producing cross-agent numerical drift,
     verify the LLM detector catches it".
     """
 
@@ -542,9 +542,8 @@ class TestCrossAgentNumericalDriftTaskTree:
 class TestDelegationProtocolViolationIntegration:
     """End-to-end delegation protocol violation detection.
 
-    Covers issue #228 acceptance criterion: "classify a task with
-    a delegation protocol violation, verify the detector catches
-    it".
+    Covers the acceptance criterion "classify a task with a
+    delegation protocol violation, verify the detector catches it".
     """
 
     async def test_delegation_protocol_pipeline_executes_at_task_tree(
@@ -674,8 +673,8 @@ class TestDelegationProtocolViolationIntegration:
 class TestClassificationSinksFlowThrough:
     """Findings flow from the pipeline to configured sinks.
 
-    Covers issue #228 acceptance criterion: "findings flow through
-    to performance tracker and notification dispatcher".
+    Covers the acceptance criterion "findings flow through to
+    the performance tracker and notification dispatcher".
     """
 
     async def test_findings_reach_performance_tracker_and_dispatcher(

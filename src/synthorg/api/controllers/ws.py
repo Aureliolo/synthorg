@@ -421,7 +421,7 @@ def _resolve_channels_plugin(
     Litestar's DI does not reliably inject plugin instances into
     WebSocket handlers (the parameter is misidentified as a query
     param, causing a Litestar-internal 4500 close before the
-    handler runs).  See #549.
+    handler runs); resolve from ``socket.app.plugins`` directly.
     """
     for plugin in socket.app.plugins:
         if isinstance(plugin, ChannelsPlugin):

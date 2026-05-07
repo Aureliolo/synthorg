@@ -126,7 +126,7 @@ class TestEventStreamHub:
 
 @pytest.mark.unit
 class TestEventStreamHubRaceConditions:
-    """Regression tests for issue #1683 race-condition fixes.
+    """Race-condition regression tests.
 
     These tests synchronize many concurrent tasks at the start of the
     critical section via :class:`asyncio.Barrier` so they all attempt

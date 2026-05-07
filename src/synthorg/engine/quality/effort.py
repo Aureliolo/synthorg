@@ -17,7 +17,7 @@ from synthorg.observability.events.quality import (
 
 logger = get_logger(__name__)
 
-# Weak model trap thresholds (issue #697 action item).
+# Weak model trap thresholds.
 _WEAK_MODEL_MAX_STEPS: int = 2
 _WEAK_MODEL_MIN_ACCURACY: float = 0.8
 

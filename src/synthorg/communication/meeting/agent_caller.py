@@ -226,8 +226,9 @@ def _render_system_prompt(identity: AgentIdentity) -> str:
 class MeetingAgentCallerNotConfiguredError(DomainError):
     """Raised when a meeting runs without an agent + provider registry.
 
-    The meeting orchestrator is structurally wired during Phase 1 so
-    the REST surface is never 503, but calling an agent requires the
+    The meeting orchestrator is structurally wired at construction
+    time so the REST surface is never 503, but calling an agent
+    requires the
     agent registry (for identity lookup) and the provider registry
     (for LLM dispatch).  When either is absent at wire time, meetings
     that try to invoke an agent receive this error instead of the

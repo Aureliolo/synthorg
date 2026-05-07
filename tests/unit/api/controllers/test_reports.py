@@ -1,4 +1,4 @@
-"""Tests for the reports controller (#1666 B-2 regression)."""
+"""Tests for the reports controller."""
 
 from typing import Any
 
@@ -74,10 +74,10 @@ class TestReportsController:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Issue #1666 B-2 regression guard: missing wiring -> 503, not AttributeError.
+        """Regression guard: missing wiring -> 503, not AttributeError.
 
-        Pre-#1666 the controller dereferenced ``state._app_state``
-        (private underscore attr) and surfaced a bare ``AttributeError``
+        Without this guard the controller dereferences ``state._app_state``
+        (private underscore attr) and surfaces a bare ``AttributeError``
         as a 500 Internal Server Error to clients. The fix routes
         through ``app_state.has_report_service`` -- when the service
         is not wired the controller now raises

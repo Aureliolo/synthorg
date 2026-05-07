@@ -195,7 +195,7 @@ class SQLiteLockoutRepository:
         # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
         # fields (attempts, threshold, duration) the controller
         # already tracks; persistence does not emit decision events
-        # (#1599 persistence-boundary rule).
+        # (repositories never emit operational events).
         return now_locked
 
     async def record_success(self, username: str) -> bool:

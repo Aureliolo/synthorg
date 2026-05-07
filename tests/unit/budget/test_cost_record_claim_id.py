@@ -1,11 +1,11 @@
 """Tests for CostRecord.claim_id idempotency field and tracker dedup.
 
-Issue #1682: every CostRecord carries a deterministic ``claim_id``
-generated at construction. ``CostTracker.record`` keeps a bounded
-LRU set of seen ``claim_id`` values; a second submission of the same
-key is a no-op and emits a single ``BUDGET_RECORD_DEDUPED`` info log.
-This protects future JetStream consumers (and the in-process tracker
-itself) from double-billing on retry.
+Every CostRecord carries a deterministic ``claim_id`` generated at
+construction. ``CostTracker.record`` keeps a bounded LRU set of seen
+``claim_id`` values; a second submission of the same key is a no-op
+and emits a single ``BUDGET_RECORD_DEDUPED`` info log. This protects
+JetStream consumers (and the in-process tracker itself) from
+double-billing on retry.
 """
 
 import asyncio

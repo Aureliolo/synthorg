@@ -1,8 +1,8 @@
 """Tier-coverage gate tests for ``POST /api/v1/setup/company``.
 
 Split out from ``test_setup.py`` to keep that module under the
-800-line cap. Both tests exercise the issue #1666 B-5 contract:
-the wizard refuses to create a company when no providers carry a
+800-line cap. Both tests exercise the contract that the wizard
+refuses to create a company when no providers carry a
 tier-classifiable model, and accepts when at least one model is
 seeded via the shared ``mock_providers`` fixture.
 """
@@ -22,9 +22,9 @@ class TestSetupCompanyTemplateGating:
         test_client: TestClient[Any],
     ) -> None:
         # Seed a provider with at least one model so the
-        # tier-coverage gate added for issue #1666 B-5 passes; the
-        # gate rejects setups that would otherwise produce per-agent
-        # ``no_models_available`` warnings during template expansion.
+        # tier-coverage gate passes; the gate rejects setups that
+        # would otherwise produce per-agent ``no_models_available``
+        # warnings during template expansion.
         from tests.unit.api.controllers.conftest import mock_providers
 
         with mock_providers(test_client):
@@ -47,7 +47,7 @@ class TestSetupCompanyTemplateGating:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Issue #1666 B-5: tier-coverage gate at the provider step.
+        """Tier-coverage gate at the provider step.
 
         With no providers configured, the setup wizard refuses the
         company creation and returns 422 with a discriminated

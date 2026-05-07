@@ -208,11 +208,11 @@ class WorkloadAscendingRanker:
 class CostDescendingRanker:
     """Selects the cheapest candidate (lowest ``total_cost``).
 
-    The name preserves issue #1612's vocabulary; the actual
-    behaviour is "ascending cost" (lowest cost wins). Sorts by
-    ``(total_cost, -score)`` so equal-cost agents tie-break by
-    score. Falls back to score-only ordering when cost data is
-    missing or does not cover every candidate (logs
+    The class name reads "descending" but the behaviour is
+    "ascending cost" (lowest cost wins). Sorts by ``(total_cost,
+    -score)`` so equal-cost agents tie-break by score. Falls back
+    to score-only ordering when cost data is missing or does not
+    cover every candidate (logs
     ``TASK_ASSIGNMENT_CAPABILITY_FALLBACK``).
     """
 

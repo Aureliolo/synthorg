@@ -1,4 +1,4 @@
-"""Unit tests for ``RequestDrainMiddleware`` (#1600 Phase 3).
+"""Unit tests for ``RequestDrainMiddleware``.
 
 Pins the contract:
 

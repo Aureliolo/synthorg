@@ -1,4 +1,4 @@
-"""Concurrency test for InMemoryTelemetryEventCounter (#1599 §4.5).
+"""Concurrency test for InMemoryTelemetryEventCounter.
 
 The eviction-flag flip happens inside ``self._lock`` so only one
 thread ever observes ``first_eviction=True``; this test confirms the

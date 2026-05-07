@@ -126,13 +126,13 @@ class MCPToolInvoker:
                 is_error=True,
             )
 
-        # Phase 4 of #1611: when the tool registration carries an
-        # ``args_model``, validate the raw dict against it and pass the
-        # validated ``model_dump()`` to the handler.  Validation
-        # failure surfaces as an ``invalid_argument`` error envelope
-        # without ever reaching the handler.  Legacy tools
-        # (``args_model is None``) keep receiving the deepcopied raw
-        # dict, validated by the handler's own ``common_args`` calls.
+        # When the tool registration carries an ``args_model``,
+        # validate the raw dict against it and pass the validated
+        # ``model_dump()`` to the handler.  Validation failure surfaces
+        # as an ``invalid_argument`` error envelope without ever
+        # reaching the handler.  Tools without an ``args_model``
+        # receive the deepcopied raw dict, validated by the handler's
+        # own ``common_args`` calls.
         handler_arguments: dict[str, Any]
         if tool_def.args_model is not None:
             # Reject non-mapping payloads up front. Otherwise

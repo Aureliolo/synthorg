@@ -31,10 +31,10 @@ class ConfigTuningStrategy:
     """Generates config tuning proposals from signal patterns.
 
     For each triggered rule, builds a prompt with signal context
-    and asks the LLM to propose concrete config changes. In the
-    initial implementation, generates template-based proposals
-    from rule signal context without LLM calls (LLM integration
-    is Phase 7 when the service orchestrator wires up providers).
+    and asks the LLM to propose concrete config changes. The
+    current implementation generates template-based proposals
+    from rule signal context without LLM calls; LLM integration
+    is wired in once the service orchestrator owns providers.
 
     Args:
         config: Self-improvement configuration.

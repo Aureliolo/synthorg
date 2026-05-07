@@ -11,7 +11,7 @@ immediately (e.g. budget-exhaustion notifications that precede
 Without this registry, tasks created via :func:`asyncio.create_task`
 that raise silently vanish -- the coroutine's exception is only
 surfaced as a garbage-collector warning, which CI and operators
-never see. Reference: issue #1404.
+never see.
 """
 
 import asyncio

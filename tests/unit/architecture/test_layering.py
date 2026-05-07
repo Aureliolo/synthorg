@@ -1,8 +1,8 @@
 """Architecture-layering guard for the boundary-error abstraction.
 
-Issue #1610 relocated the error taxonomy and the generic / persistence
-exception hierarchies into ``synthorg.core``.  These tests pin the new
-layering for the long term:
+The error taxonomy and the generic / persistence exception hierarchies
+live in ``synthorg.core``.  These tests pin the layering for the long
+term:
 
 * No module under ``src/synthorg`` may import ``synthorg.api.errors``
   or ``synthorg.persistence.errors`` -- both modules are deleted; any
@@ -242,7 +242,7 @@ def test_lower_layers_dont_reach_into_api_errors_namespace() -> None:
 def test_controllers_use_core_persistence_errors() -> None:
     """Controllers under ``api/controllers`` route persistence errors through core.
 
-    Phase 3 of #1610 moved the persistence error hierarchy into
+    The persistence error hierarchy lives in
     ``synthorg.core.persistence_errors``.  Controllers must import from
     core (the abstraction) rather than reaching back into the
     ``synthorg.persistence`` package internals.

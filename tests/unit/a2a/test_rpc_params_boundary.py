@@ -1,10 +1,9 @@
 """Boundary tests for the A2A JSON-RPC params surface.
 
-Phase 2 of RFC #1711. ``parse_rpc_params`` routes the discriminated
-:data:`A2ARpcParams` union through :func:`parse_typed` so a malformed
-``params`` payload emits ``api.boundary.validation_failed`` and the
-gateway maps the re-raised ``ValidationError`` into ``-32602 Invalid
-params``.
+``parse_rpc_params`` routes the discriminated :data:`A2ARpcParams`
+union through :func:`parse_typed` so a malformed ``params`` payload
+emits ``api.boundary.validation_failed`` and the gateway maps the
+re-raised ``ValidationError`` into ``-32602 Invalid params``.
 """
 
 import pytest

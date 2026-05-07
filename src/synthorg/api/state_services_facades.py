@@ -262,7 +262,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         """Attach the reports facade (once-only)."""
         self._set_once("_reports_service", service, "ReportsService")
 
-    # ── Communication facades (META-MCP-2 phase 5) ────────────────
+    # ── Communication facades ─────────────────────────────────────
 
     @property
     def has_message_service(self) -> bool:
@@ -334,7 +334,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         """Attach the tunnel facade (once-only)."""
         self._set_once("_tunnel_service", service, "TunnelService")
 
-    # ── Infrastructure facades (META-MCP-2 phase 6) ─────────────────
+    # ── Infrastructure facades ────────────────────────────────────
     # Trivial getter/setter pass-throughs; the class docstring covers
     # the pattern.
 
@@ -535,7 +535,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
             "IntegrationHealthFacadeService",
         )
 
-    # ── Organization facades (META-MCP-2 phase 7) ─────────────────
+    # ── Organization facades ──────────────────────────────────────
 
     @property
     def has_company_read_service(self) -> bool:
@@ -593,7 +593,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
     ) -> None:
         self._set_once("_role_version_service", service, "RoleVersionService")
 
-    # ── Integration facades (META-MCP-2 phase 8) ─────────────────
+    # ── Integration facades ───────────────────────────────────────
 
     @property
     def has_mcp_catalog_facade_service(self) -> bool:
@@ -692,7 +692,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
             "OntologyFacadeService",
         )
 
-    # ── Quality facades (META-MCP-2 phase 9) ─────────────────
+    # ── Quality facades ───────────────────────────────────────────
 
     @property
     def has_quality_facade_service(self) -> bool:

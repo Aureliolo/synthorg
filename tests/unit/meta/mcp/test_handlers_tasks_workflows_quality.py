@@ -272,6 +272,6 @@ class TestWorkflowsDelete:
 
 
 # --- quality --------------------------------------------------------------
-# Phase 9 of META-MCP-2 flipped all quality handlers to live shims backed by
-# QualityFacadeService / ReviewFacadeService / EvaluationVersionService;
-# per-tool tests live in test_handlers_quality.py.
+# All quality handlers are live shims backed by QualityFacadeService /
+# ReviewFacadeService / EvaluationVersionService; per-tool tests live in
+# test_handlers_quality.py.

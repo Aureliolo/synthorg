@@ -1165,7 +1165,7 @@ CREATE INDEX idx_approvals_task_id ON approvals(task_id);
 CREATE INDEX idx_approvals_status_created_at
     ON approvals(status, created_at DESC);
 
--- Org memory: MVCC operation log + materialized snapshot (#1457 A4).
+-- Org memory: MVCC operation log + materialized snapshot.
 -- Tags are TEXT JSON to match the SQLite backend's serialization;
 -- cross-backend parity wins over Postgres-native JSONB idiom here.
 CREATE TABLE org_facts_operation_log (
@@ -1211,7 +1211,7 @@ CREATE INDEX idx_snapshot_category ON org_facts_snapshot (category);
 CREATE INDEX idx_snapshot_active ON org_facts_snapshot (retracted_at)
     WHERE retracted_at IS NULL;
 
--- Ontology drift reports (#1457 A5).
+-- Ontology drift reports.
 CREATE TABLE drift_reports (
     id BIGSERIAL PRIMARY KEY,
     entity_name TEXT NOT NULL,

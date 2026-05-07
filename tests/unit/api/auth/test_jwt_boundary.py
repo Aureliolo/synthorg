@@ -1,6 +1,6 @@
 """Boundary tests for the typed JWT contract.
 
-Phase 2 of RFC #1711. ``decode_token`` returns a typed
+``decode_token`` returns a typed
 :class:`synthorg.api.auth.claims.JwtClaims` and routes through
 :func:`synthorg.api.boundary.parse_typed`, so a malformed claim set
 emits ``api.boundary.validation_failed`` and re-raises

@@ -405,12 +405,11 @@ class ApprovalTimeoutScheduler:
 
         Runs inside :class:`BackgroundTaskRegistry` so any exception
         is captured by the registry's done-callback and logged as
-        ``NOTIFICATION_SEND_FAILED``. The previous version wrapped
-        the dispatch call in a broad ``try/except`` that swallowed
-        exceptions; that defeated the registry's failure-visibility
-        guarantee (issue #1404) and was the whole reason
-        notifications were moved behind the registry in the first
-        place.
+        ``NOTIFICATION_SEND_FAILED``. The dispatch call must NOT be
+        wrapped in a broad ``try/except`` that swallows exceptions:
+        the registry's failure-visibility guarantee depends on the
+        coroutine raising naturally so the done-callback can record
+        the failure.
         """
         if self._notification_dispatcher is None:
             return

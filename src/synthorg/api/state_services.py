@@ -145,7 +145,8 @@ class AppStateServicesMixin(_FacadesMixin):
     helpers declared on the concrete class.
 
     The facade-service accessors (signals / analytics / reports /
-    communication / META-MCP-2 phase 5-9) live in
+    communication / infrastructure / organization / integration /
+    quality) live in
     :class:`~synthorg.api.state_services_facades._FacadesMixin` to keep
     this module under the 800-line size limit.
     """

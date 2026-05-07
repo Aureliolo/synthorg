@@ -1,8 +1,8 @@
 """Webhook end-to-end: bus publish -> bridge forward -> strategy call.
 
-Exercises the full path required by issue #246 acceptance criterion:
-``WebhookEventBridge subscribes to #webhooks and forwards events into
-ExternalTriggerStrategy.on_external_event``.
+Exercises the full path required by the contract that
+``WebhookEventBridge`` subscribes to ``#webhooks`` and forwards
+events into ``ExternalTriggerStrategy.on_external_event``.
 
 The test uses the in-process ``InMemoryMessageBus`` together with a
 spy ceremony scheduler that yields a spy ``ExternalTriggerStrategy``.

@@ -66,8 +66,8 @@ class ToolInvokerValidationMixin:
         """Validate tool call arguments.
 
         Tries the typed ``args_model`` when the subclass declares one
-        (the Phase 3 typed-args path of #1611) and falls back to
-        JSON-Schema validation against ``parameters_schema`` otherwise.
+        and falls back to JSON-Schema validation against
+        ``parameters_schema`` otherwise.
 
         Returns:
           * ``ToolResult`` on validation failure (caller short-circuits).

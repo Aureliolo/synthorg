@@ -1,13 +1,11 @@
 """Conformance tests for auth repositories (session / refresh / lockout).
 
-Issue #1457 consolidates the three auth stores into the persistence
-boundary, and the matching unit tests only exercise SQLite -- the
-previous ``test_postgres_session_store.py`` and siblings relied on
-mocks for the Postgres side, so a divergence between SQLite and
-Postgres behaviour would not have been caught.  These conformance
-tests drive each repository through the shared :class:`PersistenceBackend`
-fixture, so every assertion runs twice (once against SQLite, once
-against a real Postgres container).
+The three auth stores live behind the persistence boundary; matching
+unit tests only exercise SQLite. These conformance tests drive each
+repository through the shared :class:`PersistenceBackend` fixture,
+so every assertion runs twice (once against SQLite, once against a
+real Postgres container) and a SQLite/Postgres behaviour divergence
+cannot pass review.
 """
 
 from datetime import UTC, datetime, timedelta

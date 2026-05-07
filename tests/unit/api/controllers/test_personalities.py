@@ -34,7 +34,7 @@ def _make_valid_preset_body(
     return body
 
 
-# ── Discovery endpoints (Issue #755) ─────────────────────────
+# ── Discovery endpoints ───────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -108,7 +108,7 @@ class TestGetSchema:
         assert "openness" in schema["properties"]
 
 
-# ── CRUD endpoints (Issue #756) ──────────────────────────────
+# ── CRUD endpoints ────────────────────────────────────────────
 
 
 @pytest.mark.unit

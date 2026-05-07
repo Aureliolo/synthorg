@@ -27,7 +27,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, no-review-origin-in-code, no-migration-framing]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -465,5 +465,29 @@ repos:
         # MANDATORY paragraph or weakens the inventory cannot bypass
         # the check.
         files: ^(CLAUDE\.md|web/CLAUDE\.md|cli/CLAUDE\.md|docs/reference/.*\.md|docs/design/.*\.md|scripts/check_convention_gate_inventory\.py|scripts/convention_gate_map\.yaml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: no-review-origin-in-code
+        name: no reviewer citations / issue back-refs / naked SEC-N in code
+        entry: uv run python scripts/check_no_review_origin_in_code.py
+        language: system
+        # Trigger on any in-scope source / test file, the gate script
+        # itself, or this config so a PR that introduces a forbidden
+        # pattern (or weakens the gate by editing the script) cannot
+        # bypass the check.
+        files: ^(src/synthorg/.*\.(py|sql)|tests/.*\.py|scripts/check_no_review_origin_in_code\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: no-migration-framing
+        name: no migration / origin / phase-N framing in code
+        entry: uv run python scripts/check_no_migration_framing.py
+        language: system
+        # Trigger on any in-scope source / test file, the gate script
+        # itself, or this config so a PR that introduces migration /
+        # origin framing (or weakens the gate by editing the script)
+        # cannot bypass the check.
+        files: ^(src/synthorg/.*\.(py|sql)|tests/.*\.py|scripts/check_no_migration_framing\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]

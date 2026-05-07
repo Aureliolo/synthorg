@@ -1,17 +1,17 @@
-"""Tests for the ngrok tunnel adapter (#1666 B-4 regression guard)."""
+"""Tests for the ngrok tunnel adapter (regression guards)."""
 
 import pytest
 
 
 @pytest.mark.unit
 class TestPyngrokIsRequiredDependency:
-    """Issue #1666 B-4: ``pyngrok`` is a required runtime dep, not optional.
+    """``pyngrok`` is a required runtime dep, not optional.
 
-    Pre-#1666 the import was guarded by ``try/except ImportError`` so a
-    missing dep silently degraded the tunnel feature to 503 at runtime.
-    Now ``pyngrok`` is declared in ``[project.dependencies]`` and the
-    adapter imports it unconditionally; a missing dep is a build /
-    install bug that surfaces at module load. These tests are smoke-
+    A try/except-ImportError guard would silently degrade the tunnel
+    feature to 503 at runtime when the dep is missing.  ``pyngrok``
+    is declared in ``[project.dependencies]`` and the adapter imports
+    it unconditionally; a missing dep is a build / install bug that
+    surfaces at module load. These tests are smoke-
     grade regression guards: if ``pyngrok`` is ever removed from
     ``pyproject.toml`` the tests fail at import time, well before any
     runtime tunnel request.

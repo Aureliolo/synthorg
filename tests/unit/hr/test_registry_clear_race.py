@@ -1,4 +1,4 @@
-"""Concurrency tests for HRRegistry.clear (#1599 §4.1).
+"""Concurrency tests for HRRegistry.clear.
 
 Production-safe ``clear`` must hold the same lock as ``register`` and
 ``unregister`` so a contending writer never observes a partial clear.

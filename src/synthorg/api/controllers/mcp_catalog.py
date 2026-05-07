@@ -75,7 +75,7 @@ async def _validate_connection_name_for_install(
     Pre-validation closes the gap where an unknown ``connection_name``
     would otherwise reach the FK column on ``mcp_installations`` and
     raise ``psycopg.errors.ForeignKeyViolation`` outside the service's
-    typed ``ConnectionNotFoundError`` arm (issue #1666 B-1). The
+    typed ``ConnectionNotFoundError`` arm. The
     service's post-call check still validates the
     ``required_connection_type`` branch; this gate covers the
     no-required-type-but-unknown-name path. The IntegrityError

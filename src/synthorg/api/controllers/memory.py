@@ -840,7 +840,7 @@ def _recommend_batch_size() -> int | None:
         # torch is optional -- absence is expected on CPU-only installs.
         return None
     except Exception as exc:
-        # SEC-1: drop ``exc_info=True``.  The full traceback bypasses
+        # Drop ``exc_info=True``.  The full traceback bypasses
         # ``safe_error_description`` and can leak environment paths /
         # backend metadata; the redacted form is sufficient for triage.
         logger.warning(

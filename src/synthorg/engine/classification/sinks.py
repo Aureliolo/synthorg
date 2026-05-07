@@ -246,8 +246,8 @@ class NotificationDispatcherSink:
     and dispatches them.  Only findings at or above ``min_severity``
     are dispatched.  Per-agent rate limiting caps the number of
     notifications that can be dispatched within a sliding window to
-    protect downstream channels from alert storms (issue #228:
-    "Rate limited 1/minute per agent").
+    protect downstream channels from alert storms (default 1/minute
+    per agent).
 
     Args:
         dispatcher: The notification dispatcher.

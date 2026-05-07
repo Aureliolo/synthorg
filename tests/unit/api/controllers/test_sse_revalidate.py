@@ -1,4 +1,4 @@
-"""Tests for SSE periodic revalidation (#1599 §6.2).
+"""Tests for SSE periodic revalidation.
 
 Mirrors the WS revalidation test surface: every long-lived stream
 must close on user_deleted / role_demoted, and tolerate up to three

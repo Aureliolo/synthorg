@@ -33,7 +33,7 @@ class NgrokAdapter:
 
     Exposes the local API port on a public ngrok URL. ``pyngrok``
     is a required runtime dependency; the import is unconditional
-    at module level (#1666 B-4).
+    at module level.
 
     All ngrok calls are blocking, so they are offloaded to a
     worker thread via ``asyncio.to_thread`` to keep the event

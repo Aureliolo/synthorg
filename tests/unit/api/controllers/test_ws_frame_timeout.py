@@ -1,4 +1,4 @@
-"""Tests for the WebSocket per-frame idle timeout (#1683 DoS prevention).
+"""Tests for the WebSocket per-frame idle timeout (DoS prevention).
 
 The receive loop wraps every ``socket.receive_text()`` in
 ``asyncio.wait_for(..., timeout=ws_frame_timeout_seconds)``.  A

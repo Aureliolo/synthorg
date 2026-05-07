@@ -1,10 +1,9 @@
 """Conformance tests for ``McpInstallationRepository``.
 
-Issue #1457 introduces SQLite + Postgres implementations for the MCP
-catalog installation records.  The SQLite impl had unit coverage
-before the move; the Postgres impl was brand new.  This file exercises
-both behind the shared ``backend`` fixture so the semantics stay in
-lock-step across backends.
+MCP catalog installation records have SQLite + Postgres
+implementations; this file exercises both behind the shared
+``backend`` fixture so the semantics stay in lock-step across
+backends.
 """
 
 from datetime import UTC, datetime, timedelta

@@ -1,9 +1,10 @@
 """TrainingPlanService -- audit-aware facade over the plan + result repos.
 
-The :class:`TrainingController` previously called
-``persistence.training_plans.save(...)`` and
-``persistence.training_results.save(...)`` directly.  Routing every
-write through this service centralises:
+The :class:`TrainingController` routes every persistence write
+through this service rather than calling
+``persistence.training_plans.save(...)`` /
+``persistence.training_results.save(...)`` directly.  Centralising
+the writes here gives us:
 
 1. The four save sites (create, overrides update, failure, executed +
    result), each emitting a structured audit event so the durable

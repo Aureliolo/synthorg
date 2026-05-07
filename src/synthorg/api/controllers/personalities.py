@@ -65,7 +65,7 @@ class PersonalityPresetController(Controller):
     path = "/personalities"
     tags = ("personalities",)
 
-    # ── Discovery (Issue #755) ───────────────────────────────
+    # ── Discovery ─────────────────────────────────────────────
 
     @get(
         "/presets",
@@ -112,7 +112,7 @@ class PersonalityPresetController(Controller):
         schema = PersonalityPresetService.get_schema()
         return ApiResponse[dict[str, Any]](data=schema)
 
-    # ── CRUD (Issue #756) ────────────────────────────────────
+    # ── CRUD ──────────────────────────────────────────────────
 
     @post(
         "/presets",

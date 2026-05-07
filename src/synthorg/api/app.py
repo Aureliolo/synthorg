@@ -166,9 +166,9 @@ def _build_default_approval_timeout_scheduler(
     )
 
 
-# 2-Phase Init: Phase 1 (construct) bakes immutable middleware/CORS/routes
-# from RootConfig.  Phase 2 (on_startup) wires SettingsService + ConfigResolver
-# for runtime-editable settings.  Litestar rate-limit middleware reads config at
+# Two-step init: construction bakes immutable middleware / CORS / routes from
+# RootConfig; on_startup wires SettingsService + ConfigResolver for
+# runtime-editable settings.  Litestar rate-limit middleware reads config at
 # construction; runtime DB changes only affect code calling get_api_config().
 
 
@@ -239,7 +239,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         client_simulation_state: Pre-built client simulation state.
             Wired before the optional-controller predicate check so
             the Simulation / Request controllers register correctly
-            on a test app boot (#1666 B-3 regression coverage).
+            on a test app boot.
         _skip_lifecycle_shutdown: Test-only flag.  When ``True``, the
             Litestar app is built with an empty ``on_shutdown`` list so
             the lifespan exit is a no-op.  Used by the session-scoped
@@ -365,7 +365,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     note="Auto-wired filesystem artifact storage",
                 )
 
-    # ── Phase 1 auto-wire: services that don't need connected persistence ──
+    # ── Construction-time auto-wire: services that don't need connected persistence ──
     phase1 = auto_wire_phase1(
         effective_config=effective_config,
         persistence=persistence,
@@ -382,7 +382,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     provider_health_tracker = phase1.provider_health_tracker
     distributed_task_queue = phase1.distributed_task_queue
 
-    # ── Meeting auto-wire: orchestrator + scheduler (Phase 1 level) ──
+    # ── Meeting auto-wire: orchestrator + scheduler (construction-time) ──
     meeting_wire = auto_wire_meetings(
         effective_config=effective_config,
         meeting_orchestrator=meeting_orchestrator,
@@ -858,7 +858,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         guards=[require_password_changed],
     )
 
-    # Phase 2 auto-wiring flag: persistence being non-None is the
+    # Startup auto-wiring flag: persistence being non-None is the
     # enabling condition -- SettingsService needs connected persistence
     # and is created in on_startup after _init_persistence().
     _should_auto_wire = settings_service is None and persistence is not None
