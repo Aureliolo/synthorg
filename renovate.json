@@ -207,11 +207,10 @@
     },
     {
       "customType": "regex",
-      "description": "DHI image pins across CLI Go files: the pinned-digest map in cli/internal/verify/dhi.go and the default-tag constants in cli/internal/config/state.go (single source of truth referenced by verify/dhi.go vars, start.go third-party list, and dhi_test.go). Both file shapes share one manager so Renovate makes a single docker-datasource lookup per (depName, currentValue) pair, avoiding the upgrade-collision warning that surfaced when two managers raced on the same dep.",
-      "managerFilePatterns": ["/cli/internal/verify/dhi\\.go$/", "/cli/internal/config/state\\.go$/"],
+      "description": "DHI image pins for postgres + nats. Tag AND digest both live in cli/internal/config/state.go as Default*Image{Tag,Digest} constants; cli/internal/verify/dhi.go derives its dhiPinnedIndexDigests map from those constants at init. One file, one regex shape, one match per dep -- Renovate makes a single docker-datasource lookup per (depName, currentValue) pair and writes both tag+digest in the same edit. Splitting tag+digest across two regex shapes (one capturing currentDigest, the other not) triggers https://github.com/renovatebot/renovate/issues/36461 ('Multiple changed values') and aborts the renovate/container branch with 'Error updating branch: update failure'.",
+      "managerFilePatterns": ["/cli/internal/config/state\\.go$/"],
       "matchStrings": [
-        "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+\"[^:]+:(?<currentValue>[^\"]+)\":\\s+\"(?<currentDigest>sha256:[a-f0-9]+)\"",
-        "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+Default[A-Za-z]+ImageTag\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+        "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+Default[A-Za-z]+ImageTag\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\n\\s+Default[A-Za-z]+ImageDigest\\s*=\\s*\"(?<currentDigest>sha256:[a-f0-9]+)\""
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
