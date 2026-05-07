@@ -74,8 +74,8 @@
       "labels": ["dependencies", "type:chore", "scope:docker"]
     },
     {
-      "description": "Dev/CI compose files mirror image pins whose canonical source-of-truth lives in cli/internal/config/state.go (Default*ImageTag) and cli/internal/verify/dhi.go (dhiPinnedIndexDigests). Letting the docker-compose manager update them independently produces upgrade-collision warnings when the custom regex managers land on a different newValue, which aborts the entire renovate/container branch. The custom regex managers are the single update path; a Go test verifies docker/compose*.yml stays in sync.",
-      "matchFileNames": ["docker/compose*.yml"],
+      "description": "docker/compose.yml mirrors image pins whose canonical source-of-truth lives in cli/internal/config/state.go (Default*ImageTag) and cli/internal/verify/dhi.go (dhiPinnedIndexDigests) for DHI postgres + nats, and in cli/internal/compose/compose.yml.tmpl for busybox. Letting the docker-compose manager update docker/compose.yml independently produces upgrade-collision warnings when the custom regex managers land on a different newValue, which aborts the entire renovate/container branch. The custom regex managers are the single update path; a Go test verifies docker/compose.yml stays in sync. Other dev compose files (overlays, dast, distributed, fine-tuning) keep the docker-compose manager.",
+      "matchFileNames": ["docker/compose.yml"],
       "matchManagers": ["docker-compose"],
       "enabled": false
     },
@@ -197,8 +197,8 @@
     },
     {
       "customType": "regex",
-      "description": "Busybox sidecar in compose files",
-      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/"],
+      "description": "Busybox sidecar in dev compose files. Covers both the runtime template (compose.yml.tmpl) and docker/compose.yml. Renovate's docker-compose manager is disabled on docker/compose.yml (see packageRules), so this custom manager is the single update path; both files share one regex so Renovate makes a single docker-datasource lookup per (tag, digest) pair.",
+      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/", "/docker/compose\\.yml$/"],
       "matchStrings": [
         "image:\\s+(?<depName>busybox):(?<currentValue>[^@]+)@(?<currentDigest>sha256:[a-f0-9]+)"
       ],
