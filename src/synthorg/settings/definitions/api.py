@@ -826,10 +826,11 @@ _r.register(
         description=(
             "Master kill switch for the per-connection webhook receipt"
             " sweep loop. When False the loop stays resident but every"
-            " 24h tick short-circuits -- pauses receipt pruning without"
-            " tearing down lifecycle. Receipts continue to accumulate"
-            " until the flag is flipped back. Resolver outage falls"
-            " back to enabled."
+            " tick short-circuits (cadence controlled by"
+            " ``integrations.webhook_receipt_cleanup_tick_seconds``) --"
+            " pauses receipt pruning without tearing down lifecycle."
+            " Receipts continue to accumulate until the flag is flipped"
+            " back. Resolver outage falls back to enabled."
         ),
         group="Webhooks",
         level=SettingLevel.ADVANCED,

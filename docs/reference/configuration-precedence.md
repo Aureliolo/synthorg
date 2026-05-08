@@ -254,12 +254,18 @@ without restarting the process. The canonical shape:
    so the setting participates in the full DB > env > YAML > default
    precedence chain. Without `yaml_path` the YAML leg is silently
    skipped and operators get the code default at startup.
-2. Add a fail-safe-to-enabled resolver helper next to the loop:
+2. Add a fail-safe-to-enabled resolver helper next to the loop. The
+   "no resolver wired" fast-path returns `True` directly so a service
+   constructed in a test or pre-startup context (where
+   `app_state.has_config_resolver` is `False` / `config_resolver is None`)
+   does not crash on a `None.get_bool` access:
 
    ```python
    async def _resolve_<x>_enabled(...) -> bool:
+       if not app_state.has_config_resolver:
+           return True
        try:
-           return await config_resolver.get_bool(<ns>, "<x>_enabled")
+           return await app_state.config_resolver.get_bool(<ns>, "<x>_enabled")
        except asyncio.CancelledError:
            raise
        except MemoryError, RecursionError:
@@ -286,11 +292,13 @@ The fail-safe-to-enabled rule is non-negotiable: a settings-backend
 outage must not silently silence the surface. Operators silence by
 setting the value explicitly.
 
-Reference implementations: `_ticket_cleanup_loop` in
-`api/lifecycle_helpers.py:256`, `ProviderHealthProber._run_loop` in
-`providers/health_prober.py:317`, `_webhook_receipt_cleanup_loop`
-in `api/webhook_cleanup.py:260`, `NotificationDispatcher.dispatch`
-in `notifications/dispatcher.py:250`.
+Reference implementations (symbol-only references; line numbers churn):
+`api.lifecycle_helpers._ticket_cleanup_loop`,
+`api.lifecycle_helpers._audit_retention_loop`,
+`api.webhook_cleanup._webhook_receipt_cleanup_loop`,
+`providers.health_prober.ProviderHealthProber._run_loop`,
+`notifications.dispatcher.NotificationDispatcher.dispatch`,
+`communication.conflict_resolution.escalation.sweeper.EscalationExpirationSweeper._run`.
 
 Per-line opt-out:
 `# lint-allow: long-running-loop-kill-switch -- <reason>` on the

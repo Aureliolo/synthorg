@@ -842,13 +842,35 @@ func TestResolveNATSURL(t *testing.T) {
 	}
 }
 
-// TestResolveNATSURL_InvalidURLPropagatesToValidation confirms that when
-// SYNTHORG_NATS_URL holds a malformed value, resolveNATSURL itself returns
-// it (it is a pure env reader) but the downstream Generate -> ValidateNATSURL
-// chain rejects it before the value can land in compose.yml.
+// TestResolveNATSURL_InvalidURLPropagatesToValidation confirms that a
+// malformed SYNTHORG_NATS_URL is rejected by the real compose generation
+// path (ParamsFromState -> Generate), not just by ValidateNATSURL in
+// isolation. Exercising Generate ensures we catch the case where a future
+// refactor removes the validation call from the compose pipeline -- the
+// value would still pass ValidateNATSURL on its own, but the regression
+// would land an http:// URL in compose.yml unnoticed.
 func TestResolveNATSURL_InvalidURLPropagatesToValidation(t *testing.T) {
 	t.Setenv("SYNTHORG_NATS_URL", "http://not-a-nats-url:4222")
-	if err := config.ValidateNATSURL(resolveNATSURL()); err == nil {
-		t.Fatal("expected ValidateNATSURL to reject http:// scheme, got nil")
+	s := config.State{
+		DataDir:            t.TempDir(),
+		ImageTag:           "v1.0.0",
+		BackendPort:        9000,
+		WebPort:            4000,
+		LogLevel:           "info",
+		JWTSecret:          "secret",
+		SettingsKey:        "settings-key",
+		CursorSecret:       "test-cursor-secret-stable-value",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "external",
+	}
+	params, err := ParamsFromState(s)
+	if err == nil {
+		if _, err = Generate(params); err == nil {
+			t.Fatal("expected Generate to reject http:// SYNTHORG_NATS_URL, got nil")
+		}
+	}
+	if err == nil {
+		t.Fatal("expected an error from the compose pipeline, got nil")
 	}
 }

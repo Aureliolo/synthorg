@@ -102,8 +102,8 @@ Supported keys:
   web_port              Web dashboard port
 
 Plus the runtime tunables (registry host, image tags, timeouts, size
-limits, NATS defaults) -- see cli/CLAUDE.md for the canonical list and
-'synthorg config list' for the live key set.`,
+limits, NATS defaults). Run 'synthorg config list' to see every
+settable key with its current value.`,
 	Example: `  synthorg config get backend_port
   synthorg config get channel
   synthorg config get image_tag`,
@@ -145,7 +145,9 @@ postgres_image_tag, nats_image_tag,
 default_nats_stream_prefix, backup_create_timeout, backup_restore_timeout,
 health_check_timeout, self_update_http_timeout, self_update_api_timeout,
 tuf_fetch_timeout, attestation_http_timeout, max_api_response_bytes,
-max_binary_bytes, max_archive_entry_bytes). See cli/CLAUDE.md for formats.
+max_binary_bytes, max_archive_entry_bytes). Run 'synthorg config list'
+for the full key set with current values; durations accept Go duration
+strings ("30s", "5m"); byte sizes accept "4MiB", "256MB", etc.
 
 Keys that affect Docker compose (backend_port, web_port, sandbox, docker_sock,
 image_tag, log_level, telemetry_opt_in, fine_tuning, fine_tuning_variant, and
