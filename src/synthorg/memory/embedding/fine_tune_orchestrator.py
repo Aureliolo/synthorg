@@ -600,6 +600,12 @@ class FineTuneOrchestrator:
         loop = asyncio.get_running_loop()
         # Bind the clock once outside the worker-thread closure so each
         # callback invocation reads through a stable attribute.
+        # ``SystemClock.monotonic`` delegates to ``time.monotonic``
+        # (thread-safe) so production callbacks invoked from worker
+        # threads are correct. Tests that drive ``_cb`` directly must
+        # invoke it from the test thread (the FakeClock's ``_now``
+        # field is not synchronised); the production stage runners
+        # only ever call back from one worker thread per stage.
         clock = self._clock
 
         def _update_on_loop(progress: float) -> None:

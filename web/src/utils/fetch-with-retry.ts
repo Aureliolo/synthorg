@@ -72,10 +72,11 @@ function isRetriable(
   init: RequestInit | undefined,
   opts: FetchWithRetryOptions | undefined,
 ): boolean {
-  if (opts?.idempotent === true) return true
-  if (opts?.idempotent === false) return false
-  if (IDEMPOTENT_METHODS.has(methodOf(init))) return true
-  return hasIdempotencyKey(init)
+  return (
+    opts?.idempotent === true ||
+    (opts?.idempotent !== false &&
+      (IDEMPOTENT_METHODS.has(methodOf(init)) || hasIdempotencyKey(init)))
+  )
 }
 
 /**
@@ -85,6 +86,11 @@ function isRetriable(
  * Returns the final ``Response`` -- successful, 4xx other than 429, or
  * 429 once the retry budget is exhausted (the caller decides what to
  * do with it). Network errors propagate as raw ``fetch`` rejections.
+ *
+ * If ``init.signal`` aborts during a retry sleep, the helper short-
+ * circuits and returns the most recent 429 response immediately so the
+ * caller's cancellation is observed without waiting out the full
+ * Retry-After budget.
  */
 export async function fetchWithRetryAfter(
   input: RequestInfo | URL,
@@ -94,6 +100,7 @@ export async function fetchWithRetryAfter(
   const fetchImpl = opts?.fetchImpl ?? fetch
   const sleep = opts?.sleep ?? defaultSleep
   const retriable = isRetriable(init, opts)
+  const signal = init?.signal
   let attempt = 0
   let response = await fetchImpl(input, init)
   while (
@@ -108,7 +115,13 @@ export async function fetchWithRetryAfter(
     if (waitMs === DO_NOT_RETRY) {
       return response
     }
+    if (signal?.aborted) {
+      return response
+    }
     await sleep(waitMs)
+    if (signal?.aborted) {
+      return response
+    }
     attempt += 1
     response = await fetchImpl(input, init)
   }

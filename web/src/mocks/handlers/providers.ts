@@ -22,7 +22,6 @@ import type {
   updateProvider,
   updateProviderRateLimits,
 } from '@/api/endpoints/providers'
-import type { PaginatedResponse } from '@/api/types/http'
 import type {
   CloudPreset,
   LocalPreset,
@@ -32,17 +31,12 @@ import type {
   ProviderModelResponse,
   RateLimitsConfig,
 } from '@/api/types/providers'
-import { paginatedFor, successFor, voidSuccess } from './helpers'
-
-function emptyPaginatedEnvelope<T>(): PaginatedResponse<T> {
-  return {
-    data: [],
-    error: null,
-    error_detail: null,
-    pagination: { limit: 200, next_cursor: null, has_more: false },
-    success: true,
-  }
-}
+import {
+  emptyPaginatedEnvelope,
+  paginatedFor,
+  successFor,
+  voidSuccess,
+} from './helpers'
 
 /**
  * Canonical cloud-preset fixture builder.

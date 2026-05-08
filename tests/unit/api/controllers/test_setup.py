@@ -1591,7 +1591,13 @@ class TestListPersonalityPresets:
             ).json()
             collected.extend(page["data"])
             cursor = page["pagination"]["next_cursor"]
+        # Strict equality already encodes "no duplicates, no gaps,
+        # stable order"; spell it out explicitly so a future change
+        # that loosens the equality check still trips on duplicates.
         assert collected == full
+        names = [p["name"] for p in collected]
+        assert len(set(names)) == len(names), "round-trip produced duplicates"
+        assert len(collected) == len(full), "round-trip produced gaps"
 
     def test_list_presets_tampered_cursor_rejected(
         self,

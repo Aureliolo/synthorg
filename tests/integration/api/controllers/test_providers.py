@@ -75,10 +75,12 @@ class TestProviderControllerDbOverride:
             resp = client.get("/api/v1/providers")
             assert resp.status_code == 200
             body = resp.json()
-            assert "db-provider" in body["data"]
-            # Response should use ProviderResponse format
-            assert body["data"]["db-provider"]["driver"] == "litellm"
-            assert body["data"]["db-provider"]["auth_type"] == "api_key"
+            # /providers returns a paginated list; locate the provider
+            # by its embedded ``name`` field.
+            providers_by_name = {p["name"]: p for p in body["data"]}
+            assert "db-provider" in providers_by_name
+            assert providers_by_name["db-provider"]["driver"] == "litellm"
+            assert providers_by_name["db-provider"]["auth_type"] == "api_key"
 
             detail_resp = client.get("/api/v1/providers/db-provider")
             assert detail_resp.status_code == 200

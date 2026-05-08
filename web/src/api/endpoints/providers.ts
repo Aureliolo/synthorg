@@ -52,11 +52,18 @@ export async function listProviders(): Promise<Record<string, ProviderConfig>> {
     const response = await apiClient.get<PaginatedResponse<ProviderConfig>>(url)
     return unwrapPaginated<ProviderConfig>(response)
   })
-  const result: Record<string, ProviderConfig> = Object.create(null) as Record<string, ProviderConfig>
+  const result: Record<string, ProviderConfig> = Object.create(null)
   for (const provider of all) {
     const key = provider.name
-    if (!key) continue
+    // Prototype-pollution keys are silently dropped (defence-in-depth
+    // against a hostile or buggy backend); a missing ``name`` is
+    // logged because the wire contract guarantees one on every
+    // paginated entry, so its absence is a regression worth surfacing.
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+    if (!key) {
+      log.warn('Skipping provider with missing name in paginated response')
+      continue
+    }
     result[key] = provider
   }
   return result

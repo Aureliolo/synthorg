@@ -366,37 +366,6 @@ class PersonalityPresetInfoResponse(BaseModel):
     description: str = ""
 
 
-class PersonalityPresetsListResponse(BaseModel):
-    """List of available personality presets.
-
-    Attributes:
-        presets: Preset summaries.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-
-    presets: tuple[PersonalityPresetInfoResponse, ...]
-
-
-class SetupAgentsListResponse(BaseModel):
-    """List of agents currently configured in setup.
-
-    Attributes:
-        agents: Agent summaries.
-        agent_count: Number of agents (computed from ``agents``).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    agents: tuple[SetupAgentSummary, ...]
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def agent_count(self) -> int:
-        """Number of agents currently configured."""
-        return len(self.agents)
-
-
 class SetupNameLocalesRequest(BaseModel):
     """Name locale selection payload.
 

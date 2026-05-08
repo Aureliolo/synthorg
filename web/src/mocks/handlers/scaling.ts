@@ -6,18 +6,12 @@ import type {
   getScalingDecisions,
   triggerScalingEvaluation,
 } from '@/api/endpoints/scaling'
-import type { PaginatedResponse } from '@/api/types/http'
-import { emptyPage, paginatedFor, successFor } from './helpers'
-
-function emptyPaginatedEnvelope<T>(): PaginatedResponse<T> {
-  return {
-    data: [],
-    error: null,
-    error_detail: null,
-    pagination: { limit: 200, next_cursor: null, has_more: false },
-    success: true,
-  }
-}
+import {
+  emptyPage,
+  emptyPaginatedEnvelope,
+  paginatedFor,
+  successFor,
+} from './helpers'
 
 export const scalingHandlers = [
   http.get('/api/v1/scaling/strategies', () =>

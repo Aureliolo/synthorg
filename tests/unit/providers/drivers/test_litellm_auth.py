@@ -207,6 +207,35 @@ class TestLiteLLMDriverCredentialCacheClock:
         await driver._ensure_credentials_resolved()
         assert catalog.get_credentials.await_count == 2
 
+    async def test_cache_boundary_at_exactly_ttl(self) -> None:
+        """At exactly T=TTL the cache must refetch (TTL is exclusive upper bound).
+
+        Locks in the ``<`` comparison at ``litellm_driver.py:191``
+        (``(now - cached_at) < _CREDENTIAL_CACHE_TTL``) so a future
+        change to ``<=`` would surface as a test failure rather than
+        a silent off-by-one.
+        """
+        config = _make_config(
+            auth_type=AuthType.API_KEY,
+            api_key="sk-cached",
+            connection_name="conn-1",
+        )
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials.return_value = {"api_key": "sk-cached"}
+        fake = FakeClock()
+        driver = LiteLLMDriver(
+            "test-provider",
+            config,
+            connection_catalog=catalog,
+            clock=fake,
+        )
+        await driver._ensure_credentials_resolved()
+        # ``<`` means at exactly T=TTL the diff equals TTL and falls
+        # through to the catalog refetch.
+        fake.advance(_CREDENTIAL_CACHE_TTL)
+        await driver._ensure_credentials_resolved()
+        assert catalog.get_credentials.await_count == 2
+
     async def test_oauth_never_cached(self) -> None:
         """OAuth credentials always refetch regardless of clock advance."""
         config = _make_config(

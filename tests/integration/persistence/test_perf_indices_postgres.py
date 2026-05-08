@@ -1,4 +1,14 @@
-"""Integration tests: Postgres composite indexes for cost_records / decision_records."""
+"""Integration tests: Postgres composite indexes for cost_records / decision_records.
+
+The EXPLAIN-asserting cases use a simpler ``ORDER BY`` than the
+production repo query (which trails ``agent_id ASC, rowid ASC`` as
+deterministic tiebreakers). The composite index is the right shape
+for cursor-pagination queries (single-column trailing ORDER BY) and
+that is what these tests pin. Production queries with the longer
+ORDER BY remain served by the existing single-column indexes; the new
+composites earn their keep on the cursor-paginated query shapes we
+are about to introduce.
+"""
 
 from datetime import UTC, datetime, timedelta
 

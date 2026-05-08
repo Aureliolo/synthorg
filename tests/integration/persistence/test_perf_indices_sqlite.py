@@ -1,4 +1,18 @@
-"""Integration tests: SQLite composite indexes for cost_records / decision_records."""
+"""Integration tests: SQLite composite indexes for cost_records / decision_records.
+
+The EXPLAIN-asserting cases use a simpler ``ORDER BY`` than the
+production repo query (which trails ``agent_id ASC, rowid ASC`` as
+deterministic tiebreakers). With those tiebreakers SQLite at 200 rows
+prefers the existing single-column ``idx_cost_records_*`` indexes plus
+a temp-B-tree sort over the new composites. The composite index is
+the right shape for cursor-pagination queries (single-column trailing
+ORDER BY), which is why these tests assert hits against THAT shape.
+The trade-off is intentional: the production query is unchanged, the
+single-column indexes still serve it efficiently at the row counts we
+target, and the new composites earn their keep on cursor-paginated
+queries we are about to add. Re-run ``EXPLAIN`` against the production
+ORDER BY if the planner choice shifts.
+"""
 
 from datetime import UTC, datetime, timedelta
 

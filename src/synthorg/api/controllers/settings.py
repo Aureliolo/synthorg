@@ -33,7 +33,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
@@ -148,48 +148,65 @@ class SecurityConfigImportRequest(BaseModel):
     config: dict[str, Any]
 
 
-def _sink_to_dict(
+class SinkRotationResponse(BaseModel):
+    """Rotation policy summary for a file sink."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    strategy: NotBlankStr
+    max_bytes: int = Field(ge=0)
+    backup_count: int = Field(ge=0)
+
+
+class SinkInfoResponse(BaseModel):
+    """Single observability-sink summary returned by /settings/observability/sinks.
+
+    Mirrors the frontend ``SinkInfo`` interface field-for-field so the
+    pagination wire envelope stays typed end-to-end instead of leaking
+    a ``dict[str, Any]``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    identifier: NotBlankStr
+    sink_type: NotBlankStr
+    level: NotBlankStr
+    json_format: bool
+    rotation: SinkRotationResponse | None = None
+    is_default: bool
+    enabled: bool
+    routing_prefixes: tuple[str, ...] = ()
+
+
+def _sink_to_response(
     sink: SinkConfig,
     *,
     is_default: bool,
     enabled: bool = True,
     routing_prefixes: tuple[str, ...] | None = None,
-) -> dict[str, Any]:
-    """Convert a SinkConfig to a plain dict for API responses.
-
-    Args:
-        sink: Sink configuration to convert.
-        is_default: Whether this is a default (built-in) sink.
-        enabled: Whether the sink is currently active.
-        routing_prefixes: Custom routing prefixes (if routing overrides apply).
-
-    Returns:
-        Dict representation with all sink fields.
-    """
-    identifier: str
-    if sink.sink_type == SinkType.CONSOLE:
-        identifier = CONSOLE_SINK_ID
-    else:
-        identifier = sink.file_path or ""
-
-    rotation: dict[str, Any] | None = None
-    if sink.rotation is not None:
-        rotation = {
-            "strategy": sink.rotation.strategy.value,
-            "max_bytes": sink.rotation.max_bytes,
-            "backup_count": sink.rotation.backup_count,
-        }
-
-    return {
-        "identifier": identifier,
-        "sink_type": sink.sink_type.value,
-        "level": sink.level.value,
-        "json_format": sink.json_format,
-        "rotation": rotation,
-        "is_default": is_default,
-        "enabled": enabled,
-        "routing_prefixes": list(routing_prefixes) if routing_prefixes else [],
-    }
+) -> SinkInfoResponse:
+    """Convert a SinkConfig to the typed API response model."""
+    identifier = (
+        CONSOLE_SINK_ID
+        if sink.sink_type == SinkType.CONSOLE
+        else (sink.file_path or "")
+    )
+    return SinkInfoResponse(
+        identifier=NotBlankStr(identifier),
+        sink_type=NotBlankStr(sink.sink_type.value),
+        level=NotBlankStr(sink.level.value),
+        json_format=sink.json_format,
+        rotation=SinkRotationResponse(
+            strategy=NotBlankStr(sink.rotation.strategy.value),
+            max_bytes=sink.rotation.max_bytes,
+            backup_count=sink.rotation.backup_count,
+        )
+        if sink.rotation is not None
+        else None,
+        is_default=is_default,
+        enabled=enabled,
+        routing_prefixes=routing_prefixes or (),
+    )
 
 
 def _validate_namespace(namespace: str) -> None:
@@ -525,7 +542,7 @@ class SettingsController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = DEFAULT_LIMIT,
-    ) -> PaginatedResponse[dict[str, Any]]:
+    ) -> PaginatedResponse[SinkInfoResponse]:
         """Return merged view of all configured log sinks, paginated.
 
         Reads ``sink_overrides``, ``custom_sinks``, ``root_log_level``,
@@ -539,7 +556,7 @@ class SettingsController(Controller):
             limit: Page size.
 
         Returns:
-            Paginated sink configuration dicts.
+            Paginated typed sink-info responses.
         """
         app_state: AppState = state.app_state
         svc = app_state.settings_service
@@ -573,14 +590,14 @@ class SettingsController(Controller):
             sinks = _build_sink_list(result)
             _append_disabled_defaults(sinks)
 
-        ordered = tuple(sorted(sinks, key=lambda s: str(s.get("identifier", ""))))
+        ordered = tuple(sorted(sinks, key=lambda s: s.identifier))
         page, meta = paginate_cursor(
             ordered,
             limit=limit,
             cursor=cursor,
             secret=app_state.cursor_secret,
         )
-        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
+        return PaginatedResponse[SinkInfoResponse](data=page, pagination=meta)
 
     @post(
         "/observability/sinks/_test",
@@ -862,16 +879,16 @@ def _parse_root_level(raw: str) -> LogLevel:
 
 def _build_sink_list(
     result: SinkBuildResult,
-) -> list[dict[str, Any]]:
+) -> list[SinkInfoResponse]:
     """Build the active sink list from a SinkBuildResult.
 
     Args:
         result: SinkBuildResult from the config builder.
 
     Returns:
-        List of sink dicts for all active sinks.
+        Typed sink-info responses for all active sinks.
     """
-    sinks: list[dict[str, Any]] = []
+    sinks: list[SinkInfoResponse] = []
     for sink in result.config.sinks:
         file_path = sink.file_path
         is_default = (
@@ -881,7 +898,7 @@ def _build_sink_list(
             result.routing_overrides.get(file_path) if file_path is not None else None
         )
         sinks.append(
-            _sink_to_dict(
+            _sink_to_response(
                 sink,
                 is_default=is_default,
                 routing_prefixes=routing,
@@ -891,7 +908,7 @@ def _build_sink_list(
 
 
 def _append_disabled_defaults(
-    sinks: list[dict[str, Any]],
+    sinks: list[SinkInfoResponse],
 ) -> None:
     """Append disabled default sinks not present in the active list.
 
@@ -899,9 +916,9 @@ def _append_disabled_defaults(
     that was removed by overrides.
 
     Args:
-        sinks: Mutable list of active sink dicts.
+        sinks: Mutable list of active sink responses.
     """
-    active_ids = {s["identifier"] for s in sinks}
+    active_ids = {s.identifier for s in sinks}
     for default_sink in DEFAULT_SINKS:
         identifier = (
             CONSOLE_SINK_ID
@@ -910,7 +927,7 @@ def _append_disabled_defaults(
         )
         if identifier not in active_ids:
             sinks.append(
-                _sink_to_dict(
+                _sink_to_response(
                     default_sink,
                     is_default=True,
                     enabled=False,
@@ -918,13 +935,13 @@ def _append_disabled_defaults(
             )
 
 
-def _defaults_only_sinks() -> list[dict[str, Any]]:
-    """Return all DEFAULT_SINKS as enabled dicts (fallback path).
+def _defaults_only_sinks() -> list[SinkInfoResponse]:
+    """Return all DEFAULT_SINKS as enabled responses (fallback path).
 
     Returns:
-        List of sink dicts with all defaults enabled.
+        Typed sink-info responses with all defaults enabled.
     """
-    return [_sink_to_dict(sink, is_default=True) for sink in DEFAULT_SINKS]
+    return [_sink_to_response(sink, is_default=True) for sink in DEFAULT_SINKS]
 
 
 def _sanitize_error(raw: str) -> str:

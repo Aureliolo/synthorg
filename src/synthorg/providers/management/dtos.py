@@ -415,6 +415,13 @@ class ProviderResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    # Provider identifier. Populated by paginated list responses
+    # (``list_providers`` walks the configs dict by key and threads the
+    # name through ``to_provider_response(name=...)``) so cursor
+    # consumers can rebuild the dict-by-name index without relying on
+    # collection ordering. Single-provider GET-by-path responses leave
+    # this ``None`` because the URL already carries the identifier;
+    # consumers should fall back to the path parameter in that case.
     name: NotBlankStr | None = None
     driver: NotBlankStr
     litellm_provider: NotBlankStr | None = None
@@ -603,8 +610,13 @@ def to_provider_response(
 
     Args:
         config: Provider configuration (may contain secrets).
-        name: Optional provider name to embed in the response (set when
-            the caller knows it -- e.g. paginated list responses).
+        name: Provider identifier. Pass it for paginated list
+            responses (so each item carries its own name independently
+            of collection ordering); omit it on single-provider
+            GET-by-path responses where the URL already carries the
+            identifier. Future list endpoints MUST thread the name to
+            preserve the dict-by-name reconstruction contract on the
+            frontend.
 
     Returns:
         Safe response DTO with secrets stripped.

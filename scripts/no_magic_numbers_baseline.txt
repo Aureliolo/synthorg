@@ -99,7 +99,7 @@ src/synthorg/api/controllers/reports.py:144:29
 src/synthorg/api/controllers/requests.py:89:29
 src/synthorg/api/controllers/role_versions.py:44:29
 src/synthorg/api/controllers/scaling.py:214:29
-src/synthorg/api/controllers/settings.py:303:29
+src/synthorg/api/controllers/settings.py:320:29
 src/synthorg/api/controllers/simulations.py:291:29
 src/synthorg/api/controllers/subworkflows.py:128:29
 src/synthorg/api/controllers/tasks.py:172:29

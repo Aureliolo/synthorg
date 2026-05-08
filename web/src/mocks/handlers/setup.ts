@@ -13,23 +13,12 @@ import type {
   updateAgentName,
   updateAgentPersonality,
 } from '@/api/endpoints/setup'
-import type { PaginatedResponse } from '@/api/types/http'
 import type {
   PersonalityPresetInfo,
   SetupAgentSummary,
   SetupStatusResponse,
 } from '@/api/types/setup'
-import { apiSuccess, successFor } from './helpers'
-
-function emptyPaginatedEnvelope<T>(): PaginatedResponse<T> {
-  return {
-    data: [],
-    error: null,
-    error_detail: null,
-    pagination: { limit: 200, next_cursor: null, has_more: false },
-    success: true,
-  }
-}
+import { apiSuccess, emptyPaginatedEnvelope, successFor } from './helpers'
 
 export function buildAgentSummary(
   overrides: Partial<SetupAgentSummary> = {},

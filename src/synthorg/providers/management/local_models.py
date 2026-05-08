@@ -53,9 +53,18 @@ def _sanitize_ollama_error(raw: object) -> str:
 
     Strips filesystem paths and ``host:port`` tokens to avoid leaking
     operator-internal topology to remote clients via SSE. Non-string
-    inputs collapse to a generic fallback. Output is always non-empty.
+    inputs collapse to a generic fallback (the original type is
+    surfaced via a structured WARNING so operators retain debugging
+    context that would otherwise be lost to the generic message).
+    Output is always non-empty.
     """
     if not isinstance(raw, str):
+        logger.warning(
+            PROVIDER_MODEL_PULL_FAILED,
+            provider="ollama",
+            error_type=type(raw).__name__,
+            error="non-string error payload from upstream",
+        )
         return "Pull failed"
     sanitized = _OLLAMA_PATH_POSIX.sub("[REDACTED-PATH]", raw)
     sanitized = _OLLAMA_PATH_WIN.sub("[REDACTED-PATH]", sanitized)

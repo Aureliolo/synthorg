@@ -151,6 +151,11 @@ _EXPENSIVE_ENDPOINT_POLICY_DEFAULTS: dict[str, tuple[int, int]] = {
     "clients.create": (10, 60),
     "collaboration.override": (20, 60),
     "company.reorder_departments": (10, 60),
+    # SSE event-stream gate. Exercised end-to-end by the generic
+    # per_op_rate_limit middleware tests; the value is pinned here so
+    # a tuning bump trips a single assertion instead of silently
+    # widening the cap.
+    "events.stream": (60, 60),
     "interrupts.resume": (60, 60),
     "messages.delete": (100, 3600),
     "meta.ingest_events": (60, 60),

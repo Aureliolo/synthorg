@@ -140,4 +140,66 @@ describe('fetchWithRetryAfter', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(sleep).not.toHaveBeenCalled()
   })
+
+  it.each([
+    { method: 'DELETE', idempotent: true, expectStatus: 200, expectFetches: 2 },
+    { method: 'PUT', idempotent: true, expectStatus: 200, expectFetches: 2 },
+    { method: 'PATCH', idempotent: undefined, expectStatus: 429, expectFetches: 1 },
+  ])(
+    '$method on 429 (idempotent=$idempotent) honours retry policy',
+    async ({ method, idempotent, expectStatus, expectFetches }) => {
+      const fetchImpl =
+        expectFetches === 2
+          ? vi
+              .fn()
+              .mockResolvedValueOnce(makeResponse(429, '0'))
+              .mockResolvedValueOnce(makeResponse(200))
+          : vi.fn(async () => makeResponse(429, '0'))
+      const sleep = vi.fn(async () => {})
+      const opts = idempotent === undefined ? { fetchImpl, sleep } : { fetchImpl, sleep, idempotent }
+      const resp = await fetchWithRetryAfter('/x', { method }, opts)
+      expect(resp.status).toBe(expectStatus)
+      expect(fetchImpl).toHaveBeenCalledTimes(expectFetches)
+    },
+  )
+
+  it('short-circuits when AbortSignal aborts during retry sleep', async () => {
+    const controller = new AbortController()
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(makeResponse(429, '1'))
+      .mockResolvedValueOnce(makeResponse(200))
+    // Abort while we're "sleeping" for the Retry-After window so the
+    // helper observes the cancellation before issuing the next fetch.
+    const sleep = vi.fn(async () => {
+      controller.abort()
+    })
+    const resp = await fetchWithRetryAfter(
+      '/x',
+      { method: 'GET', signal: controller.signal },
+      { fetchImpl, sleep },
+    )
+    expect(resp.status).toBe(429)
+    // Initial fetch + sleep ran; the post-sleep abort check skipped
+    // the second fetch entirely.
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(sleep).toHaveBeenCalledTimes(1)
+  })
+
+  it('short-circuits when AbortSignal is already aborted before sleep', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const fetchImpl = vi.fn(async () => makeResponse(429, '1'))
+    const sleep = vi.fn(async () => {})
+    const resp = await fetchWithRetryAfter(
+      '/x',
+      { method: 'GET', signal: controller.signal },
+      { fetchImpl, sleep },
+    )
+    expect(resp.status).toBe(429)
+    // First fetch always runs (caller's responsibility to check signal);
+    // the pre-sleep abort check then skips the retry path.
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
+  })
 })

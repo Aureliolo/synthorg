@@ -7,19 +7,14 @@ import type {
   testSinkConfig,
   updateSetting,
 } from '@/api/endpoints/settings'
-import type { PaginatedResponse } from '@/api/types/http'
 import type { SettingEntry, SinkInfo } from '@/api/types/settings'
-import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
-
-function emptyPaginatedEnvelope<T>(): PaginatedResponse<T> {
-  return {
-    data: [],
-    error: null,
-    error_detail: null,
-    pagination: { limit: 200, next_cursor: null, has_more: false },
-    success: true,
-  }
-}
+import {
+  emptyPage,
+  emptyPaginatedEnvelope,
+  paginatedFor,
+  successFor,
+  voidSuccess,
+} from './helpers'
 
 type SettingEntryOverrides = Partial<Omit<SettingEntry, 'definition'>> & {
   definition?: Partial<SettingEntry['definition']>

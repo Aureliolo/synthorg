@@ -154,3 +154,23 @@ export function emptyPage<T>(limit = 200): PaginatedResult<T> {
     },
   }
 }
+
+/**
+ * Build a default ``PaginatedResponse<T>`` envelope for MSW handlers
+ * that need a no-data wire body without going through ``paginatedFor``
+ * (which requires a typed ``PaginatedResult``). Use when the handler's
+ * upstream endpoint function does not return ``PaginatedResult<T>``
+ * directly (e.g. ``listProviders`` walks pages via ``paginateAll`` and
+ * returns the flattened items, not a result object).
+ */
+export function emptyPaginatedEnvelope<T>(
+  limit = 200,
+): PaginatedResponse<T> {
+  return {
+    data: [],
+    error: null,
+    error_detail: null,
+    pagination: { limit, next_cursor: null, has_more: false },
+    success: true,
+  }
+}

@@ -8,7 +8,10 @@
  * server's requested wait exceeds our local budget.
  */
 
+import { createLogger } from '@/lib/logger'
 import type { ErrorDetail } from '@/api/types/errors'
+
+const log = createLogger('retry-after')
 
 /** Maximum transparent retries on 429 responses. */
 export const MAX_RATE_LIMIT_RETRIES = 2
@@ -43,7 +46,15 @@ export function parseRetryAfterMs(
     ms = seconds * 1000
   } else {
     const parsedDate = Date.parse(trimmed)
-    if (!Number.isFinite(parsedDate)) return 0
+    if (!Number.isFinite(parsedDate)) {
+      // A malformed Retry-After header (neither delta-seconds nor a
+      // valid HTTP-date) is silently treated as ``retry now`` per
+      // the long-standing behaviour. Surface it as a structured warn
+      // so a misconfigured backend or hostile proxy is visible in
+      // ops dashboards instead of merely producing tight retry loops.
+      log.warn('Malformed Retry-After header', { value: trimmed })
+      return 0
+    }
     ms = Math.max(0, parsedDate - Date.now())
   }
   if (ms > MAX_RETRY_AFTER_MS) return DO_NOT_RETRY
