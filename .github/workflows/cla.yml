@@ -106,7 +106,7 @@ jobs:
             --jq '.[].author.login | select(.)' \
             | sort -u > /tmp/pr-authors
           if [ ! -s /tmp/pr-authors ]; then
-            echo "::error::Failed to fetch PR commit authors (empty list)"
+            echo "::error::No PR commit authors with linked GitHub accounts found. This usually means commit emails are not associated with the contributor's GitHub account; ensure each commit uses an email registered on github.com (Settings -> Emails) so the CLA gate can identify the signer."
             exit 1
           fi
           echo "PR commit authors:"
