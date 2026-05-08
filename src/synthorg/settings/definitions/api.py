@@ -60,6 +60,14 @@ MEMORY_FINE_TUNE_INFLIGHT_MAX: Final[int] = 1
 PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX: Final[int] = 2
 PROVIDERS_PULL_MODEL_INFLIGHT_MAX: Final[int] = 2
 
+# Number of hex digits to retain from each SHA-256 sink-destination
+# fingerprint published as the public sink identifier.  16 hex chars
+# = 64 bits of collision resistance, more than enough for the
+# at-most-low-thousands sink count an operator can plausibly
+# configure, while keeping the wire identifier compact for tabular
+# display in the dashboard.
+SINK_IDENTIFIER_FINGERPRINT_LENGTH: Final[int] = 16
+
 # ── Server (bootstrap-only) ──────────────────────────────────────
 
 _r.register(

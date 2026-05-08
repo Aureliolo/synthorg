@@ -56,6 +56,7 @@ from synthorg.observability.sink_config_builder import (
     build_log_config_from_settings,
 )
 from synthorg.security.config import SecurityConfig
+from synthorg.settings.definitions.api import SINK_IDENTIFIER_FINGERPRINT_LENGTH
 from synthorg.settings.enums import SettingNamespace, SettingsImportSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
@@ -179,14 +180,6 @@ class SinkInfoResponse(BaseModel):
     routing_prefixes: tuple[str, ...] = ()
 
 
-# Number of hex digits to retain from each SHA-256 destination
-# fingerprint. 16 hex chars = 64 bits of collision resistance, more
-# than sufficient for the at-most-low-thousands sink count an
-# operator can plausibly configure, while keeping the wire identifier
-# compact enough for tabular display in the dashboard.
-_SINK_FINGERPRINT_LEN = 16
-
-
 def _hash_sink_target(target: str) -> str:
     """Return a stable, non-reversible fingerprint for a sink destination.
 
@@ -194,9 +187,13 @@ def _hash_sink_target(target: str) -> str:
     identifier without exposing the raw destination string (which can
     embed credentials, query tokens, or auth-bearing path segments
     for HTTP / OTLP sinks, and operator filesystem layout for FILE
-    sinks).
+    sinks).  The fingerprint length is centralised in
+    :data:`SINK_IDENTIFIER_FINGERPRINT_LENGTH` so the wire-format
+    contract changes in one place.
     """
-    return hashlib.sha256(target.encode("utf-8")).hexdigest()[:_SINK_FINGERPRINT_LEN]
+    return hashlib.sha256(target.encode("utf-8")).hexdigest()[
+        :SINK_IDENTIFIER_FINGERPRINT_LENGTH
+    ]
 
 
 def _sink_identifier(sink: SinkConfig) -> str:
