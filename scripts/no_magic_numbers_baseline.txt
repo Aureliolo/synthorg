@@ -188,7 +188,6 @@ src/synthorg/communication/config.py:33:28
 src/synthorg/communication/config.py:49:47
 src/synthorg/communication/conflict_resolution/escalation/config.py:15:26
 src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:34:17
-src/synthorg/communication/conflict_resolution/escalation/notify.py:46:34
 src/synthorg/communication/conflict_resolution/escalation/protocol.py:21:17
 src/synthorg/communication/conflict_resolution/escalation/sweeper.py:43:34
 src/synthorg/communication/conflict_resolution/human_strategy.py:72:48

@@ -12,8 +12,6 @@ src/synthorg/client/continuous.py:65:ContinuousMode:_stop_event:Event
 src/synthorg/client/continuous.py:71:ContinuousMode:_lifecycle_lock:Lock
 src/synthorg/communication/bus/memory.py:110:InMemoryMessageBus:_lock:Lock
 src/synthorg/communication/bus/memory.py:125:InMemoryMessageBus:_shutdown_event:Event
-src/synthorg/communication/conflict_resolution/escalation/notify.py:153:PostgresEscalationNotifySubscriber:_stop_event:Event
-src/synthorg/communication/conflict_resolution/escalation/notify.py:154:PostgresEscalationNotifySubscriber:_lifecycle_lock:Lock
 src/synthorg/engine/task_engine.py:104:TaskEngine:_lifecycle_lock:Lock
 src/synthorg/engine/task_engine.py:112:TaskEngine:_admission_lock:Lock
 src/synthorg/engine/task_engine.py:114:TaskEngine:_observer_queue:Queue

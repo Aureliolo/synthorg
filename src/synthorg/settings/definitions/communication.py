@@ -124,6 +124,44 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="webhook_bridge_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Live kill-switch for the engine workflow webhook bridge poll"
+            " loop. When False the loop stays resident but every iteration"
+            " short-circuits -- pauses event forwarding without tearing"
+            " down lifecycle. Resolver outage falls back to enabled."
+        ),
+        group="Bus Bridge",
+        level=SettingLevel.ADVANCED,
+        yaml_path="communication.webhook_bridge.enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="escalation_notify_subscriber_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Live kill-switch for the Postgres escalation notify"
+            " subscriber loop. When False the loop stays resident but"
+            " every reconnect attempt short-circuits -- the local"
+            " sweeper + per-resolver timeouts cover eventual consistency"
+            " while the subscriber is paused. Resolver outage falls back"
+            " to enabled."
+        ),
+        group="Escalation",
+        level=SettingLevel.ADVANCED,
+        yaml_path="communication.escalation_notify_subscriber_enabled",
+    )
+)
+
 # ── NATS transport ───────────────────────────────────────────────
 
 _r.register(

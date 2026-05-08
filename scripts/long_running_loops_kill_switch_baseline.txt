@@ -19,11 +19,9 @@ src/synthorg/communication/bus/_nats_history.py:collect_history_batches:89
 src/synthorg/communication/bus/_nats_receive.py:receive_blocking:388
 src/synthorg/communication/bus/_nats_receive.py:receive_with_timeout:428
 src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:InMemoryEscalationStore:_never:304
-src/synthorg/communication/conflict_resolution/escalation/notify.py:PostgresEscalationNotifySubscriber:_run:283
 src/synthorg/communication/event_stream/stream.py:EventStreamHub:_janitor_loop:348
 src/synthorg/communication/meeting/scheduler.py:MeetingScheduler:_run_periodic:492
 src/synthorg/engine/task_engine_loops.py:TaskEngineLoopsMixin:_observer_dispatch_loop:303
-src/synthorg/engine/workflow/webhook_bridge.py:WebhookEventBridge:_poll_loop:208
 src/synthorg/hr/pruning/service.py:PruningService:_run_loop:769
 src/synthorg/integrations/health/prober.py:HealthProberService:_probe_loop:156
 src/synthorg/integrations/oauth/token_manager.py:OAuthTokenManager:_refresh_loop:144

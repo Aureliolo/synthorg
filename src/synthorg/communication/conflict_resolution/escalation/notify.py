@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from synthorg.communication.conflict_resolution.escalation.registry import (
         PendingFuturesRegistry,
     )
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -43,7 +44,9 @@ logger = get_logger(__name__)
 _SAFE_IDENTIFIER_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*$",
 )
-_MAX_IDENTIFIER_LEN: Final[int] = 63
+_MAX_IDENTIFIER_LEN: Final[int] = (
+    63  # lint-allow: magic-numbers -- Postgres NAMEDATALEN-1 protocol constant.
+)
 
 
 @runtime_checkable
@@ -102,6 +105,7 @@ class PostgresEscalationNotifySubscriber:
         *,
         channel: str,
         reconnect_delay_seconds: float,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         """Initialise the subscriber.
 
@@ -120,6 +124,12 @@ class PostgresEscalationNotifySubscriber:
                 via ``ConfigResolver.get_float("communication",
                 "escalation_subscriber_reconnect_delay_seconds")`` at
                 the call site.
+            config_resolver: Optional resolver for the
+                ``communication.escalation_notify_subscriber_enabled``
+                kill-switch.  When wired the loop body re-reads the
+                flag every iteration so an operator can pause the
+                subscriber at runtime; without a resolver the loop
+                runs unconditionally (matches the registered default).
         """
         if reconnect_delay_seconds <= 0:
             msg = "reconnect_delay_seconds must be > 0"
@@ -141,6 +151,7 @@ class PostgresEscalationNotifySubscriber:
         self._registry = registry
         self._channel = channel
         self._reconnect_delay = reconnect_delay_seconds
+        self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
         # Eager construction of the lifecycle primitives. Python 3.10+
         # ``asyncio.Lock`` / ``asyncio.Event`` are loop-agnostic until
@@ -150,8 +161,8 @@ class PostgresEscalationNotifySubscriber:
         # the ``async with`` body ran, letting a racing ``stop()``
         # observe a fresh lock instance and operate on different
         # primitives than the in-flight ``start()``.
-        self._stop_event: asyncio.Event = asyncio.Event()
-        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see above.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         # Per ``docs/reference/lifecycle-sync.md``: a ``stop()`` drain
         # that exceeds the hard deadline marks the subscriber
         # unrestartable so a subsequent ``start()`` cannot attach a
@@ -291,24 +302,70 @@ class PostgresEscalationNotifySubscriber:
         self._lifecycle_lock = asyncio.Lock()
         self._stop_event = asyncio.Event()
 
+    async def _resolve_subscriber_enabled(self) -> bool:
+        """Resolve the subscriber kill-switch, fail-safe to ``True``.
+
+        Operators flip
+        ``communication.escalation_notify_subscriber_enabled=false``
+        to pause the cross-instance wake-up subscriber without tearing
+        down the lifecycle plumbing. Resolver outage returns ``True``
+        because silently pausing the subscriber on a settings hiccup
+        would let multi-instance escalations drift toward eventual
+        consistency unnecessarily.
+        """
+        if self._config_resolver is None:
+            return True
+        try:
+            return await self._config_resolver.get_bool(
+                "communication",
+                "escalation_notify_subscriber_enabled",
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                channel=self._channel,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback_enabled=True,
+            )
+            return True
+
     async def _run(self) -> None:
-        """Main loop: (re)open a listen connection and dispatch notifies."""
+        """Main loop: (re)open a listen connection and dispatch notifies.
+
+        Gated by ``communication.escalation_notify_subscriber_enabled``
+        (live, per-iteration): when False the loop stays resident but
+        each iteration short-circuits before opening a LISTEN
+        connection. The local sweeper + per-resolver timeouts cover
+        eventual consistency while the subscriber is paused.
+        """
         while not self._stop_event.is_set():
-            try:
-                await self._listen_once()
-            except asyncio.CancelledError:
-                raise
-            except MemoryError, RecursionError:
-                # Match ``_drain``: surface catastrophic
-                # interpreter-level errors instead of looping past
-                # them at WARNING.
-                raise
-            except Exception as exc:
-                logger.warning(
+            if await self._resolve_subscriber_enabled():
+                try:
+                    await self._listen_once()
+                except asyncio.CancelledError:
+                    raise
+                except MemoryError, RecursionError:
+                    # Match ``_drain``: surface catastrophic
+                    # interpreter-level errors instead of looping past
+                    # them at WARNING.
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                        channel=self._channel,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+            else:
+                logger.debug(
                     CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                     channel=self._channel,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                    reason="paused_by_setting",
                 )
             try:
                 await asyncio.wait_for(

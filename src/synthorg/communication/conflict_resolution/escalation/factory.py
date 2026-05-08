@@ -50,6 +50,7 @@ if TYPE_CHECKING:
         PendingFuturesRegistry,
     )
     from synthorg.persistence.protocol import PersistenceBackend
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -187,6 +188,7 @@ def build_escalation_notify_subscriber(
     registry: PendingFuturesRegistry,
     *,
     reconnect_delay_seconds: float,
+    config_resolver: ConfigResolver | None = None,
 ) -> EscalationNotifySubscriber:
     """Construct the cross-instance notify subscriber for the queue.
 
@@ -208,6 +210,9 @@ def build_escalation_notify_subscriber(
             ``ConfigResolver.get_float("communication",
             "escalation_subscriber_reconnect_delay_seconds")`` at the
             call site.
+        config_resolver: Optional resolver for the
+            ``communication.escalation_notify_subscriber_enabled``
+            kill-switch flag (passed through to the subscriber).
 
     Returns:
         A concrete :class:`EscalationNotifySubscriber`.  Callers must
@@ -292,6 +297,7 @@ def build_escalation_notify_subscriber(
         registry,
         channel=config.notify_channel,
         reconnect_delay_seconds=reconnect_delay_seconds,
+        config_resolver=config_resolver,
     )
 
 
