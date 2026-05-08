@@ -88,6 +88,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "escalations.decide": (30, 60),
     "escalations.get": (120, 60),
     "escalations.list": (120, 60),
+    # events
+    "events.stream": (60, 60),
     # interrupts
     "interrupts.resume": (60, 60),
     # meetings

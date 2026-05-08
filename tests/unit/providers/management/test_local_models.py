@@ -9,8 +9,10 @@ import pytest
 
 from synthorg.config.schema import LocalModelParams
 from synthorg.providers.management.local_models import (
+    _OLLAMA_ERROR_MAX_LEN,
     OllamaModelManager,
     PullProgressEvent,
+    _sanitize_ollama_error,
     get_local_model_manager,
 )
 
@@ -296,3 +298,46 @@ class TestLocalModelParams:
 
         with pytest.raises(ValidationError):
             LocalModelParams(**{field: value})  # type: ignore[arg-type]
+
+
+class TestSanitizeOllamaError:
+    """Adversarial-input fixtures for the SSE-forwarded error sanitizer."""
+
+    def test_non_string_falls_back(self) -> None:
+        assert _sanitize_ollama_error(None) == "Pull failed"
+        assert _sanitize_ollama_error(12345) == "Pull failed"
+        assert _sanitize_ollama_error({"error": "x"}) == "Pull failed"
+
+    def test_redacts_posix_paths(self) -> None:
+        sanitized = _sanitize_ollama_error(
+            "open /var/lib/ollama/models/secret.bin: permission denied",
+        )
+        assert "/var/lib/ollama" not in sanitized
+        assert "[REDACTED-PATH]" in sanitized
+
+    def test_redacts_windows_paths(self) -> None:
+        sanitized = _sanitize_ollama_error(
+            r"C:\Users\admin\AppData\token.json missing",
+        )
+        assert "Users" not in sanitized
+        assert "[REDACTED-PATH]" in sanitized
+
+    def test_redacts_host_port(self) -> None:
+        sanitized = _sanitize_ollama_error(
+            "dial tcp ollama-internal.local:11434: connection refused",
+        )
+        assert "ollama-internal.local" not in sanitized
+        assert "[REDACTED-HOST]" in sanitized
+
+    def test_truncates_oversized_input(self) -> None:
+        long = "x" * 1000
+        sanitized = _sanitize_ollama_error(long)
+        assert len(sanitized) <= _OLLAMA_ERROR_MAX_LEN
+
+    def test_benign_message_passes_through(self) -> None:
+        sanitized = _sanitize_ollama_error("model not found")
+        assert sanitized == "model not found"
+
+    def test_empty_string_falls_back(self) -> None:
+        assert _sanitize_ollama_error("") == "Pull failed"
+        assert _sanitize_ollama_error("   ") == "Pull failed"

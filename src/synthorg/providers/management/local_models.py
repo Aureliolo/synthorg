@@ -5,7 +5,8 @@ on local LLM providers, plus a concrete implementation for Ollama.
 """
 
 import json
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+import re
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -31,6 +32,36 @@ _DELETE_TIMEOUT_SECONDS: float = 30.0
 _HTTP_OK: int = 200
 _HTTP_NOT_FOUND: int = 404
 _HTTP_CLIENT_ERROR: int = 400
+_OLLAMA_ERROR_MAX_LEN: Final[int] = 200  # lint-allow: magic-numbers -- internal cap
+
+# POSIX-style absolute paths (``/var/lib/ollama/models/x.bin``).
+_OLLAMA_PATH_POSIX: Final[re.Pattern[str]] = re.compile(
+    r"/[\w.\-]+(?:/[\w.\-]+)+",
+)
+# Windows-style absolute paths (``C:\Users\admin\AppData\token.json``).
+_OLLAMA_PATH_WIN: Final[re.Pattern[str]] = re.compile(
+    r"[A-Za-z]:\\[\w\\.\-]+",
+)
+# Dotted ``host:port`` tokens (``ollama-internal.local:11434``).
+_OLLAMA_HOST_PORT: Final[re.Pattern[str]] = re.compile(
+    r"(?:[\w-]+\.){1,}[\w-]+:\d{2,5}",
+)
+
+
+def _sanitize_ollama_error(raw: object) -> str:
+    """Coerce + redact a raw Ollama error field for client forwarding.
+
+    Strips filesystem paths and ``host:port`` tokens to avoid leaking
+    operator-internal topology to remote clients via SSE. Non-string
+    inputs collapse to a generic fallback. Output is always non-empty.
+    """
+    if not isinstance(raw, str):
+        return "Pull failed"
+    sanitized = _OLLAMA_PATH_POSIX.sub("[REDACTED-PATH]", raw)
+    sanitized = _OLLAMA_PATH_WIN.sub("[REDACTED-PATH]", sanitized)
+    sanitized = _OLLAMA_HOST_PORT.sub("[REDACTED-HOST]", sanitized)
+    truncated = sanitized[:_OLLAMA_ERROR_MAX_LEN].strip()
+    return truncated or "Pull failed"
 
 
 class PullProgressEvent(BaseModel):
@@ -145,15 +176,16 @@ class OllamaModelManager:
         """
         error = data.get("error")
         if error:
+            sanitized = _sanitize_ollama_error(error)
             logger.warning(
                 PROVIDER_MODEL_PULL_FAILED,
                 provider="ollama",
                 model=model_name,
-                error=error,
+                error=sanitized,
             )
             return PullProgressEvent(
-                status=str(error),
-                error=str(error),
+                status=sanitized,
+                error=sanitized,
                 done=True,
             )
 

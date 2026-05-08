@@ -19,7 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import _READ_ROLES, require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.rate_limits import (
+    per_op_concurrency,
+    per_op_rate_limit_from_policy,
+)
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.event_stream.interrupt import (
     Interrupt,
@@ -524,7 +527,15 @@ class EventStreamController(Controller):
     @get(
         "/stream",
         media_type="text/event-stream",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("events.stream", key="user_or_ip"),
+        ],
+        opt=per_op_concurrency(
+            "events.stream",
+            max_inflight=4,
+            key="user",
+        ),
     )
     async def stream(
         self,
