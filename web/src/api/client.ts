@@ -11,6 +11,11 @@ import axios, {
 import { createLogger } from '@/lib/logger'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { getCsrfToken } from '@/utils/csrf'
+import {
+  DO_NOT_RETRY,
+  MAX_RATE_LIMIT_RETRIES,
+  parseRetryAfterMs,
+} from '@/utils/retry-after'
 import type { ErrorDetail } from './types/errors'
 import type { ApiResponse, PaginatedResponse } from './types/http'
 
@@ -23,10 +28,6 @@ const BASE_URL = RAW_BASE.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')
 /** CSRF-protected HTTP methods that require the X-CSRF-Token header. */
 const CSRF_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 
-/** Maximum transparent retries on 429 responses. */
-const MAX_RATE_LIMIT_RETRIES = 2
-/** Upper bound on Retry-After wait per retry so a hostile backend can't hang the UI. */
-const MAX_RETRY_AFTER_MS = 5_000
 /** Extra header we attach to retry requests so the interceptor can count. */
 const RETRY_COUNT_HEADER = 'X-SynthOrg-Retry-Count'
 /**
@@ -60,39 +61,6 @@ export const apiClient = axios.create({
   xsrfCookieName: '',
 })
 
-/** Sentinel returned by {@link parseRetryAfterMs} when we must NOT auto-retry. */
-const DO_NOT_RETRY = -1
-
-function parseRetryAfterMs(
-  headerValue: string | undefined,
-  errorDetail: ErrorDetail | null | undefined,
-): number {
-  // Prefer the Retry-After header (RFC 9110: either delta-seconds or an
-  // HTTP-date), fall back to the ``retry_after`` field from the
-  // RFC 9457 envelope which is always delta-seconds.
-  const raw = headerValue ?? (errorDetail?.retry_after != null
-    ? String(errorDetail.retry_after)
-    : undefined)
-  if (!raw) return 0
-  let ms: number
-  const trimmed = raw.trim()
-  const seconds = Number.parseInt(trimmed, 10)
-  // RFC 9110 delta-seconds must be a run of digits.  Anything else
-  // (e.g. ``Wed, 21 Oct 2015 07:28:00 GMT``) is treated as an HTTP-date.
-  if (/^\d+$/.test(trimmed) && Number.isFinite(seconds) && seconds >= 0) {
-    ms = seconds * 1000
-  } else {
-    const parsedDate = Date.parse(trimmed)
-    if (!Number.isFinite(parsedDate)) return 0
-    ms = Math.max(0, parsedDate - Date.now())
-  }
-  // If the server wants us to wait longer than our bounded budget,
-  // surface the error to the caller instead of silently truncating;
-  // a truncated retry would hit the same 429 immediately and waste
-  // the backend's budget.
-  if (ms > MAX_RETRY_AFTER_MS) return DO_NOT_RETRY
-  return ms
-}
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {

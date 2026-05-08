@@ -14,6 +14,7 @@
  */
 
 import { createLogger } from '@/lib/logger'
+import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('app-version')
@@ -118,13 +119,20 @@ async function callServerLogout(): Promise<void> {
     LOGOUT_TIMEOUT_MS,
   )
   try {
-    await fetch('/api/v1/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-      signal: controller.signal,
-      // No CSRF header needed: /auth/logout is CSRF-exempt so clients
-      // can clear stale state even when the csrf_token cookie is gone.
-    })
+    // Logout is replay-safe on the server (it just tears down whatever
+    // session token was attached, with no observable side effect on a
+    // second call) so opt into retry-after handling explicitly.
+    await fetchWithRetryAfter(
+      '/api/v1/auth/logout',
+      {
+        method: 'POST',
+        credentials: 'include',
+        signal: controller.signal,
+        // No CSRF header needed: /auth/logout is CSRF-exempt so clients
+        // can clear stale state even when the csrf_token cookie is gone.
+      },
+      { idempotent: true },
+    )
   } catch (err) {
     log.warn('Logout call failed during stale-state recovery', err)
   } finally {
