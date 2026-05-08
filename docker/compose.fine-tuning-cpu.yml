@@ -14,13 +14,16 @@
 # different wiring: it picks the variant based on `fine_tuning_variant`
 # in config.json and pins the image via the sigstore-verified digest
 # stored in `verified_digests`. This overlay is for users running
-# `docker compose` directly without the CLI. Renovate keeps the tag +
-# digest pair fresh via `docker:pinDigests` in renovate.json.
+# `docker compose` directly without the CLI. The tag resolves from
+# the `SYNTHORG_IMAGE_TAG` env var (default `latest`), mirroring how
+# `synthorg-web` and `synthorg-backend` are wired in `compose.yml`;
+# the release pipeline that publishes `synthorg-fine-tune-cpu` also
+# tags `:latest` so the floating tag tracks the most recent build.
+# Users who want digest pinning should use the CLI-generated compose.
 
 services:
   fine-tune:
-    # renovate: datasource=docker depName=ghcr.io/aureliolo/synthorg-fine-tune-cpu
-    image: ghcr.io/aureliolo/synthorg-fine-tune-cpu:v0.6.9@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    image: ghcr.io/aureliolo/synthorg-fine-tune-cpu:${SYNTHORG_IMAGE_TAG:-latest}
     volumes:
       - synthorg-data:/data:ro
     depends_on:
