@@ -235,9 +235,17 @@ def _branch_contains_await(branch: list[ast.stmt]) -> bool:
     Used to discriminate "wraps real work" branches (an ``await`` is
     almost always the long-running operation a kill-switch is supposed
     to gate) from "log-only" branches that don't change loop behaviour.
+
+    Walks via :func:`_walk_current_scope` so awaits buried inside a
+    nested ``async def`` / ``class`` / ``lambda`` literal in the branch
+    body do not falsely credit the outer If as gating work -- such
+    awaits belong to a different lexical scope and only execute when
+    the helper is later invoked.
     """
     return any(
-        isinstance(node, ast.Await) for stmt in branch for node in ast.walk(stmt)
+        isinstance(node, ast.Await)
+        for stmt in branch
+        for node in _walk_current_scope(stmt)
     )
 
 
@@ -266,6 +274,47 @@ def _if_actually_gates_work(if_node: ast.If) -> bool:
     )
 
 
+def _update_resolver_bindings_from_assign(
+    stmt: ast.Assign,
+    assigned_resolver_names: set[str],
+) -> None:
+    """Add resolver-bound names; drop names rebound to non-resolver values."""
+    value_holds_resolver = _expr_contains_resolver_call(stmt.value)
+    for target in stmt.targets:
+        if not isinstance(target, ast.Name):
+            continue
+        if value_holds_resolver:
+            assigned_resolver_names.add(target.id)
+        else:
+            assigned_resolver_names.discard(target.id)
+
+
+def _update_resolver_bindings_from_aug_or_ann(
+    stmt: ast.AugAssign | ast.AnnAssign,
+    assigned_resolver_names: set[str],
+) -> None:
+    """Refresh resolver bindings on ``x += ...`` / ``x: T = ...`` rebinds."""
+    target = stmt.target
+    if not isinstance(target, ast.Name):
+        return
+    value = getattr(stmt, "value", None)
+    if value is not None and _expr_contains_resolver_call(value):
+        assigned_resolver_names.add(target.id)
+    else:
+        assigned_resolver_names.discard(target.id)
+
+
+def _if_tests_assigned_resolver_name(
+    stmt: ast.If,
+    assigned_resolver_names: set[str],
+) -> bool:
+    """Return True if the If's test references a resolver-bound name."""
+    return any(
+        isinstance(name, ast.Name) and name.id in assigned_resolver_names
+        for name in ast.walk(stmt.test)
+    )
+
+
 def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     """Return True if ``node``'s body actually gates work on the kill-switch.
 
@@ -286,7 +335,10 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     nested ``If`` / ``For`` / ``Try`` body do NOT count -- such
     bindings are not guaranteed to execute on every iteration, so
     crediting them would let a conditional resolver call masquerade as
-    an unconditional kill-switch.
+    an unconditional kill-switch.  Rebinding a tracked name to a
+    non-resolver value (``Assign`` / ``AugAssign`` / ``AnnAssign``)
+    drops it from the tracked set so a later If that tests the stale
+    name no longer counts as a guard.
 
     The matched If must additionally pass :func:`_if_actually_gates_work`:
     the branch tied to the resolver state must either short-circuit
@@ -303,18 +355,16 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
             if _if_actually_gates_work(stmt):
                 return True
             continue
-        if isinstance(stmt, ast.Assign) and _expr_contains_resolver_call(stmt.value):
-            for target in stmt.targets:
-                if isinstance(target, ast.Name):
-                    assigned_resolver_names.add(target.id)
+        if isinstance(stmt, ast.Assign):
+            _update_resolver_bindings_from_assign(stmt, assigned_resolver_names)
+            continue
+        if isinstance(stmt, ast.AugAssign | ast.AnnAssign):
+            _update_resolver_bindings_from_aug_or_ann(stmt, assigned_resolver_names)
             continue
         if (
             assigned_resolver_names
             and isinstance(stmt, ast.If)
-            and any(
-                isinstance(name, ast.Name) and name.id in assigned_resolver_names
-                for name in ast.walk(stmt.test)
-            )
+            and _if_tests_assigned_resolver_name(stmt, assigned_resolver_names)
             and _if_actually_gates_work(stmt)
         ):
             return True

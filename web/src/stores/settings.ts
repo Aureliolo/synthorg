@@ -76,8 +76,13 @@ interface SettingsState {
   /**
    * Reset a setting to its default value.
    *
-   * Returns ``true`` on success, ``false`` on failure (after logging
-   * and emitting an error toast). Callers MUST NOT wrap in try/catch.
+   * Returns ``true`` on success. Returns ``false`` either when the
+   * server-side reset itself failed (after logging and emitting an
+   * error toast) or when the reset succeeded but the post-reset
+   * refetch failed (after emitting a warning toast so the user knows
+   * the local view is stale). Callers MUST NOT wrap in try/catch;
+   * check the return value instead so they can keep dirty state
+   * intact when the local view did not catch up.
    */
   resetSetting: (ns: SettingNamespace, key: string) => Promise<boolean>
   /** Handle a WebSocket event on the system channel. */
@@ -165,9 +170,16 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     try {
       const updated = await settingsApi.updateSetting(ns, key, { value })
       set((state) => {
-        const newEntries = state.entries.map((e) =>
-          e.definition.namespace === ns && e.definition.key === key ? updated : e,
+        const hasExisting = state.entries.some(
+          (e) => e.definition.namespace === ns && e.definition.key === key,
         )
+        const newEntries = hasExisting
+          ? state.entries.map((e) =>
+              e.definition.namespace === ns && e.definition.key === key
+                ? updated
+                : e,
+            )
+          : [...state.entries, updated]
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
         const patch: Partial<SettingsState> = {
