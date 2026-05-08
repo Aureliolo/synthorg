@@ -179,10 +179,11 @@ installation token (valid ≤1 hour) via the
 - `cla.yml:cla-sign`: signed commit on the `cla-signatures`
   branch via the Git Data API (`POST /git/blobs` + `POST
   /git/trees` + `POST /git/commits` + `PATCH /git/refs/heads/
-  cla-signatures`). Replaces the legacy
-  `contributor-assistant/github-action` write step so the
-  `cla-signatures` branch can drop its required-signatures
-  carve-out from the default ruleset.
+  cla-signatures`). The signed commit lets the `cla-signatures`
+  branch participate in the default ruleset's required-signatures
+  rule without a per-branch carve-out. Read-only signature
+  verification (`cla-check`) lives in the same workflow but uses
+  `secrets.GITHUB_TOKEN` directly -- no App-token mint required.
 
 **App configuration**. Ship the App with the minimum privilege set:
 
