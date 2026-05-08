@@ -20,9 +20,14 @@ from pydantic import (
 from synthorg.api.boundary import parse_typed
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.cursor import decode_keyset_cursor
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_keyset_meta,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -518,19 +523,23 @@ class SettingsController(Controller):
     async def list_sinks(
         self,
         state: State,
-    ) -> ApiResponse[list[dict[str, Any]]]:
-        """Return merged view of all configured log sinks.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[dict[str, Any]]:
+        """Return merged view of all configured log sinks, paginated.
 
         Reads ``sink_overrides``, ``custom_sinks``, ``root_log_level``,
         and ``enable_correlation`` from settings, merges them with
         DEFAULT_SINKS via the sink config builder, and returns a flat
-        list of all active sinks.
+        list of all active sinks ordered by ``identifier``.
 
         Args:
             state: Application state.
+            cursor: Opaque cursor from a previous page.
+            limit: Page size.
 
         Returns:
-            List of sink configuration dicts.
+            Paginated sink configuration dicts.
         """
         app_state: AppState = state.app_state
         svc = app_state.settings_service
@@ -559,11 +568,19 @@ class SettingsController(Controller):
                 sink_overrides=overrides_json,
                 custom_sinks=custom_json,
             )
-            return ApiResponse(data=_defaults_only_sinks())
+            sinks = _defaults_only_sinks()
+        else:
+            sinks = _build_sink_list(result)
+            _append_disabled_defaults(sinks)
 
-        sinks = _build_sink_list(result)
-        _append_disabled_defaults(sinks)
-        return ApiResponse(data=sinks)
+        ordered = tuple(sorted(sinks, key=lambda s: str(s.get("identifier", ""))))
+        page, meta = paginate_cursor(
+            ordered,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
     @post(
         "/observability/sinks/_test",

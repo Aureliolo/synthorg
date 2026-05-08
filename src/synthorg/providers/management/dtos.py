@@ -415,6 +415,7 @@ class ProviderResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    name: NotBlankStr | None = None
     driver: NotBlankStr
     litellm_provider: NotBlankStr | None = None
     auth_type: AuthType
@@ -589,7 +590,11 @@ class ProbeLocalResponse(BaseModel):
         return dict(value)
 
 
-def to_provider_response(config: ProviderConfig) -> ProviderResponse:
+def to_provider_response(
+    config: ProviderConfig,
+    *,
+    name: str | None = None,
+) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 
     Strips all secrets and provides boolean credential indicators.
@@ -598,6 +603,8 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
 
     Args:
         config: Provider configuration (may contain secrets).
+        name: Optional provider name to embed in the response (set when
+            the caller knows it -- e.g. paginated list responses).
 
     Returns:
         Safe response DTO with secrets stripped.
@@ -618,6 +625,7 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     # ProviderResponse DTO.  Cloud providers default them to False.
     local_preset = preset if isinstance(preset, LocalPreset) else None
     return ProviderResponse(
+        name=name,
         driver=config.driver,
         litellm_provider=config.litellm_provider,
         auth_type=config.auth_type,

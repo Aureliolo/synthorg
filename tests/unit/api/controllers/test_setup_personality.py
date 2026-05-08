@@ -39,10 +39,13 @@ class TestUpdateAgentPersonality:
             data = resp.json()["data"]
             assert data["personality_preset"] == "visionary_leader"
 
-            # Verify persistence.
+            # Verify persistence (agents are returned in name-sorted order
+            # so use ``any`` rather than indexing by insertion position).
             get_resp = test_client.get("/api/v1/setup/agents")
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["personality_preset"] == "visionary_leader"
+            agents = get_resp.json()["data"]
+            assert any(
+                agent["personality_preset"] == "visionary_leader" for agent in agents
+            )
         finally:
             app_state._provider_management = original
 
@@ -106,13 +109,12 @@ class TestListPersonalityPresets:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Personality presets endpoint returns a non-empty list."""
+        """Personality presets endpoint returns a non-empty paginated list."""
         resp = test_client.get("/api/v1/setup/personality-presets")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        presets = body["data"]["presets"]
-        assert len(presets) >= 1
+        assert len(body["data"]) >= 1
 
     def test_list_presets_field_shape(
         self,
@@ -121,7 +123,7 @@ class TestListPersonalityPresets:
         """Each preset has ``name`` and ``description`` fields."""
         resp = test_client.get("/api/v1/setup/personality-presets")
         body = resp.json()
-        for preset in body["data"]["presets"]:
+        for preset in body["data"]:
             assert "name" in preset
             assert "description" in preset
             assert isinstance(preset["name"], str)

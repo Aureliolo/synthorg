@@ -76,8 +76,12 @@ export interface ProviderModelResponse {
 
 /**
  * Provider response DTO -- secrets stripped, credential indicators provided.
+ *
+ * ``name`` is populated by paginated list endpoints; it is ``null`` on
+ * single-provider GETs because the URL already carries the identifier.
  */
 export interface ProviderConfig {
+  name?: string | null
   driver: string
   litellm_provider: string | null
   auth_type: AuthType

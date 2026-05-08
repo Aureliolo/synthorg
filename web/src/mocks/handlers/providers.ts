@@ -9,11 +9,9 @@ import type {
   getPresetOverride,
   getProvider,
   getProviderHealth,
-  getProviderModels,
   getProviderRateLimits,
   listPresets,
   listProviderAudit,
-  listProviders,
   probeLocal,
   removeAllowlistEntry,
   rotateProviderCredentials,
@@ -24,15 +22,27 @@ import type {
   updateProvider,
   updateProviderRateLimits,
 } from '@/api/endpoints/providers'
+import type { PaginatedResponse } from '@/api/types/http'
 import type {
   CloudPreset,
   LocalPreset,
   PresetOverride,
   ProviderAuditEvent,
   ProviderConfig,
+  ProviderModelResponse,
   RateLimitsConfig,
 } from '@/api/types/providers'
 import { paginatedFor, successFor, voidSuccess } from './helpers'
+
+function emptyPaginatedEnvelope<T>(): PaginatedResponse<T> {
+  return {
+    data: [],
+    error: null,
+    error_detail: null,
+    pagination: { limit: 200, next_cursor: null, has_more: false },
+    success: true,
+  }
+}
 
 /**
  * Canonical cloud-preset fixture builder.
@@ -146,7 +156,7 @@ function buildPullStream(): ReadableStream<Uint8Array> {
 
 export const providersHandlers = [
   http.get('/api/v1/providers', () =>
-    HttpResponse.json(successFor<typeof listProviders>({})),
+    HttpResponse.json(emptyPaginatedEnvelope<ProviderConfig>()),
   ),
   http.get('/api/v1/providers/presets', () =>
     HttpResponse.json(successFor<typeof listPresets>([])),
@@ -187,7 +197,7 @@ export const providersHandlers = [
     HttpResponse.json(successFor<typeof getProvider>(buildProvider())),
   ),
   http.get('/api/v1/providers/:name/models', () =>
-    HttpResponse.json(successFor<typeof getProviderModels>([])),
+    HttpResponse.json(emptyPaginatedEnvelope<ProviderModelResponse>()),
   ),
   http.get('/api/v1/providers/:name/health', () =>
     HttpResponse.json(

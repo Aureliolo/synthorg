@@ -80,7 +80,6 @@ from synthorg.api.controllers.setup_models import (
     AvailableLocalesResponse,
     SetupAgentRequest,
     SetupAgentResponse,
-    SetupAgentsListResponse,
     SetupAgentSummary,
     SetupCompanyRequest,
     SetupCompanyResponse,
@@ -93,8 +92,9 @@ from synthorg.api.controllers.setup_models import (
     UpdateAgentModelRequest,
     UpdateAgentNameRequest,
 )
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo, require_read_access
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import ValidationError
@@ -418,28 +418,37 @@ class SetupController(Controller):
     async def list_agents(
         self,
         state: State,
-    ) -> ApiResponse[SetupAgentsListResponse]:
-        """List agents currently configured during setup.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[SetupAgentSummary]:
+        """List agents currently configured during setup, paginated by name.
 
         Used by the Review Org step to display the current org and
         allow model reassignment.
 
         Args:
             state: Application state.
+            cursor: Opaque cursor from a previous page.
+            limit: Page size.
 
         Returns:
-            Agents list envelope.
+            Paginated agent summaries.
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
 
         agents = await get_existing_agents(settings_svc)
         summaries = agents_to_summaries(agents)
+        ordered = tuple(sorted(summaries, key=lambda s: s.name))
 
-        logger.debug(SETUP_AGENTS_LISTED, count=len(summaries))
-        return ApiResponse(
-            data=SetupAgentsListResponse(agents=summaries),
+        page, meta = paginate_cursor(
+            ordered,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
         )
+        logger.debug(SETUP_AGENTS_LISTED, count=len(page))
+        return PaginatedResponse[SetupAgentSummary](data=page, pagination=meta)
 
     @put(
         "/agents/{agent_index:int}/model",

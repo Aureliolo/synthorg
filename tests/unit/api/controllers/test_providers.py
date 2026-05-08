@@ -22,7 +22,13 @@ class TestProviderController:
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        assert body["data"] == {}
+        assert body["data"] == []
+        assert body["pagination"]["has_more"] is False
+        assert body["pagination"]["next_cursor"] is None
+
+    def test_list_providers_tampered_cursor(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.get("/api/v1/providers?cursor=not-a-valid-cursor")
+        assert resp.status_code == 400
 
     def test_get_provider_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/providers/nonexistent")

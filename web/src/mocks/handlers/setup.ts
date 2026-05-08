@@ -13,13 +13,23 @@ import type {
   updateAgentName,
   updateAgentPersonality,
 } from '@/api/endpoints/setup'
+import type { PaginatedResponse } from '@/api/types/http'
 import type {
-  PersonalityPresetsListResponse,
+  PersonalityPresetInfo,
   SetupAgentSummary,
-  SetupAgentsListResponse,
   SetupStatusResponse,
 } from '@/api/types/setup'
 import { apiSuccess, successFor } from './helpers'
+
+function emptyPaginatedEnvelope<T>(): PaginatedResponse<T> {
+  return {
+    data: [],
+    error: null,
+    error_detail: null,
+    pagination: { limit: 200, next_cursor: null, has_more: false },
+    success: true,
+  }
+}
 
 export function buildAgentSummary(
   overrides: Partial<SetupAgentSummary> = {},
@@ -114,12 +124,7 @@ export const setupHandlers = [
     )
   }),
   http.get('/api/v1/setup/agents', () =>
-    // `getAgents()` unwraps `.agents`, so the wire shape is
-    // `SetupAgentsListResponse` rather than the endpoint's return type.
-    // `apiSuccess<Wire>()` still binds the handler to the wire contract.
-    HttpResponse.json(
-      apiSuccess<SetupAgentsListResponse>({ agents: [], agent_count: 0 }),
-    ),
+    HttpResponse.json(emptyPaginatedEnvelope<SetupAgentSummary>()),
   ),
   http.put('/api/v1/setup/agents/:index/model', async ({ request }) => {
     const body = (await request.json()) as {
@@ -157,11 +162,7 @@ export const setupHandlers = [
     )
   }),
   http.get('/api/v1/setup/personality-presets', () =>
-    // `listPersonalityPresets()` unwraps `.presets`, so the wire shape is
-    // `PersonalityPresetsListResponse` rather than the endpoint return type.
-    HttpResponse.json(
-      apiSuccess<PersonalityPresetsListResponse>({ presets: [] }),
-    ),
+    HttpResponse.json(emptyPaginatedEnvelope<PersonalityPresetInfo>()),
   ),
   http.get('/api/v1/setup/name-locales/available', () =>
     HttpResponse.json(

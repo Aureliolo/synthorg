@@ -20,6 +20,7 @@ from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_er
 from synthorg.api.controllers._workflow_helpers import request_audit_actor
 from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import (
+    DEFAULT_LIMIT,
     ApiResponse,
     CreateFromPresetRequest,
     CreateProviderRequest,
@@ -58,7 +59,12 @@ from synthorg.api.dto_providers import (
     to_provider_model_response,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_keyset_meta,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
@@ -204,12 +210,23 @@ class ProviderController(Controller):
     async def list_providers(
         self,
         state: State,
-    ) -> ApiResponse[Mapping[str, ProviderResponse]]:
-        """List all configured providers (secrets stripped)."""
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[ProviderResponse]:
+        """List all configured providers (secrets stripped), paginated by name."""
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
-        safe = {name: to_provider_response(p) for name, p in providers.items()}
-        return ApiResponse(data=safe)
+        ordered = tuple(
+            to_provider_response(providers[name], name=name)
+            for name in sorted(providers)
+        )
+        page, meta = paginate_cursor(
+            ordered,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[ProviderResponse](data=page, pagination=meta)
 
     @get(
         "/{name:str}",
@@ -245,8 +262,10 @@ class ProviderController(Controller):
         self,
         state: State,
         name: PathName,
-    ) -> ApiResponse[tuple[ProviderModelResponse, ...]]:
-        """List models for a provider with runtime capabilities.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[ProviderModelResponse]:
+        """List models for a provider with runtime capabilities, paginated by id.
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -290,14 +309,20 @@ class ProviderController(Controller):
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-        results = tuple(
+        ordered = tuple(
             to_provider_model_response(
                 model_config,
                 caps_by_id.get(model_config.id),
             )
-            for model_config in provider.models
+            for model_config in sorted(provider.models, key=lambda m: m.id)
         )
-        return ApiResponse(data=results)
+        page, meta = paginate_cursor(
+            ordered,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[ProviderModelResponse](data=page, pagination=meta)
 
     @get(
         "/{name:str}/health",

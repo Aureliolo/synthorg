@@ -151,6 +151,46 @@ class TestListSinks:
         )
         assert resp.status_code == 200
 
+    def test_pagination_round_trip(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Walking pages with limit=1 enumerates every sink exactly once."""
+        full = test_client.get(
+            "/api/v1/settings/observability/sinks",
+            headers=auth_headers,
+        ).json()["data"]
+        if len(full) < 2:
+            pytest.skip("need at least two sinks for cursor round-trip")
+        first = test_client.get(
+            "/api/v1/settings/observability/sinks?limit=1",
+            headers=auth_headers,
+        ).json()
+        assert len(first["data"]) == 1
+        collected = list(first["data"])
+        cursor = first["pagination"]["next_cursor"]
+        assert cursor is not None
+        while cursor:
+            page = test_client.get(
+                f"/api/v1/settings/observability/sinks?limit=1&cursor={cursor}",
+                headers=auth_headers,
+            ).json()
+            collected.extend(page["data"])
+            cursor = page["pagination"]["next_cursor"]
+        assert collected == full
+
+    def test_tampered_cursor_rejected(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/settings/observability/sinks?cursor=garbage",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
     def test_list_sinks_with_console_level_override(
         self,
         test_client: TestClient[Any],

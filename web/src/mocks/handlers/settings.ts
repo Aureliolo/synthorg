@@ -4,12 +4,22 @@ import type {
   getNamespaceSchema,
   getNamespaceSettings,
   getSchema,
-  listSinks,
   testSinkConfig,
   updateSetting,
 } from '@/api/endpoints/settings'
-import type { SettingEntry } from '@/api/types/settings'
+import type { PaginatedResponse } from '@/api/types/http'
+import type { SettingEntry, SinkInfo } from '@/api/types/settings'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
+
+function emptyPaginatedEnvelope<T>(): PaginatedResponse<T> {
+  return {
+    data: [],
+    error: null,
+    error_detail: null,
+    pagination: { limit: 200, next_cursor: null, has_more: false },
+    success: true,
+  }
+}
 
 type SettingEntryOverrides = Partial<Omit<SettingEntry, 'definition'>> & {
   definition?: Partial<SettingEntry['definition']>
@@ -59,7 +69,7 @@ export const settingsHandlers = [
     ),
   ),
   http.get('/api/v1/settings/observability/sinks', () =>
-    HttpResponse.json(successFor<typeof listSinks>([])),
+    HttpResponse.json(emptyPaginatedEnvelope<SinkInfo>()),
   ),
   http.post('/api/v1/settings/observability/sinks/_test', async ({ request }) => {
     await request.json()
