@@ -233,9 +233,10 @@ class TestSetupAgentsList:
     ) -> None:
         resp = test_client.get("/api/v1/setup/agents")
         assert resp.status_code == 200
-        data = resp.json()["data"]
-        assert data["agents"] == []
-        assert data["agent_count"] == 0
+        body = resp.json()
+        assert body["data"] == []
+        assert body["pagination"]["has_more"] is False
+        assert body["pagination"]["next_cursor"] is None
 
     def test_returns_agents_after_company_creation(
         self,
@@ -254,10 +255,8 @@ class TestSetupAgentsList:
             # Now list agents.
             resp = test_client.get("/api/v1/setup/agents")
             assert resp.status_code == 200
-            list_data = resp.json()["data"]
-            agents = list_data["agents"]
+            agents = resp.json()["data"]
             assert len(agents) >= 1
-            assert list_data["agent_count"] == len(agents)
             assert agents[0]["role"]
         finally:
             app_state._provider_management = original
@@ -312,11 +311,16 @@ class TestSetupAgentModelUpdate:
             assert data["model_id"] == "test-small-001"
 
             # Verify persistence: GET agents and check the update stuck.
+            # Agents are returned in name-sorted order; locate the one
+            # we updated rather than indexing by insertion position.
             get_resp = test_client.get("/api/v1/setup/agents")
             assert get_resp.status_code == 200
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["model_provider"] == "test-provider"
-            assert agents[0]["model_id"] == "test-small-001"
+            agents = get_resp.json()["data"]
+            assert any(
+                a["model_provider"] == "test-provider"
+                and a["model_id"] == "test-small-001"
+                for a in agents
+            )
         finally:
             app_state._provider_management = original
 
@@ -374,10 +378,10 @@ class TestUpdateAgentName:
             data = resp.json()["data"]
             assert data["name"] == "New Agent Name"
 
-            # Verify persistence.
+            # Verify persistence -- agents are name-sorted so search by value.
             get_resp = test_client.get("/api/v1/setup/agents")
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["name"] == "New Agent Name"
+            agents = get_resp.json()["data"]
+            assert any(a["name"] == "New Agent Name" for a in agents)
         finally:
             app_state._provider_management = original
 
@@ -441,10 +445,10 @@ class TestRandomizeAgentName:
             assert data["name"] != ""
             assert len(data["name"]) >= 3
 
-            # Verify persistence.
+            # Verify persistence -- agents are name-sorted so search by value.
             get_resp = test_client.get("/api/v1/setup/agents")
-            agents = get_resp.json()["data"]["agents"]
-            assert agents[0]["name"] == data["name"]
+            agents = get_resp.json()["data"]
+            assert any(a["name"] == data["name"] for a in agents)
         finally:
             app_state._provider_management = original
 
