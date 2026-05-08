@@ -674,7 +674,7 @@ jobs:
         # Renovate watches the binary version via the comment marker
         # below; the action SHA is bumped via the standard
         # ``actions/*`` Renovate manager.
-        uses: chainguard-dev/actions/setup-melange@916fec00fb80f3cd124a0b41eef79ee63f607c5d # v1.6.17
+        uses: chainguard-dev/actions/setup-melange@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
           version: v0.50.4
@@ -788,7 +788,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security (web)
         if: always()
-        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
         with:
           sarif_file: trivy-web.sarif
           category: trivy-web

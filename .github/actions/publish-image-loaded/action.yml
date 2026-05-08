@@ -208,7 +208,7 @@ runs:
     - name: Install cosign (attempt 1)
       id: cosign_1
       continue-on-error: true
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
     - name: Back off before cosign retry 1
       if: steps.cosign_1.outcome == 'failure'
@@ -219,7 +219,7 @@ runs:
       if: steps.cosign_1.outcome == 'failure'
       id: cosign_2
       continue-on-error: true
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
     - name: Back off before cosign retry 2
       if: steps.cosign_2.outcome == 'failure'
@@ -228,7 +228,7 @@ runs:
 
     - name: Install cosign (final attempt)
       if: steps.cosign_2.outcome == 'failure'
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
     - name: Sign image
       shell: bash
