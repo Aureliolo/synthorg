@@ -291,8 +291,12 @@ in `notifications/dispatcher.py:250`.
 
 Per-line opt-out:
 `# lint-allow: long-running-loop-kill-switch -- <reason>` on the
-`async def` line. The justification is mandatory and must be
-non-empty (mirrors the existing `# lint-allow:` markers).
+`while` line itself, or on one of the two preceding source lines
+(leading comment block / decorator). The justification is mandatory
+and must be non-empty (mirrors the existing `# lint-allow:`
+markers). Suppression is per-loop: a function with two unguarded
+long-running loops needs two markers, otherwise a function-wide
+opt-out could silently mask a new sibling loop added later.
 Pre-existing not-yet-pause-able loops live in
 `scripts/long_running_loops_kill_switch_baseline.txt`; the gate
 fails when a NEW loop missing the kill-switch lands.

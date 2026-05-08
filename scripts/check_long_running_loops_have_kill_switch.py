@@ -15,7 +15,11 @@ does NOT either:
   named ``_resolve_*_enabled``) inside the loop body, OR
 * carry a per-line opt-out comment
   ``# lint-allow: long-running-loop-kill-switch -- <reason>`` on the
-  function definition (or the enclosing decorator/comment block).
+  ``while`` line itself or one of the two preceding source lines
+  (so the comment can sit on a leading comment block too). One
+  ``lint-allow`` covers exactly one loop -- a function with two
+  unguarded loops needs two markers, otherwise a function-wide
+  opt-out would mask a new sibling loop added later.
 
 The opt-out is for genuinely-not-pause-able loops (lifecycle drains,
 single-shot bootstrap watchers).  The reason text is mandatory and
@@ -160,15 +164,22 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     return False
 
 
-def _has_suppression(source_lines: list[str], func: ast.AsyncFunctionDef) -> bool:
-    """Return True if a ``# lint-allow:`` comment guards this function.
+def _has_suppression(source_lines: list[str], node: ast.AST) -> bool:
+    """Return True if a ``# lint-allow:`` comment guards ``node``.
 
-    Looks at the def line itself plus the two preceding source lines so
-    a developer can place the suppression on the decorator, the
-    function header, or a leading comment block without being picky
-    about exact placement.
+    Looks at ``node``'s own line plus the two preceding source lines so
+    a developer can place the suppression on the loop's decorator, the
+    loop's header, or a leading comment block without being picky about
+    exact placement. Suppression is per-loop (not per-function): a
+    function with multiple long-running loops needs one ``lint-allow``
+    per loop, otherwise a baselined function could silently absorb a
+    new unguarded sibling loop under the existing function-wide
+    opt-out.
     """
-    candidate_lines = source_lines[max(0, func.lineno - 3) : func.lineno]
+    lineno = getattr(node, "lineno", None)
+    if lineno is None:
+        return False
+    candidate_lines = source_lines[max(0, lineno - 3) : lineno]
     return any(SUPPRESSION_RE.search(line) for line in candidate_lines)
 
 
@@ -205,8 +216,12 @@ def _scan_file(path: Path, repo_root: Path) -> list[Violation]:
     text = path.read_text(encoding="utf-8")
     try:
         tree = ast.parse(text, filename=str(path))
-    except SyntaxError:
-        return []  # pragma: no cover -- handled by ruff elsewhere
+    except SyntaxError as exc:
+        # Fail closed: silently swallowing the parse error would skip
+        # every long-running loop in this file under a pre-3.14
+        # interpreter (PEP 758 multi-except is widely used in src/).
+        msg = f"{path}: {exc}"
+        raise SyntaxError(msg) from exc
     source_lines = text.splitlines()
     rel = path.relative_to(repo_root).as_posix()
     violations: list[Violation] = []
@@ -218,10 +233,10 @@ def _scan_file(path: Path, repo_root: Path) -> list[Violation]:
         ]
         if not whiles:
             continue
-        if _has_suppression(source_lines, func):
-            continue
         for w in whiles:
             if _calls_kill_switch_resolver(w):
+                continue
+            if _has_suppression(source_lines, w):
                 continue
             violations.append(
                 Violation(
