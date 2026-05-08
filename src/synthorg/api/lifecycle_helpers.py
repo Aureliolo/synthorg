@@ -7,7 +7,7 @@ Split out of ``lifecycle_builder.py`` so neither file exceeds the
 
 import asyncio
 import inspect
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger, safe_error_description
@@ -24,6 +24,11 @@ from synthorg.observability.events.persistence import (
 from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.registry import (
+    registered_default_bool,
+    registered_default_float,
+    registered_default_int,
+)
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     MemorySettingsSubscriber,
@@ -39,6 +44,7 @@ if TYPE_CHECKING:
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.config.schema import RootConfig
+    from synthorg.settings.bridge_configs import NotificationsBridgeConfig
     from synthorg.settings.service import SettingsService
     from synthorg.settings.subscriber import SettingsSubscriber
 
@@ -203,14 +209,6 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         )
 
 
-_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS: Final[float] = (
-    86400.0  # lint-allow: magic-numbers -- bootstrap
-)
-_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS: Final[float] = (
-    300.0  # lint-allow: magic-numbers -- bootstrap
-)
-
-
 async def _resolve_event_stream_janitor_settings(
     app_state: AppState,
 ) -> tuple[float, float]:
@@ -221,11 +219,16 @@ async def _resolve_event_stream_janitor_settings(
     enabled rather than disabling pruning on a broken settings backend
     -- leaking subscriber state silently is the worse failure mode.
     """
+    fallback_idle = registered_default_float(
+        SettingNamespace.COMMUNICATION.value,
+        "event_stream_subscriber_idle_ttl_seconds",
+    )
+    fallback_interval = registered_default_float(
+        SettingNamespace.COMMUNICATION.value,
+        "event_stream_janitor_interval_seconds",
+    )
     if not app_state.has_config_resolver:
-        return (
-            _DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
-            _DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS,
-        )
+        return fallback_idle, fallback_interval
     try:
         idle = await app_state.config_resolver.get_float(
             SettingNamespace.COMMUNICATION.value,
@@ -244,13 +247,10 @@ async def _resolve_event_stream_janitor_settings(
             API_APP_STARTUP,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            fallback_idle_ttl_seconds=_DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
-            fallback_interval_seconds=_DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS,
+            fallback_idle_ttl_seconds=fallback_idle,
+            fallback_interval_seconds=fallback_interval,
         )
-        return (
-            _DEFAULT_EVENT_STREAM_IDLE_TTL_SECONDS,
-            _DEFAULT_EVENT_STREAM_JANITOR_INTERVAL_SECONDS,
-        )
+        return fallback_idle, fallback_interval
     return idle, interval
 
 
@@ -270,30 +270,57 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
         await _run_cleanup_tick(app_state)
 
 
-_DEFAULT_AUDIT_RETENTION_DAYS = 730  # lint-allow: magic-numbers -- bootstrap
+async def _resolve_audit_retention_loop_enabled(app_state: AppState) -> bool:
+    """Return whether the audit retention loop is enabled (live, per-tick).
 
-
-async def _resolve_audit_retention(
-    app_state: AppState,
-) -> tuple[int, bool]:
-    """Resolve ``(retention_days, paused)`` for the audit retention loop.
-
-    Falls back to the registered default (``730`` days, unpaused) when
-    the settings resolver is unavailable or either read fails.  The
-    fallback intentionally keeps retention enabled rather than
-    disabling purging on a broken settings backend -- leaving expired
-    audit rows around is a compliance risk, so prefer the built-in
-    default to a silent zero.  ``0`` is reserved for an operator
-    explicitly opting out via ``security.audit_retention_days=0``.
+    Reads ``security.audit_retention_loop_enabled`` from the settings
+    resolver.  Falls back to the registered default (``True``) when the
+    resolver is unavailable or the read fails -- leaving expired audit
+    rows around is a compliance risk, so the loop stays active on a
+    broken settings backend rather than silently disabling itself.
     """
+    fallback = registered_default_bool(
+        SettingNamespace.SECURITY.value, "audit_retention_loop_enabled"
+    )
     if not app_state.has_config_resolver:
-        return _DEFAULT_AUDIT_RETENTION_DAYS, False
+        return fallback
     try:
-        days = await app_state.config_resolver.get_int(
-            SettingNamespace.SECURITY.value, "audit_retention_days"
+        return await app_state.config_resolver.get_bool(
+            SettingNamespace.SECURITY.value, "audit_retention_loop_enabled"
         )
-        paused_raw = await app_state.config_resolver.get_bool(
-            SettingNamespace.SECURITY.value, "retention_cleanup_paused"
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_AUDIT_RETENTION,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_enabled=fallback,
+        )
+        return fallback
+
+
+async def _resolve_audit_retention_days(app_state: AppState) -> int:
+    """Resolve ``audit_retention_days`` for the retention loop.
+
+    Falls back to the registered default when the settings resolver is
+    unavailable or the read fails.  The fallback intentionally keeps
+    retention enabled rather than disabling purging on a broken
+    settings backend -- leaving expired audit rows around is a
+    compliance risk, so prefer the built-in default to a silent zero.
+    ``0`` is reserved for an operator explicitly opting out via
+    ``security.audit_retention_days=0``.
+    """
+    fallback = registered_default_int(
+        SettingNamespace.SECURITY.value, "audit_retention_days"
+    )
+    if not app_state.has_config_resolver:
+        return fallback
+    try:
+        return await app_state.config_resolver.get_int(
+            SettingNamespace.SECURITY.value, "audit_retention_days"
         )
     except asyncio.CancelledError:
         raise
@@ -304,10 +331,38 @@ async def _resolve_audit_retention(
             API_APP_STARTUP,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            fallback_days=_DEFAULT_AUDIT_RETENTION_DAYS,
+            fallback_days=fallback,
         )
-        return _DEFAULT_AUDIT_RETENTION_DAYS, False
-    return days, paused_raw
+        return fallback
+
+
+async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
+    """Resolve the cadence between audit retention purge ticks.
+
+    Falls back to the registered default when the resolver is
+    unavailable or the read fails.
+    """
+    fallback = registered_default_float(
+        SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
+    )
+    if not app_state.has_config_resolver:
+        return fallback
+    try:
+        return await app_state.config_resolver.get_float(
+            SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_AUDIT_RETENTION,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_seconds=fallback,
+        )
+        return fallback
 
 
 async def _audit_retention_tick(app_state: AppState) -> None:
@@ -318,10 +373,7 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     """
     from datetime import UTC, datetime, timedelta  # noqa: PLC0415
 
-    days, paused = await _resolve_audit_retention(app_state)
-    if paused:
-        logger.info(API_AUDIT_RETENTION, note="audit retention purge paused")
-        return
+    days = await _resolve_audit_retention_days(app_state)
     if days <= 0:
         logger.debug(API_AUDIT_RETENTION, note="audit retention purge disabled")
         return
@@ -349,31 +401,31 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     )
 
 
-_AUDIT_RETENTION_TICK_SECONDS: Final[float] = (
-    86_400.0  # lint-allow: magic-numbers -- bootstrap
-)
-"""Audit retention sweep cadence (24h). Hardcoded by design: retention is
-not a hot path and operators tune the *window* (``security.audit_retention_days``)
-rather than the *cadence*."""
-
-
 async def _audit_retention_loop(app_state: AppState) -> None:
     """Daily sweep that purges audit_entries older than retention window.
 
     Reads ``security.audit_retention_days`` and
-    ``security.retention_cleanup_paused`` from the settings resolver
-    on every tick so operator changes take effect without restart.
-    A ``retention_days`` of 0 disables purging entirely (opt-out via
-    ``security.audit_retention_days=0``); resolver outages fall back
-    to the registered default of 730 days rather than disabling
-    retention. The loop stays resident even when paused so lifecycle
-    plumbing is unchanged. Tick cadence is fixed at
-    ``_AUDIT_RETENTION_TICK_SECONDS`` (24h) -- audit retention is not a
-    hot path.
+    ``security.audit_retention_loop_enabled`` from the settings
+    resolver on every tick so operator changes take effect without
+    restart.  A ``retention_days`` of 0 disables purging entirely
+    (opt-out via ``security.audit_retention_days=0``); the kill-switch
+    keeps the loop resident but inert so plumbing is unchanged when
+    operators pause retention during incident investigation.
+    Resolver outages fall back to the registered defaults rather than
+    disabling retention -- leaving expired audit rows around is a
+    compliance risk.  Tick cadence comes from
+    ``security.audit_retention_tick_seconds`` (default 24h).
     """
     while True:
-        await _audit_retention_tick(app_state)
-        await asyncio.sleep(_AUDIT_RETENTION_TICK_SECONDS)
+        if await _resolve_audit_retention_loop_enabled(app_state):
+            await _audit_retention_tick(app_state)
+        else:
+            logger.info(
+                API_AUDIT_RETENTION,
+                note="audit retention purge paused",
+                reason="paused_by_setting",
+            )
+        await asyncio.sleep(await _resolve_audit_retention_tick_seconds(app_state))
 
 
 async def _maybe_promote_first_owner(app_state: AppState) -> None:
@@ -649,9 +701,12 @@ async def _apply_notification_dispatcher_config(
     Reads the notifications bridge config from the resolver, then if a
     dispatcher already exists on ``app_state``, builds a fresh one with
     the resolved timeouts and swaps it in. Closes the previous
-    dispatcher's sinks after the swap. Resolver outage keeps the
-    pre-startup dispatcher in place (default timeouts).
+    dispatcher's sinks after the swap. Resolver outage falls through to
+    a rebuild with ``bridge_config=None`` (built-in default timeouts) so
+    the live dispatcher still picks up the ``config_resolver`` and the
+    runtime kill-switch stays operational.
     """
+    notif_bridge: NotificationsBridgeConfig | None
     try:
         notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
     except MemoryError, RecursionError:
@@ -663,7 +718,7 @@ async def _apply_notification_dispatcher_config(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
+        notif_bridge = None
     if not (app_state.has_notification_dispatcher and effective_config is not None):
         return
     new_dispatcher = build_notification_dispatcher(

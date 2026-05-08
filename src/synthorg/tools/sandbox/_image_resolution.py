@@ -64,19 +64,25 @@ def set_resolved_sidecar_image(value: str | None) -> None:
 def get_resolved_sandbox_image() -> str:
     """Return the cached sandbox image, falling back to the constant.
 
-    Logged at DEBUG so operators debugging image-resolution issues
-    can see which source won (settings cache vs. fallback constant).
+    Logged at DEBUG with a ``source`` discriminator so operators can
+    tell whether the value came from the resolver-populated cache (the
+    canonical DB > env > YAML > default chain ran at startup) or from
+    the documented fallback constant (cache never seeded -- typically
+    a programmatic ``DockerSandboxConfig`` instantiation outside the
+    lifecycle wiring).
     """
     if _resolved_sandbox_image:
         logger.debug(
             CONFIG_ENV_VAR_RESOLVED,
             var="tools.sandbox_image",
+            source="resolver_cache",
             resolved=_resolved_sandbox_image,
         )
         return _resolved_sandbox_image
     logger.debug(
         CONFIG_ENV_VAR_FALLBACK,
         var="tools.sandbox_image",
+        source="fallback_constant",
         fallback=_FALLBACK_SANDBOX_IMAGE,
         reason="resolution_cache_unset",
     )
@@ -84,17 +90,23 @@ def get_resolved_sandbox_image() -> str:
 
 
 def get_resolved_sidecar_image() -> str:
-    """Return the cached sidecar image, falling back to the constant."""
+    """Return the cached sidecar image, falling back to the constant.
+
+    Same source-discriminator semantics as
+    :func:`get_resolved_sandbox_image`.
+    """
     if _resolved_sidecar_image:
         logger.debug(
             CONFIG_ENV_VAR_RESOLVED,
             var="tools.sidecar_image",
+            source="resolver_cache",
             resolved=_resolved_sidecar_image,
         )
         return _resolved_sidecar_image
     logger.debug(
         CONFIG_ENV_VAR_FALLBACK,
         var="tools.sidecar_image",
+        source="fallback_constant",
         fallback=_FALLBACK_SIDECAR_IMAGE,
         reason="resolution_cache_unset",
     )

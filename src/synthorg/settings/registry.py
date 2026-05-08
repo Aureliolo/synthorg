@@ -111,3 +111,52 @@ _registry = SettingsRegistry()
 def get_registry() -> SettingsRegistry:
     """Return the global settings registry singleton."""
     return _registry
+
+
+def _registered_default_str(namespace: str, key: str) -> str:
+    """Return the registered default for ``(namespace, key)`` as a string.
+
+    Raises if the setting is unregistered or has no default.  Callers
+    that need a typed value pass the result through the matching
+    ``registered_default_*`` helper.
+    """
+    definition = _registry.get(namespace, key)
+    if definition is None:
+        msg = f"setting {namespace}.{key} is not registered"
+        raise LookupError(msg)
+    if definition.default is None:
+        msg = f"setting {namespace}.{key} has no registered default"
+        raise LookupError(msg)
+    return definition.default
+
+
+def registered_default_int(namespace: str, key: str) -> int:
+    """Return the registered default for ``(namespace, key)`` coerced to ``int``.
+
+    Reads the canonical default from the registry rather than
+    duplicating the literal in caller code -- the registry is the
+    single source of truth, so consumer-side fallbacks (e.g. resolver
+    outage paths) read the same value the resolver would have served
+    on the happy path.
+    """
+    return int(_registered_default_str(namespace, key))
+
+
+def registered_default_float(namespace: str, key: str) -> float:
+    """Return the registered default for ``(namespace, key)`` coerced to ``float``."""
+    return float(_registered_default_str(namespace, key))
+
+
+def registered_default_bool(namespace: str, key: str) -> bool:
+    """Return the registered default for ``(namespace, key)`` coerced to ``bool``.
+
+    Accepts the canonical string representations recorded in the
+    registry: ``"true"`` / ``"false"`` (case-insensitive).
+    """
+    raw = _registered_default_str(namespace, key).strip().lower()
+    if raw == "true":
+        return True
+    if raw == "false":
+        return False
+    msg = f"setting {namespace}.{key} default {raw!r} is not a boolean string"
+    raise ValueError(msg)

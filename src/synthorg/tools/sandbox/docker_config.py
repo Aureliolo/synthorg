@@ -77,9 +77,15 @@ class DockerSandboxConfig(BaseModel):
     image: NotBlankStr = Field(
         default_factory=_default_sandbox_image,
         description=(
-            "Docker image for sandbox containers. Precedence: explicit YAML, "
-            "SYNTHORG_SANDBOX_IMAGE env var, "
-            "ghcr.io/aureliolo/synthorg-sandbox:latest fallback."
+            "Docker image for sandbox containers. Resolution chain at"
+            " backend startup: DB override > SYNTHORG_SANDBOX_IMAGE env"
+            " var > YAML tools.sandbox.docker.image > the documented"
+            " fallback constant ghcr.io/aureliolo/synthorg-sandbox:latest."
+            " ConfigResolver writes the resolved value into the"
+            " sandbox image-resolution cache once at startup; this"
+            " field's default_factory reads from that cache, so"
+            " runtime DB overrides require a restart"
+            " (read_only_post_init=True on the registered setting)."
         ),
     )
     network: Literal["none", "bridge", "host"] = Field(
@@ -159,9 +165,13 @@ class DockerSandboxConfig(BaseModel):
     sidecar_image: NotBlankStr = Field(
         default_factory=_default_sidecar_image,
         description=(
-            "Docker image for network sidecar containers. Precedence: "
-            "explicit YAML, SYNTHORG_SIDECAR_IMAGE env var, "
-            "ghcr.io/aureliolo/synthorg-sidecar:latest fallback."
+            "Docker image for network sidecar containers. Resolution"
+            " chain at backend startup: DB override >"
+            " SYNTHORG_SIDECAR_IMAGE env var > YAML"
+            " tools.sandbox.docker.sidecar_image > fallback constant"
+            " ghcr.io/aureliolo/synthorg-sidecar:latest. Read once at"
+            " startup from the sidecar image-resolution cache; runtime"
+            " DB overrides require a restart."
         ),
     )
     network_allow_all: bool = Field(

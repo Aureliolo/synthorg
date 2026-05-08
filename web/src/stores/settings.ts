@@ -102,15 +102,16 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         return
       }
       if (!CURRENCY_PATTERN.test(currencyEntry.value)) {
-        log.warn('Invalid currency value, keeping default:', currencyEntry.value)
+        log.warn('Invalid currency value, keeping default', {
+          value: sanitizeForLog(currencyEntry.value),
+        })
         return
       }
       set({ currency: currencyEntry.value })
     } catch (error) {
-      log.warn(
-        'Failed to fetch currency, keeping default:',
-        getErrorMessage(error),
-      )
+      log.warn('Failed to fetch currency, keeping default', {
+        error: sanitizeForLog(getErrorMessage(error)),
+      })
     }
   },
 
@@ -288,7 +289,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   updateFromWsEvent: (event) => {
     if (event.channel === 'system') {
       void get().refreshEntries().catch((err) => {
-        log.warn('WebSocket-triggered refresh failed:', getErrorMessage(err))
+        log.warn('WebSocket-triggered refresh failed', {
+          error: sanitizeForLog(getErrorMessage(err)),
+        })
       })
     }
   },

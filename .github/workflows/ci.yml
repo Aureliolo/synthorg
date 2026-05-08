@@ -146,6 +146,9 @@ jobs:
       - name: Migration-framing / phase-N gate (src/ + tests/)
         run: uv run python scripts/check_no_migration_framing.py
 
+      - name: Long-running-loop kill-switch gate (src/synthorg)
+        run: uv run python scripts/check_long_running_loops_have_kill_switch.py
+
   # ── Docs: Doc-claim drift gate ──
   # Runs on python OR doc_claims so a docs-only PR that bumps a guarded
   # claim (eg "100+ event constant modules") still triggers the gate.

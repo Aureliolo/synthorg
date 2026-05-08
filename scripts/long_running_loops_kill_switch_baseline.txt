@@ -12,7 +12,6 @@ src/synthorg/api/controllers/events.py:_sse_event_stream:433
 src/synthorg/api/controllers/ws.py:_outbound_consumer:341
 src/synthorg/api/controllers/ws.py:_receive_loop:735
 src/synthorg/api/controllers/ws_revalidation.py:_periodic_revalidate:112
-src/synthorg/api/lifecycle_helpers.py:_audit_retention_loop:363
 src/synthorg/api/services/idempotency_service.py:IdempotencyService:run_idempotent:185
 src/synthorg/backup/scheduler.py:BackupScheduler:_run_loop:279
 src/synthorg/budget/quota_poller.py:QuotaPoller:_poll_loop:137

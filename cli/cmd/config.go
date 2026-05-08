@@ -101,8 +101,9 @@ Supported keys:
   timestamps            Timestamp display mode
   web_port              Web dashboard port
 
-Plus 16 runtime tunables (registry host, image tags, timeouts, size
-limits, NATS defaults). See cli/CLAUDE.md for the full list.`,
+Plus the runtime tunables (registry host, image tags, timeouts, size
+limits, NATS defaults) -- see cli/CLAUDE.md for the canonical list and
+'synthorg config list' for the live key set.`,
 	Example: `  synthorg config get backend_port
   synthorg config get channel
   synthorg config get image_tag`,

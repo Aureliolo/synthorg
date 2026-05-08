@@ -269,7 +269,11 @@ func applyComposeDefaults(p *Params) {
 		p.NATSImageTag = config.DefaultNATSImageTag
 	}
 	if p.NATSURL == "" {
-		p.NATSURL = config.DefaultNATSURLValue
+		// Honour SYNTHORG_NATS_URL on the direct-Params build path so
+		// callers that construct Params themselves (and never go
+		// through ParamsFromState) see the same env override the
+		// state-driven path does.
+		p.NATSURL = resolveNATSURL()
 	}
 
 	// Autofill pinned digests ONLY when every registry/repo/tag field

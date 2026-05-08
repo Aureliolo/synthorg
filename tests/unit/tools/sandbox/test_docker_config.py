@@ -75,10 +75,12 @@ class TestDockerSandboxConfigImageResolution:
         self,
         cached: str | None,
     ) -> None:
-        # Whitespace-only is treated as unset by ``get_resolved_*``
-        # because the docker_config field validators would reject it
-        # and the documented behaviour is fall-through to the constant.
-        set_resolved_sandbox_image(cached.strip() if cached is not None else None)
+        # Pass the value RAW to the setter so the setter's own
+        # whitespace normalisation (added in
+        # ``_image_resolution.set_resolved_sandbox_image``) is the
+        # thing under test. Pre-stripping in the call site would
+        # short-circuit the very behaviour we're verifying.
+        set_resolved_sandbox_image(cached)
         config = DockerSandboxConfig()
         assert config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
 

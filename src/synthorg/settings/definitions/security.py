@@ -82,18 +82,40 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SECURITY,
-        key="retention_cleanup_paused",
+        key="audit_retention_loop_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
-            "Pause flag for the audit retention purge loop. When"
-            " True, the loop stays resident but every tick"
+            "Live kill-switch for the audit retention purge loop. When"
+            " ``False`` the loop stays resident but every 24h tick"
             " short-circuits -- used during incident investigations"
-            " to preserve all records."
+            " to preserve all records, or to decommission retention"
+            " on a deployment that handles it externally."
         ),
         group="Retention",
         level=SettingLevel.ADVANCED,
-        yaml_path="security.retention_cleanup_paused",
+        yaml_path="security.audit_retention_loop_enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="audit_retention_tick_seconds",
+        type=SettingType.FLOAT,
+        default="86400.0",
+        description=(
+            "Wall-clock interval between audit retention purge ticks."
+            " Audit retention is not a hot path; operators tune the"
+            " *window* (``security.audit_retention_days``) rather than"
+            " the *cadence*. Default 24h."
+        ),
+        group="Retention",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=60.0,
+        max_value=604800.0,
+        yaml_path="security.audit_retention_tick_seconds",
     )
 )
 

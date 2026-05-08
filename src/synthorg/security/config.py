@@ -345,12 +345,21 @@ class SecurityConfig(BaseModel):
             " 0 disables purging (unbounded). Default 730 (2 years)."
         ),
     )
-    retention_cleanup_paused: bool = Field(
-        default=False,
+    audit_retention_loop_enabled: bool = Field(
+        default=True,
         description=(
-            "Pause flag for the audit retention purge loop. When"
-            " True the loop stays resident but every tick"
-            " short-circuits."
+            "Live kill-switch for the audit retention purge loop."
+            " When ``False`` the loop stays resident but every tick"
+            " short-circuits -- used during incident investigations"
+            " to preserve all records."
+        ),
+    )
+    audit_retention_tick_seconds: float = Field(
+        default=86400.0,
+        ge=60.0,
+        le=604800.0,
+        description=(
+            "Wall-clock interval between audit retention purge ticks. Default 24h."
         ),
     )
 
