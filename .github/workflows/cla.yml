@@ -5,12 +5,14 @@ name: CLA
 # Two jobs split by event type:
 #
 #   cla-check (pull_request_target):
-#     READ-only path. contributor-assistant/github-action checks each PR
-#     commit author against .github/cla-signatures.json on the
-#     cla-signatures branch and posts a prompt comment if any author has
-#     not signed. The action never reaches its write code path here
-#     because that path only fires on issue_comment events (see issue
-#     #1633 + the action's source).
+#     READ-only path. Self-contained bash + gh api: fetches PR commit
+#     authors, reads .github/cla-signatures.json from the
+#     cla-signatures branch, subtracts the bot allowlist, and updates a
+#     marker-based comment on the PR (PATCH if the marker exists, POST
+#     when transitioning into the unsigned state). gh_api_retry wraps
+#     every API call with bounded exponential-with-cap retry so
+#     transient EPIPE / 5xx failures do not redden the gate; definitive
+#     4xx (missing branch, revoked token) fails fast.
 #
 #   cla-sign (issue_comment matching the sign-text body):
 #     WRITE path. Replaces the bundled action's commit step with a
@@ -48,44 +50,149 @@ jobs:
         && github.event.pull_request.user.login != 'renovate[bot]'
         && github.event.pull_request.user.login != 'synthorg-repo-bot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     permissions:
-      # contents: read (was: write) -- the read path never writes back.
-      # The write path lives in cla-sign below, which mints via the App
-      # token, NOT GITHUB_TOKEN.
+      # The read path never writes back; the write path lives in
+      # cla-sign below, which mints via the App token, NOT GITHUB_TOKEN.
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: main
-          persist-credentials: false
-      - uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+      - name: CLA signature check
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          path-to-signatures: .github/cla-signatures.json
-          path-to-document: .github/CLA.md
-          branch: cla-signatures
-          custom-notsigned-prcomment: |
-            Thank you for your contribution! Before we can merge this PR, you need to sign the [Contributor License Agreement](https://github.com/${{ github.repository }}/blob/main/.github/CLA.md).
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
 
-            **To sign**, please reply to this comment with the following exact text:
+          # ── Helper: gh_api_retry ──
+          # Wraps `gh api` with bounded exponential-with-cap retry on
+          # transient failures (network errors, 5xx, EPIPE-class).
+          # Definitive client errors (4xx) fail fast: retrying a missing
+          # branch or revoked token wastes the retry budget.
+          # Backoff: 15, 30, 60, 120, 120, 120, 120 = ~10 min over
+          # 8 attempts (7 sleeps). Job timeout is 12 min for headroom.
+          gh_api_retry() {
+            local attempt=0
+            local max_attempts=8
+            local delay=15
+            local rc
+            while : ; do
+              attempt=$((attempt + 1))
+              if gh api "$@" 2>/tmp/gh-api-err; then
+                return 0
+              fi
+              rc=$?
+              if grep -qE 'HTTP 4(00|01|03|04|22)' /tmp/gh-api-err; then
+                echo "::error::gh api definitive 4xx (no retry): $(cat /tmp/gh-api-err)" >&2
+                return "$rc"
+              fi
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "::error::gh api failed after $attempt attempts: $(cat /tmp/gh-api-err)" >&2
+                return "$rc"
+              fi
+              echo "::warning::gh api transient failure (attempt $attempt/$max_attempts), retrying in ${delay}s" >&2
+              sleep "$delay"
+              delay=$((delay * 2))
+              if [ "$delay" -gt 120 ]; then delay=120; fi
+            done
+          }
 
-            > I have read the CLA Document and I hereby sign the CLA
+          # ── Step 1: Collect distinct PR commit authors. ──
+          # Skip null .author entries (commits whose email did not map
+          # to a GitHub identity); the unsigned diff requires a positive
+          # identity.
+          gh_api_retry --paginate \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
+            --jq '.[].author.login | select(.)' \
+            | sort -u > /tmp/pr-authors
+          if [ ! -s /tmp/pr-authors ]; then
+            echo "::error::Failed to fetch PR commit authors (empty list)"
+            exit 1
+          fi
+          echo "PR commit authors:"
+          cat /tmp/pr-authors
 
-            You only need to sign once -- it covers all future contributions.
-          custom-pr-sign-comment: I have read the CLA Document and I hereby sign the CLA
-          custom-allsigned-prcomment: All contributors have signed the CLA. Thank you!
-          lock-pullrequest-aftermerge: false
-          use-dco-flag: false
-          # Bots whose commits bypass the CLA check. Release automation
+          # ── Step 2: Read manifest from the cla-signatures branch. ──
+          gh_api_retry \
+            "repos/$GITHUB_REPOSITORY/contents/.github/cla-signatures.json?ref=cla-signatures" \
+            --jq '.content' \
+            | base64 -d > /tmp/cla-current.json
+          jq -r '.signedContributors[].name' /tmp/cla-current.json \
+            | sort -u > /tmp/cla-signed
+
+          # ── Step 3: Bot allowlist. ──
+          # Bots whose commits bypass the CLA check: release automation
           # and dependency bumpers commit under these identities; the
           # human-contributor CLA obligation does not apply to them.
-          # Must stay in sync with the if: gate above -- that gate
-          # protects against the whole workflow firing while this gate
-          # protects against the action flagging any individual commit
-          # inside a mixed-authorship PR.
-          allowlist: dependabot[bot],renovate[bot],synthorg-repo-bot[bot],github-actions[bot]
+          # Stay in sync with two other places:
+          #   (a) the if: gate at the top of this job (PR-opener check),
+          #   (b) the cla-sign job's bot-allowlist block (Step 7).
+          # Mismatch produces false negatives on mixed-authorship PRs.
+          printf '%s\n' \
+            'dependabot[bot]' \
+            'renovate[bot]' \
+            'synthorg-repo-bot[bot]' \
+            'github-actions[bot]' \
+            | sort -u > /tmp/cla-bot-allowlist
+
+          # ── Step 4: Compute the unsigned set. ──
+          # required = pr_authors - bot_allowlist
+          # pending  = required   - signed
+          comm -23 /tmp/pr-authors /tmp/cla-bot-allowlist > /tmp/cla-required
+          comm -23 /tmp/cla-required /tmp/cla-signed > /tmp/cla-pending
+          PENDING_COUNT=$(wc -l < /tmp/cla-pending | tr -d '[:space:]')
+          PENDING_LIST=$(sed 's/^/@/' /tmp/cla-pending | paste -sd ', ')
+          echo "Required signers (excluding bot allowlist):"
+          cat /tmp/cla-required
+          echo "Pending unsigned authors: $PENDING_COUNT"
+          if [ "$PENDING_COUNT" -gt 0 ]; then
+            echo "$PENDING_LIST"
+          fi
+
+          # ── Step 5: Idempotent comment update. ──
+          # The HTML-comment marker hides from the rendered view but
+          # lets us locate any prior cla-check comment on this PR.
+          # PATCH if found; POST only when transitioning into the
+          # unsigned state from a clean PR (no need to spam PRs that
+          # never had an unsigned state).
+          MARKER='<!-- synthorg-cla-check -->'
+          # Build the comment body via printf so every physical line
+          # stays inside the YAML literal block's indent (a column-0
+          # continuation line would terminate the block prematurely).
+          if [ "$PENDING_COUNT" -gt 0 ]; then
+            body=$(printf '%s\n\n%s\n\n%s\n\n> %s\n\n%s' \
+              "$MARKER" \
+              "Thank you for your contribution. Before we can merge, the following contributor(s) need to sign the [Contributor License Agreement](https://github.com/${GITHUB_REPOSITORY}/blob/main/.github/CLA.md): ${PENDING_LIST}." \
+              "**To sign**, reply to this comment with the following exact text:" \
+              "I have read the CLA Document and I hereby sign the CLA" \
+              "You only need to sign once -- it covers all future contributions.")
+          else
+            body=$(printf '%s\n\n%s' \
+              "$MARKER" \
+              "All contributors have signed the CLA. Thank you!")
+          fi
+          existing=$(gh_api_retry --paginate \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" \
+            | head -n1)
+          if [ -n "$existing" ]; then
+            gh_api_retry --method PATCH \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$existing" \
+              -f body="$body" >/dev/null
+            echo "Edited existing CLA-check comment $existing"
+          elif [ "$PENDING_COUNT" -gt 0 ]; then
+            gh_api_retry --method POST \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body="$body" >/dev/null
+            echo "Posted new CLA-check prompt comment"
+          fi
+
+          # ── Step 6: Exit code drives the gate. ──
+          if [ "$PENDING_COUNT" -gt 0 ]; then
+            echo "::error::CLA not signed by: $PENDING_LIST"
+            exit 1
+          fi
+          echo "All contributors signed."
 
   # ── App-token mint write path ──
   cla-sign:
@@ -217,9 +324,11 @@ jobs:
               exit 0
             fi
 
-            # Step 4: Build the new signatures file (canonical 2-space
-            # indent + trailing newline matches the contributor-assistant
-            # action's historical shape).
+            # Step 4: Build the new signatures file. Canonical 2-space
+            # indent + trailing newline matches the manifest's existing
+            # shape on the cla-signatures branch -- preserving the format
+            # keeps the per-signature diff to a single appended array
+            # element and avoids whole-file reformat noise.
             NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
             jq --indent 2 \
               --arg name "$COMMENTER_LOGIN" \
@@ -321,13 +430,14 @@ jobs:
           # ── Step 7: Compute pending unsigned PR authors ──
           # /tmp/cla-final.json holds the post-signature state for THIS
           # mint. Extract the set of signed logins, subtract from the PR
-          # author set, then subtract the bot allowlist (these never
-          # need a CLA -- they match the contributor-assistant action's
-          # `allowlist:` input on cla-check).
+          # author set, then subtract the bot allowlist (these bots never
+          # need a CLA -- their commits bypass the human-contributor
+          # obligation).
           jq -r '.signedContributors[].name' /tmp/cla-final.json \
             | sort -u > /tmp/cla-signed
           # PR_AUTHORS already collected earlier in /tmp/pr-authors.
-          # Bot allowlist (mirror of cla-check.allowlist input).
+          # Bot allowlist must mirror cla-check's Step 3 list -- mismatch
+          # produces false negatives on mixed-authorship PRs.
           printf '%s\n' \
             'dependabot[bot]' \
             'renovate[bot]' \
