@@ -74,6 +74,10 @@ _BACKREF_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
             re.IGNORECASE,
         ),
     ),
+    # Hyphen-prefixed back-refs (``Pre-#1666`` / ``Post-#1234``).
+    # ``\d{2,}`` mirrors the narrative form; placeholders like ``#1``
+    # stay untouched while real issue numbers trip the gate.
+    ("pre/post-#N", re.compile(r"\b(?:pre|post)-#\d{2,}", re.IGNORECASE)),
     # GitHub global-id form.
     ("GH-N", re.compile(r"\bGH-\d{3,}\b")),
 )

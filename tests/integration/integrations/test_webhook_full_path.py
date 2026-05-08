@@ -1,13 +1,10 @@
-"""Webhook end-to-end: bus publish -> bridge forward -> strategy call.
+"""End-to-end webhook test: bus publish -> bridge forward -> strategy call.
 
-Exercises the full path required by the contract that
-``WebhookEventBridge`` subscribes to ``#webhooks`` and forwards
-events into ``ExternalTriggerStrategy.on_external_event``.
-
-The test uses the in-process ``InMemoryMessageBus`` together with a
-spy ceremony scheduler that yields a spy ``ExternalTriggerStrategy``.
-Publishing to ``#webhooks`` must trigger ``on_external_event`` with
-the correct event_type and payload.
+Verifies that ``WebhookEventBridge`` subscribes to ``#webhooks`` and
+forwards events to ``ExternalTriggerStrategy.on_external_event`` with
+the expected event_type and payload, using the in-process
+``InMemoryMessageBus`` and a spy ceremony scheduler that yields a
+spy ``ExternalTriggerStrategy``.
 """
 
 import asyncio

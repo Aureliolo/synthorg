@@ -62,8 +62,8 @@ class TestEscalationNotifyConformance:
     ) -> None:  # lint-allow: dual-backend-parity -- LISTEN/NOTIFY is Postgres-only
         """``_publish_notifies`` over N ids emits N distinct payloads.
 
-        Verifies the post-#1597 batching collapse preserves the
-        per-id payload contract subscribers depend on.
+        Verifies the batching collapse preserves the per-id payload
+        contract subscribers depend on.
         """
         if backend.backend_name != "postgres":
             pytest.skip("Postgres-only: exercises LISTEN/NOTIFY semantics")

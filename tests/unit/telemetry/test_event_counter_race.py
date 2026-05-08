@@ -22,6 +22,12 @@ pytestmark = pytest.mark.unit
 # below to leave headroom for the assertions after the join.
 _FUTURE_TIMEOUT_S: float = 20.0
 
+# Worker count chosen high enough to force genuine contention on the
+# eviction lock (every worker tries to acquire under a single gate
+# release) without overwhelming the xdist runner; matches the order of
+# magnitude used by the surrounding race-test suite.
+_WORKER_COUNT: int = 16
+
 
 class _FakeEvent:
     """Minimal stand-in matching the TelemetryEvent shape needed."""
@@ -93,7 +99,7 @@ def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
             start_evt.wait()
             counter.on_event(event)  # type: ignore[arg-type]
 
-        with ThreadPoolExecutor(max_workers=16) as pool:
+        with ThreadPoolExecutor(max_workers=_WORKER_COUNT) as pool:
             futures = [
                 pool.submit(_gated_on_event, _FakeEvent(now, f"flood.{i}"))
                 for i in range(1000)

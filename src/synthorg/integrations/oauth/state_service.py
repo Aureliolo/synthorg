@@ -33,6 +33,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Audit-safe correlation prefix length: long enough to deduplicate state
+# tokens across the audit chain without exposing the full secret.
+_STATE_TOKEN_PREFIX_LENGTH = 8  # lint-allow: magic-numbers -- audit prefix width
+
 
 class OAuthStateService:
     """Audit-aware facade over the OAuth state repository.
@@ -73,7 +77,7 @@ class OAuthStateService:
             logger.warning(
                 SECURITY_OAUTH_STATE_PERSIST_FAILED,
                 connection_name=str(connection_name),
-                state_token_prefix=str(bound.state_token)[:8],
+                state_token_prefix=str(bound.state_token)[:_STATE_TOKEN_PREFIX_LENGTH],
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -81,7 +85,7 @@ class OAuthStateService:
         logger.info(
             SECURITY_OAUTH_STATE_PERSISTED,
             connection_name=str(connection_name),
-            state_token_prefix=str(bound.state_token)[:8],
+            state_token_prefix=str(bound.state_token)[:_STATE_TOKEN_PREFIX_LENGTH],
         )
         return bound
 

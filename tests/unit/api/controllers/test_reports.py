@@ -14,12 +14,13 @@ _HEADERS = make_auth_headers("ceo")
 class TestReportsController:
     """Regression coverage for ``POST /api/v1/reports/generate``.
 
-    Pre-#1666 the controller dereferenced ``state._app_state``
-    (private attribute that does not exist on Litestar's ``State``)
-    so the endpoint surfaced a bare ``AttributeError`` to clients.
-    The fix swaps the access to ``state.app_state`` and wires
-    ``AutomatedReportService`` on AppState so the endpoint serves
-    the documented inputs instead of returning 503 unconfigured.
+    The controller historically dereferenced ``state._app_state``
+    (a private attribute that does not exist on Litestar's
+    ``State``) so the endpoint surfaced a bare ``AttributeError``
+    to clients; access now goes through ``state.app_state`` and the
+    test wires ``AutomatedReportService`` on AppState so the
+    endpoint serves the documented inputs instead of returning 503
+    unconfigured.
     """
 
     def test_generate_daily_report_succeeds(

@@ -156,6 +156,33 @@ class TestIssueBackRefs:
         issues = _scan(src_dir, "src/synthorg/x.py", "# closes #1234\n")
         assert any("closes #" in i.lower() for i in issues), issues
 
+    def test_pre_hash_n(self, src_dir: Path) -> None:
+        """``Pre-#1666`` style hyphen-prefixed back-refs are flagged."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            '"""Pre-#1666 the controller dereferenced state._app_state."""\n',
+        )
+        assert any("pre/post-#" in i.lower() for i in issues), issues
+
+    def test_post_hash_n(self, src_dir: Path) -> None:
+        """``post-#1597`` style hyphen-prefixed back-refs are flagged."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            '"""Post-#1597 batching collapse preserves payload contract."""\n',
+        )
+        assert any("pre/post-#" in i.lower() for i in issues), issues
+
+    def test_pre_hash_short_digits_skipped(self, src_dir: Path) -> None:
+        """``Pre-#1`` placeholders are NOT flagged (2+ digits required)."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            '"""Pre-#1 placeholder."""\n',
+        )
+        assert issues == [], issues
+
 
 class TestNakedSecTaxonomy:
     """Naked ``SEC-N`` tokens in ``src/synthorg/`` and ``tests/`` are flagged."""
@@ -415,13 +442,31 @@ class TestPathAllowlist:
 
 
 class TestScopeLimit:
-    """Only ``*.py`` files under src/synthorg/ + tests/ are scanned."""
+    """Only in-scope ``*.py`` and persistence ``*.sql`` files are scanned."""
 
     def test_outside_scope_ignored(self, src_dir: Path) -> None:
         """A file under ``random/`` is outside scope."""
         fp = _write_fixture(src_dir, "random/x.py", "# pre-PR review #1234\n")
         rel = fp.relative_to(src_dir).as_posix()
         issues = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
+        assert issues == [], issues
+
+    def test_in_scope_sql_flagged(self, src_dir: Path) -> None:
+        """SQL under ``src/synthorg/`` is scanned, not skipped."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/persistence/schema.sql",
+            "-- see PR #1234\n",
+        )
+        assert any("see pr #" in i.lower() for i in issues), issues
+
+    def test_in_scope_sql_trailing_marker_suppresses(self, src_dir: Path) -> None:
+        """SQL trailing marker suppresses the violation."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/persistence/schema.sql",
+            "SELECT 1; -- see PR #1234 -- lint-allow: review-origin -- gate fixture\n",
+        )
         assert issues == [], issues
 
     def test_non_python_text_skipped(self, src_dir: Path) -> None:

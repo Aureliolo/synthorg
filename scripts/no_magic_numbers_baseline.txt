@@ -92,7 +92,7 @@ src/synthorg/api/controllers/oauth.py:43:23
 src/synthorg/api/controllers/ontology.py:131:29
 src/synthorg/api/controllers/ontology.py:359:29
 src/synthorg/api/controllers/ontology.py:450:29
-src/synthorg/api/controllers/personalities.py:78:29
+src/synthorg/api/controllers/personalities.py:76:29
 src/synthorg/api/controllers/projects.py:71:29
 src/synthorg/api/controllers/providers.py:1389:29
 src/synthorg/api/controllers/reports.py:144:29

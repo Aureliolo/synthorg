@@ -398,6 +398,24 @@ class TestScopeLimit:
         issues = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
         assert issues == [], issues
 
+    def test_in_scope_sql_flagged(self, src_dir: Path) -> None:
+        """SQL under ``src/synthorg/`` is scanned, not skipped."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/persistence/schema.sql",
+            "-- ported from old schema\n",
+        )
+        assert any("ported from" in i.lower() for i in issues), issues
+
+    def test_in_scope_sql_trailing_marker_suppresses(self, src_dir: Path) -> None:
+        """SQL trailing marker suppresses the violation."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/persistence/schema.sql",
+            "SELECT 1; -- Phase 1 -- lint-allow: migration-framing -- gate fixture\n",
+        )
+        assert issues == [], issues
+
     def test_non_python_skipped(self, src_dir: Path) -> None:
         """``.txt`` under src/synthorg/ is not scanned."""
         fp = _write_fixture(

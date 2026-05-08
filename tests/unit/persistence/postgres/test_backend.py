@@ -304,6 +304,30 @@ class TestGetDb:
 
 
 @pytest.mark.unit
+class TestRepositoryPropertiesUnimplementedBranch:
+    """The connected-but-repo-None branch surfaces a distinct error message.
+
+    ``_require_connected`` distinguishes the disconnected case (pool is
+    ``None``) from the case where the pool is open but a particular
+    repository attribute has not been wired up yet. The latter only
+    fires when a future port leaves a repository attribute as ``None``
+    after ``connect()``, so the test stubs that state directly to
+    cover the otherwise-unreachable branch.
+    """
+
+    async def test_raises_with_not_yet_implemented_message(
+        self,
+        patched_pool: Any,
+    ) -> None:
+        backend = PostgresPersistenceBackend(_cfg())
+        await backend.connect()
+        backend._tasks = None
+        with pytest.raises(PersistenceConnectionError) as excinfo:
+            _ = backend.tasks
+        assert "not yet implemented" in str(excinfo.value)
+
+
+@pytest.mark.unit
 class TestRepositoryPropertiesRaiseWhenDisconnected:
     """Every repo property must raise when the pool is closed."""
 
