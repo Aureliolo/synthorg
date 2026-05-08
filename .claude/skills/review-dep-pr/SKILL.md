@@ -303,10 +303,13 @@ List concrete actions to take, grouped by timing:
 
 After presenting all PR reports, route each PR by its triage state. Only invoke AskUserQuestion when there is a real decision to make.
 
-**Default: clean PRs auto-merge without prompting.** A PR is "clean" when ALL of the following hold:
-- CI is fully green (no `FAILURE` / `CANCELLED` / `TIMED_OUT` checks; pending is allowed only when the remaining checks are non-blocking advisory checks the user has previously accepted as non-gating).
+**Multi-PR overlap question runs FIRST when applicable.** If the batch has ≥ 2 PRs sharing source or config files (per Phase 5), invoke the overlap-strategy question described below BEFORE applying the clean-PR auto-merge default. The auto-merge default only fires when (a) the batch is a single PR, OR (b) the user has picked an overlap strategy AND this PR's wave is the current one (so its merge slot is sequenced correctly relative to the other PRs in the batch). Skipping the overlap question for clean PRs would short-circuit the strategy decision and let an auto-merge collide with a still-queued sibling PR.
+
+**Default: clean PRs auto-merge without prompting.** A PR is "clean" when ALL the following hold:
+- CI is fully green: every check is in `SUCCESS`, `SKIPPED`, or `NEUTRAL` state. No `FAILURE`, `CANCELLED`, `TIMED_OUT`, `IN_PROGRESS`, `QUEUED`, or `PENDING` checks. The same allowed-state list Phase 8's "Merge as-is" CI re-verification uses.
 - Phase 3 cross-reference produced **zero** "must fix" / "should adopt" / "remove workaround" items (i.e. no entries under the Recommendations report's "Before merge" / "With merge" sections).
 - The PR is not a major version bump that warranted a migration-guide review (major bumps always go through the per-PR prompt even when changelog scan is clean, because the surface area is too large for a silent default).
+- For multi-PR batches: the overlap question above has been resolved AND this PR's wave is current.
 
 For a clean PR, skip the per-PR AskUserQuestion entirely. Announce the action in plain text (`"PR #<N> is clean (CI green, no actionable items); merging as-is."`), then run Phase 8's "Merge as-is" path. The user can still interrupt before the merge is finalised; the skill's job is to not ask redundant questions.
 
@@ -347,9 +350,9 @@ Options:
 **If CI is failing on a PR**, replace "Merge as-is" with:
 - **"Fix CI and merge"**: Investigate the failure, fix it, then merge
 
-**Multiple clean PRs: no batch question, just announce + merge.**
+**Multiple clean PRs: per-PR triage question is skipped; the batch overlap question still applies if overlaps exist.**
 
-When multiple PRs in the batch all qualify as clean (per the default rule at the top of this phase), the skill auto-merges them as a group. Announce in plain text (`"PRs #X, #Y, #Z are all clean (CI green, no actionable items); merging all as-is."`), then run Phase 8's "Merge as-is" path on each in sequence (or `--auto` in parallel for disjoint file sets per Phase 5). No AskUserQuestion is invoked.
+When multiple PRs in the batch all qualify as clean (per the default rule at the top of this phase), the skill auto-merges them as a group. Announce in plain text (`"PRs #X, #Y, #Z are all clean (CI green, no actionable items); merging all as-is."`), then run Phase 8's "Merge as-is" path on each in sequence (or `--auto` in parallel for disjoint file sets per Phase 5). The per-PR triage question is what's removed; the multi-PR overlap-strategy question above is NOT removed and still fires whenever the batch has ≥ 2 PRs sharing source or config files. Auto-merge for clean PRs only runs after that strategy decision has landed (single-PR batches skip the strategy question entirely; that's the only "no AskUserQuestion at all" path).
 
 The previous behaviour (asking "Merge all? / review individually / skip for now") was a redundant confirmation step for cases where the skill has already proven there is nothing to decide; it's now gone.
 
@@ -476,7 +479,21 @@ After all merges complete, if any PRs were merged, automatically run `/post-merg
 - **Be specific about what affects us**: don't just list changelog items, cross-reference each one against our actual config and code usage.
 - **Major version bumps get extra scrutiny**: check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
 - **Don't merge with failing CI**: if CI fails, investigate and fix first.
-- **Always approve before merge, with rationale**: every `gh pr merge` invocation in this skill MUST submit `gh pr review <number> --approve --body "<rationale>"` first. No exception. This applies to all paths through the skill: the Phase 7 auto-merge default for clean PRs (`PR #<N> is clean ... merging as-is`); every Phase 8 strategy path (`Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset`); every per-PR action section (`Merge as-is`, `Improve and merge`, `Fix CI and merge`). The rationale records the decision (bump type + why merging), a 2 to 4 bullet changelog digest splitting **Relevant** vs **Reviewed but not relevant**, and any deferred follow-ups. Skipping the approval (even when `--auto` will land the PR asynchronously, even when no AskUserQuestion was invoked because the PR was clean) leaves the PR with no audit trail of *why* it was accepted; squash commit messages don't substitute because they get rewritten by maintainers and don't surface in the PR conversation thread. If the skill ever reaches a `gh pr merge` call without an approval-with-rationale already posted, that is a skill bug; stop, post the rationale, then merge.
+- **Always approve before merge, with rationale**: every `gh pr merge` invocation in this skill MUST submit `gh pr review <number> --approve --body-file <rationale-file>` first. No exception.
+
+  **Applies to every merge path:**
+  - Phase 7 auto-merge default for clean PRs (`PR #<N> is clean ... merging as-is`).
+  - Phase 8 strategy paths (`Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset`).
+  - Per-PR action sections (`Merge as-is`, `Improve and merge`, `Fix CI and merge`).
+
+  **Rationale content (the three-part body from Phase 8):**
+  - `Decision:` one sentence stating bump type and why merging now.
+  - `Changelog digest:` 2 to 4 bullets splitting **Relevant** (items that affect us) from **Reviewed but not relevant** (items that don't).
+  - `Follow-ups:` `none` if clean, otherwise the deferred items the user explicitly accepted.
+
+  **Why mandatory:** skipping the approval (even when `--auto` will land the PR asynchronously, even when no AskUserQuestion was invoked because the PR was clean) leaves the PR with no audit trail of *why* it was accepted. Squash commit messages don't substitute: maintainers rewrite them, GitHub truncates them, and they don't surface in the PR conversation thread.
+
+  **If violated:** if the skill ever reaches a `gh pr merge` call without an approval-with-rationale already posted, that is a skill bug. Stop, post the rationale, then merge.
 - **Grouped updates (Renovate domain groups or Dependabot groups)**: analyze each package in the group separately, then present as one combined report.
 - **Preserve existing config**: when making improvements, don't refactor unrelated config. Only touch what's relevant to the update.
 - **If you can't fetch release notes** (private repo, deleted releases, etc.), say so explicitly and recommend the user check manually before merging.
