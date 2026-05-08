@@ -9,11 +9,11 @@ as failures (POST may not have been stored).
 """
 
 import asyncio
-import time
 from typing import TYPE_CHECKING, Self
 
 import httpx
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.meta.telemetry.anonymizer import anonymize_decision, anonymize_rollout
@@ -106,10 +106,12 @@ class HttpAnalyticsEmitter:
         analytics_config: CrossDeploymentAnalyticsConfig,
         self_improvement_config: SelfImprovementConfig,
         builtin_rule_names: Collection[str],
+        clock: Clock | None = None,
     ) -> None:
         self._analytics_config = analytics_config
         self._self_improvement_config = self_improvement_config
         self._builtin_rule_names = frozenset(builtin_rule_names)
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._buffer: list[AnonymizedOutcomeEvent] = []
         self._lock = asyncio.Lock()
         # Dedicated lifecycle lock serialises flush-task creation
@@ -132,7 +134,7 @@ class HttpAnalyticsEmitter:
         # ``self._client.aclose()`` so any in-flight send finishes
         # against a live client; the close then proceeds.
         self._send_lock = asyncio.Lock()
-        self._last_flush_at = time.monotonic()
+        self._last_flush_at = self._clock.monotonic()
         self._closed = False
         self._flush_task: asyncio.Task[None] | None = None
         self._client = httpx.AsyncClient(
@@ -235,7 +237,7 @@ class HttpAnalyticsEmitter:
                 return
             batch = tuple(self._buffer)
             self._buffer.clear()
-            self._last_flush_at = time.monotonic()
+            self._last_flush_at = self._clock.monotonic()
         try:
             async with self._send_lock:
                 await self._send_batch(batch)

@@ -10,6 +10,7 @@ from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import ImprovementProposal, RolloutResult
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.telemetry.emitter import HttpAnalyticsEmitter
+from tests._shared.fake_clock import FakeClock
 
 from .conftest import BUILTIN_RULE_NAMES
 
@@ -376,5 +377,56 @@ class TestEmitterCloseEnqueueRace:
             event.event_type = "proposal_decision"
             await em._enqueue(event)
             assert em.pending_count == 0
+        finally:
+            await em._client.aclose()
+
+
+class TestEmitterClockSeam:
+    """FakeClock drives flush-throttle bookkeeping deterministically."""
+
+    async def test_init_records_clock_monotonic(
+        self,
+        analytics_config: CrossDeploymentAnalyticsConfig,
+        self_improvement_config: SelfImprovementConfig,
+    ) -> None:
+        """``__init__`` reads ``_last_flush_at`` from the injected clock."""
+        fake = FakeClock()
+        fake.advance(42.5)
+        em = HttpAnalyticsEmitter(
+            analytics_config=analytics_config,
+            self_improvement_config=self_improvement_config,
+            builtin_rule_names=BUILTIN_RULE_NAMES,
+            clock=fake,
+        )
+        try:
+            assert em._last_flush_at == 42.5
+        finally:
+            await em._client.aclose()
+
+    async def test_flush_updates_last_flush_at_via_clock(
+        self,
+        analytics_config: CrossDeploymentAnalyticsConfig,
+        self_improvement_config: SelfImprovementConfig,
+        sample_outcome: ProposalOutcome,
+        sample_proposal: ImprovementProposal,
+    ) -> None:
+        """``flush()`` advances ``_last_flush_at`` to the new clock reading."""
+        fake = FakeClock()
+        em = HttpAnalyticsEmitter(
+            analytics_config=analytics_config,
+            self_improvement_config=self_improvement_config,
+            builtin_rule_names=BUILTIN_RULE_NAMES,
+            clock=fake,
+        )
+        try:
+            with patch.object(em, "_send_batch", new_callable=AsyncMock):
+                start = em._last_flush_at
+                fake.advance(7.5)
+                await em.emit_decision(
+                    sample_outcome,
+                    proposal=sample_proposal,
+                )
+                await em.flush()
+                assert em._last_flush_at == start + 7.5
         finally:
             await em._client.aclose()
