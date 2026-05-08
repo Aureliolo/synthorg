@@ -7,6 +7,7 @@ import type { WsEvent } from '@/api/types/websocket'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { useToastStore } from '@/stores/toast'
 
 const log = createLogger('settings')
@@ -180,11 +181,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       })
       return updated
     } catch (error) {
-      log.error(`Update setting ${compositeKey} failed:`, getErrorMessage(error))
+      const errorMessage = getErrorMessage(error)
+      log.error('Update setting failed', {
+        compositeKey: sanitizeForLog(compositeKey),
+        error: sanitizeForLog(errorMessage),
+      })
       set((state) => {
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
-        return { savingKeys: newSaving, saveError: getErrorMessage(error) }
+        return { savingKeys: newSaving, saveError: errorMessage }
       })
       // Error toast lives in the store so callers stop wrapping
       // mutation calls in try/catch. Bulk-save callers
@@ -193,8 +198,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       // pages/settings/utils.ts for the dedupe handling.
       useToastStore.getState().add({
         variant: 'error',
-        ...getCrudErrorTitle(error, `Failed to update ${compositeKey}`),
-        description: getErrorMessage(error),
+        ...getCrudErrorTitle(error, `Failed to update ${sanitizeForLog(compositeKey)}`),
+        description: sanitizeForLog(errorMessage),
       })
       return null
     }
@@ -209,16 +214,20 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     try {
       await settingsApi.resetSetting(ns, key)
     } catch (error) {
-      log.error(`Reset setting ${compositeKey} failed:`, getErrorMessage(error))
+      const errorMessage = getErrorMessage(error)
+      log.error('Reset setting failed', {
+        compositeKey: sanitizeForLog(compositeKey),
+        error: sanitizeForLog(errorMessage),
+      })
       set((state) => {
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
-        return { savingKeys: newSaving, saveError: getErrorMessage(error) }
+        return { savingKeys: newSaving, saveError: errorMessage }
       })
       useToastStore.getState().add({
         variant: 'error',
-        ...getCrudErrorTitle(error, `Failed to reset ${compositeKey}`),
-        description: getErrorMessage(error),
+        ...getCrudErrorTitle(error, `Failed to reset ${sanitizeForLog(compositeKey)}`),
+        description: sanitizeForLog(errorMessage),
       })
       return false
     }

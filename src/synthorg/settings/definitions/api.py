@@ -876,6 +876,7 @@ _r.register(
         restart_required=True,
         min_value=60.0,
         max_value=86_400.0,
+        yaml_path="api.approval_urgency_critical_seconds",
     )
 )
 
@@ -894,6 +895,7 @@ _r.register(
         restart_required=True,
         min_value=300.0,
         max_value=604_800.0,
+        yaml_path="api.approval_urgency_high_seconds",
     )
 )
 

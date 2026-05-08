@@ -249,8 +249,11 @@ at runtime via an `<namespace>.<service>_enabled` boolean setting,
 without restarting the process. The canonical shape:
 
 1. Register the flag in `src/synthorg/settings/definitions/<ns>.py`
-   with `SettingType.BOOLEAN`, `default="true"`, and a `description`
-   that names the gated service.
+   with `SettingType.BOOLEAN`, `default="true"`, a `description`
+   that names the gated service, and a `yaml_path="<ns>.<x>_enabled"`
+   so the setting participates in the full DB > env > YAML > default
+   precedence chain. Without `yaml_path` the YAML leg is silently
+   skipped and operators get the code default at startup.
 2. Add a fail-safe-to-enabled resolver helper next to the loop:
 
    ```python

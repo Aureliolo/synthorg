@@ -241,9 +241,15 @@ _r.register(
         default="ghcr.io/aureliolo/synthorg-sidecar:latest",
         description=(
             "Docker image used for the sandbox network sidecar"
-            " container. Resolution precedence: DB > ``SYNTHORG_SIDECAR_IMAGE``"
-            " env > YAML ``tools.sandbox.docker.sidecar_image`` > code"
-            " default. Same shape as ``tools.sandbox_image``."
+            " container. Resolution precedence at backend startup: DB"
+            " override > ``SYNTHORG_SIDECAR_IMAGE`` env var > YAML"
+            " ``tools.sandbox.docker.sidecar_image`` > registered code"
+            " default. Resolved once at startup and injected into"
+            " ``DockerSandboxConfig`` via the sidecar image-resolution"
+            " cache; ``read_only_post_init`` keeps later DB writes from"
+            " drifting from the resolved value used at boot, and"
+            " ``restart_required`` is set because changes only take"
+            " effect after the backend container restarts."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,

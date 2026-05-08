@@ -167,40 +167,81 @@ def _is_resolver_receiver(node: ast.AST) -> bool:
     return False
 
 
-def _calls_kill_switch_resolver(node: ast.AST) -> bool:
-    """Return True if any descendant Call references the kill-switch idiom.
+def _is_resolver_call(node: ast.AST) -> bool:
+    """Return True if ``node`` is a single Call expression matching the idiom.
 
-    Three accepted shapes:
+    Accepted call shapes (mirrors the previous lenient heuristic, but
+    operates on a single Call rather than walking a whole subtree):
 
-    * ``<resolver>.get_bool(<ns>, "<key>_enabled")`` where ``<resolver>``
-      is one of the canonical receiver names (see
-      ``_is_resolver_receiver``).
-    * ``await self._resolve_enabled()`` / ``_resolve_<x>_enabled()``
-    * ``await _resolve_<x>_enabled(<arg>)`` (free-function form,
-      e.g. ``_resolve_lifecycle_cleanup_enabled``)
+    * ``<resolver>.get_bool(<ns>, "<key>_enabled")`` -- canonical
+      receiver name from :data:`_RESOLVER_RECEIVER_NAMES`.
+    * ``<obj>._resolve_<x>_enabled(...)`` -- attribute call.
+    * ``_resolve_<x>_enabled(...)`` -- free-function call.
     """
-    for sub in _walk_current_scope(node):
-        if not isinstance(sub, ast.Call):
-            continue
-        func = sub.func
-        if isinstance(func, ast.Attribute):
-            if (
-                func.attr == "get_bool"
-                and _is_resolver_receiver(func.value)
-                and any(
-                    isinstance(a, ast.Constant)
-                    and isinstance(a.value, str)
-                    and a.value.endswith("_enabled")
-                    for a in sub.args
-                )
-            ):
-                return True
-            if func.attr.startswith("_resolve_") and func.attr.endswith("_enabled"):
-                return True
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Attribute):
         if (
-            isinstance(func, ast.Name)
-            and func.id.startswith("_resolve_")
-            and func.id.endswith("_enabled")
+            func.attr == "get_bool"
+            and _is_resolver_receiver(func.value)
+            and any(
+                isinstance(a, ast.Constant)
+                and isinstance(a.value, str)
+                and a.value.endswith("_enabled")
+                for a in node.args
+            )
+        ):
+            return True
+        if func.attr.startswith("_resolve_") and func.attr.endswith("_enabled"):
+            return True
+    return (
+        isinstance(func, ast.Name)
+        and func.id.startswith("_resolve_")
+        and func.id.endswith("_enabled")
+    )
+
+
+def _expr_contains_resolver_call(expr: ast.AST) -> bool:
+    """Return True if ``expr`` (typically an ``If.test``) contains a resolver call.
+
+    Walks the expression subtree looking for any direct or wrapped
+    resolver call. Stops at nested function/class scopes (so a closure
+    inside the test does not count).
+    """
+    return any(_is_resolver_call(n) for n in _walk_current_scope(expr))
+
+
+def _calls_kill_switch_resolver(node: ast.AST) -> bool:
+    """Return True if ``node``'s body actually gates work on the kill-switch.
+
+    A bare resolver call somewhere inside the loop is no longer enough
+    to satisfy the gate -- the call must control flow into the work.
+    Two accepted shapes:
+
+    * **Inline test** (``If.test`` contains the resolver call). Covers
+      ``if await self._resolve_enabled(): ...`` and the negated
+      variant ``if not await self._resolve_enabled(): continue``.
+    * **Assign-then-test** (``Assign`` whose ``value`` contains the
+      resolver call, then a later ``If.test`` whose expression
+      references the assigned name). Covers
+      ``enabled = await self._resolve_enabled(); if not enabled: ...``.
+    """
+    assigned_resolver_names: set[str] = set()
+    for sub in _walk_current_scope(node):
+        if isinstance(sub, ast.If) and _expr_contains_resolver_call(sub.test):
+            return True
+        if isinstance(sub, ast.Assign) and _expr_contains_resolver_call(sub.value):
+            for target in sub.targets:
+                if isinstance(target, ast.Name):
+                    assigned_resolver_names.add(target.id)
+        if (
+            assigned_resolver_names
+            and isinstance(sub, ast.If)
+            and any(
+                isinstance(name, ast.Name) and name.id in assigned_resolver_names
+                for name in ast.walk(sub.test)
+            )
         ):
             return True
     return False

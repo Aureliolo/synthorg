@@ -277,23 +277,31 @@ export default function CeremonyPolicyPage() {
   const handleSave = useCallback(async () => {
     setSaving(true)
     setSaveError(null)
-    const results = await Promise.all([
-      updateSetting('coordination', 'ceremony_strategy', strategy),
-      updateSetting('coordination', 'ceremony_strategy_config', JSON.stringify(strategyConfig)),
-      updateSetting('coordination', 'ceremony_velocity_calculator', velocityCalculator),
-      updateSetting('coordination', 'ceremony_auto_transition', String(autoTransition)),
-      updateSetting('coordination', 'ceremony_transition_threshold', String(transitionThreshold)),
-      updateSetting('coordination', 'ceremony_policy_overrides', JSON.stringify(ceremonyOverrides)),
-    ])
-    setSaving(false)
-    if (results.includes(null)) {
-      const failedCount = results.filter((r) => r === null).length
-      setSaveError(`${failedCount} ceremony setting(s) failed to save`)
-      return
+    // Defence-in-depth: ``updateSetting`` follows the store-CRUD
+    // contract and never throws, so ``Promise.all`` should always
+    // resolve. The try/finally guards against an unrelated future
+    // rejection (e.g. a JS runtime error in the call site) leaving
+    // the page stuck in the "saving" state.
+    try {
+      const results = await Promise.all([
+        updateSetting('coordination', 'ceremony_strategy', strategy),
+        updateSetting('coordination', 'ceremony_strategy_config', JSON.stringify(strategyConfig)),
+        updateSetting('coordination', 'ceremony_velocity_calculator', velocityCalculator),
+        updateSetting('coordination', 'ceremony_auto_transition', String(autoTransition)),
+        updateSetting('coordination', 'ceremony_transition_threshold', String(transitionThreshold)),
+        updateSetting('coordination', 'ceremony_policy_overrides', JSON.stringify(ceremonyOverrides)),
+      ])
+      if (results.includes(null)) {
+        const failedCount = results.filter((r) => r === null).length
+        setSaveError(`${failedCount} ceremony setting(s) failed to save`)
+        return
+      }
+      setIsDirty(false)
+      addToast({ variant: 'success', title: 'Ceremony policy saved' })
+      fetchResolvedPolicy()
+    } finally {
+      setSaving(false)
     }
-    setIsDirty(false)
-    addToast({ variant: 'success', title: 'Ceremony policy saved' })
-    fetchResolvedPolicy()
   }, [
     strategy, strategyConfig, velocityCalculator, autoTransition, transitionThreshold,
     ceremonyOverrides, updateSetting, addToast, fetchResolvedPolicy,
