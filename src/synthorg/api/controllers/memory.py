@@ -5,7 +5,7 @@ All endpoints require CEO or the internal SYSTEM role
 """
 
 import asyncio
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -66,6 +66,10 @@ from synthorg.settings.definitions.memory import (
     FINE_TUNE_MIN_DOCS_RECOMMENDED,
     FINE_TUNE_MIN_DOCS_REQUIRED,
 )
+from synthorg.settings.errors import SettingNotFoundError
+
+if TYPE_CHECKING:
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -143,6 +147,57 @@ _BATCH_SIZE_BY_VRAM_GB: Final[tuple[tuple[float, int], ...]] = (
     (16.0, 64),
     (8.0, 32),
 )
+
+
+class _FineTuneThresholds(BaseModel):
+    """Fine-tune preflight thresholds resolved at request time.
+
+    Settings registered under the ``memory.fine_tune_*`` keys are the
+    operator-tuning surface for these values; the imported defaults
+    serve only as fallbacks for boot-time / unit-test paths that do
+    not have a ``SettingsService``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    default_batch_size: int = Field(ge=1)
+    min_docs_required: int = Field(ge=1)
+    min_docs_recommended: int = Field(ge=1)
+
+
+async def _resolve_fine_tune_thresholds(
+    settings_service: SettingsService | None,
+) -> _FineTuneThresholds:
+    """Resolve the three fine-tune preflight thresholds at request time.
+
+    Falls back to the module-level ``FINE_TUNE_*`` constants for any
+    setting that is missing from the registry, fails to parse as int,
+    or when no ``SettingsService`` is available -- the controller
+    must remain functional in offline / unit-test invocations.
+    """
+    fallbacks = {
+        "fine_tune_default_batch_size": FINE_TUNE_DEFAULT_BATCH_SIZE,
+        "fine_tune_min_docs_required": FINE_TUNE_MIN_DOCS_REQUIRED,
+        "fine_tune_min_docs_recommended": FINE_TUNE_MIN_DOCS_RECOMMENDED,
+    }
+    if settings_service is None:
+        return _FineTuneThresholds(
+            default_batch_size=fallbacks["fine_tune_default_batch_size"],
+            min_docs_required=fallbacks["fine_tune_min_docs_required"],
+            min_docs_recommended=fallbacks["fine_tune_min_docs_recommended"],
+        )
+    resolved: dict[str, int] = {}
+    for key, fallback in fallbacks.items():
+        try:
+            entry = await settings_service.get("memory", key)
+            resolved[key] = int(entry.value)
+        except SettingNotFoundError, ValueError, TypeError:
+            resolved[key] = fallback
+    return _FineTuneThresholds(
+        default_batch_size=resolved["fine_tune_default_batch_size"],
+        min_docs_required=resolved["fine_tune_min_docs_required"],
+        min_docs_recommended=resolved["fine_tune_min_docs_recommended"],
+    )
 
 
 class ActiveEmbedderResponse(BaseModel):
@@ -341,16 +396,29 @@ class MemoryAdminController(Controller):
     )
     async def run_preflight(
         self,
-        state: State,  # noqa: ARG002
+        state: State,
         data: FineTuneRequest,
     ) -> ApiResponse[PreflightResult]:
         """Run pre-flight validation checks."""
+        app_state: AppState = state.app_state
+        settings_service = (
+            app_state.settings_service if app_state.has_settings_service else None
+        )
+        thresholds = await _resolve_fine_tune_thresholds(settings_service)
         async with asyncio.TaskGroup() as tg:
             checks_task = tg.create_task(
-                asyncio.to_thread(_run_preflight_checks, data),
+                asyncio.to_thread(
+                    _run_preflight_checks,
+                    data,
+                    min_required=thresholds.min_docs_required,
+                    min_recommended=thresholds.min_docs_recommended,
+                ),
             )
             batch_task = tg.create_task(
-                asyncio.to_thread(_recommend_batch_size),
+                asyncio.to_thread(
+                    _recommend_batch_size,
+                    default_batch_size=thresholds.default_batch_size,
+                ),
             )
         checks = list(checks_task.result())
         batch_size = batch_task.result()
@@ -700,18 +768,45 @@ class MemoryAdminController(Controller):
 
 def _run_preflight_checks(
     request: FineTuneRequest,
+    *,
+    min_required: int = FINE_TUNE_MIN_DOCS_REQUIRED,
+    min_recommended: int = FINE_TUNE_MIN_DOCS_RECOMMENDED,
 ) -> list[PreflightCheck]:
-    """Run all pre-flight validation checks."""
+    """Run all pre-flight validation checks.
+
+    Args:
+        request: Fine-tune request containing source / output dirs.
+        min_required: Hard floor on document count below which the
+            preflight reports ``fail``. Resolved from the
+            ``memory.fine_tune_min_docs_required`` setting at the API
+            boundary; the imported default is used as the fallback for
+            offline / unit-test invocations.
+        min_recommended: Soft floor at or below which the preflight
+            reports ``warn``. Resolved from the
+            ``memory.fine_tune_min_docs_recommended`` setting under
+            the same fallback contract as ``min_required``.
+    """
     checks: list[PreflightCheck] = []
     checks.append(_check_dependencies())
     checks.append(_check_gpu())
-    checks.append(_check_documents(request.source_dir))
+    checks.append(
+        _check_documents(
+            request.source_dir,
+            min_required=min_required,
+            min_recommended=min_recommended,
+        )
+    )
     output_dir = request.output_dir or request.source_dir
     checks.append(_check_disk_space(output_dir))
     return checks
 
 
-def _check_documents(source_dir: str) -> PreflightCheck:
+def _check_documents(
+    source_dir: str,
+    *,
+    min_required: int = FINE_TUNE_MIN_DOCS_REQUIRED,
+    min_recommended: int = FINE_TUNE_MIN_DOCS_RECOMMENDED,
+) -> PreflightCheck:
     """Check source directory has enough documents."""
     from pathlib import Path  # noqa: PLC0415
 
@@ -723,23 +818,17 @@ def _check_documents(source_dir: str) -> PreflightCheck:
             message="Source directory not found",
         )
     count = sum(1 for ext in ("*.txt", "*.md", "*.rst") for _ in src.rglob(ext))
-    if count < FINE_TUNE_MIN_DOCS_REQUIRED:
+    if count < min_required:
         return PreflightCheck(
             name="documents",
             status="fail",
-            message=(
-                f"Too few documents ({count}), "
-                f"minimum {FINE_TUNE_MIN_DOCS_REQUIRED} required"
-            ),
+            message=(f"Too few documents ({count}), minimum {min_required} required"),
         )
-    if count < FINE_TUNE_MIN_DOCS_RECOMMENDED:
+    if count <= min_recommended:
         return PreflightCheck(
             name="documents",
             status="warn",
-            message=(
-                f"Low document count ({count}), "
-                f"{FINE_TUNE_MIN_DOCS_RECOMMENDED}+ recommended"
-            ),
+            message=(f"Low document count ({count}), {min_recommended}+ recommended"),
         )
     return PreflightCheck(
         name="documents",
@@ -818,19 +907,30 @@ def _check_gpu() -> PreflightCheck:
         )
 
 
-def _recommend_batch_size() -> int | None:
-    """Recommend batch size based on available VRAM."""
+def _recommend_batch_size(
+    *,
+    default_batch_size: int = FINE_TUNE_DEFAULT_BATCH_SIZE,
+) -> int | None:
+    """Recommend batch size based on available VRAM.
+
+    Args:
+        default_batch_size: Fallback returned when the VRAM tier
+            table does not produce a match (CPU-only or sub-threshold
+            GPU). Resolved from the
+            ``memory.fine_tune_default_batch_size`` setting at the
+            API boundary; imported default is the offline fallback.
+    """
     try:
         import torch  # noqa: PLC0415
 
         if not torch.cuda.is_available():
-            return FINE_TUNE_DEFAULT_BATCH_SIZE
+            return default_batch_size
         props = torch.cuda.get_device_properties(0)
         vram_gb = props.total_memory / (1024**3)
         for threshold_gb, batch_size in _BATCH_SIZE_BY_VRAM_GB:
             if vram_gb >= threshold_gb:
                 return batch_size
-        return FINE_TUNE_DEFAULT_BATCH_SIZE  # noqa: TRY300
+        return default_batch_size  # noqa: TRY300
     except MemoryError, RecursionError:
         raise
     except ImportError:

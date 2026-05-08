@@ -178,6 +178,25 @@ class SinkInfoResponse(BaseModel):
     routing_prefixes: tuple[str, ...] = ()
 
 
+def _sink_identifier(sink: SinkConfig) -> str:
+    """Return the stable API identifier for a ``SinkConfig``.
+
+    Console sinks use the fixed ``CONSOLE_SINK_ID`` token, FILE sinks
+    use their ``file_path``, and custom shipping sinks (SYSLOG, HTTP,
+    ...) -- which carry ``file_path=None`` -- fall back to a
+    non-empty ``unnamed-<sink_type>`` token. Centralising the logic
+    keeps ``_sink_to_response`` and ``_append_disabled_defaults`` in
+    lockstep so a future non-FILE default cannot drift between the
+    construction site and the disabled-defaults expansion.
+    """
+    raw_identifier = (
+        CONSOLE_SINK_ID
+        if sink.sink_type == SinkType.CONSOLE
+        else (sink.file_path or "")
+    )
+    return raw_identifier or f"unnamed-{sink.sink_type.value}"
+
+
 def _sink_to_response(
     sink: SinkConfig,
     *,
@@ -186,17 +205,7 @@ def _sink_to_response(
     routing_prefixes: tuple[str, ...] | None = None,
 ) -> SinkInfoResponse:
     """Convert a SinkConfig to the typed API response model."""
-    # Console sinks have a fixed identifier; FILE sinks use ``file_path``.
-    # Custom shipping sinks (SYSLOG, HTTP, ...) carry ``file_path=None``,
-    # so fall back to a non-empty ``unnamed-<sink_type>`` token instead
-    # of an empty string -- ``NotBlankStr("")`` would raise on
-    # construction and surface as HTTP 500 on the listing endpoint.
-    raw_identifier = (
-        CONSOLE_SINK_ID
-        if sink.sink_type == SinkType.CONSOLE
-        else (sink.file_path or "")
-    )
-    identifier = raw_identifier or f"unnamed-{sink.sink_type.value}"
+    identifier = _sink_identifier(sink)
     return SinkInfoResponse(
         identifier=NotBlankStr(identifier),
         sink_type=NotBlankStr(sink.sink_type.value),
@@ -593,8 +602,7 @@ class SettingsController(Controller):
             )
             sinks = _defaults_only_sinks()
         else:
-            sinks = _build_sink_list(result)
-            _append_disabled_defaults(sinks)
+            sinks = _append_disabled_defaults(_build_sink_list(result))
 
         ordered = tuple(sorted(sinks, key=lambda s: s.identifier))
         page, meta = paginate_cursor(
@@ -915,30 +923,30 @@ def _build_sink_list(
 
 def _append_disabled_defaults(
     sinks: list[SinkInfoResponse],
-) -> None:
-    """Append disabled default sinks not present in the active list.
+) -> list[SinkInfoResponse]:
+    """Return ``sinks`` extended with disabled-default entries.
 
-    Mutates *sinks* in place, adding entries for any default sink
-    that was removed by overrides.
+    The active list is left untouched; the returned value carries the
+    original entries followed by any default sink that was removed by
+    overrides, materialised as ``enabled=False`` responses. Identifier
+    matching uses :func:`_sink_identifier` so the active-set membership
+    test stays in lockstep with how default sinks are rendered on the
+    wire.
 
     Args:
-        sinks: Mutable list of active sink responses.
+        sinks: Active sink responses (read-only -- never mutated).
+
+    Returns:
+        A new list with the active entries plus any synthesised
+        disabled-default entries.
     """
     active_ids = {s.identifier for s in sinks}
-    for default_sink in DEFAULT_SINKS:
-        identifier = (
-            CONSOLE_SINK_ID
-            if default_sink.sink_type == SinkType.CONSOLE
-            else (default_sink.file_path or "")
-        )
-        if identifier not in active_ids:
-            sinks.append(
-                _sink_to_response(
-                    default_sink,
-                    is_default=True,
-                    enabled=False,
-                )
-            )
+    disabled_defaults = [
+        _sink_to_response(default_sink, is_default=True, enabled=False)
+        for default_sink in DEFAULT_SINKS
+        if _sink_identifier(default_sink) not in active_ids
+    ]
+    return [*sinks, *disabled_defaults]
 
 
 def _defaults_only_sinks() -> list[SinkInfoResponse]:
