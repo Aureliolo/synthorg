@@ -33,6 +33,7 @@ from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
+    HIRING_REQUEST_STATUS_TRANSITIONED,
     HR_HIRING_APPROVAL_SUBMITTED,
     HR_HIRING_CANDIDATE_GENERATED,
     HR_HIRING_INSTANTIATED,
@@ -240,6 +241,7 @@ class HiringService:
             )
             raise InvalidCandidateError(msg)
 
+        previous_status = request.status
         if self._approval_store is None:
             # Auto-approve when no approval store.
             updated = request.model_copy(
@@ -253,6 +255,20 @@ class HiringService:
             updated = await self._submit_approval_item(request, candidate, candidate_id)
 
         self._requests[str(updated.id)] = updated
+
+        # Emit the status-transition log only when the status actually
+        # flipped: the auto-approve branch goes PENDING -> APPROVED,
+        # but the manual-approval branch keeps the request at
+        # ``previous_status`` (the approval-store flow only stamps a
+        # selected candidate / approval id).  Logging in the
+        # no-transition case would lie about state.
+        if updated.status != previous_status:
+            logger.info(
+                HIRING_REQUEST_STATUS_TRANSITIONED,
+                request_id=str(updated.id),
+                from_status=previous_status.value,
+                to_status=updated.status.value,
+            )
 
         logger.info(
             HR_HIRING_APPROVAL_SUBMITTED,
@@ -329,10 +345,24 @@ class HiringService:
         await self._register_agent(identity, request)
 
         # Update request status.
+        previous_status = request.status
         updated = request.model_copy(
             update={"status": HiringRequestStatus.INSTANTIATED},
         )
         self._requests[str(updated.id)] = updated
+
+        # Status flip is logged AFTER the dict write succeeds and
+        # before downstream callbacks (``_try_onboard``); a failure in
+        # the onboarding hook should not mask the persisted
+        # transition.  ``_validate_instantiation_status`` enforces the
+        # ``previous_status == APPROVED`` invariant, so we always emit
+        # an APPROVED -> INSTANTIATED transition here.
+        logger.info(
+            HIRING_REQUEST_STATUS_TRANSITIONED,
+            request_id=str(updated.id),
+            from_status=previous_status.value,
+            to_status=updated.status.value,
+        )
 
         # Start onboarding if service is available.
         await self._try_onboard(identity)

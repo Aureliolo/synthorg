@@ -47,6 +47,16 @@ Emitted AFTER the registry write succeeds, carrying ``from_status``
 the terminal hop and remain the canonical "this is the final state"
 markers."""
 
+HIRING_REQUEST_STATUS_TRANSITIONED: Final[str] = "hr.hiring_request.status_transitioned"
+"""Hiring request status transition (any persisted hop).
+
+Emitted AFTER the in-memory request write succeeds, carrying
+``from_status`` / ``to_status`` / ``request_id``.  Complements the
+terminal ``HR_HIRING_INSTANTIATED`` event which stays on the final
+hop; this constant covers the intermediate transitions (PENDING ->
+APPROVED auto-approve, APPROVED -> INSTANTIATED) so the audit
+chain reflects every status flip."""
+
 # ── Error-path events ───────────────────────────────────────────
 
 HR_HIRING_INSTANTIATION_FAILED: Final[str] = "hr.hiring.instantiation_failed"
