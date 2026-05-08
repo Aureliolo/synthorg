@@ -215,6 +215,57 @@ def _expr_contains_resolver_call(expr: ast.AST) -> bool:
     return any(_is_resolver_call(n) for n in _walk_current_scope(expr))
 
 
+_SHORT_CIRCUIT_STMT_TYPES = (ast.Continue, ast.Break, ast.Return, ast.Raise)
+
+
+def _branch_short_circuits_iteration(branch: list[ast.stmt]) -> bool:
+    """Return True if any top-level statement in ``branch`` short-circuits.
+
+    A short-circuiting statement (``continue``, ``break``, ``return``,
+    or ``raise``) at the top of an If branch ensures the rest of the
+    loop iteration is skipped when that branch fires -- the canonical
+    shape for ``if not enabled: log; continue`` opt-outs.
+    """
+    return any(isinstance(stmt, _SHORT_CIRCUIT_STMT_TYPES) for stmt in branch)
+
+
+def _branch_contains_await(branch: list[ast.stmt]) -> bool:
+    """Return True if any descendant of a branch statement is an ``await``.
+
+    Used to discriminate "wraps real work" branches (an ``await`` is
+    almost always the long-running operation a kill-switch is supposed
+    to gate) from "log-only" branches that don't change loop behaviour.
+    """
+    return any(
+        isinstance(node, ast.Await) for stmt in branch for node in ast.walk(stmt)
+    )
+
+
+def _if_actually_gates_work(if_node: ast.If) -> bool:
+    """Return True if the If's branches gate real loop work.
+
+    A bare resolver read inside the loop is not a kill-switch unless the
+    If it feeds either short-circuits the iteration or wraps the work.
+    Accepts:
+
+    * Body short-circuits (``if not enabled: ...; continue|break|return|raise``).
+    * Body contains an ``await`` (``if enabled: await work()``).
+    * Orelse short-circuits or contains an ``await`` (covers
+      ``if disabled: ...; else: await work()`` and any negated form).
+
+    Rejects log-only branches that fall through to work running anyway,
+    e.g. ``if enabled: logger.debug(...)`` followed by ``await work()``
+    at the loop's top level -- the resolver read happens but doesn't
+    actually gate anything.
+    """
+    return (
+        _branch_short_circuits_iteration(if_node.body)
+        or _branch_contains_await(if_node.body)
+        or _branch_short_circuits_iteration(if_node.orelse)
+        or _branch_contains_await(if_node.orelse)
+    )
+
+
 def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     """Return True if ``node``'s body actually gates work on the kill-switch.
 
@@ -235,8 +286,13 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     nested ``If`` / ``For`` / ``Try`` body do NOT count -- such
     bindings are not guaranteed to execute on every iteration, so
     crediting them would let a conditional resolver call masquerade as
-    an unconditional kill-switch.  A ``While`` whose body is empty
-    (impossible in valid Python, but defensive) returns False.
+    an unconditional kill-switch.
+
+    The matched If must additionally pass :func:`_if_actually_gates_work`:
+    the branch tied to the resolver state must either short-circuit
+    the iteration or wrap an ``await``.  A log-only branch followed by
+    work running unconditionally is not a kill-switch even though the
+    resolver read occurred.
     """
     body = getattr(node, "body", None)
     if not body:
@@ -244,7 +300,9 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     assigned_resolver_names: set[str] = set()
     for stmt in body:
         if isinstance(stmt, ast.If) and _expr_contains_resolver_call(stmt.test):
-            return True
+            if _if_actually_gates_work(stmt):
+                return True
+            continue
         if isinstance(stmt, ast.Assign) and _expr_contains_resolver_call(stmt.value):
             for target in stmt.targets:
                 if isinstance(target, ast.Name):
@@ -257,6 +315,7 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
                 isinstance(name, ast.Name) and name.id in assigned_resolver_names
                 for name in ast.walk(stmt.test)
             )
+            and _if_actually_gates_work(stmt)
         ):
             return True
     return False

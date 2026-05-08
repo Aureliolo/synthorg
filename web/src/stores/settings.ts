@@ -279,7 +279,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // server-side, but the local view did not catch up. Callers that
     // need the literal "server-side mutation succeeded" signal can
     // inspect ``saveError`` instead.
-    if (!refreshFailed) {
+    if (refreshFailed) {
+      useToastStore.getState().add({
+        variant: 'warning',
+        title: `Reset ${sanitizeForLog(compositeKey)}`,
+        description:
+          'Reset succeeded, but the updated values could not be reloaded yet.'
+          + ' They will appear after the next refresh.',
+      })
+    } else {
       useToastStore.getState().add({
         variant: 'success',
         title: `Reset ${sanitizeForLog(compositeKey)}`,
