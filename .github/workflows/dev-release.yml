@@ -219,12 +219,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Keep the 5 most recent dev pre-releases, delete the rest
+          # Keep the 5 most recent dev pre-releases, delete the rest.
+          # The "keep 5 newest" filter guarantees the JUST-MINTED tag is
+          # never selected for deletion -- the deleted tags are 5+
+          # revisions old, and their downstream Docker / CLI workflows
+          # have long since completed. The race documented in #1818
+          # requires deleting a tag whose downstream workflows are
+          # still in flight, which this bulk-prune doesn't do.
           gh release list --limit 50 --json tagName,isPrerelease,createdAt \
             --jq '[.[] | select(.isPrerelease and (.tagName | contains("-dev.")))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
           | while read -r tag; do
               echo "Deleting old dev release: $tag"
-              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # lint-allow: workflow-tag-lifecycle -- bulk-deletes 5+-revision-old dev tags whose downstream workflows have completed; not the just-minted tag (#1818)
             done
 
       # Regression guard for #1818. The dev tag was created near the
@@ -235,8 +241,15 @@ jobs:
       # failure job opens the dev-release-regression tracking issue
       # with the run URL, instead of debugging from downstream symptoms.
       - name: Verify minted tag survived the run
+        # always() ensures this regression guard runs on the failure
+        # paths -- which is precisely when tag loss is most likely
+        # (release-create or cleanup step erroring out partway). Without
+        # always(), the implicit success() condition would skip the
+        # guard the moment any earlier step failed, defeating the
+        # canary's purpose.
         if: >-
-          steps.check-tag.outputs.skip != 'true'
+          always()
+          && steps.check-tag.outputs.skip != 'true'
           && steps.version.outputs.skip != 'true'
           && steps.tag-exists.outputs.skip != 'true'
         env:

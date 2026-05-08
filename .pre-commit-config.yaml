@@ -228,7 +228,7 @@ repos:
         entry: uv
         args: [run, python, scripts/check_workflow_tag_lifecycle.py]
         language: system
-        files: ^\.github/workflows/.*\.ya?ml$
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/check_workflow_tag_lifecycle\.py|\.pre-commit-config\.yaml)$
 
       - id: doc-drift-counts
         name: doc count floors (event modules)

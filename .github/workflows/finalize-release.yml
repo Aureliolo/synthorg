@@ -147,15 +147,30 @@ jobs:
           fi
 
           # Both succeeded -- check if release exists and is still a draft.
-          # `2>/dev/null` is intentional: "release not found yet" is a
-          # legitimate normal outcome here (release-please may still be
-          # creating it), handled by the proceed=false branch below.
-          if ! IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --json isDraft --jq '.isDraft' 2>/dev/null); then
+          # Capture stderr separately so a transient auth / rate-limit /
+          # API failure (which retries via the next workflow_run event)
+          # is distinguishable from a genuinely missing draft (where
+          # release-please hasn't created the release yet, and we
+          # legitimately should skip publication). Bundling both into
+          # `proceed=false` would silently swallow API errors -- and
+          # since both upstream workflows are already complete by this
+          # point, there may be no later `workflow_run` to retry.
+          release_err=$(mktemp)
+          if IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft --jq '.isDraft' 2>"$release_err"); then
+            : # success -- fall through to draft / published checks below
+          elif grep -qiE 'not found|could not resolve|HTTP 404' "$release_err"; then
             echo "Release $TAG not found -- nothing to publish."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
+            rm -f "$release_err"
             exit 0
+          else
+            echo "::error::gh release view failed for $TAG (transient API/auth error)"
+            cat "$release_err" >&2
+            rm -f "$release_err"
+            exit 1
           fi
+          rm -f "$release_err"
 
           if [ "$IS_DRAFT" != "true" ]; then
             echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published."
