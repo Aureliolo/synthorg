@@ -263,7 +263,7 @@ without restarting the process. The canonical shape:
            raise
        except Exception as exc:
            logger.warning(<event>, error_type=type(exc).__name__,
-                          error_desc=safe_error_description(exc))
+                          error=safe_error_description(exc))
            return True
    ```
 
@@ -285,9 +285,9 @@ setting the value explicitly.
 
 Reference implementations: `_ticket_cleanup_loop` in
 `api/lifecycle_helpers.py:256`, `ProviderHealthProber._run_loop` in
-`providers/health_prober.py:288`, `_webhook_receipt_cleanup_loop`
-in `api/webhook_cleanup.py:227`, `NotificationDispatcher.dispatch`
-in `notifications/dispatcher.py:208`.
+`providers/health_prober.py:317`, `_webhook_receipt_cleanup_loop`
+in `api/webhook_cleanup.py:260`, `NotificationDispatcher.dispatch`
+in `notifications/dispatcher.py:250`.
 
 Per-line opt-out:
 `# lint-allow: long-running-loop-kill-switch -- <reason>` on the

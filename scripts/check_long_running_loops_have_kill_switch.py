@@ -93,6 +93,32 @@ def _is_long_running_while(node: ast.AST) -> bool:
     )
 
 
+def _walk_current_scope(node: ast.AST) -> Iterable[ast.AST]:
+    """Yield ``node`` and its descendants without crossing scope boundaries.
+
+    Stops at nested ``def``/``async def``/``class``/``lambda`` bodies so
+    helpers inside the function under inspection do not appear to be
+    part of its control flow. Without this, an inner closure containing
+    a ``while True`` would make the outer function look long-running,
+    or an inner ``_resolve_*_enabled()`` call would make an unguarded
+    outer loop look compliant.
+    """
+    stack: list[ast.AST] = [node]
+    nested_scopes = (
+        ast.FunctionDef,
+        ast.AsyncFunctionDef,
+        ast.ClassDef,
+        ast.Lambda,
+    )
+    while stack:
+        current = stack.pop()
+        yield current
+        for child in ast.iter_child_nodes(current):
+            if child is not node and isinstance(child, nested_scopes):
+                continue
+            stack.append(child)
+
+
 def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     """Return True if any descendant Call references the kill-switch idiom.
 
@@ -103,7 +129,7 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
     * ``await _resolve_<x>_enabled(<arg>)`` (free-function form,
       e.g. ``_resolve_lifecycle_cleanup_enabled``)
     """
-    for sub in ast.walk(node):
+    for sub in _walk_current_scope(node):
         if not isinstance(sub, ast.Call):
             continue
         func = sub.func
@@ -170,7 +196,7 @@ def _scan_file(path: Path, repo_root: Path) -> list[Violation]:
     rel = path.relative_to(repo_root).as_posix()
     violations: list[Violation] = []
     for func, class_name in _iter_async_funcs(tree):
-        whiles = [w for w in ast.walk(func) if _is_long_running_while(w)]
+        whiles = [w for w in _walk_current_scope(func) if _is_long_running_while(w)]
         if not whiles:
             continue
         # Every long-running while in the function must call the

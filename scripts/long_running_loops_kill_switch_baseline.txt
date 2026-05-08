@@ -18,7 +18,6 @@ src/synthorg/communication/bus/_nats_history.py:collect_history_batches
 src/synthorg/communication/bus/_nats_receive.py:receive_blocking
 src/synthorg/communication/bus/_nats_receive.py:receive_with_timeout
 src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:InMemoryEscalationStore:_never
-src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:InMemoryEscalationStore:subscribe_notifications
 src/synthorg/communication/conflict_resolution/escalation/notify.py:PostgresEscalationNotifySubscriber:_run
 src/synthorg/communication/conflict_resolution/escalation/sweeper.py:EscalationExpirationSweeper:_run
 src/synthorg/communication/event_stream/stream.py:EventStreamHub:_janitor_loop
@@ -31,7 +30,6 @@ src/synthorg/integrations/oauth/token_manager.py:OAuthTokenManager:_refresh_loop
 src/synthorg/integrations/rate_limiting/shared_state.py:SharedRateLimitCoordinator:_poll_loop
 src/synthorg/meta/chief_of_staff/monitor.py:OrgInflectionMonitor:_loop
 src/synthorg/persistence/sqlite/escalation_repo.py:SQLiteEscalationRepository:_never
-src/synthorg/persistence/sqlite/escalation_repo.py:SQLiteEscalationRepository:subscribe_notifications
 src/synthorg/providers/resilience/rate_limiter.py:RateLimiter:_wait_for_rpm_slot
 src/synthorg/providers/resilience/rate_limiter.py:RateLimiter:acquire
 src/synthorg/security/timeout/scheduler.py:ApprovalTimeoutScheduler:_run_loop
