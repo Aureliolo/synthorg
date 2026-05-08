@@ -84,8 +84,9 @@
       "labels": ["dependencies", "type:chore", "scope:cli"]
     },
     {
-      "description": "Container dependencies (all Dockerfile and Docker Compose images)",
+      "description": "Container dependencies (all Dockerfile and Docker Compose images). golang is excluded so the earlier Go-toolchain-coupling rule wins; without this exclude Renovate's later-rule-overrides-earlier semantics would reassign the docker/sidecar/Dockerfile FROM golang base back to the container group, splitting the Go toolchain bump and the matching base-image digest bump across two PRs.",
       "matchManagers": ["dockerfile", "docker-compose"],
+      "excludeDepNames": ["golang"],
       "groupName": "Container dependencies",
       "groupSlug": "container",
       "commitMessagePrefix": "chore:",
