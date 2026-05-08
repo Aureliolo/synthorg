@@ -394,3 +394,41 @@ class TestApprovalRepository:
             (NotBlankStr("approval-expire-missing"),),
         )
         assert updated == ()
+
+    async def test_get_many_round_trips_batch(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        ids = ("approval-batch-001", "approval-batch-002", "approval-batch-003")
+        for approval_id in ids:
+            await repo.save(_make_item(approval_id=approval_id))
+
+        items = await repo.get_many(tuple(NotBlankStr(i) for i in ids))
+        assert {item.id for item in items} == set(ids)
+        # Order is unspecified; the protocol doesn't promise it.
+        assert len(items) == len(ids)
+
+    async def test_get_many_empty_input_is_noop(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        # Empty input must short-circuit without issuing SQL.
+        result = await repo.get_many(())
+        assert result == ()
+
+    async def test_get_many_partial_miss(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        await repo.save(_make_item(approval_id="approval-partial-001"))
+        items = await repo.get_many(
+            (
+                NotBlankStr("approval-partial-001"),
+                NotBlankStr("approval-partial-missing"),
+            ),
+        )
+        assert len(items) == 1
+        assert items[0].id == "approval-partial-001"
