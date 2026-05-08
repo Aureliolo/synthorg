@@ -66,6 +66,15 @@
       "labels": ["dependencies", "type:chore", "scope:cli"]
     },
     {
+      "description": "golangci-lint-action SHA travels with the CLI group, not ci-tools. Without this, the action SHA bump (caught by the github-actions manager) and the version: input bump (caught by customManager #3) land in two separate PRs that both modify .github/workflows/cli.yml line 72 -- guaranteed merge conflict on every golangci-lint roll. Same group, one PR, no collision.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["golangci/golangci-lint-action"],
+      "groupName": "CLI dependencies",
+      "groupSlug": "cli",
+      "commitMessagePrefix": "chore:",
+      "labels": ["dependencies", "type:chore", "scope:cli"]
+    },
+    {
       "description": "Container dependencies (all Dockerfile and Docker Compose images)",
       "matchManagers": ["dockerfile", "docker-compose"],
       "groupName": "Container dependencies",
@@ -211,6 +220,16 @@
       "managerFilePatterns": ["/cli/internal/config/state\\.go$/"],
       "matchStrings": [
         "// renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s+Default[A-Za-z]+ImageTag\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\n\\s+Default[A-Za-z]+ImageDigest\\s*=\\s*\"(?<currentDigest>sha256:[a-f0-9]+)\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Testcontainers image pins in Python integration tests. Anchored on a `# renovate: datasource=docker depName=...` marker on the line above a `DockerContainer(\"name:tag\")` (or any `Foo(\"name:tag\")`) call. Renovate cannot scan Python source strings without this; without coverage, the testcontainers pin in tests/integration/communication/test_bus_nats.py drifts away from the upstream image and the test silently runs against an outdated runtime.",
+      "managerFilePatterns": ["/tests/.*\\.py$/"],
+      "matchStrings": [
+        "# renovate: datasource=docker depName=(?<depName>[^\\s]+)\\s*\\n\\s+[A-Za-z_]+\\(\\s*\"[^\"]*:(?<currentValue>[^\"]+)\"\\s*\\)"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
