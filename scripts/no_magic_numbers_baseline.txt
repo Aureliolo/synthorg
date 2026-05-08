@@ -129,10 +129,10 @@ src/synthorg/api/etag.py:97:16
 src/synthorg/api/etag.py:98:26
 src/synthorg/api/exception_handlers.py:71:38
 src/synthorg/api/exception_handlers.py:75:30
-src/synthorg/api/lifecycle_helpers.py:207:55
-src/synthorg/api/lifecycle_helpers.py:208:63
-src/synthorg/api/lifecycle_helpers.py:272:32
-src/synthorg/api/lifecycle_helpers.py:355:46
+src/synthorg/api/lifecycle_helpers.py:201:55
+src/synthorg/api/lifecycle_helpers.py:202:63
+src/synthorg/api/lifecycle_helpers.py:264:32
+src/synthorg/api/lifecycle_helpers.py:343:46
 src/synthorg/api/openapi.py:297:39
 src/synthorg/api/path_params.py:64:24
 src/synthorg/api/rate_limits/inflight_middleware.py:41:29
@@ -142,7 +142,7 @@ src/synthorg/api/services/org_mutations.py:43:22
 src/synthorg/api/services/ssrf_violation_service.py:141:21
 src/synthorg/api/state_services.py:114:26
 src/synthorg/api/webhook_cleanup.py:42:42
-src/synthorg/api/webhook_cleanup.py:252:54
+src/synthorg/api/webhook_cleanup.py:249:54
 src/synthorg/backup/service_archive.py:38:23
 src/synthorg/backup/service_archive.py:42:21
 src/synthorg/budget/_optimizer_helpers.py:225:41
