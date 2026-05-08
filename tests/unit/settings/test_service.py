@@ -484,11 +484,10 @@ class TestDeleteNamespace:
     ) -> None:
         """Publish only fires for keys whose DB override was actually cleared.
 
-        Pins the round-12 fix: keys that have no DB override (defaults
-        / env-only) must NOT republish on a namespace delete -- that
-        would trigger phantom reload work for every registered key in
-        the namespace even when only a single override row was
-        cleared.
+        Keys that have no DB override (defaults / env-only) must NOT
+        republish on a namespace delete -- republishing would trigger
+        phantom reload work for every registered key in the namespace
+        even when only a single override row was cleared.
         """
         registry.register(
             _make_definition(

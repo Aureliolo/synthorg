@@ -22,8 +22,9 @@ ci:
   #     check-no-modify-migration:
   #     rebase / migration state checks meaningful only on the pushing
   #     developer's clone, not in an ephemeral cloud runner.
-  # ``no-release-please-token`` and ``workflow-shell-git-commits`` are
-  # deliberately NOT skipped: both are pure-Python, zero-dependency
+  # ``no-release-please-token``, ``workflow-shell-git-commits``,
+  # ``no-review-origin-in-code`` and ``no-migration-framing`` are
+  # deliberately NOT skipped: all four are pure-Python, zero-dependency
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
@@ -467,3 +468,36 @@ repos:
         files: ^(CLAUDE\.md|web/CLAUDE\.md|cli/CLAUDE\.md|docs/reference/.*\.md|docs/design/.*\.md|scripts/check_convention_gate_inventory\.py|scripts/convention_gate_map\.yaml|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
+
+      - id: no-review-origin-in-code
+        name: no reviewer citations / issue back-refs / naked SEC-N in code
+        entry: uv run python scripts/check_no_review_origin_in_code.py
+        language: system
+        # Trigger on any in-scope source / test file, the gate script
+        # itself, or this config so a PR that introduces a forbidden
+        # pattern (or weakens the gate by editing the script) cannot
+        # bypass the check. Atlas-managed migration revisions are
+        # auto-generated and excluded so the hook does not start a
+        # subprocess for files the script's internal allowlist would
+        # immediately skip.
+        files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_review_origin_in_code\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        # pre-commit covers pre-commit.ci (catches GitHub-UI edits and
+        # contributors who skip local hooks); pre-push remains the
+        # primary developer-machine enforcement point.
+        stages: [pre-commit, pre-push]
+
+      - id: no-migration-framing
+        name: no migration / origin / phase-N framing in code
+        entry: uv run python scripts/check_no_migration_framing.py
+        language: system
+        # Trigger on any in-scope source / test file, the gate script
+        # itself, or this config so a PR that introduces migration /
+        # origin framing (or weakens the gate by editing the script)
+        # cannot bypass the check. Atlas-managed migration revisions
+        # are auto-generated and excluded so the hook does not start a
+        # subprocess for files the script's internal allowlist would
+        # immediately skip.
+        files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_migration_framing\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]

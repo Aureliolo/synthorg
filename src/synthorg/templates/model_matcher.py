@@ -247,11 +247,10 @@ def match_all_agents(
             # Fallback: assign first available model with score 0.
             # This path IS the documented contract for tier-mismatch
             # (per docs/design/agents.md §"Model matcher"); the
-            # fallback succeeded so logging at WARNING produced
-            # ~8 noisy lines per setup wizard run. Issue #1666 B-5
-            # downgrades this to DEBUG. WARNING stays for the truly
-            # failing path -- the ``no_models_available`` branch
-            # below.
+            # fallback succeeded so log at DEBUG to avoid the noisy
+            # WARNING line per setup wizard run. WARNING stays for
+            # the truly failing path -- the ``no_models_available``
+            # branch below.
             fb_provider, fb_model = all_models[0]
             logger.debug(
                 TEMPLATE_MODEL_MATCH_FALLBACK,

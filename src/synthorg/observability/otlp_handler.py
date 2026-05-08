@@ -67,10 +67,9 @@ class OtlpHandler(logging.Handler):
     is closed.
 
     Only HTTP/JSON transport is implemented. gRPC is rejected at
-    both config validation (``SinkConfig``) and handler init.
-    This is an approved deviation from issue #1122 which originally
-    specified HTTP/protobuf -- the implementation uses JSON encoding
-    with ``Content-Type: application/json``.
+    both config validation (``SinkConfig``) and handler init. The
+    implementation uses JSON encoding with
+    ``Content-Type: application/json``.
 
     Args:
         endpoint: OTLP collector endpoint URL.

@@ -1,11 +1,9 @@
 """Conformance tests for ontology entity + drift repositories.
 
-Issue #1457 folds the parallel ``OntologyBackend`` abstraction into
-``persistence/`` with two new protocols: ``OntologyEntityRepository``
-and ``OntologyDriftReportRepository``.  The prior SQLite-only tests
-were removed in the consolidation; this file restores coverage and
-adds a matching pass against Postgres via the shared ``backend``
-fixture.
+The ``OntologyEntityRepository`` and ``OntologyDriftReportRepository``
+protocols both ship under ``persistence/``; this file exercises each
+against SQLite and Postgres via the shared ``backend`` fixture so the
+implementations stay in lock-step.
 """
 
 from datetime import UTC, datetime

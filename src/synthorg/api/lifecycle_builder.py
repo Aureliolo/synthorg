@@ -88,10 +88,10 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         backup_service: Backup and restore service.
         approval_timeout_scheduler: Background approval timeout checker.
         app_state: Application state container.
-        should_auto_wire_settings: When ``True``, Phase 2 auto-wiring
-            creates ``SettingsService`` + dispatcher after persistence
-            connects.
-        effective_config: Root config needed for Phase 2 auto-wiring.
+        should_auto_wire_settings: When ``True``, on-startup
+            auto-wiring creates ``SettingsService`` + dispatcher after
+            persistence connects.
+        effective_config: Root config needed for on-startup auto-wiring.
 
     Returns:
         A tuple of (on_startup, on_shutdown) callback lists.
@@ -403,7 +403,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     error=safe_error_description(exc),
                 )
 
-        # Phase 2 auto-wire: SettingsService (needs connected persistence)
+        # On-startup auto-wire: SettingsService (needs connected persistence)
         if (
             should_auto_wire_settings
             and persistence is not None
@@ -424,13 +424,13 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                # Phase 2 auto-wire pulls operator settings (incl.
+                # On-startup auto-wire pulls operator settings (incl.
                 # secret-bearing config). Avoid logger.exception here
                 # so traceback frame-locals never serialize raw
                 # secrets to the log sink.
                 logger.error(
                     API_APP_STARTUP,
-                    detail="phase_2_auto_wire_failed",
+                    detail="settings_auto_wire_failed",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -447,7 +447,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     distributed_task_queue=app_state.distributed_task_queue,
                 )
                 raise
-        # Phase 3a: when an external caller already supplied a
+        # When an external caller already supplied a
         # ``TrainingService`` to ``create_app()``, we skip the
         # auto-wire below but the injected service still owns a live
         # ``MemoryBackend``. Pull it out and publish it on
@@ -464,9 +464,9 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             if injected_backend is not None:
                 app_state.set_memory_backend(injected_backend)
 
-        # Phase 3 auto-wire: TrainingService.
+        # On-startup auto-wire: TrainingService.
         # Needs agent_registry, tool_invocation_tracker, and
-        # performance_tracker (all wired in Phase 1).  Uses
+        # performance_tracker (all wired at construction time).  Uses
         # InMemoryBackend for the memory layer; production callers
         # inject a real Mem0 backend via the training_service param.
         if (

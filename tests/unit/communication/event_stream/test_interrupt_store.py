@@ -133,7 +133,7 @@ class TestInterruptStore:
 
 @pytest.mark.unit
 class TestInterruptStoreRaceConditions:
-    """Regression tests for issue #1683.
+    """Race-condition regression tests.
 
     Concurrent ``create()`` / ``resolve()`` / ``wait_for_resolution()``
     must not corrupt the pending / events / results dicts.

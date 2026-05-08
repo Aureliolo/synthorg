@@ -188,10 +188,10 @@ class TestConcurrentBurstAgainstAgentsCreate:
         concurrency = 100
         # ``max_workers`` must match the submission count so all 100
         # requests actually race for the permit at the same time.  A
-        # smaller pool would queue 68 of them and turn the SEC-2
-        # acceptance criterion ("100-way concurrent burst") into a
-        # serialised walk through the bucket, weakening the race the
-        # guard is supposed to handle.
+        # smaller pool would queue 68 of them and turn the
+        # 100-way-concurrent-burst contract into a serialised walk
+        # through the bucket, weakening the race the guard is
+        # supposed to handle.
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = [
                 pool.submit(authed_client.post, "/api/v1/agents/", json=_payload(i))
@@ -436,7 +436,7 @@ class TestHighTierOpsCarryGuards:
     ``per_op_rate_limit`` guard AND a ``per_op_concurrency`` opt entry
     with its designated operation string.  This catches the
     regression where someone removes a decorator without realising
-    these are SEC-2 audit requirements.
+    both guards are required for the high-tier surface.
     """
 
     # Each entry: (handler_name, rate_limit_op, concurrency_op).

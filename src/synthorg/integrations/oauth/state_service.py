@@ -1,9 +1,9 @@
 """OAuthStateService -- audit-aware facade over the OAuth state repo.
 
-The :class:`OAuthController` previously called
-``persistence.oauth_states.save(...)`` directly from the
-``initiate_flow`` handler.  Routing the write through this service
-centralises the durable save and the audit-grade
+The :class:`OAuthController` routes the ``initiate_flow`` durable
+save through this service rather than calling
+``persistence.oauth_states.save(...)`` directly.  Centralising the
+save here pairs the durable write with the audit-grade
 :data:`SECURITY_OAUTH_STATE_PERSISTED` event so audit logging cannot
 silently regress when a new field or write path is added; every other
 persistence-layer mutation in the controller stack already follows the
@@ -32,6 +32,10 @@ if TYPE_CHECKING:
     from synthorg.persistence.connection_protocol import OAuthStateRepository
 
 logger = get_logger(__name__)
+
+# Audit-safe correlation prefix length: long enough to deduplicate state
+# tokens across the audit chain without exposing the full secret.
+_STATE_TOKEN_PREFIX_LENGTH = 8  # lint-allow: magic-numbers -- audit prefix width
 
 
 class OAuthStateService:
@@ -73,7 +77,7 @@ class OAuthStateService:
             logger.warning(
                 SECURITY_OAUTH_STATE_PERSIST_FAILED,
                 connection_name=str(connection_name),
-                state_token_prefix=str(bound.state_token)[:8],
+                state_token_prefix=str(bound.state_token)[:_STATE_TOKEN_PREFIX_LENGTH],
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -81,7 +85,7 @@ class OAuthStateService:
         logger.info(
             SECURITY_OAUTH_STATE_PERSISTED,
             connection_name=str(connection_name),
-            state_token_prefix=str(bound.state_token)[:8],
+            state_token_prefix=str(bound.state_token)[:_STATE_TOKEN_PREFIX_LENGTH],
         )
         return bound
 

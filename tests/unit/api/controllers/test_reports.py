@@ -1,4 +1,4 @@
-"""Tests for the reports controller (#1666 B-2 regression)."""
+"""Tests for the reports controller."""
 
 from typing import Any
 
@@ -14,12 +14,13 @@ _HEADERS = make_auth_headers("ceo")
 class TestReportsController:
     """Regression coverage for ``POST /api/v1/reports/generate``.
 
-    Pre-#1666 the controller dereferenced ``state._app_state``
-    (private attribute that does not exist on Litestar's ``State``)
-    so the endpoint surfaced a bare ``AttributeError`` to clients.
-    The fix swaps the access to ``state.app_state`` and wires
-    ``AutomatedReportService`` on AppState so the endpoint serves
-    the documented inputs instead of returning 503 unconfigured.
+    The controller historically dereferenced ``state._app_state``
+    (a private attribute that does not exist on Litestar's
+    ``State``) so the endpoint surfaced a bare ``AttributeError``
+    to clients; access now goes through ``state.app_state`` and the
+    test wires ``AutomatedReportService`` on AppState so the
+    endpoint serves the documented inputs instead of returning 503
+    unconfigured.
     """
 
     def test_generate_daily_report_succeeds(
@@ -74,10 +75,10 @@ class TestReportsController:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Issue #1666 B-2 regression guard: missing wiring -> 503, not AttributeError.
+        """Regression guard: missing wiring -> 503, not AttributeError.
 
-        Pre-#1666 the controller dereferenced ``state._app_state``
-        (private underscore attr) and surfaced a bare ``AttributeError``
+        Without this guard the controller dereferences ``state._app_state``
+        (private underscore attr) and surfaces a bare ``AttributeError``
         as a 500 Internal Server Error to clients. The fix routes
         through ``app_state.has_report_service`` -- when the service
         is not wired the controller now raises

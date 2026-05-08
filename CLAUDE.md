@@ -102,7 +102,9 @@ Existing gate inventory (all under `scripts/`):
 - `check_doc_numeric_macros.py`
 - `check_no_bulk_edit.py`
 - `check_no_em_dashes.py`
+- `check_no_migration_framing.py`
 - `check_no_redundant_timeout.py`
+- `check_no_review_origin_in_code.py`
 - `check_openapi_liveness.py`
 - `check_orphan_fixtures.py`
 - `check_persistence_boundary.py`
@@ -143,7 +145,7 @@ Numeric claims in `README.md` and the public docs (`docs/index.md`, `docs/roadma
 
 ## Code Conventions
 
-- **Comments explain WHY only**, never origin / review / issue context. Forbidden in source / tests / docstrings / commit bodies: reviewer citations (`pre-PR review #N`, `CodeRabbit at file:line`, `Round-N`); in-code issue back-refs (`(#1682)`, `fixes #N`, `as part of #N`); naked `SEC-1` taxonomy in `src/`; migration framing (`ported from`, `renamed from`); round narrative (`round-2 review surfaced this`); self-evident restatements. Keep: hidden constraints, subtle invariants, upstream-bug workarounds (with stable bug-tracker URL), why a non-obvious choice was made.
+- **Comments explain WHY only**, never origin / review / issue context. Forbidden in source / tests / docstrings / commit bodies: reviewer citations (`pre-PR review #N`, `CodeRabbit at file:line`, `Round-N`); in-code issue back-refs (`(#1682)`, `fixes #N`, `as part of #N`); naked `SEC-1` taxonomy in `src/`; migration framing (`ported from`, `renamed from`); round narrative (`round-2 review surfaced this`); self-evident restatements. Keep: hidden constraints, subtle invariants, upstream-bug workarounds (with stable bug-tracker URL), why a non-obvious choice was made. Enforced by `scripts/check_no_review_origin_in_code.py` and `scripts/check_no_migration_framing.py` (pre-push); per-line opt-outs `# lint-allow: review-origin -- <reason>` and `# lint-allow: migration-framing -- <reason>` (mandatory non-empty justification; whitespace-only is rejected).
 - **No `from __future__ import annotations`**: Python 3.14 has PEP 649.
 - **PEP 758 except**: `except A, B:` (no parens) when not binding; `as exc` requires parens.
 - **Type hints**: all public functions; mypy strict.

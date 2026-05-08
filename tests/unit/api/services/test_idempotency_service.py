@@ -1,4 +1,4 @@
-"""Tests for ``IdempotencyService.run_idempotent`` (#1599 §3 service layer).
+"""Tests for ``IdempotencyService.run_idempotent``.
 
 The repository-layer conformance suite covers the atomic claim
 contract; this file covers the service-layer wrapper: callback

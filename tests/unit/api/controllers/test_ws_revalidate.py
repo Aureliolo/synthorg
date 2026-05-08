@@ -1,4 +1,4 @@
-"""Tests for the WS periodic revalidation task (#1599 §6.1)."""
+"""Tests for the WS periodic revalidation task."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -187,7 +187,7 @@ class _FakeApp:
             {
                 "persistence": persistence,
                 "has_session_store": False,
-                # Issue #1683 settings: tight bounds so the
+                # Tight revalidation-window bounds so the
                 # transient-failure regression test can saturate the
                 # window in a few iterations.
                 "ws_revalidation_window_seconds": 60,

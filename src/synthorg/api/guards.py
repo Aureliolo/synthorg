@@ -228,8 +228,8 @@ def require_org_mutation(
       *department_param*) is in the user's ``scoped_departments``
 
     If the user has no ``org_roles`` (empty tuple), falls back to
-    the existing ``HumanRole`` write-access check for backward
-    compatibility with pre-#1082 installations.
+    the existing ``HumanRole`` write-access check so legacy
+    installations without organisation-level roles still resolve.
 
     Args:
         department_param: Path parameter name containing the target

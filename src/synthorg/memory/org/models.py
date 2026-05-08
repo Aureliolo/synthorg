@@ -3,8 +3,8 @@
 Frozen Pydantic models for organizational facts -- shared company-wide
 knowledge such as policies, ADRs, procedures, and conventions.
 
-Includes MVCC models for the append-only operation log and materialized
-snapshot (Phase 1.5 -- D26).
+Includes MVCC models for the append-only operation log and the
+materialized snapshot.
 """
 
 from typing import Literal, Self
@@ -182,7 +182,7 @@ class OrgMemoryQuery(BaseModel):
     )
 
 
-# ── MVCC models (Phase 1.5 -- D26) ──────────────────────────────
+# ── MVCC models ─────────────────────────────────────────────────
 
 
 class OperationLogEntry(BaseModel):

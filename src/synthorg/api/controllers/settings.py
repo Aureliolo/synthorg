@@ -684,7 +684,8 @@ class SettingsController(Controller):
             # which can hold secrets or operator-sensitive configuration.
             # The 422 response keeps a generic message; full diagnostic
             # detail stays on the server-side warning stream via
-            # ``safe_error_description``.  SEC-1.
+            # ``safe_error_description`` so credential text never reaches
+            # the response or operator-readable logs.
             logger.warning(
                 API_SECURITY_CONFIG_IMPORT_FAILED,
                 error_type=type(exc).__name__,

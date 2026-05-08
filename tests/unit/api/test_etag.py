@@ -1,4 +1,4 @@
-"""Unit tests for ETag / If-None-Match / 304 middleware (#1600 Phase 4)."""
+"""Unit tests for ETag / If-None-Match / 304 middleware."""
 
 # Loosely-typed ASGI stubs; runtime behaviour is correct.
 # mypy: disable-error-code=arg-type

@@ -226,7 +226,7 @@ class StructuredPhasesProtocol:
         turn_number = 0
         conflicts_detected = False
 
-        # Phase 1: Agenda broadcast (data only, no LLM call)
+        # Agenda broadcast (data only, no LLM call).
         logger.info(
             MEETING_PHASE_STARTED,
             meeting_id=meeting_id,
@@ -238,7 +238,7 @@ class StructuredPhasesProtocol:
             phase=MeetingPhase.AGENDA_BROADCAST,
         )
 
-        # Phase 2: Input gathering (parallel)
+        # Input gathering (parallel).
         inputs, input_contributions = await self._run_input_gathering(
             meeting_id=meeting_id,
             agenda_text=agenda_text,
@@ -249,7 +249,7 @@ class StructuredPhasesProtocol:
         )
         turn_number = len(participant_ids)
 
-        # Phase 3: Discussion (conditional on conflicts)
+        # Discussion (conditional on conflicts).
         discussion_contributions: list[MeetingContribution] = []
         discussion_pairs: list[tuple[str, str]] = []
 
@@ -280,7 +280,7 @@ class StructuredPhasesProtocol:
                 skipped_phase=MeetingPhase.DISCUSSION,
             )
 
-        # Phase 4: Synthesis
+        # Synthesis.
         summary, synthesis_contribution = await self._run_synthesis(
             meeting_id=meeting_id,
             agenda_text=agenda_text,

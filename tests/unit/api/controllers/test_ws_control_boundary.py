@@ -1,9 +1,9 @@
 """Boundary tests for the typed WebSocket control plane.
 
-Phase 2 of RFC #1711. ``handle_message`` validates the parsed JSON
-against :data:`WS_CONTROL_MESSAGE_ADAPTER` so a malformed inbound
-frame emits ``api.boundary.validation_failed`` and the connection
-gets a generic error envelope instead of leaking the legacy
+``handle_message`` validates the parsed JSON against
+:data:`WS_CONTROL_MESSAGE_ADAPTER` so a malformed inbound frame
+emits ``api.boundary.validation_failed`` and the connection gets a
+generic error envelope instead of leaking
 ``Unknown action`` / ``filters must be an object`` strings.
 """
 

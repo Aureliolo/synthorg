@@ -190,11 +190,11 @@ class TestSettingsListAndDelete:
     ) -> None:
         """``delete_namespace_returning_keys`` returns exactly the deleted keys.
 
-        Pins the round-13 fix: ``SettingsService.delete_namespace`` uses
-        this method to scope per-key change-publish notifications to
-        rows that genuinely changed.  A drift between the returned keys
-        and the deleted rows would either drop a publish or fire a
-        phantom one.
+        ``SettingsService.delete_namespace`` uses this method to
+        scope per-key change-publish notifications to rows that
+        genuinely changed.  A drift between the returned keys and the
+        deleted rows would either drop a publish or fire a phantom
+        one.
         """
         await backend.settings.set(NS, NotBlankStr("k1"), "v1", _ts(2026, 1, 1))
         await backend.settings.set(NS, NotBlankStr("k2"), "v2", _ts(2026, 1, 1))

@@ -1,8 +1,10 @@
 """Config tuning improvement strategy.
 
 Generates proposals to tune existing company configuration values
-based on detected signal patterns. Uses LLM analysis to synthesize
-concrete config change proposals from rule-triggered signal context.
+based on detected signal patterns. The current implementation
+synthesizes template-based proposals from rule-triggered signal
+context; once the service orchestrator owns providers, the same
+entry point will use LLM analysis to author the proposal bodies.
 """
 
 from typing import TYPE_CHECKING
@@ -30,11 +32,13 @@ logger = get_logger(__name__)
 class ConfigTuningStrategy:
     """Generates config tuning proposals from signal patterns.
 
-    For each triggered rule, builds a prompt with signal context
-    and asks the LLM to propose concrete config changes. In the
-    initial implementation, generates template-based proposals
-    from rule signal context without LLM calls (LLM integration
-    is Phase 7 when the service orchestrator wires up providers).
+    The current implementation generates template-based proposals
+    from rule-triggered signal context without making any LLM
+    calls; for each triggered rule it picks a hand-authored
+    proposal body keyed on the rule name. Once the service
+    orchestrator owns providers, the same entry point will build
+    a prompt with signal context and ask the LLM to author the
+    proposal bodies instead of selecting from the template map.
 
     Args:
         config: Self-improvement configuration.

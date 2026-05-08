@@ -92,7 +92,7 @@ src/synthorg/api/controllers/oauth.py:43:23
 src/synthorg/api/controllers/ontology.py:131:29
 src/synthorg/api/controllers/ontology.py:359:29
 src/synthorg/api/controllers/ontology.py:450:29
-src/synthorg/api/controllers/personalities.py:78:29
+src/synthorg/api/controllers/personalities.py:76:29
 src/synthorg/api/controllers/projects.py:71:29
 src/synthorg/api/controllers/providers.py:1389:29
 src/synthorg/api/controllers/reports.py:144:29
@@ -650,9 +650,9 @@ src/synthorg/observability/http_handler.py:46:26
 src/synthorg/observability/http_handler.py:47:32
 src/synthorg/observability/http_handler.py:48:25
 src/synthorg/observability/http_handler.py:49:27
-src/synthorg/observability/otlp_handler.py:90:26
-src/synthorg/observability/otlp_handler.py:91:32
-src/synthorg/observability/otlp_handler.py:92:25
+src/synthorg/observability/otlp_handler.py:89:26
+src/synthorg/observability/otlp_handler.py:90:32
+src/synthorg/observability/otlp_handler.py:91:25
 src/synthorg/observability/otlp_trace_handler.py:147:53
 src/synthorg/observability/redaction.py:38:34
 src/synthorg/observability/sink_config_builder.py:102:32
@@ -822,7 +822,7 @@ src/synthorg/telemetry/event_counter.py:116:23
 src/synthorg/telemetry/event_counter_protocol.py:61:23
 src/synthorg/telemetry/host_info.py:66:45
 src/synthorg/templates/_inheritance.py:42:25
-src/synthorg/templates/model_matcher.py:287:22
+src/synthorg/templates/model_matcher.py:286:22
 src/synthorg/tools/_git_base.py:50:33
 src/synthorg/tools/_git_base.py:51:44
 src/synthorg/tools/_git_base.py:103:35

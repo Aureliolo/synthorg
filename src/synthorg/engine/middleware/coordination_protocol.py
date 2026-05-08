@@ -40,11 +40,11 @@ class CoordinationMiddlewareContext(BaseModel):
 
     Attributes:
         coordination_context: Original coordination input (task, agents, config).
-        decomposition_result: Result of task decomposition (set after phase 1).
-        routing_result: Result of task routing (set after phase 2).
-        dispatch_result: Result of dispatch execution (set after phase 5).
-        status_rollup: Aggregated subtask status rollup (set after phase 6).
-        phases: Phase results accumulated so far.
+        decomposition_result: Result of task decomposition (set after decomposition).
+        routing_result: Result of task routing (set after routing).
+        dispatch_result: Result of dispatch execution (set after dispatch).
+        status_rollup: Aggregated subtask status rollup (set after rollup).
+        phases: Pipeline-step results accumulated so far.
         task_ledger: TaskLedger populated by TaskLedgerMiddleware.
         progress_ledger: ProgressLedger populated by ProgressLedgerMiddleware.
         metadata: Middleware-to-middleware data pass-through.
@@ -57,23 +57,23 @@ class CoordinationMiddlewareContext(BaseModel):
     )
     decomposition_result: Any | None = Field(
         default=None,
-        description="DecompositionResult (set after phase 1)",
+        description="DecompositionResult (set after decomposition)",
     )
     routing_result: Any | None = Field(
         default=None,
-        description="RoutingResult (set after phase 2)",
+        description="RoutingResult (set after routing)",
     )
     dispatch_result: Any | None = Field(
         default=None,
-        description="DispatchResult (set after phase 5)",
+        description="DispatchResult (set after dispatch)",
     )
     status_rollup: Any | None = Field(
         default=None,
-        description="SubtaskStatusRollup (set after phase 6)",
+        description="SubtaskStatusRollup (set after rollup)",
     )
     phases: tuple[CoordinationPhaseResult, ...] = Field(
         default=(),
-        description="Phase results accumulated so far",
+        description="Pipeline-step results accumulated so far",
     )
     task_ledger: TaskLedger | None = Field(
         default=None,
@@ -116,16 +116,16 @@ class CoordinationMiddlewareContext(BaseModel):
 class CoordinationMiddleware(Protocol):
     """Coordination-level middleware with five async hooks.
 
-    Hooks map to the coordination pipeline phases:
+    Hooks fire at specific points in the coordination pipeline:
 
-    * ``before_decompose`` -- before Phase 1 (decomposition)
-    * ``after_decompose`` -- after Phase 1, before Phase 2 (routing)
-    * ``before_dispatch`` -- before Phase 3-5 (dispatch)
-    * ``after_rollup`` -- after Phase 6 (rollup)
-    * ``before_update_parent`` -- before Phase 7 (parent task update)
+    * ``before_decompose`` -- before task decomposition
+    * ``after_decompose`` -- after decomposition, before routing
+    * ``before_dispatch`` -- before dispatch (plan-review gate slot)
+    * ``after_rollup`` -- after subtask rollup (replan slot)
+    * ``before_update_parent`` -- before the parent-task status update
 
     All hooks run linearly in declared (left-to-right) order.
-    Coordination middleware is a phase-based pipeline, not a stack.
+    Coordination middleware is a sequential pipeline, not a stack.
     """
 
     @property

@@ -478,7 +478,7 @@ class TestSyncModels:
         service: ProviderManagementService,
         actor: ProviderAuditActor,
     ) -> None:
-        """Round-3 fix: don't persist discovered models onto a swapped endpoint.
+        """Don't persist discovered models onto a swapped endpoint.
 
         If the provider's ``base_url`` (or ``auth_type`` /
         ``preset_name``) is mutated while discovery is in flight,
@@ -513,7 +513,7 @@ class TestSyncModels:
 
 @pytest.mark.unit
 class TestSubscriptionRotationToSGuard:
-    """Round-3 fix: subscription rotation rejects ``tos_accepted=false``."""
+    """Subscription rotation rejects ``tos_accepted=false``."""
 
     async def test_subscription_rotation_with_tos_false_rejected(
         self,

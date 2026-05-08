@@ -672,7 +672,7 @@ def _validate_task_ownership(
         task: The task to check.
         peer_name: Authenticated peer name.
     """
-    # Phase 1: all authenticated peers share the a2a task namespace.
+    # All authenticated peers currently share the a2a task namespace.
     # Per-peer isolation (task.metadata["a2a_peer"] == peer_name)
     # is a follow-up once task metadata propagation is wired.
 

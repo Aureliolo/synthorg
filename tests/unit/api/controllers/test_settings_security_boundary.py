@@ -1,9 +1,9 @@
 """Boundary tests for the typed settings security export/import.
 
-Phase 2 of RFC #1711. ``import_security_config`` validates the
-incoming dict through :func:`synthorg.api.boundary.parse_typed` so
-malformed payloads emit ``api.boundary.validation_failed`` and the
-controller surfaces a 422 via the existing
+``import_security_config`` validates the incoming dict through
+:func:`synthorg.api.boundary.parse_typed` so malformed payloads emit
+``api.boundary.validation_failed`` and the controller surfaces a
+422 via the existing
 :class:`~synthorg.api.errors.DomainValidationError` translation.
 """
 

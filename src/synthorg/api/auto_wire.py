@@ -1,14 +1,15 @@
 """Service auto-wiring for production startup.
 
-Phase 1 (construction time): creates services that don't need a
-connected persistence backend -- message bus, cost tracker, provider
-registry, task engine, provider health tracker.
+Construction time: creates services that don't need a connected
+persistence backend -- message bus, cost tracker, provider registry,
+task engine, provider health tracker.
 
 Meeting auto-wire (construction time): creates meeting orchestrator
-and meeting scheduler (same lifecycle as Phase 1 but separate call).
+and meeting scheduler (same lifecycle as the construction-time wire
+but a separate call).
 
-Phase 2 (on_startup): creates SettingsService + dispatcher after
-persistence connects and migrations complete.
+On-startup: creates SettingsService + dispatcher after persistence
+connects and migrations complete.
 """
 
 import contextlib
@@ -60,7 +61,7 @@ logger = get_logger(__name__)
 
 
 class Phase1Result(NamedTuple):
-    """Services created during Phase 1 auto-wiring."""
+    """Services created during construction-time auto-wiring."""
 
     message_bus: MessageBus | None
     cost_tracker: CostTracker | None
@@ -383,9 +384,8 @@ def auto_wire_meetings(
     """Auto-wire meeting orchestrator and scheduler.
 
     Each service is created only when the caller passes ``None``.
-    Explicit values are preserved unchanged.  This runs at the same
-    lifecycle stage as Phase 1 -- meeting services don't need
-    connected persistence.
+    Explicit values are preserved unchanged.  This runs at construction
+    time -- meeting services don't need connected persistence.
 
     When auto-wiring the orchestrator without an agent registry or
     provider registry, the resulting agent caller is guaranteed to
@@ -696,7 +696,7 @@ async def auto_wire_settings(  # noqa: PLR0913
     backup_service: BackupService | None,
     build_dispatcher: BuildDispatcherFn,
 ) -> SettingsChangeDispatcher | None:
-    """Phase 2 auto-wire: create SettingsService after persistence connects.
+    """On-startup auto-wire: create SettingsService after persistence connects.
 
     Called from ``on_startup`` after persistence connects.  Creates
     the settings service, starts the dispatcher, and only then injects
@@ -822,7 +822,7 @@ async def auto_wire_ontology(
         )
         return None
 
-    # Ontology runs on the shared persistence backend (#1457 A5): the
+    # Ontology runs on the shared persistence backend: the
     # entity repository and versioning service both take the backend's
     # active DB handle, so schema migrations (Atlas) and connection
     # lifecycle are owned by PersistenceBackend.  The backend's

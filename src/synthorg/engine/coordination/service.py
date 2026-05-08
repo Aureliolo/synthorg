@@ -187,7 +187,7 @@ class MultiAgentCoordinator:
                 )
                 mw_ctx = await mw_chain.run_before_decompose(mw_ctx)
 
-            # Phase 1: Decompose
+            # Decompose
             decomp_result = await self._phase_decompose(context, phases)
 
             # Middleware: after_decompose
@@ -203,7 +203,7 @@ class MultiAgentCoordinator:
                 if mw_ctx.decomposition_result is not None:
                     decomp_result = mw_ctx.decomposition_result
 
-            # Phase 2: Route
+            # Route
             routing_result = self._phase_route(context, decomp_result, phases)
 
             # Middleware: before_dispatch.  Runs BEFORE validation +
@@ -224,15 +224,15 @@ class MultiAgentCoordinator:
                 if mw_ctx.routing_result is not None:
                     routing_result = mw_ctx.routing_result
 
-            # Phase 3: Validate -- fail fast if all subtasks are
-            # unroutable. Runs BEFORE resolving topology so the
-            # deterministic routing error surfaces without first
-            # calling ``default_topology_provider()`` (which may read
-            # runtime settings or raise).
+            # Validate -- fail fast if all subtasks are unroutable.
+            # Runs BEFORE resolving topology so the deterministic
+            # routing error surfaces without first calling
+            # ``default_topology_provider()`` (which may read runtime
+            # settings or raise).
             self._validate_routing(routing_result, phases)
 
-            # Phase 4: Resolve topology (only reached for dispatchable
-            # work). Wrapped in try/except because
+            # Resolve topology (only reached for dispatchable work).
+            # Wrapped in try/except because
             # ``default_topology_provider()`` may read runtime settings
             # or raise -- any failure must surface as a failed
             # coordination phase with a proper ``CoordinationPhaseError``
@@ -306,7 +306,7 @@ class MultiAgentCoordinator:
                     partial_phases=tuple(phases),
                 ) from exc
 
-            # Phase 5: Dispatch (workspace setup -> execute -> merge)
+            # Dispatch (workspace setup -> execute -> merge)
             dispatch_result = await self._phase_dispatch(
                 topology,
                 decomp_result,
@@ -316,7 +316,7 @@ class MultiAgentCoordinator:
             )
             phases.extend(dispatch_result.phases)
 
-            # Phase 6: Rollup
+            # Rollup
             rollup = self._phase_rollup(context, dispatch_result, decomp_result, phases)
 
             # Middleware: after_rollup
@@ -340,7 +340,7 @@ class MultiAgentCoordinator:
                 # Propagate middleware-sanitized rollup
                 rollup = mw_ctx.status_rollup
 
-            # Phase 7: Update parent task
+            # Update parent task
             await self._phase_update_parent(context, rollup, phases)
 
             total_duration = time.monotonic() - pipeline_start

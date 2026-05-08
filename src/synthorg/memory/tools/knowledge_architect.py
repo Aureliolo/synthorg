@@ -5,9 +5,9 @@ the Knowledge Architect role: ``memory.guide``, ``memory.search``,
 ``memory.read``, ``memory.write``, ``memory.delete``,
 ``memory.browse_wiki``.
 
-Write/delete tools enforce autonomy gating per issue #1266 spec:
-``FULL`` disabled, ``SEMI`` requires explicit opt-in, ``SUPERVISED`` /
-``LOCKED`` allowed (upstream approval/plan-review gate expected).
+Write/delete tools enforce autonomy gating: ``FULL`` disabled,
+``SEMI`` requires explicit opt-in, ``SUPERVISED`` / ``LOCKED``
+allowed (upstream approval / plan-review gate expected).
 """
 
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -219,7 +219,7 @@ class KnowledgeArchitectReadTool(BaseTool):
 class KnowledgeArchitectWriteTool(BaseTool):
     """``memory.write`` -- write to org memory with autonomy gating.
 
-    Per-autonomy gating policy (issue #1266 spec):
+    Per-autonomy gating policy:
 
     * ``FULL``       -- disabled (no architect writes).
     * ``SEMI``       -- disabled unless ``architect_writes_enabled`` is

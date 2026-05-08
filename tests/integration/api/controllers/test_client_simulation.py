@@ -86,7 +86,7 @@ def _build_client(
     # it onto AppState before the OPTIONAL_CONTROLLERS predicate check;
     # post-construction ``set_client_simulation_state`` would land
     # AFTER the controller list is frozen and the routes would be
-    # absent (issue #1666 B-3 conditional registration).
+    # absent under conditional registration.
     app = create_app(
         config=config,
         persistence=fake_persistence,

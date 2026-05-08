@@ -60,8 +60,8 @@ class ConfigContextProvider:
 class MemoryContextProvider:
     """Reads strategic context from the memory system.
 
-    Placeholder for Phase 2 integration.  Falls back to config-based
-    context when memory data is unavailable.
+    Placeholder for memory-driven context integration.  Falls back to
+    config-based context when memory data is unavailable.
     """
 
     def __init__(self, *, fallback: StrategicContextProvider) -> None:
@@ -70,8 +70,9 @@ class MemoryContextProvider:
 
     def provide(self, *, config: StrategyConfig) -> StrategicContext:
         """Build context from memory, falling back to config."""
-        # Phase 2 will query agent/org memory for dynamic context.
-        # For now, always delegate to the fallback provider.
+        # The memory-driven path (when wired) will query agent / org
+        # memory for dynamic context.  For now, always delegate to
+        # the fallback provider.
         logger.debug(
             STRATEGY_CONTEXT_BUILT,
             source="memory_fallback",

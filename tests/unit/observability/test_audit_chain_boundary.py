@@ -1,11 +1,11 @@
 """Boundary tests for the audit-chain typed payload.
 
-Phase 2 of RFC #1711. The sink.emit() pipeline now validates the
-assembled payload through :func:`synthorg.api.boundary.parse_typed`
-against :class:`AuditChainEventPayload`. The single most important
-test in this file pins a known-good payload to a hard-coded
-``json.dumps`` byte string so the migration cannot silently break
-the chain hash even if the model later evolves.
+The sink.emit() pipeline validates the assembled payload through
+:func:`synthorg.api.boundary.parse_typed` against
+:class:`AuditChainEventPayload`. The single most important test in
+this file pins a known-good payload to a hard-coded ``json.dumps``
+byte string so future changes cannot silently break the chain hash
+even if the model later evolves.
 """
 
 import hashlib

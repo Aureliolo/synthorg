@@ -1,10 +1,9 @@
 """Conformance tests for the connection-family repositories.
 
-Issue #1597 promotes the four connection repos (Connection,
-ConnectionSecret, OAuthState, WebhookReceipt) from in-memory stubs to
-durable SQLite + Postgres implementations.  These tests run against
-both backends through the shared ``backend`` fixture so semantics stay
-in lock-step.
+The four connection repos (Connection, ConnectionSecret, OAuthState,
+WebhookReceipt) ship as durable SQLite + Postgres implementations.
+These tests run against both backends through the shared ``backend``
+fixture so semantics stay in lock-step.
 
 Connections own a name primary key; the other three tables FK into
 ``connections.name`` (oauth_states, webhook_receipts) or are

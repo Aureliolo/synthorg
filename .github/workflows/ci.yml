@@ -140,6 +140,12 @@ jobs:
       - name: Schema-drift gate (SQLite vs Postgres parity)
         run: uv run python scripts/check_schema_drift.py
 
+      - name: Review-origin / issue-backref gate (src/ + tests/)
+        run: uv run python scripts/check_no_review_origin_in_code.py
+
+      - name: Migration-framing / phase-N gate (src/ + tests/)
+        run: uv run python scripts/check_no_migration_framing.py
+
   # ── Docs: Doc-claim drift gate ──
   # Runs on python OR doc_claims so a docs-only PR that bumps a guarded
   # claim (eg "100+ event constant modules") still triggers the gate.

@@ -147,7 +147,7 @@ class TestExceptionHandlers:
             )
 
     def test_constraint_violation_error_maps_to_400(self) -> None:
-        """Issue #1666 B-1 backstop: persistence integrity violations -> 400.
+        """Backstop: persistence integrity violations -> 400.
 
         Repository modules translate driver integrity errors (psycopg
         ForeignKeyViolation / UniqueViolation / NotNullViolation,

@@ -1,8 +1,8 @@
 """Coverage check: every concrete BaseTool subclass declares ``args_model``.
 
-Phase 4 of #1611 wires every domain tool to a typed Pydantic args
-model.  This test walks the ``BaseTool`` subclass tree and asserts
-every concrete subclass either:
+Every domain tool is wired to a typed Pydantic args model.  This
+test walks the ``BaseTool`` subclass tree and asserts every concrete
+subclass either:
 
 * Declares ``args_model: ClassVar[type[BaseModel] | None]`` set to a
   concrete :class:`~pydantic.BaseModel` subclass (typed-args migrated),
@@ -112,7 +112,7 @@ def _is_valid_args_model(value: object) -> bool:
 
 @pytest.mark.unit
 class TestEveryToolHasArgsModel:
-    """Phase 4 #1611: every BaseTool subclass declares args_model."""
+    """Every concrete BaseTool subclass declares args_model."""
 
     def test_all_concrete_basetools_declare_args_model(self) -> None:
         """No concrete ``BaseTool`` subclass is missing ``args_model``."""
@@ -133,7 +133,7 @@ class TestEveryToolHasArgsModel:
         assert not missing, (
             "Every concrete BaseTool subclass must declare "
             "`args_model: ClassVar[type[BaseModel] | None]` set to a "
-            f"BaseModel subclass (Phase 4 of #1611). Missing on: "
+            f"BaseModel subclass. Missing on: "
             f"{sorted(missing)}.  Allowlist: {sorted(_ALLOWLIST)}.  "
             "Add the tool to the allowlist with a docstring "
             "justification, or wire its typed args model."

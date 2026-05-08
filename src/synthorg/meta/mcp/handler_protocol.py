@@ -26,10 +26,10 @@ class ToolHandler(Protocol):
     attribution; handlers that don't care about identity accept it and
     ignore it.
 
-    Phase 4 of #1611: when the tool registration carries an
-    ``args_model``, the invoker validates the raw arguments dict
-    against the Pydantic model **before** calling the handler.  Failed
-    validation surfaces as an ``invalid_argument`` envelope without
+    When the tool registration carries an ``args_model``, the invoker
+    validates the raw arguments dict against the Pydantic model
+    **before** calling the handler.  Failed validation surfaces as
+    an ``invalid_argument`` envelope without
     invoking the handler.  Successful validation: the handler still
     receives a ``dict[str, Any]`` (the validated model's
     :meth:`model_dump` output) so existing handler signatures stay

@@ -1,7 +1,7 @@
-"""Integration tests for the new observability metric emissions.
+"""Integration tests for the observability metric emissions.
 
-Covers the issue #1601 acceptance criterion that every wired metric
-is exercised end-to-end:
+Pins the acceptance criterion that every wired metric is exercised
+end-to-end:
 
 * ``record_client_disconnect`` (validation, log emission, counter
   increment, ValueError on bad transport/reason)

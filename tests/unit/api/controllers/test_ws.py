@@ -576,7 +576,7 @@ class TestWsTicketAuth:
         param_names = list(sig.parameters.keys())
         assert "channels_plugin" not in param_names, (
             "channels_plugin must not be a handler parameter -- "
-            "resolve from socket.app.plugins instead (see #549)"
+            "resolve from socket.app.plugins instead"
         )
 
     def test_ws_handler_opt_exclude_from_auth(self) -> None:

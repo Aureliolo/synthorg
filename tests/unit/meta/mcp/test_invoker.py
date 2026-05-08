@@ -265,7 +265,7 @@ class TestMCPToolInvokerArgsModelValidation:
         assert captured == [{"name": "alice", "count": 7}]
 
     async def test_handler_receives_normalized_args_with_defaults(self) -> None:
-        """The Phase 4 contract: defaults / coercions reach the handler.
+        """The args-model contract: defaults / coercions reach the handler.
 
         ``_SampleArgs.count`` defaults to ``1``.  When the caller omits
         it, the handler must still see ``count=1`` because the invoker

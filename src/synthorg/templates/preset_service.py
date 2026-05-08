@@ -434,8 +434,7 @@ async def fetch_custom_presets_map(
         try:
             decoded = json.loads(row.config_json)
         except json.JSONDecodeError as exc:
-            # SEC-1: bind the exception and use the structured-warning
-            # form (matches the pattern at lines 151-159 in this file)
+            # Bind the exception and use the structured-warning form
             # so the full traceback doesn't bypass redaction.
             logger.warning(
                 PRESET_VALIDATION_FAILED,

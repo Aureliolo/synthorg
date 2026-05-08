@@ -289,7 +289,7 @@ class TestNotificationDispatcherSink:
 
 @pytest.mark.unit
 class TestSlidingWindowRateLimiterRaceConditions:
-    """Regression tests for issue #1683.
+    """Race-condition regression tests.
 
     Concurrent ``take()`` / ``release()`` must not admit beyond
     ``max_events`` and must keep the per-key timestamp lists

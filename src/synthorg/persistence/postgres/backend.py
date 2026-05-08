@@ -247,7 +247,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._config = config
         self._lifecycle_lock = asyncio.Lock()
         self._pool: AsyncConnectionPool | None = None
-        # Repository attributes -- instantiated in Phase 3 ports.
+        # Repository attributes -- instantiated lazily on connect.
         self._artifacts: ArtifactRepository | None = None
         self._projects: ProjectRepository | None = None
         self._tasks: TaskRepository | None = None
@@ -478,10 +478,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
             if self._pool is None:
                 msg = f"Not connected -- call connect() before accessing {name}"
             else:
-                msg = (
-                    f"Postgres {name} repository is not yet implemented "
-                    f"(Phase 3 port pending)"
-                )
+                msg = f"Postgres {name} repository is not yet implemented"
             logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         return repo

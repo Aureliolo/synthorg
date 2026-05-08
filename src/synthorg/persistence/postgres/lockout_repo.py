@@ -219,7 +219,8 @@ class PostgresLockoutRepository:
                     )
         # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
         # fields (attempts, threshold, duration); persistence does not
-        # emit decision events (#1599 persistence-boundary rule).
+        # emit decision events (repositories never emit operational
+        # events; that lives in the service layer).
         return now_locked
 
     async def record_success(self, username: str) -> bool:

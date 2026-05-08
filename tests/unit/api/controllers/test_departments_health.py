@@ -515,7 +515,7 @@ class TestDepartmentHealthDegradation:
         self,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        """Endpoint returns degraded health when Phase 1 queries fail."""
+        """Endpoint returns degraded health when first-stage queries fail."""
         from unittest.mock import AsyncMock
 
         from synthorg.core.company import Department

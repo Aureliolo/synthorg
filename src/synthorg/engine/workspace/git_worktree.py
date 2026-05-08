@@ -336,12 +336,12 @@ class PlannerWorktreeStrategy:
             WorkspaceMergeError: When checkout of base branch fails
                 or when ``merge --abort`` fails after a conflict.
         """
-        # Phase 1: merge under lock
+        # Merge under lock.
         result, pre_merge_sha = await self._merge_under_lock(
             workspace=workspace,
         )
 
-        # Phase 2: semantic analysis outside lock (read-only SHA ops)
+        # Semantic analysis outside lock (read-only SHA ops).
         if not result.success or not result.merged_commit_sha:
             return result
 

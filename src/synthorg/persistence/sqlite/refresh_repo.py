@@ -245,8 +245,8 @@ class SQLiteRefreshTokenRepository:
         Caller (the periodic cleanup job in
         :mod:`synthorg.api.lifecycle_helpers`) logs
         ``API_AUTH_REFRESH_CLEANUP`` when count > 0; this repo only
-        returns the count per the persistence-boundary rule
-        (#1599 -- repositories do not emit operational events).
+        returns the count per the persistence-boundary rule:
+        repositories do not emit operational events.
         """
         now = format_iso_utc(datetime.now(UTC))
         async with self._write_lock:

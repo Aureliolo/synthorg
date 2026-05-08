@@ -51,7 +51,7 @@ class TestTelemetryCollector:
         self,
         tmp_path: Path,
     ) -> None:
-        """Issue #1666 A-3: disabled state -> one INFO, zero report_failed.
+        """Disabled state -> one INFO, zero report_failed.
 
         Nothing should ever fire ``telemetry.report.failed`` on the
         disabled path -- the heartbeat task isn't scheduled, so no
@@ -84,7 +84,7 @@ class TestTelemetryCollector:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Issue #1666 A-3: enabled + sentinel token -> ONE ERROR, no heartbeat.
+        """Enabled + sentinel token -> ONE ERROR, no heartbeat.
 
         With telemetry enabled but the build artifact shipping the
         sentinel token, the collector must log a single

@@ -1,4 +1,4 @@
-"""Cross-instance wake-up for the human escalation queue (#1418 / #1444).
+"""Cross-instance wake-up for the human escalation queue.
 
 When the escalation queue runs on a shared database (currently Postgres)
 and the API is deployed across multiple workers/pods, a resolver

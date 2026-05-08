@@ -199,10 +199,10 @@ class _BaseSemanticDetector:
     ``BaseCompletionProvider`` internally -- the detector does NOT
     acquire/release a rate limiter around the call to avoid
     double-throttling or deadlocking when the same ``RateLimiter``
-    instance is shared between the pipeline and the provider (per
-    issue #228 "LLM detectors share a rate limiter with the
-    provider resilience layer").  Subclasses provide the category,
-    scopes, and prompt text.
+    instance is shared between the pipeline and the provider (LLM
+    detectors share a rate limiter with the provider resilience
+    layer by design).  Subclasses provide the category, scopes,
+    and prompt text.
     """
 
     @property

@@ -260,7 +260,7 @@ class TestMatchAllAgents:
         assert results[0].score == 0.0
 
     def test_fallback_emits_debug_event_not_warning(self) -> None:
-        """Issue #1666 B-5: tier-fallback path logs at DEBUG, not WARNING.
+        """Tier-fallback path logs at DEBUG, not WARNING.
 
         Per the design contract, falling back to ``all_models[0]`` when
         the requested tier has no candidate is the documented happy-path
@@ -302,7 +302,7 @@ class TestMatchAllAgents:
         assert warning_events == []
 
     def test_no_models_available_still_logs_warning(self) -> None:
-        """Issue #1666 B-5: the truly-empty case keeps WARNING severity.
+        """The truly-empty case keeps WARNING severity.
 
         When ``all_models`` is empty (no providers OR all providers have
         zero models), the matcher cannot assign anything -- this is the

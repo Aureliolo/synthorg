@@ -53,7 +53,7 @@ class TestBrainFailureRecovery:
         exec_id = "exec-crash-sim-001"
         store = InMemoryEventReader()
 
-        # Phase 1: Simulate normal execution emitting events.
+        # Simulate normal execution emitting events.
         store.record(
             SessionEvent(
                 event_name=EXECUTION_ENGINE_START,
@@ -86,9 +86,9 @@ class TestBrainFailureRecovery:
                 data={"target_status": TaskStatus.IN_PROGRESS.value},
             )
         )
-        # Phase 2: Brain crashes here (no EXECUTION_ENGINE_COMPLETE).
+        # Brain crashes here (no EXECUTION_ENGINE_COMPLETE).
 
-        # Phase 3: Recovery via Session.replay().
+        # Recovery via Session.replay().
         result = await Session.replay(
             execution_id=exec_id,
             event_reader=store,

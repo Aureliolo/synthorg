@@ -1,4 +1,4 @@
-"""Integration tests for sink-level filtering (#1666 A-1 / A-2).
+"""Integration tests for sink-level filtering.
 
 The unit tests in ``test_sink_routing.py`` cover the filter classes
 in isolation. These tests boot the full handler chain with the new
@@ -88,7 +88,7 @@ def _count_event(lines: list[str], event: str) -> int:
 
 @pytest.mark.integration
 class TestSynthorgLogExcludesRequestLifecycle:
-    """Issue #1666 A-1: ``synthorg.log`` does not collect request events.
+    """``synthorg.log`` does not collect request events.
 
     ``api.request.started`` and ``api.request.completed`` already land
     in ``access.log`` via the logger-name include filter. Letting them
@@ -218,11 +218,11 @@ class TestSynthorgLogExcludesRequestLifecycle:
 
 @pytest.mark.integration
 class TestDebugLogExactLevel:
-    """Issue #1666 A-2: ``debug.log`` only collects DEBUG-level records.
+    """``debug.log`` only collects DEBUG-level records.
 
-    Pre-#1666 the sink had ``level=LogLevel.DEBUG`` (meaning "DEBUG and
-    above"), so an INFO-quiet system left ``debug.log`` byte-identical
-    to ``synthorg.log`` with 33,734 lines of INFO. The
+    A sink with ``level=LogLevel.DEBUG`` (meaning "DEBUG and above")
+    leaves ``debug.log`` byte-identical to ``synthorg.log`` -- an
+    INFO-quiet system writes tens of thousands of lines of INFO. The
     ``SINK_EXACT_LEVELS`` table now attaches an ``_ExactLevelFilter``
     that drops every level except DEBUG.
     """

@@ -1,12 +1,12 @@
 """Fresh-install Postgres end-to-end integration test.
 
-Closes the coverage gap surfaced by issue #1443: until the dual-backend
-auth stores shipped, ``synthorg start --persistence-backend postgres`` on
-a freshly-provisioned container crashed with an ``AttributeError`` at
-``LockoutStore(pool)``.  The existing Postgres integration tests exercise
-the repository layer; this one drives the full lifecycle wire-up so any
-regression in `_build_*_store` dispatch, protocol-compat, or migration
-ordering trips a loud test failure.
+The existing Postgres integration tests exercise the repository
+layer; this one drives the full lifecycle wire-up so any regression
+in ``_build_*_store`` dispatch, protocol-compat, or migration
+ordering on ``synthorg start --persistence-backend postgres`` against
+a freshly-provisioned container trips a loud test failure rather
+than crashing operators with an ``AttributeError`` at
+``LockoutStore(pool)``.
 
 The test uses the programmatic lifecycle entry point rather than spawning
 a subprocess -- all the failure modes (import errors, handle-type
@@ -68,10 +68,10 @@ class TestFreshInstallPostgresLifecycle:
         self,
         postgres_backend: PostgresPersistenceBackend,
     ) -> None:
-        """Phase 5 migration must stamp currency on cost_records, task_metrics,
+        """Migration must stamp ``currency`` on cost_records, task_metrics,
         and agent_states.  The Postgres post-migrate path applies the
-        currency column + approvals + custom_rules tables in one shot; this
-        verifies every new column exists and defaults to 'USD'.
+        currency column + approvals + custom_rules tables in one shot;
+        this verifies every column exists and defaults to ``USD``.
         """
         pool = postgres_backend.get_db()
         async with pool.connection() as conn, conn.cursor() as cur:

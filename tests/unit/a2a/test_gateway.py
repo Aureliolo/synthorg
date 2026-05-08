@@ -229,7 +229,7 @@ class TestValidateTaskOwnership:
 
     @pytest.mark.unit
     def test_ownership_check_is_noop(self) -> None:
-        """Phase 1: ownership check accepts any authenticated peer."""
+        """Ownership check accepts any authenticated peer."""
         from synthorg.a2a.gateway import _validate_task_ownership
 
         # Should not raise

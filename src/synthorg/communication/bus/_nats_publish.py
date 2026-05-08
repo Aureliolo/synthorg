@@ -236,7 +236,7 @@ async def publish_batch(
             )
             raise MessageBusNotRunningError(msg)
 
-    # Phase 1: resolve channels and validate payloads (fail-fast).
+    # Resolve channels and validate payloads (fail-fast).
     # Cache resolved subjects so repeated channels skip the KV lookup.
     subjects: list[str] = []
     payloads: list[bytes] = []
@@ -265,13 +265,13 @@ async def publish_batch(
         subjects.append(subject_cache[ch_name])
         payloads.append(payload)
 
-    # Phase 2: fire pipelined async publishes
+    # Fire pipelined async publishes.
     futures = [
         await js.publish_async(subject, payload, msg_ttl=ttl_seconds)
         for subject, payload in zip(subjects, payloads, strict=True)
     ]
 
-    # Phase 3: wait for all acks and surface errors
+    # Wait for all acks and surface errors.
     await asyncio.wait_for(
         js.publish_async_completed(),
         timeout=state.nats_config.publish_ack_wait_seconds,

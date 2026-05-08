@@ -1,13 +1,12 @@
 """SQLite repository for durable project cost aggregates.
 
-The schema does not yet carry a ``currency`` column -- that work is
-queued under #1597 and requires an Atlas migration.  Until that
+The schema does not yet carry a ``currency`` column.  Until that
 column exists, this repo enforces the same-currency invariant with a
 process-local ``_pinned_currencies`` map keyed by ``project_id``,
 mirroring the in-memory pin pattern in :class:`CostTracker`.  A
 single WARNING is emitted on first construction so operators know
-the durable pin is missing; once #1597 lands the column the pin
-becomes redundant and is removed.
+the durable pin is missing.  When the durable column is added, the
+process-local pin becomes redundant and can be removed.
 """
 
 import asyncio
@@ -76,7 +75,7 @@ def _emit_currency_pin_construction_warning_once() -> None:
         note=(
             "project_cost_aggregates schema lacks a 'currency' column;"
             " enforcing same-currency invariant via a process-local"
-            " in-memory pin until #1597 adds the durable column."
+            " in-memory pin until the durable column is added."
         ),
     )
 
@@ -121,8 +120,8 @@ class SQLiteProjectCostAggregateRepository:
     cost totals.  Uses ``INSERT ... ON CONFLICT DO UPDATE`` for
     atomic upsert semantics.
 
-    The schema currently has no ``currency`` column (#1597 will add
-    it).  This repo holds an in-memory ``_pinned_currencies`` map and
+    The schema currently has no ``currency`` column.  This repo
+    holds an in-memory ``_pinned_currencies`` map and
     rejects mismatched-currency increments with
     :class:`MixedCurrencyAggregationError`.  The pin is process-local
     and rebuilt on restart -- gaps are logged at WARNING during
@@ -207,9 +206,9 @@ class SQLiteProjectCostAggregateRepository:
 
         # Read the in-memory pinned currency, falling back to
         # DEFAULT_CURRENCY when the process has no record (e.g. after
-        # restart; #1597 will move this to a durable column).
-        # ``dict.get`` is atomic under the GIL and never yields, so no
-        # lock is required on the read path.
+        # restart; until a durable currency column exists, the pin is
+        # lost on restart).  ``dict.get`` is atomic under the GIL and
+        # never yields, so no lock is required on the read path.
         pinned = self._pinned_currencies.get(project_id)
         if pinned is None:
             logger.debug(

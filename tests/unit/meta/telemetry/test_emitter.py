@@ -297,11 +297,12 @@ class TestEmitterHttpBehavior:
 
 
 class TestEmitterCloseEnqueueRace:
-    """Regression tests for the close/enqueue race fix (#1683 round 3).
+    """Regression tests for the close / enqueue race.
 
-    Before the fix, ``_enqueue`` only checked ``_closed`` outside the
-    lock. A producer that passed the outer guard would still ``await``
-    ``_ensure_flush_task`` and then take the lock; if ``aclose()`` had
+    Without this guarding, ``_enqueue`` only checks ``_closed``
+    outside the lock. A producer that passes the outer guard still
+    ``await`` s ``_ensure_flush_task`` and then takes the lock; if
+    ``aclose()`` has
     set ``_closed`` and drained the buffer in the meantime, the event
     would be appended to a buffer that nothing was watching anymore --
     stranded forever.
@@ -327,12 +328,12 @@ class TestEmitterCloseEnqueueRace:
         try:
             # Replace ``_ensure_flush_task`` with a no-op coroutine that
             # flips ``_closed`` AFTER the outer guard but BEFORE the
-            # buffer-mutation lock is acquired. The previous shape
-            # delegated to ``original_ensure`` which would actually
-            # spawn the real ``_periodic_flush`` background task and
-            # leak it past test teardown -- the test only needs the
-            # closed-flag flip; spawning the periodic task is irrelevant
-            # to the assertion. (round 3 inline #10)
+            # buffer-mutation lock is acquired. Delegating to
+            # ``original_ensure`` would actually spawn the real
+            # ``_periodic_flush`` background task and leak it past
+            # test teardown -- the test only needs the closed-flag
+            # flip; spawning the periodic task is irrelevant to the
+            # assertion.
             async def race(*args: object, **kwargs: object) -> None:
                 em._closed = True
 

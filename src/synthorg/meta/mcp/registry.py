@@ -34,13 +34,13 @@ class MCPToolDef(BaseModel):
             ``"tasks:read"``).  Used by ``MCPToolScoper`` for filtering.
         handler_key: Key into the handler registry for dispatch.
         args_model: Optional Pydantic model class for typed-args
-            validation at the invoker boundary (#1611 Phase 4).  When
-            set, :class:`MCPToolInvoker` validates the raw ``arguments``
+            validation at the invoker boundary.  When set,
+            :class:`MCPToolInvoker` validates the raw ``arguments``
             dict against the model before calling the handler; the
             ``ValidationError`` surfaces as an
             ``invalid_argument``-coded error envelope without ever
             reaching the handler.  ``None`` (the default) keeps the
-            legacy ``common_args`` validators inside the handler body.
+            ``common_args`` validators inside the handler body.
             Each domain's ``_*_args.py`` module exports the matching
             model alongside its tool registration.
     """

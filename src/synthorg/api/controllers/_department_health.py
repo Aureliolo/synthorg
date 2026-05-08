@@ -339,10 +339,11 @@ async def assemble_department_health(
 ) -> DepartmentHealth:
     """Aggregate all data sources into a DepartmentHealth response.
 
-    Phase 1 queries active agent count, cost records, and agent ID
-    resolution in parallel via TaskGroup.  If Phase 1 fails, returns
-    a degraded health response with zeroed metrics.  Phase 2 fetches
-    performance snapshots (depends on resolved agent IDs from Phase 1).
+    The first stage queries active agent count, cost records, and
+    agent ID resolution in parallel via TaskGroup.  If the first stage
+    fails, returns a degraded health response with zeroed metrics.
+    The second stage fetches performance snapshots (depends on the
+    agent IDs resolved by the first stage).
     """
     agent_count = len(dept_agents)
     agent_names = tuple(str(a.name) for a in dept_agents)

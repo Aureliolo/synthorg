@@ -68,11 +68,12 @@ class TestInstallEntryRequest:
 
 @pytest.mark.unit
 class TestInstallEntryValidateFirst:
-    """Issue #1666 B-1: pre-validate ``connection_name`` before INSERT.
+    """Pre-validate ``connection_name`` before INSERT.
 
-    Pre-#1666 an unknown ``connection_name`` reached the persistence
-    layer and surfaced as a 500 from a ``psycopg.errors.ForeignKeyViolation``.
-    The fix is two-pronged: (a) the controller pre-validates against
+    Without pre-validation an unknown ``connection_name`` reaches the
+    persistence layer and surfaces as a 500 from a
+    ``psycopg.errors.ForeignKeyViolation``. The fix is two-pronged:
+    (a) the controller pre-validates against
     ``connection_catalog.get(...)`` and raises ``ValidationError`` (-> 400)
     before calling the install service, and (b) ``EXCEPTION_HANDLERS``
     registers an ``IntegrityError -> 400`` backstop to catch the racy

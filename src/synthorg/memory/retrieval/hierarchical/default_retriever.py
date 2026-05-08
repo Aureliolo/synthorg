@@ -90,7 +90,6 @@ class DefaultHierarchicalRetriever:
         query: RetrievalQuery,
     ) -> FinalRetrievalResult:
         """Execute the full hierarchical retrieval pipeline."""
-        # Phase 1: Route
         routing = await self._supervisor.route(query)
         selected = list(
             dedupe_preserving_order(
@@ -102,10 +101,8 @@ class DefaultHierarchicalRetriever:
         if not selected:
             return FinalRetrievalResult()
 
-        # Phase 2: Execute workers in parallel
         worker_results = await self._execute_workers(selected, query)
 
-        # Phase 3: Merge and deduplicate
         all_candidates: list[RetrievalCandidate] = []
         for wr in worker_results:
             all_candidates.extend(wr.candidates)
@@ -126,7 +123,6 @@ class DefaultHierarchicalRetriever:
             workers_invoked=selected,
         )
 
-        # Phase 4: Reflective retry
         retries = 0
         current_query = query
         last_attempt: tuple[str, tuple[str, ...]] = (

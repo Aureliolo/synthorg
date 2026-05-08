@@ -1,7 +1,7 @@
 """Regression tests: scheduler tracks fire-and-forget escalation notifications.
 
-Issue #1404 -- the approval-escalation notification must be tracked
-via :class:`BackgroundTaskRegistry` so failures surface at ERROR with
+The approval-escalation notification must be tracked via
+:class:`BackgroundTaskRegistry` so failures surface at ERROR with
 ``NOTIFICATION_SEND_FAILED``.
 """
 

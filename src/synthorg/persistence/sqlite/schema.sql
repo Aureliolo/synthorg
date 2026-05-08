@@ -1090,7 +1090,7 @@ CREATE INDEX idx_approvals_task_id ON approvals(task_id);
 CREATE INDEX idx_approvals_status_created_at
     ON approvals(status, created_at DESC);
 
--- Conflict escalations (#1418: human escalation approval queue).
+-- Conflict escalations: human escalation approval queue.
 -- Persists one row per conflict awaiting a human decision so the
 -- queue survives process restarts and auditors can replay decisions.
 CREATE TABLE conflict_escalations (
@@ -1166,7 +1166,7 @@ CREATE INDEX idx_conflict_escalations_status_expires_at ON
 CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict ON
     conflict_escalations(conflict_id) WHERE status = 'pending';
 
--- Org memory: MVCC operation log + materialized snapshot (#1457 A4).
+-- Org memory: MVCC operation log + materialized snapshot.
 CREATE TABLE org_facts_operation_log (
     operation_id TEXT PRIMARY KEY,
     fact_id TEXT NOT NULL,
@@ -1209,7 +1209,7 @@ CREATE INDEX idx_snapshot_category ON org_facts_snapshot (category);
 CREATE INDEX idx_snapshot_active ON org_facts_snapshot (retracted_at)
     WHERE retracted_at IS NULL;
 
--- Ontology drift reports (#1457 A5).
+-- Ontology drift reports.
 CREATE TABLE drift_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_name TEXT NOT NULL,

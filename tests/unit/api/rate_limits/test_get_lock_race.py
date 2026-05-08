@@ -1,4 +1,4 @@
-"""Concurrency test for InMemorySlidingWindowStore._get_lock (#1599 §4.4).
+"""Concurrency test for InMemorySlidingWindowStore._get_lock.
 
 ``_get_lock`` now always acquires the meta-lock so two simultaneous
 callers cannot create two distinct ``asyncio.Lock`` instances for the

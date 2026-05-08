@@ -225,8 +225,7 @@ class AuthorityBreachDetector:
     """Detects attempts to operate outside an agent's authority.
 
     Cross-references the execution's tool-invocation record and
-    delegation attempts against the agent's configured permissions
-    (see issue #228 §Authority breach detection):
+    delegation attempts against the agent's configured permissions:
 
     - **Denied tool invocation** (HIGH): any tool name recorded in
       ``TurnRecord.tool_calls_made`` or an assistant ``tool_calls``

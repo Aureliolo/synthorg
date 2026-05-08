@@ -1,11 +1,11 @@
 """Boundary tests for the MCP invoker dispatch surface.
 
-Phase 2 of RFC #1711. The invoker validates the inbound ``arguments``
-dict through :func:`synthorg.api.boundary.parse_typed` against the
-tool's declared ``args_model``, so a malformed call emits
+The invoker validates the inbound ``arguments`` dict through
+:func:`synthorg.api.boundary.parse_typed` against the tool's
+declared ``args_model``, so a malformed call emits
 ``api.boundary.validation_failed`` before reaching the handler. The
-existing ``ArgumentValidationError`` envelope translation is unchanged
--- the boundary helper logs and re-raises; the invoker formats the
+``ArgumentValidationError`` envelope translation is preserved -- the
+boundary helper logs and re-raises; the invoker formats the
 re-raised :class:`ValidationError` into the wire response.
 """
 

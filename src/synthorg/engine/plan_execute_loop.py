@@ -188,7 +188,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         all_plans: list[ExecutionPlan] = []
         replans_used = 0
 
-        # Phase 1: Planning
+        # Planning.
         plan_result = await self._run_planning_phase(
             ctx,
             provider,
@@ -203,7 +203,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         ctx, plan = plan_result
         all_plans.append(plan)
 
-        # Phase 2: Execute steps
+        # Execute steps.
         return await self._run_steps(
             ctx,
             provider,
