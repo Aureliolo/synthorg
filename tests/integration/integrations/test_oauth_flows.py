@@ -155,6 +155,7 @@ class TestCallbackHandler:
         state_repo = MagicMock()
         state_repo.get = AsyncMock(return_value=state)
         state_repo.delete = AsyncMock()
+        state_repo.mark_consumed = AsyncMock(return_value=True)
 
         stored_tokens: dict[str, str] = {}
 
@@ -254,6 +255,118 @@ class TestCallbackHandler:
                 state_repo=state_repo,
                 catalog=catalog,
             )
+
+
+@pytest.mark.integration
+class TestCallbackReplay:
+    """Redelivered callbacks return the original connection name unchanged."""
+
+    async def test_replay_returns_connection_without_re_exchange(self) -> None:
+        now = datetime.now(UTC)
+        # Already-consumed state row: a successful prior callback
+        # stamped these two fields atomically via ``mark_consumed``.
+        state = OAuthState(
+            state_token=NotBlankStr("state-replay"),
+            connection_name=NotBlankStr("conn-1"),
+            scopes_requested="read",
+            redirect_uri="https://app.example.com/cb",
+            created_at=now - timedelta(minutes=5),
+            expires_at=now + timedelta(minutes=55),
+            consumed_at=now - timedelta(minutes=4),
+            connection_name_returned=NotBlankStr("conn-1"),
+        )
+        state_repo = MagicMock()
+        state_repo.get = AsyncMock(return_value=state)
+        state_repo.delete = AsyncMock()
+        state_repo.mark_consumed = AsyncMock()
+
+        catalog = MagicMock()
+        catalog.get_or_raise = AsyncMock()
+        catalog.get_credentials = AsyncMock()
+        catalog.store_oauth_tokens = AsyncMock()
+        catalog.update = AsyncMock()
+
+        fake_flow = MagicMock()
+        fake_flow.exchange_code = AsyncMock()
+
+        result = await handle_oauth_callback(
+            state_param="state-replay",
+            code="auth-code",
+            state_repo=state_repo,
+            catalog=catalog,
+            flow=fake_flow,
+        )
+
+        assert result == "conn-1"
+        # No re-exchange, no token storage, no metadata update, no
+        # mark_consumed on the replay path.
+        fake_flow.exchange_code.assert_not_awaited()
+        catalog.store_oauth_tokens.assert_not_awaited()
+        catalog.update.assert_not_awaited()
+        state_repo.mark_consumed.assert_not_awaited()
+        state_repo.delete.assert_not_awaited()
+
+    async def test_fresh_callback_marks_consumed_and_does_not_delete(
+        self,
+    ) -> None:
+        now = datetime.now(UTC)
+        state = OAuthState(
+            state_token=NotBlankStr("state-fresh"),
+            connection_name=NotBlankStr("conn-2"),
+            pkce_verifier=NotBlankStr("verifier"),
+            scopes_requested="read",
+            redirect_uri="https://app.example.com/cb",
+            created_at=now,
+            expires_at=now + timedelta(hours=1),
+        )
+        state_repo = MagicMock()
+        state_repo.get = AsyncMock(return_value=state)
+        state_repo.delete = AsyncMock()
+        state_repo.mark_consumed = AsyncMock(return_value=True)
+
+        catalog = MagicMock()
+        catalog.get_or_raise = AsyncMock(
+            return_value=Connection(
+                name=NotBlankStr("conn-2"),
+                connection_type=ConnectionType.OAUTH_APP,
+                auth_method=AuthMethod.OAUTH2,
+            ),
+        )
+        catalog.get_credentials = AsyncMock(
+            return_value={
+                "token_url": "https://example.com/token",
+                "client_id": "cid",
+                "client_secret": "csec",
+            },
+        )
+        catalog.store_oauth_tokens = AsyncMock()
+        catalog.update = AsyncMock()
+
+        fake_flow = MagicMock()
+        fake_flow.exchange_code = AsyncMock(
+            return_value=MagicMock(
+                access_token="acc",
+                refresh_token="ref",
+                expires_at=now + timedelta(seconds=3600),
+            ),
+        )
+
+        result = await handle_oauth_callback(
+            state_param="state-fresh",
+            code="auth-code",
+            state_repo=state_repo,
+            catalog=catalog,
+            flow=fake_flow,
+        )
+
+        assert result == "conn-2"
+        # Success path stamps the consumed marker and never falls
+        # back to ``delete`` (delete is now reserved for the expiry
+        # branch only).
+        state_repo.mark_consumed.assert_awaited_once()
+        kwargs = state_repo.mark_consumed.await_args.kwargs
+        assert kwargs.get("connection_name") == "conn-2"
+        state_repo.delete.assert_not_awaited()
 
 
 @pytest.mark.integration

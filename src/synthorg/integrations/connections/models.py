@@ -151,6 +151,14 @@ class OAuthState(BaseModel):
         redirect_uri: Redirect URI used for this flow.
         created_at: When the state was created.
         expires_at: When the state expires.
+        consumed_at: When the callback exchanged this state for tokens.
+            ``None`` while the flow is in flight; set when the
+            callback handler successfully exchanged the code so that
+            redelivered callbacks return the original connection
+            name without re-exchanging.
+        connection_name_returned: Connection name the original
+            successful callback returned. Pairs with ``consumed_at``;
+            both must be set together.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -164,12 +172,31 @@ class OAuthState(BaseModel):
         default_factory=lambda: datetime.now(UTC),
     )
     expires_at: AwareDatetime
+    consumed_at: AwareDatetime | None = None
+    connection_name_returned: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _validate_expiry(self) -> Self:
         """Ensure ``expires_at`` is strictly after ``created_at``."""
         if self.expires_at <= self.created_at:
             msg = "OAuthState.expires_at must be after created_at"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_consumed_pair(self) -> Self:
+        """``consumed_at`` and ``connection_name_returned`` must move together.
+
+        A consumed state without a returned connection name (or vice
+        versa) cannot satisfy the idempotent-replay contract; the
+        callback handler stamps both atomically via
+        :meth:`OAuthStateRepository.mark_consumed`.
+        """
+        if (self.consumed_at is None) != (self.connection_name_returned is None):
+            msg = (
+                "OAuthState: consumed_at and connection_name_returned "
+                "must be set together"
+            )
             raise ValueError(msg)
         return self
 

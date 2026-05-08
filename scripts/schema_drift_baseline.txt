@@ -87,6 +87,7 @@ column:messages:metadata:TEXT:JSONB:SQLite has no JSONB type; column stores TEXT
 column:messages:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:oauth_states:created_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:oauth_states:expires_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
+column:oauth_states:consumed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:org_facts_operation_log:author_is_human:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)
 column:org_facts_operation_log:timestamp:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time
 column:org_facts_snapshot:author_is_human:INTEGER:BOOLEAN:SQLite has no BOOLEAN; column stores INTEGER 0/1 (no CHECK constraint enforces the domain at the DB layer; service layer normalises)

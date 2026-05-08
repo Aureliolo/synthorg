@@ -932,7 +932,9 @@ CREATE TABLE oauth_states (
     scopes_requested TEXT NOT NULL DEFAULT '',
     redirect_uri TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    connection_name_returned TEXT
 );
 
 CREATE INDEX idx_oauth_states_expires ON oauth_states(expires_at);
