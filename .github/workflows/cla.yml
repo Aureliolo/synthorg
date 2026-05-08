@@ -44,6 +44,15 @@ jobs:
   # ── Read-only check + prompt-comment path ──
   cla-check:
     name: CLA Signature Check
+    # The opener-side allowlist below is intentionally a strict subset
+    # of Step 3's commit-author allowlist (which also includes
+    # `github-actions[bot]`). The `if:` gate skips the job entirely
+    # when the PR is opened by a known automation that never carries
+    # human commits; Step 3 instead filters bot-authored commits out
+    # of the unsigned diff for mixed-authorship PRs (e.g. a human PR
+    # that picked up an auto-fix commit attributed to
+    # `github-actions[bot]`). For those mixed cases the job MUST run,
+    # so `github-actions[bot]` stays out of this gate by design.
     if: |
       github.event_name == 'pull_request_target'
         && github.event.pull_request.user.login != 'dependabot[bot]'
@@ -82,7 +91,7 @@ jobs:
                 return 0
               fi
               rc=$?
-              if grep -qE 'HTTP 4(00|01|03|04|22)' /tmp/gh-api-err; then
+              if grep -qE 'HTTP 4(00|01|03|04|09|22)' /tmp/gh-api-err; then
                 echo "::error::gh api definitive 4xx (no retry): $(cat /tmp/gh-api-err)" >&2
                 return "$rc"
               fi
