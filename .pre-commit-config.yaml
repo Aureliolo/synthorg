@@ -166,6 +166,13 @@ repos:
         language: system
         files: ^src/synthorg/.*\.py$
 
+      - id: otlp-span-redaction
+        name: block span.record_exception()/auto-handler kwargs in src/synthorg/
+        entry: uv
+        args: [run, python, scripts/check_otlp_span_redaction.py]
+        language: system
+        files: ^src/synthorg/.*\.py$
+
       - id: no-loop-bound-init
         name: block new asyncio primitives in __init__ of lifecycle-managed classes
         entry: uv

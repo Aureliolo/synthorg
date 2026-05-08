@@ -53,6 +53,7 @@ from synthorg.observability.prometheus_labels import (
     VALID_TOOL_OUTCOMES,
     VALID_VERDICTS,
     VALID_WORKFLOW_EXECUTION_STATUSES,
+    normalize_mcp_tool_label,
     require_finite,
     require_label,
     require_non_negative,
@@ -664,12 +665,13 @@ class RecordingMixin:
         kwargs so an offline correlation is possible if Prometheus is
         unavailable.
 
-        ``tool`` is NOT validated against the synchronous tool-name
-        snapshot because MCP handler tool names live in the MCP
-        registry (not the local ``tool_registry`` that
-        :func:`validate_tool_name` consults). Cardinality is bounded by
-        the MCP handler registry, which is closed at startup, so a
-        missing snapshot allowlist is safe here.
+        ``tool`` is normalised through
+        :func:`~synthorg.observability.prometheus_labels.normalize_mcp_tool_label`
+        against the MCP registry snapshot seeded at invoker
+        construction. Unregistered tool names (e.g. fabricated by a
+        misbehaving MCP client to inflate cardinality) are folded to
+        :data:`~synthorg.observability.prometheus_labels.MCP_UNKNOWN_TOOL_LABEL`
+        before reaching the Prometheus children.
 
         Args:
             tool: MCP handler tool name (e.g. ``synthorg_messages_get``).
@@ -685,9 +687,10 @@ class RecordingMixin:
             "record_mcp_handler_outcome: duration_sec",
             duration_sec,
         )
-        self._mcp_handler_outcomes.labels(tool=tool, outcome=outcome).inc()
-        self._mcp_handler_duration.labels(tool=tool, outcome=outcome).observe(
-            duration_sec,
+        bounded_tool = normalize_mcp_tool_label(tool)
+        self._mcp_handler_outcomes.labels(tool=bounded_tool, outcome=outcome).inc()
+        self._mcp_handler_duration.labels(tool=bounded_tool, outcome=outcome).observe(
+            duration_sec
         )
         logger.debug(
             MCP_HANDLER_OUTCOME,
@@ -756,6 +759,11 @@ class RecordingMixin:
             "record_audit_chain_verification: entries_checked",
             entries_checked,
         )
+        if first_break_position is not None:
+            require_non_negative(
+                "record_audit_chain_verification: first_break_position",
+                first_break_position,
+            )
         self._audit_chain_verifications.labels(outcome=outcome).inc()
         logger.info(
             SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME,

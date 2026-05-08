@@ -1138,7 +1138,11 @@ class SettingsService:
             namespace=namespace,
             count=deleted,
         )
-        record_settings_mutation(namespace=namespace)
+        # ``set_many`` increments the counter once per mutated key, so
+        # ``delete_namespace`` matches that semantics: emit one
+        # ``settings_mutations`` increment per actually-deleted key.
+        for _ in range(deleted):
+            record_settings_mutation(namespace=namespace)
         _emit_security_setting_changed(
             namespace,
             action_type="delete_namespace",

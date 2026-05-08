@@ -230,7 +230,13 @@ async def test_llm_span_exception_sets_error_status(
     assert len(spans) == 1
     span = spans[0]
     assert span.status.status_code == StatusCode.ERROR
-    assert any(e.name == "exception" for e in span.events)
+    # The redaction policy forbids ``span.record_exception`` (it
+    # would serialise frame-locals); instead the helpers write
+    # scrubbed OTel-semconv attributes from the safe description.
+    assert not any(e.name == "exception" for e in span.events)
+    attrs = dict(span.attributes or {})
+    assert attrs["exception.type"] == "RuntimeError"
+    assert attrs["exception.message"] == "RuntimeError: provider exploded"
 
 
 # -- tool_span --------------------------------------------------------------
@@ -282,4 +288,9 @@ async def test_tool_span_exception_sets_error_status(
             raise RuntimeError(error_msg)
     spans = in_memory_tracer.get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].status.status_code == StatusCode.ERROR
+    span = spans[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert not any(e.name == "exception" for e in span.events)
+    attrs = dict(span.attributes or {})
+    assert attrs["exception.type"] == "RuntimeError"
+    assert attrs["exception.message"] == "RuntimeError: tool failed"

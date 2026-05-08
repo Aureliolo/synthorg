@@ -76,7 +76,7 @@ Never call `lxml.html.fromstring` directly on attacker-controlled input. Use `HT
 1. Pre-scans for DOCTYPE with SYSTEM/PUBLIC identifiers and any `<!ENTITY>` declaration (rejecting via `XXEDetectedError`, `is_retryable=False`).
 2. Parses with a module-scope `lxml.html.HTMLParser(no_network=True, remove_blank_text=True, recover=True, huge_tree=False)`.
 
-`sanitize()` catches `XXEDetectedError` explicitly so the pre-scan's `TOOL_HTML_PARSE_XXE_DETECTED` event is the single log entry per rejection (no duplicate `TOOL_HTML_PARSE_ERROR`). Generic parse failures log `error=safe_error_description(exc)` without `exc_info=True` so attacker-controlled payload bytes are not serialized via traceback frame locals.
+`sanitize()` catches `XXEDetectedError` explicitly so the pre-scan's `TOOL_HTML_PARSE_XXE_DETECTED` event is the single log entry per rejection (no duplicate `TOOL_HTML_PARSE_ERROR`). Generic parse failures log `error=safe_error_description(exc)` without `exc_info=True` so attacker-controlled payload bytes are not serialised via traceback frame locals.
 
 ## Secret-log redaction
 
@@ -92,7 +92,7 @@ logger.debug(EVENT,     error=str(exc))
 
 The rule is unconditional. The risk is most acute on credential-bearing paths (OAuth flows, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), but the pattern is forbidden globally because:
 
-- `logger.exception` attaches a traceback whose serialized frame-locals can leak `client_secret` / `refresh_token` / Fernet ciphertext sitting on the stack at any call site.
+- `logger.exception` attaches a traceback whose serialised frame-locals can leak `client_secret` / `refresh_token` / Fernet ciphertext sitting on the stack at any call site.
 - `str(exc)` on `httpx.HTTPStatusError` / `psycopg.Error` / similar embeds URL or posted credential bodies into the message field. The embedded-URL/body risk is independent of severity: a `debug` / `info` / `warning` / `error` call still ends up shipping the credential to whatever sink the operator wires the logger to. The gate therefore covers all five severity methods.
 
 A site that "doesn't handle credentials today" can be one refactor away from carrying a request body or connection string into its frame.

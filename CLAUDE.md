@@ -107,6 +107,7 @@ Existing gate inventory (all under `scripts/`):
 - `check_no_review_origin_in_code.py`
 - `check_openapi_liveness.py`
 - `check_orphan_fixtures.py`
+- `check_otlp_span_redaction.py`
 - `check_persistence_boundary.py`
 - `check_provider_complete_chokepoint.py`
 - `check_dto_forbid_extra.py`

@@ -347,16 +347,17 @@ class CostTracker(CostTrackerSummaryMixin):
                 ``start >= end``.
         """
         query_start = time.perf_counter()
-        _validate_time_range(start, end)
-        logger.debug(BUDGET_TOTAL_COST_QUERIED, start=start, end=end)
-        snapshot = await self._snapshot()
-        filtered = _filter_records(snapshot, start=start, end=end)
-        result = _aggregate(filtered).cost
-        record_budget_query(
-            query_type="total_cost",
-            duration_sec=time.perf_counter() - query_start,
-        )
-        return result
+        try:
+            _validate_time_range(start, end)
+            logger.debug(BUDGET_TOTAL_COST_QUERIED, start=start, end=end)
+            snapshot = await self._snapshot()
+            filtered = _filter_records(snapshot, start=start, end=end)
+            return _aggregate(filtered).cost
+        finally:
+            record_budget_query(
+                query_type="total_cost",
+                duration_sec=time.perf_counter() - query_start,
+            )
 
     async def get_agent_cost(
         self,
@@ -380,26 +381,27 @@ class CostTracker(CostTrackerSummaryMixin):
                 ``start >= end``.
         """
         query_start = time.perf_counter()
-        _validate_time_range(start, end)
-        logger.debug(
-            BUDGET_AGENT_COST_QUERIED,
-            agent_id=agent_id,
-            start=start,
-            end=end,
-        )
-        snapshot = await self._snapshot()
-        filtered = _filter_records(
-            snapshot,
-            agent_id=agent_id,
-            start=start,
-            end=end,
-        )
-        result = _aggregate(filtered).cost
-        record_budget_query(
-            query_type="agent_cost",
-            duration_sec=time.perf_counter() - query_start,
-        )
-        return result
+        try:
+            _validate_time_range(start, end)
+            logger.debug(
+                BUDGET_AGENT_COST_QUERIED,
+                agent_id=agent_id,
+                start=start,
+                end=end,
+            )
+            snapshot = await self._snapshot()
+            filtered = _filter_records(
+                snapshot,
+                agent_id=agent_id,
+                start=start,
+                end=end,
+            )
+            return _aggregate(filtered).cost
+        finally:
+            record_budget_query(
+                query_type="agent_cost",
+                duration_sec=time.perf_counter() - query_start,
+            )
 
     async def get_project_cost(
         self,
@@ -423,26 +425,27 @@ class CostTracker(CostTrackerSummaryMixin):
                 ``start >= end``.
         """
         query_start = time.perf_counter()
-        _validate_time_range(start, end)
-        logger.debug(
-            BUDGET_PROJECT_COST_QUERIED,
-            project_id=project_id,
-            start=start,
-            end=end,
-        )
-        snapshot = await self._snapshot()
-        filtered = _filter_records(
-            snapshot,
-            project_id=project_id,
-            start=start,
-            end=end,
-        )
-        result = _aggregate(filtered).cost
-        record_budget_query(
-            query_type="project_cost",
-            duration_sec=time.perf_counter() - query_start,
-        )
-        return result
+        try:
+            _validate_time_range(start, end)
+            logger.debug(
+                BUDGET_PROJECT_COST_QUERIED,
+                project_id=project_id,
+                start=start,
+                end=end,
+            )
+            snapshot = await self._snapshot()
+            filtered = _filter_records(
+                snapshot,
+                project_id=project_id,
+                start=start,
+                end=end,
+            )
+            return _aggregate(filtered).cost
+        finally:
+            record_budget_query(
+                query_type="project_cost",
+                duration_sec=time.perf_counter() - query_start,
+            )
 
     async def get_project_records(
         self,

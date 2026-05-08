@@ -406,7 +406,6 @@ class RequestLoggingMiddleware:
             set_status_on_exception=False,
         ) as span:
             span.set_attribute("http.request.method", method)
-            span.set_attribute("http.route", path)
             span.set_attribute("synthorg.correlation_id", correlation_id)
             try:
                 await self.app(scope, receive, capture_send)
@@ -431,6 +430,7 @@ class RequestLoggingMiddleware:
                 span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
                 raise
             finally:
+                span.set_attribute("http.route", _resolve_route_template(scope))
                 if status_code is not None:
                     span.set_attribute("http.response.status_code", status_code)
                     if status_code >= 500:  # noqa: PLR2004

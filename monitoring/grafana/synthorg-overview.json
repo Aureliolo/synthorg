@@ -773,13 +773,13 @@
         {
           "type": "stat",
           "id": 822,
-          "title": "Audit chain integrity (last hour)",
-          "description": "increase(synthorg_audit_chain_verifications_total[1h]) by outcome. Any 'broken' increment is an alertable incident: hash-chain tampering, signature corruption, or storage drift. The valid count rises with scheduled / on-demand verify_chain() calls.",
+          "title": "Audit chain integrity (last hour, broken)",
+          "description": "increase(synthorg_audit_chain_verifications_total{outcome=\"broken\"}[1h]). Any non-zero value is an alertable incident: hash-chain tampering, signature corruption, or storage drift. The 'valid' outcome is intentionally excluded so healthy verification traffic does not trip the threshold.",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-              "expr": "sum by (outcome) (increase(synthorg_audit_chain_verifications_total[1h]))",
-              "legendFormat": "{{outcome}}",
+              "expr": "sum(increase(synthorg_audit_chain_verifications_total{outcome=\"broken\"}[1h]))",
+              "legendFormat": "broken",
               "refId": "A"
             }
           ],

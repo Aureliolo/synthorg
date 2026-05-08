@@ -18,6 +18,7 @@ from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.providers.errors import ProviderErrorLabel
 
 __all__ = [
+    "MCP_UNKNOWN_TOOL_LABEL",
     "TRANSIENT_PROVIDER_ERROR_CLASSES",
     "VALID_API_ERROR_CATEGORIES",
     "VALID_APPROVAL_OUTCOMES",
@@ -44,8 +45,11 @@ __all__ = [
     "VALID_WORKFLOW_EXECUTION_STATUSES",
     "_LabelSnapshot",
     "_reset_label_snapshot_for_tests",
+    "_reset_mcp_tool_names_for_tests",
     "_snapshot_lock",
     "is_known_agent_id",
+    "normalize_mcp_tool_label",
+    "register_mcp_tool_names",
     "require_finite",
     "require_label",
     "require_label_summary",
@@ -483,6 +487,51 @@ def validate_tool_name(value: str) -> None:
     """
     snapshot = _snapshot
     require_label_summary("tool_name", value, snapshot.tool_names)
+
+
+MCP_UNKNOWN_TOOL_LABEL: Final[str] = "__unknown__"
+
+_mcp_tool_names: frozenset[str] = frozenset()
+
+
+def register_mcp_tool_names(names: frozenset[str]) -> None:
+    """Seed the bounded MCP tool-name allowlist for cardinality control.
+
+    The MCP handler registry is closed at startup
+    (:meth:`DomainToolRegistry.freeze`); call this once with the
+    frozen set of registered tool names so
+    :func:`normalize_mcp_tool_label` can substitute
+    :data:`MCP_UNKNOWN_TOOL_LABEL` for any caller-supplied tool that
+    is not in the registry. Without this seed,
+    ``record_mcp_handler_outcome`` would emit arbitrary tool strings
+    as Prometheus labels, exploding cardinality on malformed
+    requests.
+    """
+    global _mcp_tool_names  # noqa: PLW0603
+    _mcp_tool_names = names
+
+
+def _reset_mcp_tool_names_for_tests() -> None:
+    """Reset the MCP tool-name allowlist to bootstrap. Test-only."""
+    global _mcp_tool_names  # noqa: PLW0603
+    _mcp_tool_names = frozenset()
+
+
+def normalize_mcp_tool_label(value: str) -> str:
+    """Return *value* if registered, else :data:`MCP_UNKNOWN_TOOL_LABEL`.
+
+    Bootstrap pass-through: when the allowlist is empty (the
+    invoker has not called :func:`register_mcp_tool_names` yet) the
+    raw value is returned. The MCP invoker registers the snapshot
+    at construction time before any request can fire, so the
+    bootstrap window is closed in practice; the pass-through exists
+    for tests that exercise the recording function in isolation.
+    """
+    if not _mcp_tool_names:
+        return value
+    if value in _mcp_tool_names:
+        return value
+    return MCP_UNKNOWN_TOOL_LABEL
 
 
 def is_known_agent_id(value: str) -> bool:

@@ -13,7 +13,9 @@ once per session via the SDK's hidden override path
 each test clears the in-memory exporter to start fresh.
 """
 
-from typing import Any
+import importlib
+from collections.abc import Generator
+from typing import Any, cast
 
 import pytest
 from opentelemetry import trace
@@ -28,8 +30,8 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(scope="module")
-def _tracer_setup() -> InMemorySpanExporter:
-    """Install a tracer provider once per module and return its exporter.
+def _tracer_setup() -> Generator[InMemorySpanExporter]:
+    """Install a tracer provider once per module and restore on teardown.
 
     The fixture pokes ``trace._TRACER_PROVIDER`` and
     ``trace._TRACER_PROVIDER_SET_ONCE._done`` -- private SDK globals --
@@ -41,7 +43,16 @@ def _tracer_setup() -> InMemorySpanExporter:
     worker, so the private-globals mutation cannot collide with other
     OTel-instrumented test modules. If a future test file installs its
     own provider, both fixtures must coordinate (or share this one).
+
+    Teardown captures the pre-mutation provider plus the ``_done``
+    sentinel and restores them in a ``finally`` block, then reloads the
+    middleware module so its cached ``_tracer`` re-binds against the
+    restored provider. Without the restore, later test modules sharing
+    the same xdist worker would inherit this fixture's mutated globals.
     """
+    original_provider = cast(Any, trace._TRACER_PROVIDER)
+    original_done = trace._TRACER_PROVIDER_SET_ONCE._done
+
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -55,12 +66,16 @@ def _tracer_setup() -> InMemorySpanExporter:
     # Re-import the middleware module so its module-level
     # ``_tracer = trace.get_tracer(__name__)`` re-binds against the
     # newly-installed provider.
-    import importlib
-
     import synthorg.api.middleware as mw
 
     importlib.reload(mw)
-    return exporter
+    try:
+        yield exporter
+    finally:
+        provider.shutdown()
+        trace._TRACER_PROVIDER = original_provider
+        trace._TRACER_PROVIDER_SET_ONCE._done = original_done
+        importlib.reload(mw)
 
 
 @pytest.fixture
@@ -77,6 +92,12 @@ async def _drive_success(middleware: Any, status_code: int = 200) -> None:
         "type": "http",
         "method": "GET",
         "path": "/api/v1/health",
+        # ``path_template`` simulates a Litestar router that has resolved
+        # the request to a low-cardinality route template before the
+        # middleware sets the OTel ``http.route`` attribute. Without
+        # this, ``_resolve_route_template`` returns ``__unmatched__``
+        # because the synthetic scope carries no ``route_handler``.
+        "path_template": "/api/v1/health",
         "headers": [],
         "query_string": b"",
     }
@@ -101,6 +122,7 @@ async def _drive_failure(middleware: Any, exc: Exception) -> None:
         "type": "http",
         "method": "GET",
         "path": "/api/v1/health",
+        "path_template": "/api/v1/health",
         "headers": [],
         "query_string": b"",
     }

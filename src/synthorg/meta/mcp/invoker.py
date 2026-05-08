@@ -20,6 +20,7 @@ from synthorg.observability.events.mcp import (
     MCP_SERVER_INVOKE_SUCCESS,
 )
 from synthorg.observability.metrics_hub import record_mcp_handler_outcome
+from synthorg.observability.prometheus_labels import register_mcp_tool_names
 from synthorg.tools.base import ToolExecutionResult
 
 if TYPE_CHECKING:
@@ -64,6 +65,12 @@ class MCPToolInvoker:
     ) -> None:
         self._registry = registry
         self._handlers = handlers
+        # Seed the bounded MCP tool-name allowlist so
+        # ``record_mcp_handler_outcome`` can fold any caller-supplied
+        # tool name that is not in the registry into a sentinel
+        # before it reaches Prometheus children. ``get_names`` ensures
+        # the registry is frozen, which the dispatcher already requires.
+        register_mcp_tool_names(frozenset(self._registry.get_names()))
 
     async def invoke(
         self,

@@ -31,7 +31,7 @@ from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
     HierarchyResolver,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
     CONFLICT_AMBIGUOUS_RESULT,
     CONFLICT_AUTHORITY_FALLBACK,
@@ -109,13 +109,15 @@ class HybridResolver:
                 conflict,
                 self._config.review_agent,
             )
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 CONFLICT_STRATEGY_ERROR,
                 conflict_id=conflict.id,
                 strategy="hybrid",
                 operation="review_evaluate",
                 review_agent=self._config.review_agent,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
