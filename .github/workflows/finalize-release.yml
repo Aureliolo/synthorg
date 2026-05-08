@@ -391,7 +391,26 @@ jobs:
               echo "::warning::gh api commits/${HEAD_SHA}/pulls failed; skipping Highlights propagation."
             fi
             if [ -n "$PR_NUMBER" ]; then
-              PR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' || true)
+              # Split the call into capture + classify so an auth /
+              # rate-limit failure surfaces a `::warning::` distinct
+              # from "PR was deleted" (legitimate skip). The previous
+              # `|| true` swallowed all non-zero exits and conflated
+              # the two -- a regression that would silently lose
+              # Highlights every release until someone noticed.
+              if PR_VIEW_OUTPUT=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>&1); then
+                PR_BODY="$PR_VIEW_OUTPUT"
+              else
+                PR_BODY=""
+                # `gh pr view` returns non-zero on both 404 (PR
+                # genuinely deleted) and on auth / rate-limit / 5xx
+                # failures. Distinguish via stderr fingerprint.
+                if printf '%s' "$PR_VIEW_OUTPUT" | grep -qiE 'not found|could not resolve'; then
+                  echo "::notice::release-please PR #${PR_NUMBER} no longer exists; skipping Highlights propagation."
+                else
+                  echo "::warning::gh pr view #${PR_NUMBER} failed (auth / rate-limit / API error); skipping Highlights propagation."
+                  echo "::warning::stderr: ${PR_VIEW_OUTPUT}"
+                fi
+              fi
               if [ -n "$PR_BODY" ]; then
                 # Find marker line numbers via exact whole-line match
                 # (`grep -nFx`): -n adds line numbers, -F treats the
@@ -619,12 +638,25 @@ jobs:
           # 1. Delete all dev releases (draft, pre-release, or published) + their tags.
           #    Use the API directly to ensure drafts are included.
           #    Strict regex: only match vX.Y.Z-dev.N (never stable tags).
-          # `mapfile < <(...)` (not `cmd | while read`) so the failure-
-          # tracking array stays in scope -- a piped while-loop runs in
-          # a subshell and discards its variables, which is exactly how
-          # the prior `|| true` shape silently swallowed every failure.
-          mapfile -t dev_releases < <(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name')
+          # Capture the API output to a variable BEFORE feeding mapfile.
+          # `mapfile < <(cmd)` does NOT propagate cmd's exit code: a
+          # failed `gh api` (auth, rate-limit, 5xx) closes the FD with
+          # empty input and mapfile exits 0, leaving the failure-
+          # tracking array empty and the cleanup silently no-op. The
+          # explicit `|| { exit 1 }` here makes a real API failure loud.
+          # `mapfile <<< "$VAR"` (here-string, no subshell) keeps the
+          # failure-tracking array in scope, which was the original
+          # reason for moving away from `cmd | while read`.
+          if ! GH_RELEASES_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name'); then
+            echo "::error::Failed to list dev releases for cleanup (gh api non-zero exit)"
+            exit 1
+          fi
+          if [ -z "$GH_RELEASES_OUTPUT" ]; then
+            dev_releases=()
+          else
+            mapfile -t dev_releases <<< "$GH_RELEASES_OUTPUT"
+          fi
           release_failures=()
           for dev_tag in "${dev_releases[@]}"; do
             echo "Deleting dev release + tag: $dev_tag"
@@ -635,11 +667,22 @@ jobs:
           done
 
           # 2. Delete orphan dev tags (tags without a release, e.g. from failed builds).
-          mapfile -t orphan_tags < <(
-            gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+          # Same explicit-capture pattern as above. `set -o pipefail`
+          # (from the earlier `set -euo pipefail`) makes the `gh api |
+          # sed | grep` pipeline fail loudly if any stage other than
+          # the trailing `grep || true` (which is allowed to find no
+          # matches) fails.
+          if ! GH_TAGS_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
             | sed 's|^refs/tags/||' \
-            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; }
-          )
+            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; }); then
+            echo "::error::Failed to list orphan dev tags for cleanup (gh api or sed non-zero exit)"
+            exit 1
+          fi
+          if [ -z "$GH_TAGS_OUTPUT" ]; then
+            orphan_tags=()
+          else
+            mapfile -t orphan_tags <<< "$GH_TAGS_OUTPUT"
+          fi
           tag_failures=()
           for dev_tag in "${orphan_tags[@]}"; do
             echo "Deleting orphan dev tag: $dev_tag"
