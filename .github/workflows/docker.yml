@@ -677,7 +677,7 @@ jobs:
         uses: chainguard-dev/actions/setup-melange@916fec00fb80f3cd124a0b41eef79ee63f607c5d # v1.6.17
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
-          version: v0.50.4
+          version: v0.50.5
 
       - name: Generate melange signing key
         run: melange keygen
