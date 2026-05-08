@@ -211,8 +211,8 @@
     },
     {
       "customType": "regex",
-      "description": "DHI images in compose template (image: dhi.io/name:tag@sha256:...)",
-      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/"],
+      "description": "DHI postgres+nats image pins in docker/compose.yml. The runtime compose.yml is generated from cli/internal/compose/compose.yml.tmpl using Go template variables ({{.PostgresImageTag}}, {{.NATSImageTag}}, {{.PostgresDigest}}, {{.NATSDigest}}) driven by state.go's Default*Image{Tag,Digest} constants, so the template file holds no literals to match and does not need scanning. docker/compose.yml is the static dev/DAST compose file whose literal `image:` lines must stay in lockstep with state.go (enforced by cli/internal/verify/compose_sync_test.go). Renovate's docker-compose manager is disabled on docker/compose.yml (see packageRules above) so the state.go customManager (below) was previously the only update path, leaving docker/compose.yml hand-mirrored. This manager closes that gap: the same (depName, currentValue, currentDigest) tuple Renovate resolves for state.go now also rewrites docker/compose.yml in the same PR.",
+      "managerFilePatterns": ["/docker/compose\\.yml$/"],
       "matchStrings": [
         "image:\\s+(?<depName>dhi\\.io/[^:]+):(?<currentValue>[^@]+)@(?<currentDigest>sha256:[a-f0-9]+)"
       ],
