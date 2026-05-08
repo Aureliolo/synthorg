@@ -17,6 +17,7 @@ from synthorg.engine.workflow.strategies.external_trigger import (
 )
 from synthorg.integrations.webhooks.event_bus_bridge import WEBHOOK_CHANNEL
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.integrations import (
     WEBHOOK_BRIDGE_EVENT_FORWARDED,
     WEBHOOK_BRIDGE_POLL_ERROR,
@@ -159,6 +160,21 @@ class WebhookEventBridge:
                 self._poll_loop(),
                 name="webhook-event-bridge",
             )
+            # Surface ``MemoryError`` / ``RecursionError`` raised inside
+            # ``_poll_loop``: without a done-callback, system-class
+            # exceptions stay buffered on the task object and only
+            # bubble up if someone awaits it -- which never happens
+            # for a long-lived poll loop. ``log_task_exceptions`` logs
+            # at CRITICAL and forwards the exception to the event-loop
+            # exception handler so the process actually fails loud.
+            self._task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    WEBHOOK_BRIDGE_POLL_ERROR,
+                    subscriber_id=_SUBSCRIBER_ID,
+                    channel=WEBHOOK_CHANNEL.name,
+                ),
+            )
             logger.info(WEBHOOK_BRIDGE_STARTED)
 
     async def stop(self) -> None:
@@ -219,6 +235,14 @@ class WebhookEventBridge:
                 consecutive_errors = 0
                 await self._forward(envelope.message)
             except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                # Catastrophic interpreter-level errors must surface to
+                # the event-loop exception handler via the
+                # ``add_done_callback(log_task_exceptions(...))``
+                # registered in ``start()``; logging-and-continuing past
+                # them would mask the failure for the lifetime of the
+                # bridge.
                 raise
             except Exception:
                 consecutive_errors += 1

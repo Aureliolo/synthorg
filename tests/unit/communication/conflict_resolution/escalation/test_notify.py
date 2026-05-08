@@ -136,3 +136,44 @@ class TestPostgresSubscriberLifecycle:
             await asyncio.wait_for(stuck_task, timeout=1.0)
         except asyncio.CancelledError, TimeoutError:
             stuck_task.cancel()
+
+
+class TestPostgresSubscriberDoneCallback:
+    """``start()`` registers ``log_task_exceptions`` so MemoryError surfaces."""
+
+    async def test_start_registers_log_task_exceptions(self) -> None:
+        from unittest.mock import patch
+
+        repo = AsyncMock(spec=EscalationQueueStore)
+        registry = AsyncMock(spec=PendingFuturesRegistry)
+        subscriber = PostgresEscalationNotifySubscriber(
+            repo,
+            registry,
+            channel="escalations",
+            reconnect_delay_seconds=1.0,
+        )
+
+        # ``add_done_callback`` requires a plain sync callable; a
+        # function sentinel keeps the gate-blocking bare-Mock pattern
+        # out of test code while still letting us assert the factory
+        # was invoked with the expected kwargs.
+        def _sentinel(_task: asyncio.Task[None]) -> None:
+            return
+
+        with patch(
+            "synthorg.communication.conflict_resolution.escalation.notify.log_task_exceptions",
+            return_value=_sentinel,
+        ) as patched:
+            try:
+                await subscriber.start()
+                assert patched.called
+                kwargs = patched.call_args.kwargs
+                assert kwargs.get("channel") == "escalations"
+            finally:
+                # Reach in and cancel the real ``_run`` we just started
+                # so xdist does not inherit a pending task.
+                task = subscriber._task
+                if task is not None:
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task

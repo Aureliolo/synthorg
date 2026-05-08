@@ -19,6 +19,7 @@ import re
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
     CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
@@ -190,6 +191,18 @@ class PostgresEscalationNotifySubscriber:
             self._task = asyncio.create_task(
                 self._run(),
                 name="escalation-notify-subscriber",
+            )
+            # Surface ``MemoryError`` / ``RecursionError`` raised by the
+            # ``LISTEN`` loop. Without a done-callback, system-class
+            # exceptions stay buffered on the task object and never
+            # propagate -- the subscriber would silently die under OOM
+            # or stack overflow.
+            self._task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    channel=self._channel,
+                ),
             )
             logger.info(
                 CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
