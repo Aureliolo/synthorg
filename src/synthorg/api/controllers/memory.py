@@ -11,10 +11,13 @@ from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_roles
 from synthorg.api.pagination import encode_repo_seek_meta
-from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
+from synthorg.api.rate_limits import (
+    per_op_concurrency_from_policy,
+    per_op_rate_limit_from_policy,
+)
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
@@ -64,7 +67,7 @@ logger = get_logger(__name__)
 # Fine-tune preflight: batch-size recommendation table by available VRAM.
 # Tiers are checked in descending order; first threshold whose VRAM ceiling
 # is reached wins.  CPU-only / sub-threshold falls back to _DEFAULT_BATCH_SIZE.
-_DEFAULT_BATCH_SIZE: Final[int] = 16
+_DEFAULT_BATCH_SIZE: Final[int] = 16  # lint-allow: magic-numbers -- fine-tune fallback
 
 
 def _build_memory_service(
@@ -142,8 +145,8 @@ _BATCH_SIZE_BY_VRAM_GB: Final[tuple[tuple[float, int], ...]] = (
 )
 
 # Fine-tune preflight: document-count thresholds for the source corpus.
-_MIN_DOCS_REQUIRED: Final[int] = 10
-_MIN_DOCS_RECOMMENDED: Final[int] = 50
+_MIN_DOCS_REQUIRED: Final[int] = 10  # lint-allow: magic-numbers -- corpus floor
+_MIN_DOCS_RECOMMENDED: Final[int] = 50  # lint-allow: magic-numbers -- warn band
 
 
 class ActiveEmbedderResponse(BaseModel):
@@ -185,9 +188,8 @@ class MemoryAdminController(Controller):
         guards=[
             per_op_rate_limit_from_policy("memory.fine_tune", key="user"),
         ],
-        opt=per_op_concurrency(
+        opt=per_op_concurrency_from_policy(
             "memory.fine_tune",
-            max_inflight=1,
             key="user",
         ),
     )
@@ -240,9 +242,8 @@ class MemoryAdminController(Controller):
         # cannot resume while a fresh start is still in flight; the
         # sliding-window guard above still uses the distinct operation
         # name so operators can tune resume rates independently.
-        opt=per_op_concurrency(
+        opt=per_op_concurrency_from_policy(
             "memory.fine_tune",
-            max_inflight=1,
             key="user",
         ),
     )
@@ -374,7 +375,7 @@ class MemoryAdminController(Controller):
     async def list_checkpoints(
         self,
         state: State,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> PaginatedResponse[CheckpointRecord]:
         """List fine-tuning checkpoints."""
@@ -400,9 +401,8 @@ class MemoryAdminController(Controller):
                 key="user",
             ),
         ],
-        opt=per_op_concurrency(
+        opt=per_op_concurrency_from_policy(
             "memory.checkpoint_deploy",
-            max_inflight=1,
             key="user",
         ),
     )
@@ -458,9 +458,8 @@ class MemoryAdminController(Controller):
                 key="user",
             ),
         ],
-        opt=per_op_concurrency(
+        opt=per_op_concurrency_from_policy(
             "memory.checkpoint_rollback",
-            max_inflight=1,
             key="user",
         ),
     )
@@ -629,7 +628,7 @@ class MemoryAdminController(Controller):
     async def list_runs(
         self,
         state: State,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> PaginatedResponse[FineTuneRun]:
         """List historical pipeline runs with pagination metadata."""

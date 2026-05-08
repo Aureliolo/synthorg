@@ -161,8 +161,13 @@ class TestListSinks:
             "/api/v1/settings/observability/sinks",
             headers=auth_headers,
         ).json()["data"]
-        if len(full) < 2:
-            pytest.skip("need at least two sinks for cursor round-trip")
+        # Fail loudly if the default sink list ever shrinks below the
+        # two items this round-trip needs; a runtime ``pytest.skip``
+        # would turn a fixture / endpoint regression into a green build.
+        assert len(full) >= 2, (
+            "default sink list must expose at least two sinks for the "
+            "cursor round-trip; check the fixture and the endpoint"
+        )
         first = test_client.get(
             "/api/v1/settings/observability/sinks?limit=1",
             headers=auth_headers,

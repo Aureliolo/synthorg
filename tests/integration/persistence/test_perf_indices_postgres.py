@@ -128,10 +128,15 @@ class TestDecisionRecordsCompositeIndex:
         postgres_backend: PostgresPersistenceBackend,
     ) -> None:
         await _seed_tasks(postgres_backend)
-        for i, task_id in enumerate(_TASKS):
+        # Seed many rows for a SINGLE task so ``ORDER BY recorded_at,
+        # id`` is genuinely discriminative and the planner has to lean
+        # on the composite index rather than satisfying the order
+        # incidentally with one row per task.
+        target_task = _TASKS[0]
+        for i in range(200):
             await postgres_backend.decision_records.append_with_next_version(
                 record_id=NotBlankStr(f"dec-{i:03d}"),
-                task_id=NotBlankStr(task_id),
+                task_id=NotBlankStr(target_task),
                 approval_id=None,
                 executing_agent_id=NotBlankStr(_AGENTS[0]),
                 reviewer_agent_id=NotBlankStr(_AGENTS[1]),
@@ -146,7 +151,7 @@ class TestDecisionRecordsCompositeIndex:
                 "SELECT * FROM decision_records WHERE task_id = %s "
                 "ORDER BY recorded_at ASC, id ASC LIMIT 50",
             ),
-            _TASKS[0],
+            target_task,
             table="decision_records",
         )
         assert "idx_dr_task_recorded_id" in plan, (

@@ -66,7 +66,10 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
-from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
+from synthorg.api.rate_limits import (
+    per_op_concurrency_from_policy,
+    per_op_rate_limit_from_policy,
+)
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import (
@@ -550,9 +553,8 @@ class ProviderController(Controller):
                 key="user",
             ),
         ],
-        opt=per_op_concurrency(
+        opt=per_op_concurrency_from_policy(
             "providers.discover_models",
-            max_inflight=2,
             key="user",
         ),
     )
@@ -747,9 +749,8 @@ class ProviderController(Controller):
             require_ceo_or_manager,
             per_op_rate_limit_from_policy("providers.pull_model", key="user"),
         ],
-        opt=per_op_concurrency(
+        opt=per_op_concurrency_from_policy(
             "providers.pull_model",
-            max_inflight=2,
             key="user",
         ),
         media_type="text/event-stream",
@@ -1411,7 +1412,7 @@ class ProviderController(Controller):
         state: State,
         name: PathName,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[ProviderAuditEvent]:
         """List the mutation audit log for one provider, newest first.
 

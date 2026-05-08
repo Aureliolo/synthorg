@@ -32,7 +32,9 @@ from synthorg.api.rate_limits.inflight_middleware import (
 )
 from synthorg.api.rate_limits.inflight_protocol import InflightStore
 from synthorg.api.rate_limits.policies import (
+    INFLIGHT_POLICIES,
     RATE_LIMIT_POLICIES,
+    per_op_concurrency_from_policy,
     per_op_rate_limit_from_policy,
 )
 from synthorg.api.rate_limits.protocol import (
@@ -42,6 +44,7 @@ from synthorg.api.rate_limits.protocol import (
 
 __all__ = [
     "INFLIGHT_OPT_KEY",
+    "INFLIGHT_POLICIES",
     "RATE_LIMIT_POLICIES",
     "InMemoryInflightStore",
     "InMemorySlidingWindowStore",
@@ -54,6 +57,7 @@ __all__ = [
     "build_inflight_store",
     "build_sliding_window_store",
     "per_op_concurrency",
+    "per_op_concurrency_from_policy",
     "per_op_rate_limit",
     "per_op_rate_limit_from_policy",
 ]

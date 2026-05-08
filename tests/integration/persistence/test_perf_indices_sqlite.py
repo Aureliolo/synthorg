@@ -122,10 +122,15 @@ class TestDecisionRecordsCompositeIndex:
         on_disk_backend: SQLitePersistenceBackend,
     ) -> None:
         await _seed_tasks(on_disk_backend)
-        for i, task_id in enumerate(_TASKS):
+        # Seed many rows for a SINGLE task so ``ORDER BY recorded_at,
+        # id`` actually distinguishes rows and the planner must reach
+        # for the composite index rather than satisfying the order
+        # incidentally with one row per task.
+        target_task = _TASKS[0]
+        for i in range(200):
             await on_disk_backend.decision_records.append_with_next_version(
                 record_id=NotBlankStr(f"dec-{i:03d}"),
-                task_id=NotBlankStr(task_id),
+                task_id=NotBlankStr(target_task),
                 approval_id=None,
                 executing_agent_id=NotBlankStr(_AGENTS[0]),
                 reviewer_agent_id=NotBlankStr(_AGENTS[1]),
@@ -138,7 +143,7 @@ class TestDecisionRecordsCompositeIndex:
             on_disk_backend,
             "SELECT * FROM decision_records WHERE task_id = ? "
             "ORDER BY recorded_at ASC, id ASC LIMIT 50",
-            _TASKS[0],
+            target_task,
             analyze="decision_records",
         )
         assert "idx_dr_task_recorded_id" in plan, (

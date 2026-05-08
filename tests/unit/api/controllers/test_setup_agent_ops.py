@@ -311,8 +311,8 @@ class TestSetupAgentModelUpdate:
             assert data["model_id"] == "test-small-001"
 
             # Verify persistence: GET agents and check the update stuck.
-            # Agents are returned in name-sorted order; locate the one
-            # we updated rather than indexing by insertion position.
+            # Locate the updated agent by content rather than index
+            # so the assertion does not assume any particular list order.
             get_resp = test_client.get("/api/v1/setup/agents")
             assert get_resp.status_code == 200
             agents = get_resp.json()["data"]
@@ -378,7 +378,7 @@ class TestUpdateAgentName:
             data = resp.json()["data"]
             assert data["name"] == "New Agent Name"
 
-            # Verify persistence -- agents are name-sorted so search by value.
+            # Verify persistence -- search by value, not by index.
             get_resp = test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(a["name"] == "New Agent Name" for a in agents)
@@ -445,7 +445,7 @@ class TestRandomizeAgentName:
             assert data["name"] != ""
             assert len(data["name"]) >= 3
 
-            # Verify persistence -- agents are name-sorted so search by value.
+            # Verify persistence -- search by value, not by index.
             get_resp = test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(a["name"] == data["name"] for a in agents)

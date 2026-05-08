@@ -176,7 +176,7 @@ class ScalingController(Controller):
                 HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="list_strategies",
             )
-            return PaginatedResponse(
+            return PaginatedResponse[ScalingStrategyResponse](
                 data=(),
                 pagination=PaginationMeta(
                     limit=limit,
@@ -230,7 +230,7 @@ class ScalingController(Controller):
                 HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="list_decisions",
             )
-            return PaginatedResponse(
+            return PaginatedResponse[ScalingDecisionResponse](
                 data=(),
                 pagination=PaginationMeta(
                     limit=limit,
@@ -251,7 +251,7 @@ class ScalingController(Controller):
             cursor=cursor,
             secret=state.app_state.cursor_secret,
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        return PaginatedResponse[ScalingDecisionResponse](data=page, pagination=meta)
 
     @get("/signals", guards=[require_read_access])
     async def list_signals(
@@ -277,7 +277,7 @@ class ScalingController(Controller):
                 HR_SCALING_CONTROLLER_SERVICE_MISSING,
                 endpoint="list_signals",
             )
-            return PaginatedResponse(
+            return PaginatedResponse[ScalingSignalResponse](
                 data=(),
                 pagination=PaginationMeta(
                     limit=limit,

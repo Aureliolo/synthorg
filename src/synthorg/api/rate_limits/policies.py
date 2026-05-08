@@ -1,15 +1,27 @@
-"""Per-operation rate-limit policy registry.
+"""Per-operation rate-limit and inflight policy registry.
 
-Canonical, single-source-of-truth map from operation id to the default
-``(max_requests, window_seconds)`` tuple each controller endpoint uses.
-Callers build their Litestar guard via
-:func:`per_op_rate_limit_from_policy` rather than duplicating the
-tuple at every decorator site.
+Canonical, single-source-of-truth maps from operation id to:
 
-Operator overrides continue to flow through
-:class:`synthorg.api.rate_limits.config.PerOpRateLimitConfig.overrides`
-(CFG-1) - the registry only replaces the inline literals, it is not
-the runtime tuning surface.
+* ``(max_requests, window_seconds)`` for sliding-window rate limits
+  (see :data:`RATE_LIMIT_POLICIES`).
+* ``max_inflight`` for concurrency caps (see
+  :data:`INFLIGHT_POLICIES`).
+
+Callers build their Litestar guards via
+:func:`per_op_rate_limit_from_policy` and the route ``opt`` annotation
+via :func:`per_op_concurrency_from_policy` rather than duplicating the
+tuple / integer at every decorator site.
+
+Operator overrides continue to flow through the dedicated config
+surfaces:
+
+* :class:`synthorg.api.rate_limits.config.PerOpRateLimitConfig.overrides`
+  (sliding-window bucket).
+* :class:`synthorg.api.rate_limits.inflight_config.PerOpConcurrencyConfig.overrides`
+  (inflight bucket).
+
+The registries only replace the inline literals; they are not the
+runtime tuning surface.
 """
 
 import copy
@@ -18,6 +30,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.api.rate_limits._subject import KeyPolicy  # noqa: TC001
 from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits.inflight_guard import per_op_concurrency
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -199,6 +212,30 @@ RATE_LIMIT_POLICIES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
 """Immutable view of the per-operation rate-limit policy registry."""
 
 
+# Default inflight cap per operation.  Keys are the same stable
+# ``<domain>.<action>`` ids used by ``RATE_LIMIT_POLICIES``; values are
+# the maximum concurrent in-flight requests per subject (per-user
+# bucket by default).  Two routes that share an operation id share one
+# inflight bucket -- e.g. ``memory.fine_tune`` covers both ``start``
+# and ``resume`` so a user cannot resume while a fresh start is still
+# pending.  Operators override per deployment via
+# ``PerOpConcurrencyConfig.overrides``; this map is the default that
+# ships with a fresh deployment.
+_INFLIGHT_POLICIES: Final[dict[str, int]] = {
+    "events.stream": 4,
+    "memory.checkpoint_deploy": 1,
+    "memory.checkpoint_rollback": 1,
+    "memory.fine_tune": 1,
+    "providers.discover_models": 2,
+    "providers.pull_model": 2,
+}
+
+INFLIGHT_POLICIES: Final[Mapping[str, int]] = MappingProxyType(
+    copy.deepcopy(_INFLIGHT_POLICIES),
+)
+"""Immutable view of the per-operation inflight policy registry."""
+
+
 def per_op_rate_limit_from_policy(
     operation: str,
     *,
@@ -239,3 +276,36 @@ def per_op_rate_limit_from_policy(
         window_seconds=window_seconds,
         key=key,
     )
+
+
+def per_op_concurrency_from_policy(
+    operation: str,
+    *,
+    key: KeyPolicy = "user",
+) -> dict[str, Any]:
+    """Build the route ``opt`` annotation for ``operation`` from the registry.
+
+    Args:
+        operation: Stable operation id.  Must be a key in
+            :data:`INFLIGHT_POLICIES`.
+        key: Subject keying policy forwarded verbatim to
+            :func:`per_op_concurrency`.
+
+    Returns:
+        A single-key dict shaped for Litestar's ``opt={}`` argument.
+
+    Raises:
+        KeyError: When ``operation`` is not registered.  This is a
+            programming error -- registering a new decorator site
+            without adding a policy row fails loud at import time.
+    """
+    try:
+        max_inflight = INFLIGHT_POLICIES[operation]
+    except KeyError:
+        msg = (
+            f"No inflight policy registered for {operation!r}. "
+            "Add an entry to INFLIGHT_POLICIES in "
+            "synthorg.api.rate_limits.policies."
+        )
+        raise KeyError(msg) from None
+    return per_op_concurrency(operation, max_inflight=max_inflight, key=key)

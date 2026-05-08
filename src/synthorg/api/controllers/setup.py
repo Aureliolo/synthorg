@@ -438,11 +438,15 @@ class SetupController(Controller):
         settings_svc = app_state.settings_service
 
         agents = await get_existing_agents(settings_svc)
-        summaries = agents_to_summaries(agents)
-        ordered = tuple(sorted(summaries, key=lambda s: s.name))
+        # Preserve persisted-array order so that PUT/POST handlers
+        # which resolve ``agent_index`` against the same array stay in
+        # sync with the visible list order. Reordering here would let
+        # a client update or randomize the wrong agent as soon as the
+        # storage order diverges from the sorted-by-name order.
+        summaries = tuple(agents_to_summaries(agents))
 
         page, meta = paginate_cursor(
-            ordered,
+            summaries,
             limit=limit,
             cursor=cursor,
             secret=app_state.cursor_secret,

@@ -42,9 +42,16 @@ _OLLAMA_PATH_POSIX: Final[re.Pattern[str]] = re.compile(
 _OLLAMA_PATH_WIN: Final[re.Pattern[str]] = re.compile(
     r"[A-Za-z]:\\[\w\\.\-]+",
 )
-# Dotted ``host:port`` tokens (``ollama-internal.local:11434``).
+# ``host:port`` tokens, covering bracketed IPv6 (``[::1]:11434``),
+# IPv4 (``127.0.0.1:11434``), and DNS / single-label hostnames
+# (``localhost:11434`` or ``ollama-internal.local:11434``).  Internal
+# topology must not leak through any of these forms.
 _OLLAMA_HOST_PORT: Final[re.Pattern[str]] = re.compile(
-    r"(?:[\w-]+\.){1,}[\w-]+:\d{2,5}",
+    r"(?:"
+    r"\[[0-9A-Fa-f:]+\]"  # bracketed IPv6 literal
+    r"|(?:\d{1,3}\.){3}\d{1,3}"  # IPv4 dotted quad
+    r"|[\w-]+(?:\.[\w-]+)*"  # DNS / single-label hostname
+    r"):\d{2,5}",
 )
 
 
@@ -183,8 +190,8 @@ class OllamaModelManager:
         Returns:
             A progress event derived from the data.
         """
-        error = data.get("error")
-        if error:
+        if "error" in data:
+            error = data.get("error")
             sanitized = _sanitize_ollama_error(error)
             logger.warning(
                 PROVIDER_MODEL_PULL_FAILED,
