@@ -105,7 +105,7 @@ fine-tune-cpu = [
 ]
 dev = [
     "commitizen==4.15.1",
-    "mypy==2.0.0",
+    "mypy==1.20.2",
     "pre-commit==4.6.0",
     "pip-audit==2.10.0",
     "pre-commit-uv==4.2.1",
