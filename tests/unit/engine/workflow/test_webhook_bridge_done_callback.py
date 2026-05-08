@@ -23,7 +23,6 @@ from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
 pytestmark = pytest.mark.unit
 
 
-@pytest.mark.asyncio
 async def test_poll_loop_registers_log_task_exceptions_callback() -> None:
     """``start()`` registers the canonical done-callback factory."""
     bus = AsyncMock(spec=MessageBus)
@@ -54,7 +53,6 @@ async def test_poll_loop_registers_log_task_exceptions_callback() -> None:
             await bridge.stop()
 
 
-@pytest.mark.asyncio
 async def test_memory_error_in_poll_loop_invokes_done_callback() -> None:
     """``MemoryError`` raised in the poll body fires the registered callback."""
     bus = AsyncMock(spec=MessageBus)
@@ -64,12 +62,14 @@ async def test_memory_error_in_poll_loop_invokes_done_callback() -> None:
     bridge = WebhookEventBridge(bus=bus, ceremony_scheduler=scheduler)
 
     fired_with: list[asyncio.Task[None]] = []
+    callback_fired = asyncio.Event()
 
     def fake_factory(*args: object, **kwargs: object) -> object:
         del args, kwargs
 
         def _on_done(task: asyncio.Task[None]) -> None:
             fired_with.append(task)
+            callback_fired.set()
 
         return _on_done
 
@@ -78,13 +78,11 @@ async def test_memory_error_in_poll_loop_invokes_done_callback() -> None:
         side_effect=fake_factory,
     ):
         await bridge.start()
-        # Yield until the task is done AND the callback has fired.
-        # Done-callbacks are scheduled via ``call_soon`` after the
-        # task completes, so they run on a subsequent loop iteration.
-        for _ in range(40):
-            await asyncio.sleep(0)
-            if fired_with:
-                break
+        # Wait for the done-callback to fire. Done-callbacks are
+        # scheduled via ``call_soon`` after the task completes, so
+        # they run on a subsequent loop iteration; the Event lets us
+        # await the signal directly instead of polling.
+        await asyncio.wait_for(callback_fired.wait(), timeout=2.0)
 
         task = bridge._task
         assert task is not None

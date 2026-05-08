@@ -262,6 +262,13 @@ class TestCallbackReplay:
     """Redelivered callbacks return the original connection name unchanged."""
 
     async def test_replay_returns_connection_without_re_exchange(self) -> None:
+        from synthorg.integrations.connections.catalog import (
+            ConnectionCatalog,
+        )
+        from synthorg.persistence.connection_protocol import (
+            OAuthStateRepository,
+        )
+
         now = datetime.now(UTC)
         # Already-consumed state row: a successful prior callback
         # stamped these two fields atomically via ``mark_consumed``.
@@ -275,18 +282,18 @@ class TestCallbackReplay:
             consumed_at=now - timedelta(minutes=4),
             connection_name_returned=NotBlankStr("conn-1"),
         )
-        state_repo = MagicMock()
+        state_repo = MagicMock(spec=OAuthStateRepository)
         state_repo.get = AsyncMock(return_value=state)
         state_repo.delete = AsyncMock()
         state_repo.mark_consumed = AsyncMock()
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_or_raise = AsyncMock()
         catalog.get_credentials = AsyncMock()
         catalog.store_oauth_tokens = AsyncMock()
         catalog.update = AsyncMock()
 
-        fake_flow = MagicMock()
+        fake_flow = MagicMock(spec=AuthorizationCodeFlow)
         fake_flow.exchange_code = AsyncMock()
 
         result = await handle_oauth_callback(
@@ -309,6 +316,13 @@ class TestCallbackReplay:
     async def test_fresh_callback_marks_consumed_and_does_not_delete(
         self,
     ) -> None:
+        from synthorg.integrations.connections.catalog import (
+            ConnectionCatalog,
+        )
+        from synthorg.persistence.connection_protocol import (
+            OAuthStateRepository,
+        )
+
         now = datetime.now(UTC)
         state = OAuthState(
             state_token=NotBlankStr("state-fresh"),
@@ -319,12 +333,12 @@ class TestCallbackReplay:
             created_at=now,
             expires_at=now + timedelta(hours=1),
         )
-        state_repo = MagicMock()
+        state_repo = MagicMock(spec=OAuthStateRepository)
         state_repo.get = AsyncMock(return_value=state)
         state_repo.delete = AsyncMock()
         state_repo.mark_consumed = AsyncMock(return_value=True)
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_or_raise = AsyncMock(
             return_value=Connection(
                 name=NotBlankStr("conn-2"),
@@ -342,7 +356,7 @@ class TestCallbackReplay:
         catalog.store_oauth_tokens = AsyncMock()
         catalog.update = AsyncMock()
 
-        fake_flow = MagicMock()
+        fake_flow = MagicMock(spec=AuthorizationCodeFlow)
         fake_flow.exchange_code = AsyncMock(
             return_value=MagicMock(
                 access_token="acc",

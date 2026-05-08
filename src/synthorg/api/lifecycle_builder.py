@@ -99,6 +99,8 @@ async def _cancel_with_timeout(
         await asyncio.wait_for(task, timeout=timeout)
     except asyncio.CancelledError:
         return
+    except MemoryError, RecursionError:
+        raise
     except TimeoutError as exc:
         logger.error(
             API_APP_SHUTDOWN_TIMEOUT,
@@ -107,6 +109,25 @@ async def _cancel_with_timeout(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
             context=f"Failed to cancel {service} within shutdown budget",
+        )
+    except Exception as exc:
+        # A janitor task that fails with a non-timeout exception
+        # (third-party callee crashing inside its except clause, hung
+        # I/O surfacing OSError, aiosqlite raising during a partial
+        # write) must not be silently swallowed -- the previous
+        # implementation returned ``None`` from this branch and the
+        # service-teardown sequence continued thinking the cancel
+        # succeeded. Log at ERROR via the shutdown event so the
+        # operator sees the underlying cause, then continue with
+        # downstream services (the helper's contract is "never block
+        # the whole shutdown window").
+        logger.error(
+            API_APP_SHUTDOWN,
+            service=service,
+            phase="task_cancellation",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            context=f"{service} task crashed during cancellation",
         )
 
 

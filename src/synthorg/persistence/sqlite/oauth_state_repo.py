@@ -250,11 +250,14 @@ class SQLiteOAuthStateRepository:
         * ``expires_at <= now`` -- the in-flight window has elapsed.
         * ``consumed_at IS NOT NULL AND consumed_at <= now -
           retention`` -- the row is past the idempotent-replay
-          retention window. Retention is bounded by
-          ``_OAUTH_IDEMPOTENCY_RETENTION_SECONDS`` from
-          ``integrations.oauth.callback_handler``; this query reads
-          the window directly from the column so the repo stays
-          decoupled from the handler's tunable.
+          retention window.
+
+        The retention window is fixed at the module-level constant
+        ``_OAUTH_IDEMPOTENCY_RETENTION_SECONDS`` (10 minutes); not
+        operator-tunable today. The constant lives in this module so
+        each repo stays self-contained; the callback handler in
+        ``integrations.oauth.callback_handler`` does not own the
+        retention budget.
         """
         now = datetime.now(UTC)
         cutoff_iso = format_iso_utc(now)

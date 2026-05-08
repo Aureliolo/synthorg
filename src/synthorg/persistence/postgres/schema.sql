@@ -939,6 +939,7 @@ CREATE TABLE oauth_states (
 
 CREATE INDEX idx_oauth_states_expires ON oauth_states(expires_at);
 CREATE INDEX idx_oauth_states_connection ON oauth_states(connection_name);
+CREATE INDEX idx_oauth_states_consumed ON oauth_states(consumed_at);
 
 -- ── Webhook receipts ─────────────────────────────────────────
 CREATE TABLE webhook_receipts (

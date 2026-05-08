@@ -676,7 +676,7 @@ src/synthorg/persistence/auth_protocol.py:53:21
 src/synthorg/persistence/auth_protocol.py:62:21
 src/synthorg/persistence/connection_protocol.py:34:21
 src/synthorg/persistence/connection_protocol.py:50:21
-src/synthorg/persistence/connection_protocol.py:161:21
+src/synthorg/persistence/connection_protocol.py:168:21
 src/synthorg/persistence/cost_record_protocol.py:29:21
 src/synthorg/persistence/decision_protocol.py:101:21
 src/synthorg/persistence/decision_protocol.py:125:21

@@ -8,6 +8,7 @@ table.  States are short-lived and consumed once on callback;
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import psycopg
 from psycopg.rows import dict_row
 
 from synthorg.core.persistence_errors import QueryError
@@ -121,7 +122,8 @@ class PostgresOAuthStateRepository:
                     """,
                     params,
                 )
-        except Exception as exc:
+                await conn.commit()
+        except psycopg.Error as exc:
             msg = f"Failed to save oauth_state {state.state_token!r}"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_SAVE_FAILED,
@@ -144,7 +146,7 @@ class PostgresOAuthStateRepository:
                     (str(state_token),),
                 )
                 row = await cur.fetchone()
-        except Exception as exc:
+        except psycopg.Error as exc:
             msg = f"Failed to fetch oauth_state {state_token!r}"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_FETCH_FAILED,
@@ -176,7 +178,8 @@ class PostgresOAuthStateRepository:
                     (str(state_token),),
                 )
                 deleted = cur.rowcount > 0
-        except Exception as exc:
+                await conn.commit()
+        except psycopg.Error as exc:
             msg = f"Failed to delete oauth_state {state_token!r}"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_DELETE_FAILED,
@@ -214,7 +217,8 @@ class PostgresOAuthStateRepository:
                     ),
                 )
                 updated = cur.rowcount > 0
-        except Exception as exc:
+                await conn.commit()
+        except psycopg.Error as exc:
             msg = f"Failed to mark consumed oauth_state {state_token!r}"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_SAVE_FAILED,
@@ -244,7 +248,8 @@ class PostgresOAuthStateRepository:
                     (now, consumed_cutoff),
                 )
                 removed = cur.rowcount
-        except Exception as exc:
+                await conn.commit()
+        except psycopg.Error as exc:
             msg = "Failed to cleanup expired oauth_states"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_CLEANUP_FAILED,

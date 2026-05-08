@@ -432,3 +432,23 @@ class TestApprovalRepository:
         )
         assert len(items) == 1
         assert items[0].id == "approval-partial-001"
+
+    async def test_get_many_duplicate_ids_dedupe(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # Both backends use ``WHERE id IN (...)`` / ``id = ANY(%s)`` --
+        # SQL deduplicates the result naturally, so duplicate ids in
+        # the input return one row each. Pin this contract so a
+        # future implementation cannot silently emit duplicates.
+        repo = _approval_repo(backend)
+        await repo.save(_make_item(approval_id="approval-dup-001"))
+        items = await repo.get_many(
+            (
+                NotBlankStr("approval-dup-001"),
+                NotBlankStr("approval-dup-001"),
+                NotBlankStr("approval-dup-001"),
+            ),
+        )
+        assert len(items) == 1
+        assert items[0].id == "approval-dup-001"

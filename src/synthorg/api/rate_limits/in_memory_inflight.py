@@ -161,7 +161,24 @@ class InMemoryInflightStore(InflightStore):
             # Drop the ref AFTER we are done touching the lock and
             # the GC bump; only then is it safe for the GC to evict
             # the bucket. Pairs with the increment inside ``_get_lock``.
-            await self._release_lock_ref(key)
+            # Wrap in a guard so a transient failure inside
+            # ``_release_lock_ref`` (e.g. CancelledError raised against
+            # the meta-lock acquire) does not unwind past the original
+            # exception from the try body and replace it on the call
+            # stack. ``MemoryError`` / ``RecursionError`` still
+            # propagate; everything else is logged and swallowed.
+            try:
+                await self._release_lock_ref(key)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as ref_exc:
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    error_type="inflight_lock_ref_release_failed",
+                    limiter="InMemoryInflightStore",
+                    key=key,
+                    error=safe_error_description(ref_exc),
+                )
 
     async def _release(self, key: str) -> None:
         """Decrement the counter; clamp at zero on underflow."""
@@ -187,7 +204,21 @@ class InMemoryInflightStore(InflightStore):
                     return
                 self._counters[key] = current - 1
         finally:
-            await self._release_lock_ref(key)
+            # Same guard as ``_acquire_or_raise`` -- a failure inside
+            # ``_release_lock_ref`` must not mask the original
+            # exception (if any) from the release body.
+            try:
+                await self._release_lock_ref(key)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as ref_exc:
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    error_type="inflight_lock_ref_release_failed",
+                    limiter="InMemoryInflightStore",
+                    key=key,
+                    error=safe_error_description(ref_exc),
+                )
 
     async def close(self) -> None:
         """Clear all counters and locks."""

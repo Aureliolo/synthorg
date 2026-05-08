@@ -172,8 +172,23 @@ class OAuthState(BaseModel):
         default_factory=lambda: datetime.now(UTC),
     )
     expires_at: AwareDatetime
-    consumed_at: AwareDatetime | None = None
-    connection_name_returned: NotBlankStr | None = None
+    consumed_at: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When the callback exchanged this state for tokens. Paired "
+            "with ``connection_name_returned``; both fields must be "
+            "``None`` (flow in flight) or both set (post-callback) -- "
+            "enforced by ``_validate_consumed_pair``."
+        ),
+    )
+    connection_name_returned: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Connection name the original successful callback returned. "
+            "Paired with ``consumed_at``; both fields must be ``None`` "
+            "or both set."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_expiry(self) -> Self:

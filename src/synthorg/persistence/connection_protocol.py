@@ -123,6 +123,13 @@ class OAuthStateRepository(Protocol):
         atomic at the row level; second and subsequent calls observe
         the existing ``consumed_at`` and return ``False``.
 
+        Implementations MUST stamp both ``consumed_at`` and
+        ``connection_name_returned`` in a single atomic UPDATE.
+        :class:`OAuthState` validates the two fields are always set
+        together (see ``_validate_consumed_pair``); a partial write
+        would let a redelivered callback observe ``consumed_at`` set
+        with no ``connection_name_returned`` to return.
+
         Returns:
             ``True`` if a row was updated (state existed and was not
             already consumed); ``False`` if the row was missing or
