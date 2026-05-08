@@ -434,7 +434,16 @@ class TestAnonymizeDecisionProperties:
         salt=st.text(min_size=1, max_size=50).filter(lambda s: s.strip()),
     )
     @settings(
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
+        # ``differing_executors`` mirrors the ``ci`` profile (see
+        # ``tests/conftest.py``); a per-test ``@settings`` replaces
+        # the profile's ``suppress_health_check`` list rather than
+        # extending it, so it must be re-listed here or the check
+        # fires on the second pytest-repeat iteration ``[2-2]`` when
+        # the isolation gate replays the test under a fresh executor.
+        suppress_health_check=[
+            HealthCheck.function_scoped_fixture,
+            HealthCheck.differing_executors,
+        ],
     )
     def test_deployment_id_always_64_hex_chars(
         self,
@@ -464,7 +473,10 @@ class TestAnonymizeDecisionProperties:
         salt=st.text(min_size=1, max_size=50).filter(lambda s: s.strip()),
     )
     @settings(
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
+        suppress_health_check=[
+            HealthCheck.function_scoped_fixture,
+            HealthCheck.differing_executors,
+        ],
     )
     def test_no_pii_in_serialized_output(
         self,
