@@ -46,18 +46,46 @@ export interface FetchWithRetryOptions {
   readonly fetchImpl?: typeof fetch
 }
 
-function defaultSleep(ms: number): Promise<void> {
+function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    window.setTimeout(resolve, ms)
+    if (signal?.aborted) {
+      resolve()
+      return
+    }
+    const onAbort = (): void => {
+      window.clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal?.addEventListener('abort', onAbort, { once: true })
   })
 }
 
-function methodOf(init: RequestInit | undefined): string {
-  return (init?.method ?? 'GET').toUpperCase()
+function methodOf(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): string {
+  if (init?.method) return init.method.toUpperCase()
+  return input instanceof Request ? input.method.toUpperCase() : 'GET'
 }
 
-function hasIdempotencyKey(init: RequestInit | undefined): boolean {
-  const headers = init?.headers
+function headersOf(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): HeadersInit | undefined {
+  if (init?.headers) return init.headers
+  return input instanceof Request ? input.headers : undefined
+}
+
+function hasIdempotencyKey(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): boolean {
+  const headers = headersOf(input, init)
   if (!headers) return false
   if (headers instanceof Headers) {
     return headers.has(IDEMPOTENCY_KEY_HEADER)
@@ -69,13 +97,15 @@ function hasIdempotencyKey(init: RequestInit | undefined): boolean {
 }
 
 function isRetriable(
+  input: RequestInfo | URL,
   init: RequestInit | undefined,
   opts: FetchWithRetryOptions | undefined,
 ): boolean {
   return (
     opts?.idempotent === true ||
     (opts?.idempotent !== false &&
-      (IDEMPOTENT_METHODS.has(methodOf(init)) || hasIdempotencyKey(init)))
+      (IDEMPOTENT_METHODS.has(methodOf(input, init)) ||
+        hasIdempotencyKey(input, init)))
   )
 }
 
@@ -98,9 +128,14 @@ export async function fetchWithRetryAfter(
   opts?: FetchWithRetryOptions,
 ): Promise<Response> {
   const fetchImpl = opts?.fetchImpl ?? fetch
-  const sleep = opts?.sleep ?? defaultSleep
-  const retriable = isRetriable(init, opts)
-  const signal = init?.signal
+  // ``signal`` is read from ``init.signal`` for raw URL/string inputs and
+  // falls back to the ``Request`` object's signal so callers passing a
+  // pre-built Request still see cancellation propagate into the retry
+  // sleep below.
+  const signal =
+    init?.signal ?? (input instanceof Request ? input.signal : undefined)
+  const sleep = opts?.sleep
+  const retriable = isRetriable(input, init, opts)
   let attempt = 0
   let response = await fetchImpl(input, init)
   while (
@@ -118,7 +153,11 @@ export async function fetchWithRetryAfter(
     if (signal?.aborted) {
       return response
     }
-    await sleep(waitMs)
+    if (sleep) {
+      await sleep(waitMs)
+    } else {
+      await defaultSleep(waitMs, signal)
+    }
     if (signal?.aborted) {
       return response
     }

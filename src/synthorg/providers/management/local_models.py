@@ -34,13 +34,18 @@ _HTTP_NOT_FOUND: int = 404
 _HTTP_CLIENT_ERROR: int = 400
 _OLLAMA_ERROR_MAX_LEN: Final[int] = 200  # lint-allow: magic-numbers -- internal cap
 
-# POSIX-style absolute paths (``/var/lib/ollama/models/x.bin``).
+# POSIX-style absolute paths (``/var/lib/ollama/models/x.bin``).  The
+# segment class includes a literal space so paths like
+# ``/var/lib/ollama/model cache/file.bin`` are fully redacted instead
+# of stopping at the first whitespace and leaking the trailing tail.
 _OLLAMA_PATH_POSIX: Final[re.Pattern[str]] = re.compile(
-    r"/[\w.\-]+(?:/[\w.\-]+)+",
+    r"/[\w.\- ]+(?:/[\w.\- ]+)+",
 )
 # Windows-style absolute paths (``C:\Users\admin\AppData\token.json``).
+# Same space-allowance applies so ``C:\Program Files\Ollama\token.json``
+# is fully consumed by the redaction.
 _OLLAMA_PATH_WIN: Final[re.Pattern[str]] = re.compile(
-    r"[A-Za-z]:\\[\w\\.\-]+",
+    r"[A-Za-z]:\\[\w\\.\- ]+",
 )
 # ``host:port`` tokens, covering bracketed IPv6 (``[::1]:11434``),
 # IPv4 (``127.0.0.1:11434``), and DNS / single-label hostnames
@@ -60,18 +65,12 @@ def _sanitize_ollama_error(raw: object) -> str:
 
     Strips filesystem paths and ``host:port`` tokens to avoid leaking
     operator-internal topology to remote clients via SSE. Non-string
-    inputs collapse to a generic fallback (the original type is
-    surfaced via a structured WARNING so operators retain debugging
-    context that would otherwise be lost to the generic message).
-    Output is always non-empty.
+    inputs collapse to a generic ``"Pull failed"`` fallback. The helper
+    is intentionally side-effect free; callers attach the contextual
+    ``PROVIDER_MODEL_PULL_FAILED`` log so the same upstream failure
+    does not produce duplicate log lines.
     """
     if not isinstance(raw, str):
-        logger.warning(
-            PROVIDER_MODEL_PULL_FAILED,
-            provider="ollama",
-            error_type=type(raw).__name__,
-            error="non-string error payload from upstream",
-        )
         return "Pull failed"
     sanitized = _OLLAMA_PATH_POSIX.sub("[REDACTED-PATH]", raw)
     sanitized = _OLLAMA_PATH_WIN.sub("[REDACTED-PATH]", sanitized)
@@ -197,6 +196,7 @@ class OllamaModelManager:
                 PROVIDER_MODEL_PULL_FAILED,
                 provider="ollama",
                 model=model_name,
+                error_type=type(error).__name__,
                 error=sanitized,
             )
             return PullProgressEvent(

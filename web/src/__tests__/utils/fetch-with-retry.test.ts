@@ -202,4 +202,66 @@ describe('fetchWithRetryAfter', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(sleep).not.toHaveBeenCalled()
   })
+
+  it('reads idempotency-key header from Request input when init is omitted', async () => {
+    // POST is not auto-retriable, so without the Idempotency-Key the
+    // helper would surface the 429 directly. The Request carries the
+    // header on its own ``headers`` collection (init is undefined),
+    // proving the helper reads request metadata from the Request
+    // input rather than only from ``init``.
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(makeResponse(429, '0'))
+      .mockResolvedValueOnce(makeResponse(200))
+    const sleep = vi.fn(async () => {})
+    const request = new Request('http://example.test/x', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'op-1' },
+    })
+    const resp = await fetchWithRetryAfter(request, undefined, {
+      fetchImpl,
+      sleep,
+    })
+    expect(resp.status).toBe(200)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('skips retry on Request POST input without idempotent opt-in', async () => {
+    // A Request whose method is POST must NOT retry by default.
+    // Earlier the method was read off ``init`` only, so a Request POST
+    // with no ``init`` was misclassified as GET and retried unsafely.
+    const fetchImpl = vi.fn(async () => makeResponse(429, '0'))
+    const sleep = vi.fn(async () => {})
+    const request = new Request('http://example.test/x', { method: 'POST' })
+    const resp = await fetchWithRetryAfter(request, undefined, {
+      fetchImpl,
+      sleep,
+    })
+    expect(resp.status).toBe(429)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
+  })
+
+  it('default sleep cancels immediately when AbortSignal fires mid-wait', async () => {
+    // Exercise the built-in defaultSleep path (no ``sleep`` option) and
+    // verify that aborting during the timer interval short-circuits
+    // the retry without waiting out the full Retry-After budget.
+    const controller = new AbortController()
+    const fetchImpl = vi.fn(async () => makeResponse(429, '1'))
+    const start = performance.now()
+    const promise = fetchWithRetryAfter(
+      'http://example.test/x',
+      { method: 'GET', signal: controller.signal },
+      { fetchImpl },
+    )
+    // Abort well before the 1000ms Retry-After window expires.
+    setTimeout(() => controller.abort(), 20)
+    const resp = await promise
+    const elapsed = performance.now() - start
+    expect(resp.status).toBe(429)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    // Round-up tolerance for scheduler jitter; we just need to prove
+    // the helper did NOT wait the full second.
+    expect(elapsed).toBeLessThan(500)
+  })
 })

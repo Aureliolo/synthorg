@@ -61,13 +61,13 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001
 )
+from synthorg.settings.definitions.memory import (
+    FINE_TUNE_DEFAULT_BATCH_SIZE,
+    FINE_TUNE_MIN_DOCS_RECOMMENDED,
+    FINE_TUNE_MIN_DOCS_REQUIRED,
+)
 
 logger = get_logger(__name__)
-
-# Fine-tune preflight: batch-size recommendation table by available VRAM.
-# Tiers are checked in descending order; first threshold whose VRAM ceiling
-# is reached wins.  CPU-only / sub-threshold falls back to _DEFAULT_BATCH_SIZE.
-_DEFAULT_BATCH_SIZE: Final[int] = 16  # lint-allow: magic-numbers -- fine-tune fallback
 
 
 def _build_memory_service(
@@ -143,10 +143,6 @@ _BATCH_SIZE_BY_VRAM_GB: Final[tuple[tuple[float, int], ...]] = (
     (16.0, 64),
     (8.0, 32),
 )
-
-# Fine-tune preflight: document-count thresholds for the source corpus.
-_MIN_DOCS_REQUIRED: Final[int] = 10  # lint-allow: magic-numbers -- corpus floor
-_MIN_DOCS_RECOMMENDED: Final[int] = 50  # lint-allow: magic-numbers -- warn band
 
 
 class ActiveEmbedderResponse(BaseModel):
@@ -727,20 +723,22 @@ def _check_documents(source_dir: str) -> PreflightCheck:
             message="Source directory not found",
         )
     count = sum(1 for ext in ("*.txt", "*.md", "*.rst") for _ in src.rglob(ext))
-    if count < _MIN_DOCS_REQUIRED:
+    if count < FINE_TUNE_MIN_DOCS_REQUIRED:
         return PreflightCheck(
             name="documents",
             status="fail",
             message=(
-                f"Too few documents ({count}), minimum {_MIN_DOCS_REQUIRED} required"
+                f"Too few documents ({count}), "
+                f"minimum {FINE_TUNE_MIN_DOCS_REQUIRED} required"
             ),
         )
-    if count < _MIN_DOCS_RECOMMENDED:
+    if count < FINE_TUNE_MIN_DOCS_RECOMMENDED:
         return PreflightCheck(
             name="documents",
             status="warn",
             message=(
-                f"Low document count ({count}), {_MIN_DOCS_RECOMMENDED}+ recommended"
+                f"Low document count ({count}), "
+                f"{FINE_TUNE_MIN_DOCS_RECOMMENDED}+ recommended"
             ),
         )
     return PreflightCheck(
@@ -826,13 +824,13 @@ def _recommend_batch_size() -> int | None:
         import torch  # noqa: PLC0415
 
         if not torch.cuda.is_available():
-            return _DEFAULT_BATCH_SIZE
+            return FINE_TUNE_DEFAULT_BATCH_SIZE
         props = torch.cuda.get_device_properties(0)
         vram_gb = props.total_memory / (1024**3)
         for threshold_gb, batch_size in _BATCH_SIZE_BY_VRAM_GB:
             if vram_gb >= threshold_gb:
                 return batch_size
-        return _DEFAULT_BATCH_SIZE  # noqa: TRY300
+        return FINE_TUNE_DEFAULT_BATCH_SIZE  # noqa: TRY300
     except MemoryError, RecursionError:
         raise
     except ImportError:

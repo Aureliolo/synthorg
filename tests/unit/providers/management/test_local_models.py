@@ -315,11 +315,32 @@ class TestSanitizeOllamaError:
         assert "/var/lib/ollama" not in sanitized
         assert "[REDACTED-PATH]" in sanitized
 
+    def test_redacts_posix_paths_with_spaces(self) -> None:
+        # Path segments that contain a literal space must still be
+        # consumed in full -- the older regex stopped at the first
+        # whitespace and leaked the trailing tail.
+        sanitized = _sanitize_ollama_error(
+            "open /var/lib/ollama/model cache/secret.bin: permission denied",
+        )
+        assert "model cache" not in sanitized
+        assert "secret.bin" not in sanitized
+        assert "[REDACTED-PATH]" in sanitized
+
     def test_redacts_windows_paths(self) -> None:
         sanitized = _sanitize_ollama_error(
             r"C:\Users\admin\AppData\token.json missing",
         )
         assert "Users" not in sanitized
+        assert "[REDACTED-PATH]" in sanitized
+
+    def test_redacts_windows_paths_with_spaces(self) -> None:
+        # ``Program Files`` is the canonical Windows-path-with-space
+        # case; the redaction must consume both segments.
+        sanitized = _sanitize_ollama_error(
+            r"C:\Program Files\Ollama\token.json missing",
+        )
+        assert "Program Files" not in sanitized
+        assert "token.json" not in sanitized
         assert "[REDACTED-PATH]" in sanitized
 
     def test_redacts_host_port(self) -> None:

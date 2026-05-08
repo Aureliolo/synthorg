@@ -186,11 +186,17 @@ def _sink_to_response(
     routing_prefixes: tuple[str, ...] | None = None,
 ) -> SinkInfoResponse:
     """Convert a SinkConfig to the typed API response model."""
-    identifier = (
+    # Console sinks have a fixed identifier; FILE sinks use ``file_path``.
+    # Custom shipping sinks (SYSLOG, HTTP, ...) carry ``file_path=None``,
+    # so fall back to a non-empty ``unnamed-<sink_type>`` token instead
+    # of an empty string -- ``NotBlankStr("")`` would raise on
+    # construction and surface as HTTP 500 on the listing endpoint.
+    raw_identifier = (
         CONSOLE_SINK_ID
         if sink.sink_type == SinkType.CONSOLE
         else (sink.file_path or "")
     )
+    identifier = raw_identifier or f"unnamed-{sink.sink_type.value}"
     return SinkInfoResponse(
         identifier=NotBlankStr(identifier),
         sink_type=NotBlankStr(sink.sink_type.value),
@@ -317,7 +323,7 @@ class SettingsController(Controller):
         self,
         state: State,
         cursor: CursorParam = None,
-        limit: CursorLimit = 50,
+        limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[SettingEntry]:
         """List settings with resolved values, keyset-paginated.
 

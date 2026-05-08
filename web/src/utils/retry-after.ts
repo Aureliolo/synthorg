@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { ErrorDetail } from '@/api/types/errors'
 
 const log = createLogger('retry-after')
@@ -52,7 +53,10 @@ export function parseRetryAfterMs(
       // the long-standing behaviour. Surface it as a structured warn
       // so a misconfigured backend or hostile proxy is visible in
       // ops dashboards instead of merely producing tight retry loops.
-      log.warn('Malformed Retry-After header', { value: trimmed })
+      log.warn(
+        'Malformed Retry-After header',
+        sanitizeForLog({ value: trimmed }),
+      )
       return 0
     }
     ms = Math.max(0, parsedDate - Date.now())

@@ -418,6 +418,11 @@ class TestEmitterClockSeam:
             builtin_rule_names=BUILTIN_RULE_NAMES,
             clock=fake,
         )
+        # ``emit_decision`` may start the periodic ``_flush_task`` via
+        # ``_enqueue``; closing only ``_client`` would leave that task
+        # running across tests because ``_closed`` would never be set.
+        # ``aclose()`` flips the kill switch and awaits cancellation
+        # before tearing down the HTTP client.
         try:
             with patch.object(em, "_send_batch", new_callable=AsyncMock):
                 start = em._last_flush_at
@@ -429,4 +434,4 @@ class TestEmitterClockSeam:
                 await em.flush()
                 assert em._last_flush_at == start + 7.5
         finally:
-            await em._client.aclose()
+            await em.aclose()

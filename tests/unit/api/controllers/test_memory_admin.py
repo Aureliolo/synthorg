@@ -7,7 +7,6 @@ from pydantic import ValidationError
 
 from synthorg.api.controllers.memory import (
     _BATCH_SIZE_BY_VRAM_GB,
-    _DEFAULT_BATCH_SIZE,
     ActiveEmbedderResponse,
     MemoryAdminController,
     _recommend_batch_size,
@@ -17,6 +16,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
     FineTuneStatus,
 )
+from synthorg.settings.definitions.memory import FINE_TUNE_DEFAULT_BATCH_SIZE
 
 
 @pytest.mark.unit
@@ -173,7 +173,7 @@ class TestRecommendBatchSize:
         fake_torch = MagicMock()
         fake_torch.cuda.is_available.return_value = False
         monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
-        assert _recommend_batch_size() == _DEFAULT_BATCH_SIZE
+        assert _recommend_batch_size() == FINE_TUNE_DEFAULT_BATCH_SIZE
 
     @pytest.mark.parametrize(
         ("vram_gb", "expected"),
@@ -184,7 +184,7 @@ class TestRecommendBatchSize:
             pytest.param(16, 64, id="16gb_boundary"),
             pytest.param(12, 32, id="12gb_mid"),
             pytest.param(8, 32, id="8gb_boundary"),
-            pytest.param(4, _DEFAULT_BATCH_SIZE, id="sub_8gb_fallback"),
+            pytest.param(4, FINE_TUNE_DEFAULT_BATCH_SIZE, id="sub_8gb_fallback"),
         ],
     )
     def test_vram_tier_returns_expected_batch_size(
