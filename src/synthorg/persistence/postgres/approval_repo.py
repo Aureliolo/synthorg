@@ -352,6 +352,35 @@ class PostgresApprovalRepository:
         logger.debug(API_APPROVAL_REPO_FETCHED, approval_id=approval_id)
         return item
 
+    async def get_many(self, ids: Sequence[NotBlankStr]) -> tuple[ApprovalItem, ...]:
+        """Batch-fetch approval items by id via ``WHERE id = ANY(%s)``.
+
+        Empty input short-circuits to ``()`` without issuing SQL.
+        Missing ids are simply absent from the result.
+        """
+        if not ids:
+            return ()
+        sql = f"SELECT {_SELECT_COLS} FROM approvals WHERE id = ANY(%s)"  # noqa: S608
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, (list(ids),))
+                rows = await cur.fetchall()
+                items = tuple(_row_to_item(r) for r in rows)
+        except psycopg.Error as exc:
+            msg = f"Failed to batch-fetch approvals (size={len(ids)})"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                batch_size=len(ids),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
+        return items
+
     async def list_items(
         self,
         *,

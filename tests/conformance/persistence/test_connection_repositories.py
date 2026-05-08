@@ -376,11 +376,122 @@ class TestOAuthStateRepository:
         )
         await backend.oauth_states.save(expired)
 
-        removed = await backend.oauth_states.cleanup_expired()
+        removed = await backend.oauth_states.cleanup_expired(600.0)
 
         assert removed == 1
         assert await backend.oauth_states.get(NotBlankStr("alive")) is not None
         assert await backend.oauth_states.get(NotBlankStr("dead")) is None
+
+    async def test_mark_consumed_round_trips(self, backend: PersistenceBackend) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        await backend.oauth_states.save(_state())
+
+        consumed_at = datetime.now(UTC)
+        ok = await backend.oauth_states.mark_consumed(
+            NotBlankStr("state-abc"),
+            connection_name=NotBlankStr("github-bot"),
+            consumed_at=consumed_at,
+        )
+        assert ok is True
+
+        fetched = await backend.oauth_states.get(NotBlankStr("state-abc"))
+        assert fetched is not None
+        assert fetched.consumed_at is not None
+        # SQLite stores ISO strings re-parsed back to UTC; compare to
+        # microsecond precision via ``isoformat`` rather than equality
+        # on the datetime object.
+        assert (
+            fetched.consumed_at.replace(microsecond=0).isoformat()
+            == consumed_at.replace(microsecond=0).isoformat()
+        )
+        assert fetched.connection_name_returned == "github-bot"
+
+    async def test_mark_consumed_is_idempotent(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        await backend.oauth_states.save(_state())
+
+        first = await backend.oauth_states.mark_consumed(
+            NotBlankStr("state-abc"),
+            connection_name=NotBlankStr("github-bot"),
+            consumed_at=datetime.now(UTC),
+        )
+        second = await backend.oauth_states.mark_consumed(
+            NotBlankStr("state-abc"),
+            connection_name=NotBlankStr("github-bot"),
+            consumed_at=datetime.now(UTC),
+        )
+        assert first is True
+        assert second is False  # already consumed
+
+    async def test_save_preserves_consumed_markers_on_upsert(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A stale flow-start snapshot landing after ``mark_consumed`` has
+        # stamped the row must NOT clear the idempotency markers; doing
+        # so would let a redelivered callback fall back into the
+        # fresh-exchange path and re-use the (single-use) authorization
+        # code.
+        await backend.connections.save(_connection("github-bot"))
+        await backend.oauth_states.save(_state())
+
+        consumed_at = datetime.now(UTC)
+        ok = await backend.oauth_states.mark_consumed(
+            NotBlankStr("state-abc"),
+            connection_name=NotBlankStr("github-bot"),
+            consumed_at=consumed_at,
+        )
+        assert ok is True
+
+        # Re-save the same token with both idempotency fields ``None``
+        # (the flow-start shape). With unconditional EXCLUDED.* the
+        # markers would be nulled here.
+        await backend.oauth_states.save(_state())
+
+        fetched = await backend.oauth_states.get(NotBlankStr("state-abc"))
+        assert fetched is not None
+        assert fetched.consumed_at is not None
+        assert fetched.connection_name_returned == "github-bot"
+
+    async def test_cleanup_reaps_stale_consumed_rows(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        # Build a non-expired state that was consumed > 10 min ago so
+        # the retention window has elapsed and the cleanup pass reaps
+        # it alongside any expired rows.
+        now = datetime.now(UTC)
+        stale_consumed = OAuthState(
+            state_token=NotBlankStr("stale"),
+            connection_name=NotBlankStr("github-bot"),
+            pkce_verifier=NotBlankStr("verifier-xyz"),
+            scopes_requested="repo user",
+            redirect_uri="https://app.example.com/callback",
+            created_at=now - timedelta(hours=2),
+            expires_at=now + timedelta(hours=1),
+            consumed_at=now - timedelta(minutes=20),
+            connection_name_returned=NotBlankStr("github-bot"),
+        )
+        fresh_consumed = OAuthState(
+            state_token=NotBlankStr("fresh"),
+            connection_name=NotBlankStr("github-bot"),
+            pkce_verifier=NotBlankStr("verifier-xyz"),
+            scopes_requested="repo user",
+            redirect_uri="https://app.example.com/callback",
+            created_at=now - timedelta(minutes=5),
+            expires_at=now + timedelta(hours=1),
+            consumed_at=now - timedelta(minutes=2),
+            connection_name_returned=NotBlankStr("github-bot"),
+        )
+        await backend.oauth_states.save(stale_consumed)
+        await backend.oauth_states.save(fresh_consumed)
+
+        removed = await backend.oauth_states.cleanup_expired(600.0)
+
+        assert removed == 1
+        assert await backend.oauth_states.get(NotBlankStr("stale")) is None
+        assert await backend.oauth_states.get(NotBlankStr("fresh")) is not None
 
 
 def _receipt(

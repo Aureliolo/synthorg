@@ -932,11 +932,19 @@ CREATE TABLE oauth_states (
     scopes_requested TEXT NOT NULL DEFAULT '',
     redirect_uri TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    connection_name_returned TEXT,
+    CONSTRAINT oauth_states_consumed_pair CHECK (
+        (consumed_at IS NULL AND connection_name_returned IS NULL)
+        OR
+        (consumed_at IS NOT NULL AND connection_name_returned IS NOT NULL)
+    )
 );
 
 CREATE INDEX idx_oauth_states_expires ON oauth_states(expires_at);
 CREATE INDEX idx_oauth_states_connection ON oauth_states(connection_name);
+CREATE INDEX idx_oauth_states_consumed ON oauth_states(consumed_at);
 
 -- ── Webhook receipts ─────────────────────────────────────────
 CREATE TABLE webhook_receipts (

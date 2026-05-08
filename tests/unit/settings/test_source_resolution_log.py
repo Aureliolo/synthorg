@@ -100,9 +100,9 @@ async def test_concurrent_first_reads_emit_info_at_most_once(
                 tg.create_task(service.get("observability", "root_log_level"))
     events = _resolved(logs)
     info_events = [e for e in events if e["log_level"] == "info"]
-    # asyncio cooperative concurrency cannot interleave the membership
-    # check + set add (no awaits between). Even with 10 concurrent
-    # readers the event fires exactly once.
+    # ``_resolution_lock`` gates the membership-test + set-add window
+    # so the (namespace, key) pair is promoted to INFO exactly once
+    # even when 10 concurrent readers race past the cache miss.
     assert len(info_events) == 1, f"concurrent first-read race: {info_events}"
 
 

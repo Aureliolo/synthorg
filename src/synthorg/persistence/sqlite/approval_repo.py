@@ -404,6 +404,43 @@ class SQLiteApprovalRepository:
         logger.debug(API_APPROVAL_REPO_FETCHED, approval_id=approval_id)
         return item
 
+    async def get_many(self, ids: Sequence[NotBlankStr]) -> tuple[ApprovalItem, ...]:
+        """Batch-fetch approval items by id via ``WHERE id IN (...)``.
+
+        Empty input short-circuits to ``()`` without issuing SQL.
+        Missing ids are simply absent from the result.
+        """
+        if not ids:
+            return ()
+        placeholders = ",".join(["?"] * len(ids))
+        # ``placeholders`` is a literal "?,?,..." string we generated
+        # ourselves from ``len(ids)``; ids themselves are bound as
+        # parameters in the ``execute`` call below.
+        sql = f"""
+            SELECT id, action_type, title, description, requested_by,
+                   risk_level, status, created_at, expires_at,
+                   decided_at, decided_by, decision_reason,
+                   task_id, evidence_package, metadata
+            FROM approvals WHERE id IN ({placeholders})
+        """  # noqa: S608  -- placeholders is a closed-set "?,?,..." pattern
+        try:
+            cursor = await self._db.execute(sql, tuple(ids))
+            rows = await cursor.fetchall()
+            items = tuple(_row_to_item(r) for r in rows)
+        except QueryError:
+            raise
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to batch-fetch approvals (size={len(ids)})"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                batch_size=len(ids),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
+        return items
+
     async def list_items(
         self,
         *,

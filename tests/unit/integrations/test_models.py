@@ -1,14 +1,18 @@
 """Unit tests for integration domain models."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.config import IntegrationsConfig
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
     ConnectionStatus,
     ConnectionType,
+    OAuthState,
     SecretRef,
 )
 
@@ -81,3 +85,59 @@ class TestIntegrationsConfig:
         config = IntegrationsConfig()
         with pytest.raises(ValidationError):
             config.enabled = False  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestOAuthStateConsumedPair:
+    """The consumed_at + connection_name_returned pair invariant."""
+
+    def _base_kwargs(self) -> dict[str, object]:
+        now = datetime.now(UTC)
+        return {
+            "state_token": NotBlankStr("state-abc"),
+            "connection_name": NotBlankStr("github"),
+            "created_at": now - timedelta(minutes=1),
+            "expires_at": now + timedelta(minutes=10),
+        }
+
+    def test_both_unset_is_valid(self) -> None:
+        # Flow-start state: neither consumed_at nor
+        # connection_name_returned is populated.
+        state = OAuthState(**self._base_kwargs())  # type: ignore[arg-type]
+        assert state.consumed_at is None
+        assert state.connection_name_returned is None
+
+    def test_both_set_is_valid(self) -> None:
+        # Post-callback snapshot: mark_consumed stamps both
+        # atomically; the pair must round-trip through validation.
+        now = datetime.now(UTC)
+        state = OAuthState(
+            **self._base_kwargs(),  # type: ignore[arg-type]
+            consumed_at=now,
+            connection_name_returned=NotBlankStr("github"),
+        )
+        assert state.consumed_at == now
+        assert state.connection_name_returned == "github"
+
+    def test_only_consumed_at_set_raises(self) -> None:
+        # Half-set state would let a redelivered callback see
+        # consumed_at and route to the replay branch with no
+        # connection name to return -- the validator must block this.
+        with pytest.raises(
+            ValidationError, match="consumed_at and connection_name_returned"
+        ):
+            OAuthState(
+                **self._base_kwargs(),  # type: ignore[arg-type]
+                consumed_at=datetime.now(UTC),
+                connection_name_returned=None,
+            )
+
+    def test_only_connection_name_returned_set_raises(self) -> None:
+        with pytest.raises(
+            ValidationError, match="consumed_at and connection_name_returned"
+        ):
+            OAuthState(
+                **self._base_kwargs(),  # type: ignore[arg-type]
+                consumed_at=None,
+                connection_name_returned=NotBlankStr("github"),
+            )

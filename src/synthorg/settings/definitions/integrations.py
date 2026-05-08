@@ -118,6 +118,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.INTEGRATIONS,
+        key="oauth_idempotency_retention_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Retention window (seconds) for consumed OAuth state rows."
+            " Consumed rows older than this are reaped by the periodic"
+            " cleanup task. Sized to absorb realistic IdP redelivery"
+            " envelopes (provider retries, browser back/forward, CDN"
+            " replays) without growing the table indefinitely."
+        ),
+        group="OAuth",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86_400.0,
+        yaml_path="integrations.oauth.idempotency_retention_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
         key="github_api_url",
         type=SettingType.STRING,
         default="https://api.github.com",

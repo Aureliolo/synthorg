@@ -263,7 +263,7 @@ class ApprovalStore:
                 action_type=action_type,
             )
 
-    async def _list_from_repo(  # noqa: C901, PLR0912, PLR0915
+    async def _list_from_repo(  # noqa: C901, PLR0912
         self,
         *,
         status: ApprovalStatus | None,
@@ -408,18 +408,19 @@ class ApprovalStore:
             # (deleted between page read and refetch) drop out.
             attempted_ids = {item.id for item in to_persist}
             lost_race_ids = attempted_ids - actually_expired_ids
-            refetched_rows: list[ApprovalItem] = []
-            for lost_id in lost_race_ids:
-                refetched = await self._repo.get(NotBlankStr(lost_id))
-                if refetched is None:
-                    continue
-                if status is not None and refetched.status != status:
-                    continue
-                if risk_level is not None and refetched.risk_level != risk_level:
-                    continue
-                if action_type is not None and refetched.action_type != action_type:
-                    continue
-                refetched_rows.append(refetched)
+            # Single batch fetch instead of one ``get`` per id; under
+            # heavy contention the lost-race set can be large, and a
+            # per-id loop turns into N+1 round-trips.
+            refetched_batch = await self._repo.get_many(
+                tuple(NotBlankStr(lost_id) for lost_id in lost_race_ids)
+            )
+            refetched_rows: list[ApprovalItem] = [
+                item
+                for item in refetched_batch
+                if (status is None or item.status == status)
+                and (risk_level is None or item.risk_level == risk_level)
+                and (action_type is None or item.action_type == action_type)
+            ]
             # Refresh the entire page slice in the cache (not just the
             # EXPIRED transitions) so stale non-expired siblings can't
             # outlive a fresh repo read; refetched lost-race rows

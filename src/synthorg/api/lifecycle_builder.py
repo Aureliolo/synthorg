@@ -5,7 +5,6 @@ were previously inlined in ``api/app.py``.
 """
 
 import asyncio
-import contextlib
 from typing import TYPE_CHECKING, cast
 
 from synthorg import __version__
@@ -28,6 +27,7 @@ from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
+    API_APP_SHUTDOWN_TIMEOUT,
     API_APP_STARTUP,
     API_AUDIT_RETENTION,
     API_SERVICE_AUTO_WIRE_FAILED,
@@ -57,6 +57,78 @@ if TYPE_CHECKING:
     _ = _datetime  # keep import consistent with original module
 
 logger = get_logger(__name__)
+
+
+# Per-task shutdown budgets for the three janitor loops launched by the
+# lifecycle builder. These are passive wake-poll-sleep loops so 2.0s
+# matches the budget already used for the meeting scheduler / settings
+# dispatcher / bus-bridge in ``api/lifecycle.py`` (see the worst-case
+# math comment near ``_TASK_ENGINE_SHUTDOWN_SECONDS``). Wrapping the
+# cancel-and-await with ``asyncio.wait_for`` keeps shutdown bounded
+# even when a task body shields ``CancelledError`` (third-party
+# callees, hung I/O); the orchestrator's SIGKILL deadline must not
+# slip past ``graceful_shutdown`` (75s in api/server.py).
+_TICKET_CLEANUP_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- bootstrap
+_AUDIT_RETENTION_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- bootstrap
+_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: float = 2.0  # lint-allow: magic-numbers -- bootstrap
+
+
+async def _cancel_with_timeout(
+    task: asyncio.Task[None],
+    *,
+    service: str,
+    timeout: float,  # noqa: ASYNC109 -- per-task shutdown budget
+) -> None:
+    """Cancel *task* and await completion with a hard timeout.
+
+    The three janitor loops the lifecycle builder owns
+    (``_ticket_cleanup_task``, ``_audit_retention_task``,
+    ``_webhook_cleanup_task``) are wake-poll-sleep loops with no
+    in-flight work, so a body that shields ``CancelledError`` is the
+    only realistic way to hang here. Bound the wait to *timeout* and
+    log at ERROR via ``API_APP_SHUTDOWN_TIMEOUT`` when the budget
+    elapses; downstream service-teardown still runs.
+
+    ``CancelledError`` is the normal completion path and is suppressed.
+    ``MemoryError`` / ``RecursionError`` are re-raised because they
+    must surface (matches the ``_try_stop`` discipline in
+    ``api/lifecycle.py``).
+    """
+    task.cancel()
+    try:
+        await asyncio.wait_for(task, timeout=timeout)
+    except asyncio.CancelledError:
+        return
+    except MemoryError, RecursionError:
+        raise
+    except TimeoutError as exc:
+        logger.error(
+            API_APP_SHUTDOWN_TIMEOUT,
+            service=service,
+            timeout_seconds=timeout,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            context=f"Failed to cancel {service} within shutdown budget",
+        )
+    except Exception as exc:
+        # A janitor task that fails with a non-timeout exception
+        # (third-party callee crashing inside its except clause, hung
+        # I/O surfacing OSError, aiosqlite raising during a partial
+        # write) must not be silently swallowed -- the previous
+        # implementation returned ``None`` from this branch and the
+        # service-teardown sequence continued thinking the cancel
+        # succeeded. Log at ERROR via the shutdown event so the
+        # operator sees the underlying cause, then continue with
+        # downstream services (the helper's contract is "never block
+        # the whole shutdown window").
+        logger.error(
+            API_APP_SHUTDOWN,
+            service=service,
+            phase="task_cancellation",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            context=f"{service} task crashed during cancellation",
+        )
 
 
 def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
@@ -718,19 +790,25 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 )
             _training_memory_backend = None
         if _ticket_cleanup_task is not None:
-            _ticket_cleanup_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await _ticket_cleanup_task
+            await _cancel_with_timeout(
+                _ticket_cleanup_task,
+                service="ticket_cleanup",
+                timeout=_TICKET_CLEANUP_SHUTDOWN_SECONDS,
+            )
             _ticket_cleanup_task = None
         if _audit_retention_task is not None:
-            _audit_retention_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await _audit_retention_task
+            await _cancel_with_timeout(
+                _audit_retention_task,
+                service="audit_retention",
+                timeout=_AUDIT_RETENTION_SHUTDOWN_SECONDS,
+            )
             _audit_retention_task = None
         if _webhook_cleanup_task is not None:
-            _webhook_cleanup_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await _webhook_cleanup_task
+            await _cancel_with_timeout(
+                _webhook_cleanup_task,
+                service="webhook_cleanup",
+                timeout=_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS,
+            )
             _webhook_cleanup_task = None
         # Stop the EventStreamHub janitor before logging shutdown so
         # the event-loop shutdown sequence does not race the cancel.

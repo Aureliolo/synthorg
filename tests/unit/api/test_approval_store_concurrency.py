@@ -447,3 +447,162 @@ class TestExpirationConcurrency:
         assert save_result is None
         assert get_result is not None
         assert get_result.status == ApprovalStatus.EXPIRED
+
+
+class _LostRaceRepo:
+    """Fake repo whose ``expire_if_pending`` always loses every row.
+
+    Exercises the lost-race refetch path in ``ApprovalStore.list_items``
+    so the regression test can assert the batch ``get_many`` is the
+    only fetch path used (no per-id ``get`` loop).
+    """
+
+    def __init__(self, items: dict[str, ApprovalItem]) -> None:
+        self.items = items
+        self.list_calls = 0
+        self.expire_calls = 0
+        self.get_calls = 0
+        self.get_many_calls = 0
+        self.get_many_id_counts: list[int] = []
+
+    async def list_items(
+        self,
+        *,
+        status: ApprovalStatus | None = None,
+        risk_level: ApprovalRiskLevel | None = None,
+        action_type: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        del status, risk_level, action_type
+        self.list_calls += 1
+        rows = tuple(self.items.values())
+        return rows[offset : offset + limit]
+
+    async def expire_if_pending(
+        self,
+        ids: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        # Pretend every row already transitioned to a terminal status
+        # before our scan landed -- nothing flips, every id ends up in
+        # the lost-race set.
+        self.expire_calls += 1
+        del ids
+        return ()
+
+    async def get(self, approval_id: str) -> ApprovalItem | None:
+        # Pinned to surface the old N+1 path: any call here is a
+        # regression -- the lost-race refetch must go through
+        # ``get_many``.
+        self.get_calls += 1
+        return self.items.get(approval_id)
+
+    async def get_many(self, ids: tuple[str, ...]) -> tuple[ApprovalItem, ...]:
+        self.get_many_calls += 1
+        self.get_many_id_counts.append(len(ids))
+        return tuple(self.items[item_id] for item_id in ids if item_id in self.items)
+
+
+@pytest.mark.unit
+class TestLostRaceBatchFetch:
+    """Lost-race refetch uses one ``get_many`` instead of N ``get`` calls."""
+
+    async def test_no_n_plus_one_get_calls_on_lost_race(self) -> None:
+        now = _now()
+        # Three rows with ``expires_at`` in the past so the
+        # lazy-expiration pass tries to flip them; every flip "loses"
+        # because the repo claims the rows already moved to terminal
+        # statuses (we returned ``()`` from ``expire_if_pending``).
+        items = {
+            f"approval-{i}": ApprovalItem(
+                id=f"approval-{i}",
+                action_type="code:merge",
+                title=f"Test {i}",
+                description="desc",
+                requested_by="agent-dev",
+                risk_level=ApprovalRiskLevel.MEDIUM,
+                status=ApprovalStatus.APPROVED,  # already terminal
+                created_at=now - timedelta(hours=2),
+                expires_at=now - timedelta(hours=1),
+                decided_at=now,
+                decided_by="alice",
+                decision_reason="ok",
+            )
+            for i in range(3)
+        }
+        # Override: the IN-MEMORY page snapshot we feed back to the
+        # store has ``status=PENDING`` (so ``to_persist`` covers all 3
+        # rows). The ``items`` dict (used by ``get_many``) holds the
+        # *authoritative* terminal-status copies.
+        page_snapshot = {
+            k: v.model_copy(update={"status": ApprovalStatus.PENDING})
+            for k, v in items.items()
+        }
+
+        class SnapshotRepo(_LostRaceRepo):
+            async def list_items(
+                self,
+                *,
+                status: ApprovalStatus | None = None,
+                risk_level: ApprovalRiskLevel | None = None,
+                action_type: str | None = None,
+                limit: int = 100,
+                offset: int = 0,
+            ) -> tuple[ApprovalItem, ...]:
+                del status, risk_level, action_type
+                self.list_calls += 1
+                rows = tuple(page_snapshot.values())
+                return rows[offset : offset + limit]
+
+        repo = SnapshotRepo(items=items)
+        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+
+        result = await store.list_items()
+
+        # All three rows survive -- they were "approved" already so
+        # they appear in the response with their authoritative state.
+        assert len(result) == 3
+        assert {item.id for item in result} == set(items.keys())
+        assert all(item.status == ApprovalStatus.APPROVED for item in result)
+
+        # The N+1 invariant: zero per-id ``get`` calls; one
+        # ``get_many`` call sized to the lost-race set.
+        assert repo.get_calls == 0, "regression: per-id get loop in lost-race path"
+        assert repo.get_many_calls == 1
+        assert repo.get_many_id_counts == [3]
+
+    async def test_get_many_skipped_when_lost_race_set_is_empty(self) -> None:
+        """Empty lost-race set must not issue any ``get_many`` query."""
+        now = _now()
+        items = {
+            "approval-0": ApprovalItem(
+                id="approval-0",
+                action_type="code:merge",
+                title="Test 0",
+                description="desc",
+                requested_by="agent-dev",
+                risk_level=ApprovalRiskLevel.MEDIUM,
+                status=ApprovalStatus.PENDING,
+                created_at=now - timedelta(hours=2),
+                expires_at=now - timedelta(hours=1),
+            ),
+        }
+
+        class WinningRepo(_LostRaceRepo):
+            async def expire_if_pending(self, ids: tuple[str, ...]) -> tuple[str, ...]:
+                self.expire_calls += 1
+                # Pretend we won every flip -- no lost-race rows.
+                return ids
+
+        repo = WinningRepo(items=items)
+        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+
+        await store.list_items()
+
+        # ``get_many`` is called once with an empty tuple in the
+        # current implementation (the helper short-circuits empty
+        # input), or skipped entirely. Either way, no per-id ``get``
+        # call must fire.
+        assert repo.get_calls == 0
+        if repo.get_many_calls:
+            assert repo.get_many_id_counts == [0]

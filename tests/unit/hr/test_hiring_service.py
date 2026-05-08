@@ -297,3 +297,114 @@ class TestHiringServiceInstantiateAgent:
         checklist = await onboarding_service.get_checklist(str(identity.id))
         assert checklist is not None
         assert checklist.is_complete is False
+
+
+@pytest.mark.unit
+class TestHiringRequestStatusTransitionedLogs:
+    """Status-transition logs fire for every persisted hop."""
+
+    async def test_auto_approve_emits_pending_to_approved_transition(
+        self,
+        hiring_service: HiringService,
+    ) -> None:
+        import structlog.testing
+
+        from synthorg.observability.events.hr import (
+            HIRING_REQUEST_STATUS_TRANSITIONED,
+        )
+
+        req = await hiring_service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            level="mid",
+            reason="Auto-approve transition test",
+        )
+        updated = await hiring_service.generate_candidate(req)
+        candidate_id = str(updated.candidates[0].id)
+
+        with structlog.testing.capture_logs() as captured:
+            approved = await hiring_service.submit_for_approval(updated, candidate_id)
+
+        # Filter to the transition event only.
+        transitions = [
+            entry
+            for entry in captured
+            if entry.get("event") == HIRING_REQUEST_STATUS_TRANSITIONED
+        ]
+        assert len(transitions) == 1, captured
+        entry = transitions[0]
+        assert entry["log_level"] == "info"
+        assert entry["request_id"] == str(approved.id)
+        assert entry["from_status"] == HiringRequestStatus.PENDING.value
+        assert entry["to_status"] == HiringRequestStatus.APPROVED.value
+
+    async def test_manual_approval_branch_does_not_emit_transition(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Approval-store branch keeps PENDING; no status hop to log."""
+        import structlog.testing
+
+        from synthorg.observability.events.hr import (
+            HIRING_REQUEST_STATUS_TRANSITIONED,
+        )
+
+        store = ApprovalStore()
+        service = HiringService(registry=registry, approval_store=store)
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            level="mid",
+            reason="Manual-approval transition test",
+        )
+        updated = await service.generate_candidate(req)
+        candidate_id = str(updated.candidates[0].id)
+
+        with structlog.testing.capture_logs() as captured:
+            await service.submit_for_approval(updated, candidate_id)
+
+        transitions = [
+            entry
+            for entry in captured
+            if entry.get("event") == HIRING_REQUEST_STATUS_TRANSITIONED
+        ]
+        # Status is still PENDING -- no hop, no log.
+        assert transitions == []
+
+    async def test_instantiate_emits_approved_to_instantiated_transition(
+        self,
+        hiring_service: HiringService,
+    ) -> None:
+        import structlog.testing
+
+        from synthorg.observability.events.hr import (
+            HIRING_REQUEST_STATUS_TRANSITIONED,
+        )
+
+        req = await hiring_service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            level="mid",
+            reason="Instantiate transition test",
+        )
+        updated = await hiring_service.generate_candidate(req)
+        candidate_id = str(updated.candidates[0].id)
+        approved = await hiring_service.submit_for_approval(updated, candidate_id)
+
+        with structlog.testing.capture_logs() as captured:
+            await hiring_service.instantiate_agent(approved)
+
+        transitions = [
+            entry
+            for entry in captured
+            if entry.get("event") == HIRING_REQUEST_STATUS_TRANSITIONED
+        ]
+        assert len(transitions) == 1, captured
+        entry = transitions[0]
+        assert entry["log_level"] == "info"
+        assert entry["request_id"] == str(approved.id)
+        assert entry["from_status"] == HiringRequestStatus.APPROVED.value
+        assert entry["to_status"] == HiringRequestStatus.INSTANTIATED.value

@@ -54,6 +54,17 @@ class InMemoryInflightStore(InflightStore):
         self._locks: dict[str, asyncio.Lock] = {}
         self._meta_lock: asyncio.Lock = asyncio.Lock()
         self._acquires_since_gc: int = 0
+        # Reference count of in-flight ``_acquire_or_raise`` /
+        # ``_release`` calls per key, used to gate GC so a coroutine
+        # that has just received a lock from ``_get_lock`` (but not
+        # yet awaited ``async with lock``) can never have it evicted
+        # from underneath itself. Without this, ``_gc_cold_buckets``
+        # could drop the unlocked lock and the next
+        # ``_get_lock(same_key)`` would mint a fresh lock, leaving two
+        # concurrent callers holding *different* lock objects for the
+        # same key. Mirrors the pattern in
+        # :class:`InMemorySlidingWindowStore`.
+        self._lock_refs: dict[str, int] = {}
 
     def acquire(
         self,
@@ -109,88 +120,167 @@ class InMemoryInflightStore(InflightStore):
                 matches the duration of the ops this guards.
         """
         lock = await self._get_lock(key)
-        async with lock:
-            current = self._counters.get(key, 0)
-            if current >= max_inflight:
+        try:
+            async with lock:
+                current = self._counters.get(key, 0)
+                if current >= max_inflight:
+                    logger.warning(
+                        API_GUARD_DENIED,
+                        guard="per_op_concurrency",
+                        key=key,
+                        max_inflight=max_inflight,
+                        current=current,
+                        retry_after=_MIN_RETRY_AFTER_SECONDS,
+                    )
+                    # Public message intentionally opaque: the exact
+                    # ``current`` / ``max_inflight`` counts go to the
+                    # audit log above so operators can diagnose
+                    # saturation, but surfacing them in the response
+                    # body would let a caller coordinate requests to
+                    # exhaust the limit precisely or infer how many
+                    # concurrent requests other subjects currently
+                    # hold for the same operation.
+                    raise ConcurrencyLimitExceededError(
+                        retry_after=_MIN_RETRY_AFTER_SECONDS,
+                    )
+                self._counters[key] = current + 1
+            # GC counter bump happens only on successful acquire;
+            # denied requests don't allocate new counters and so
+            # don't contribute to bucket growth. Counter + threshold
+            # check run under the meta-lock to avoid redundant
+            # concurrent sweeps.
+            should_gc = False
+            async with self._meta_lock:
+                self._acquires_since_gc += 1
+                if self._acquires_since_gc >= _GC_EVERY_N_ACQUIRES:
+                    self._acquires_since_gc = 0
+                    should_gc = True
+            if should_gc:
+                await self._gc_cold_buckets()
+        finally:
+            # Drop the ref AFTER we are done touching the lock and
+            # the GC bump; only then is it safe for the GC to evict
+            # the bucket. Pairs with the increment inside ``_get_lock``.
+            # Wrap in a guard so a transient failure inside
+            # ``_release_lock_ref`` (e.g. CancelledError raised against
+            # the meta-lock acquire) does not unwind past the original
+            # exception from the try body and replace it on the call
+            # stack. ``MemoryError`` / ``RecursionError`` still
+            # propagate; everything else is logged and swallowed.
+            try:
+                await self._release_lock_ref(key)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as ref_exc:
                 logger.warning(
-                    API_GUARD_DENIED,
-                    guard="per_op_concurrency",
+                    API_REQUEST_ERROR,
+                    error_type="inflight_lock_ref_release_failed",
+                    limiter="InMemoryInflightStore",
                     key=key,
-                    max_inflight=max_inflight,
-                    current=current,
-                    retry_after=_MIN_RETRY_AFTER_SECONDS,
+                    error=safe_error_description(ref_exc),
                 )
-                # Public message intentionally opaque: the exact
-                # ``current`` / ``max_inflight`` counts go to the audit
-                # log above so operators can diagnose saturation, but
-                # surfacing them in the response body would let a
-                # caller coordinate requests to exhaust the limit
-                # precisely or infer how many concurrent requests
-                # other subjects currently hold for the same operation.
-                raise ConcurrencyLimitExceededError(
-                    retry_after=_MIN_RETRY_AFTER_SECONDS,
-                )
-            self._counters[key] = current + 1
-        # GC counter bump happens only on successful acquire; denied
-        # requests don't allocate new counters and so don't contribute
-        # to bucket growth.  Counter + threshold check run under the
-        # meta-lock to avoid redundant concurrent sweeps.
-        should_gc = False
-        async with self._meta_lock:
-            self._acquires_since_gc += 1
-            if self._acquires_since_gc >= _GC_EVERY_N_ACQUIRES:
-                self._acquires_since_gc = 0
-                should_gc = True
-        if should_gc:
-            await self._gc_cold_buckets()
 
     async def _release(self, key: str) -> None:
         """Decrement the counter; clamp at zero on underflow."""
         lock = await self._get_lock(key)
-        async with lock:
-            current = self._counters.get(key, 0)
-            if current <= 0:
-                # Releasing below zero is a logical error -- it means
-                # we held a permit we never acquired.  Clamp to zero
-                # (the best recovery: the bucket returns to "empty")
-                # and log loudly so the bug surfaces.  Refusing the
-                # decrement would leak the bucket in the opposite
-                # direction next acquire.
+        try:
+            async with lock:
+                current = self._counters.get(key, 0)
+                if current <= 0:
+                    # Releasing below zero is a logical error -- it
+                    # means we held a permit we never acquired. Clamp
+                    # to zero (the best recovery: the bucket returns
+                    # to "empty") and log loudly so the bug surfaces.
+                    # Refusing the decrement would leak the bucket
+                    # in the opposite direction next acquire.
+                    logger.warning(
+                        API_REQUEST_ERROR,
+                        error_type="inflight_negative_release",
+                        limiter="InMemoryInflightStore",
+                        key=key,
+                        error="release called with counter already at 0",
+                    )
+                    self._counters[key] = 0
+                    return
+                self._counters[key] = current - 1
+        finally:
+            # Same guard as ``_acquire_or_raise`` -- a failure inside
+            # ``_release_lock_ref`` must not mask the original
+            # exception (if any) from the release body.
+            try:
+                await self._release_lock_ref(key)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as ref_exc:
                 logger.warning(
                     API_REQUEST_ERROR,
-                    error_type="inflight_negative_release",
+                    error_type="inflight_lock_ref_release_failed",
                     limiter="InMemoryInflightStore",
                     key=key,
-                    error="release called with counter already at 0",
+                    error=safe_error_description(ref_exc),
                 )
-                self._counters[key] = 0
-                return
-            self._counters[key] = current - 1
 
     async def close(self) -> None:
         """Clear all counters and locks."""
         async with self._meta_lock:
             self._counters.clear()
             self._locks.clear()
+            self._lock_refs.clear()
             self._acquires_since_gc = 0
 
     async def _get_lock(self, key: str) -> asyncio.Lock:
-        """Return the per-key lock, creating it under the meta-lock."""
-        lock = self._locks.get(key)
-        if lock is not None:
-            return lock
+        """Return the per-key lock, creating it under the meta-lock.
+
+        Always acquires ``self._meta_lock``: the previous fast-path
+        (``self._locks.get`` outside the lock) opened a TOCTOU window
+        between the lock retrieval and the caller's ``async with
+        lock`` -- ``_gc_cold_buckets`` could observe an unlocked,
+        zero-counter bucket and evict it, the next ``_get_lock`` for
+        the same key would mint a fresh lock, and two concurrent
+        callers would hold different locks for the same key.
+
+        Increments ``_lock_refs[key]`` so a concurrent
+        :meth:`_gc_cold_buckets` cannot evict the lock between this
+        return and the caller's ``async with``. The caller MUST pair
+        every successful ``_get_lock`` with a
+        :meth:`_release_lock_ref`.
+        """
         async with self._meta_lock:
             lock = self._locks.get(key)
             if lock is None:
                 lock = asyncio.Lock()
                 self._locks[key] = lock
+            self._lock_refs[key] = self._lock_refs.get(key, 0) + 1
             return lock
 
+    async def _release_lock_ref(self, key: str) -> None:
+        """Drop one reference; remove the entry when it hits zero.
+
+        Pairs with :meth:`_get_lock`. The ``_lock_refs`` entry is
+        deleted (rather than left at 0) so a quiescent key contributes
+        nothing to memory; the dict only holds keys with at least one
+        in-flight ``_acquire_or_raise`` / ``_release``.
+        """
+        async with self._meta_lock:
+            count = self._lock_refs.get(key, 0) - 1
+            if count <= 0:
+                self._lock_refs.pop(key, None)
+            else:
+                self._lock_refs[key] = count
+
     async def _gc_cold_buckets(self) -> None:
-        """Drop buckets with counter == 0 and no locked lock.
+        """Drop buckets with counter == 0 and no locked / referenced lock.
 
         Also reclaims orphan locks -- entries in ``self._locks`` that
         have no matching counter -- so they do not leak memory.
+
+        ``self._lock_refs`` gates eviction in addition to
+        ``lock.locked()``: a coroutine that just received the lock
+        from :meth:`_get_lock` but has not yet entered ``async with
+        lock`` would otherwise be deprived of its lock between those
+        two points (the GC sees ``locked()=False`` because the
+        ``async with`` has not started, but a ``ref > 0`` indicates
+        the bucket is in use).
         """
         async with self._meta_lock:
             try:
@@ -198,19 +288,29 @@ class InMemoryInflightStore(InflightStore):
                 for key, count in self._counters.items():
                     if count <= 0:
                         lock = self._locks.get(key)
-                        if lock is None or not lock.locked():
+                        if (lock is None or not lock.locked()) and self._lock_refs.get(
+                            key, 0
+                        ) == 0:
                             dead.append(key)
                 for key in dead:
                     self._counters.pop(key, None)
                     lock = self._locks.get(key)
-                    if lock is not None and not lock.locked():
+                    if (
+                        lock is not None
+                        and not lock.locked()
+                        and self._lock_refs.get(key, 0) == 0
+                    ):
                         self._locks.pop(key, None)
                 orphan_lock_keys = [
                     key for key in list(self._locks.keys()) if key not in self._counters
                 ]
                 for key in orphan_lock_keys:
                     lock = self._locks.get(key)
-                    if lock is not None and not lock.locked():
+                    if (
+                        lock is not None
+                        and not lock.locked()
+                        and self._lock_refs.get(key, 0) == 0
+                    ):
                         self._locks.pop(key, None)
             except asyncio.CancelledError, MemoryError, RecursionError:
                 # Non-recoverable: propagate so shutdown / OOM is not hidden.

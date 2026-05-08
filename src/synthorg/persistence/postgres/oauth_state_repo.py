@@ -5,9 +5,10 @@ table.  States are short-lived and consumed once on callback;
 ``cleanup_expired`` reclaims stale rows.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import psycopg
 from psycopg.rows import dict_row
 
 from synthorg.core.persistence_errors import QueryError
@@ -29,16 +30,18 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-
 _SELECT_COLS = (
     "state_token, connection_name, pkce_verifier, "
-    "scopes_requested, redirect_uri, created_at, expires_at"
+    "scopes_requested, redirect_uri, created_at, expires_at, "
+    "consumed_at, connection_name_returned"
 )
 
 
 def _row_to_state(row: dict[str, Any]) -> OAuthState:
     """Deserialize a dict row into an :class:`OAuthState`."""
     pkce = row.get("pkce_verifier")
+    consumed_at = row.get("consumed_at")
+    connection_name_returned = row.get("connection_name_returned")
     return OAuthState(
         state_token=NotBlankStr(row["state_token"]),
         connection_name=NotBlankStr(row["connection_name"]),
@@ -47,6 +50,12 @@ def _row_to_state(row: dict[str, Any]) -> OAuthState:
         redirect_uri=row.get("redirect_uri") or "",
         created_at=coerce_row_timestamp(row["created_at"]),
         expires_at=coerce_row_timestamp(row["expires_at"]),
+        consumed_at=(
+            coerce_row_timestamp(consumed_at) if consumed_at is not None else None
+        ),
+        connection_name_returned=(
+            NotBlankStr(connection_name_returned) if connection_name_returned else None
+        ),
     )
 
 
@@ -58,7 +67,16 @@ class PostgresOAuthStateRepository:
         self._pool = pool
 
     async def save(self, state: OAuthState) -> None:
-        """Upsert an OAuth state row keyed by ``state_token``."""
+        """Upsert an OAuth state row keyed by ``state_token``.
+
+        Persists every column on ``OAuthState`` including
+        ``consumed_at`` / ``connection_name_returned`` so the model
+        and the row stay symmetric across save/load. The two
+        idempotency columns are typically ``None`` at flow-start
+        (``OAuthStateService.persist_initiation``) and stamped
+        later by ``mark_consumed``; saving them here lets tests
+        construct a "post-callback" snapshot in a single round-trip.
+        """
         params = (
             str(state.state_token),
             str(state.connection_name),
@@ -67,6 +85,12 @@ class PostgresOAuthStateRepository:
             state.redirect_uri,
             normalize_utc(state.created_at),
             normalize_utc(state.expires_at),
+            normalize_utc(state.consumed_at) if state.consumed_at else None,
+            (
+                str(state.connection_name_returned)
+                if state.connection_name_returned
+                else None
+            ),
         )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -74,19 +98,28 @@ class PostgresOAuthStateRepository:
                     """
                     INSERT INTO oauth_states (
                         state_token, connection_name, pkce_verifier,
-                        scopes_requested, redirect_uri, created_at, expires_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        scopes_requested, redirect_uri, created_at, expires_at,
+                        consumed_at, connection_name_returned
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (state_token) DO UPDATE SET
                         connection_name = EXCLUDED.connection_name,
                         pkce_verifier = EXCLUDED.pkce_verifier,
                         scopes_requested = EXCLUDED.scopes_requested,
                         redirect_uri = EXCLUDED.redirect_uri,
                         created_at = EXCLUDED.created_at,
-                        expires_at = EXCLUDED.expires_at
+                        expires_at = EXCLUDED.expires_at,
+                        consumed_at = COALESCE(
+                            oauth_states.consumed_at, EXCLUDED.consumed_at
+                        ),
+                        connection_name_returned = COALESCE(
+                            oauth_states.connection_name_returned,
+                            EXCLUDED.connection_name_returned
+                        )
                     """,
                     params,
                 )
-        except Exception as exc:
+                await conn.commit()
+        except psycopg.Error as exc:
             msg = f"Failed to save oauth_state {state.state_token!r}"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_SAVE_FAILED,
@@ -109,7 +142,7 @@ class PostgresOAuthStateRepository:
                     (str(state_token),),
                 )
                 row = await cur.fetchone()
-        except Exception as exc:
+        except psycopg.Error as exc:
             msg = f"Failed to fetch oauth_state {state_token!r}"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_FETCH_FAILED,
@@ -141,7 +174,8 @@ class PostgresOAuthStateRepository:
                     (str(state_token),),
                 )
                 deleted = cur.rowcount > 0
-        except Exception as exc:
+                await conn.commit()
+        except psycopg.Error as exc:
             msg = f"Failed to delete oauth_state {state_token!r}"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_DELETE_FAILED,
@@ -152,17 +186,64 @@ class PostgresOAuthStateRepository:
             raise QueryError(msg) from exc
         return deleted
 
-    async def cleanup_expired(self) -> int:
-        """Delete every state with ``expires_at`` <= now (UTC)."""
-        cutoff = datetime.now(UTC)
+    async def mark_consumed(
+        self,
+        state_token: NotBlankStr,
+        *,
+        connection_name: NotBlankStr,
+        consumed_at: datetime,
+    ) -> bool:
+        """Stamp ``consumed_at`` and ``connection_name_returned`` atomically.
+
+        Compare-and-set: only updates a row whose ``consumed_at IS
+        NULL``. A redelivered callback observes the existing
+        ``consumed_at`` and returns ``False`` so the handler can
+        route it through the replay branch.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    "DELETE FROM oauth_states WHERE expires_at <= %s",
-                    (cutoff,),
+                    "UPDATE oauth_states "
+                    "SET consumed_at = %s, connection_name_returned = %s "
+                    "WHERE state_token = %s AND consumed_at IS NULL",
+                    (
+                        normalize_utc(consumed_at),
+                        str(connection_name),
+                        str(state_token),
+                    ),
+                )
+                updated = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to mark consumed oauth_state {state_token!r}"
+            logger.warning(
+                PERSISTENCE_OAUTH_STATE_SAVE_FAILED,
+                state_token=str(state_token),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return updated
+
+    async def cleanup_expired(self, retention_seconds: float) -> int:
+        """Delete expired and stale-consumed OAuth states.
+
+        See :meth:`SQLiteOAuthStateRepository.cleanup_expired` for
+        the retention contract.
+        """
+        now = datetime.now(UTC)
+        consumed_cutoff = now - timedelta(seconds=retention_seconds)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM oauth_states "
+                    "WHERE expires_at <= %s "
+                    "OR (consumed_at IS NOT NULL AND consumed_at <= %s)",
+                    (now, consumed_cutoff),
                 )
                 removed = cur.rowcount
-        except Exception as exc:
+                await conn.commit()
+        except psycopg.Error as exc:
             msg = "Failed to cleanup expired oauth_states"
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_CLEANUP_FAILED,

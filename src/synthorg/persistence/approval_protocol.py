@@ -86,6 +86,19 @@ class ApprovalRepository(Protocol):
         """
         ...
 
+    async def get_many(self, ids: Sequence[NotBlankStr]) -> tuple[ApprovalItem, ...]:
+        """Batch-fetch approval items by id.
+
+        Order is unspecified; callers that need a specific order
+        must reorder the result. Missing ids are simply absent from
+        the result tuple. Empty input is a no-op (returns ``()``
+        without issuing any query).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        ...
+
     async def list_items(
         self,
         *,

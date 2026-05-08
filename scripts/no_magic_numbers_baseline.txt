@@ -194,7 +194,7 @@ src/synthorg/communication/config.py:33:28
 src/synthorg/communication/config.py:49:47
 src/synthorg/communication/conflict_resolution/escalation/config.py:15:26
 src/synthorg/communication/conflict_resolution/escalation/in_memory_store.py:34:17
-src/synthorg/communication/conflict_resolution/escalation/notify.py:45:34
+src/synthorg/communication/conflict_resolution/escalation/notify.py:46:34
 src/synthorg/communication/conflict_resolution/escalation/protocol.py:21:17
 src/synthorg/communication/conflict_resolution/escalation/sweeper.py:43:34
 src/synthorg/communication/conflict_resolution/human_strategy.py:72:48
@@ -356,7 +356,7 @@ src/synthorg/engine/workflow/strategies/throughput_adaptive.py:85:28
 src/synthorg/engine/workflow/validate_edges.py:18:22
 src/synthorg/engine/workflow/validation_types.py:10:22
 src/synthorg/engine/workflow/version_service.py:43:21
-src/synthorg/engine/workflow/webhook_bridge.py:36:38
+src/synthorg/engine/workflow/webhook_bridge.py:37:38
 src/synthorg/engine/workspace/disk_quota.py:26:16
 src/synthorg/engine/workspace/semantic_checks.py:74:25
 src/synthorg/engine/workspace/semantic_llm.py:181:27
@@ -667,16 +667,16 @@ src/synthorg/ontology/drift/passive.py:85:27
 src/synthorg/ontology/injection/hybrid.py:47:33
 src/synthorg/ontology/injection/prompt.py:73:33
 src/synthorg/ontology/service.py:242:21
-src/synthorg/persistence/approval_protocol.py:95:21
+src/synthorg/persistence/approval_protocol.py:108:21
 src/synthorg/persistence/artifact_protocol.py:53:21
 src/synthorg/persistence/atlas.py:40:36
 src/synthorg/persistence/atlas.py:41:28
 src/synthorg/persistence/audit_protocol.py:47:21
 src/synthorg/persistence/auth_protocol.py:53:21
 src/synthorg/persistence/auth_protocol.py:62:21
-src/synthorg/persistence/connection_protocol.py:33:21
-src/synthorg/persistence/connection_protocol.py:49:21
-src/synthorg/persistence/connection_protocol.py:130:21
+src/synthorg/persistence/connection_protocol.py:34:21
+src/synthorg/persistence/connection_protocol.py:50:21
+src/synthorg/persistence/connection_protocol.py:168:21
 src/synthorg/persistence/cost_record_protocol.py:29:21
 src/synthorg/persistence/decision_protocol.py:101:21
 src/synthorg/persistence/decision_protocol.py:125:21
@@ -696,7 +696,7 @@ src/synthorg/persistence/ontology_protocol.py:77:21
 src/synthorg/persistence/ontology_protocol.py:107:21
 src/synthorg/persistence/ontology_protocol.py:115:21
 src/synthorg/persistence/postgres/approval_repo.py:41:23
-src/synthorg/persistence/postgres/approval_repo.py:361:21
+src/synthorg/persistence/postgres/approval_repo.py:390:21
 src/synthorg/persistence/postgres/artifact_repo.py:37:22
 src/synthorg/persistence/postgres/artifact_repo.py:202:21
 src/synthorg/persistence/postgres/audit_repository.py:102:21
@@ -737,7 +737,7 @@ src/synthorg/persistence/postgres/workflow_execution_repo.py:55:22
 src/synthorg/persistence/provider_audit_protocol.py:62:21
 src/synthorg/persistence/settings_protocol.py:56:21
 src/synthorg/persistence/sqlite/approval_repo.py:30:23
-src/synthorg/persistence/sqlite/approval_repo.py:413:21
+src/synthorg/persistence/sqlite/approval_repo.py:450:21
 src/synthorg/persistence/sqlite/artifact_repo.py:27:22
 src/synthorg/persistence/sqlite/artifact_repo.py:269:21
 src/synthorg/persistence/sqlite/audit_repository.py:127:21

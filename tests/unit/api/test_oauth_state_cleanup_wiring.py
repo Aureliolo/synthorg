@@ -49,6 +49,7 @@ def _build_app_state(
         has_session_store=False,
         has_lockout_store=False,
         has_persistence=has_persistence,
+        has_config_resolver=False,
     )
 
 
@@ -58,7 +59,7 @@ async def test_oauth_state_cleanup_invoked_when_persistence_present() -> None:
 
     await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
 
-    app_state.persistence.oauth_states.cleanup_expired.assert_awaited_once()
+    app_state.persistence.oauth_states.cleanup_expired.assert_awaited_once_with(600.0)
 
 
 async def test_oauth_state_cleanup_skipped_without_persistence() -> None:

@@ -4,6 +4,7 @@ Defines CRUD interfaces for connections, encrypted secret blobs, OAuth
 authorization states, and webhook receipts.
 """
 
+from datetime import datetime  # noqa: TC003 -- runtime annotation
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -106,8 +107,45 @@ class OAuthStateRepository(Protocol):
         """Delete a state token (consumed or expired)."""
         ...
 
-    async def cleanup_expired(self) -> int:
+    async def mark_consumed(
+        self,
+        state_token: NotBlankStr,
+        *,
+        connection_name: NotBlankStr,
+        consumed_at: datetime,
+    ) -> bool:
+        """Mark a state token as consumed by a successful callback.
+
+        Stamps ``consumed_at`` and records ``connection_name`` so a
+        redelivered callback (provider retry, browser back-button,
+        CDN replay) returns the original connection name without
+        re-exchanging the authorization code. The compare-and-set is
+        atomic at the row level; second and subsequent calls observe
+        the existing ``consumed_at`` and return ``False``.
+
+        Implementations MUST stamp both ``consumed_at`` and
+        ``connection_name_returned`` in a single atomic UPDATE.
+        :class:`OAuthState` validates the two fields are always set
+        together (see ``_validate_consumed_pair``); a partial write
+        would let a redelivered callback observe ``consumed_at`` set
+        with no ``connection_name_returned`` to return.
+
+        Returns:
+            ``True`` if a row was updated (state existed and was not
+            already consumed); ``False`` if the row was missing or
+            already consumed.
+
+        Raises:
+            QueryError: On database errors.
+        """
+        ...
+
+    async def cleanup_expired(self, retention_seconds: float) -> int:
         """Delete all expired states.
+
+        Also reaps consumed-but-stale rows older than
+        ``retention_seconds`` so the idempotency table does not grow
+        unbounded.
 
         Returns:
             Number of deleted rows.

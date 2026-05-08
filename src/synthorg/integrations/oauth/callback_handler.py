@@ -6,6 +6,7 @@ OAuth API controller to process authorization code callbacks.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.errors import (
     InvalidStateError,
@@ -71,7 +72,7 @@ async def resolve_oauth_http_timeout(
         return None
 
 
-async def handle_oauth_callback(  # noqa: PLR0913
+async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
     *,
     state_param: str,
     code: str,
@@ -112,16 +113,35 @@ async def handle_oauth_callback(  # noqa: PLR0913
     """
     logger.info(OAUTH_CALLBACK_RECEIVED, state_prefix=state_param[:8])
 
-    oauth_state = await state_repo.get(state_param)
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    oauth_state = await state_repo.get(NotBlankStr(state_param))
     if oauth_state is None:
         logger.warning(OAUTH_STATE_INVALID, state_prefix=state_param[:8])
         msg = "Invalid or expired OAuth state token"
         raise InvalidStateError(msg)
 
-    from datetime import UTC, datetime  # noqa: PLC0415
+    # Replay branch: a redelivered callback (provider retry, browser
+    # back-button, CDN replay) finds the state already consumed.
+    # Return the original ``connection_name`` without re-exchanging
+    # the authorization code; re-exchange would either fail (codes
+    # are single-use at the IdP) or, for a malicious replay, double-
+    # spend the code at a sibling worker.
+    if oauth_state.consumed_at is not None:
+        connection_name = oauth_state.connection_name_returned
+        # ``_validate_consumed_pair`` on ``OAuthState`` keeps these
+        # two fields in lockstep, so a non-null ``consumed_at``
+        # always pairs with a non-null ``connection_name_returned``.
+        assert connection_name is not None  # noqa: S101 -- model invariant
+        logger.info(
+            OAUTH_FLOW_COMPLETED,
+            connection_name=str(connection_name),
+            replay=True,
+        )
+        return str(connection_name)
 
     if oauth_state.expires_at < datetime.now(UTC):
-        await state_repo.delete(state_param)
+        await state_repo.delete(NotBlankStr(state_param))
         logger.warning(
             OAUTH_STATE_INVALID,
             state_prefix=state_param[:8],
@@ -129,8 +149,6 @@ async def handle_oauth_callback(  # noqa: PLR0913
         )
         msg = "OAuth state token expired"
         raise InvalidStateError(msg)
-
-    await state_repo.delete(state_param)
 
     conn = await catalog.get_or_raise(oauth_state.connection_name)
     credentials = await catalog.get_credentials(conn.name)
@@ -210,8 +228,31 @@ async def handle_oauth_callback(  # noqa: PLR0913
         meta_updates.pop("token_expires_at", None)
     await catalog.update(conn.name, metadata=meta_updates)
 
-    logger.info(
-        OAUTH_FLOW_COMPLETED,
-        connection_name=conn.name,
+    # Mark the state token as consumed AFTER tokens are stored. A
+    # redelivered callback will see ``consumed_at`` and return the
+    # original ``connection_name`` via the replay branch above
+    # without re-exchanging the (single-use) authorization code.
+    # ``mark_consumed`` is the compare-and-set boundary: returns
+    # ``True`` on the winning write, ``False`` if a concurrent
+    # callback won the race and already stamped the row. The False
+    # case is rare (the replay branch above catches it for
+    # *redelivered* callbacks) but possible under genuinely
+    # concurrent in-flight callbacks; surface it as a WARNING so
+    # operators can observe the collision.
+    consumed_winner = await state_repo.mark_consumed(
+        NotBlankStr(state_param),
+        connection_name=NotBlankStr(conn.name),
+        consumed_at=datetime.now(UTC),
     )
+    if not consumed_winner:
+        logger.warning(
+            OAUTH_FLOW_COMPLETED,
+            connection_name=conn.name,
+            note="mark_consumed CAS lost; concurrent callback already stamped state",
+        )
+    else:
+        logger.info(
+            OAUTH_FLOW_COMPLETED,
+            connection_name=conn.name,
+        )
     return conn.name
