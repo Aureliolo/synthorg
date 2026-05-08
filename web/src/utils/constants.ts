@@ -10,6 +10,18 @@ export const WS_RECONNECT_BASE_DELAY = 1000
 export const WS_RECONNECT_MAX_DELAY = 30000
 export const WS_MAX_RECONNECT_ATTEMPTS = 20
 /**
+ * +/-20% randomised jitter applied to the reconnect backoff so a
+ * server-restart-driven reconnect storm does not arrive in lockstep
+ * across every connected client.
+ *
+ * On wake-up, ``scheduleReconnect`` multiplies the deterministic
+ * exponential delay by ``WS_RECONNECT_JITTER_MIN..MAX`` (uniform).
+ * Lower bound 0.8 prevents the cap from saturating; upper bound 1.2
+ * keeps reconnect latency tight enough to feel snappy.
+ */
+export const WS_RECONNECT_JITTER_MIN = 0.8
+export const WS_RECONNECT_JITTER_MAX = 1.2
+/**
  * Max incoming WS event size (bytes). Mirrors the server's
  * `_MAX_OUTBOUND_EVENT_BYTES` in `src/synthorg/api/controllers/ws.py`.
  * The 4 KiB cap on outbound (client → server) control messages is

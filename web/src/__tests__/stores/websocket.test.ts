@@ -422,11 +422,46 @@ const connectPromise = useWebSocketStore.getState().connect()
       ws.simulateClose()
       expect(useWebSocketStore.getState().connected).toBe(false)
 
-      // Advance timer to trigger reconnect (base delay = 1000ms)
-      await vi.advanceTimersByTimeAsync(1000)
+      // Advance timer past the +/-20% jitter ceiling on top of the
+      // 1000ms base delay so the reconnect timer fires regardless of
+      // which value Math.random produced.
+      await vi.advanceTimersByTimeAsync(1200)
 
       // A new WebSocket should have been created
       expect(MockWebSocket.instances.length).toBeGreaterThan(1)
+    })
+
+    it('applies +/-20% jitter to the reconnect delay', async () => {
+      // Stub Math.random to a known value so we can assert the
+      // resulting delay sits inside the +/-20% window.
+      const mathRandom = vi.spyOn(Math, 'random').mockReturnValue(0)
+      try {
+        const setTimeoutSpy = vi.spyOn(window, 'setTimeout')
+
+        const connectPromise = useWebSocketStore.getState().connect()
+        await vi.runAllTimersAsync()
+        await connectPromise
+
+        const ws = MockWebSocket.latest()!
+        ws.simulateOpen()
+
+        setTimeoutSpy.mockClear()
+        ws.simulateClose()
+
+        // The first ``setTimeout`` after the close is the reconnect
+        // timer; subsequent calls (toast queue, etc.) are not the one
+        // we care about. ``Math.random()=0`` clamps the multiplier to
+        // the lower end (0.8x), giving 800ms exactly.
+        const reconnectCall = setTimeoutSpy.mock.calls.find(
+          ([, ms]) => typeof ms === 'number' && ms >= 700 && ms <= 1300,
+        )
+        expect(reconnectCall).toBeDefined()
+        const delay = reconnectCall?.[1] as number
+        expect(delay).toBeGreaterThanOrEqual(800)
+        expect(delay).toBeLessThanOrEqual(1200)
+      } finally {
+        mathRandom.mockRestore()
+      }
     })
 
     it('does not reconnect on intentional disconnect', async () => {
