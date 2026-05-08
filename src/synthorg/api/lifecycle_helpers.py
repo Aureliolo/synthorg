@@ -52,15 +52,20 @@ logger = get_logger(__name__)
 
 
 async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
-    """Resolve the ticket cleanup interval, falling back to 60 seconds.
+    """Resolve the ticket cleanup interval.
 
     A settings-backend outage, missing setting, or malformed value must
     not kill the cleanup task -- otherwise expired WS tickets and
     sessions accumulate indefinitely until the next restart. Any
-    resolver failure is logged and the built-in default is returned.
+    resolver failure is logged and the registered default for
+    ``api.ticket_cleanup_interval_seconds`` is returned, so the fallback
+    tracks the registry rather than duplicating the literal here.
     """
+    fallback = registered_default_float(
+        SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
+    )
     if not app_state.has_config_resolver:
-        return 60.0
+        return fallback
     try:
         return await app_state.config_resolver.get_float(
             SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
@@ -74,23 +79,26 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
             API_WS_TICKET_CLEANUP,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            fallback_seconds=60.0,
+            fallback_seconds=fallback,
         )
-        return 60.0
+        return fallback
 
 
 async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
-    """Resolve the lifecycle-cleanup kill-switch, fail-safe to ``True``.
+    """Resolve the lifecycle-cleanup kill-switch.
 
     Operators flip ``api.lifecycle_cleanup_enabled=false`` to pause the
     WS ticket / session / lockout cleanup loop mid-flight without tearing
     down the lifespan task.  A settings-backend outage must not mask the
-    operator's intent in either direction -- we pick "keep cleaning" as
-    the safer failure mode because stale tickets and sessions accumulate
+    operator's intent in either direction -- the registered default
+    ("keep cleaning") wins because stale tickets and sessions accumulate
     forever otherwise.
     """
+    fallback = registered_default_bool(
+        SettingNamespace.API.value, "lifecycle_cleanup_enabled"
+    )
     if not app_state.has_config_resolver:
-        return True
+        return fallback
     try:
         return await app_state.config_resolver.get_bool(
             SettingNamespace.API.value, "lifecycle_cleanup_enabled"
@@ -104,9 +112,9 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
             API_WS_TICKET_CLEANUP,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            fallback_enabled=True,
+            fallback_enabled=fallback,
         )
-        return True
+        return fallback
 
 
 async def _run_cleanup_step(
@@ -328,7 +336,7 @@ async def _resolve_audit_retention_days(app_state: AppState) -> int:
         raise
     except Exception as exc:
         logger.warning(
-            API_APP_STARTUP,
+            API_AUDIT_RETENTION,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
             fallback_days=fallback,

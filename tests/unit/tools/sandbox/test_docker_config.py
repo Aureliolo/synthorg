@@ -109,7 +109,7 @@ class TestDockerSandboxConfigImageResolution:
         try:
             DockerSandboxConfig()
             assert any(
-                level == "debug" and event == "config.env_var.fallback"
+                level == "debug" and event == "config.fallback.used"
                 for level, event, _ in recorded
             ), f"expected fallback debug log, got: {recorded}"
         finally:

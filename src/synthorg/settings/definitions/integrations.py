@@ -107,11 +107,13 @@ _r.register(
             " granularity. Operators tune the *window*"
             " (``integrations.webhook_receipt_retention_days`` or the"
             " per-connection override) rather than the *cadence*."
-            " Default 24h."
+            " Default 24h. Resolved per-tick by"
+            " ``_resolve_webhook_receipt_cleanup_tick_seconds``, so"
+            " operator changes take effect on the next tick without"
+            " restart."
         ),
         group="Webhooks",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=60.0,
         max_value=604800.0,
         yaml_path="integrations.webhooks.receipt_cleanup_tick_seconds",

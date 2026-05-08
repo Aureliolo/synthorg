@@ -26,8 +26,8 @@ from typing import Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import (
-    CONFIG_ENV_VAR_FALLBACK,
-    CONFIG_ENV_VAR_RESOLVED,
+    CONFIG_FALLBACK_USED,
+    CONFIG_RESOLVER_CACHE_RESOLVED,
 )
 
 logger = get_logger(__name__)
@@ -73,14 +73,14 @@ def get_resolved_sandbox_image() -> str:
     """
     if _resolved_sandbox_image:
         logger.debug(
-            CONFIG_ENV_VAR_RESOLVED,
+            CONFIG_RESOLVER_CACHE_RESOLVED,
             var="tools.sandbox_image",
             source="resolver_cache",
             resolved=_resolved_sandbox_image,
         )
         return _resolved_sandbox_image
     logger.debug(
-        CONFIG_ENV_VAR_FALLBACK,
+        CONFIG_FALLBACK_USED,
         var="tools.sandbox_image",
         source="fallback_constant",
         fallback=_FALLBACK_SANDBOX_IMAGE,
@@ -97,14 +97,14 @@ def get_resolved_sidecar_image() -> str:
     """
     if _resolved_sidecar_image:
         logger.debug(
-            CONFIG_ENV_VAR_RESOLVED,
+            CONFIG_RESOLVER_CACHE_RESOLVED,
             var="tools.sidecar_image",
             source="resolver_cache",
             resolved=_resolved_sidecar_image,
         )
         return _resolved_sidecar_image
     logger.debug(
-        CONFIG_ENV_VAR_FALLBACK,
+        CONFIG_FALLBACK_USED,
         var="tools.sidecar_image",
         source="fallback_constant",
         fallback=_FALLBACK_SIDECAR_IMAGE,

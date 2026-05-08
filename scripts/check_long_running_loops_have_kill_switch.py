@@ -229,21 +229,33 @@ def _calls_kill_switch_resolver(node: ast.AST) -> bool:
       resolver call, then a later ``If.test`` whose expression
       references the assigned name). Covers
       ``enabled = await self._resolve_enabled(); if not enabled: ...``.
+
+    Both shapes are evaluated against the immediate statement list of
+    the loop body in source order.  Assigns/guards buried inside a
+    nested ``If`` / ``For`` / ``Try`` body do NOT count -- such
+    bindings are not guaranteed to execute on every iteration, so
+    crediting them would let a conditional resolver call masquerade as
+    an unconditional kill-switch.  A ``While`` whose body is empty
+    (impossible in valid Python, but defensive) returns False.
     """
+    body = getattr(node, "body", None)
+    if not body:
+        return False
     assigned_resolver_names: set[str] = set()
-    for sub in _walk_current_scope(node):
-        if isinstance(sub, ast.If) and _expr_contains_resolver_call(sub.test):
+    for stmt in body:
+        if isinstance(stmt, ast.If) and _expr_contains_resolver_call(stmt.test):
             return True
-        if isinstance(sub, ast.Assign) and _expr_contains_resolver_call(sub.value):
-            for target in sub.targets:
+        if isinstance(stmt, ast.Assign) and _expr_contains_resolver_call(stmt.value):
+            for target in stmt.targets:
                 if isinstance(target, ast.Name):
                     assigned_resolver_names.add(target.id)
+            continue
         if (
             assigned_resolver_names
-            and isinstance(sub, ast.If)
+            and isinstance(stmt, ast.If)
             and any(
                 isinstance(name, ast.Name) and name.id in assigned_resolver_names
-                for name in ast.walk(sub.test)
+                for name in ast.walk(stmt.test)
             )
         ):
             return True

@@ -251,7 +251,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     } catch (err) {
       // Reset applied but refetch failed -- UI is stale until next poll cycle
       refreshFailed = true
-      log.warn('Post-reset refetch failed; data will refresh at next poll', err)
+      log.warn('Post-reset refetch failed; data will refresh at next poll', {
+        error: sanitizeForLog(getErrorMessage(err)),
+      })
     } finally {
       set((state) => {
         const newSaving = new Set(state.savingKeys)

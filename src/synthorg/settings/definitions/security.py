@@ -87,7 +87,8 @@ _r.register(
         default="true",
         description=(
             "Live kill-switch for the audit retention purge loop. When"
-            " ``False`` the loop stays resident but every 24h tick"
+            " ``False`` the loop stays resident but every configured"
+            " tick (see ``security.audit_retention_tick_seconds``)"
             " short-circuits -- used during incident investigations"
             " to preserve all records, or to decommission retention"
             " on a deployment that handles it externally."
@@ -108,11 +109,12 @@ _r.register(
             "Wall-clock interval between audit retention purge ticks."
             " Audit retention is not a hot path; operators tune the"
             " *window* (``security.audit_retention_days``) rather than"
-            " the *cadence*. Default 24h."
+            " the *cadence*. Default 24h. Resolved per-tick by"
+            " ``_resolve_audit_retention_tick_seconds``, so operator"
+            " changes take effect on the next tick without restart."
         ),
         group="Retention",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=60.0,
         max_value=604800.0,
         yaml_path="security.audit_retention_tick_seconds",
