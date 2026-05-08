@@ -45,11 +45,21 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_INTERVAL_SECONDS: Final[int] = 1800  # 30 minutes
-_PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
-_HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
-_MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
-_DEFAULT_OLLAMA_PORT: Final[int] = 11434
+_DEFAULT_INTERVAL_SECONDS: Final[int] = (
+    1800  # lint-allow: magic-numbers -- 30 min ctor-kwarg default
+)
+_PROBE_TIMEOUT_SECONDS: Final[float] = (
+    10.0  # lint-allow: magic-numbers -- HTTP client timeout baseline
+)
+_HTTP_SERVER_ERROR_THRESHOLD: Final[int] = (
+    500  # lint-allow: magic-numbers -- HTTP 5xx protocol constant
+)
+_MAX_ERROR_MESSAGE_LENGTH: Final[int] = (
+    200  # lint-allow: magic-numbers -- log truncation limit
+)
+_DEFAULT_OLLAMA_PORT: Final[int] = (
+    11434  # lint-allow: magic-numbers -- mirrors providers.ollama_default_port
+)
 """Documented default that mirrors the ``providers.ollama_default_port``
 setting.  Production callers resolve via ``ConfigResolver`` and pass
 the value through; this constant is the documented baseline used by
