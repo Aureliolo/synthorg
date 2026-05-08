@@ -86,11 +86,13 @@
     {
       "description": "Container dependencies (all Dockerfile and Docker Compose images). golang is excluded so the earlier Go-toolchain-coupling rule wins; without this exclude Renovate's later-rule-overrides-earlier semantics would reassign the docker/sidecar/Dockerfile FROM golang base back to the container group, splitting the Go toolchain bump and the matching base-image digest bump across two PRs.",
       "matchManagers": ["dockerfile", "docker-compose"],
-      "excludeDepNames": ["golang"],
       "groupName": "Container dependencies",
       "groupSlug": "container",
       "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:docker"]
+      "labels": ["dependencies", "type:chore", "scope:docker"],
+      "matchDepNames": [
+        "!golang"
+      ]
     },
     {
       "description": "docker/compose.yml mirrors image pins whose canonical source-of-truth lives in cli/internal/config/state.go (Default*ImageTag) and cli/internal/verify/dhi.go (dhiPinnedIndexDigests) for DHI postgres + nats, and in cli/internal/compose/compose.yml.tmpl for busybox. Letting the docker-compose manager update docker/compose.yml independently produces upgrade-collision warnings when the custom regex managers land on a different newValue, which aborts the entire renovate/container branch. The custom regex managers are the single update path; a Go test verifies docker/compose.yml stays in sync. Other dev compose files (overlays, dast, distributed, fine-tuning) keep the docker-compose manager.",
@@ -110,11 +112,13 @@
     {
       "description": "CI tool dependencies (Actions SHAs + binary tools). golangci-lint-action is excluded so the earlier CLI-group rule wins; without this exclude Renovate's later-rule-overrides-earlier-rule semantics would reassign it back to ci-tools.",
       "matchManagers": ["github-actions"],
-      "excludeDepNames": ["golangci/golangci-lint-action"],
       "groupName": "CI tool dependencies",
       "groupSlug": "ci-tools",
       "commitMessagePrefix": "ci:",
-      "labels": ["dependencies", "type:infra"]
+      "labels": ["dependencies", "type:infra"],
+      "matchDepNames": [
+        "!golangci/golangci-lint-action"
+      ]
     },
     {
       "description": "CI binary tool versions (Trivy, Grype, Gitleaks, D2)",
