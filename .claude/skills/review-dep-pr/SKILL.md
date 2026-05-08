@@ -331,7 +331,7 @@ Options:
 - **"Combine into one PR"**: Close the bot PRs and create one combined PR with all changes manually integrated. Use when 3+ PRs all conflict on the same source file -- avoids N rounds of rebase churn.
 - **"Defer the conflicting subset"**: Merge the disjoint PRs now; close the conflicting ones via Phase 8's "Close / Skip" flow with a recognisable deferment reason (the user provides the exact phrase when prompted; common choices: "supersede later", "deferred to next cycle", "blocked on #N"). The dependency bot (Renovate or Dependabot) will recreate the closed PRs on its next cycle once the main batch has landed. Use when the conflicting subset isn't time-sensitive. The exact comment text is whatever the user supplies; this skill does not require a specific phrase, but the chosen reason should make the intent legible to a future reader.
 
-Carry the chosen strategy into Phase 8: it dictates merge order and whether Phase 8 invokes `--auto` (parallel-safe) vs blocking on each merge (sequential).
+Carry the chosen strategy into Phase 8: it dictates merge order (which PRs go in which wave, sequential vs parallel within a wave) and rebase scheduling between waves.
 
 **Per-PR triage (only when the PR is NOT clean per the default rule above):**
 
@@ -352,7 +352,7 @@ Options:
 
 **Multiple clean PRs: per-PR triage question is skipped; the batch overlap question still applies if overlaps exist.**
 
-When multiple PRs in the batch all qualify as clean (per the default rule at the top of this phase), the skill auto-merges them as a group. Announce in plain text (`"PRs #X, #Y, #Z are all clean (CI green, no actionable items); merging all as-is."`), then run Phase 8's "Merge as-is" path on each in sequence (or `--auto` in parallel for disjoint file sets per Phase 5). The per-PR triage question is what's removed; the multi-PR overlap-strategy question above is NOT removed and still fires whenever the batch has ≥ 2 PRs sharing source or config files. Auto-merge for clean PRs only runs after that strategy decision has landed (single-PR batches skip the strategy question entirely; that's the only "no AskUserQuestion at all" path).
+When multiple PRs in the batch all qualify as clean (per the default rule at the top of this phase), the skill auto-merges them as a group. Announce in plain text (`"PRs #X, #Y, #Z are all clean (CI green, no actionable items); merging all as-is."`), then run Phase 8's "Merge as-is" path on each PR in sequence (one squash merge at a time; wait for the previous PR to land on `main` before merging the next). The per-PR triage question is what's removed; the multi-PR overlap-strategy question above is NOT removed and still fires whenever the batch has ≥ 2 PRs sharing source or config files. Auto-merge for clean PRs only runs after that strategy decision has landed (single-PR batches skip the strategy question entirely; that's the only "no AskUserQuestion at all" path).
 
 The previous behaviour (asking "Merge all? / review individually / skip for now") was a redundant confirmation step for cases where the skill has already proven there is nothing to decide; it's now gone.
 
@@ -360,10 +360,10 @@ The previous behaviour (asking "Merge all? / review individually / skip for now"
 
 Apply the merge-strategy choice from Phase 7 (when Phase 7 was asked).
 
-**Lockfile-only batch (Phase 7 skipped).** When Phase 6 detected only lockfile-only overlaps (per the Phase 5 trigger rule, Phase 7 was skipped), there is no user-supplied strategy to apply. Use the implicit lockfile-race default: treat all PRs in the batch as parallel-safe; merge each eligible PR immediately (or queue with `--auto` if a final required check is still pending); after each merge lands on `main`, the lockfile-conflicting PRs that didn't win that race need a rebase. Trigger that rebase per the bot conventions documented under "Wave-based parallel" below (Renovate: `<rebaseLabel>` label; Dependabot: `@dependabot rebase`); wait for CI to refresh on the rebased head, then merge the next winner. Repeat until the batch is drained. No strategy question is asked; the operator can interrupt at any point if they want a different sequencing.
+**Lockfile-only batch (Phase 7 skipped).** When Phase 6 detected only lockfile-only overlaps (per the Phase 5 trigger rule, Phase 7 was skipped), there is no user-supplied strategy to apply. Use the implicit lockfile-race default: pick one PR, run the "Merge as-is" path on it (CI must already be green; if not, hold the batch until it goes green or take the PR out of scope), wait for the squash merge to land on `main`, then trigger a rebase on the lockfile-conflicting PRs that didn't win the race. Trigger that rebase per the bot conventions documented under "Wave-based parallel" below (Renovate: `<rebaseLabel>` label; Dependabot: `@dependabot rebase`); wait for CI to refresh on the rebased head, then merge the next winner. Repeat until the batch is drained. No strategy question is asked; the operator can interrupt at any point if they want a different sequencing.
 
 **Strategy-driven path (Phase 7 ran).** Apply whichever option the user picked:
-- **Wave-based parallel**: process Wave 1 PRs first, all with `--auto`/immediate as appropriate, then for each subsequent wave wait for prior merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot. **Renovate** PRs: prefer the configured rebase label, `gh pr edit <number> --add-label <rebaseLabel>` (use the value of Renovate's `rebaseLabel` option from the repo's Renovate config; default: `rebase`), because the label trigger does not depend on the exact wording of Renovate's PR-body template. As a fragile alternative you can also tick the rebase/retry checkbox via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`, but body string-manipulation breaks silently if Renovate changes its template format. **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
+- **Wave-based parallel**: process Wave 1 PRs first by squash-merging each one immediately once its CI is green and its approval-with-rationale has been posted (within a wave, the PRs are file-disjoint so the order inside the wave does not matter); then for each subsequent wave wait for the prior wave's merges to land, trigger a rebase on the next wave's PRs, wait for CI, then merge. Rebase trigger depends on the bot. **Renovate** PRs: prefer the configured rebase label, `gh pr edit <number> --add-label <rebaseLabel>` (use the value of Renovate's `rebaseLabel` option from the repo's Renovate config; default: `rebase`), because the label trigger does not depend on the exact wording of Renovate's PR-body template. As a fragile alternative you can also tick the rebase/retry checkbox via `gh pr edit --body` rewriting `- [ ] <!-- rebase-check -->` to `- [x] <!-- rebase-check -->`, but body string-manipulation breaks silently if Renovate changes its template format. **Dependabot** PRs accept `@dependabot rebase` posted as an issue comment.
 - **Strict sequential**: merge one PR, wait for it to land on `main`, trigger rebase + CI on the next PR, then merge it. No overlap with other merges in flight.
 - **Combine into one PR**: invoke "Improve and merge" against a single new branch that integrates all the diffs; close the bot PRs with a pointer to the combined PR.
 - **Defer the conflicting subset**: invoke "Close / Skip" on the deferred PRs first, then process the remaining disjoint PRs normally.
@@ -407,7 +407,7 @@ gh pr review <number> --approve --body-file /tmp/dep-approval-<number>.txt
 gh pr review <number> --approve --body "Decision: lockfile-only refresh; CI green; no source diffs. Changelog digest: not applicable for lockFileMaintenance. Follow-ups: none."
 ```
 
-**Do NOT skip this step**, even when `--auto` is used and the merge happens asynchronously: the approval must land first so the PR carries the rationale before it auto-merges. Do NOT collapse the rationale into the squash commit message; the approval review is the canonical venue (squash messages get rewritten by maintainers, get truncated, and don't surface in the PR conversation thread).
+**Do NOT skip this step.** The approval review must land before the merge call so the PR carries the rationale at the moment of merge. Do NOT collapse the rationale into the squash commit message: the approval review is the canonical venue (squash messages get rewritten by maintainers, get truncated, and don't surface in the PR conversation thread).
 
 ### Merge as-is
 
@@ -422,20 +422,17 @@ gh pr review <number> --approve --body "Decision: lockfile-only refresh; CI gree
 3. Merge:
 
    ```bash
-   gh pr merge <number> --squash --auto
+   gh pr merge <number> --squash
    ```
 
-   Note: `--auto` may succeed silently with no stdout. Track which path was used: `auto` or `immediate`.
-
-   If `--auto` fails (auto-merge not enabled on the repo or branch protection requirements not met), fall back to `gh pr merge <number> --squash` for immediate merge. If that also fails (e.g., required reviews not met), inform the user that manual approval is needed.
+   Do NOT pass `--auto`. The auto-merge flag is unreliable in this repo's branch-protection setup and routinely fails to fire even when all required checks pass. Issue the merge synchronously instead: confirm CI is green in step 1 above, then call `--squash` immediately so the merge either lands or surfaces a real error. If the merge call fails (required reviews not met, branch protection blocks, etc.), surface the stderr to the user and stop.
 4. Verify the merge:
 
    ```bash
-   gh pr view <number> --json state,autoMergeRequest --jq '{state: .state, autoMerge: .autoMergeRequest}'
+   gh pr view <number> --json state,mergedAt --jq '{state: .state, mergedAt: .mergedAt}'
    ```
 
-   - If **immediate** merge was used: confirm `state` is `MERGED`. If not, inform the user.
-   - If **auto** merge was enabled: `state` will be `OPEN` with `autoMergeRequest` present (auto-merge is asynchronous; it fires after required checks pass). Inform the user: "Auto-merge has been enabled; the PR will merge automatically when all required checks pass." No immediate state verification needed.
+   Confirm `state == "MERGED"` and `mergedAt != null`. If not merged, inform the user and surface the prior step's stderr.
 
 ### Improve and merge
 
@@ -491,7 +488,7 @@ After all merges complete, if any PRs were merged, automatically run `/post-merg
   - `Changelog digest:` 2 to 4 bullets splitting **Relevant** (items that affect us) from **Reviewed but not relevant** (items that don't).
   - `Follow-ups:` `none` if clean, otherwise the deferred items the user explicitly accepted.
 
-  **Why mandatory:** skipping the approval (even when `--auto` will land the PR asynchronously, even when no AskUserQuestion was invoked because the PR was clean) leaves the PR with no audit trail of *why* it was accepted. Squash commit messages don't substitute: maintainers rewrite them, GitHub truncates them, and they don't surface in the PR conversation thread.
+  **Why mandatory:** skipping the approval (even when no AskUserQuestion was invoked because the PR was clean) leaves the PR with no audit trail of *why* it was accepted. Squash commit messages don't substitute: maintainers rewrite them, GitHub truncates them, and they don't surface in the PR conversation thread.
 
   **If violated:** if the skill ever reaches a `gh pr merge` call without an approval-with-rationale already posted, that is a skill bug. Stop, post the rationale, then merge.
 - **Grouped updates (Renovate domain groups or Dependabot groups)**: analyze each package in the group separately, then present as one combined report.
