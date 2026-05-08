@@ -20,6 +20,7 @@
   "platformAutomerge": false,
   "prConcurrentLimit": 10,
   "prHourlyLimit": 5,
+  "separateMajorMinor": false,
   "vulnerabilityAlerts": {
     "enabled": true,
     "schedule": ["at any time"],
@@ -27,7 +28,7 @@
   },
   "packageRules": [
     {
-      "description": "Python dependencies (pep621 + pre-commit)",
+      "description": "Python dependencies (pep621 + pre-commit). Footprint: pyproject.toml, uv.lock, .pre-commit-config.yaml. Disjoint from Web and Infrastructure groups.",
       "matchManagers": ["pep621", "pre-commit"],
       "groupName": "Python dependencies",
       "groupSlug": "python",
@@ -36,7 +37,7 @@
       "labels": ["dependencies", "type:chore"]
     },
     {
-      "description": "Web dependencies (npm: web, site, .github)",
+      "description": "Web dependencies (npm). Footprint: web/, site/, .github/package.json + their lockfiles. Disjoint from Python (pyproject.toml/uv.lock) and Infrastructure (.github/workflows/*.yml, never .github/package.json).",
       "matchManagers": ["npm"],
       "groupName": "Web dependencies",
       "groupSlug": "web",
@@ -44,102 +45,15 @@
       "labels": ["dependencies", "type:chore", "scope:web"]
     },
     {
-      "description": "CLI dependencies (Go modules + CLI tools)",
-      "matchManagers": ["gomod"],
-      "groupName": "CLI dependencies",
-      "groupSlug": "cli",
+      "description": "Infrastructure dependencies. Single group spanning Go modules, Dockerfile + docker-compose images, GitHub Actions SHAs, and every custom-regex pin (binary-tool versions, container-image regexes for state.go / compose.yml / busybox / testcontainers, action version: inputs, go install URLs). Footprint: cli/, docker/, .github/workflows/*, .github/actions/*, scripts/install_*, cli/internal/config/state.go, tests/*.py testcontainers pins. One group with no carve-outs guarantees zero source/config overlap with the Python and Web groups; without it, an action SHA bump and a `version:` input bump for the same tool can land in two PRs that both modify the same workflow line, and a Dockerfile base-image bump for `golang` can desync from the matching cli/go.mod toolchain bump.",
+      "matchManagers": ["gomod", "dockerfile", "docker-compose", "github-actions", "custom.regex"],
+      "groupName": "Infrastructure dependencies",
+      "groupSlug": "infra",
       "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:cli"]
-    },
-    {
-      "description": "CLI tool version inputs (golangci-lint, GoReleaser, govulncheck)",
-      "matchManagers": ["custom.regex"],
-      "matchDepNames": [
-        "golangci/golangci-lint",
-        "github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
-        "goreleaser/goreleaser",
-        "golang.org/x/vuln/cmd/govulncheck"
-      ],
-      "groupName": "CLI dependencies",
-      "groupSlug": "cli",
-      "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:cli"]
-    },
-    {
-      "description": "golangci-lint-action SHA travels with the CLI group, not ci-tools. Without this, the action SHA bump (caught by the github-actions manager) and the version: input bump (caught by customManager #3) land in two separate PRs that both modify .github/workflows/cli.yml line 72 -- guaranteed merge conflict on every golangci-lint roll. Same group, one PR, no collision.",
-      "matchManagers": ["github-actions"],
-      "matchDepNames": ["golangci/golangci-lint-action"],
-      "groupName": "CLI dependencies",
-      "groupSlug": "cli",
-      "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:cli"]
-    },
-    {
-      "description": "Go toolchain coupling: the `golang` Dockerfile base image (docker/sidecar/Dockerfile FROM line) ships the toolchain that compiles cli/go.mod and docker/sidecar/go.mod. When go.mod's `go X.Y.Z` directive bumps to a newer patch (e.g. for a stdlib CVE fix), the Dockerfile pin must also move to a digest that ships X.Y.Z; otherwise CI's `GOTOOLCHAIN=local` reproducibility setting refuses with `go.mod requires go >= X.Y.Z (running go X.Y.Z-1; GOTOOLCHAIN=local)`. Pull the `golang` Dockerfile dep into the CLI group so both updates land in one PR with a coherent commit boundary.",
-      "matchManagers": ["dockerfile"],
-      "matchDepNames": ["golang"],
-      "groupName": "CLI dependencies",
-      "groupSlug": "cli",
-      "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:cli"]
-    },
-    {
-      "description": "Container dependencies (all Dockerfile and Docker Compose images). golang is excluded so the earlier Go-toolchain-coupling rule wins; without this exclude Renovate's later-rule-overrides-earlier semantics would reassign the docker/sidecar/Dockerfile FROM golang base back to the container group, splitting the Go toolchain bump and the matching base-image digest bump across two PRs.",
-      "matchManagers": ["dockerfile", "docker-compose"],
-      "groupName": "Container dependencies",
-      "groupSlug": "container",
-      "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:docker"],
-      "matchDepNames": [
-        "!golang"
-      ]
-    },
-    {
-      "description": "docker/compose.yml mirrors image pins whose canonical source-of-truth lives in cli/internal/config/state.go (Default*ImageTag) and cli/internal/verify/dhi.go (dhiPinnedIndexDigests) for DHI postgres + nats, and in cli/internal/compose/compose.yml.tmpl for busybox. Letting the docker-compose manager update docker/compose.yml independently produces upgrade-collision warnings when the custom regex managers land on a different newValue, which aborts the entire renovate/container branch. The custom regex managers are the single update path; a Go test verifies docker/compose.yml stays in sync. Other dev compose files (overlays, dast, distributed, fine-tuning) keep the docker-compose manager.",
-      "matchFileNames": ["docker/compose.yml"],
-      "matchManagers": ["docker-compose"],
-      "enabled": false
-    },
-    {
-      "description": "Container dependencies (compose template images via custom regex)",
-      "matchManagers": ["custom.regex"],
-      "matchDepNames": ["/dhi\\.io/.*/", "/busybox/", "/postgres/", "/nats/", "ariga/atlas"],
-      "groupName": "Container dependencies",
-      "groupSlug": "container",
-      "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:docker"]
-    },
-    {
-      "description": "CI tool dependencies (Actions SHAs + binary tools). golangci-lint-action is excluded so the earlier CLI-group rule wins; without this exclude Renovate's later-rule-overrides-earlier-rule semantics would reassign it back to ci-tools.",
-      "matchManagers": ["github-actions"],
-      "groupName": "CI tool dependencies",
-      "groupSlug": "ci-tools",
-      "commitMessagePrefix": "ci:",
-      "labels": ["dependencies", "type:infra"],
-      "matchDepNames": [
-        "!golangci/golangci-lint-action"
-      ]
-    },
-    {
-      "description": "CI binary tool versions (Trivy, Grype, Gitleaks, D2)",
-      "matchManagers": ["custom.regex"],
-      "matchDepNames": ["aquasecurity/trivy", "anchore/grype", "gitleaks/gitleaks", "terrastruct/d2"],
-      "groupName": "CI tool dependencies",
-      "groupSlug": "ci-tools",
-      "commitMessagePrefix": "ci:",
       "labels": ["dependencies", "type:infra"]
     },
     {
-      "description": "apko binary version (binary download in CI)",
-      "matchManagers": ["custom.regex"],
-      "matchDepNames": ["chainguard-dev/apko"],
-      "groupName": "Container dependencies",
-      "groupSlug": "container",
-      "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:docker"]
-    },
-    {
-      "description": "Combine all lock-file maintenance (pep621, pre-commit, npm, gomod) into a single weekly PR so the refresh cycle surfaces as one unit instead of 2-3 parallel branches",
+      "description": "Combine all lock-file maintenance (pep621, pre-commit, npm, gomod) into a single weekly PR. Lockfile-only overlap with the three dep groups is structural and accepted -- the bot rebases the loser of each lockfile race on its next cycle.",
       "matchUpdateTypes": ["lockFileMaintenance"],
       "groupName": "Lock file maintenance",
       "groupSlug": "lock-files",
@@ -169,6 +83,12 @@
       "allowedVersions": "<1.41.0"
     },
     {
+      "description": "docker/compose.yml mirrors image pins whose canonical source-of-truth lives in cli/internal/config/state.go (Default*ImageTag) and cli/internal/verify/dhi.go (dhiPinnedIndexDigests) for DHI postgres + nats, and in cli/internal/compose/compose.yml.tmpl for busybox. Letting the docker-compose manager update docker/compose.yml independently produces upgrade-collision warnings when the custom regex managers land on a different newValue, which aborts the entire branch. The custom regex managers are the single update path; a Go test verifies docker/compose.yml stays in sync. Other dev compose files (overlays, dast, distributed, fine-tuning) keep the docker-compose manager.",
+      "matchFileNames": ["docker/compose.yml"],
+      "matchManagers": ["docker-compose"],
+      "enabled": false
+    },
+    {
       "description": "Ignore test golden files -- not real compose configs",
       "matchFileNames": ["cli/testdata/**"],
       "enabled": false
@@ -181,7 +101,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Binary tool version env vars in CI workflows (Trivy, Grype, Gitleaks, D2, apko)",
+      "description": "Binary tool version env vars in CI workflows (Trivy, Grype, Gitleaks, D2, apko, melange, etc.)",
       "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
       "matchStrings": [
         "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+[A-Z0-9_]+_VERSION:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
