@@ -294,11 +294,26 @@ class ProviderController(Controller):
         if app_state.has_provider_registry and name in app_state.provider_registry:
             driver = app_state.provider_registry.get(name)
 
+        # Paginate the model list FIRST, then enrich only the page.
+        # Running ``batch_get_capabilities`` over ``provider.models``
+        # before slicing would defeat the cursor-pagination perf goal:
+        # a small-page client would still pay the full upstream
+        # capability-probe cost on every request.  ``paginate_cursor``
+        # consumes the sorted ``ModelConfig`` objects directly; the
+        # response shape is built per-page below.
+        ordered_models = tuple(sorted(provider.models, key=lambda m: m.id))
+        page_models, meta = paginate_cursor(
+            ordered_models,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+
         caps_by_id: Mapping[str, ModelCapabilities | None] = {}
-        if driver is not None:
+        if driver is not None and page_models:
             try:
                 caps_by_id = await driver.batch_get_capabilities(
-                    tuple(m.id for m in provider.models),
+                    tuple(m.id for m in page_models),
                 )
             except* (RetryExhaustedError, RateLimitError) as exc_group:
                 # ``BaseCompletionProvider.batch_get_capabilities``
@@ -318,18 +333,12 @@ class ProviderController(Controller):
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-        ordered = tuple(
+        page = tuple(
             to_provider_model_response(
                 model_config,
                 caps_by_id.get(model_config.id),
             )
-            for model_config in sorted(provider.models, key=lambda m: m.id)
-        )
-        page, meta = paginate_cursor(
-            ordered,
-            limit=limit,
-            cursor=cursor,
-            secret=app_state.cursor_secret,
+            for model_config in page_models
         )
         return PaginatedResponse[ProviderModelResponse](data=page, pagination=meta)
 

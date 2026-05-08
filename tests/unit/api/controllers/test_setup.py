@@ -776,6 +776,15 @@ class TestSetupAgentsList:
             assert len(first["data"]) <= 1
             collected = list(first["data"])
             cursor = first["pagination"]["next_cursor"]
+            # Pin the cross-page invariant so a future template shrink
+            # (``solo_founder`` happens to seed two agents today; a
+            # one-agent template would leave the loop body unexercised
+            # and turn the test into a vacuous pass).
+            assert cursor is not None, (
+                "first page's next_cursor must be non-null so the "
+                "cursor-follow-up loop is actually entered; the "
+                "seeded template no longer crosses a page boundary"
+            )
             while cursor:
                 page = test_client.get(
                     f"/api/v1/setup/agents?limit=1&cursor={cursor}",
