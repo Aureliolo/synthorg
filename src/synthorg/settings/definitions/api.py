@@ -20,11 +20,45 @@ next addition):
   controller construction site (currently the WebSocket budget knobs).
 """
 
+from typing import Final
+
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
 
 _r = get_registry()
+
+
+# ── Per-operation rate-limit / inflight defaults ────────────────
+# Module-level defaults exported as ``Final[int]`` so the per-op
+# policy registry in ``synthorg.api.rate_limits.policies`` imports
+# them without re-introducing bare numeric literals in business
+# logic.  ``settings/definitions/`` is allowlisted by the
+# no-magic-numbers gate, which is the canonical home for every
+# numeric tuning knob in the codebase.  Operator runtime tuning for
+# these values flows through the registered ``per_op_rate_limit
+# _overrides`` and ``per_op_concurrency_overrides`` settings further
+# down this file (the registries below are the typed defaults a
+# fresh deployment ships with).
+
+# Sliding-window rate limit on the SSE event stream:
+# (max_requests_per_window, window_seconds).
+EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS: Final[int] = 60
+EVENTS_STREAM_RATE_LIMIT_WINDOW_SECONDS: Final[int] = 60
+
+# Inflight (concurrent requests per subject) caps for the small set
+# of long-running / GPU-intensive endpoints that need a hard ceiling
+# beyond the sliding-window rate limit.  Single-slot caps protect
+# operations that mutate global state (memory checkpoints, fine-tune
+# runs) from concurrent-modification races; the dual-slot caps on
+# provider discovery / pull throttle outbound network fan-out
+# without serialising the user.
+EVENTS_STREAM_INFLIGHT_MAX: Final[int] = 4
+MEMORY_CHECKPOINT_DEPLOY_INFLIGHT_MAX: Final[int] = 1
+MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX: Final[int] = 1
+MEMORY_FINE_TUNE_INFLIGHT_MAX: Final[int] = 1
+PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX: Final[int] = 2
+PROVIDERS_PULL_MODEL_INFLIGHT_MAX: Final[int] = 2
 
 # ── Server (bootstrap-only) ──────────────────────────────────────
 

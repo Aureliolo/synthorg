@@ -32,6 +32,16 @@ from synthorg.api.rate_limits._subject import KeyPolicy  # noqa: TC001
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.rate_limits.inflight_guard import per_op_concurrency
 from synthorg.observability import get_logger
+from synthorg.settings.definitions.api import (
+    EVENTS_STREAM_INFLIGHT_MAX,
+    EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS,
+    EVENTS_STREAM_RATE_LIMIT_WINDOW_SECONDS,
+    MEMORY_CHECKPOINT_DEPLOY_INFLIGHT_MAX,
+    MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX,
+    MEMORY_FINE_TUNE_INFLIGHT_MAX,
+    PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX,
+    PROVIDERS_PULL_MODEL_INFLIGHT_MAX,
+)
 
 logger = get_logger(__name__)
 
@@ -102,7 +112,10 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "escalations.get": (120, 60),
     "escalations.list": (120, 60),
     # events
-    "events.stream": (60, 60),
+    "events.stream": (
+        EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS,
+        EVENTS_STREAM_RATE_LIMIT_WINDOW_SECONDS,
+    ),
     # interrupts
     "interrupts.resume": (60, 60),
     # meetings
@@ -222,12 +235,12 @@ RATE_LIMIT_POLICIES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
 # ``PerOpConcurrencyConfig.overrides``; this map is the default that
 # ships with a fresh deployment.
 _INFLIGHT_POLICIES: Final[dict[str, int]] = {
-    "events.stream": 4,
-    "memory.checkpoint_deploy": 1,
-    "memory.checkpoint_rollback": 1,
-    "memory.fine_tune": 1,
-    "providers.discover_models": 2,
-    "providers.pull_model": 2,
+    "events.stream": EVENTS_STREAM_INFLIGHT_MAX,
+    "memory.checkpoint_deploy": MEMORY_CHECKPOINT_DEPLOY_INFLIGHT_MAX,
+    "memory.checkpoint_rollback": MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX,
+    "memory.fine_tune": MEMORY_FINE_TUNE_INFLIGHT_MAX,
+    "providers.discover_models": PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX,
+    "providers.pull_model": PROVIDERS_PULL_MODEL_INFLIGHT_MAX,
 }
 
 INFLIGHT_POLICIES: Final[Mapping[str, int]] = MappingProxyType(

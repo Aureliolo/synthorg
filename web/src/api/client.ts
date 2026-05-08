@@ -154,8 +154,12 @@ apiClient.interceptors.response.use(
         // ``waitMs === DO_NOT_RETRY`` means the server wants us to wait
         // longer than our bounded budget -- propagate the 429 to the
         // caller instead of hammering the backend with a shortened retry
-        // that would just 429 again.
-        if (waitMs > 0 && waitMs !== DO_NOT_RETRY) {
+        // that would just 429 again.  ``waitMs === 0`` is a real
+        // "retry immediately" signal (RFC 9110 ``Retry-After: 0`` or no
+        // header) and must still go through the retry path; the axios
+        // branch previously short-circuited it, diverging from the
+        // ``fetchWithRetryAfter`` contract used by non-axios call sites.
+        if (waitMs !== DO_NOT_RETRY) {
           config._rateLimitRetries = retries + 1
           const nextHeaders = { ...(config.headers ?? {}) } as Record<string, string>
           nextHeaders[RETRY_COUNT_HEADER] = String(retries + 1)
@@ -163,7 +167,9 @@ apiClient.interceptors.response.use(
             ...config,
             headers: nextHeaders,
           }
-          await sleep(waitMs)
+          if (waitMs > 0) {
+            await sleep(waitMs)
+          }
           return apiClient.request(retryConfig)
         }
       }

@@ -1582,7 +1582,21 @@ class TestListPersonalityPresets:
         test_client: TestClient[Any],
     ) -> None:
         """Walking pages with limit=1 returns every preset exactly once."""
-        full = test_client.get("/api/v1/setup/personality-presets").json()["data"]
+        # Build the full list by walking pagination at a high limit so
+        # ``full`` is the entire dataset rather than the first
+        # ``DEFAULT_LIMIT``-sized page.  The previous implementation
+        # broke silently the moment the preset registry grew past the
+        # default page size, because the round-trip check was then
+        # comparing two truncated views.
+        full: list[dict[str, Any]] = []
+        cursor: str | None = None
+        while True:
+            qs = "?limit=200" if cursor is None else f"?limit=200&cursor={cursor}"
+            page = test_client.get(f"/api/v1/setup/personality-presets{qs}").json()
+            full.extend(page["data"])
+            cursor = page["pagination"]["next_cursor"]
+            if cursor is None:
+                break
         if len(full) < 2:
             pytest.skip("need at least two presets for cursor round-trip")
         first = test_client.get(

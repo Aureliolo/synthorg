@@ -39,7 +39,12 @@ class TestEmitterBuffering:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock):
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ):
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
@@ -52,7 +57,12 @@ class TestEmitterBuffering:
         sample_rollout_result: RolloutResult,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock):
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ):
             await emitter.emit_rollout(
                 sample_rollout_result,
                 proposal=sample_proposal,
@@ -77,7 +87,12 @@ class TestEmitterBuffering:
             self_improvement_config=si,
             builtin_rule_names=BUILTIN_RULE_NAMES,
         )
-        with patch.object(em, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            em,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             for _ in range(3):
                 await em.emit_decision(
                     sample_outcome,
@@ -93,7 +108,12 @@ class TestEmitterBuffering:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
@@ -107,7 +127,12 @@ class TestEmitterBuffering:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock):
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ):
             assert emitter._flush_task is None
             await emitter.emit_decision(
                 sample_outcome,
@@ -126,7 +151,12 @@ class TestEmitterFlush:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
@@ -139,7 +169,12 @@ class TestEmitterFlush:
         self,
         emitter: HttpAnalyticsEmitter,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             await emitter.flush()
             mock_send.assert_not_awaited()
 
@@ -149,7 +184,12 @@ class TestEmitterFlush:
         sample_outcome: ProposalOutcome,
         sample_proposal: ImprovementProposal,
     ) -> None:
-        with patch.object(emitter, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            emitter,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             await emitter.emit_decision(
                 sample_outcome,
                 proposal=sample_proposal,
@@ -170,7 +210,12 @@ class TestEmitterFlush:
             self_improvement_config=self_improvement_config,
             builtin_rule_names=BUILTIN_RULE_NAMES,
         )
-        with patch.object(em, "_send_batch", new_callable=AsyncMock) as mock_send:
+        with patch.object(
+            em,
+            "_send_batch",
+            new_callable=AsyncMock,
+            spec=HttpAnalyticsEmitter._send_batch,
+        ) as mock_send:
             async with em as emitter:
                 await emitter.emit_decision(
                     sample_outcome,
@@ -424,7 +469,12 @@ class TestEmitterClockSeam:
         # ``aclose()`` flips the kill switch and awaits cancellation
         # before tearing down the HTTP client.
         try:
-            with patch.object(em, "_send_batch", new_callable=AsyncMock):
+            with patch.object(
+                em,
+                "_send_batch",
+                new_callable=AsyncMock,
+                spec=HttpAnalyticsEmitter._send_batch,
+            ):
                 start = em._last_flush_at
                 fake.advance(7.5)
                 await em.emit_decision(

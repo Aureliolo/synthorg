@@ -1,6 +1,7 @@
 """Settings controller -- CRUD for runtime-editable settings."""
 
 import asyncio
+import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Self
 
@@ -178,20 +179,42 @@ class SinkInfoResponse(BaseModel):
     routing_prefixes: tuple[str, ...] = ()
 
 
+# Number of hex digits to retain from each SHA-256 destination
+# fingerprint. 16 hex chars = 64 bits of collision resistance, more
+# than sufficient for the at-most-low-thousands sink count an
+# operator can plausibly configure, while keeping the wire identifier
+# compact enough for tabular display in the dashboard.
+_SINK_FINGERPRINT_LEN = 16
+
+
+def _hash_sink_target(target: str) -> str:
+    """Return a stable, non-reversible fingerprint for a sink destination.
+
+    Used by :func:`_sink_identifier` to derive a per-instance API
+    identifier without exposing the raw destination string (which can
+    embed credentials, query tokens, or auth-bearing path segments
+    for HTTP / OTLP sinks, and operator filesystem layout for FILE
+    sinks).
+    """
+    return hashlib.sha256(target.encode("utf-8")).hexdigest()[:_SINK_FINGERPRINT_LEN]
+
+
 def _sink_identifier(sink: SinkConfig) -> str:
     """Return the stable API identifier for a ``SinkConfig``.
 
-    Console sinks use the fixed ``CONSOLE_SINK_ID`` token. FILE sinks
-    use their ``file_path``. Custom shipping sinks derive a stable
-    per-instance discriminator from the endpoint they target so two
-    HTTP / SYSLOG / OTLP sinks of the same type don't collide on a
-    single ``unnamed-<type>`` key (which would corrupt the active-set
-    membership test in :func:`_append_disabled_defaults` and the wire
-    sort key in the listing endpoint):
+    Console sinks use the fixed ``CONSOLE_SINK_ID`` token. Every other
+    sink derives a type-prefixed SHA-256 fingerprint over its target:
 
-    * ``SYSLOG``: ``syslog:<host>:<port>``
-    * ``HTTP``: ``http:<url>``
-    * ``OTLP``: ``otlp:<endpoint>``
+    * ``FILE``:   ``file:<sha256(file_path)[:16]>``
+    * ``SYSLOG``: ``syslog:<sha256("host:port")[:16]>``
+    * ``HTTP``:   ``http:<sha256(url)[:16]>``
+    * ``OTLP``:   ``otlp:<sha256(endpoint)[:16]>``
+
+    The hash both prevents the public envelope from leaking embedded
+    credentials / query tokens and gives identical destinations the
+    same identifier, so the active-set membership test in
+    :func:`_append_disabled_defaults` and the cursor sort key in the
+    listing endpoint stay collision-free on operator-supplied input.
 
     A sink without any of those endpoint fields is invalid per
     :meth:`SinkConfig._validate_sink_type_fields`; the
@@ -202,13 +225,14 @@ def _sink_identifier(sink: SinkConfig) -> str:
     if sink.sink_type == SinkType.CONSOLE:
         return CONSOLE_SINK_ID
     if sink.file_path:
-        return sink.file_path
+        return f"file:{_hash_sink_target(sink.file_path)}"
     if sink.sink_type == SinkType.SYSLOG and sink.syslog_host:
-        return f"syslog:{sink.syslog_host}:{sink.syslog_port}"
+        target = f"{sink.syslog_host}:{sink.syslog_port}"
+        return f"syslog:{_hash_sink_target(target)}"
     if sink.sink_type == SinkType.HTTP and sink.http_url:
-        return f"http:{sink.http_url}"
+        return f"http:{_hash_sink_target(sink.http_url)}"
     if sink.sink_type == SinkType.OTLP and sink.otlp_endpoint:
-        return f"otlp:{sink.otlp_endpoint}"
+        return f"otlp:{_hash_sink_target(sink.otlp_endpoint)}"
     return f"unnamed-{sink.sink_type.value}"
 
 
@@ -608,12 +632,20 @@ class SettingsController(Controller):
                 custom_sinks_json=custom_json,
             )
         except ValueError as exc:
+            # ``overrides_json`` / ``custom_json`` are operator-supplied
+            # blobs that may contain filesystem paths, HTTP / OTLP
+            # endpoints with embedded query tokens, or syslog auth
+            # material. Logging them verbatim turns a parse failure
+            # into a secret-leak vector. Emit only coarse metadata so
+            # the sink count + presence are still observable.
             logger.warning(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                sink_overrides=overrides_json,
-                custom_sinks=custom_json,
+                has_sink_overrides=overrides_json != "{}",
+                sink_overrides_length=len(overrides_json),
+                has_custom_sinks=custom_json != "[]",
+                custom_sinks_length=len(custom_json),
             )
             sinks = _defaults_only_sinks()
         else:

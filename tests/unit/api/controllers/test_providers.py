@@ -56,7 +56,7 @@ class TestProviderResponseSecurity:
             driver="test-driver",
             api_key="test-placeholder",
         )
-        response = to_provider_response(provider)
+        response = to_provider_response(provider, name=None)
         assert response.has_api_key is True
         # The response should not have api_key attribute at all
         assert (
@@ -74,7 +74,7 @@ class TestProviderResponseSecurity:
             custom_header_name="X-Auth",
             custom_header_value="secret",
         )
-        response = to_provider_response(provider)
+        response = to_provider_response(provider, name=None)
         assert response.has_custom_header is True
         assert response.has_api_key is False
         assert response.has_oauth_credentials is False
@@ -92,7 +92,7 @@ class TestProviderResponseSecurity:
             oauth_client_id="client-id",
             oauth_client_secret="secret-value",
         )
-        response = to_provider_response(provider)
+        response = to_provider_response(provider, name=None)
         dumped = response.model_dump()
         all_values = json.dumps(dumped)
         assert "secret-key" not in all_values

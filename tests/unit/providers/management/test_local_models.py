@@ -343,11 +343,31 @@ class TestSanitizeOllamaError:
         assert "token.json" not in sanitized
         assert "[REDACTED-PATH]" in sanitized
 
-    def test_redacts_host_port(self) -> None:
-        sanitized = _sanitize_ollama_error(
-            "dial tcp ollama-internal.local:11434: connection refused",
-        )
-        assert "ollama-internal.local" not in sanitized
+    @pytest.mark.parametrize(
+        ("raw", "leak"),
+        [
+            (
+                "dial tcp localhost:11434: connection refused",
+                "localhost",
+            ),
+            (
+                "dial tcp 127.0.0.1:11434: connection refused",
+                "127.0.0.1",
+            ),
+            (
+                "dial tcp [::1]:11434: connection refused",
+                "[::1]",
+            ),
+            (
+                "dial tcp ollama-internal.local:11434: connection refused",
+                "ollama-internal.local",
+            ),
+        ],
+    )
+    def test_redacts_host_port(self, raw: str, leak: str) -> None:
+        sanitized = _sanitize_ollama_error(raw)
+        assert leak not in sanitized
+        assert "11434" not in sanitized
         assert "[REDACTED-HOST]" in sanitized
 
     def test_truncates_oversized_input(self) -> None:

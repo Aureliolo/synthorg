@@ -600,7 +600,7 @@ class ProbeLocalResponse(BaseModel):
 def to_provider_response(
     config: ProviderConfig,
     *,
-    name: str | None = None,
+    name: str | None,
 ) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 
@@ -610,13 +610,14 @@ def to_provider_response(
 
     Args:
         config: Provider configuration (may contain secrets).
-        name: Provider identifier. Pass it for paginated list
-            responses (so each item carries its own name independently
-            of collection ordering); omit it on single-provider
-            GET-by-path responses where the URL already carries the
-            identifier. Future list endpoints MUST thread the name to
-            preserve the dict-by-name reconstruction contract on the
-            frontend.
+        name: Provider identifier. Pass the provider name for paginated
+            list responses (so each item carries its own name
+            independently of collection ordering). Pass ``None`` on
+            single-provider GET-by-path responses where the URL
+            already carries the identifier. The argument is required
+            (no default) so a future list endpoint cannot silently
+            omit it and break the dict-by-name reconstruction
+            contract on the frontend with ``name=None`` items.
 
     Returns:
         Safe response DTO with secrets stripped.

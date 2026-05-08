@@ -255,7 +255,7 @@ class ProviderController(Controller):
             operation="read",
             extra_log_kwargs={"name": name},
         )
-        return ApiResponse(data=to_provider_response(provider))
+        return ApiResponse(data=to_provider_response(provider, name=name))
 
     @get(
         "/{name:str}/models",
@@ -408,7 +408,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config))
+        return ApiResponse(data=to_provider_response(config, name=data.name))
 
     @post(
         "/from-preset",
@@ -459,7 +459,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config))
+        return ApiResponse(data=to_provider_response(config, name=data.name))
 
     @put(
         "/{name:str}",
@@ -509,7 +509,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config))
+        return ApiResponse(data=to_provider_response(config, name=name))
 
     @delete(
         "/{name:str}",
@@ -1030,7 +1030,7 @@ class ProviderController(Controller):
                 provider=name,
             )
             raise ConflictError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(updated))
+        return ApiResponse(data=to_provider_response(updated, name=name))
 
     @post(
         "/{name:str}/models/sync",
@@ -1153,7 +1153,7 @@ class ProviderController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(updated))
+        return ApiResponse(data=to_provider_response(updated, name=name))
 
     # ── Preset overrides ────────────────────────────────────────
 
